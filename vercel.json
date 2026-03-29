@@ -1,0 +1,95 @@
+{
+  "redirects": [
+    {
+      "source": "/apply-now",
+      "destination": "/assessment",
+      "permanent": true
+    },
+    {
+      "source": "/apply-now/",
+      "destination": "/assessment",
+      "permanent": true
+    },
+    {
+      "source": "/housing-rights-and-your-esa",
+      "destination": "/housing-rights-esa",
+      "permanent": true
+    },
+    {
+      "source": "/housing-rights-and-your-esa/",
+      "destination": "/housing-rights-esa",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter-texas",
+      "destination": "/esa-letter/texas",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter-texas/",
+      "destination": "/esa-letter/texas",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter-arkansas",
+      "destination": "/esa-letter/arkansas",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter-arkansas/",
+      "destination": "/esa-letter/arkansas",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter-california",
+      "destination": "/esa-letter/california",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter-california/",
+      "destination": "/esa-letter/california",
+      "permanent": true
+    },
+    {
+      "source": "/explore-esa-letters-in-all-states",
+      "destination": "/explore-esa-letters-all-states",
+      "permanent": true
+    },
+    {
+      "source": "/explore-esa-letters-in-all-states/",
+      "destination": "/explore-esa-letters-all-states",
+      "permanent": true
+    },
+    {
+      "source": "/blogs",
+      "destination": "/blog",
+      "permanent": true
+    },
+    {
+      "source": "/blogs/",
+      "destination": "/blog",
+      "permanent": true
+    },
+    {
+      "source": "/explore-esa-letters-all-states/",
+      "destination": "/explore-esa-letters-all-states",
+      "permanent": true
+    },
+    {
+      "source": "/how-to-get-esa-letter/",
+      "destination": "/how-to-get-esa-letter",
+      "permanent": true
+    },
+    {
+      "source": "/all-about-service-dogs/",
+      "destination": "/all-about-service-dogs",
+      "permanent": true
+    },
+    {
+      "source": "/how-to-get-psd-letter/",
+      "destination": "/how-to-get-psd-letter",
+      "permanent": true
+    }
+  ],
+  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
+}
