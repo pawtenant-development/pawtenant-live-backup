@@ -1,0 +1,158 @@
+export interface StatePSDData {
+  slug: string;
+  name: string;
+  abbreviation: string;
+  introText: string;
+  lawsSummary: string;
+  lawsBullets: string[];
+  advantages: { title: string; desc: string }[];
+  faqs: { q: string; a: string }[];
+}
+
+const buildBasicPSD = (name: string, slug: string, abbreviation: string, extraLaw?: string): StatePSDData => ({
+  slug,
+  name,
+  abbreviation,
+  introText: `${name} residents who qualify for a Psychiatric Service Dog (PSD) can access life-changing support through PawTenant. Our licensed mental health professionals evaluate your need and issue a compliant PSD letter that meets federal ADA and housing law requirements in ${name}.`,
+  lawsSummary: `${name} follows the federal Americans with Disabilities Act (ADA) and Fair Housing Act (FHA) for Psychiatric Service Dog protections. ${extraLaw || "PSDs are recognized as trained service animals that perform specific psychiatric tasks to mitigate a handler's disability."} Landlords must allow PSDs regardless of pet policies, and public access rights apply under the ADA.`,
+  lawsBullets: [
+    `Federal ADA and FHA both protect PSD owners in ${name}.`,
+    "PSDs are not subject to pet fees, deposits, or breed restrictions in housing.",
+    "A valid PSD letter from a licensed LMHP documents your need for a psychiatric service dog.",
+    "PSDs may accompany handlers in public places under ADA Title II and III.",
+    "Unlike ESAs, PSDs must be trained to perform specific psychiatric tasks.",
+  ],
+  advantages: [
+    { title: "ADA Public Access Rights", desc: `Your PSD can accompany you in public places throughout ${name} under the ADA, including restaurants, stores, and transportation.` },
+    { title: "No-Pet Housing Protection", desc: `Landlords in ${name} cannot deny housing or charge fees for your PSD under the Fair Housing Act.` },
+    { title: "Psychiatric Task Support", desc: "PSDs are trained to perform specific tasks — grounding, alerting, interrupting behaviors — that directly mitigate your psychiatric disability." },
+  ],
+  faqs: [
+    { q: `What is a PSD letter in ${name}?`, a: `A PSD letter is official documentation from a licensed mental health professional confirming that you have a psychiatric disability that is mitigated by a trained Psychiatric Service Dog in ${name}.` },
+    { q: `How does a PSD differ from an ESA in ${name}?`, a: "A PSD is trained to perform specific psychiatric tasks and has full ADA public access rights. An ESA provides emotional support through companionship but does not have the same public access rights." },
+    { q: `Can I get a PSD letter online in ${name}?`, a: "Yes — PawTenant connects you with a licensed mental health professional via telehealth for a proper evaluation and PSD letter issuance." },
+    { q: `How fast can I get my PSD letter in ${name}?`, a: "Most clients receive their PSD letter digitally within 24 hours of completing their evaluation through PawTenant." },
+  ],
+});
+
+export const usPSDStates: StatePSDData[] = [
+  {
+    slug: "alabama",
+    name: "Alabama",
+    abbreviation: "AL",
+    introText: "Alabama residents with psychiatric disabilities can qualify for a Psychiatric Service Dog through PawTenant. Our licensed professionals provide thorough PSD evaluations compliant with ADA and Fair Housing Act requirements.",
+    lawsSummary: "Alabama follows the federal ADA and FHA for PSD protections. PSDs are recognized as service animals under the ADA and must be allowed in public accommodations and housing. Alabama does not have state-specific PSD laws beyond federal requirements.",
+    lawsBullets: ["Federal ADA and FHA protect PSD owners throughout Alabama.", "PSDs cannot be denied in housing or charged pet fees.", "PSD handlers have full public access rights under ADA Title II and III.", "Valid PSD letter from a licensed Alabama LMHP is required for housing.", "Airlines follow DOT rules for PSDs as service animals."],
+    advantages: [{ title: "Full Public Access", desc: "Your PSD has ADA public access rights throughout Alabama — stores, restaurants, transit, and more." }, { title: "Housing Protection", desc: "Alabama landlords cannot deny your PSD or charge pet fees under the Fair Housing Act." }, { title: "Task-Based Support", desc: "Your PSD is trained to mitigate your specific psychiatric disability through targeted tasks." }],
+    faqs: [{ q: "Does Alabama recognize Psychiatric Service Dogs?", a: "Yes — Alabama follows the federal ADA which recognizes PSDs as service animals with full public access rights." }, { q: "Can I get a PSD letter online in Alabama?", a: "Yes — telehealth PSD evaluations from licensed LMHPs are valid in Alabama." }, { q: "What tasks must a PSD perform in Alabama?", a: "Your PSD must be trained to perform at least one specific task that directly mitigates your psychiatric disability." }, { q: "How fast can I get a PSD letter in Alabama?", a: "PawTenant delivers digital PSD letters within 24 hours of a completed evaluation." }],
+  },
+  buildBasicPSD("Alaska", "alaska", "AK"),
+  buildBasicPSD("Arizona", "arizona", "AZ"),
+  buildBasicPSD("Arkansas", "arkansas", "AR"),
+  {
+    slug: "california",
+    name: "California",
+    abbreviation: "CA",
+    introText: "California has some of the strongest Psychiatric Service Dog protections in the nation. PawTenant connects you with a licensed California mental health professional for a compliant PSD letter under both AB 468, the ADA, and the Unruh Civil Rights Act.",
+    lawsSummary: "California PSDs are protected under the federal ADA, the California Unruh Civil Rights Act, the California Fair Employment and Housing Act (FEHA), and the Fair Housing Act. California also has AB 468 (2022) governing ESA/PSD documentation standards — PSD letters must include the provider's license number, state, and license type.",
+    lawsBullets: ["Federal ADA, FHA, California Unruh Act, and FEHA all protect PSD owners.", "AB 468 (2022) sets standards for PSD documentation — letter must include license number.", "California law extends PSD housing protections beyond federal standards.", "No pet fees or deposits for PSDs in California housing.", "PSDs have full public access rights under both ADA and California law.", "Airlines follow DOT rules — contact airline directly for PSD travel documentation."],
+    advantages: [{ title: "Strongest State Protections", desc: "California law reinforces federal ADA rights and provides additional state-level PSD protections under Unruh and FEHA." }, { title: "Housing + Public Access", desc: "California PSDs are protected in all housing (FHA + FEHA) and all public places (ADA + Unruh Act)." }, { title: "AB 468 Compliant Letters", desc: "PawTenant issues PSD letters that fully comply with California's AB 468 documentation requirements." }],
+    faqs: [{ q: "Does California have specific PSD laws?", a: "Yes — California's Unruh Act and FEHA provide state-level PSD protections in addition to the federal ADA. AB 468 governs PSD documentation standards." }, { q: "Is the 30-day rule required for PSD letters in California?", a: "AB 468 applies to ESA letters. For PSD letters, a proper evaluation by a licensed LMHP is still required in California." }, { q: "Can a California landlord deny my PSD?", a: "No — both the FHA and California FEHA require landlords to accommodate PSDs regardless of pet policies." }, { q: "What documentation is required for a PSD in California?", a: "A PSD letter on official letterhead with the provider's name, license number, license type, and state of licensure, per AB 468 requirements." }, { q: "Does California's Unruh Act cover PSDs in stores and restaurants?", a: "Yes — California's Unruh Civil Rights Act requires all business establishments to admit PSD handlers." }],
+  },
+  buildBasicPSD("Colorado", "colorado", "CO", "Colorado's Anti-Discrimination Act (CADA) reinforces federal PSD protections statewide."),
+  buildBasicPSD("Connecticut", "connecticut", "CT"),
+  buildBasicPSD("Delaware", "delaware", "DE"),
+  buildBasicPSD("Florida", "florida", "FL", "Florida follows federal ADA and FHA, plus the Florida Fair Housing Act. Florida has laws against fraudulent PSD documentation."),
+  buildBasicPSD("Georgia", "georgia", "GA"),
+  buildBasicPSD("Hawaii", "hawaii", "HI"),
+  buildBasicPSD("Idaho", "idaho", "ID"),
+  buildBasicPSD("Illinois", "illinois", "IL", "The Illinois Human Rights Act reinforces federal PSD protections statewide."),
+  buildBasicPSD("Indiana", "indiana", "IN"),
+  buildBasicPSD("Iowa", "iowa", "IA"),
+  buildBasicPSD("Kansas", "kansas", "KS"),
+  buildBasicPSD("Kentucky", "kentucky", "KY"),
+  buildBasicPSD("Louisiana", "louisiana", "LA"),
+  buildBasicPSD("Maine", "maine", "ME"),
+  buildBasicPSD("Maryland", "maryland", "MD"),
+  buildBasicPSD("Massachusetts", "massachusetts", "MA", "Massachusetts Chapter 151B provides additional state-level PSD housing protections."),
+  buildBasicPSD("Michigan", "michigan", "MI"),
+  buildBasicPSD("Minnesota", "minnesota", "MN"),
+  buildBasicPSD("Mississippi", "mississippi", "MS"),
+  buildBasicPSD("Missouri", "missouri", "MO"),
+  buildBasicPSD("Montana", "montana", "MT"),
+  buildBasicPSD("Nebraska", "nebraska", "NE"),
+  buildBasicPSD("Nevada", "nevada", "NV"),
+  buildBasicPSD("New Hampshire", "new-hampshire", "NH"),
+  buildBasicPSD("New Jersey", "new-jersey", "NJ", "New Jersey's Law Against Discrimination (LAD) provides some of the broadest PSD housing protections in the nation."),
+  buildBasicPSD("New Mexico", "new-mexico", "NM"),
+  buildBasicPSD("New York", "new-york", "NY", "New York's Human Rights Law and NYC Human Rights Law provide exceptional additional PSD protections."),
+  buildBasicPSD("North Carolina", "north-carolina", "NC"),
+  buildBasicPSD("North Dakota", "north-dakota", "ND"),
+  {
+    slug: "ohio",
+    name: "Ohio",
+    abbreviation: "OH",
+    introText: "Ohio residents with psychiatric disabilities — including PTSD, anxiety, depression, bipolar disorder, schizophrenia, and OCD — can qualify for a Psychiatric Service Dog (PSD) through PawTenant. Our licensed Ohio mental health professionals provide thorough evaluations and issue PSD letters that meet ADA, Ohio Civil Rights Act, and Fair Housing Act requirements.",
+    lawsSummary: "Ohio protects Psychiatric Service Dog owners under the federal ADA, the Fair Housing Act, and the Ohio Civil Rights Act (ORC Chapter 4112). Ohio's Civil Rights Act mirrors and reinforces federal ADA protections, meaning PSD handlers have broad rights in housing, employment, and public accommodations throughout the state. Ohio law explicitly recognizes trained service animals as distinct from emotional support animals.",
+    lawsBullets: ["Federal ADA and Ohio Civil Rights Act (ORC 4112) both protect PSD owners.", "Ohio PSDs have full public access rights — stores, restaurants, transit, medical facilities.", "No pet fees, deposits, or breed restrictions for PSDs in Ohio housing.", "Ohio law recognizes trained task-based service dogs distinct from ESAs.", "Valid PSD letter from a licensed Ohio LMHP is required for housing accommodation.", "Ohio landlords must accommodate PSDs regardless of building pet policies.", "Airbnb, hotels, and short-term rentals must comply with ADA PSD access rules."],
+    advantages: [
+      { title: "Ohio Civil Rights Act Protection", desc: "Ohio's Civil Rights Act provides robust state-level protections for PSD owners on top of federal ADA rights — covering housing, employment, and public spaces." },
+      { title: "Full ADA Public Access in Ohio", desc: "Your PSD can accompany you in all Ohio public accommodations — grocery stores, malls, restaurants, hospitals, colleges, and public transportation." },
+      { title: "Housing Security in Ohio", desc: "Ohio landlords, including apartment complexes, HOAs, and private landlords, cannot deny your PSD or charge pet-related fees under the FHA and Ohio law." },
+      { title: "Task-Based Psychiatric Support", desc: "Ohio-recognized PSDs are trained to perform specific tasks such as DPT (deep pressure therapy), grounding, alerting to panic attacks, or medication reminders." },
+      { title: "No Pet Fee Savings", desc: "Ohio renters save hundreds on pet deposits and monthly pet fees — your PSD is not classified as a pet under Ohio housing law." },
+    ],
+    faqs: [
+      { q: "What is a Psychiatric Service Dog letter in Ohio?", a: "An Ohio PSD letter is official documentation from a licensed mental health professional confirming you have a qualifying psychiatric disability that is mitigated by a trained PSD. It's required for housing accommodations under the Fair Housing Act." },
+      { q: "Does Ohio recognize Psychiatric Service Dogs separately from ESAs?", a: "Yes — Ohio law recognizes the ADA distinction between trained task-based PSDs (which have public access rights) and ESAs (which have housing-only rights)." },
+      { q: "Can I get a PSD letter online in Ohio?", a: "Yes — Ohio accepts telehealth evaluations from licensed LMHPs. PawTenant connects you with Ohio-licensed professionals for same-day PSD letter delivery." },
+      { q: "What tasks does an Ohio PSD need to perform?", a: "Common PSD tasks include deep pressure therapy (DPT), grounding during panic attacks, alerting to medication times, interrupting self-harm behaviors, guiding away from triggering environments, and creating personal space barriers." },
+      { q: "Can my Ohio landlord charge a pet fee for my PSD?", a: "No — under the FHA and Ohio Civil Rights Act, your PSD is a service animal, not a pet. Ohio landlords cannot charge pet deposits, monthly fees, or impose breed restrictions." },
+      { q: "Does an Ohio PSD letter give me rights in stores and restaurants?", a: "Your PSD letter documents your disability and need for the service dog. Public access rights come from the ADA — any business open to the public in Ohio must allow your trained PSD." },
+      { q: "What conditions qualify for a PSD in Ohio?", a: "Conditions that commonly qualify include PTSD, generalized anxiety disorder, panic disorder, depression, bipolar disorder, OCD, schizophrenia, ADHD, and other psychiatric disabilities as evaluated by your LMHP." },
+    ],
+  },
+  buildBasicPSD("Oklahoma", "oklahoma", "OK"),
+  buildBasicPSD("Oregon", "oregon", "OR", "Oregon Fair Housing Act and ORS Chapter 90 provide additional state-level PSD protections."),
+  buildBasicPSD("Pennsylvania", "pennsylvania", "PA"),
+  buildBasicPSD("Rhode Island", "rhode-island", "RI"),
+  buildBasicPSD("South Carolina", "south-carolina", "SC"),
+  buildBasicPSD("South Dakota", "south-dakota", "SD"),
+  buildBasicPSD("Tennessee", "tennessee", "TN"),
+  buildBasicPSD("Texas", "texas", "TX", "Texas follows federal ADA and FHA for PSD protections statewide."),
+  buildBasicPSD("Utah", "utah", "UT"),
+  buildBasicPSD("Vermont", "vermont", "VT"),
+  buildBasicPSD("Virginia", "virginia", "VA"),
+  {
+    slug: "washington",
+    name: "Washington",
+    abbreviation: "WA",
+    introText: "Washington State residents with psychiatric disabilities can access a Psychiatric Service Dog (PSD) through PawTenant's licensed mental health professionals. Washington has some of the strongest PSD and service animal protections in the nation — combining the federal ADA, Fair Housing Act, and the Washington Law Against Discrimination (WLAD) for comprehensive coverage in housing, employment, and public accommodations.",
+    lawsSummary: "Washington State PSDs are protected under the federal ADA, the Fair Housing Act, and the Washington Law Against Discrimination (RCW 49.60) — one of the broadest state civil rights laws in the country. Washington also has RCW 70.84 (White Cane Law) which extends service animal access rights. Seattle additionally has the Seattle Municipal Code which provides city-level protections for service animal handlers.",
+    lawsBullets: ["Federal ADA, FHA, and Washington WLAD (RCW 49.60) all protect PSD owners.", "Washington's WLAD is one of the broadest state civil rights laws in the US.", "Seattle Municipal Code adds city-level service animal access protections.", "PSDs have full public access rights in Washington — retail, transit, healthcare, education.", "No pet fees, deposits, or breed restrictions for PSDs in Washington housing.", "Washington HOAs and condo associations must comply with PSD accommodation rules.", "Washington employers must accommodate PSD handlers under WLAD employment provisions.", "Airlines must follow DOT rules — contact airline directly for travel documentation."],
+    advantages: [
+      { title: "Washington WLAD — Among the Nation's Strongest Laws", desc: "The Washington Law Against Discrimination (RCW 49.60) provides exceptionally broad PSD protections in housing, employment, and public accommodations — surpassing many other states." },
+      { title: "Seattle Triple Protection", desc: "Seattle residents benefit from federal ADA, Washington WLAD, and Seattle Municipal Code protections — three layers of comprehensive service animal rights." },
+      { title: "Full Statewide Public Access", desc: "Washington PSDs have access to all public accommodations statewide — Seattle, Spokane, Tacoma, Bellevue, and every city in between." },
+      { title: "Employment Protections Too", desc: "Under WLAD, Washington employers must reasonably accommodate employees who need their PSD in the workplace — a protection not available to ESA owners." },
+      { title: "No Pet Fees in Housing", desc: "Washington landlords — from Seattle apartments to rural rentals — cannot charge pet fees or deposits for your PSD under FHA and WLAD." },
+    ],
+    faqs: [
+      { q: "What laws protect PSD owners in Washington State?", a: "Washington PSDs are protected under the federal ADA, the Fair Housing Act, and Washington's Law Against Discrimination (WLAD, RCW 49.60). Seattle residents additionally benefit from Seattle Municipal Code protections." },
+      { q: "Does Washington State have its own PSD laws?", a: "Yes — WLAD (RCW 49.60) is one of the most comprehensive state civil rights laws in the US, providing broad PSD protections in housing, employment, and public places." },
+      { q: "Can I get a PSD letter online in Washington?", a: "Yes — Washington accepts telehealth evaluations from licensed LMHPs. PawTenant connects you with Washington-licensed professionals for same-day PSD letter delivery." },
+      { q: "What conditions qualify for a PSD in Washington State?", a: "Qualifying conditions include PTSD, severe anxiety, panic disorder, depression, bipolar disorder, OCD, schizophrenia, and other psychiatric disabilities evaluated by your licensed LMHP." },
+      { q: "Can my Washington landlord refuse my PSD?", a: "No — under both the FHA and Washington WLAD, landlords cannot deny housing to PSD handlers or charge additional pet fees. This applies to apartments, HOAs, condos, and most private rentals." },
+      { q: "Do Washington employers have to accommodate PSDs?", a: "Under WLAD, Washington employers must provide reasonable accommodations for qualified employees with disabilities, which may include allowing a PSD in the workplace." },
+      { q: "Does a PSD in Washington need to be professionally trained?", a: "Under the ADA, PSDs must be trained to perform specific tasks that mitigate a handler's disability. Washington WLAD uses the same standard. PawTenant can provide guidance on task training requirements." },
+      { q: "What's the difference between ESA rights and PSD rights in Washington?", a: "In Washington, PSDs have both housing rights (FHA + WLAD) AND public access rights (ADA + WLAD). ESAs only have housing protections. PSDs also may have employment accommodation rights under WLAD — ESAs do not." },
+    ],
+  },
+  buildBasicPSD("Washington DC", "washington-dc", "DC", "DC Human Rights Act provides exceptional PSD protections beyond federal law."),
+  buildBasicPSD("West Virginia", "west-virginia", "WV"),
+  buildBasicPSD("Wisconsin", "wisconsin", "WI"),
+  buildBasicPSD("Wyoming", "wyoming", "WY"),
+];
+
+export const getPSDStateBySlug = (slug: string): StatePSDData | undefined =>
+  usPSDStates.find((s) => s.slug === slug);

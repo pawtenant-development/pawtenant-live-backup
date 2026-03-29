@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- CORE PAGES                              -->
+  <!-- ═══════════════════════════════════════ -->
+  <url><loc>https://www.pawtenant.com/</loc><lastmod>2026-03-29</lastmod><priority>1.0</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/assessment</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/how-to-get-esa-letter</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/housing-rights-esa</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter-cost</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/explore-esa-letters-all-states</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/service-animal-vs-esa</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/all-about-service-dogs</loc><lastmod>2026-03-29</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/how-to-get-psd-letter</loc><lastmod>2026-03-29</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-assessment</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/join-our-network</loc><lastmod>2026-03-29</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/airline-pet-policy</loc><lastmod>2026-03-29</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/renew-esa-letter</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/faqs</loc><lastmod>2026-03-29</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/about-us</loc><lastmod>2026-03-29</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/contact-us</loc><lastmod>2026-03-29</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/no-risk-guarantee</loc><lastmod>2026-03-29</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/sitemap</loc><lastmod>2026-03-29</lastmod><priority>0.5</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/privacy-policy</loc><lastmod>2026-01-01</lastmod><priority>0.3</priority><changefreq>yearly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/terms-of-use</loc><lastmod>2026-01-01</lastmod><priority>0.3</priority><changefreq>yearly</changefreq></url>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- HIGH-PRIORITY STATE PAGES              -->
+  <!-- ═══════════════════════════════════════ -->
+  <url><loc>https://www.pawtenant.com/esa-letter/california</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/texas</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/florida</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/new-york</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- ALL 50 US STATE PAGES                  -->
+  <!-- ═══════════════════════════════════════ -->
+  <url><loc>https://www.pawtenant.com/esa-letter/alabama</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/alaska</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/arizona</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/arkansas</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/colorado</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/connecticut</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/delaware</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/georgia</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/hawaii</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/idaho</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/illinois</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/indiana</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/iowa</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/kansas</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/kentucky</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/louisiana</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/maine</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/maryland</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/massachusetts</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/michigan</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/minnesota</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/mississippi</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/missouri</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/montana</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/nebraska</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/nevada</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/new-hampshire</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/new-jersey</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/new-mexico</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/north-carolina</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/north-dakota</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/ohio</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/oklahoma</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/oregon</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/pennsylvania</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/rhode-island</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/south-carolina</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/south-dakota</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/tennessee</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/utah</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/vermont</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/virginia</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/washington</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/washington-dc</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/west-virginia</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/wisconsin</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/esa-letter/wyoming</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- COLLEGE POLICY PAGES (US COLLEGES)     -->
+  <!-- ═══════════════════════════════════════ -->
+  <url><loc>https://www.pawtenant.com/college-pet-policy/mit</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/harvard-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/stanford-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/university-of-california-berkeley</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/university-of-texas-austin</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/new-york-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/columbia-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/university-of-florida</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/university-of-michigan</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/ohio-state-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/ucla</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/college-pet-policy/university-of-chicago</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- BLOG POSTS                             -->
+  <!-- ═══════════════════════════════════════ -->
+  <url><loc>https://www.pawtenant.com/blog/esa-letter-cost-california-2026</loc><lastmod>2026-03-01</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/texas-esa-landlord-rights-2026</loc><lastmod>2026-03-01</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/florida-esa-letter-renters-2026</loc><lastmod>2026-03-01</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/new-york-esa-letter-apartment-2026</loc><lastmod>2026-03-01</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/how-to-request-esa-accommodation-university-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/can-you-have-esa-in-college-dorms</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-letter-college-students-dorm-rights-federal-laws</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/renters-insurance-pet-owners-complete-guide</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/flying-with-esa-travel-letter-guide</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/how-to-get-esa-letter-from-doctor</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/what-landlords-cannot-legally-do-esa</loc><lastmod>2026-03-01</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/exotic-esa-rules-whats-realistically-allowed</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/florida-esa-laws-what-landlords-can-ask-for</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/new-york-esa-laws-housing-protections</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/california-esa-laws-explained-2025-update</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/are-online-esa-letters-legit</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/what-a-legit-esa-letter-looks-like-checklist-examples</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/how-to-choose-the-right-esa-for-your-needs</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/how-to-get-certification-for-emotional-support-dog</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/how-to-renew-esa-letter-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-housing-denial-rights-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-letter-college-dorms-2026-complete-guide</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-vs-service-animal-key-differences-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/can-landlord-evict-me-for-having-esa-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/mental-health-conditions-qualify-esa-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-letter-apartments-complete-renters-guide-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-travel-readiness-consultation-guide-2026</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-airline-compliance-guide-all-airlines-2026</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-annual-renewal-subscription-stay-compliant-2026</loc><lastmod>2026-03-01</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- 2026 GUIDE & STATE UPDATE POSTS        -->
+  <!-- ═══════════════════════════════════════ -->
+  <url><loc>https://www.pawtenant.com/blog/esa-complete-guide-2026-whats-updated</loc><lastmod>2026-03-29</lastmod><priority>1.0</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/psd-complete-guide-2026-whats-updated</loc><lastmod>2026-03-29</lastmod><priority>1.0</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-california-2026-update</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-texas-2026-update</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-florida-2026-update</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-new-york-2026-update</loc><lastmod>2026-03-29</lastmod><priority>0.95</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/psd-california-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/psd-texas-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/psd-florida-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/psd-new-york-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <!-- PSD State Pages -->
+  <url><loc>https://www.pawtenant.com/psd-letter/ohio</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/washington</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/california</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/texas</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/florida</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/new-york</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/illinois</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/georgia</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/north-carolina</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/arizona</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/michigan</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/new-jersey</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/virginia</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/colorado</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/pennsylvania</loc><lastmod>2026-03-29</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/minnesota</loc><lastmod>2026-03-29</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/psd-letter/oregon</loc><lastmod>2026-03-29</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <!-- Resource Center Hub -->
+  <url><loc>https://www.pawtenant.com/resource-center</loc><lastmod>2026-03-29</lastmod><priority>1.0</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/hoa-esa-rights-2026</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/multiple-esas-one-apartment-2026</loc><lastmod>2026-03-29</lastmod><priority>0.85</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-friendly-hotels-travel-guide-2026</loc><lastmod>2026-03-29</lastmod><priority>0.85</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-road-trip-guide-2026</loc><lastmod>2026-03-29</lastmod><priority>0.85</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/how-esas-help-ptsd-2026</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-for-anxiety-depression-mental-health-guide-2026</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-letters-for-veterans-2026</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/pet-therapy-vs-esa-difference-2026</loc><lastmod>2026-03-29</lastmod><priority>0.85</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-ohio-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-washington-state-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-illinois-chicago-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.9</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://www.pawtenant.com/blog/esa-colorado-denver-2026-guide</loc><lastmod>2026-03-29</lastmod><priority>0.85</priority><changefreq>monthly</changefreq></url>
+</urlset>

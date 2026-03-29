@@ -1,0 +1,36 @@
+User-agent: *
+Allow: /
+
+# Block thank-you pages — no SEO value, should not be indexed
+Disallow: /assessment/thank-you
+Disallow: /psd-assessment/thank-you
+
+# Block admin, provider, and customer-private pages
+Disallow: /admin-orders
+Disallow: /admin-doctors
+Disallow: /admin-login
+Disallow: /admin-guide
+Disallow: /provider-portal
+Disallow: /provider-login
+Disallow: /my-orders
+Disallow: /customer-login
+Disallow: /reset-password
+Disallow: /go-live
+
+# Google bot settings — prioritize US crawl
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+# Bing bot settings
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 2
+
+# Preferred host
+Host: www.pawtenant.com
+
+# US-focused service — geotarget via Search Console is primary method
+# All pages serve United States residents only
+
+Sitemap: https://www.pawtenant.com/sitemap.xml

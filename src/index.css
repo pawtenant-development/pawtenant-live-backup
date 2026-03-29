@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Zoom & Scale Compatibility ───────────────────────────────────────────── */
+html {
+  /* Allow browser zoom (ctrl+/- / pinch) to scale all rem-based units */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  /* Prevent content from being clipped on zoom-out; allow natural overflow */
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
+/* Prevent absolutely-positioned overlays from creating unintended scroll */
+#root {
+  min-height: 100vh;
+  overflow-x: hidden;
+}

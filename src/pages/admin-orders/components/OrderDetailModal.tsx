@@ -1,0 +1,2620 @@
+// OrderDetailModal — Full case management view for admins
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "../../../lib/supabaseClient";
+import OrderNotesPanel from "./OrderNotesPanel";
+import CommunicationTab from "./CommunicationTab";
+import PSDAssessmentView from "./PSDAssessmentView";
+import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
+import {
+  LOGO_URL as ASSESSMENT_LOGO,
+  STATE_NAMES,
+  QUESTIONNAIRE_ITEMS,
+  PetInfo,
+  resolveLabel,
+  formatDob,
+  formatSubmitDate,
+  buildPrintHTML,
+} from "./assessmentUtils";
+
+interface Order {
+  id: string;
+  confirmation_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  state: string | null;
+  selected_provider: string | null;
+  plan_type: string | null;
+  delivery_speed: string | null;
+  price: number | null;
+  payment_intent_id: string | null;
+  payment_method: string | null;
+  status: string;
+  doctor_status: string | null;
+  doctor_user_id: string | null;
+  doctor_name: string | null;
+  doctor_email: string | null;
+  letter_url: string | null;
+  signed_letter_url: string | null;
+  patient_notification_sent_at: string | null;
+  assessment_answers: Record<string, unknown> | null;
+  created_at: string;
+  ghl_synced_at: string | null;
+  ghl_sync_error: string | null;
+  email_log?: EmailLogEntry[] | null;
+  referred_by: string | null;
+  addon_services?: string[] | null;
+  refunded_at?: string | null;
+  refund_amount?: number | null;
+  dispute_id?: string | null;
+  dispute_status?: string | null;
+  fraud_warning?: boolean | null;
+  letter_type?: string | null;
+  coupon_code?: string | null;
+  coupon_discount?: number | null;
+}
+
+type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
+
+interface DoctorContact {
+  id: string;
+  full_name: string;
+  email: string;
+  licensed_states?: string[];
+  is_active?: boolean | null;
+}
+
+interface AdminProfile {
+  user_id: string;
+  full_name: string;
+}
+
+interface OrderDetailModalProps {
+  order: Order;
+  doctorContacts: DoctorContact[];
+  adminProfile: AdminProfile;
+  onClose: () => void;
+  onOrderUpdated: (updatedOrder: Partial<Order> & { id: string }) => void;
+  onOrderDeleted?: (orderId: string) => void;
+}
+
+type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "emails" | "shared_notes";
+
+// ─── PSD order detection — letter_type field OR confirmation ID prefix ────────
+function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
+  return order.letter_type === "psd" || order.confirmation_id.includes("-PSD");
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  processing: "Processing",
+  "under-review": "Under Review",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  lead: "Lead (Unpaid)",
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  processing: "bg-sky-100 text-sky-700",
+  "under-review": "bg-sky-100 text-sky-700",
+  completed: "bg-emerald-100 text-emerald-700",
+  cancelled: "bg-red-100 text-red-600",
+  lead: "bg-amber-100 text-amber-700",
+};
+
+// ─── 4-stage display status helper ──────────────────────────────────────────
+function getModalDisplayStatus(order: Order): { label: string; color: string } {
+  if (order.status === "disputed" || order.dispute_id) {
+    return { label: "Disputed", color: "bg-red-100 text-red-700" };
+  }
+  if (order.fraud_warning) {
+    return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
+  }
+  if (order.status === "refunded" || order.refunded_at) {
+    return { label: "Refunded", color: "bg-red-100 text-red-600" };
+  }
+  if (order.doctor_status === "patient_notified") {
+    return { label: "Order (Completed)", color: "bg-emerald-100 text-emerald-700" };
+  }
+  if (order.status === "lead" || !order.payment_intent_id) {
+    return { label: "Lead (Unpaid)", color: "bg-amber-100 text-amber-700" };
+  }
+  if (!order.doctor_email && !order.doctor_user_id) {
+    return { label: "Paid (Unassigned)", color: "bg-sky-100 text-sky-700" };
+  }
+  return { label: "Order (Under Review)", color: "bg-sky-100 text-sky-700" };
+}
+
+const DOCTOR_STATUS_COLOR: Record<string, string> = {
+  pending_review: "bg-amber-100 text-amber-700",
+  in_review: "bg-sky-100 text-sky-700",
+  approved: "bg-emerald-100 text-emerald-700",
+  letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
+  patient_notified: "bg-violet-100 text-violet-700",
+};
+
+const EMAIL_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; failColor: string }> = {
+  order_confirmation: { label: "Order Confirmation",   icon: "ri-mail-check-line",   color: "text-[#1a5c4f] bg-[#e8f5f1] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
+  payment_receipt:   { label: "Payment Receipt",       icon: "ri-receipt-line",       color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  letter_ready:      { label: "Letter Ready",          icon: "ri-file-check-line",    color: "text-violet-700 bg-violet-50 border-violet-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  refund:            { label: "Refund Confirmation",   icon: "ri-refund-line",        color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  status_under_review: { label: "Status: Under Review",  icon: "ri-eye-line",          color: "text-sky-700 bg-sky-50 border-sky-200",  failColor: "text-red-600 bg-red-50 border-red-200" },
+  status_completed:    { label: "Status: Completed (Paid)", icon: "ri-checkbox-circle-line", color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  provider_assigned_provider: { label: "Provider Assignment Notice", icon: "ri-user-received-line", color: "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
+  provider_assigned_customer: { label: "Provider Assigned (Patient)", icon: "ri-user-star-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  provider_notification:      { label: "Provider Nudge",              icon: "ri-notification-3-line", color: "text-amber-700 bg-amber-50 border-amber-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  thirty_day_reminder:        { label: "30-Day Reissue Reminder",      icon: "ri-time-fill",           color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+};
+
+function fmt(ts: string) {
+  return new Date(ts).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
+}
+
+function fmtEmailTime(ts: string): string {
+  return new Date(ts).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
+interface OrderDocument {
+  id: string;
+  order_id: string;
+  confirmation_id: string;
+  label: string;
+  doc_type: string;
+  file_url: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  sent_to_customer: boolean;
+  customer_visible: boolean;
+  notes: string | null;
+}
+
+const DOC_TYPE_OPTIONS = [
+  { value: "esa_letter", label: "ESA Letter" },
+  { value: "housing_verification", label: "Housing Verification Letter" },
+  { value: "landlord_form", label: "Landlord Form" },
+  { value: "signed_letter", label: "Signed Letter" },
+  { value: "other", label: "Other / Supporting Document" },
+];
+
+const US_STATES_MAP: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi",
+  MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire",
+  NJ: "New Jersey", NM: "New Mexico", NY: "New York", NC: "North Carolina",
+  ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee",
+  TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "Washington DC",
+};
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  card: "Credit / Debit Card",
+  klarna: "Klarna (Pay in 4)",
+  qr: "QR Code / Mobile Pay",
+};
+
+const REF_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  facebook:     { label: "Facebook",     icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
+  google_ads:   { label: "Google Ads",   icon: "ri-google-line",          color: "text-orange-600 bg-orange-50 border-orange-200" },
+  social_media: { label: "Social Media", icon: "ri-share-circle-line",    color: "text-pink-600 bg-pink-50 border-pink-200" },
+  seo:          { label: "SEO",          icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+};
+
+export default function OrderDetailModal({
+  order: initialOrder,
+  doctorContacts,
+  adminProfile,
+  onClose,
+  onOrderUpdated,
+  onOrderDeleted,
+}: OrderDetailModalProps) {
+  const [order, setOrder] = useState<Order>(initialOrder);
+  const [section, setSection] = useState<Section>("overview");
+  const [assignEmail, setAssignEmail] = useState(order.doctor_email ?? "");
+  const [assigning, setAssigning] = useState(false);
+  const [assignMsg, setAssignMsg] = useState("");
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
+  const [ghlFiring, setGhlFiring] = useState(false);
+  const [ghlMsg, setGhlMsg] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailMsg, setEmailMsg] = useState("");
+  const [confirmResending, setConfirmResending] = useState(false);
+  const [confirmResendMsg, setConfirmResendMsg] = useState("");
+  const [discountSending, setDiscountSending] = useState(false);
+  const [discountMsg, setDiscountMsg] = useState("");
+  const [stripeIdInput, setStripeIdInput] = useState("");
+  const [paymentSyncing, setPaymentSyncing] = useState(false);
+  const [paymentSyncMsg, setPaymentSyncMsg] = useState("");
+  const [paymentSyncOk, setPaymentSyncOk] = useState<boolean | null>(null);
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [markPaidMsg, setMarkPaidMsg] = useState("");
+  const [showMarkPaidConfirm, setShowMarkPaidConfirm] = useState(false);
+
+  // ── Multi-document state ──
+  const [orderDocs, setOrderDocs] = useState<OrderDocument[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [addDocForm, setAddDocForm] = useState({ url: "", label: "", docType: "other", notes: "" });
+  const [savingDoc, setSavingDoc] = useState(false);
+  const [addDocMsg, setAddDocMsg] = useState("");
+  const [sendingAll, setSendingAll] = useState(false);
+  const [sendAllMsg, setSendAllMsg] = useState("");
+  const [showAddDocForm, setShowAddDocForm] = useState(false);
+  const [doctorMessage, setDoctorMessage] = useState("");
+
+  // ── Provider docs guard — tracks whether at least one doc has been uploaded ──
+  const [hasProviderDocs, setHasProviderDocs] = useState<boolean>(!!order.signed_letter_url);
+  const [docCount, setDocCount] = useState<number>(order.signed_letter_url ? 1 : 0);
+
+  const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+  const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
+  // Load provider doc count on mount so "Mark Letter Sent" gate is accurate
+  useEffect(() => {
+    supabase
+      .from("order_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("order_id", order.id)
+      .then(({ count }) => {
+        const total = (count ?? 0) + (order.signed_letter_url ? 1 : 0);
+        if (total > 0) {
+          setHasProviderDocs(true);
+          setDocCount(total);
+        }
+      });
+  }, [order.id, order.signed_letter_url]);
+
+  // Keep in sync when orderDocs tab loads more docs
+  useEffect(() => {
+    if (orderDocs.length > 0) {
+      setHasProviderDocs(true);
+      const total = orderDocs.length + (order.signed_letter_url && !orderDocs.some((d) => d.file_url === order.signed_letter_url) ? 1 : 0);
+      setDocCount(total);
+    }
+  }, [orderDocs, order.signed_letter_url]);
+
+  const updateOrderField = useCallback(async (fields: Partial<Order>) => {
+    const updated = { ...order, ...fields };
+    setOrder(updated);
+    onOrderUpdated({ id: order.id, ...fields });
+  }, [order, onOrderUpdated]);
+
+  const handleAssign = async () => {
+    if (!assignEmail) return;
+    setAssigning(true);
+    setAssignMsg("");
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/assign-doctor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+        body: JSON.stringify({
+          confirmationId: order.confirmation_id,
+          doctorEmail: assignEmail,
+          skipPaymentCheck: true,
+        }),
+      });
+      const result = await res.json() as {
+        ok?: boolean;
+        error?: string;
+        warning?: string;
+        doctorName?: string;
+        emailSent?: boolean;
+        customerEmailSent?: boolean;
+      };
+      if (result.ok) {
+        const dc = doctorContacts.find((d) => d.email.toLowerCase() === assignEmail.toLowerCase());
+        const updates = {
+          doctor_email: assignEmail,
+          doctor_name: result.doctorName ?? dc?.full_name ?? null,
+          doctor_status: "pending_review" as string,
+        };
+        updateOrderField(updates);
+        if (result.emailSent) {
+          setAssignMsg("Assigned — notification email sent to provider");
+        } else {
+          setAssignMsg("Assigned, but email delivery failed — check SMTP settings");
+        }
+      } else {
+        setAssignMsg(result.error ?? result.warning ?? "Assignment failed");
+      }
+    } catch {
+      setAssignMsg("Network error — please try again");
+    }
+    setAssigning(false);
+    setTimeout(() => setAssignMsg(""), 6000);
+  };
+
+  const handleSetStatus = async (newStatus: string, newDoctorStatus?: string) => {
+    setStatusUpdating(true);
+    setStatusMsg("");
+    const patch: Record<string, string> = {};
+    if (newStatus) patch.status = newStatus;
+    if (newDoctorStatus) patch.doctor_status = newDoctorStatus;
+    const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
+    if (!error) {
+      updateOrderField(patch as Partial<Order>);
+      setStatusMsg("Status updated");
+
+      // Fire status notification email for customer-facing status changes
+      const statusForEmail = newStatus || order.status;
+      if (statusForEmail === "under-review" || statusForEmail === "completed") {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token ?? "";
+          fetch(`${supabaseUrl}/functions/v1/notify-order-status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ confirmationId: order.confirmation_id, newStatus: statusForEmail }),
+          }).catch(() => {});
+        } catch {
+          // Silently fail — status email is best-effort
+        }
+      }
+    } else {
+      setStatusMsg("Update failed — check RLS");
+    }
+    setStatusUpdating(false);
+    setTimeout(() => setStatusMsg(""), 3000);
+  };
+
+  const handleGhlRefire = async () => {
+    setGhlFiring(true);
+    setGhlMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/backfill-order-ghl`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmationId: order.confirmation_id }),
+      });
+      const result = await res.json() as { ok: boolean; message: string; phonePersisted?: string | null };
+      setGhlMsg(result.message ?? (result.ok ? "GHL synced!" : "Sync failed"));
+      if (result.ok) {
+        updateOrderField({
+          ghl_synced_at: new Date().toISOString(),
+          ghl_sync_error: null,
+          phone: result.phonePersisted ?? order.phone ?? null,
+        });
+      }
+    } catch {
+      setGhlMsg("Network error");
+    }
+    setGhlFiring(false);
+    setTimeout(() => setGhlMsg(""), 5000);
+  };
+
+  const handleResendEmail = async () => {
+    if (!order.signed_letter_url && docCount === 0) {
+      setEmailMsg("No provider documents yet — provider must submit a letter first");
+      setTimeout(() => setEmailMsg(""), 4000);
+      return;
+    }
+    setEmailSending(true);
+    setEmailMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-patient-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmationId: order.confirmation_id, doctorMessage: doctorMessage.trim() || null }),
+      });
+      const result = await res.json() as { ok?: boolean; error?: string };
+      setEmailMsg(result.ok ? "Email sent to patient!" : (result.error ?? "Send failed"));
+      if (result.ok) {
+        updateOrderField({ patient_notification_sent_at: new Date().toISOString() });
+      }
+    } catch {
+      setEmailMsg("Network error");
+    }
+    setEmailSending(false);
+    setTimeout(() => setEmailMsg(""), 5000);
+  };
+
+  const handleSendDiscountEmail = async () => {
+    setDiscountSending(true);
+    setDiscountMsg("");
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-checkout-recovery`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({
+          confirmationId: order.confirmation_id,
+          email: order.email,
+          firstName: order.first_name ?? "",
+          price: order.price,
+        }),
+      });
+      const result = await res.json() as { ok: boolean; error?: string };
+      if (result.ok) {
+        setDiscountMsg(`Discount/recovery email sent to ${order.email}`);
+        // Refresh email log
+        const { data: fresh } = await supabase.from("orders").select("email_log").eq("id", order.id).maybeSingle();
+        if (fresh?.email_log) updateOrderField({ email_log: fresh.email_log as EmailLogEntry[] });
+      } else {
+        setDiscountMsg(result.error ?? "Send failed — check edge function logs");
+      }
+    } catch {
+      setDiscountMsg("Network error — please try again");
+    }
+    setDiscountSending(false);
+    setTimeout(() => setDiscountMsg(""), 6000);
+  };
+
+  const handleResendConfirmation = async () => {
+    setConfirmResending(true);
+    setConfirmResendMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/resend-confirmation-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmationId: order.confirmation_id }),
+      });
+      const result = await res.json() as { ok?: boolean; emailSent?: boolean; error?: string; to?: string };
+      if (result.ok && result.emailSent) {
+        setConfirmResendMsg(`Confirmation email sent to ${result.to ?? order.email}`);
+        // Refresh email log from DB
+        const { data: updated } = await supabase
+          .from("orders")
+          .select("email_log")
+          .eq("id", order.id)
+          .maybeSingle();
+        if (updated?.email_log) {
+          updateOrderField({ email_log: updated.email_log as EmailLogEntry[] });
+        }
+      } else {
+        setConfirmResendMsg(result.error ?? "Send failed — check SMTP config");
+      }
+    } catch {
+      setConfirmResendMsg("Network error");
+    }
+    setConfirmResending(false);
+    setTimeout(() => setConfirmResendMsg(""), 6000);
+  };
+
+  const loadOrderDocs = useCallback(async () => {
+    setLoadingDocs(true);
+    const { data } = await supabase
+      .from("order_documents")
+      .select("*")
+      .eq("order_id", order.id)
+      .order("uploaded_at", { ascending: true });
+    setOrderDocs((data as OrderDocument[]) ?? []);
+    setLoadingDocs(false);
+  }, [order.id]);
+
+  useEffect(() => {
+    if (section === "documents") {
+      loadOrderDocs();
+    }
+  }, [section, loadOrderDocs]);
+
+  const handleAddDoc = async () => {
+    if (!addDocForm.url.trim() || !addDocForm.label.trim()) {
+      setAddDocMsg("URL and label are required.");
+      setTimeout(() => setAddDocMsg(""), 3000);
+      return;
+    }
+    setSavingDoc(true);
+    const { error } = await supabase.from("order_documents").insert({
+      order_id: order.id,
+      confirmation_id: order.confirmation_id,
+      label: addDocForm.label.trim(),
+      doc_type: addDocForm.docType,
+      file_url: addDocForm.url.trim(),
+      notes: addDocForm.notes.trim() || null,
+      uploaded_by: adminProfile.full_name,
+      sent_to_customer: false,
+      customer_visible: true,
+    });
+    setSavingDoc(false);
+    if (!error) {
+      setAddDocMsg("Document saved! It is now visible in the customer portal.");
+      setAddDocForm({ url: "", label: "", docType: "other", notes: "" });
+      setShowAddDocForm(false);
+      loadOrderDocs();
+    } else {
+      setAddDocMsg(`Save failed: ${error.message}`);
+    }
+    setTimeout(() => setAddDocMsg(""), 5000);
+  };
+
+  const handleSendAllToCustomer = async () => {
+    setSendingAll(true);
+    setSendAllMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-patient-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmationId: order.confirmation_id, doctorMessage: doctorMessage.trim() || null }),
+      });
+      const result = await res.json() as { ok?: boolean; error?: string; docsEmailed?: number };
+      setSendAllMsg(result.ok
+        ? `Email sent! ${result.docsEmailed ?? 0} document(s) delivered to ${order.email}`
+        : (result.error ?? "Send failed"));
+      if (result.ok) {
+        loadOrderDocs();
+        updateOrderField({ patient_notification_sent_at: new Date().toISOString() });
+      }
+    } catch {
+      setSendAllMsg("Network error");
+    }
+    setSendingAll(false);
+    setTimeout(() => setSendAllMsg(""), 6000);
+  };
+
+  const handleDeleteDoc = async (docId: string) => {
+    await supabase.from("order_documents").delete().eq("id", docId);
+    loadOrderDocs();
+  };
+
+  const handleFixPayment = async () => {
+    if (!stripeIdInput.trim()) return;
+    setPaymentSyncing(true);
+    setPaymentSyncMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const isCharge = stripeIdInput.trim().startsWith("ch_");
+      const res = await fetch(`${supabaseUrl}/functions/v1/fix-order-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          confirmationId: order.confirmation_id,
+          ...(isCharge ? { stripeChargeId: stripeIdInput.trim() } : { stripePaymentIntentId: stripeIdInput.trim() }),
+        }),
+      });
+      const result = await res.json() as { ok?: boolean; message?: string; error?: string; paymentIntentId?: string; priceUpdated?: number; alreadySynced?: boolean };
+      if (result.ok) {
+        setPaymentSyncMsg(result.message ?? "Payment synced!");
+        setPaymentSyncOk(true);
+        if (result.paymentIntentId) {
+          updateOrderField({
+            payment_intent_id: result.paymentIntentId,
+            price: result.priceUpdated ?? order.price,
+            status: order.status === "lead" || !order.status ? "processing" : order.status,
+          });
+        }
+        setStripeIdInput("");
+      } else {
+        setPaymentSyncMsg(result.error ?? "Sync failed");
+        setPaymentSyncOk(false);
+      }
+    } catch {
+      setPaymentSyncMsg("Network error");
+    }
+    setPaymentSyncing(false);
+    setTimeout(() => setPaymentSyncMsg(""), 8000);
+  };
+
+  const handleMarkAsPaid = async () => {
+    setMarkingPaid(true);
+    setMarkPaidMsg("");
+    const { error } = await supabase.from("orders").update({ status: "processing" }).eq("id", order.id);
+    if (!error) {
+      updateOrderField({ status: "processing" });
+      setMarkPaidMsg("Order marked as paid — status updated to Processing. Assign a provider when ready.");
+      setShowMarkPaidConfirm(false);
+    } else {
+      setMarkPaidMsg(`Failed: ${error.message}`);
+    }
+    setMarkingPaid(false);
+    setTimeout(() => setMarkPaidMsg(""), 8000);
+  };
+
+  const handleCancelOrder = async () => {
+    setCancellingOrder(true);
+    setCancelMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+
+      // If refund requested, process it first
+      let refundAmount: number | undefined;
+      if (cancelWithRefund && order.payment_intent_id) {
+        const refundRes = await fetch(`${supabaseUrl}/functions/v1/create-refund`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            paymentIntentId: order.payment_intent_id,
+            reason: "requested_by_customer",
+            note: cancelNote.trim() || "Order cancelled by admin",
+            confirmationId: order.confirmation_id,
+          }),
+        });
+        const refundData = await refundRes.json() as { ok: boolean; error?: string; refund?: { amount: number } };
+        if (!refundData.ok) {
+          setCancelMsg(`Refund failed: ${refundData.error ?? "Unknown error"}. Order not cancelled.`);
+          setCancellingOrder(false);
+          return;
+        }
+        refundAmount = refundData.refund ? refundData.refund.amount / 100 : undefined;
+      }
+
+      // Update order status to cancelled
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: "cancelled" })
+        .eq("id", order.id);
+
+      if (error) {
+        setCancelMsg(`Failed to update order status: ${error.message}`);
+        setCancellingOrder(false);
+        return;
+      }
+
+      // Send cancellation email notification (best-effort)
+      try {
+        fetch(`${supabaseUrl}/functions/v1/notify-order-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            confirmationId: order.confirmation_id,
+            newStatus: "cancelled",
+            refunded: cancelWithRefund && !!order.payment_intent_id,
+            refundAmount,
+            cancelNote: cancelNote.trim() || undefined,
+          }),
+        }).catch(() => {});
+      } catch {
+        // Email is best-effort
+      }
+
+      // ── Fire GHL with Cancelled + Closed tags (fire-and-forget) ──────────
+      try {
+        fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            event: "order_cancelled",
+            email: order.email,
+            firstName: order.first_name ?? "",
+            lastName: order.last_name ?? "",
+            phone: order.phone ?? "",
+            confirmationId: order.confirmation_id,
+            letterType: order.letter_type ?? "",
+            addonServices: order.addon_services ?? [],
+            price: order.price ?? 0,
+            tags: ["Cancelled", "Closed"],
+            leadStatus: "Cancelled — Order Closed",
+          }),
+        }).catch(() => {});
+      } catch {
+        // GHL is best-effort
+      }
+
+      updateOrderField({ status: "cancelled" });
+      setShowCancelConfirm(false);
+      onOrderUpdated({ id: order.id, status: "cancelled" });
+      const refundNote = cancelWithRefund && order.payment_intent_id
+        ? refundAmount ? ` — $${refundAmount.toFixed(2)} refunded` : " — full refund issued"
+        : "";
+      setCancelMsg(`Order cancelled successfully${refundNote}. Customer notified by email.`);
+    } catch {
+      setCancelMsg("Unexpected error — please try again.");
+    }
+    setCancellingOrder(false);
+    setTimeout(() => setCancelMsg(""), 8000);
+  };
+
+  const handleDeleteOrder = async () => {
+    setDeletingOrder(true);
+    setDeleteOrderMsg("");
+    try {
+      // Clean up related records first (must delete doctor_earnings before orders due to FK NO ACTION)
+      await supabase.from("doctor_earnings").delete().eq("order_id", order.id);
+      await supabase.from("order_documents").delete().eq("order_id", order.id);
+      await supabase.from("doctor_notes").delete().eq("order_id", order.id);
+      await supabase.from("order_status_logs").delete().eq("order_id", order.id);
+      await supabase.from("doctor_notifications").delete().eq("order_id", order.id);
+
+      const { error } = await supabase.from("orders").delete().eq("id", order.id);
+      if (error) {
+        setDeleteOrderMsg(`Delete failed: ${error.message}`);
+        setDeletingOrder(false);
+        return;
+      }
+
+      // Check if this was the customer's only order — if so, delete their auth account too
+      const { count: remainingOrders } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .ilike("email", order.email);
+
+      if ((remainingOrders ?? 0) === 0) {
+        // No more orders for this email — delete auth account + write HIPAA audit log
+        try {
+          // Prefer getSession (already refreshes automatically); only force-refresh as fallback
+          let token = "";
+          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          token = currentSession?.access_token ?? "";
+          if (!token) {
+            const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+            token = refreshed?.access_token ?? "";
+          }
+          const customerName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
+          const delRes = await fetch(`${supabaseUrl}/functions/v1/delete-auth-user`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              email: order.email,
+              entityType: "customer",
+              entityName: `${customerName} (${order.email})`,
+              reason: `Customer's last order (${order.confirmation_id}) deleted by admin. No remaining orders.`,
+            }),
+          });
+          if (!delRes.ok) {
+            const errBody = await delRes.json().catch(() => ({})) as { error?: string };
+            console.error("[OrderDetailModal] delete-auth-user failed:", delRes.status, errBody?.error);
+          }
+        } catch (e) {
+          console.error("[OrderDetailModal] delete-auth-user network error:", e);
+        }
+      }
+
+      // Notify parent then close
+      onOrderDeleted?.(order.id);
+      onClose();
+    } catch {
+      setDeleteOrderMsg("Unexpected error — please try again.");
+      setDeletingOrder(false);
+    }
+  };
+
+  const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
+  const initials = fullName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+  const assessmentCount = order.assessment_answers ? Object.keys(order.assessment_answers).length : 0;
+
+  // Filter doctors: active only + licensed in the order's state
+  const orderStateCode = order.state ?? "";
+  const orderStateName = US_STATES_MAP[orderStateCode] ?? orderStateCode ?? "";
+  const eligibleDoctors = doctorContacts.filter((d) => {
+    const isActive = d.is_active !== false;
+    // Support both full name ("California") and code ("CA") formats in licensed_states
+    const licensedInState =
+      !orderStateName ||
+      !d.licensed_states ||
+      d.licensed_states.includes(orderStateName) ||   // full name match (CreateDoctorModal)
+      d.licensed_states.includes(orderStateCode);      // code match (application approval)
+    return isActive && licensedInState;
+  });
+
+  // Resend provider email state
+  const [resendingProvider, setResendingProvider] = useState(false);
+  const [resendProviderMsg, setResendProviderMsg] = useState("");
+  const [showReopenConfirm, setShowReopenConfirm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState("");
+  const [showThirtyDayConfirm, setShowThirtyDayConfirm] = useState(false);
+  const [thirtyDayLoading, setThirtyDayLoading] = useState(false);
+  const [thirtyDayMsg, setThirtyDayMsg] = useState("");
+  const [showDeleteOrderConfirm, setShowDeleteOrderConfirm] = useState(false);
+  const [deletingOrder, setDeletingOrder] = useState(false);
+  const [deleteOrderMsg, setDeleteOrderMsg] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // ── Cancel Order state ──
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [cancelNote, setCancelNote] = useState("");
+  const [cancelWithRefund, setCancelWithRefund] = useState(false);
+  const [cancelMsg, setCancelMsg] = useState("");
+
+  // States requiring 30-day official letter reissue
+  const THIRTY_DAY_STATES = ["CA", "AR", "IA", "LA", "MT"];
+  const isThirtyDayState = THIRTY_DAY_STATES.includes(order.state ?? "");
+  const isCompletedOrder = order.status === "completed" && order.doctor_status === "patient_notified";
+
+  const handleThirtyDayReissue = async () => {
+    setThirtyDayLoading(true);
+    setThirtyDayMsg("");
+    const patch = {
+      doctor_status: "thirty_day_reissue",
+      status: "under-review",
+    };
+    const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
+    if (!error) {
+      updateOrderField(patch as Partial<Order>);
+      setShowThirtyDayConfirm(false);
+
+      // 1 — In-portal push notification
+      if (order.doctor_user_id) {
+        await supabase.from("doctor_notifications").insert({
+          doctor_user_id: order.doctor_user_id,
+          title: "30-Day Period Completed",
+          message: `Order ${order.confirmation_id}: The 30-day evaluation period is complete. Please issue the official letter for this patient.`,
+          type: "thirty_day_reminder",
+          confirmation_id: order.confirmation_id,
+          order_id: order.id,
+        });
+      }
+
+      // 2 — Email notification via edge function
+      let emailSent = false;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token ?? "";
+        const res = await fetch(`${supabaseUrl}/functions/v1/notify-thirty-day-reissue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ confirmationId: order.confirmation_id }),
+        });
+        const result = await res.json() as { ok?: boolean; emailSent?: boolean };
+        emailSent = !!(result.ok && result.emailSent);
+      } catch {
+        // Email is best-effort — don't block the UI update
+      }
+
+      setThirtyDayMsg(
+        emailSent
+          ? "Order moved to 30-Day Reissue. Provider notified by email + portal."
+          : "Order moved to 30-Day Reissue. Portal notification sent (email may have failed — check RESEND_API_KEY).",
+      );
+    } else {
+      setThirtyDayMsg("Update failed — check permissions");
+    }
+    setThirtyDayLoading(false);
+    setTimeout(() => setThirtyDayMsg(""), 8000);
+  };
+
+  // Email log state
+  const [emailLogLoading, setEmailLogLoading] = useState(false);
+
+  const handleResendProviderEmail = async () => {
+    if (!order.doctor_email) return;
+    setResendingProvider(true);
+    setResendProviderMsg("");
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/assign-doctor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+        body: JSON.stringify({
+          confirmationId: order.confirmation_id,
+          doctorEmail: order.doctor_email,
+          skipPaymentCheck: true,
+        }),
+      });
+      const result = await res.json() as {
+        ok?: boolean;
+        error?: string;
+        warning?: string;
+        doctorName?: string;
+        emailSent?: boolean;
+      };
+      if (result.ok) {
+        if (result.emailSent) {
+          setResendProviderMsg(`Notification resent to ${order.doctor_name ?? order.doctor_email}`);
+          // Refresh email log
+          const { data: fresh } = await supabase.from("orders").select("email_log").eq("id", order.id).maybeSingle();
+          if (fresh?.email_log) updateOrderField({ email_log: fresh.email_log as EmailLogEntry[] });
+        } else {
+          setResendProviderMsg("Request sent but email delivery failed — check SMTP settings");
+        }
+      } else {
+        setResendProviderMsg(result.error ?? result.warning ?? "Failed to resend");
+      }
+    } catch {
+      setResendProviderMsg("Network error — please try again");
+    }
+    setResendingProvider(false);
+    setTimeout(() => setResendProviderMsg(""), 7000);
+  };
+
+  const handleResetToUnderReview = async () => {
+    setResetting(true);
+    setResetMsg("");
+    const patch = {
+      doctor_status: "pending",
+      letter_url: null,
+      signed_letter_url: null,
+      patient_notification_sent_at: null,
+      status: "under-review",
+    };
+    const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
+    if (!error) {
+      updateOrderField(patch as Partial<Order>);
+      setHasProviderDocs(false);
+      setDocCount(0);
+      setShowResetConfirm(false);
+      setResetMsg("Order reset — provider assignment kept, letter cleared");
+    } else {
+      setResetMsg("Reset failed — check permissions");
+    }
+    setResetting(false);
+    setTimeout(() => setResetMsg(""), 6000);
+  };
+
+  const loadEmailLog = useCallback(async () => {
+    setEmailLogLoading(true);
+    const { data } = await supabase.from("orders").select("email_log").eq("id", order.id).maybeSingle();
+    if (data?.email_log) updateOrderField({ email_log: data.email_log as EmailLogEntry[] });
+    setEmailLogLoading(false);
+  }, [order.id]);
+
+  useEffect(() => {
+    if (section === "emails") loadEmailLog();
+  }, [section, loadEmailLog]);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
+      <div className="relative bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div className="w-12 h-12 flex items-center justify-center bg-[#f0faf7] rounded-full text-[#1a5c4f] text-lg font-extrabold flex-shrink-0">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-extrabold text-gray-900">{fullName}</h2>
+              {(() => {
+                const s = getModalDisplayStatus(order);
+                return (
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${s.color}`}>
+                    {s.label}
+                  </span>
+                );
+              })()}
+              {/* Show VIP badge when customer has add-on services; otherwise show doctor_status.
+                  Only one of these two badges is shown at a time to avoid clutter. */}
+              {Array.isArray(order.addon_services) && order.addon_services.length > 0 ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-gradient-to-r from-amber-400 to-orange-400 text-white shadow-sm">
+                  <i className="ri-vip-crown-fill" style={{ fontSize: "10px" }}></i>VIP
+                </span>
+              ) : (
+                order.doctor_status && order.doctor_status !== "patient_notified" && (
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${DOCTOR_STATUS_COLOR[order.doctor_status] ?? "bg-gray-100 text-gray-500"}`}>
+                    {order.doctor_status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                  </span>
+                )
+              )}
+              {/* Dispute badge */}
+              {(order.status === "disputed" || order.dispute_id) && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-red-600 text-white">
+                  <i className="ri-error-warning-fill" style={{ fontSize: "10px" }}></i>DISPUTE
+                </span>
+              )}
+              {/* Fraud warning badge */}
+              {order.fraud_warning && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-red-800 text-white">
+                  <i className="ri-spy-fill" style={{ fontSize: "10px" }}></i>FRAUD WARNING
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 truncate">{order.email} · <span className="font-mono">{order.confirmation_id}</span></p>
+          </div>
+          {/* Quick SMS + Call buttons in header */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setSection("comms")}
+              title={order.phone ? `SMS ${order.phone}` : "No phone on file"}
+              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${order.phone ? "border-[#b8ddd5] text-[#1a5c4f] hover:bg-[#f0faf7]" : "border-gray-200 text-gray-400 cursor-not-allowed"}`}
+            >
+              <i className="ri-message-3-line"></i>SMS
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("comms")}
+              title={order.phone ? `Call ${order.phone}` : "No phone on file"}
+              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-700 hover:bg-sky-50" : "border-gray-200 text-gray-400 cursor-not-allowed"}`}
+            >
+              <i className="ri-phone-line"></i>Call
+            </button>
+          </div>
+          <button type="button" onClick={onClose}
+            className="whitespace-nowrap w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors flex-shrink-0">
+            <i className="ri-close-line text-lg"></i>
+          </button>
+        </div>
+
+        {/* Section tabs */}
+        <div className="flex items-center gap-1 px-6 py-2 border-b border-gray-100 bg-gray-50/60 flex-shrink-0 overflow-x-auto">
+          {([
+            { key: "overview",      label: "Overview",                                                                                                   icon: "ri-layout-grid-line",    badge: null },
+            { key: "comms",         label: "Communications",                                                                                             icon: "ri-message-3-line",      badge: null },
+            { key: "documents",     label: "Documents",                                                                                                  icon: "ri-file-pdf-line",       badge: docCount > 0 ? docCount : null },
+            { key: "assessment",    label: isPSDOrder(order) ? "PSD Evaluation" : `Assessment${assessmentCount > 0 ? ` (${assessmentCount})` : ""}`,     icon: "ri-questionnaire-line",  badge: null },
+            { key: "shared_notes",  label: "Provider Notes",                                                                                             icon: "ri-chat-3-line",         badge: null },
+            { key: "notes",         label: "Internal Notes",                                                                                             icon: "ri-sticky-note-line",    badge: null },
+            { key: "emails",        label: `Email Log${order.email_log && order.email_log.length > 0 ? ` (${order.email_log.length})` : ""}`,            icon: "ri-mail-history-line",   badge: null },
+          ] as { key: Section; label: string; icon: string; badge: number | null }[]).map((tab) => (
+            <button key={tab.key} type="button" onClick={() => setSection(tab.key)}
+              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-white"}`}>
+              <i className={tab.icon}></i>{tab.label}
+              {tab.badge !== null && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-extrabold ${section === tab.key ? "bg-white/20 text-white" : "bg-[#e8f5f1] text-[#1a5c4f]"}`}>
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+
+          {/* ── SHARED NOTES (admin ↔ provider) ── */}
+          {section === "shared_notes" && (
+            <SharedNotesPanel
+              orderId={order.id}
+              confirmationId={order.confirmation_id}
+              currentUserId={adminProfile.user_id}
+              currentUserName={adminProfile.full_name}
+              currentUserRole="admin"
+            />
+          )}
+
+          {/* ── COMMUNICATIONS ── */}
+          {section === "comms" && (
+            <CommunicationTab
+              orderId={order.id}
+              confirmationId={order.confirmation_id}
+              phone={order.phone ?? null}
+              email={order.email}
+              patientName={fullName}
+              adminName={adminProfile.full_name}
+              emailLog={order.email_log}
+              hasDocuments={!!order.signed_letter_url}
+            />
+          )}
+
+          {/* ── OVERVIEW ── */}
+          {section === "overview" && (
+            <div className="p-6 space-y-5">
+
+              {/* ── PAYMENT NOT SYNCED WARNING ── */}
+              {!order.payment_intent_id && order.status !== "completed" && order.doctor_status !== "patient_notified" && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
+                      <i className="ri-error-warning-fill text-red-600 text-base"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-extrabold text-red-800">Payment Not Linked</p>
+                      <p className="text-xs text-red-600 mt-0.5">
+                        This order shows as "Lead (Unpaid)" because the Stripe payment wasn't written back to it. If the customer paid, paste the Stripe Charge ID (ch_...) or Payment Intent ID (pi_...) below to fix it instantly.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={stripeIdInput}
+                      onChange={(e) => setStripeIdInput(e.target.value)}
+                      placeholder="ch_3TEFTOGwm9wIWlgi0... or pi_..."
+                      className="flex-1 px-3 py-2.5 border border-red-300 rounded-lg text-sm font-mono focus:outline-none focus:border-red-500 bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleFixPayment}
+                      disabled={paymentSyncing || !stripeIdInput.trim()}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      {paymentSyncing
+                        ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
+                        : <><i className="ri-link-m"></i>Link Payment</>
+                      }
+                    </button>
+                  </div>
+                  {paymentSyncMsg && (
+                    <p className={`text-xs mt-2 flex items-center gap-1 ${(statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-600" : "text-[#1a5c4f]"}`}>
+                      <i className="ri-information-line"></i>{paymentSyncMsg}
+                    </p>
+                  )}
+                  {/* ── Manual override when Stripe ID isn't available ── */}
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    <p className="text-xs text-red-600 font-bold mb-2 flex items-center gap-1">
+                      <i className="ri-settings-3-line"></i>No Stripe ID? Use Manual Override
+                    </p>
+                    {!showMarkPaidConfirm ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowMarkPaidConfirm(true)}
+                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-red-300 text-red-700 bg-red-100 hover:bg-red-200 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                      >
+                        <i className="ri-checkbox-circle-line"></i>Mark as Paid (Manual Override)
+                      </button>
+                    ) : (
+                      <div className="bg-red-100 border border-red-300 rounded-xl p-3 space-y-2">
+                        <p className="text-xs font-bold text-red-800 flex items-center gap-1.5">
+                          <i className="ri-error-warning-fill"></i>Confirm Manual Override
+                        </p>
+                        <p className="text-xs text-red-700 leading-relaxed">
+                          This bypasses Stripe verification and forces the order to <strong>Processing</strong> status. Only use this if you&apos;ve confirmed payment in Stripe directly and the webhook failed. No refund will be recorded.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleMarkAsPaid}
+                            disabled={markingPaid}
+                            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
+                          >
+                            {markingPaid ? <><i className="ri-loader-4-line animate-spin"></i>Marking...</> : <><i className="ri-check-line"></i>Yes, Mark as Paid</>}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowMarkPaidConfirm(false)}
+                            className="whitespace-nowrap px-3 py-1.5 text-xs text-red-600 hover:text-red-800 font-semibold cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {markPaidMsg && (
+                      <p className="text-xs mt-2 text-emerald-700 font-semibold flex items-center gap-1">
+                        <i className="ri-checkbox-circle-fill"></i>{markPaidMsg}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Order info grid */}
+              <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Order Details</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {[
+                    { label: "Order ID", value: order.confirmation_id, mono: true },
+                    { label: "Date Created", value: fmt(order.created_at) },
+                    { label: "State", value: order.state ?? "—" },
+                    { label: "Plan", value: order.plan_type ?? "—" },
+                    { label: "Delivery Speed", value: order.delivery_speed ?? "—" },
+                    { label: "Selected Provider", value: order.selected_provider ?? "—" },
+                    { label: "Price", value: order.price != null ? `$${order.price}` : "—" },
+                    ...(order.coupon_code ? [{
+                      label: "Coupon Used",
+                      value: order.coupon_code,
+                      highlight: "text-green-700 font-mono",
+                    }] : []),
+                    ...(order.coupon_discount != null && order.coupon_discount > 0 ? [{
+                      label: "Coupon Discount",
+                      value: `-$${order.coupon_discount}.00`,
+                      highlight: "text-green-600 font-bold",
+                    }] : []),
+                    {
+                      label: "Payment",
+                      value: order.payment_intent_id ? "Paid" : "No payment",
+                      highlight: order.payment_intent_id ? "text-emerald-600" : "text-orange-500",
+                    },
+                    {
+                      label: "Payment Method",
+                      value: order.payment_method
+                        ? (PAYMENT_METHOD_LABEL[order.payment_method] ?? order.payment_method)
+                        : "—",
+                      highlight: order.payment_method ? "text-gray-800" : "text-gray-400",
+                    },
+                    { label: "Phone", value: order.phone ?? "—" },
+                    {
+                      label: "GHL Sync",
+                      value: order.ghl_synced_at ? `Synced ${fmt(order.ghl_synced_at)}` : (order.ghl_sync_error ? "Failed" : "Pending"),
+                      highlight: order.ghl_synced_at ? "text-emerald-600" : order.ghl_sync_error ? "text-red-500" : "text-amber-500",
+                    },
+                    {
+                      label: "Patient Notified",
+                      value: order.patient_notification_sent_at ? fmt(order.patient_notification_sent_at) : "Not sent",
+                      highlight: order.patient_notification_sent_at ? "text-emerald-600" : "text-gray-400",
+                    },
+                  ].map((item) => (
+                    <div key={item.label}>
+                      <p className="text-xs text-gray-400 mb-0.5">{item.label}</p>
+                      <p className={`text-sm font-semibold truncate ${item.mono ? "font-mono text-gray-700" : item.highlight ?? "text-gray-800"}`}>{item.value}</p>
+                    </div>
+                  ))}
+
+                  {/* Referred By badge */}
+                  <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Referred By</p>
+                    {order.referred_by && REF_CONFIG[order.referred_by] ? (
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${REF_CONFIG[order.referred_by].color}`}>
+                        <i className={REF_CONFIG[order.referred_by].icon}></i>
+                        {REF_CONFIG[order.referred_by].label}
+                      </span>
+                    ) : (
+                      <p className="text-sm font-semibold text-gray-400">Direct / Unknown</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Add-on Services — shown when customer purchased extras */}
+                {Array.isArray(order.addon_services) && order.addon_services.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 flex items-center justify-center bg-gradient-to-r from-amber-400 to-orange-400 rounded-lg flex-shrink-0">
+                        <i className="ri-vip-crown-fill text-white" style={{ fontSize: "11px" }}></i>
+                      </div>
+                      <p className="text-xs font-extrabold text-orange-700 uppercase tracking-widest">VIP Add-on Services Purchased</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {order.addon_services.map((addon) => {
+                        const ADDON_LABELS: Record<string, { label: string; icon: string; price: string }> = {
+                          zoom_call: { label: "Private Zoom Call Session", icon: "ri-video-chat-line", price: "$40" },
+                          physical_mail: { label: "Physical Letter via Certified Mail", icon: "ri-mail-send-line", price: "$50" },
+                          landlord_letter: { label: "Verification Letter — Landlord", icon: "ri-building-line", price: "$30" },
+                        };
+                        const cfg = ADDON_LABELS[addon] ?? { label: addon, icon: "ri-star-line", price: "" };
+                        return (
+                          <span key={addon} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-full text-xs font-bold text-orange-700">
+                            <i className={cfg.icon}></i>
+                            {cfg.label}
+                            {cfg.price && <span className="text-orange-500">{cfg.price}</span>}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-orange-500 mt-2 flex items-center gap-1">
+                      <i className="ri-information-line"></i>
+                      Provider will NOT see pricing — only service names are shown in the provider portal.
+                    </p>
+                  </div>
+                )}
+
+                {/* Refund details — shown when order was refunded */}
+                {(order.status === "refunded" || order.refunded_at) && (
+                  <div className="mt-4 pt-4 border-t border-red-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
+                        <i className="ri-refund-line text-red-600" style={{ fontSize: "12px" }}></i>
+                      </div>
+                      <p className="text-xs font-extrabold text-red-600 uppercase tracking-widest">Refund Issued</p>
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                      {order.refund_amount != null && (
+                        <div>
+                          <p className="text-xs text-gray-400">Refund Amount</p>
+                          <p className="text-sm font-bold text-red-600">${order.refund_amount}.00</p>
+                        </div>
+                      )}
+                      {order.refunded_at && (
+                        <div>
+                          <p className="text-xs text-gray-400">Refunded At</p>
+                          <p className="text-sm font-semibold text-gray-700">{fmt(order.refunded_at)}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dispute details — shown when order is disputed */}
+                {(order.status === "disputed" || order.dispute_id) && (
+                  <div className="mt-4 pt-4 border-t border-red-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
+                        <i className="ri-error-warning-fill text-red-600" style={{ fontSize: "12px" }}></i>
+                      </div>
+                      <p className="text-xs font-extrabold text-red-700 uppercase tracking-widest">Chargeback / Dispute Active</p>
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                      {order.dispute_id && (
+                        <div>
+                          <p className="text-xs text-gray-400">Dispute ID</p>
+                          <p className="text-xs font-mono font-bold text-gray-700">{order.dispute_id}</p>
+                        </div>
+                      )}
+                      {order.dispute_reason && (
+                        <div>
+                          <p className="text-xs text-gray-400">Reason</p>
+                          <p className="text-sm font-semibold text-red-700 capitalize">{order.dispute_reason.replace(/_/g, " ")}</p>
+                        </div>
+                      )}
+                      {order.dispute_status && (
+                        <div>
+                          <p className="text-xs text-gray-400">Status</p>
+                          <p className="text-sm font-bold text-red-700 capitalize">{order.dispute_status.replace(/_/g, " ")}</p>
+                        </div>
+                      )}
+                    </div>
+                    <a
+                      href="https://dashboard.stripe.com/disputes"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition-colors cursor-pointer"
+                    >
+                      <i className="ri-external-link-line"></i>Respond in Stripe — 7 Day Deadline
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Assigned Provider */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Provider Assignment</p>
+
+                {/* ── COMPLETED — locked ── */}
+                {order.doctor_status === "patient_notified" ? (
+                  <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <div className="w-9 h-9 flex items-center justify-center bg-emerald-100 rounded-lg flex-shrink-0">
+                      <i className="ri-checkbox-circle-fill text-emerald-600 text-base"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-extrabold text-emerald-800">Order Completed — Assignment Locked</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">
+                        This order is complete and the letter was delivered. Provider reassignment is disabled for completed orders.
+                        {order.doctor_name && (
+                          <span className="block mt-1">Completed by: <strong>{order.doctor_name}</strong></span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ) : order.status === "refunded" || order.refunded_at ? (
+                  <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+                    <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
+                      <i className="ri-refund-line text-red-600 text-base"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-extrabold text-red-800">Refunded Order — Assignment Disabled</p>
+                      <p className="text-xs text-red-700 mt-0.5">
+                        This order has been refunded. Provider assignment is not available for refunded orders.
+                        {order.refund_amount != null && (
+                          <span className="block mt-1">Refund amount: <strong>${order.refund_amount}.00</strong></span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ) : !order.payment_intent_id && order.status !== "processing" && order.status !== "under-review" && order.status !== "completed" ? (
+                  <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <div className="w-9 h-9 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
+                      <i className="ri-lock-2-line text-amber-600 text-base"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-extrabold text-amber-800">Cannot Assign — Unpaid Lead</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Provider assignment is only available after payment is confirmed. Use the &ldquo;Link Payment&rdquo; tool above if the customer has already paid.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {order.doctor_name && (
+                      <div className="flex items-center gap-3 mb-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-3">
+                        <div className="w-9 h-9 flex items-center justify-center bg-white rounded-full flex-shrink-0">
+                          <i className="ri-user-heart-line text-[#1a5c4f] text-base"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-[#1a5c4f] font-bold">Currently Assigned</p>
+                          <p className="text-sm font-bold text-[#1a5c4f]">{order.doctor_name}</p>
+                          {order.doctor_email && <p className="text-xs text-[#1a5c4f]/70">{order.doctor_email}</p>}
+                        </div>
+                        {/* Nudge Provider button — only shows when a provider is assigned */}
+                        <button
+                          type="button"
+                          onClick={handleResendProviderEmail}
+                          disabled={resendingProvider}
+                          title="Re-send the case notification email to the currently assigned provider"
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg text-xs font-bold cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
+                        >
+                          {resendingProvider
+                            ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                            : <><i className="ri-notification-3-line"></i>Nudge Provider</>
+                          }
+                        </button>
+                      </div>
+                    )}
+                    {resendProviderMsg && (
+                      <p className={`text-xs mb-2 flex items-center gap-1 font-semibold ${resendProviderMsg.includes("resent") ? "text-[#1a5c4f]" : "text-orange-600"}`}>
+                        <i className={resendProviderMsg.includes("resent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                        {resendProviderMsg}
+                      </p>
+                    )}
+                    {eligibleDoctors.length === 0 && orderStateName && (
+                      <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 flex items-start gap-2">
+                        <i className="ri-alert-line text-amber-500 flex-shrink-0 mt-0.5"></i>
+                        <p className="text-xs text-amber-700">No active providers licensed in <strong>{orderStateName}</strong>. Add licensed states in the Providers tab.</p>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <select value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)}
+                          className="w-full appearance-none pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                          <option value="">— {order.doctor_name ? "Select to Reassign" : "Select Doctor"} —</option>
+                          {eligibleDoctors.map((doc) => <option key={doc.id} value={doc.email}>{doc.full_name}</option>)}
+                        </select>
+                        <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
+                          <i className="ri-arrow-down-s-line text-gray-400 text-sm"></i>
+                        </div>
+                      </div>
+                      <button type="button" onClick={handleAssign} disabled={assigning || !assignEmail}
+                        className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                        {assigning ? <><i className="ri-loader-4-line animate-spin"></i>Assigning...</> : <><i className="ri-user-received-line"></i>{order.doctor_name ? "Reassign" : "Assign"}</>}
+                      </button>
+                    </div>
+                    {eligibleDoctors.length < doctorContacts.filter(d => d.is_active !== false).length && orderStateName && (
+                      <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                        <i className="ri-filter-3-line"></i>
+                        Showing {eligibleDoctors.length} of {doctorContacts.filter(d => d.is_active !== false).length} active providers licensed in {orderStateName}
+                      </p>
+                    )}
+                    {assignMsg && (
+                      <p className={`text-xs mt-2 flex items-center gap-1 ${assignMsg.includes("notified") ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                        <i className={assignMsg.includes("notified") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{assignMsg}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Admin Status Actions */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Admin Actions</p>
+
+                {/* ── UNPAID LEAD — only discount email ── */}
+                {!order.payment_intent_id ? (
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+                      <div className="w-8 h-8 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
+                        <i className="ri-lock-2-line text-amber-600 text-sm"></i>
+                      </div>
+                      <p className="text-xs text-amber-800 leading-relaxed">
+                        <strong>Unpaid lead</strong> — all case management actions are locked until payment is confirmed.
+                        You can send a discount/recovery email to nudge the customer to complete checkout.
+                      </p>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={handleSendDiscountEmail}
+                        disabled={discountSending}
+                        className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 cursor-pointer transition-colors"
+                      >
+                        {discountSending
+                          ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                          : <><i className="ri-coupon-3-line"></i>Send Discount Email</>
+                        }
+                      </button>
+                      <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                        <i className="ri-information-line"></i>
+                        Sends a recovery email with a direct payment link (pre-fills their saved assessment)
+                      </p>
+                    </div>
+                    {discountMsg && (
+                      <p className={`text-xs flex items-center gap-1 font-semibold ${discountMsg.includes("sent") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+                        <i className={discountMsg.includes("sent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                        {discountMsg}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  /* ── PAID ORDER — full actions ── */
+                  <div className="space-y-3">
+                    {/* Row 1: Always-enabled paid actions (hidden for completed or refunded orders) */}
+                    {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Resend Confirmation — only for non-completed orders */}
+                      <button
+                        type="button"
+                        onClick={handleResendConfirmation}
+                        disabled={confirmResending}
+                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-600 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-60"
+                      >
+                        {confirmResending
+                          ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                          : <><i className="ri-mail-check-line"></i>Resend Confirmation</>
+                        }
+                      </button>
+
+                      {/* Mark Under Review */}
+                      <button
+                        type="button"
+                        disabled={statusUpdating}
+                        onClick={() => handleSetStatus("under-review", undefined)}
+                        className={`whitespace-nowrap flex items-center gap-2 px-3 py-2.5 border rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 ${order.status === "under-review" ? "bg-gray-100 border-gray-300 text-gray-500" : "border-sky-200 text-sky-700 hover:bg-sky-50"}`}
+                      >
+                        <i className="ri-eye-line"></i>Mark Under Review
+                      </button>
+
+                      {!order.ghl_synced_at && (
+                        <button type="button" onClick={handleGhlRefire} disabled={ghlFiring}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-amber-200 text-amber-700 hover:bg-amber-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50">
+                          {ghlFiring ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</> : <><i className="ri-refresh-line"></i>Retry GHL Sync</>}
+                        </button>
+                      )}
+                    </div>
+                    )}
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-100"></div>
+
+                    {/* Row 2: Provider-completion-gated actions */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+                        <i className="ri-lock-2-line"></i>
+                        Available once provider uploads completed letter
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Mark Delivered — only when provider has docs */}
+                        {(() => {
+                          const canDeliver = hasProviderDocs;
+                          const alreadyDone = order.doctor_status === "patient_notified";
+                          return (
+                            <div className="relative group">
+                              <button
+                                type="button"
+                                disabled={statusUpdating || (!canDeliver && !alreadyDone)}
+                                onClick={() => handleSetStatus("completed", "patient_notified")}
+                                className={`whitespace-nowrap flex items-center gap-2 px-3 py-2.5 border rounded-lg text-sm font-semibold transition-colors ${
+                                  alreadyDone
+                                    ? "bg-gray-100 border-gray-300 text-gray-500 cursor-default"
+                                    : canDeliver
+                                      ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                                      : "border-gray-200 text-gray-300 cursor-not-allowed opacity-60"
+                                } disabled:opacity-60`}
+                              >
+                                <i className="ri-checkbox-circle-line"></i>Mark Delivered
+                                {!canDeliver && !alreadyDone && <i className="ri-lock-2-line text-xs ml-auto"></i>}
+                              </button>
+                              {!canDeliver && !alreadyDone && (
+                                <div className="absolute bottom-full left-0 mb-2 z-50 hidden group-hover:block pointer-events-none">
+                                  <div className="bg-gray-900 text-white text-xs font-semibold px-3 py-2 rounded-lg max-w-[220px] leading-relaxed shadow-lg">
+                                    <i className="ri-lock-2-line mr-1"></i>Provider must upload completed letter first
+                                    <div className="absolute top-full left-4 border-4 border-transparent border-t-gray-900"></div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Resend Patient Email — only when provider has docs */}
+                        {(() => {
+                          const hasDoc = hasProviderDocs;
+                          return (
+                            <div className="relative group">
+                              <button
+                                type="button"
+                                onClick={handleResendEmail}
+                                disabled={emailSending || !hasDoc}
+                                className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-semibold transition-colors ${
+                                  hasDoc
+                                    ? "border-violet-200 text-violet-700 hover:bg-violet-50 cursor-pointer"
+                                    : "border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed opacity-60"
+                                } disabled:opacity-60`}
+                              >
+                                {emailSending
+                                  ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                                  : <><i className="ri-mail-send-line"></i>Resend Patient Email{!hasDoc && <i className="ri-lock-2-line text-xs ml-1"></i>}</>
+                                }
+                              </button>
+                              {!hasDoc && (
+                                <div className="absolute bottom-full left-0 mb-1.5 w-56 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
+                                  Provider must upload completed letter before sending patient notification
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {(statusMsg || emailMsg || ghlMsg || confirmResendMsg || resetMsg) && (
+                      <p className={`text-xs flex items-center gap-1 ${(statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-500" : "text-[#1a5c4f]"}`}>
+                        <i className="ri-information-line"></i>{statusMsg || emailMsg || ghlMsg || confirmResendMsg || resetMsg}
+                      </p>
+                    )}
+
+                    {/* ── 30-Day Reissue (CA, AR, IA, LA, MT only) ── */}
+                    {isCompletedOrder && isThirtyDayState && (
+                      <div className="border-t border-dashed border-orange-200 mt-1 pt-3">
+                        <p className="text-xs text-orange-500 mb-2 flex items-center gap-1 font-semibold">
+                          <i className="ri-time-line"></i>30-Day Official Letter — {order.state}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowThirtyDayConfirm(true)}
+                          disabled={thirtyDayLoading}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                        >
+                          <i className="ri-time-fill"></i>30-Day Period Completed — Request Official Letter
+                        </button>
+                        <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                          <i className="ri-information-line"></i>
+                          Moves order back to Under Review with a special note. Provider will be notified to issue the official letter.
+                        </p>
+                        {thirtyDayMsg && (
+                          <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${thirtyDayMsg.includes("notified") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+                            <i className={thirtyDayMsg.includes("notified") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                            {thirtyDayMsg}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Danger Zone: Reset to Under Review ── */}
+                    {(order.doctor_status === "letter_sent" || order.doctor_status === "patient_notified" || order.doctor_status === "thirty_day_reissue") && (
+                      <div className="border-t border-dashed border-red-200 mt-1 pt-3">
+                        <p className="text-xs text-red-400 mb-2 flex items-center gap-1 font-semibold">
+                          <i className="ri-error-warning-line"></i>Admin Rollback
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowResetConfirm(true)}
+                          disabled={resetting}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                        >
+                          <i className="ri-arrow-go-back-line"></i>Reset to Under Review
+                        </button>
+                        <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                          <i className="ri-information-line"></i>
+                          Clears submitted letter &amp; resets provider status. Doctor assignment is kept.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* ── Cancel Order — hidden for completed or refunded orders ── */}
+                    {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && (
+                    <div className="border-t border-dashed border-orange-200 mt-1 pt-3">
+                      <p className="text-xs text-orange-500 mb-2 flex items-center gap-1 font-semibold">
+                        <i className="ri-close-circle-line"></i>Cancel Order
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowCancelConfirm(true)}
+                        disabled={order.status === "cancelled"}
+                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        <i className="ri-close-circle-line"></i>
+                        {order.status === "cancelled" ? "Already Cancelled" : "Cancel This Order"}
+                      </button>
+                      <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                        <i className="ri-information-line"></i>
+                        Marks order as cancelled. Optionally issues a full Stripe refund and notifies the customer.
+                      </p>
+                      {cancelMsg && (
+                        <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${cancelMsg.includes("success") ? "text-[#1a5c4f]" : cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "text-red-600" : "text-[#1a5c4f]"}`}>
+                          <i className={cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
+                          {cancelMsg}
+                        </p>
+                      )}
+                    </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Permanent Delete (always visible) ── */}
+              <div className="bg-white rounded-xl border border-red-100 p-4">
+                <p className="text-xs font-bold text-red-400 uppercase tracking-widest mb-3 flex items-center gap-1">
+                  <i className="ri-skull-line"></i>Danger Zone
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteOrderConfirm(true)}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
+                >
+                  <i className="ri-delete-bin-2-line"></i>Delete This Order Permanently
+                </button>
+                <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                  <i className="ri-information-line"></i>
+                  Removes this order and all documents from the database. Use for test/duplicate orders. Cannot be undone.
+                </p>
+                {deleteOrderMsg && (
+                  <p className="text-xs mt-2 text-red-600 font-semibold flex items-center gap-1">
+                    <i className="ri-error-warning-line"></i>{deleteOrderMsg}
+                  </p>
+                )}
+              </div>
+
+              {/* Emails Sent */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Emails Sent</p>
+                {!order.email_log || order.email_log.length === 0 ? (
+                  <div className="flex items-center gap-3 py-2">
+                    <div className="w-7 h-7 flex items-center justify-center bg-gray-50 rounded-full flex-shrink-0">
+                      <i className="ri-mail-line text-gray-300 text-sm"></i>
+                    </div>
+                    <p className="text-xs text-gray-400">No emails logged yet for this order.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {order.email_log.map((entry, idx) => {
+                      const cfg = EMAIL_TYPE_CONFIG[entry.type] ?? {
+                        label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                        icon: "ri-mail-line",
+                        color: "text-gray-600 bg-gray-50 border-gray-200",
+                        failColor: "text-red-600 bg-red-50 border-red-200",
+                      };
+                      const colorClass = entry.success ? cfg.color : cfg.failColor;
+                      const isConfirmation = entry.type === "order_confirmation" || entry.type === "payment_receipt";
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${colorClass}`}
+                        >
+                          <div className="w-7 h-7 flex items-center justify-center flex-shrink-0">
+                            <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} text-base`}></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold leading-tight">{cfg.label}</p>
+                            <p className="text-xs opacity-70 leading-tight truncate">
+                              To: {entry.to} &middot; {fmtEmailTime(entry.sentAt)}
+                            </p>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-white/60`}>
+                            {entry.success
+                              ? <><i className="ri-checkbox-circle-fill"></i>Sent</>
+                              : <><i className="ri-close-circle-fill"></i>Failed</>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── DOCUMENTS ── */}
+          {section === "documents" && (
+            <div className="p-6 space-y-5">
+              {/* Additional docs requested by customer */}
+              {initialOrder.assessment_answers && (initialOrder.assessment_answers as Record<string, unknown>).additionalDocs && (() => {
+                const req = (initialOrder.assessment_answers as Record<string, unknown>).additionalDocs as { types?: string[]; otherDescription?: string };
+                const extraTypes = (req?.types ?? []).filter((t) => t !== "ESA Letter");
+                if (extraTypes.length === 0) return null;
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
+                        <i className="ri-file-add-line text-amber-600 text-base"></i>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-1">Customer Requested Additional Documents</p>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {extraTypes.map((t) => (
+                            <span key={t} className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold">
+                              <i className="ri-file-text-line text-xs"></i>{t}
+                            </span>
+                          ))}
+                        </div>
+                        {req?.otherDescription && (
+                          <p className="text-xs text-amber-700 mt-1 italic">&ldquo;{req.otherDescription}&rdquo;</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Action bar */}
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Letters &amp; Documents</p>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={handleSendAllToCustomer} disabled={sendingAll}
+                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                    {sendingAll ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send All to Customer</>}
+                  </button>
+                  <button type="button" onClick={() => setShowAddDocForm((v) => !v)}
+                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-[#1a5c4f] text-[#1a5c4f] text-xs font-bold rounded-lg hover:bg-[#f0faf7] cursor-pointer transition-colors">
+                    <i className={showAddDocForm ? "ri-close-line" : "ri-add-line"}></i>
+                    {showAddDocForm ? "Cancel" : "Add Document"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Doctor message */}
+              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+                <label className="block text-xs font-bold text-[#1a5c4f] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <i className="ri-message-3-line"></i>
+                  Personal Message from Provider (Optional)
+                </label>
+                <textarea
+                  value={doctorMessage}
+                  onChange={(e) => setDoctorMessage(e.target.value)}
+                  rows={3}
+                  maxLength={500}
+                  placeholder="Add a short personal note from the provider — this will appear in the patient's email alongside their documents. E.g. 'It was a pleasure evaluating your case. Please don't hesitate to reach out with any questions.'"
+                  className="w-full px-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm bg-white focus:outline-none focus:border-[#1a5c4f] resize-none"
+                />
+                <p className="text-xs text-[#1a5c4f]/60 mt-1 text-right">{doctorMessage.length}/500</p>
+              </div>
+
+              {sendAllMsg && (
+                <div className={`flex items-start gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${sendAllMsg.includes("sent") ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                  <i className={sendAllMsg.includes("sent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                  {sendAllMsg}
+                </div>
+              )}
+
+              {/* Add document form */}
+              {showAddDocForm && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-widest">Add New Document</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Document URL *</label>
+                      <input type="url" value={addDocForm.url} onChange={(e) => setAddDocForm((f) => ({ ...f, url: e.target.value }))}
+                        placeholder="https://storage.example.com/doc.pdf"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Document Label *</label>
+                      <input type="text" value={addDocForm.label} onChange={(e) => setAddDocForm((f) => ({ ...f, label: e.target.value }))}
+                        placeholder="e.g. Signed ESA Letter, Housing Verification..."
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Document Type</label>
+                      <div className="relative">
+                        <select value={addDocForm.docType} onChange={(e) => setAddDocForm((f) => ({ ...f, docType: e.target.value }))}
+                          className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                          {DOC_TYPE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
+                        <i className="ri-arrow-down-s-line absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Internal Notes</label>
+                      <input type="text" value={addDocForm.notes} onChange={(e) => setAddDocForm((f) => ({ ...f, notes: e.target.value }))}
+                        placeholder="Optional notes for this document..."
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    </div>
+                  </div>
+                  {addDocMsg && (
+                    <p className={`text-xs flex items-center gap-1 ${addDocMsg.includes("saved") ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                      <i className={addDocMsg.includes("saved") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{addDocMsg}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={handleAddDoc} disabled={savingDoc}
+                      className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer">
+                        {savingDoc ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-save-line"></i>Save Document</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {loadingDocs ? (
+                <div className="flex items-center justify-center py-8">
+                  <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* order_documents (provider-uploaded letters + admin docs) */}
+                  {orderDocs.map((doc) => {
+                    const typeOpt = DOC_TYPE_OPTIONS.find((o) => o.value === doc.doc_type);
+                    return (
+                      <div key={doc.id} className={`bg-white rounded-xl border overflow-hidden ${doc.sent_to_customer ? "border-[#b8ddd5]" : "border-gray-200"}`}>
+                        <div className="flex items-center justify-between px-4 py-3">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className={`w-9 h-9 flex items-center justify-center rounded-lg flex-shrink-0 ${doc.sent_to_customer ? "bg-[#e8f5f1]" : "bg-violet-50"}`}>
+                              <i className={`ri-file-check-line text-base ${doc.sent_to_customer ? "text-[#1a5c4f]" : "text-violet-500"}`}></i>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-gray-900 truncate">{doc.label}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-gray-400">{typeOpt?.label ?? doc.doc_type}</span>
+                                <span className="text-gray-300">·</span>
+                                <span className="text-xs text-gray-400">
+                                  {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                                {doc.uploaded_by && (
+                                  <>
+                                    <span className="text-gray-300">·</span>
+                                    <span className="text-xs text-gray-400">by {doc.uploaded_by}</span>
+                                  </>
+                                )}
+                                {doc.sent_to_customer && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded-full text-xs font-semibold">
+                                    <i className="ri-mail-check-line" style={{ fontSize: "9px" }}></i>Emailed
+                                  </span>
+                                )}
+                              </div>
+                              {doc.notes && <p className="text-xs text-gray-400 italic mt-0.5 truncate">{doc.notes}</p>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                            <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-200 cursor-pointer">
+                              <i className="ri-external-link-line"></i>Open
+                            </a>
+                            <button type="button" onClick={() => handleDeleteDoc(doc.id)}
+                              className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 cursor-pointer transition-colors">
+                              <i className="ri-delete-bin-line text-sm"></i>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Legacy signed_letter_url (from old flow) */}
+                  {order.signed_letter_url && (
+                    <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-10 text-center">
+                      <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mx-auto mb-3">
+                        <i className="ri-file-paper-line text-gray-300 text-xl"></i>
+                      </div>
+                      <p className="text-sm font-bold text-gray-600 mb-1">No documents yet</p>
+                      <p className="text-xs text-gray-400">The provider will upload the signed ESA letter here. You can also add documents manually above.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── ASSESSMENT ── */}
+          {section === "assessment" && (
+            <div className="p-6 space-y-6">
+
+              {/* Action bar */}
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  {isPSDOrder(order) ? "PSD Psychiatric Service Dog Evaluation" : "ESA Intake Form"}
+                </p>
+                {/* Download PDF — only for ESA orders with assessment data */}
+                {!isPSDOrder(order) && order.assessment_answers && assessmentCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const html = buildPrintHTML(order);
+                      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                      const blobUrl = URL.createObjectURL(blob);
+                      const w = window.open(blobUrl, "_blank");
+                      if (w) {
+                        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+                      }
+                    }}
+                    className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
+                  >
+                    <i className="ri-download-line"></i>
+                    Download PDF
+                  </button>
+                )}
+              </div>
+
+              {isPSDOrder(order) ? (
+                <PSDAssessmentView
+                  answers={order.assessment_answers}
+                  orderInfo={{
+                    firstName: order.first_name,
+                    lastName: order.last_name,
+                    email: order.email,
+                    phone: order.phone,
+                    state: order.state,
+                    confirmationId: order.confirmation_id,
+                    createdAt: order.created_at,
+                  }}
+                />
+              ) : !order.assessment_answers || assessmentCount === 0 ? (
+                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-10 text-center">
+                  <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mx-auto mb-3">
+                    <i className="ri-questionnaire-line text-gray-400 text-xl"></i>
+                  </div>
+                  <p className="text-sm font-bold text-gray-600 mb-1">No assessment data</p>
+                  <p className="text-xs text-gray-400">Assessment answers haven&apos;t been recorded for this order.</p>
+                </div>
+              ) : (() => {
+                const a = order.assessment_answers as Record<string, unknown>;
+                const pets = (a.pets as PetInfo[]) ?? [];
+                const dob = a.dob as string | undefined;
+                const stateName = STATE_NAMES[order.state ?? ""] ?? order.state ?? "—";
+                const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || "—";
+
+                return (
+                  <div className="space-y-8">
+
+                    {/* Branded form header */}
+                    <div className="text-center bg-gray-50 rounded-2xl border border-gray-100 px-6 py-6">
+                      <img src={ASSESSMENT_LOGO} alt="PawTenant" className="h-10 mx-auto mb-2 object-contain" />
+                      <h2 className="text-xl font-extrabold text-orange-500 mb-1">PawTenant ESA Intake Form</h2>
+                      <p className="text-xs text-gray-500 max-w-xs mx-auto">
+                        Kindly provide as much accurate information as possible to enable the provider to approve your request.
+                      </p>
+                    </div>
+
+                    {/* Section 1: Owner Info */}
+                    <div>
+                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">
+                        Pet and Owner Information
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2.5">
+                        {[
+                          { label: "Full Name", value: fullName },
+                          { label: "State", value: stateName },
+                          { label: "Email", value: order.email || "—" },
+                          { label: "Phone", value: order.phone || "—" },
+                          ...(dob ? [{ label: "Date of Birth", value: formatDob(dob) }] : []),
+                          { label: "Order ID", value: order.confirmation_id },
+                          { label: "Submitted", value: formatSubmitDate(order.created_at) },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="flex items-start gap-2">
+                            <span className="text-xs text-gray-500 w-28 flex-shrink-0 mt-0.5">{label}:</span>
+                            <span className="text-sm font-semibold text-gray-900 break-all">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Section 2: Pet Information */}
+                    <div>
+                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">
+                        Pet Information
+                      </h3>
+                      <p className="text-sm font-bold text-gray-700 mb-3">How many emotional support animals are you certifying today?</p>
+                      {pets.length > 0 ? (
+                        <div className="overflow-x-auto rounded-xl border border-gray-200">
+                          <table className="w-full text-sm min-w-[480px]">
+                            <thead>
+                              <tr className="bg-orange-50">
+                                {["Pet Name", "Type", "Age", "Breed", "Weight"].map((h) => (
+                                  <th key={h} className="text-left px-4 py-2.5 text-xs font-bold text-orange-600 uppercase tracking-wide border-b border-orange-100">
+                                    {h}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pets.map((pet, idx) => (
+                                <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                                  <td className="px-4 py-2.5 text-gray-900 font-semibold border-b border-gray-100">{pet.name || "—"}</td>
+                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.type || "—"}</td>
+                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">
+                                    {pet.age ? `${pet.age} yr${pet.age !== "1" ? "s" : ""}` : "—"}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.breed || "—"}</td>
+                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">
+                                    {pet.weight ? `${pet.weight} lbs` : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-6 text-center">
+                          <p className="text-sm text-gray-400">No pet information recorded.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section 3: Questionnaire */}
+                    <div>
+                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">
+                        Mental Health Questionnaire
+                      </h3>
+                      <div className="space-y-5">
+                        {QUESTIONNAIRE_ITEMS.map(({ label, key }, idx) => {
+                          const val = a[key];
+                          const isEmpty = val === undefined || val === null || val === "" || (Array.isArray(val) && (val as unknown[]).length === 0);
+                          if (isEmpty) return null;
+                          return (
+                            <div key={key} className="flex gap-3">
+                              <div className="w-6 h-6 flex items-center justify-center bg-orange-500 text-white text-xs font-bold rounded-full flex-shrink-0 mt-0.5">
+                                {idx + 1}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-gray-800 mb-1">{label}</p>
+                                <p className="text-sm text-orange-600 font-semibold leading-relaxed">
+                                  {resolveLabel(key, val)}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Footer branding */}
+                    <div className="border-t border-gray-100 pt-4 text-center">
+                      <p className="text-xs text-gray-400">PawTenant &bull; Secure ESA Consultation Support &bull; pawtenant.com</p>
+                    </div>
+
+                  </div>
+                );
+              })()}
+
+            </div>
+          )}
+
+          {/* ── NOTES ── */}
+          {section === "notes" && (
+            <OrderNotesPanel
+              orderId={order.id}
+              confirmationId={order.confirmation_id}
+              adminUserId={adminProfile.user_id}
+              adminName={adminProfile.full_name}
+              onClose={() => {}}
+            />
+          )}
+
+          {/* ── EMAIL LOG TAB ── */}
+          {section === "emails" && (
+            <div className="p-6 space-y-5">
+
+              {/* Header with refresh */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Email Delivery Log</p>
+                  <p className="text-xs text-gray-400 mt-0.5">All emails sent to providers and patients for this order</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadEmailLog}
+                  disabled={emailLogLoading}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <i className={emailLogLoading ? "ri-loader-4-line animate-spin" : "ri-refresh-line"}></i>
+                  {emailLogLoading ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
+
+              {/* Stats bar */}
+              {order.email_log && order.email_log.length > 0 && (() => {
+                const total = order.email_log.length;
+                const sent = order.email_log.filter((e) => e.success).length;
+                const failed = total - sent;
+                return (
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "Total Sent", value: total, icon: "ri-mail-line", color: "text-gray-700 bg-gray-100" },
+                      { label: "Delivered", value: sent, icon: "ri-checkbox-circle-line", color: "text-emerald-700 bg-emerald-100" },
+                      { label: "Failed", value: failed, icon: "ri-mail-close-line", color: failed > 0 ? "text-red-600 bg-red-100" : "text-gray-400 bg-gray-100" },
+                    ].map((s) => (
+                      <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+                        <div className={`w-9 h-9 flex items-center justify-center rounded-lg ${s.color.split(" ")[1]} flex-shrink-0`}>
+                          <i className={`${s.icon} ${s.color.split(" ")[0]} text-sm`}></i>
+                        </div>
+                        <div>
+                          <p className={`text-xl font-extrabold ${s.color.split(" ")[0]}`}>{s.value}</p>
+                          <p className="text-xs text-gray-400">{s.label}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Provider section */}
+              {order.doctor_email && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 flex items-center justify-center bg-[#e8f5f1] rounded-lg">
+                        <i className="ri-user-received-line text-[#1a5c4f] text-sm"></i>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-gray-800">Provider Notifications</p>
+                        <p className="text-xs text-gray-400">{order.doctor_name ?? order.doctor_email}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResendProviderEmail}
+                      disabled={resendingProvider}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      {resendingProvider
+                        ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                        : <><i className="ri-notification-3-line"></i>Resend Provider Email</>
+                      }
+                    </button>
+                  </div>
+                  {(() => {
+                    const providerEmails = (order.email_log ?? []).filter((e) =>
+                      e.to.toLowerCase() === order.doctor_email?.toLowerCase() ||
+                      e.type === "provider_assigned_provider" ||
+                      e.type === "provider_notification"
+                    );
+                    if (providerEmails.length === 0) {
+                      return (
+                        <div className="px-4 py-6 flex items-center gap-3">
+                          <div className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-full flex-shrink-0">
+                            <i className="ri-mail-line text-gray-300 text-sm"></i>
+                          </div>
+                          <p className="text-xs text-gray-400">No provider emails logged yet.</p>
+                        </div>
+                      );
+                    }
+                    return providerEmails.map((entry, idx) => {
+                      const cfg = EMAIL_TYPE_CONFIG[entry.type] ?? {
+                        label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                        icon: "ri-mail-line",
+                        color: "text-gray-600 bg-gray-50 border-gray-200",
+                        failColor: "text-red-600 bg-red-50 border-red-200",
+                      };
+                      return (
+                        <div key={idx} className={`flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0 ${entry.success ? "" : "bg-red-50/40"}`}>
+                          <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? "bg-[#e8f5f1]" : "bg-red-100"}`}>
+                            <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? "text-[#1a5c4f]" : "text-red-500"} text-sm`}></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-gray-900">{cfg.label}</p>
+                            <p className="text-xs text-gray-400">{fmtEmailTime(entry.sentAt)}</p>
+                          </div>
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${entry.success ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                            {entry.success ? <><i className="ri-checkbox-circle-fill"></i>Sent</> : <><i className="ri-close-circle-fill"></i>Failed</>}
+                          </span>
+                        </div>
+                      );
+                    });
+                  })()}
+                  {resendProviderMsg && (
+                    <div className={`px-4 py-2 border-t border-gray-100 flex items-center gap-1.5 text-xs font-semibold ${resendProviderMsg.includes("resent") ? "text-[#1a5c4f] bg-[#f0faf7]" : "text-orange-700 bg-orange-50"}`}>
+                      <i className={resendProviderMsg.includes("resent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                      {resendProviderMsg}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Patient section */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                  <div className="w-7 h-7 flex items-center justify-center bg-violet-100 rounded-lg">
+                    <i className="ri-user-line text-violet-600 text-sm"></i>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-800">Patient Emails</p>
+                    <p className="text-xs text-gray-400">{order.email}</p>
+                  </div>
+                </div>
+                {(() => {
+                  const patientEmails = (order.email_log ?? []).filter((e) =>
+                    e.to.toLowerCase() === order.email.toLowerCase() ||
+                    e.type === "provider_assigned_customer" ||
+                    e.type === "order_confirmation" ||
+                    e.type === "letter_ready" ||
+                    e.type === "payment_receipt" ||
+                    e.type === "refund" ||
+                    e.type === "status_under_review" ||
+                    e.type === "status_completed"
+                  );
+                  if (patientEmails.length === 0) {
+                    return (
+                      <div className="px-4 py-6 flex items-center gap-3">
+                        <div className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-full flex-shrink-0">
+                          <i className="ri-mail-line text-gray-300 text-sm"></i>
+                        </div>
+                        <p className="text-xs text-gray-400">No patient emails logged yet.</p>
+                      </div>
+                    );
+                  }
+                  return patientEmails.map((entry, idx) => {
+                    const cfg = EMAIL_TYPE_CONFIG[entry.type] ?? {
+                      label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                      icon: "ri-mail-line",
+                      color: "text-gray-600 bg-gray-50 border-gray-200",
+                      failColor: "text-red-600 bg-red-50 border-red-200",
+                    };
+                    return (
+                      <div key={idx} className={`flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0 ${entry.success ? "" : "bg-red-50/40"}`}>
+                        <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? "bg-violet-50" : "bg-red-100"}`}>
+                          <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? "text-violet-600" : "text-red-500"} text-sm`}></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-900">{cfg.label}</p>
+                          <p className="text-xs text-gray-400">{fmtEmailTime(entry.sentAt)}</p>
+                        </div>
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${entry.success ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                          {entry.success ? <><i className="ri-checkbox-circle-fill"></i>Sent</> : <><i className="ri-close-circle-fill"></i>Failed</>}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              {(!order.email_log || order.email_log.length === 0) && !emailLogLoading && (
+                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-10 text-center">
+                  <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mx-auto mb-3">
+                    <i className="ri-mail-line text-gray-300 text-xl"></i>
+                  </div>
+                  <p className="text-sm font-bold text-gray-600 mb-1">No emails logged yet</p>
+                  <p className="text-xs text-gray-400">Email activity for this order will appear here once emails are sent.</p>
+                </div>
+              )}
+
+              {emailLogLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+                </div>
+              )}
+
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {/* ── Delete Order Confirmation ── */}
+      {showDeleteOrderConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/50">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-delete-bin-2-fill text-red-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Permanently Delete Order?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  This will <strong>permanently delete</strong> order <span className="font-mono text-gray-700">{order.confirmation_id}</span> and all its documents, notes, and status history. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 space-y-1 text-xs text-red-700">
+              <p className="font-bold">{fullName}</p>
+              <p>{order.email}</p>
+              {order.payment_intent_id && <p className="flex items-center gap-1"><i className="ri-money-dollar-circle-line"></i>Paid order — payment record in Stripe will remain</p>}
+              <p className="flex items-center gap-1"><i className="ri-file-shred-line"></i>All documents, notes, status logs &amp; earnings records will be deleted</p>
+              <p className="flex items-center gap-1"><i className="ri-logout-box-r-line"></i>If this is their only order, their login account will also be deleted</p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                Type <span className="font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Type DELETE here"
+                className="w-full px-3 py-2.5 border border-red-300 rounded-lg text-sm font-mono focus:outline-none focus:border-red-500 bg-white"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDeleteOrder}
+                disabled={deletingOrder || deleteConfirmText !== "DELETE"}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deletingOrder
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Deleting...</>
+                  : <><i className="ri-delete-bin-2-line"></i>Yes, Delete Permanently</>
+                }
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowDeleteOrderConfirm(false); setDeleteConfirmText(""); }}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cancel Order Confirmation ── */}
+      {showCancelConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/50">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-orange-100 rounded-xl flex-shrink-0">
+                <i className="ri-close-circle-fill text-orange-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Cancel This Order?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  Order <span className="font-mono text-gray-700">{order.confirmation_id}</span> for <strong>{fullName}</strong> will be marked as cancelled.
+                </p>
+              </div>
+            </div>
+
+            {/* Refund option — only for paid orders */}
+            {order.payment_intent_id && (
+              <div
+                className={`flex items-start gap-3 rounded-xl p-3 mb-4 border cursor-pointer transition-colors ${cancelWithRefund ? "bg-emerald-50 border-emerald-300" : "bg-gray-50 border-gray-200 hover:bg-gray-100"}`}
+                onClick={() => setCancelWithRefund((v) => !v)}
+              >
+                <div
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${cancelWithRefund ? "bg-emerald-600 border-emerald-600" : "border-gray-400"}`}
+                >
+                  {cancelWithRefund && <i className="ri-check-line text-white" style={{ fontSize: "11px" }}></i>}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-800">Issue Full Refund via Stripe</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {order.price != null ? `$${order.price.toFixed(2)}` : "Full amount"} will be refunded to the customer&apos;s original payment method. Takes 5-10 business days.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Cancel note */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">Internal Note (optional)</label>
+              <textarea
+                value={cancelNote}
+                onChange={(e) => setCancelNote(e.target.value.slice(0, 300))}
+                rows={2}
+                placeholder="Reason for cancellation, e.g. customer requested via email..."
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 resize-none"
+              />
+              <p className="text-xs text-gray-400 text-right mt-0.5">{cancelNote.length}/300</p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
+              <p className="text-xs text-amber-800 flex items-start gap-1 leading-relaxed">
+                <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
+                A cancellation email will be sent to the customer at <strong>{order.email}</strong>.
+                {cancelWithRefund && order.payment_intent_id ? " Refund will also be processed." : ""}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCancelOrder}
+                disabled={cancellingOrder}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {cancellingOrder
+                  ? <><i className="ri-loader-4-line animate-spin"></i>{cancelWithRefund ? "Refunding & Cancelling..." : "Cancelling..."}</>
+                  : <><i className="ri-close-circle-line"></i>{cancelWithRefund ? "Cancel & Refund" : "Cancel Order"}</>
+                }
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowCancelConfirm(false); setCancelNote(""); setCancelWithRefund(false); }}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Keep Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reset to Under Review Confirmation ── */}      {showResetConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/40">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-arrow-go-back-fill text-red-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Reset to Under Review?</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  This will roll back the order to a pre-letter state. The submitted letter and delivery status will be cleared. The provider assignment will be kept.
+                </p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 space-y-2">
+              <p className="text-xs text-red-800 font-semibold flex items-center gap-1">
+                <i className="ri-notification-3-line"></i>
+                Provider will be notified of this change.
+              </p>
+              <p className="text-xs text-red-800 font-semibold flex items-center gap-1">
+                <i className="ri-mail-send-line"></i>
+                Patient will <strong>not</strong> be notified of this change.
+              </p>
+            </div>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
+              <i className="ri-information-line mr-1"></i>
+              The patient will <strong>not</strong> be automatically notified of this reversal. Proceed only if the order needs correction.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetConfirm(false);
+                  handleSetStatus("under-review", "in_review");
+                }}
+                disabled={resetting}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                <i className="ri-arrow-go-back-line"></i>Yes, Reset Order
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 30-Day Reissue Confirmation ── */}
+      {showThirtyDayConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/40">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-orange-100 rounded-xl flex-shrink-0">
+                <i className="ri-time-fill text-orange-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">30-Day Period Completed?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  This will move the order back to <strong>Under Review</strong> and notify the assigned provider to issue the official letter. The order state is <strong>{order.state}</strong>.
+                </p>
+              </div>
+            </div>
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 mb-4 space-y-2">
+              <p className="text-xs text-orange-800 font-semibold flex items-center gap-1.5">
+                <i className="ri-notification-3-line"></i>
+                In-portal notification: &ldquo;30-day period completed. Please issue the official letter.&rdquo;
+              </p>
+              <p className="text-xs text-orange-800 font-semibold flex items-center gap-1.5">
+                <i className="ri-mail-send-line"></i>
+                Email notification: 30-Day Reminder email will be sent to the assigned provider.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={handleThirtyDayReissue} disabled={thirtyDayLoading}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {thirtyDayLoading ? <><i className="ri-loader-4-line animate-spin"></i>Processing...</> : <><i className="ri-time-fill"></i>Yes, Request Official Letter</>}
+              </button>
+              <button type="button" onClick={() => setShowThirtyDayConfirm(false)}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reopen Confirmation Dialog ── */}
+      {showReopenConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/40">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-amber-100 rounded-xl flex-shrink-0">
+                <i className="ri-error-warning-fill text-amber-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Reopen Completed Order?</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  This order is marked as <strong className="text-emerald-700">Completed</strong> and the patient has been notified. Moving it back to &ldquo;Under Review&rdquo; will change the visible status.
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
+              <i className="ri-information-line mr-1"></i>
+              The patient will <strong>not</strong> be notified of this reversal. Proceed only if the order needs correction.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReopenConfirm(false);
+                  handleSetStatus("under-review", "in_review");
+                }}
+                disabled={statusUpdating}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-700 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                <i className="ri-arrow-go-back-line"></i>Yes, Reopen Order
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowReopenConfirm(false)}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

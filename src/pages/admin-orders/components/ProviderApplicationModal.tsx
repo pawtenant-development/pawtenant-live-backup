@@ -1,0 +1,392 @@
+import { useState } from "react";
+import { supabase } from "../../../lib/supabaseClient";
+
+interface ProviderApplication {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  license_types: string | null;
+  license_number: string | null;
+  license_state: string | null;
+  additional_states: string | null;
+  years_experience: string | null;
+  practice_name: string | null;
+  practice_type: string | null;
+  specializations: string | null;
+  monthly_capacity: string | null;
+  esa_experience: string | null;
+  telehealth_ready: string | null;
+  profile_url: string | null;
+  bio: string | null;
+  headshot_url: string | null;
+  documents_urls: string[] | null;
+  status: string;
+  created_at: string;
+}
+
+const STATE_NAME_TO_CODE: Record<string, string> = {
+  "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
+  "Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA",
+  "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS",
+  "Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA",
+  "Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT",
+  "Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM",
+  "New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK",
+  "Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC",
+  "South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT",
+  "Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY",
+  "Washington DC":"DC","District of Columbia":"DC",
+};
+
+const STATE_CODE_TO_NAME: Record<string, string> = {
+  AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",
+  CO:"Colorado",CT:"Connecticut",DC:"Washington DC",DE:"Delaware",FL:"Florida",
+  GA:"Georgia",HI:"Hawaii",IA:"Iowa",ID:"Idaho",IL:"Illinois",IN:"Indiana",
+  KS:"Kansas",KY:"Kentucky",LA:"Louisiana",MA:"Massachusetts",MD:"Maryland",
+  ME:"Maine",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",
+  MT:"Montana",NC:"North Carolina",ND:"North Dakota",NE:"Nebraska",NH:"New Hampshire",
+  NJ:"New Jersey",NM:"New Mexico",NV:"Nevada",NY:"New York",OH:"Ohio",
+  OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",
+  SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VA:"Virginia",
+  VT:"Vermont",WA:"Washington",WI:"Wisconsin",WV:"West Virginia",WY:"Wyoming",
+};
+
+const ALL_STATE_CODES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DC","DE","FL","GA","HI","IA","ID","IL","IN",
+  "KS","KY","LA","MA","MD","ME","MI","MN","MS","MO","MT","NC","ND","NE","NH","NJ",
+  "NM","NV","NY","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VA","VT","WA",
+  "WI","WV","WY",
+];
+
+function parseStatesToCodes(licenseState: string | null, additionalStates: string | null): string[] {
+  const codes = new Set<string>();
+  const addName = (name: string) => {
+    const trimmed = name.trim();
+    const code = STATE_NAME_TO_CODE[trimmed] ?? (trimmed.length === 2 ? trimmed.toUpperCase() : null);
+    if (code) codes.add(code);
+  };
+  if (licenseState) addName(licenseState);
+  if (additionalStates) additionalStates.split(",").forEach(addName);
+  return Array.from(codes);
+}
+
+function generateHighlights(licenseTypes: string | null, specializations: string | null): string[] {
+  const highlights: string[] = [];
+  if (licenseTypes) {
+    const first = licenseTypes.split(",")[0]?.trim();
+    const match = first?.match(/\(([^)]+)\)/);
+    if (match) highlights.push(match[1]);
+    else if (first) highlights.push(first.split(" ").slice(-1)[0] ?? first);
+  }
+  if (specializations) {
+    const specs = specializations.split(",").slice(0, 2).map((s) => s.trim());
+    highlights.push(...specs);
+  }
+  highlights.push("ESA Letters", "Telehealth Evaluations");
+  return highlights.slice(0, 5);
+}
+
+interface Props {
+  application: ProviderApplication;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}
+
+export default function ProviderApplicationModal({ application, onClose, onDone }: Props) {
+  const initialStates = parseStatesToCodes(application.license_state, application.additional_states);
+
+  const [approvalForm, setApprovalForm] = useState({
+    full_name: `${application.first_name} ${application.last_name}`,
+    title: (() => {
+      const lt = application.license_types ?? "";
+      const m = lt.match(/\(([^)]+)\)/);
+      return m ? m[1] : lt.split(",")[0]?.trim() ?? "LCSW";
+    })(),
+    role: "Licensed Mental Health Professional",
+    bio: application.bio ?? "",
+    photo_url: application.headshot_url ?? "",
+    verification_url: application.profile_url ?? "https://pawtenant.com/join-our-network",
+  });
+  const [selectedStates, setSelectedStates] = useState<Set<string>>(new Set(initialStates));
+  const [rejectReason, setRejectReason] = useState("");
+  const [showReject, setShowReject] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggleState = (code: string) => {
+    setSelectedStates((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+  };
+
+  const handleApprove = async () => {
+    if (!approvalForm.full_name || selectedStates.size === 0) {
+      setError("Full name and at least one licensed state are required.");
+      return;
+    }
+    setError("");
+    setProcessing(true);
+
+    const slug = `${application.first_name.toLowerCase().replace(/\s+/g,"-")}-${application.last_name.toLowerCase().replace(/\s+/g,"-")}-${application.id.substring(0,6)}`;
+    const highlights = generateHighlights(application.license_types, application.specializations);
+    const statesArray = Array.from(selectedStates); // codes like ["CA", "TX"]
+    // Convert codes to full names for doctor_contacts (consistent with CreateDoctorModal)
+    const statesFullNames = statesArray.map((code) => STATE_CODE_TO_NAME[code] ?? code);
+
+    const [providerRes, contactRes, appRes] = await Promise.all([
+      supabase.from("approved_providers").insert({
+        application_id: application.id,
+        slug,
+        full_name: approvalForm.full_name,
+        title: approvalForm.title || null,
+        role: approvalForm.role || null,
+        bio: approvalForm.bio || null,
+        email: application.email,
+        phone: application.phone ?? null,
+        photo_url: approvalForm.photo_url || null,
+        states: statesArray,
+        highlights,
+        verification_url: approvalForm.verification_url || null,
+        is_active: true,
+      }),
+      supabase.from("doctor_contacts").insert({
+        full_name: approvalForm.full_name,
+        email: application.email,
+        phone: application.phone ?? null,
+        licensed_states: statesFullNames,
+        is_active: true,
+        photo_url: approvalForm.photo_url || null,
+      }),
+      supabase.from("provider_applications").update({
+        status: "approved",
+        reviewed_at: new Date().toISOString(),
+      }).eq("id", application.id),
+    ]);
+
+    setProcessing(false);
+
+    if (providerRes.error || contactRes.error || appRes.error) {
+      const msg = providerRes.error?.message ?? contactRes.error?.message ?? appRes.error?.message ?? "Unknown error";
+      setError(`Approval failed: ${msg}`);
+      return;
+    }
+
+    onDone(`${approvalForm.full_name} approved and added to the provider network!`);
+  };
+
+  const handleReject = async () => {
+    setProcessing(true);
+    await supabase.from("provider_applications").update({
+      status: "rejected",
+      rejection_reason: rejectReason || null,
+      reviewed_at: new Date().toISOString(),
+    }).eq("id", application.id);
+    setProcessing(false);
+    onDone(`Application from ${application.first_name} ${application.last_name} has been rejected.`);
+  };
+
+  const field = (label: string, value: string | null | undefined) => value ? (
+    <div className="flex items-start justify-between gap-4 py-2 border-b border-gray-50 last:border-b-0">
+      <span className="text-xs text-gray-400 flex-shrink-0 w-36">{label}</span>
+      <span className="text-xs text-gray-700 font-medium text-right flex-1">{value}</span>
+    </div>
+  ) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-7 py-5 border-b border-gray-100 sticky top-0 bg-white z-10">
+          <div>
+            <h2 className="text-base font-extrabold text-gray-900">Review Provider Application</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Submitted {new Date(application.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 cursor-pointer">
+            <i className="ri-close-line text-sm"></i>
+          </button>
+        </div>
+
+        <div className="p-7 space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 flex items-start gap-2">
+              <i className="ri-error-warning-line flex-shrink-0 mt-0.5"></i>{error}
+            </div>
+          )}
+
+          {/* Two columns: submitted info + approval form */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Left: Submitted Application Data */}
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Submitted Information</p>
+
+              {/* Headshot preview */}
+              {application.headshot_url && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-400 mb-2">Headshot</p>
+                  <div className="w-20 h-20 rounded-xl overflow-hidden border border-gray-200">
+                    <img src={application.headshot_url} alt="Headshot" className="w-full h-full object-cover object-top" />
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                {field("Name", `${application.first_name} ${application.last_name}`)}
+                {field("Email", application.email)}
+                {field("Phone", application.phone)}
+                {field("License Type(s)", application.license_types)}
+                {field("License #", application.license_number)}
+                {field("Primary State", application.license_state)}
+                {field("Additional States", application.additional_states)}
+                {field("Experience", application.years_experience)}
+                {field("Practice", application.practice_name)}
+                {field("Practice Type", application.practice_type)}
+                {field("Specializations", application.specializations)}
+                {field("Monthly Capacity", application.monthly_capacity)}
+                {field("ESA Experience", application.esa_experience)}
+                {field("Telehealth Ready", application.telehealth_ready)}
+                {field("LinkedIn/Website", application.profile_url)}
+              </div>
+
+              {application.bio && (
+                <div className="mt-3 bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
+                  <p className="text-xs font-bold text-gray-500 mb-1.5">Bio / Statement</p>
+                  <p className="text-xs text-gray-600 leading-relaxed">{application.bio}</p>
+                </div>
+              )}
+
+              {(application.documents_urls ?? []).length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs font-bold text-gray-500 mb-2">Uploaded Documents</p>
+                  <div className="space-y-1.5">
+                    {(application.documents_urls ?? []).map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs text-[#1a5c4f] hover:underline cursor-pointer bg-[#f0faf7] px-3 py-2 rounded-lg border border-[#b8ddd5]">
+                        <i className="ri-file-line"></i>Document {i + 1}
+                        <i className="ri-external-link-line text-[10px] ml-auto"></i>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Approval Edit Form */}
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Profile for Website (Edit Before Approving)</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Full Name <span className="text-red-400">*</span></label>
+                  <input type="text" value={approvalForm.full_name} onChange={(e) => setApprovalForm((f)=>({...f,full_name:e.target.value}))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Title (credential)</label>
+                  <input type="text" value={approvalForm.title} placeholder="e.g. LCSW" onChange={(e) => setApprovalForm((f)=>({...f,title:e.target.value}))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Role / Specialty</label>
+                  <input type="text" value={approvalForm.role} placeholder="Licensed Mental Health Professional" onChange={(e) => setApprovalForm((f)=>({...f,role:e.target.value}))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Bio</label>
+                  <textarea rows={4} value={approvalForm.bio} onChange={(e) => setApprovalForm((f)=>({...f,bio:e.target.value}))}
+                    placeholder="Write a professional bio for the website..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] resize-none"></textarea>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center gap-2">
+                    Photo URL
+                    {approvalForm.photo_url && (
+                      <span className="font-normal text-[#1a5c4f]">(preview below)</span>
+                    )}
+                  </label>
+                  <input type="url" value={approvalForm.photo_url} onChange={(e) => setApprovalForm((f)=>({...f,photo_url:e.target.value}))}
+                    placeholder="https://... or leave blank to use uploaded headshot"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                  {approvalForm.photo_url && (
+                    <div className="mt-2 w-14 h-14 rounded-full overflow-hidden border-2 border-orange-100">
+                      <img src={approvalForm.photo_url} alt="Preview" className="w-full h-full object-cover object-top" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'}} />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Verification URL (optional)</label>
+                  <input type="url" value={approvalForm.verification_url} onChange={(e) => setApprovalForm((f)=>({...f,verification_url:e.target.value}))}
+                    placeholder="https://psychologytoday.com/..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                </div>
+              </div>
+
+              {/* State selection */}
+              <div className="mt-4">
+                <label className="block text-xs font-bold text-gray-500 mb-2">
+                  Licensed States <span className="text-red-400">*</span>
+                  <span className="font-normal text-[#1a5c4f] ml-1">({selectedStates.size} selected)</span>
+                </label>
+                <div className="bg-gray-50 rounded-xl p-3 max-h-40 overflow-y-auto">
+                  <div className="flex flex-wrap gap-1.5">
+                    {ALL_STATE_CODES.map((code) => {
+                      const sel = selectedStates.has(code);
+                      return (
+                        <button key={code} type="button" onClick={() => toggleState(code)}
+                          className={`whitespace-nowrap w-10 h-8 flex items-center justify-center rounded-lg text-xs font-bold border cursor-pointer transition-colors ${sel ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "bg-white text-gray-600 border-gray-200 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"}`}>
+                          {code}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Reject reason panel */}
+          {showReject && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+              <p className="text-sm font-bold text-red-800 mb-3">Reason for Rejection <span className="font-normal text-red-500">(optional)</span></p>
+              <textarea rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="e.g. License could not be verified, insufficient experience..."
+                className="w-full px-3 py-2.5 border border-red-200 rounded-lg text-sm bg-white focus:outline-none focus:border-red-400 resize-none mb-3"></textarea>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={handleReject} disabled={processing}
+                  className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors">
+                  {processing ? <><i className="ri-loader-4-line animate-spin"></i>Processing...</> : <><i className="ri-close-circle-line"></i>Confirm Rejection</>}
+                </button>
+                <button type="button" onClick={() => setShowReject(false)}
+                  className="whitespace-nowrap px-4 py-2.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {!showReject && (
+            <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+              <button type="button" onClick={handleApprove} disabled={processing}
+                className="whitespace-nowrap flex items-center gap-2 px-7 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                {processing ? <><i className="ri-loader-4-line animate-spin"></i>Approving...</> : <><i className="ri-checkbox-circle-line"></i>Approve &amp; Add to Network</>}
+              </button>
+              <button type="button" onClick={() => setShowReject(true)}
+                className="whitespace-nowrap flex items-center gap-2 px-5 py-3 border border-red-200 text-red-600 text-sm font-bold rounded-xl hover:bg-red-50 cursor-pointer transition-colors">
+                <i className="ri-close-circle-line"></i>Reject
+              </button>
+              <button type="button" onClick={onClose}
+                className="whitespace-nowrap ml-auto px-5 py-3 text-sm text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
