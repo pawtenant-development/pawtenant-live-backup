@@ -119,10 +119,11 @@ Deno.serve(async (req: Request) => {
   let doctorName = "";
   let doctorTitle = "";
   let doctorIsActive = true;
+  let doctorAvailabilityStatus = "active";
   let doctorRate: number | null = null;
 
   const { data: profileDoctor } = await supabase
-    .from("doctor_profiles").select("user_id, full_name, title, email, phone, is_active, per_order_rate")
+    .from("doctor_profiles").select("user_id, full_name, title, email, phone, is_active, availability_status, per_order_rate")
     .eq("email", normalizedEmail).maybeSingle();
 
   if (profileDoctor) {
@@ -130,27 +131,39 @@ Deno.serve(async (req: Request) => {
     doctorName = profileDoctor.full_name ?? "";
     doctorTitle = profileDoctor.title ?? "";
     doctorIsActive = profileDoctor.is_active !== false;
+    doctorAvailabilityStatus = profileDoctor.availability_status ?? "active";
     doctorRate = profileDoctor.per_order_rate ?? null;
   } else {
     const { data: contactDoctor } = await supabase
-      .from("doctor_contacts").select("id, full_name, email, phone, is_active, per_order_rate")
+      .from("doctor_contacts").select("id, full_name, email, phone, is_active, availability_status, per_order_rate")
       .eq("email", normalizedEmail).maybeSingle();
     if (!contactDoctor) {
       const { data: ciDoctor } = await supabase
-        .from("doctor_contacts").select("id, full_name, email, phone, is_active, per_order_rate")
+        .from("doctor_contacts").select("id, full_name, email, phone, is_active, availability_status, per_order_rate")
         .ilike("email", normalizedEmail).maybeSingle();
       if (!ciDoctor) return json({ error: `Doctor not found for email: ${doctorEmail}.` }, 404);
       doctorName = ciDoctor.full_name ?? "";
       doctorIsActive = ciDoctor.is_active !== false;
+      doctorAvailabilityStatus = ciDoctor.availability_status ?? "active";
       doctorRate = ciDoctor.per_order_rate ?? null;
     } else {
       doctorName = contactDoctor.full_name ?? "";
       doctorIsActive = contactDoctor.is_active !== false;
+      doctorAvailabilityStatus = contactDoctor.availability_status ?? "active";
       doctorRate = contactDoctor.per_order_rate ?? null;
     }
   }
 
-  if (!doctorIsActive) return json({ error: `Provider ${doctorName} (${normalizedEmail}) is deactivated.` }, 400);
+  // Hard block: deactivated providers cannot receive assignments
+  if (!doctorIsActive) return json({ error: `Provider ${doctorName} (${normalizedEmail}) is deactivated and cannot receive new assignments.` }, 400);
+
+  // Soft block: at-capacity providers cannot receive new assignments
+  if (doctorAvailabilityStatus === "at_capacity") {
+    return json({
+      error: `Provider ${doctorName} (${normalizedEmail}) is currently at capacity and not accepting new assignments. Change their availability status in the Providers tab first.`,
+      availability_status: "at_capacity",
+    }, 400);
+  }
 
   const { data: order, error: orderErr } = await supabase
     .from("orders")
@@ -218,7 +231,6 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-  // ── GHL update — include ESA/PSD type, VIP/Priority, and full contact fields ──
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },

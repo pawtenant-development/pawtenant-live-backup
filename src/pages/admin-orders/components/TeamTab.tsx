@@ -33,6 +33,10 @@ const ROLE_CONFIG: Record<string, { label: string; color: string; icon: string; 
   provider:      { label: "Provider",  color: "bg-amber-100 text-amber-700",           icon: "ri-stethoscope-line",         desc: "Doctor portal only",             isAdmin: false },
 };
 
+// Roles available when inviting an internal team member.
+// "provider" is intentionally excluded — use the Providers tab to add providers.
+const TEAM_INVITE_ROLES = ["owner", "admin_manager", "support", "finance", "read_only"] as const;
+
 const PERMISSIONS: { module: string; owner: string; admin_manager: string; support: string; finance: string; read_only: string; provider: string }[] = [
   { module: "Orders",    owner: "Full", admin_manager: "Full",  support: "Edit",  finance: "View",  read_only: "View",  provider: "—" },
   { module: "Customers", owner: "Full", admin_manager: "Full",  support: "View",  finance: "View",  read_only: "View",  provider: "—" },
@@ -71,10 +75,11 @@ export default function TeamTab() {
 
   const loadMembers = async () => {
     setLoading(true);
+    // Load ONLY team members (admin roles). Providers are managed separately in the Providers tab.
     const { data } = await supabase
       .from("doctor_profiles")
       .select("id, user_id, full_name, title, email, phone, is_admin, is_active, role")
-      .order("is_admin", { ascending: false })
+      .eq("is_admin", true)
       .order("full_name");
     setMembers((data as TeamMember[]) ?? []);
     setLoading(false);
@@ -298,10 +303,10 @@ export default function TeamTab() {
       {!loading && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           {[
-            { label: "Total Members", value: members.length, icon: "ri-team-line", color: "text-gray-700" },
+            { label: "Total Staff", value: members.length, icon: "ri-team-line", color: "text-gray-700" },
             { label: "Admin Portal Access", value: members.filter((m) => m.is_admin).length, icon: "ri-shield-star-line", color: "text-[#1a5c4f]" },
             { label: "Active Accounts", value: members.filter((m) => m.is_active).length, icon: "ri-checkbox-circle-line", color: "text-emerald-600" },
-            { label: "Providers", value: members.filter((m) => !m.is_admin).length, icon: "ri-stethoscope-line", color: "text-amber-600" },
+            { label: "Owners / Admins", value: members.filter((m) => ["owner", "admin_manager"].includes(m.role ?? "")).length, icon: "ri-vip-crown-line", color: "text-amber-600" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center gap-2 mb-1">
@@ -325,8 +330,8 @@ export default function TeamTab() {
 
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h2 className="text-base font-extrabold text-gray-900">Team &amp; Role Management</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Invite staff, assign roles, and control access levels.</p>
+          <h2 className="text-base font-extrabold text-gray-900">Internal Staff &amp; Role Management</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Invite internal staff, assign dashboard roles, and control access levels. To add a licensed provider, use the <strong className="text-[#1a5c4f]">Providers tab</strong>.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setShowMatrix((v) => !v)}
@@ -424,9 +429,12 @@ export default function TeamTab() {
                           onChange={(e) => handleRoleChange(member, e.target.value)}
                           disabled={togglingId === member.id}
                           className={`appearance-none pl-2 pr-7 py-1.5 rounded-full text-xs font-bold cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 disabled:opacity-50 ${roleCfg.color}`}>
-                          {Object.entries(ROLE_CONFIG).map(([key, cfg]) => (
-                            <option key={key} value={key} className="bg-white text-gray-800 font-normal">{cfg.label} — {cfg.desc}</option>
-                          ))}
+                          {TEAM_INVITE_ROLES.map((key) => {
+                            const cfg = ROLE_CONFIG[key];
+                            return (
+                              <option key={key} value={key} className="bg-white text-gray-800 font-normal">{cfg.label} — {cfg.desc}</option>
+                            );
+                          })}
                         </select>
                         <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 flex items-center justify-center">
                           {togglingId === member.id
@@ -575,7 +583,7 @@ export default function TeamTab() {
             <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Invite</p>
-                <h2 className="text-lg font-extrabold text-gray-900">Add Team Member</h2>
+                <h2 className="text-lg font-extrabold text-gray-900">Add Internal Staff Member</h2>
               </div>
               <button type="button" onClick={() => { setShowModal(false); setForm(INIT_FORM); setFormError(""); }}
                 className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
@@ -614,17 +622,24 @@ export default function TeamTab() {
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-2">Role *</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(ROLE_CONFIG).map(([key, cfg]) => (
-                    <button key={key} type="button" onClick={() => setForm((f) => ({ ...f, role: key }))}
-                      className={`whitespace-nowrap flex flex-col items-start gap-1 p-3 rounded-xl border-2 transition-colors cursor-pointer text-left ${form.role === key ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 hover:border-gray-300"}`}>
-                      <div className="flex items-center gap-1.5">
-                        <i className={`${cfg.icon} text-sm ${form.role === key ? "text-[#1a5c4f]" : "text-gray-400"}`}></i>
-                        <span className={`text-xs font-bold ${form.role === key ? "text-[#1a5c4f]" : "text-gray-600"}`}>{cfg.label}</span>
-                      </div>
-                      <span className="text-xs text-gray-400 leading-tight">{cfg.desc}</span>
-                    </button>
-                  ))}
+                  {TEAM_INVITE_ROLES.map((key) => {
+                    const cfg = ROLE_CONFIG[key];
+                    return (
+                      <button key={key} type="button" onClick={() => setForm((f) => ({ ...f, role: key }))}
+                        className={`whitespace-nowrap flex flex-col items-start gap-1 p-3 rounded-xl border-2 transition-colors cursor-pointer text-left ${form.role === key ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 hover:border-gray-300"}`}>
+                        <div className="flex items-center gap-1.5">
+                          <i className={`${cfg.icon} text-sm ${form.role === key ? "text-[#1a5c4f]" : "text-gray-400"}`}></i>
+                          <span className={`text-xs font-bold ${form.role === key ? "text-[#1a5c4f]" : "text-gray-600"}`}>{cfg.label}</span>
+                        </div>
+                        <span className="text-xs text-gray-400 leading-tight">{cfg.desc}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                  <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
+                  To add a licensed provider, use the <strong>Providers tab</strong> instead. Provider accounts are managed separately from internal staff.
+                </p>
               </div>
             </div>
 

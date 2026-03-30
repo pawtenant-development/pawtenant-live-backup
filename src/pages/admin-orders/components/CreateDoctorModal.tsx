@@ -79,7 +79,9 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
       if (!token) throw new Error("Not authenticated. Please refresh and try again.");
 
       const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-team-member`, {
+      // Uses create-provider — the provider-specific endpoint.
+      // This endpoint NEVER touches team-member creation logic.
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -89,8 +91,6 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
           email: form.email.trim(),
           full_name: form.full_name.trim(),
           title: form.title.trim() || null,
-          is_admin: false,
-          role: "provider",
           phone: form.phone.trim() || null,
           licensed_states: selectedStates.length > 0 ? selectedStates : [],
           bio: form.bio.trim() || null,
