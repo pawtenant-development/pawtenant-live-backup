@@ -1,9 +1,13 @@
 User-agent: *
 Allow: /
 
+# Block old nested ESA redirect paths — canonical URLs are /esa-letter-[state] (flat format)
+# /esa-letter/[state] are client-side redirect stubs only, not indexable content
+Disallow: /esa-letter/
+
 # Block thank-you pages — no SEO value, should not be indexed
-Disallow: /assessment/thank-you
-Disallow: /psd-assessment/thank-you
+Disallow: /assessment-thankyou
+Disallow: /psd-assessment-thankyou
 
 # Block admin, provider, and customer-private pages
 Disallow: /admin-orders

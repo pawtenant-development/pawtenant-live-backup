@@ -3,8 +3,10 @@ import { useLocation } from "react-router-dom";
 
 const PORTAL_ROUTES = ["/admin", "/provider-portal", "/provider-login", "/my-orders", "/customer-login"];
 
-// Height of the sticky CTA bar (px) — enough for button + safe area
-const STICKY_BAR_HEIGHT = 72;
+// Height of the sticky CTA bar (px) — 104px safely covers the button
+// height (~50px) + top padding (~12px) + iPhone safe-area-inset-bottom
+// (~34px on Face ID iPhones) so the chat bubble never clips the CTA.
+const STICKY_BAR_HEIGHT = 104;
 const BUTTON_SIZE = 52;
 
 // Selectors for the Readdy AI widget floating button — hide it on mobile

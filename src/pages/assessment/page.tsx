@@ -7,10 +7,12 @@ import Step3Checkout, { type Step3Data } from "./components/Step3Checkout";
 import ExitIntentOverlay from "./components/ExitIntentOverlay";
 import WhatHappensNext from "./components/WhatHappensNext";
 import LiveStatusBanner from "./components/LiveStatusBanner";
-import DiscountPopup from "../../components/feature/DiscountPopup";
+import AssessmentSupportWidget from "./components/AssessmentSupportWidget";
+
 import { getDoctorsForState, ALL_STATES } from "../../mocks/doctors";
 import { supabase } from "../../lib/supabaseClient";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
+import { fireMetaPurchase, fireLead, fireInitiateCheckout } from "@/lib/metaPixel";
 
 const defaultStep1: Step1Data = {
   emotionalFrequency: "",
@@ -42,6 +44,37 @@ const defaultStep2: Step2Data = {
   additionalDocs: undefined,
 };
 
+// ─── Test / Dev prefill data ──────────────────────────────────────────────────
+const testStep1: Step1Data = {
+  emotionalFrequency: "daily",
+  conditions: ["anxiety", "depression"],
+  lifeChangeStress: "yes",
+  challengeDuration: "more-than-1-year",
+  dailyImpact: "moderate",
+  sleepQuality: "poor",
+  socialFunctioning: "somewhat-impaired",
+  medication: "no",
+  medicationDetails: "",
+  priorDiagnosis: "yes",
+  specificDiagnosis: "Generalized Anxiety Disorder",
+  currentTreatment: "yes",
+  treatmentDetails: "Weekly therapy sessions",
+  symptomDescription: "I experience persistent anxiety that significantly impacts my daily functioning and ability to maintain stable housing.",
+  housingType: "apartment",
+};
+
+const testStep2: Step2Data = {
+  firstName: "Alex",
+  lastName: "TestUser",
+  email: "test@pawtenant.com",
+  phone: "5551234567",
+  dob: "1990-06-15",
+  state: "TX",
+  pets: [{ name: "Buddy", age: "3", breed: "Golden Retriever", type: "dog", weight: "65" }],
+  deliverySpeed: "2-3days",
+  additionalDocs: undefined,
+};
+
 const defaultStep3: Step3Data = {
   selectedDoctorId: "",
   plan: "one-time",
@@ -58,12 +91,7 @@ declare global {
   }
 }
 
-function fireFacebookPixel(price: number) {
-  if (typeof window.fbq === "function") {
-    window.fbq("track", "Purchase", { value: price, currency: "USD", content_name: "ESA Letter Assessment" });
-    window.fbq("track", "Lead");
-  }
-}
+// fireMetaPurchase, fireLead, fireInitiateCheckout are imported from @/lib/metaPixel
 
 /**
  * Fires Google Ads begin_checkout remarketing event when the user
@@ -129,82 +157,9 @@ const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
 const ESA_LETTER_URL = `${SUPABASE_URL}/functions/v1/generate-esa-letter`;
 
-const GOOGLE_SHEETS_WEBHOOK_URL =
-  "https://script.google.com/macros/s/AKfycbx04WIFe4-Fg2GqofuS9lrNWuFcA-IUNtQ_gK07x7Uz8Mjtk4ZTGBmSnSYfKki7NJrfIg/exec";
-
-const SHEETS_SECRET = "pt-esa-2026-xK9m";
-
-/**
- * Sends lead data to Google Sheets.
- * Columns: Timestamp | Confirmation ID | First Name | Last Name |
- * Email | Phone | State | Letter Type | Order Status |
- * Payment Status | Landing URL | Traffic Source | Ref
- */
-async function fireGoogleSheetsWebhook(
-  step2: Step2Data,
-  confirmationId: string,
-  ref: string = "",
-) {
-  if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
-  try {
-    const source = getTrafficSource();
-    const payload = {
-      secret: SHEETS_SECRET,
-      action: "lead",
-      timestamp: new Date().toISOString(),
-      confirmationId,
-      firstName: step2.firstName,
-      lastName: step2.lastName,
-      email: step2.email,
-      phone: step2.phone,
-      state: ALL_STATES.find((s) => s.code === step2.state)?.name ?? step2.state,
-      letterType: "ESA",
-      orderStatus: "Lead – Checkout Not Completed",
-      paymentStatus: "Unpaid",
-      landingUrl: getLandingUrl(),
-      // If ?ref= is present, show it prominently so you can sort/filter by source
-      trafficSource: ref ? `${ref} (${source})` : source,
-      ref,
-    };
-    await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    // Silently fail — never block user flow
-  }
-}
-
-/**
- * Fires after successful payment to update the Google Sheet row
- * with order status and payment status.
- */
-async function fireGoogleSheetsPaymentUpdate(opts: {
-  confirmationId: string;
-  orderStatus: string;
-  paymentStatus: string;
-}) {
-  if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
-  try {
-    const payload = {
-      secret: SHEETS_SECRET,
-      action: "payment_update",
-      confirmationId: opts.confirmationId,
-      orderStatus: opts.orderStatus,
-      paymentStatus: opts.paymentStatus,
-    };
-    await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    // Silently fail
-  }
-}
+// REMOVED: GOOGLE_SHEETS_WEBHOOK_URL and SHEETS_SECRET removed from the browser bundle.
+// All Sheets syncing is handled exclusively by the sync-to-sheets edge function
+// via triggerSheetsFullSync(), which is already called after every lead save and payment.
 
 /**
  * Triggers a full sync of all DB orders to Google Sheets (fire-and-forget).
@@ -245,7 +200,7 @@ async function fireGHLEarlyLead(step1: Step1Data, step2: Step2Data, confirmation
         phone: step2.phone,
         dateOfBirth: step2.dob,
         state: step2.state,
-        leadStatus: "Incomplete – Abandoned at Checkout",
+        leadStatus: "Incomplete \u2013 Abandoned at Checkout",
         confirmationId,
         numberOfPets: step2.pets.length,
         pets: step2.pets.map((p, i) => ({
@@ -259,7 +214,7 @@ async function fireGHLEarlyLead(step1: Step1Data, step2: Step2Data, confirmation
         mentalHealthConditions: step1.conditions.join(", "),
         lifeChangeStress: step1.lifeChangeStress,
         housingType: step1.housingType,
-        leadSource: "ESA Assessment Form – Step 2 Submitted",
+        leadSource: "ESA Assessment Form \u2013 Step 2 Submitted",
         landingUrl: getLandingUrl(),
         trafficSource: getTrafficSource(),
         submittedAt: new Date().toISOString(),
@@ -296,7 +251,7 @@ async function fireGHLFinalLead(
         phone: step2.phone,
         dateOfBirth: step2.dob,
         state: step2.state,
-        leadStatus: "Paid – Order Completed",
+        leadStatus: "Paid \u2013 Order Completed",
         confirmationId,
         orderTotal: price,
         deliverySpeed: step2.deliverySpeed,
@@ -328,7 +283,7 @@ async function fireGHLFinalLead(
         medication: step1.medication,
         medicationDetails: step1.medicationDetails,
         housingType: step1.housingType,
-        leadSource: "ESA Assessment Form – Paid",
+        leadSource: "ESA Assessment Form \u2013 Paid",
         landingUrl: getLandingUrl(),
         trafficSource: getTrafficSource(),
         submittedAt: new Date().toISOString(),
@@ -346,13 +301,15 @@ async function fireGHLFinalLead(
   }
 }
 
-// ─── Main Assessment Page ─────────────────────────────────────────────────────
+// ── Main Assessment Page ─────────────────────────────────────────────────────
 
 export default function AssessmentPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const preSelectedDoctorId = searchParams.get("doctor") ?? "";
   const resumeConfirmationId = searchParams.get("resume") ?? "";
+  // Pre-select state from ?state=CA param (used by state landing pages + ad campaigns)
+  const preSelectedState = searchParams.get("state") ?? "";
 
   // ── Referral + traffic source tracking ───────────────────────────────────
   // ?ref= accepts ANY value — ?ref=fb-june-promo, ?ref=google-brand, etc.
@@ -366,17 +323,16 @@ export default function AssessmentPage() {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [step1, setStep1] = useState<Step1Data>(defaultStep1);
-  const [step2, setStep2] = useState<Step2Data>(defaultStep2);
+  const [step2, setStep2] = useState<Step2Data>({ ...defaultStep2, state: preSelectedState });
   const [step3, setStep3] = useState<Step3Data>({ selectedDoctorId: preSelectedDoctorId, plan: "one-time" });
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [paymentError, setPaymentError] = useState("");
-  const [resolvedPriceCents, setResolvedPriceCents] = useState<number | null>(null);
+  const [stripeClientSecret, setStripeClientSecret] = useState("");
   const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
   const [resumeNotFound, setResumeNotFound] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
-  const [resolvedBasePriceCents, setResolvedBasePriceCents] = useState<number | null>(null);
+  const isTestMode = searchParams.get("testCheckout") === "1";
+  // Stripe removed - payment processing disabled
 
   // Generate once per session
   const confirmationId = useRef(`PT-${Date.now().toString(36).toUpperCase()}`);
@@ -397,28 +353,11 @@ export default function AssessmentPage() {
     step1.housingType,
   ].filter(Boolean).length;
 
-  // Fixed indicator height measurement — ResizeObserver handles dynamic updates
-  const indicatorRef = useRef<HTMLDivElement>(null);
-  const [indicatorHeight, setIndicatorHeight] = useState(0);
-
   // ── Subscription cleanup refs ─────────────────────────────────────────────
   // Track the current subscription ID so we can cancel it if the user
   // changes plan before paying, preventing "Incomplete" subscriptions piling up.
   const subscriptionIdRef = useRef<string | null>(null);
   const paymentCompletedRef = useRef(false);
-
-  useEffect(() => {
-    if (!indicatorRef.current) return;
-    const update = () => {
-      if (indicatorRef.current) setIndicatorHeight(indicatorRef.current.offsetHeight);
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(indicatorRef.current);
-    return () => observer.disconnect();
-  // ResizeObserver handles all dynamic size changes — no extra deps needed
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Resume flow: if ?resume=CONFIRMATION_ID, pre-fill and jump to step 3 ──
   useEffect(() => {
@@ -482,7 +421,7 @@ export default function AssessmentPage() {
           housingType: (answers.housingType as string) ?? "",
         });
 
-        setStep2({
+        const loadedStep2: Step2Data = {
           firstName: (data.first_name as string) ?? "",
           lastName: (data.last_name as string) ?? "",
           email: (data.email as string) ?? "",
@@ -492,12 +431,15 @@ export default function AssessmentPage() {
           pets: (answers.pets as Step2Data["pets"]) ?? [{ name: "", age: "", breed: "", type: "", weight: "" }],
           deliverySpeed: (data.delivery_speed as string) ?? "",
           additionalDocs: (answers.additionalDocs as Step2Data["additionalDocs"]) ?? undefined,
-        });
+        };
+        setStep2(loadedStep2);
 
         // Use the existing confirmation ID so payment upserts the right row
         confirmationId.current = resumeConfirmationId;
         setCurrentStep(3);
         window.scrollTo({ top: 0, behavior: "smooth" });
+        // Fetch Stripe client_secret immediately for resume flow
+        fetchClientSecret(loadedStep2, resumeConfirmationId);
       } catch {
         setResumeNotFound(true);
       } finally {
@@ -509,133 +451,18 @@ export default function AssessmentPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Auto-initialize payment intent when step 3 loads or plan/addons change ──
+  // Payment processing removed - Stripe integration disabled
+
+  // ── Test / Dev shortcut — ?testCheckout=1 pre-fills all steps and jumps to step 3 ──
   useEffect(() => {
-    if (currentStep !== 3) return;
-    setClientSecret(null);
-    setPaymentError("");
-    setResolvedPriceCents(null);
-    setResolvedBasePriceCents(null);
-
-    const petCount = step2.pets.length;
-    const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
-    const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
-
-    // Count extra documents beyond the standard ESA Letter
-    const additionalDocTypes = (step2.additionalDocs?.types ?? []).filter((t) => t !== "ESA Letter");
-    const additionalDocCount = additionalDocTypes.length;
-
-    // Optimistic local price (cents) used until Stripe responds
-    const is2to3Days = step2.deliverySpeed === "2-3days";
-    const baseEstimate = step3.plan === "subscription" ? 10000 : (is2to3Days ? 9000 : 11500);
-    const estimatedPrice = baseEstimate + additionalDocCount * 3000;
-
-    const pendingOrder = {
-      firstName: step2.firstName,
-      lastName: step2.lastName,
-      email: step2.email,
-      selectedProvider: docName,
-      pricingPlan: is2to3Days ? "Standard" : "Priority 24h",
-      planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
-      deliverySpeed: step2.deliverySpeed,
-      petCount,
-      price: estimatedPrice / 100,
-      confirmationId: confirmationId.current,
-      _step1: step1,
-      _step2: step2,
-      _step3Plan: step3.plan,
-    };
-    sessionStorage.setItem("esa_pending_order", JSON.stringify(pendingOrder));
-
-    const addonServices = step3.addonServices ?? [];
-
-    let cancelled = false;
-    // Capture the subscription ID that was active when this effect started.
-    // We'll pass it to the edge function so it can cancel the old one before
-    // creating a new subscription — prevents "Incomplete" pile-up in Stripe.
-    const prevSubscriptionId = subscriptionIdRef.current;
-
-    const init = async () => {
-      try {
-        const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-        const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
-
-        const res = await fetch(`${supabaseUrl}/functions/v1/create-payment-intent`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-          },
-          body: JSON.stringify({
-            plan: step3.plan,
-            petCount,
-            deliverySpeed: step2.deliverySpeed,
-            email: step2.email,
-            customerName: `${step2.firstName} ${step2.lastName}`,
-            additionalDocCount,
-            addonServices,
-            couponCode: appliedCoupon?.code ?? null,
-            couponDiscount: appliedCoupon?.discount ?? null,
-            // Pass old subscription ID so edge function can cancel it first
-            cancelSubscriptionId: prevSubscriptionId,
-            metadata: {
-              confirmationId: confirmationId.current,
-              firstName: step2.firstName,
-              lastName: step2.lastName,
-              email: step2.email,
-              phone: step2.phone,
-              state: step2.state,
-              selectedProvider: docName,
-              planType: step3.plan,
-              deliverySpeed: step2.deliverySpeed,
-              petCount: String(petCount),
-              additionalDocCount: String(additionalDocCount),
-              addonServices: JSON.stringify(addonServices),
-              ...(appliedCoupon ? { couponCode: appliedCoupon.code, couponDiscount: String(appliedCoupon.discount) } : {}),
-            },
-          }),
-        });
-        const json = await res.json() as { clientSecret?: string; amount?: number; basePriceAmount?: number; priceId?: string; subscriptionId?: string; error?: string };
-        if (!cancelled) {
-          if (json.clientSecret) {
-            setClientSecret(json.clientSecret);
-            // Store the new subscription ID so the next plan change can cancel it
-            subscriptionIdRef.current = json.subscriptionId ?? null;
-            if (json.amount) {
-              setResolvedPriceCents(json.amount);
-              if (json.basePriceAmount) setResolvedBasePriceCents(json.basePriceAmount);
-              // Update sessionStorage with the real price
-              try {
-                const stored = JSON.parse(sessionStorage.getItem("esa_pending_order") ?? "{}");
-                stored.price = json.amount / 100;
-                stored.priceId = json.priceId ?? "";
-                sessionStorage.setItem("esa_pending_order", JSON.stringify(stored));
-              } catch {
-                // ignore
-              }
-            }
-          } else {
-            setCheckoutError(json.error ?? "Failed to initialize payment.");
-          }
-        }
-      } catch (err: unknown) {
-        if (!cancelled) {
-          const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
-          setCheckoutError(msg);
-        }
-      } finally {
-        if (!cancelled) setSubmitting(false);
-      }
-    };
-
-    setSubmitting(true);
-    // Debounce: wait 350ms before firing — prevents rapid plan toggles from
-    // hammering the API and creating duplicate incomplete subscriptions.
-    const timer = setTimeout(() => { init(); }, 350);
-    return () => { cancelled = true; clearTimeout(timer); };
+    if (!isTestMode) return;
+    setStep1(testStep1);
+    setStep2(testStep2);
+    setCurrentStep(3);
+    window.scrollTo(0, 0);
+    fetchClientSecret(testStep2, confirmationId.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, step3.plan, JSON.stringify(step3.addonServices ?? []), appliedCoupon?.code]);
+  }, [isTestMode]);
 
   // ── Cancel orphaned subscription on unmount (if payment never completed) ──
   useEffect(() => {
@@ -655,17 +482,54 @@ export default function AssessmentPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Fetch Stripe client_secret from server ────────────────────────────────
+  // Accepts step2 data directly so it works both from goNext (current state)
+  // and from the resume useEffect (state hasn't updated yet).
+  const fetchClientSecret = async (s2: Step2Data, confId: string) => {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment-intent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({
+          deliverySpeed:  s2.deliverySpeed,
+          email:          s2.email,
+          confirmationId: confId,
+          firstName:      s2.firstName,
+          lastName:       s2.lastName,
+          state:          s2.state,
+        }),
+      });
+      const result = (await res.json()) as { clientSecret?: string; error?: string };
+      if (result.clientSecret) {
+        setStripeClientSecret(result.clientSecret);
+      } else {
+        console.error("[fetchClientSecret] No clientSecret returned:", result.error);
+      }
+    } catch (err) {
+      console.error("[fetchClientSecret] Network error:", err);
+      // Silent — user can still see the loading state; they can call to order
+    }
+  };
+
   // ── Step navigation ────────────────────────────────────────────────────────
   const goNext = async () => {
     if (currentStep === 2) {
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
-      fireGoogleSheetsWebhook(step2, confirmationId.current, tracking.ref);
       // Save lead to Supabase so it appears immediately in the admin portal
       saveLeadToSupabase();
       // Fire begin_checkout for Google Ads "Abandoned Checkout" remarketing audience
       const is2to3Days = step2.deliverySpeed === "2-3days";
-      fireGoogleAdsBeginCheckout(is2to3Days ? 90 : 115);
+      fireGoogleAdsBeginCheckout(is2to3Days ? 100 : 115);
+      // Facebook Pixel: Lead (personal info collected) + InitiateCheckout (entering payment)
+      fireLead();
+      fireInitiateCheckout({ value: is2to3Days ? 100 : 115, content_name: "ESA Letter Checkout" });
+      // Fetch Stripe client_secret so the payment form is ready when step 3 loads
+      fetchClientSecret(step2, confirmationId.current);
     }
     setCurrentStep((s) => s + 1);
     // Use instant scroll for reliable cross-browser / iOS mobile behaviour
@@ -675,10 +539,7 @@ export default function AssessmentPage() {
   };
 
   const goBack = () => {
-    setClientSecret(null);
-    setPaymentError("");
-    setResolvedPriceCents(null);
-    setResolvedBasePriceCents(null);
+    // Stripe removed - cleanup not needed
     setCurrentStep((s) => s - 1);
     window.scrollTo(0, 0);
     document.documentElement.scrollTop = 0;
@@ -689,7 +550,7 @@ export default function AssessmentPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     setCheckoutError("");
-    setPaymentError("");
+    // Stripe removed
     const petCount = step2.pets.length;
     const is2to3Days = step2.deliverySpeed === "2-3days";
     const additionalDocTypes = (step2.additionalDocs?.types ?? []).filter((t) => t !== "ESA Letter");
@@ -748,13 +609,8 @@ export default function AssessmentPage() {
           },
         }),
       });
-      const json = await res.json() as { clientSecret?: string; amount?: number; priceId?: string; error?: string };
-      if (json.clientSecret) {
-        setClientSecret(json.clientSecret);
-        if (json.amount) setResolvedPriceCents(json.amount);
-      } else {
-        throw new Error(json.error ?? "Failed to initialize payment.");
-      }
+      // Stripe create-payment-intent removed
+      throw new Error("Payment processing temporarily unavailable.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
       setCheckoutError(msg);
@@ -849,44 +705,84 @@ export default function AssessmentPage() {
     triggerSheetsFullSync();
   };
 
-  /** Save order to Supabase after successful payment — upserts the existing lead record */
+  /**
+   * Save order to Supabase after successful payment.
+   * Uses the get-resume-order edge function (service role) to GUARANTEE
+   * the write bypasses RLS — anon client upserts fail silently when
+   * user_id is null and RLS requires auth.uid() = user_id.
+   */
   const saveOrderToSupabase = async (price: number, docName: string, paymentIntentId?: string, paymentMethod?: string) => {
+    const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+    const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+    const paidAt = new Date().toISOString();
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from("orders").upsert({
-        user_id: user?.id ?? null,
-        confirmation_id: confirmationId.current,
-        email: step2.email,
-        first_name: step2.firstName,
-        last_name: step2.lastName,
-        state: step2.state,
-        phone: step2.phone,
-        selected_provider: docName,
-        plan_type: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
-        delivery_speed: step2.deliverySpeed,
-        price,
-        payment_intent_id: paymentIntentId ?? null,
-        payment_method: paymentMethod ?? null,
-        letter_type: "esa",
-        referred_by: referredBy,
-        additional_documents_requested: step2.additionalDocs ?? null,
-        addon_services: (step3.addonServices ?? []).length > 0 ? step3.addonServices : null,
-        // IMPORTANT: always include pets, dob and additionalDocs so the
-        // payment upsert doesn't overwrite the full assessment saved at lead time.
-        assessment_answers: {
-          ...step1,
-          pets: step2.pets,
-          dob: step2.dob,
-          additionalDocs: step2.additionalDocs ?? null,
+      const res = await fetch(`${supabaseUrl}/functions/v1/get-resume-order`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
         },
-        letter_url: null,
-        status: "processing",
-      }, { onConflict: "confirmation_id", ignoreDuplicates: false });
-      if (error) {
-        console.error("[saveOrderToSupabase] Upsert failed:", error.message, error.details, error.hint);
+        body: JSON.stringify({
+          action: "upsert",
+          confirmationId: confirmationId.current,
+          email: step2.email,
+          firstName: step2.firstName,
+          lastName: step2.lastName,
+          state: step2.state,
+          phone: step2.phone,
+          deliverySpeed: step2.deliverySpeed,
+          letterType: "esa",
+          status: "processing",
+          price,
+          paymentIntentId: paymentIntentId ?? null,
+          paymentMethod: paymentMethod ?? null,
+          paidAt,
+          selectedProvider: docName,
+          planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
+          addonServices: (step3.addonServices ?? []).length > 0 ? step3.addonServices : null,
+          referredBy: referredBy ?? "",
+          gclid: sessionStorage.getItem("gclid") ?? null,
+          fbclid: sessionStorage.getItem("fbclid") ?? null,
+          utmSource: sessionStorage.getItem("utm_source") ?? null,
+          utmMedium: sessionStorage.getItem("utm_medium") ?? null,
+          utmCampaign: sessionStorage.getItem("utm_campaign") ?? null,
+          utmTerm: sessionStorage.getItem("utm_term") ?? null,
+          utmContent: sessionStorage.getItem("utm_content") ?? null,
+          landingUrl: sessionStorage.getItem("landing_url") ?? null,
+          attributionJson: {
+            gclid: sessionStorage.getItem("gclid"),
+            fbclid: sessionStorage.getItem("fbclid"),
+            utm_source: sessionStorage.getItem("utm_source"),
+            utm_medium: sessionStorage.getItem("utm_medium"),
+            utm_campaign: sessionStorage.getItem("utm_campaign"),
+            utm_term: sessionStorage.getItem("utm_term"),
+            utm_content: sessionStorage.getItem("utm_content"),
+            referrer: sessionStorage.getItem("referrer"),
+            landing_url: sessionStorage.getItem("landing_url"),
+            ref: tracking.ref || null,
+            captured_at: paidAt,
+          },
+          // Always include pets, dob and additionalDocs so the
+          // payment upsert doesn't overwrite the full assessment saved at lead time.
+          assessmentAnswers: {
+            ...step1,
+            pets: step2.pets,
+            dob: step2.dob,
+            additionalDocs: step2.additionalDocs ?? null,
+          },
+        }),
+      });
+
+      const result = await res.json() as { ok: boolean; error?: string };
+      if (!result.ok) {
+        console.error("[saveOrderToSupabase] Edge function upsert failed:", result.error);
+      } else {
+        console.info("[saveOrderToSupabase] ✓ Payment record saved via service role");
       }
     } catch (err) {
-      console.error("[saveOrderToSupabase] Unexpected error:", err);
+      console.error("[saveOrderToSupabase] Network error:", err);
     }
   };
 
@@ -911,15 +807,41 @@ export default function AssessmentPage() {
     });
   };
 
+  /**
+   * Called before Stripe Checkout redirect (Klarna / QR).
+   * Stores the pending order in sessionStorage so the thank-you page can
+   * fire GHL, Meta Pixel, PDF generation, etc. on return.
+   */
+  const handleBeforeRedirect = () => {
+    const is2to3Days = step2.deliverySpeed === "2-3days";
+    const price = is2to3Days ? 100 : 115;
+    const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
+    const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
+
+    const pendingOrder = {
+      firstName:        step2.firstName,
+      lastName:         step2.lastName,
+      email:            step2.email,
+      selectedProvider: docName,
+      pricingPlan:      is2to3Days ? "Standard ($100)" : "Priority ($115)",
+      planType:         "One-Time Purchase",
+      deliverySpeed:    step2.deliverySpeed,
+      price,
+      confirmationId:   confirmationId.current,
+      _step1:           step1 as Record<string, unknown>,
+      _step2:           step2 as Record<string, unknown>,
+      _step3Plan:       step3.plan,
+    };
+    sessionStorage.setItem("esa_pending_order", JSON.stringify(pendingOrder));
+  };
+
   /** Called when Stripe confirms payment successfully (inline card) */
   const handlePaymentSuccess = async (paymentIntentId: string) => {
     paymentCompletedRef.current = true; // prevent unmount cleanup from cancelling the subscription
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
     // Use real price from Stripe; fall back to local estimate
     const is2to3Days = step2.deliverySpeed === "2-3days";
-    const price = resolvedPriceCents != null
-      ? resolvedPriceCents / 100
-      : (step3.plan === "subscription" ? 100 : (is2to3Days ? 90 : 115));
+    const price = is2to3Days ? 100 : 115;
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
 
     // Read payment method stored in session storage by Step3Checkout
@@ -930,17 +852,13 @@ export default function AssessmentPage() {
     })();
 
     sessionStorage.setItem("esa_payment_success", "true");
-    fireFacebookPixel(price);
+    fireMetaPurchase({ value: price, confirmationId: confirmationId.current, email: step2.email, contentName: "ESA Letter" });
     // NOTE: Google Ads conversion fires on the thank-you page via its own useEffect
     // using the real label AW-11509262282/Va-eCP6ZvpEcEMrPhfAq — do NOT fire here
     fireGHLFinalLead(step1, step2, step3, docName, price, confirmationId.current);
 
-    // Update Google Sheets with confirmed order + payment status
-    fireGoogleSheetsPaymentUpdate({
-      confirmationId: confirmationId.current,
-      orderStatus: "Processing – Pending Review",
-      paymentStatus: "Paid",
-    });
+    // Update Google Sheets with confirmed order + payment status (via edge function sync)
+    // triggerSheetsFullSync() below handles this automatically after the order is saved.
 
     // Await order save so assign-doctor and generate-esa-letter can find the row immediately
     await saveOrderToSupabase(price, docName, paymentIntentId, paymentMethod);
@@ -976,20 +894,10 @@ export default function AssessmentPage() {
     // Trigger PDF generation (fire-and-forget — user navigates away)
     triggerEsaLetterGeneration(confirmationId.current);
 
-    console.log("[Assessment] navigate → /assessment/thank-you", {
-      amount: price,
-      order_id: paymentIntentId,
-      resolvedPriceCents,
-      rawPrice: price,
-      paymentIntentId,
-      urlWillBe: `/assessment/thank-you?amount=${price}&order_id=${paymentIntentId}`,
-    });
     navigate(`/assessment/thank-you?amount=${price}&order_id=${paymentIntentId}`);
   };
 
-  const handlePaymentError = (error: string) => {
-    setPaymentError(error);
-  };
+  // Stripe payment error handler removed
 
   const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
   const docDisplayName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
@@ -1010,7 +918,24 @@ export default function AssessmentPage() {
       <meta name="robots" content="index, follow" />
       <link rel="canonical" href="https://www.pawtenant.com/assessment" />
       {/* Discount popup — only appears on checkout step, 18s delay */}
-      {currentStep === 3 && <DiscountPopup key="checkout-discount" delayMs={18000} />}
+
+
+      {/* Floating support widget — always visible, especially useful on checkout step */}
+      {!resumeLoading && !resumeNotFound && (
+        <AssessmentSupportWidget currentStep={currentStep} />
+      )}
+
+      {/* Dev Quick-Test button — jump to checkout with test data instantly */}
+      {!isTestMode && (
+        <a
+          href="/assessment?testCheckout=1"
+          className="fixed bottom-20 right-4 z-40 bg-amber-400 hover:bg-amber-500 text-white text-[10px] font-extrabold px-3 py-2 rounded-xl shadow-md cursor-pointer whitespace-nowrap flex items-center gap-1.5 transition-colors"
+          title="Jump to checkout with test data"
+        >
+          <i className="ri-flask-line text-sm"></i>
+          Test Checkout
+        </a>
+      )}
 
       {/* Exit Intent Overlay */}
       <ExitIntentOverlay
@@ -1045,30 +970,7 @@ export default function AssessmentPage() {
         </div>
       </nav>
 
-      {/* ── FIXED Slim Progress Bar — only the bar + % follows on scroll ── */}
-      {!resumeLoading && !resumeNotFound && (
-        <div
-          ref={indicatorRef}
-          className="fixed top-16 left-0 right-0 z-40 w-full bg-white border-b border-orange-100"
-        >
-          <div className="max-w-6xl mx-auto px-6 py-2.5 flex items-center gap-3">
-            <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-700 ease-out"
-                style={{ width: `${Math.max(getProgressPercent(), 3)}%` }}
-              />
-            </div>
-            <span className="text-xs font-bold text-orange-500 whitespace-nowrap">
-              {getProgressPercent()}% complete
-            </span>
-          </div>
-        </div>
-      )}
 
-      {/* Spacer that matches the fixed band height so content isn't hidden behind it */}
-      {!resumeLoading && !resumeNotFound && (
-        <div style={{ height: indicatorHeight }} aria-hidden="true" />
-      )}
 
       {/* Content */}
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-10">
@@ -1101,14 +1003,14 @@ export default function AssessmentPage() {
               <p className="text-orange-500 text-xs font-bold tracking-widest uppercase mb-2">ESA Assessment</p>
               {resumeConfirmationId && currentStep === 3 ? (
                 <>
-                  <h1 className="text-3xl font-extrabold text-gray-900">Complete Your Payment</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Complete Your Payment</h1>
                   <div className="mt-3 inline-flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-full px-4 py-2">
                     <i className="ri-save-3-line text-orange-500 text-sm"></i>
                     <span className="text-sm font-semibold text-orange-700">Your assessment answers have been restored</span>
                   </div>
                 </>
               ) : (
-                <h1 className="text-3xl font-extrabold text-gray-900">Get Your ESA Letter</h1>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Get Your ESA Letter</h1>
               )}
             </div>
 
@@ -1121,6 +1023,27 @@ export default function AssessmentPage() {
 
             {/* Live status banner — only show on Step 1 to keep checkout focused */}
             {currentStep === 1 && <LiveStatusBanner />}
+
+            {/* Test mode banner */}
+            {isTestMode && (
+              <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-6 h-6 flex items-center justify-center bg-amber-200 rounded-lg flex-shrink-0">
+                    <i className="ri-flask-line text-amber-700 text-sm"></i>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-extrabold text-amber-800">Test Mode Active</p>
+                    <p className="text-[10px] text-amber-600">Pre-filled with test data · Alex TestUser · TX · Buddy</p>
+                  </div>
+                </div>
+                <a
+                  href="/assessment"
+                  className="whitespace-nowrap text-[10px] font-bold text-amber-700 hover:text-amber-900 border border-amber-300 rounded-lg px-2.5 py-1.5 bg-white transition-colors cursor-pointer flex-shrink-0"
+                >
+                  Exit Test
+                </a>
+              </div>
+            )}
 
             {/* Checkout error banner */}
             {checkoutError && (
@@ -1153,15 +1076,13 @@ export default function AssessmentPage() {
                   onBack={goBack}
                   submitting={submitting}
                   preSelectedDoctorId={preSelectedDoctorId}
-                  clientSecret={clientSecret}
-                  paymentError={paymentError}
+                  stripeClientSecret={stripeClientSecret}
                   onPaymentSuccess={handlePaymentSuccess}
-                  onPaymentError={handlePaymentError}
-                  resolvedPriceCents={resolvedPriceCents}
-                  resolvedBasePriceCents={resolvedBasePriceCents}
                   confirmationId={confirmationId.current}
                   onCouponApplied={setAppliedCoupon}
                   appliedCoupon={appliedCoupon}
+                  petCount={step2.pets.length}
+                  onBeforeRedirect={handleBeforeRedirect}
                 />
               )}
             </div>
@@ -1169,23 +1090,7 @@ export default function AssessmentPage() {
             {/* What Happens Next timeline */}
             <WhatHappensNext />
 
-            {/* Trust Footer */}
-            <div className="mt-10 flex flex-wrap justify-center gap-6 text-xs text-gray-400">
-              {[
-                { icon: "ri-shield-check-line", label: "HIPAA Compliant" },
-                { icon: "ri-lock-line", label: "256-bit SSL Encrypted" },
-                { icon: "ri-award-line", label: "Licensed Professionals" },
-                { icon: "ri-refund-2-line", label: "Money-Back Guarantee" },
-                { icon: "ri-eye-off-line", label: "Information Confidential" },
-              ].map((t) => (
-                <div key={t.label} className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 flex items-center justify-center">
-                    <i className={`${t.icon} text-orange-400`}></i>
-                  </div>
-                  {t.label}
-                </div>
-              ))}
-            </div>
+
           </>
         )}
       </div>

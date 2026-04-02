@@ -30,45 +30,42 @@ function escapeHtml(value = "") {
     .replace(/'/g, "&#39;");
 }
 
-// ── Resend helper ──────────────────────────────────────────────────────────
-
 async function sendViaResend(opts: {
   to: string;
   subject: string;
   html: string;
-}): Promise<boolean> {
+  tags?: Array<{ name: string; value: string }>;
+}): Promise<{ sent: boolean; resendId?: string; error?: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) {
     console.error("[resend-confirmation] RESEND_API_KEY secret is not set");
-    return false;
+    return { sent: false, error: "RESEND_API_KEY not configured" };
   }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: FROM_ADDRESS,
         to: [opts.to],
         subject: opts.subject,
         html: opts.html,
+        ...(opts.tags ? { tags: opts.tags } : {}),
       }),
     });
     if (!res.ok) {
       const errBody = await res.text();
       console.error(`[resend-confirmation] Resend error ${res.status}: ${errBody}`);
-      return false;
+      return { sent: false, error: `Resend ${res.status}: ${errBody}` };
     }
-    return true;
+    const data = await res.json() as { id?: string };
+    return { sent: true, resendId: data.id };
   } catch (err) {
-    console.error("[resend-confirmation] Resend fetch error:", err);
-    return false;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[resend-confirmation] fetch error:", msg);
+    return { sent: false, error: msg };
   }
 }
-
-// ── Template helpers ──────────────────────────────────────────────────────
 
 function baseLayout(badge: string, heading: string, subheading: string, body: string): string {
   return `<!DOCTYPE html>
@@ -86,9 +83,7 @@ function baseLayout(badge: string, heading: string, subheading: string, body: st
           <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.75);">${subheading}</p>
         </td>
       </tr>
-      <tr>
-        <td style="padding:32px;">${body}</td>
-      </tr>
+      <tr><td style="padding:32px;">${body}</td></tr>
       <tr>
         <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
           <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
@@ -183,30 +178,30 @@ function buildConfirmationEmail(opts: {
     ])}
     ${ctaButton(PORTAL_URL, "Track My Order")}
     <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">
-      You don&rsquo;t need to do anything right now. We&rsquo;ll send you another email the moment your documents are ready. In the meantime, you can check your order status anytime in your portal.
+      You don&rsquo;t need to do anything right now. We&rsquo;ll send you another email the moment your documents are ready.
     </p>`;
 
   return baseLayout("Order Confirmed", "Your order is confirmed!", "We've received your payment and your case is now under review.", body);
 }
 
+type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean; error?: string; resendId?: string };
+
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
-
-type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  let body: { confirmationId?: string };
+  let body: { confirmationId?: string; force?: boolean };
   try {
-    body = await req.json() as { confirmationId?: string };
+    body = await req.json() as { confirmationId?: string; force?: boolean };
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  const { confirmationId } = body;
+  const { confirmationId, force = false } = body;
   if (!confirmationId) return json({ error: "confirmationId is required" }, 400);
 
   const supabase = createClient(
@@ -216,7 +211,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: order, error: orderErr } = await supabase
     .from("orders")
-    .select("id, confirmation_id, email, first_name, last_name, state, plan_type, delivery_speed, price, payment_intent_id, email_log, coupon_code, coupon_discount")
+    .select("id, confirmation_id, email, first_name, last_name, state, plan_type, delivery_speed, price, payment_intent_id, email_log, coupon_code, coupon_discount, status")
     .eq("confirmation_id", confirmationId)
     .maybeSingle();
 
@@ -227,6 +222,14 @@ Deno.serve(async (req: Request) => {
   const email = order.email as string;
   if (!email) return json({ ok: false, error: "Order has no email address" }, 400);
 
+  // ── Idempotency check — skip if already sent successfully (unless force=true) ──
+  const currentLog: EmailLogEntry[] = (order.email_log as EmailLogEntry[]) ?? [];
+  const alreadySent = currentLog.some((e) => e.type === "order_confirmation" && e.success === true);
+  if (alreadySent && !force) {
+    return json({ ok: true, emailSent: false, skipped: true, reason: "Confirmation email already sent", to: email });
+  }
+
+  // ── Fetch Stripe receipt URL ──
   let receiptUrl = "";
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
   if (stripeKey && order.payment_intent_id) {
@@ -239,7 +242,7 @@ Deno.serve(async (req: Request) => {
         receiptUrl = charge.receipt_url ?? "";
       }
     } catch (err) {
-      console.warn(`[RESEND-CONFIRM] Could not fetch Stripe receipt: ${err}`);
+      console.warn(`[resend-confirmation] Could not fetch Stripe receipt: ${err}`);
     }
   }
 
@@ -248,7 +251,7 @@ Deno.serve(async (req: Request) => {
     firstName: (order.first_name as string) || "",
     confirmationId: order.confirmation_id as string,
     state: (order.state as string) || "",
-    planType: (order.plan_type as string) || "",
+    planType: (order.plan_type as string) || "One-Time Purchase",
     deliverySpeed: (order.delivery_speed as string) || "",
     formattedPrice: `$${priceInDollars.toFixed(2)}`,
     receiptUrl,
@@ -256,36 +259,42 @@ Deno.serve(async (req: Request) => {
     couponDiscount: order.coupon_discount as number | null,
   });
 
-  let sent = false;
+  let result = { sent: false, error: "Not attempted" };
   let attempt = 0;
-  let lastError = "";
 
-  while (attempt < 3 && !sent) {
-    try {
-      sent = await sendViaResend({ to: email, subject: `Order Confirmed — ${confirmationId}`, html });
-      if (!sent) throw new Error("Resend returned non-ok response");
-    } catch (err: unknown) {
+  while (attempt < 3 && !result.sent) {
+    result = await sendViaResend({
+      to: email,
+      subject: `Order Confirmed — ${confirmationId}`,
+      html,
+      tags: [
+        { name: "confirmation_id", value: confirmationId },
+        { name: "email_type", value: "order_confirmation" },
+      ],
+    });
+    if (!result.sent) {
       attempt++;
-      lastError = err instanceof Error ? err.message : String(err);
-      console.error(`[RESEND-CONFIRM] Attempt ${attempt} failed: ${lastError}`);
+      console.error(`[resend-confirmation] Attempt ${attempt} failed: ${result.error}`);
       if (attempt < 3) await sleep(attempt * 2000);
     }
   }
 
-  const currentLog: EmailLogEntry[] = (order.email_log as EmailLogEntry[]) ?? [];
+  // ── Log the attempt ──
   const newEntry: EmailLogEntry = {
     type: "order_confirmation",
     sentAt: new Date().toISOString(),
     to: email,
-    success: sent,
+    success: result.sent,
+    ...(result.error && !result.sent ? { error: result.error } : {}),
+    ...(result.resendId ? { resendId: result.resendId } : {}),
   };
   await supabase
     .from("orders")
     .update({ email_log: [...currentLog, newEntry] })
     .eq("confirmation_id", confirmationId);
 
-  if (!sent) {
-    return json({ ok: false, error: `Failed after 3 attempts: ${lastError}` }, 500);
+  if (!result.sent) {
+    return json({ ok: false, error: `Failed after 3 attempts: ${result.error}` }, 500);
   }
 
   return json({ ok: true, emailSent: true, to: email });

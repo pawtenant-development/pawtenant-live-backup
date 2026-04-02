@@ -23,6 +23,11 @@ const STATE_NAMES: Record<string, string> = {
 interface PSDAnswers {
   dogTasks?: string[];
   taskTraining?: string;
+  taskDescription?: string;
+  taskReliability?: string;
+  taskPublicAccess?: string;
+  taskEvidenceUrl?: string;
+  taskEvidenceType?: string;
   dogDuration?: string;
   emotionalFrequency?: string;
   conditions?: string[];
@@ -62,6 +67,20 @@ const TASK_TRAINING_LABELS: Record<string, string> = {
   owner_trained: "Owner-trained (self-trained with the dog)",
   mixed: "Mix of professional and owner training",
   in_training: "Currently in training",
+};
+
+const TASK_RELIABILITY_LABELS: Record<string, string> = {
+  very_reliable: "Very reliably — performs the task consistently every time",
+  mostly_reliable: "Mostly reliably — performs the task most of the time",
+  inconsistent: "Sometimes — still learning, performs inconsistently",
+  in_training: "Still in early training — not yet reliable",
+};
+
+const TASK_PUBLIC_ACCESS_LABELS: Record<string, string> = {
+  yes: "Yes — well-behaved and under control in public",
+  mostly: "Mostly — minor issues but generally manageable",
+  training: "Working on it — still training for public access",
+  no: "No — not yet ready for public access",
 };
 
 const DURATION_LABELS: Record<string, string> = {
@@ -377,6 +396,133 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
         </div>
       </div>
 
+      {/* ── Section 2b — Task Training Details (new ADA fields) ───────────── */}
+      {(a.taskDescription || a.taskReliability || a.taskPublicAccess || a.taskEvidenceUrl) && (
+        <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+          <div className="px-5 py-3.5 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+            <div className="w-7 h-7 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
+              <i className="ri-shield-star-line text-amber-600 text-sm"></i>
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-extrabold text-amber-900 uppercase tracking-wider">ADA Task Training Details</p>
+              <p className="text-xs text-amber-600 mt-0.5">Provider-reviewed task description, reliability, and public access behavior</p>
+            </div>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-600 text-white rounded-full text-xs font-extrabold flex-shrink-0">
+              <i className="ri-service-line" style={{ fontSize: "10px" }}></i>ADA
+            </span>
+          </div>
+
+          <div className="p-5 space-y-5">
+            {/* Task description */}
+            {a.taskDescription && (
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <i className="ri-file-text-line text-amber-500"></i>Step-by-Step Task Description
+                </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{a.taskDescription}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Reliability + Public Access side by side */}
+            {(a.taskReliability || a.taskPublicAccess) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {a.taskReliability && (
+                  <div className={`rounded-xl border px-4 py-3 ${
+                    a.taskReliability === "very_reliable" ? "bg-green-50 border-green-200" :
+                    a.taskReliability === "mostly_reliable" ? "bg-emerald-50 border-emerald-200" :
+                    a.taskReliability === "inconsistent" ? "bg-amber-50 border-amber-200" :
+                    "bg-red-50 border-red-200"
+                  }`}>
+                    <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                      <i className="ri-bar-chart-line"></i>Task Reliability
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                        a.taskReliability === "very_reliable" ? "bg-green-500" :
+                        a.taskReliability === "mostly_reliable" ? "bg-emerald-500" :
+                        a.taskReliability === "inconsistent" ? "bg-amber-500" :
+                        "bg-red-500"
+                      }`}></div>
+                      <p className={`text-xs font-semibold ${
+                        a.taskReliability === "very_reliable" ? "text-green-800" :
+                        a.taskReliability === "mostly_reliable" ? "text-emerald-800" :
+                        a.taskReliability === "inconsistent" ? "text-amber-800" :
+                        "text-red-800"
+                      }`}>
+                        {TASK_RELIABILITY_LABELS[a.taskReliability] ?? a.taskReliability}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {a.taskPublicAccess && (
+                  <div className={`rounded-xl border px-4 py-3 ${
+                    a.taskPublicAccess === "yes" ? "bg-green-50 border-green-200" :
+                    a.taskPublicAccess === "mostly" ? "bg-emerald-50 border-emerald-200" :
+                    a.taskPublicAccess === "training" ? "bg-amber-50 border-amber-200" :
+                    "bg-red-50 border-red-200"
+                  }`}>
+                    <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                      <i className="ri-store-2-line"></i>Public Access Behavior
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                        a.taskPublicAccess === "yes" ? "bg-green-500" :
+                        a.taskPublicAccess === "mostly" ? "bg-emerald-500" :
+                        a.taskPublicAccess === "training" ? "bg-amber-500" :
+                        "bg-red-500"
+                      }`}></div>
+                      <p className={`text-xs font-semibold ${
+                        a.taskPublicAccess === "yes" ? "text-green-800" :
+                        a.taskPublicAccess === "mostly" ? "text-emerald-800" :
+                        a.taskPublicAccess === "training" ? "text-amber-800" :
+                        "text-red-800"
+                      }`}>
+                        {TASK_PUBLIC_ACCESS_LABELS[a.taskPublicAccess] ?? a.taskPublicAccess}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Task Training Evidence */}
+            {a.taskEvidenceUrl && (
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <i className={`${a.taskEvidenceType === "video" ? "ri-video-line" : a.taskEvidenceType === "photo" ? "ri-image-line" : "ri-links-line"} text-amber-500`}></i>
+                  Task Training Evidence
+                  <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-bold capitalize">
+                    {a.taskEvidenceType || "file"}
+                  </span>
+                </p>
+                <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="w-9 h-9 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
+                    <i className={`${a.taskEvidenceType === "video" ? "ri-video-line" : a.taskEvidenceType === "photo" ? "ri-image-line" : "ri-links-line"} text-amber-600 text-base`}></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-amber-900">
+                      {a.taskEvidenceType === "link" ? "External Link" : a.taskEvidenceType === "video" ? "Video File Attached" : "Photo Attached"}
+                    </p>
+                    <p className="text-xs text-amber-700 truncate mt-0.5">{a.taskEvidenceUrl}</p>
+                  </div>
+                  <a
+                    href={a.taskEvidenceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 cursor-pointer transition-colors flex-shrink-0"
+                  >
+                    <i className="ri-external-link-line"></i>
+                    {a.taskEvidenceType === "video" ? "Watch" : a.taskEvidenceType === "photo" ? "View" : "Open Link"}
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Section 3 — Mental Health ──────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-3.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
@@ -475,6 +621,21 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
               label: "Dog is trained (not in early training stages)",
               pass: a.taskTraining !== "in_training",
               note: TASK_TRAINING_LABELS[a.taskTraining ?? ""] ?? "Training status not provided",
+            },
+            {
+              label: "Step-by-step task description provided",
+              pass: !!a.taskDescription && a.taskDescription.trim().length >= 15,
+              note: a.taskDescription ? `${a.taskDescription.trim().length} characters — ADA task behavior documented` : "No task description provided",
+            },
+            {
+              label: "Dog performs tasks reliably",
+              pass: a.taskReliability === "very_reliable" || a.taskReliability === "mostly_reliable",
+              note: TASK_RELIABILITY_LABELS[a.taskReliability ?? ""] ?? "Reliability not reported",
+            },
+            {
+              label: "Dog is under control in public (ADA public access)",
+              pass: a.taskPublicAccess === "yes" || a.taskPublicAccess === "mostly",
+              note: TASK_PUBLIC_ACCESS_LABELS[a.taskPublicAccess ?? ""] ?? "Public access behavior not reported",
             },
           ].map((item) => (
             <div key={item.label} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${item.pass ? "bg-[#e8f5f1] border-[#b8ddd5]" : "bg-red-50 border-red-200"}`}>

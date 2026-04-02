@@ -7,18 +7,21 @@ interface StepIndicatorProps {
 const STEPS = [
   {
     label: "Assessment",
+    mobileLabel: "Assessment",
     icon: "ri-mental-health-line",
     time: "~2 min",
     completedIcon: "ri-checkbox-circle-fill",
   },
   {
     label: "Your Info",
+    mobileLabel: "Info",
     icon: "ri-user-line",
     time: "~1 min",
     completedIcon: "ri-checkbox-circle-fill",
   },
   {
     label: "Checkout",
+    mobileLabel: "Pay",
     icon: "ri-secure-payment-line",
     time: "~1 min",
     completedIcon: "ri-checkbox-circle-fill",
@@ -31,7 +34,6 @@ function getProgressPercent(
   totalInStep1: number
 ): number {
   if (currentStep === 1) {
-    // 0% → 30% as questions get answered in step 1
     return Math.round((answeredInStep1 / totalInStep1) * 30);
   }
   if (currentStep === 2) return 42;
@@ -87,13 +89,13 @@ export default function StepIndicator({
   return (
     <div className="w-full mb-2">
       {/* Motivational headline */}
-      <div className="text-center mb-4">
-        <p className="text-base font-bold text-gray-900 mb-1">{headline}</p>
-        <p className="text-xs text-gray-500">{sub}</p>
+      <div className="text-center mb-3 sm:mb-4">
+        <p className="text-sm sm:text-base font-bold text-gray-900 mb-0.5 sm:mb-1 px-2">{headline}</p>
+        <p className="text-xs text-gray-500 px-4">{sub}</p>
       </div>
 
       {/* Step pills */}
-      <div className="flex items-center justify-center mb-4">
+      <div className="flex items-center justify-center mb-3 sm:mb-4">
         {STEPS.map((step, idx) => {
           const stepNum = idx + 1;
           const isCompleted = stepNum < currentStep;
@@ -102,9 +104,9 @@ export default function StepIndicator({
           return (
             <div key={step.label} className="flex items-center">
               {/* Step */}
-              <div className="flex flex-col items-center gap-1.5">
+              <div className="flex flex-col items-center gap-1 sm:gap-1.5">
                 <div
-                  className={`w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-full border-2 transition-all duration-300 ${
+                  className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full border-2 transition-all duration-300 ${
                     isCompleted
                       ? "bg-orange-500 border-orange-500 text-white"
                       : isActive
@@ -113,12 +115,13 @@ export default function StepIndicator({
                   }`}
                 >
                   {isCompleted ? (
-                    <i className="ri-check-line text-lg font-bold"></i>
+                    <i className="ri-check-line text-base font-bold"></i>
                   ) : (
-                    <i className={`${step.icon} text-base`}></i>
+                    <i className={`${step.icon} text-sm sm:text-base`}></i>
                   )}
                 </div>
                 <div className="flex flex-col items-center">
+                  {/* Mobile uses shorter label */}
                   <span
                     className={`text-xs font-bold leading-tight ${
                       isActive
@@ -128,7 +131,8 @@ export default function StepIndicator({
                         : "text-gray-400"
                     }`}
                   >
-                    {step.label}
+                    <span className="sm:hidden">{step.mobileLabel}</span>
+                    <span className="hidden sm:inline">{step.label}</span>
                   </span>
                   <span
                     className={`text-xs leading-none mt-0.5 ${
@@ -136,9 +140,9 @@ export default function StepIndicator({
                     }`}
                   >
                     {isCompleted ? (
-                      <span className="text-green-500 font-semibold">Done</span>
+                      <span className="text-green-500 font-semibold text-xs">Done ✓</span>
                     ) : (
-                      step.time
+                      <span className="hidden sm:inline">{step.time}</span>
                     )}
                   </span>
                 </div>
@@ -146,8 +150,8 @@ export default function StepIndicator({
 
               {/* Connector */}
               {idx < STEPS.length - 1 && (
-                <div className="mx-3 sm:mx-5 mb-5 flex-shrink-0">
-                  <div className="w-12 sm:w-16 h-0.5 bg-gray-200 relative overflow-hidden rounded-full">
+                <div className="mx-2 sm:mx-3 md:mx-5 mb-4 sm:mb-5 flex-shrink-0">
+                  <div className="w-8 sm:w-12 md:w-16 h-0.5 bg-gray-200 relative overflow-hidden rounded-full">
                     <div
                       className="absolute inset-y-0 left-0 bg-orange-500 transition-all duration-500"
                       style={{ width: stepNum < currentStep ? "100%" : "0%" }}
@@ -161,7 +165,7 @@ export default function StepIndicator({
       </div>
 
       {/* Overall progress bar */}
-      <div className="bg-gray-100 rounded-full h-2.5 overflow-hidden">
+      <div className="bg-gray-100 rounded-full h-2 sm:h-2.5 overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-700 ease-out"
           style={{ width: `${Math.max(progress, 3)}%` }}

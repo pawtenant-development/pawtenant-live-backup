@@ -41,6 +41,11 @@ function getLandingUrl(): string {
 const DEFAULT_STEP1: PSDStep1Data = {
   dogTasks: [],
   taskTraining: "",
+  taskDescription: "",
+  taskReliability: "",
+  taskPublicAccess: "",
+  taskEvidenceUrl: "",
+  taskEvidenceType: "",
   dogDuration: "",
   emotionalFrequency: "",
   conditions: [],
@@ -144,6 +149,11 @@ export default function PSDAssessmentPage() {
         setStep1({
           dogTasks: (answers.dogTasks as string[]) ?? [],
           taskTraining: (answers.taskTraining as string) ?? "",
+          taskDescription: (answers.taskDescription as string) ?? "",
+          taskReliability: (answers.taskReliability as string) ?? "",
+          taskPublicAccess: (answers.taskPublicAccess as string) ?? "",
+          taskEvidenceUrl: (answers.taskEvidenceUrl as string) ?? "",
+          taskEvidenceType: (answers.taskEvidenceType as string) ?? "",
           dogDuration: (answers.dogDuration as string) ?? "",
           emotionalFrequency: (answers.emotionalFrequency as string) ?? "",
           conditions: (answers.conditions as string[]) ?? [],

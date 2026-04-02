@@ -8,6 +8,7 @@ export default function AdminLoginPage() {
   const isResetMode = searchParams.get("mode") === "reset";
   const passwordResetSuccess = searchParams.get("passwordReset") === "success";
   const redirectReason = searchParams.get("reason");
+  const nextPath = searchParams.get("next") ?? "/admin-orders";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -78,7 +79,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      navigate("/admin-orders");
+      navigate(nextPath);
     } catch {
       await supabase.auth.signOut();
       setError("Could not verify admin status. Please try again.");

@@ -73,7 +73,7 @@ export default function TopStatesSection() {
           {topStates.map((state) => (
             <Link
               key={state.slug}
-              to={`/esa-letter/${state.slug}`}
+              to={`/esa-letter-${state.slug}`}
               className={`group bg-gradient-to-b ${state.color} rounded-2xl border ${state.border} overflow-hidden transition-all duration-300 cursor-pointer flex flex-col`}
             >
               {/* Image */}

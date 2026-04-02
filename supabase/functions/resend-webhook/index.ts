@@ -1,33 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-// Resend Webhook Handler
-// Receives delivery event notifications from Resend and writes them back to order email_log
-// Supported events: email.sent, email.delivered, email.delivery_delayed, email.bounced, email.complained, email.opened, email.clicked
-//
-// Setup in Resend dashboard:
-// Webhooks → Add Endpoint → URL: https://[your-supabase-url]/functions/v1/resend-webhook
-// Select all email events
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature, webhook-id, webhook-timestamp, webhook-signature",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-interface ResendWebhookPayload {
-  type: string;
-  created_at: string;
-  data: {
-    email_id: string;
-    from: string;
-    to: string[];
-    subject?: string;
-    created_at?: string;
-    tags?: Array<{ name: string; value: string }>;
-    [key: string]: unknown;
-  };
-}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -36,134 +15,155 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// Map Resend event types to human-readable log entry types
-function eventToLogType(resendEvent: string): string {
-  const map: Record<string, string> = {
-    "email.sent":              "resend_sent",
-    "email.delivered":         "resend_delivered",
-    "email.delivery_delayed":  "resend_delivery_delayed",
-    "email.bounced":           "resend_bounced",
-    "email.complained":        "resend_complained",
-    "email.opened":            "resend_opened",
-    "email.clicked":           "resend_clicked",
-  };
-  return map[resendEvent] ?? resendEvent;
-}
-
-function isDeliverySuccess(eventType: string): boolean {
-  return eventType === "email.delivered" || eventType === "email.sent" || eventType === "email.opened" || eventType === "email.clicked";
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  // Optional webhook signing secret verification
-  const webhookSecret = Deno.env.get("RESEND_WEBHOOK_SECRET");
-  if (webhookSecret) {
-    // Resend uses svix for webhook signing
-    // We check the svix-signature header if present
-    const svixSignature = req.headers.get("svix-signature") ?? req.headers.get("webhook-signature");
-    if (!svixSignature) {
-      console.warn("[resend-webhook] No signature header — rejecting (RESEND_WEBHOOK_SECRET is set)");
-      return json({ error: "Missing webhook signature" }, 401);
-    }
-    // Full HMAC verification would require the svix library — for now we log and proceed
-    // In production you can add: import { Webhook } from "npm:svix"
-    console.info("[resend-webhook] Signature present, proceeding");
-  }
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeKey) return json({ error: "Stripe not configured" }, 500);
 
-  let payload: ResendWebhookPayload;
-  try {
-    payload = (await req.json()) as ResendWebhookPayload;
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const { type: eventType, created_at: eventAt, data } = payload;
-
-  if (!eventType || !data) {
-    return json({ error: "Invalid webhook payload — missing type or data" }, 400);
-  }
+  // @ts-ignore
+  const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Extract confirmation_id from tags (set when sending via Resend)
-  const tags = data.tags ?? [];
-  const confirmationIdTag = tags.find((t) => t.name === "confirmation_id");
-  const emailTypeTag = tags.find((t) => t.name === "email_type");
-  const confirmationId = confirmationIdTag?.value;
+  let body: Record<string, unknown>;
+  try { body = (await req.json()) as Record<string, unknown>; }
+  catch { return json({ error: "Invalid JSON body" }, 400); }
 
-  const logEntry = {
-    type: eventToLogType(eventType),
-    sentAt: eventAt ?? new Date().toISOString(),
-    to: data.to?.[0] ?? "unknown",
-    success: isDeliverySuccess(eventType),
-    resendEmailId: data.email_id,
-    resendEvent: eventType,
-    emailType: emailTypeTag?.value,
-  };
+  const confirmationId  = (body.confirmationId  as string) ?? "";
+  const paymentIntentId = (body.paymentIntentId as string) ?? "";
 
-  // If we have a confirmation_id, append to that order's email_log
-  if (confirmationId) {
-    try {
-      const { data: order } = await supabase
-        .from("orders")
-        .select("email_log")
-        .eq("confirmation_id", confirmationId)
-        .maybeSingle();
+  if (!confirmationId || !paymentIntentId) {
+    return json({ error: "confirmationId and paymentIntentId are required" }, 400);
+  }
 
-      if (order) {
-        const currentLog = (order.email_log as unknown[]) ?? [];
+  try {
+    // 1. Fetch the PI from Stripe
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"],
+    });
 
-        // Avoid duplicate event logs — check if this resend_email_id + event_type is already recorded
-        const alreadyLogged = currentLog.some(
-          (entry) => {
-            const e = entry as { resendEmailId?: string; resendEvent?: string };
-            return e.resendEmailId === data.email_id && e.resendEvent === eventType;
-          }
-        );
+    if (pi.status !== "succeeded") {
+      return json({ ok: false, error: `Payment intent status is "${pi.status}" — only succeeded payments can be re-processed` }, 400);
+    }
 
-        if (!alreadyLogged) {
-          await supabase
-            .from("orders")
-            .update({ email_log: [...currentLog, logEntry] })
-            .eq("confirmation_id", confirmationId);
-          console.info(`[resend-webhook] Logged ${eventType} for order ${confirmationId}`);
-        } else {
-          console.info(`[resend-webhook] Skipped duplicate ${eventType} for order ${confirmationId}`);
+    // 2. Try to find the checkout session
+    let checkoutSessionId: string | null = null;
+
+    if (pi.metadata?.checkout_session_id) {
+      checkoutSessionId = pi.metadata.checkout_session_id;
+    } else {
+      try {
+        const sessions = await stripe.checkout.sessions.list({
+          payment_intent: paymentIntentId,
+          limit: 1,
+        });
+        if (sessions.data.length > 0) {
+          checkoutSessionId = sessions.data[0].id;
         }
+      } catch (err) {
+        console.warn("[resend-webhook] Could not search checkout sessions:", err);
       }
-    } catch (err) {
-      console.error("[resend-webhook] Failed to update email_log:", err);
     }
-  }
 
-  // Log bounces/complaints prominently regardless of order association
-  if (eventType === "email.bounced" || eventType === "email.complained") {
-    console.error(`[resend-webhook] ${eventType.toUpperCase()} for ${data.to?.[0] ?? "unknown"} — emailId: ${data.email_id} — confirmationId: ${confirmationId ?? "none"}`);
+    // 3. Get the order from DB
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, confirmation_id, status, payment_intent_id, checkout_session_id, email, first_name, last_name, price, payment_method, email_log, paid_at")
+      .eq("confirmation_id", confirmationId)
+      .maybeSingle();
 
-    // For bounces, log to system_health_logs for visibility
+    if (!order) {
+      return json({ ok: false, error: `Order ${confirmationId} not found in database` }, 404);
+    }
+
+    // 4. Build the update payload
+    const updatePayload: Record<string, unknown> = {
+      payment_intent_id: paymentIntentId,
+      status: "processing",
+    };
+
+    if (checkoutSessionId && !order.checkout_session_id) {
+      updatePayload.checkout_session_id = checkoutSessionId;
+    }
+
+    if (!order.paid_at) {
+      updatePayload.paid_at = new Date(pi.created * 1000).toISOString();
+    }
+
+    if (!order.payment_method) {
+      const pmType = pi.payment_method_types?.[0] ?? "card";
+      updatePayload.payment_method = pmType;
+    }
+
+    if (!order.price && pi.amount_received) {
+      updatePayload.price = Math.round(pi.amount_received / 100);
+    }
+
+    // 5. Write to DB
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update(updatePayload)
+      .eq("confirmation_id", confirmationId);
+
+    if (updateError) {
+      return json({ ok: false, error: `DB update failed: ${updateError.message}` }, 500);
+    }
+
+    // 6. Patch PI metadata in Stripe if needed
+    if (checkoutSessionId && !pi.metadata?.checkout_session_id) {
+      try {
+        await stripe.paymentIntents.update(paymentIntentId, {
+          metadata: { ...pi.metadata, checkout_session_id: checkoutSessionId },
+        });
+      } catch (err) {
+        console.warn("[resend-webhook] Could not patch PI metadata:", err);
+      }
+    }
+
+    // 7. Write status log (correct schema: new_status, changed_by, changed_at)
     try {
-      await supabase.from("system_health_logs").insert({
-        triggered_by: "resend_webhook",
-        overall_status: "warn",
-        checks: [{
-          name: `Email ${eventType === "email.bounced" ? "Bounce" : "Complaint"} Detected`,
-          category: "communications",
-          status: "warn",
-          message: `${eventType} — To: ${data.to?.[0] ?? "unknown"} — Subject: ${data.subject ?? "unknown"}`,
-          detail: confirmationId ? `Order: ${confirmationId}` : "No order ID associated",
-        }],
-        order_health: {},
+      await supabase.from("order_status_logs").insert({
+        order_id: order.id,
+        confirmation_id: confirmationId,
+        new_status: "processing",
+        changed_by: "admin_resend_webhook",
+        changed_at: new Date().toISOString(),
       });
-    } catch (err) {
-      console.error("[resend-webhook] Failed to log bounce to system_health_logs:", err);
-    }
-  }
+    } catch { /* non-critical */ }
 
-  return json({ ok: true, event: eventType, confirmationId: confirmationId ?? null });
+    // 8. Write audit log (correct schema: object_type, object_id)
+    try {
+      await supabase.from("audit_logs").insert({
+        action: "admin_resend_webhook",
+        object_type: "order",
+        object_id: confirmationId,
+        details: {
+          confirmation_id: confirmationId,
+          payment_intent_id: paymentIntentId,
+          checkout_session_id: checkoutSessionId ?? null,
+          fields_updated: Object.keys(updatePayload),
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch { /* non-critical */ }
+
+    console.info(`[resend-webhook] ✓ Re-processed ${confirmationId} — PI: ${paymentIntentId}${checkoutSessionId ? ` | Session: ${checkoutSessionId}` : ""}`);
+
+    return json({
+      ok: true,
+      message: `Payment re-processed successfully.${checkoutSessionId ? ` checkout_session_id ${checkoutSessionId} backfilled.` : " No checkout session found for this payment intent."}`,
+      checkoutSessionId: checkoutSessionId ?? null,
+      fieldsUpdated: Object.keys(updatePayload),
+    });
+
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Stripe error";
+    console.error("[resend-webhook] Error:", message);
+    return json({ ok: false, error: message }, 500);
+  }
 });

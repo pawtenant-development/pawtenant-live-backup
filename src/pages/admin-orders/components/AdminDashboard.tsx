@@ -202,51 +202,37 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     );
   }
 
-  const metricCards = [
-    {
-      label: "Lead (Unpaid)",
-      value: stats.leadUnpaid,
-      icon: "ri-user-follow-line",
-      bg: "bg-amber-50",
-      iconColor: "text-amber-600",
-      tab: "orders",
-      note: "Assessment started, payment not received",
-    },
+  // Split metric cards into two groups
+  const urgentCards = [
     {
       label: "Abandoned Checkouts",
       value: stats.abandonedCheckouts,
       icon: "ri-shopping-cart-line",
       bg: "bg-red-50",
       iconColor: "text-red-500",
+      borderColor: "border-red-200",
       tab: "orders",
-      note: "Unpaid leads &gt; 1 hour old",
+      note: "Unpaid leads older than 1 hour",
     },
     {
-      label: "Lead (Paid) · Unassigned",
+      label: "Paid · Unassigned",
       value: stats.leadPaidUnassigned,
       icon: "ri-user-unfollow-line",
       bg: "bg-orange-50",
       iconColor: "text-orange-500",
+      borderColor: "border-orange-200",
       tab: "orders",
       note: "Payment received — needs provider",
     },
     {
-      label: "Lead (Paid) · Assigned",
-      value: stats.leadPaidAssigned,
-      icon: "ri-user-received-line",
-      bg: "bg-sky-50",
-      iconColor: "text-sky-600",
+      label: "Lead (Unpaid)",
+      value: stats.leadUnpaid,
+      icon: "ri-user-follow-line",
+      bg: "bg-amber-50",
+      iconColor: "text-amber-600",
+      borderColor: "border-amber-200",
       tab: "orders",
-      note: "Provider assigned, evaluation in progress",
-    },
-    {
-      label: "Order Completed",
-      value: stats.completedOrders,
-      icon: "ri-checkbox-circle-line",
-      bg: "bg-[#f0faf7]",
-      iconColor: "text-[#1a5c4f]",
-      tab: "orders",
-      note: "Evaluation done + letter delivered",
+      note: "Assessment started, no payment yet",
     },
     {
       label: "Awaiting Provider",
@@ -254,17 +240,34 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
       icon: "ri-time-line",
       bg: "bg-violet-50",
       iconColor: "text-violet-600",
+      borderColor: "border-violet-200",
       tab: "orders",
       note: "Assigned — pending review / in review",
     },
+  ];
+
+  const performanceCards = [
     {
-      label: "Active Providers",
-      value: stats.activeProviders,
-      icon: "ri-stethoscope-line",
+      label: "Lead (Paid) · Assigned",
+      value: stats.leadPaidAssigned,
+      icon: "ri-user-received-line",
+      bg: "bg-sky-50",
+      iconColor: "text-sky-600",
+      borderColor: "border-sky-200",
+      tab: "orders",
+      note: "Provider assigned, in progress",
+      isString: false,
+    },
+    {
+      label: "Order Completed",
+      value: stats.completedOrders,
+      icon: "ri-checkbox-circle-line",
       bg: "bg-[#f0faf7]",
       iconColor: "text-[#1a5c4f]",
-      tab: "doctors",
-      note: `${stats.inactiveProviders} inactive`,
+      borderColor: "border-[#b8ddd5]",
+      tab: "orders",
+      note: "Letter signed & delivered",
+      isString: false,
     },
     {
       label: "Conversion Rate",
@@ -272,37 +275,79 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
       icon: "ri-bar-chart-line",
       bg: "bg-violet-50",
       iconColor: "text-violet-600",
+      borderColor: "border-violet-200",
       tab: "orders",
-      note: "Leads → paid customers",
+      note: "Leads that became paid customers",
       isString: true,
     },
     {
-      label: "Cancellations This Month",
+      label: "Active Providers",
+      value: stats.activeProviders,
+      icon: "ri-stethoscope-line",
+      bg: "bg-[#f0faf7]",
+      iconColor: "text-[#1a5c4f]",
+      borderColor: "border-[#b8ddd5]",
+      tab: "doctors",
+      note: `${stats.inactiveProviders} inactive`,
+      isString: false,
+    },
+    {
+      label: "Cancellations",
       value: stats.cancelledThisMonth,
       icon: "ri-forbid-2-line",
       bg: "bg-red-50",
       iconColor: "text-red-500",
+      borderColor: "border-red-200",
       tab: "orders",
       note: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      isString: false,
     },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-1">Overview</p>
-        <h2 className="text-xl font-extrabold text-gray-900">Dashboard</h2>
-        <p className="text-xs text-gray-400 mt-0.5">{orders.length} total records &middot; {doctorContacts.length} providers in system</p>
+      {/* ── Header with revenue strip ── */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <p className="text-xs text-gray-400 mt-0.5">{orders.length} total records &middot; {doctorContacts.length} providers</p>
+        </div>
+        {/* Revenue + paid summary */}
+        <div className="flex items-stretch gap-2 flex-wrap sm:flex-nowrap">
+          <div className="bg-[#0f1e1a] rounded-xl px-4 py-3 flex items-center gap-3 min-w-[140px]">
+            <div className="w-8 h-8 flex items-center justify-center bg-white/10 rounded-lg flex-shrink-0">
+              <i className="ri-money-dollar-circle-line text-[#5ecfb1] text-lg"></i>
+            </div>
+            <div>
+              <p className="text-xs text-white/50 font-medium">Total Revenue</p>
+              <p className="text-lg font-extrabold text-white leading-tight">${totalRevenue.toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-3 min-w-[120px]">
+            <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f]/10 rounded-lg flex-shrink-0">
+              <i className="ri-checkbox-circle-line text-[#1a5c4f] text-lg"></i>
+            </div>
+            <div>
+              <p className="text-xs text-[#1a5c4f]/60 font-medium">Paid Orders</p>
+              <p className="text-lg font-extrabold text-[#1a5c4f] leading-tight">{stats.paidOrders}</p>
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3 min-w-[120px]">
+            <div className="w-8 h-8 flex items-center justify-center bg-violet-50 rounded-lg flex-shrink-0">
+              <i className="ri-bar-chart-line text-violet-600 text-lg"></i>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Conversion</p>
+              <p className="text-lg font-extrabold text-gray-900 leading-tight">{conversionRate}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── URGENT ALERT: Paid orders unassigned for 3+ hours ── */}
+      {/* ── URGENT ALERT ── */}
       {overdueUnassigned.length > 0 && !alertDismissed && (
         <div className="bg-red-50 border-2 border-red-300 rounded-2xl overflow-hidden">
-          {/* Alert header */}
           <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-3">
-              {/* Pulsing indicator */}
               <div className="relative flex-shrink-0">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-60 animate-ping"></span>
                 <span className="relative flex w-3 h-3 rounded-full bg-red-500"></span>
@@ -320,42 +365,24 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => onTabChange("orders")}
-                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white text-xs font-extrabold rounded-xl hover:bg-red-600 cursor-pointer transition-colors"
-              >
+              <button type="button" onClick={() => onTabChange("orders")}
+                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white text-xs font-extrabold rounded-xl hover:bg-red-600 cursor-pointer transition-colors">
                 <i className="ri-user-received-line"></i>Assign Now
               </button>
-              <button
-                type="button"
-                onClick={() => setAlertExpanded(v => !v)}
-                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-xl bg-red-100 text-red-600 hover:bg-red-200 cursor-pointer transition-colors"
-                title={alertExpanded ? "Collapse" : "Expand"}
-              >
+              <button type="button" onClick={() => setAlertExpanded(v => !v)}
+                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-xl bg-red-100 text-red-600 hover:bg-red-200 cursor-pointer transition-colors">
                 <i className={`ri-arrow-${alertExpanded ? "up" : "down"}-s-line text-sm`}></i>
               </button>
-              <button
-                type="button"
-                onClick={() => setAlertDismissed(true)}
-                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-xl bg-red-100 text-red-400 hover:bg-red-200 hover:text-red-600 cursor-pointer transition-colors"
-                title="Dismiss for this session"
-              >
+              <button type="button" onClick={() => setAlertDismissed(true)}
+                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-xl bg-red-100 text-red-400 hover:bg-red-200 hover:text-red-600 cursor-pointer transition-colors">
                 <i className="ri-close-line text-sm"></i>
               </button>
             </div>
           </div>
-
-          {/* Expanded order list */}
           {alertExpanded && (
             <div className="border-t border-red-200 divide-y divide-red-100">
-              {/* Table header */}
               <div className="hidden sm:grid grid-cols-[1fr_100px_90px_110px_100px] gap-4 px-5 py-2 bg-red-100/50 text-xs font-bold text-red-700 uppercase tracking-wider">
-                <span>Patient</span>
-                <span>Order ID</span>
-                <span>State</span>
-                <span>Paid at</span>
-                <span>Waiting</span>
+                <span>Patient</span><span>Order ID</span><span>State</span><span>Paid at</span><span>Waiting</span>
               </div>
               {overdueUnassigned.map((order) => {
                 const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
@@ -363,49 +390,32 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
                 const waitHrs = waitMs / (60 * 60 * 1000);
                 const isVeryOverdue = waitHrs >= 6;
                 return (
-                  <div
-                    key={order.id}
-                    className="grid grid-cols-1 sm:grid-cols-[1fr_100px_90px_110px_100px] gap-2 sm:gap-4 px-5 py-3.5 items-center bg-white/70 hover:bg-white/90 transition-colors"
-                  >
-                    {/* Patient */}
+                  <div key={order.id} className="grid grid-cols-1 sm:grid-cols-[1fr_100px_90px_110px_100px] gap-2 sm:gap-4 px-5 py-3.5 items-center bg-white/70 hover:bg-white/90 transition-colors">
                     <div>
                       <p className="text-xs font-bold text-gray-900">{fullName}</p>
                       <p className="text-xs text-gray-400 truncate">{order.email}</p>
-                      {order.price != null && (
-                        <p className="text-xs font-semibold text-emerald-600 mt-0.5">${order.price}</p>
-                      )}
+                      {order.price != null && <p className="text-xs font-semibold text-emerald-600 mt-0.5">${order.price}</p>}
                     </div>
-                    {/* Order ID */}
                     <p className="text-xs font-mono text-gray-600">{order.confirmation_id}</p>
-                    {/* State */}
                     <p className="text-xs font-semibold text-gray-700">{getStateName(order.state)}</p>
-                    {/* Paid at */}
                     <p className="text-xs text-gray-500">
                       {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}{" "}
                       {new Date(order.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                     </p>
-                    {/* Wait time badge */}
                     <div>
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold ${isVeryOverdue ? "bg-red-100 text-red-700 border border-red-300" : "bg-orange-100 text-orange-700 border border-orange-300"}`}>
-                        <i className="ri-alarm-warning-line text-xs"></i>
-                        {fmtWaitTime(order.created_at)}
+                        <i className="ri-alarm-warning-line text-xs"></i>{fmtWaitTime(order.created_at)}
                       </span>
                     </div>
                   </div>
                 );
               })}
-
-              {/* Footer action */}
               <div className="px-5 py-3 bg-red-50 flex items-center justify-between gap-3 flex-wrap">
                 <p className="text-xs text-red-700 font-semibold flex items-center gap-1.5">
-                  <i className="ri-information-line"></i>
-                  Orders waiting 6+ hours are shown in red — consider reaching out to the customer.
+                  <i className="ri-information-line"></i>Orders waiting 6+ hours shown in red.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => onTabChange("orders")}
-                  className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white text-xs font-extrabold rounded-xl hover:bg-red-600 cursor-pointer transition-colors"
-                >
+                <button type="button" onClick={() => onTabChange("orders")}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white text-xs font-extrabold rounded-xl hover:bg-red-600 cursor-pointer transition-colors">
                   <i className="ri-arrow-right-line"></i>Go to Orders Tab
                 </button>
               </div>
@@ -414,28 +424,56 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
         </div>
       )}
 
-      {/* Metric grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {metricCards.map((card) => (
-          <button
-            key={card.label}
-            type="button"
-            onClick={() => onTabChange(card.tab)}
-            className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-[#1a5c4f]/30 hover:bg-[#f0faf7]/30 transition-all cursor-pointer group"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className={`w-9 h-9 flex items-center justify-center ${card.bg} rounded-xl`}>
-                <i className={`${card.icon} ${card.iconColor} text-base`}></i>
+      {/* ── GROUP 1: Needs Attention ── */}
+      <div>
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-xs font-bold text-red-600 uppercase tracking-widest">Needs Attention</span>
+          <div className="flex-1 h-px bg-red-100"></div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {urgentCards.map((card) => (
+            <button key={card.label} type="button" onClick={() => onTabChange(card.tab)}
+              className={`bg-white rounded-xl border ${card.borderColor} p-4 text-left hover:border-gray-300 hover:-translate-y-0.5 transition-all cursor-pointer group`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className={`w-9 h-9 flex items-center justify-center ${card.bg} rounded-xl`}>
+                  <i className={`${card.icon} ${card.iconColor} text-base`}></i>
+                </div>
+                <i className="ri-arrow-right-up-line text-gray-200 group-hover:text-gray-400 transition-colors text-sm"></i>
               </div>
-              <i className="ri-arrow-right-up-line text-gray-200 group-hover:text-[#1a5c4f] transition-colors text-sm"></i>
-            </div>
-            <p className={`font-extrabold mb-0.5 ${card.isString ? "text-2xl" : "text-3xl"} text-gray-900`}>
-              {card.isString ? card.value : (card.value as number).toLocaleString()}
-            </p>
-            <p className="text-xs font-bold text-gray-600">{card.label}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{card.note}</p>
-          </button>
-        ))}
+              <p className="text-3xl font-extrabold text-gray-900 mb-0.5">
+                {(card.value as number).toLocaleString()}
+              </p>
+              <p className="text-xs font-bold text-gray-600 leading-tight">{card.label}</p>
+              <p className="text-xs text-gray-400 mt-0.5 leading-tight">{card.note}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── GROUP 2: Pipeline & Performance ── */}
+      <div>
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pipeline &amp; Performance</span>
+          <div className="flex-1 h-px bg-gray-100"></div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {performanceCards.map((card) => (
+            <button key={card.label} type="button" onClick={() => onTabChange(card.tab)}
+              className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-gray-300 hover:-translate-y-0.5 transition-all cursor-pointer group">
+              <div className="flex items-center justify-between mb-3">
+                <div className={`w-8 h-8 flex items-center justify-center ${card.bg} rounded-xl`}>
+                  <i className={`${card.icon} ${card.iconColor} text-sm`}></i>
+                </div>
+                <i className="ri-arrow-right-up-line text-gray-200 group-hover:text-gray-400 transition-colors text-xs"></i>
+              </div>
+              <p className={`font-extrabold text-gray-900 mb-0.5 ${card.isString ? "text-2xl" : "text-2xl"}`}>
+                {card.isString ? card.value : (card.value as number).toLocaleString()}
+              </p>
+              <p className="text-xs font-bold text-gray-600 leading-tight">{card.label}</p>
+              <p className="text-xs text-gray-400 mt-0.5 leading-tight">{card.note}</p>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Quick action row */}
@@ -448,7 +486,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">Recovery Emails Needed</p>
           </div>
           <p className="text-2xl font-extrabold text-amber-700 mb-1">{stats.abandonedCheckouts}</p>
-          <p className="text-xs text-amber-700">Lead (Unpaid) orders older than 1 hour. Use <strong>Lead Actions</strong> in the Orders tab to send recovery emails.</p>
+          <p className="text-xs text-amber-700">Unpaid leads &gt; 1 hour old. Use <strong>Lead Actions</strong> in the Orders tab to send recovery emails.</p>
         </div>
 
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
@@ -459,7 +497,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             <p className="text-xs font-bold text-orange-800 uppercase tracking-wide">Awaiting Assignment</p>
           </div>
           <p className="text-2xl font-extrabold text-orange-700 mb-1">{stats.leadPaidUnassigned}</p>
-          <p className="text-xs text-orange-700">Lead (Paid) · Unassigned orders. Go to <strong>Orders</strong> and filter by that status.</p>
+          <p className="text-xs text-orange-700">Paid orders with no provider yet. Go to <strong>Orders</strong> and filter by &ldquo;Paid Unassigned&rdquo;.</p>
         </div>
 
         <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
@@ -470,32 +508,32 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             <p className="text-xs font-bold text-[#1a5c4f] uppercase tracking-wide">Pending Provider Review</p>
           </div>
           <p className="text-2xl font-extrabold text-[#1a5c4f] mb-1">{stats.awaitingProvider}</p>
-          <p className="text-xs text-[#1a5c4f]/70">Lead (Paid) · Assigned orders where provider hasn&apos;t submitted the letter yet.</p>
+          <p className="text-xs text-[#1a5c4f]/70">Assigned orders where provider hasn&apos;t submitted the letter yet.</p>
         </div>
       </div>
 
       {/* Pipeline summary bar */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Order Pipeline</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Lead (Unpaid)",     value: stats.leadUnpaid,         color: "bg-amber-400",   textColor: "text-amber-700" },
-            { label: "Paid · Unassigned", value: stats.leadPaidUnassigned, color: "bg-orange-400",  textColor: "text-orange-700" },
-            { label: "Paid · Assigned",   value: stats.leadPaidAssigned,   color: "bg-sky-400",     textColor: "text-sky-700" },
-            { label: "Order Completed",   value: stats.completedOrders,    color: "bg-[#1a5c4f]",   textColor: "text-[#1a5c4f]" },
+            { label: "Lead (Unpaid)",     value: stats.leadUnpaid,         color: "bg-amber-400",   textColor: "text-amber-700",  lightBg: "bg-amber-50" },
+            { label: "Paid · Unassigned", value: stats.leadPaidUnassigned, color: "bg-orange-400",  textColor: "text-orange-700", lightBg: "bg-orange-50" },
+            { label: "Paid · Assigned",   value: stats.leadPaidAssigned,   color: "bg-sky-400",     textColor: "text-sky-700",    lightBg: "bg-sky-50" },
+            { label: "Completed",         value: stats.completedOrders,    color: "bg-[#1a5c4f]",   textColor: "text-[#1a5c4f]",  lightBg: "bg-[#f0faf7]" },
           ].map((stage) => {
             const activeTotal = Math.max(orders.filter(o => o.status !== "cancelled" && o.status !== "refunded" && !(o as Order & { refunded_at?: string | null }).refunded_at).length, 1);
             const pct = Math.round((stage.value / activeTotal) * 100);
             return (
-              <div key={stage.label}>
-                <div className="flex items-center justify-between mb-1.5">
+              <div key={stage.label} className={`${stage.lightBg} rounded-xl p-3`}>
+                <div className="flex items-center justify-between mb-2">
                   <span className={`text-xs font-bold ${stage.textColor} leading-tight`}>{stage.label}</span>
-                  <span className={`text-xs font-extrabold ${stage.textColor}`}>{stage.value}</span>
+                  <span className={`text-xl font-extrabold ${stage.textColor}`}>{stage.value}</span>
                 </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-white/70 rounded-full overflow-hidden">
                   <div className={`h-full ${stage.color} rounded-full transition-all`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{pct}% of total</p>
+                <p className="text-xs text-gray-400 mt-1.5">{pct}% of total</p>
               </div>
             );
           })}
@@ -515,7 +553,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
           </button>
         </div>
 
-        <div className="hidden md:grid grid-cols-[1fr_1fr_120px_120px_120px_100px] gap-3 px-5 py-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
+        <div className="hidden md:grid grid-cols-[1fr_140px_100px_150px_130px_80px] gap-3 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
           <span>Patient</span>
           <span>Order ID</span>
           <span>State</span>
@@ -529,19 +567,19 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
             const displayStatus = getOrderDisplayStatus(order);
             return (
-              <div key={order.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_120px_120px_120px_100px] gap-3 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors">
-                <div>
+              <div key={order.id} className="grid grid-cols-1 md:grid-cols-[1fr_140px_100px_150px_130px_80px] gap-2 md:gap-3 px-5 py-3 items-center hover:bg-gray-50/60 transition-colors group cursor-default">
+                <div className="min-w-0">
                   <p className="text-xs font-bold text-gray-900 truncate">{fullName}</p>
                   <p className="text-xs text-gray-400 truncate">{order.email}</p>
                 </div>
-                <p className="text-xs font-mono text-gray-500 truncate">{order.confirmation_id}</p>
-                <p className="text-xs font-semibold text-gray-700">{getStateName(order.state)}</p>
-                <div>
+                <p className="hidden md:block text-xs font-mono text-gray-500 truncate">{order.confirmation_id}</p>
+                <p className="hidden md:block text-xs font-semibold text-gray-700">{getStateName(order.state)}</p>
+                <div className="hidden md:block">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${STATUS_COLOR[displayStatus.key] ?? "bg-gray-100 text-gray-500"}`}>
                     {displayStatus.label}
                   </span>
                 </div>
-                <div>
+                <div className="hidden md:block">
                   {order.doctor_name ? (
                     <p className="text-xs font-semibold text-[#1a5c4f] truncate flex items-center gap-1">
                       <i className="ri-user-heart-line flex-shrink-0"></i>{order.doctor_name}
@@ -550,7 +588,13 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
                     <span className="text-xs text-gray-300">Unassigned</span>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 whitespace-nowrap">{fmtRelative(order.created_at)}</p>
+                <div className="flex items-center justify-between md:block">
+                  <p className="text-xs text-gray-400 whitespace-nowrap">{fmtRelative(order.created_at)}</p>
+                  {/* Mobile-only: show status badge */}
+                  <span className={`md:hidden inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${STATUS_COLOR[displayStatus.key] ?? "bg-gray-100 text-gray-500"}`}>
+                    {displayStatus.label}
+                  </span>
+                </div>
               </div>
             );
           })}
@@ -574,13 +618,13 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
         </div>
         <div className="grid grid-cols-3 gap-3 mb-4">
           {[
-            { label: "Active", value: stats.activeProviders, color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]", icon: "ri-checkbox-circle-line" },
-            { label: "Inactive", value: stats.inactiveProviders, color: "text-red-500", bg: "bg-red-50", icon: "ri-indeterminate-circle-line" },
-            { label: "Total", value: doctorContacts.length, color: "text-gray-700", bg: "bg-gray-50", icon: "ri-stethoscope-line" },
+            { label: "Active", value: stats.activeProviders, color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]", border: "border-[#b8ddd5]", icon: "ri-checkbox-circle-line" },
+            { label: "Inactive", value: stats.inactiveProviders, color: "text-red-500", bg: "bg-red-50", border: "border-red-200", icon: "ri-indeterminate-circle-line" },
+            { label: "Total", value: doctorContacts.length, color: "text-gray-700", bg: "bg-gray-50", border: "border-gray-200", icon: "ri-stethoscope-line" },
           ].map(s => (
-            <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
+            <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl p-3 text-center`}>
               <i className={`${s.icon} ${s.color} text-lg block mb-1`}></i>
-              <p className={`text-xl font-extrabold ${s.color}`}>{s.value}</p>
+              <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
               <p className="text-xs text-gray-500 font-semibold">{s.label}</p>
             </div>
           ))}
@@ -589,14 +633,14 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
           <p className="text-xs text-gray-400 text-center py-2">No providers added yet.</p>
         )}
         {doctorContacts.length > 0 && (
-          <div className="space-y-2 max-h-[200px] overflow-y-auto">
+          <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
             {doctorContacts.map(d => (
-              <div key={d.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                <div className="flex items-center gap-2">
+              <div key={d.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors">
+                <div className="flex items-center gap-2.5">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${d.is_active !== false ? "bg-[#1a5c4f]" : "bg-red-400"}`}></div>
                   <span className="text-xs font-semibold text-gray-800">{d.full_name}</span>
                 </div>
-                <span className={`text-xs font-semibold ${d.is_active !== false ? "text-[#1a5c4f]" : "text-red-400"}`}>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${d.is_active !== false ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-50 text-red-400"}`}>
                   {d.is_active !== false ? "Active" : "Inactive"}
                 </span>
               </div>

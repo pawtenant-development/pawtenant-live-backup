@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import ExpiryChecker from "./components/ExpiryChecker";
-import RenewalCheckoutModal from "./components/RenewalCheckoutModal";
+
 
 const renewalPlans = [
   {
@@ -848,12 +848,21 @@ export default function RenewESALetterPage() {
 
       <SharedFooter />
 
-      {/* Renewal Checkout Modal */}
+      {/* Checkout temporarily disabled — payment system being upgraded */}
       {checkoutPlan && (
-        <RenewalCheckoutModal
-          plan={checkoutPlan}
-          onClose={() => setCheckoutPlan(null)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setCheckoutPlan(null)}>
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 flex items-center justify-center bg-amber-100 rounded-full mx-auto mb-4">
+              <i className="ri-tools-line text-amber-600 text-2xl"></i>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Payment System Maintenance</h3>
+            <p className="text-sm text-gray-500 mb-6">We&apos;re upgrading our payment system. Please call us to complete your renewal.</p>
+            <a href="tel:+14099655885" className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 cursor-pointer">
+              <i className="ri-phone-line"></i>Call 409-965-5885
+            </a>
+            <button onClick={() => setCheckoutPlan(null)} className="block mt-3 text-xs text-gray-400 hover:text-gray-600 mx-auto cursor-pointer">Close</button>
+          </div>
+        </div>
       )}
     </main>
   );

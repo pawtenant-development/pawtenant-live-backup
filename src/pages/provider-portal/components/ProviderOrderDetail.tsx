@@ -73,6 +73,7 @@ interface ProviderOrderDetailProps {
   providerName: string;
   onClose: () => void;
   onOrderUpdated: (updated: Partial<Order> & { id: string }) => void;
+  readOnly?: boolean; // When true, disables all interactive actions (admin preview mode)
 }
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
@@ -104,6 +105,7 @@ export default function ProviderOrderDetail({
   providerName,
   onClose,
   onOrderUpdated,
+  readOnly = false,
 }: ProviderOrderDetailProps) {
   const [order, setOrder] = useState<Order>(initialOrder);
   const [section, setSection] = useState<Section>("overview");
@@ -589,8 +591,8 @@ export default function ProviderOrderDetail({
                   ))}
                 </div>
 
-                {/* In Review action — shown when status is pending_review */}
-                {doctorStatus === "pending_review" && (
+                {/* In Review action — shown when status is pending_review (hidden in read-only mode) */}
+                {doctorStatus === "pending_review" && !readOnly && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5">
                       <i className="ri-time-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
@@ -606,6 +608,13 @@ export default function ProviderOrderDetail({
                         : <><i className="ri-stethoscope-line"></i>Mark as In Review</>
                       }
                     </button>
+                  </div>
+                )}
+                {/* Read-only indicator for pending review */}
+                {doctorStatus === "pending_review" && readOnly && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-2.5">
+                    <i className="ri-time-line text-gray-400 text-sm flex-shrink-0"></i>
+                    <p className="text-xs text-gray-500">Provider has not started this case yet</p>
                   </div>
                 )}
 
@@ -691,7 +700,8 @@ export default function ProviderOrderDetail({
                   className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200 cursor-pointer transition-colors">
                   <i className="ri-questionnaire-line"></i>View Assessment
                 </button>
-                {(!isLetterSubmitted || isThirtyDayReissue) && !isRefunded && (
+                {/* Submit Letter button (hidden in read-only mode) */}
+                {(!isLetterSubmitted || isThirtyDayReissue) && !isRefunded && !readOnly && (
                   <button type="button" onClick={() => setSection("upload")}
                     className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-white text-sm font-bold rounded-xl cursor-pointer transition-colors ${isThirtyDayReissue ? "bg-orange-500 hover:bg-orange-600" : "bg-[#1a5c4f] hover:bg-[#17504a]"}`}>
                     <i className="ri-upload-cloud-line"></i>{isThirtyDayReissue ? "Submit Official Letter" : "Submit Letter"}
@@ -852,6 +862,19 @@ export default function ProviderOrderDetail({
           {section === "upload" && (
             <div className="p-6 space-y-5">
 
+              {/* ── READ-ONLY PREVIEW MODE ── */}
+              {readOnly && (
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-xl px-5 py-6 flex flex-col items-center text-center gap-3">
+                  <div className="w-12 h-12 flex items-center justify-center bg-amber-100 rounded-full">
+                    <i className="ri-eye-line text-amber-600 text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold text-amber-800 mb-1">Read-Only Preview</p>
+                    <p className="text-xs text-amber-600">Document upload is disabled in admin preview mode</p>
+                  </div>
+                </div>
+              )}
+
               {/* ── REFUNDED: show lock banner + read-only doc list ONLY, nothing else ── */}
               {isRefunded ? (
                 <>
@@ -963,7 +986,8 @@ export default function ProviderOrderDetail({
                     </div>
                   )}
 
-                  {/* ── Multi-file drop zone ── */}
+                  {/* ── Multi-file drop zone + file queue (hidden in read-only mode) ── */}
+                  {!readOnly && (<>
                   <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
@@ -1113,6 +1137,7 @@ export default function ProviderOrderDetail({
                       )}
                     </div>
                   )}
+                  </>)}
                 </>
               )}
             </div>

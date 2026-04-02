@@ -29,7 +29,9 @@ interface Order {
   delivery_speed: string | null;
   price: number | null;
   payment_intent_id: string | null;
+  checkout_session_id?: string | null;
   payment_method: string | null;
+  paid_at?: string | null;
   status: string;
   doctor_status: string | null;
   doctor_user_id: string | null;
@@ -53,6 +55,8 @@ interface Order {
   letter_type?: string | null;
   coupon_code?: string | null;
   coupon_discount?: number | null;
+  payment_failed_at?: string | null;
+  payment_failure_reason?: string | null;
 }
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
@@ -135,7 +139,8 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
 
 const EMAIL_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; failColor: string }> = {
   order_confirmation: { label: "Order Confirmation",   icon: "ri-mail-check-line",   color: "text-[#1a5c4f] bg-[#e8f5f1] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
-  payment_receipt:   { label: "Payment Receipt",       icon: "ri-receipt-line",       color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  payment_receipt:   { label: "Payment Receipt",       icon: "ri-file-text-line",     color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  internal_notification: { label: "Internal Notification (Admin)", icon: "ri-notification-3-line", color: "text-gray-600 bg-gray-50 border-gray-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   letter_ready:      { label: "Letter Ready",          icon: "ri-file-check-line",    color: "text-violet-700 bg-violet-50 border-violet-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   refund:            { label: "Refund Confirmation",   icon: "ri-refund-line",        color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   status_under_review: { label: "Status: Under Review",  icon: "ri-eye-line",          color: "text-sky-700 bg-sky-50 border-sky-200",  failColor: "text-red-600 bg-red-50 border-red-200" },
@@ -586,35 +591,82 @@ export default function OrderDetailModal({
           ...(isCharge ? { stripeChargeId: stripeIdInput.trim() } : { stripePaymentIntentId: stripeIdInput.trim() }),
         }),
       });
-      const result = await res.json() as { ok?: boolean; message?: string; error?: string; paymentIntentId?: string; priceUpdated?: number; alreadySynced?: boolean };
+      const result = await res.json() as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        paymentIntentId?: string;
+        priceUpdated?: number;
+        alreadySynced?: boolean;
+        emailsTriggered?: boolean;
+      };
       if (result.ok) {
-        setPaymentSyncMsg(result.message ?? "Payment synced!");
+        const emailNote = result.emailsTriggered
+          ? " Confirmation email sent to customer + internal notification triggered."
+          : " Emails were already sent previously — no duplicates sent.";
+        setPaymentSyncMsg((result.message ?? "Payment synced!") + emailNote);
         setPaymentSyncOk(true);
         if (result.paymentIntentId) {
           updateOrderField({
             payment_intent_id: result.paymentIntentId,
             price: result.priceUpdated ?? order.price,
-            status: order.status === "lead" || !order.status ? "processing" : order.status,
+            status: "processing",
+            paid_at: new Date().toISOString(),
           });
         }
         setStripeIdInput("");
+        // Refresh email log so the Emails Sent section updates
+        try {
+          const { data: fresh } = await supabase.from("orders").select("email_log").eq("id", order.id).maybeSingle();
+          if (fresh?.email_log) updateOrderField({ email_log: fresh.email_log as EmailLogEntry[] });
+        } catch { /* non-critical */ }
       } else {
-        setPaymentSyncMsg(result.error ?? "Sync failed");
+        setPaymentSyncMsg(result.error ?? "Sync failed — check Stripe ID and try again");
         setPaymentSyncOk(false);
       }
     } catch {
-      setPaymentSyncMsg("Network error");
+      setPaymentSyncMsg("Network error — please try again");
     }
     setPaymentSyncing(false);
-    setTimeout(() => setPaymentSyncMsg(""), 8000);
+    setTimeout(() => setPaymentSyncMsg(""), 12000);
   };
 
   const handleMarkAsPaid = async () => {
     setMarkingPaid(true);
     setMarkPaidMsg("");
-    const { error } = await supabase.from("orders").update({ status: "processing" }).eq("id", order.id);
+    const paidAt = new Date().toISOString();
+    const { error } = await supabase.from("orders").update({
+      status: "processing",
+      paid_at: paidAt,
+    }).eq("id", order.id);
     if (!error) {
-      updateOrderField({ status: "processing" });
+      // Write audit log
+      try {
+        await supabase.from("audit_logs").insert({
+          action: "manual_mark_paid",
+          entity_type: "order",
+          entity_id: order.id,
+          performed_by: adminProfile.user_id,
+          details: {
+            confirmation_id: order.confirmation_id,
+            previous_status: order.status,
+            new_status: "processing",
+            note: "Admin manually marked as paid (no Stripe ID available)",
+            admin_name: adminProfile.full_name,
+            timestamp: paidAt,
+          },
+        });
+      } catch { /* non-critical */ }
+      // Write order status log
+      try {
+        await supabase.from("order_status_logs").insert({
+          order_id: order.id,
+          status: "processing",
+          note: `[MANUAL OVERRIDE] Marked as paid by admin (${adminProfile.full_name}). No Stripe PI attached.`,
+          created_at: paidAt,
+        });
+      } catch { /* non-critical */ }
+      updateOrderField({ status: "processing", paid_at: paidAt });
       setMarkPaidMsg("Order marked as paid — status updated to Processing. Assign a provider when ready.");
       setShowMarkPaidConfirm(false);
     } else {
@@ -622,6 +674,105 @@ export default function OrderDetailModal({
     }
     setMarkingPaid(false);
     setTimeout(() => setMarkPaidMsg(""), 8000);
+  };
+
+  const [markingUnpaid, setMarkingUnpaid] = useState(false);
+  const [markUnpaidMsg, setMarkUnpaidMsg] = useState("");
+  const [showMarkUnpaidConfirm, setShowMarkUnpaidConfirm] = useState(false);
+
+  // ── Resend Stripe Webhook state ──
+  const [resendingWebhook, setResendingWebhook] = useState(false);
+  const [resendWebhookMsg, setResendWebhookMsg] = useState("");
+  const [resendWebhookOk, setResendWebhookOk] = useState<boolean | null>(null);
+
+  const handleMarkAsUnpaid = async () => {
+    setMarkingUnpaid(true);
+    setMarkUnpaidMsg("");
+    const ts = new Date().toISOString();
+    const { error } = await supabase.from("orders").update({
+      status: "lead",
+      payment_intent_id: null,
+      paid_at: null,
+      payment_failed_at: ts,
+      payment_failure_reason: `Manually marked as unpaid/failed by admin (${adminProfile.full_name})`,
+    }).eq("id", order.id);
+    if (!error) {
+      try {
+        await supabase.from("audit_logs").insert({
+          action: "manual_mark_unpaid",
+          entity_type: "order",
+          entity_id: order.id,
+          performed_by: adminProfile.user_id,
+          details: {
+            confirmation_id: order.confirmation_id,
+            previous_status: order.status,
+            previous_pi: order.payment_intent_id,
+            admin_name: adminProfile.full_name,
+            timestamp: ts,
+          },
+        });
+      } catch { /* non-critical */ }
+      try {
+        await supabase.from("order_status_logs").insert({
+          order_id: order.id,
+          status: "lead",
+          note: `[MANUAL OVERRIDE] Marked as unpaid/failed by admin (${adminProfile.full_name}). PI cleared.`,
+          created_at: ts,
+        });
+      } catch { /* non-critical */ }
+      updateOrderField({ status: "lead", payment_intent_id: null, paid_at: null });
+      setShowMarkUnpaidConfirm(false);
+      setMarkUnpaidMsg("Order reverted to unpaid/lead status. Payment intent cleared.");
+    } else {
+      setMarkUnpaidMsg(`Failed: ${error.message}`);
+    }
+    setMarkingUnpaid(false);
+    setTimeout(() => setMarkUnpaidMsg(""), 8000);
+  };
+
+  const handleResendWebhook = async () => {
+    if (!order.payment_intent_id) return;
+    setResendingWebhook(true);
+    setResendWebhookMsg("");
+    setResendWebhookOk(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/resend-webhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          confirmationId: order.confirmation_id,
+          paymentIntentId: order.payment_intent_id,
+        }),
+      });
+      const result = await res.json() as { ok?: boolean; message?: string; error?: string; checkoutSessionId?: string };
+      if (result.ok) {
+        setResendWebhookMsg(result.message ?? "Webhook re-processed successfully. checkout_session_id backfilled.");
+        setResendWebhookOk(true);
+        if (result.checkoutSessionId) {
+          updateOrderField({ checkout_session_id: result.checkoutSessionId });
+        }
+        // Refresh email log
+        try {
+          const { data: fresh } = await supabase.from("orders").select("email_log, checkout_session_id").eq("id", order.id).maybeSingle();
+          if (fresh) {
+            const patch: Partial<Order> = {};
+            if (fresh.email_log) patch.email_log = fresh.email_log as EmailLogEntry[];
+            if (fresh.checkout_session_id) patch.checkout_session_id = fresh.checkout_session_id as string;
+            if (Object.keys(patch).length > 0) updateOrderField(patch);
+          }
+        } catch { /* non-critical */ }
+      } else {
+        setResendWebhookMsg(result.error ?? "Webhook re-send failed — check edge function logs");
+        setResendWebhookOk(false);
+      }
+    } catch {
+      setResendWebhookMsg("Network error — please try again");
+      setResendWebhookOk(false);
+    }
+    setResendingWebhook(false);
+    setTimeout(() => { setResendWebhookMsg(""); setResendWebhookOk(null); }, 12000);
   };
 
   const handleCancelOrder = async () => {
@@ -964,96 +1115,159 @@ export default function OrderDetailModal({
       <div className="relative bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="w-12 h-12 flex items-center justify-center bg-[#f0faf7] rounded-full text-[#1a5c4f] text-lg font-extrabold flex-shrink-0">
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base font-extrabold text-gray-900">{fullName}</h2>
-              {(() => {
-                const s = getModalDisplayStatus(order);
-                return (
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${s.color}`}>
-                    {s.label}
-                  </span>
-                );
-              })()}
-              {/* Show VIP badge when customer has add-on services; otherwise show doctor_status.
-                  Only one of these two badges is shown at a time to avoid clutter. */}
-              {Array.isArray(order.addon_services) && order.addon_services.length > 0 ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-gradient-to-r from-amber-400 to-orange-400 text-white shadow-sm">
-                  <i className="ri-vip-crown-fill" style={{ fontSize: "10px" }}></i>VIP
-                </span>
-              ) : (
-                order.doctor_status && order.doctor_status !== "patient_notified" && (
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${DOCTOR_STATUS_COLOR[order.doctor_status] ?? "bg-gray-100 text-gray-500"}`}>
-                    {order.doctor_status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                  </span>
-                )
-              )}
-              {/* Dispute badge */}
-              {(order.status === "disputed" || order.dispute_id) && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-red-600 text-white">
-                  <i className="ri-error-warning-fill" style={{ fontSize: "10px" }}></i>DISPUTE
-                </span>
-              )}
-              {/* Fraud warning badge */}
-              {order.fraud_warning && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-red-800 text-white">
-                  <i className="ri-spy-fill" style={{ fontSize: "10px" }}></i>FRAUD WARNING
-                </span>
-              )}
+        <div className="flex-shrink-0 border-b border-gray-100">
+          {/* Top row: avatar + name + status + actions + close */}
+          <div className="flex items-center gap-3 px-4 sm:px-6 pt-4 pb-3">
+            <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-full text-[#1a5c4f] text-sm font-extrabold flex-shrink-0">
+              {initials}
             </div>
-            <p className="text-xs text-gray-400 truncate">{order.email} · <span className="font-mono">{order.confirmation_id}</span></p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h2 className="text-base font-extrabold text-gray-900 leading-tight">{fullName}</h2>
+                {/* Primary status */}
+                {(() => {
+                  const s = getModalDisplayStatus(order);
+                  return (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${s.color}`}>
+                      {s.label}
+                    </span>
+                  );
+                })()}
+                {/* VIP or doctor status badge */}
+                {Array.isArray(order.addon_services) && order.addon_services.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-gradient-to-r from-amber-400 to-orange-400 text-white">
+                    <i className="ri-vip-crown-fill" style={{ fontSize: "10px" }}></i>VIP
+                  </span>
+                ) : (
+                  order.doctor_status && order.doctor_status !== "patient_notified" && (
+                    <span className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${DOCTOR_STATUS_COLOR[order.doctor_status] ?? "bg-gray-100 text-gray-500"}`}>
+                      {order.doctor_status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </span>
+                  )
+                )}
+                {/* Alert badges */}
+                {(order.status === "disputed" || order.dispute_id) && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-red-600 text-white">
+                    <i className="ri-error-warning-fill" style={{ fontSize: "10px" }}></i>DISPUTE
+                  </span>
+                )}
+                {order.fraud_warning && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-red-800 text-white">
+                    <i className="ri-spy-fill" style={{ fontSize: "10px" }}></i>FRAUD
+                  </span>
+                )}
+              </div>
+            </div>
+            {/* Action buttons */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setSection("comms")}
+                title={order.phone ? `SMS ${order.phone}` : "No phone on file"}
+                className={`whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-[#b8ddd5] text-[#1a5c4f] hover:bg-[#f0faf7]" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+              >
+                <i className="ri-message-3-line"></i>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSection("comms")}
+                title={order.phone ? `Call ${order.phone}` : "No phone on file"}
+                className={`whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-600 hover:bg-sky-50" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+              >
+                <i className="ri-phone-line"></i>
+              </button>
+              <button type="button" onClick={onClose}
+                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+                <i className="ri-close-line text-lg"></i>
+              </button>
+            </div>
           </div>
-          {/* Quick SMS + Call buttons in header */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => setSection("comms")}
-              title={order.phone ? `SMS ${order.phone}` : "No phone on file"}
-              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${order.phone ? "border-[#b8ddd5] text-[#1a5c4f] hover:bg-[#f0faf7]" : "border-gray-200 text-gray-400 cursor-not-allowed"}`}
-            >
-              <i className="ri-message-3-line"></i>SMS
-            </button>
-            <button
-              type="button"
-              onClick={() => setSection("comms")}
-              title={order.phone ? `Call ${order.phone}` : "No phone on file"}
-              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-700 hover:bg-sky-50" : "border-gray-200 text-gray-400 cursor-not-allowed"}`}
-            >
-              <i className="ri-phone-line"></i>Call
-            </button>
+
+          {/* Second row: meta info chips */}
+          <div className="flex items-center gap-2 px-4 sm:px-6 pb-3 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
+              <i className="ri-mail-line text-gray-400" style={{ fontSize: "11px" }}></i>
+              <span className="truncate max-w-[160px]">{order.email}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 font-mono">
+              <i className="ri-hashtag text-gray-400" style={{ fontSize: "11px" }}></i>
+              {order.confirmation_id}
+            </span>
+            {order.state && (
+              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
+                <i className="ri-map-pin-line text-gray-400" style={{ fontSize: "11px" }}></i>
+                {order.state}
+              </span>
+            )}
+            {order.price != null && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1">
+                <i className="ri-money-dollar-circle-line" style={{ fontSize: "11px" }}></i>
+                ${order.price}
+              </span>
+            )}
+            {order.phone && (
+              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
+                <i className="ri-phone-line text-gray-400" style={{ fontSize: "11px" }}></i>
+                {order.phone}
+              </span>
+            )}
           </div>
-          <button type="button" onClick={onClose}
-            className="whitespace-nowrap w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors flex-shrink-0">
-            <i className="ri-close-line text-lg"></i>
-          </button>
         </div>
 
-        {/* Section tabs */}
-        <div className="flex items-center gap-1 px-6 py-2 border-b border-gray-100 bg-gray-50/60 flex-shrink-0 overflow-x-auto">
-          {([
-            { key: "overview",      label: "Overview",                                                                                                   icon: "ri-layout-grid-line",    badge: null },
-            { key: "comms",         label: "Communications",                                                                                             icon: "ri-message-3-line",      badge: null },
-            { key: "documents",     label: "Documents",                                                                                                  icon: "ri-file-pdf-line",       badge: docCount > 0 ? docCount : null },
-            { key: "assessment",    label: isPSDOrder(order) ? "PSD Evaluation" : `Assessment${assessmentCount > 0 ? ` (${assessmentCount})` : ""}`,     icon: "ri-questionnaire-line",  badge: null },
-            { key: "shared_notes",  label: "Provider Notes",                                                                                             icon: "ri-chat-3-line",         badge: null },
-            { key: "notes",         label: "Internal Notes",                                                                                             icon: "ri-sticky-note-line",    badge: null },
-            { key: "emails",        label: `Email Log${order.email_log && order.email_log.length > 0 ? ` (${order.email_log.length})` : ""}`,            icon: "ri-mail-history-line",   badge: null },
-          ] as { key: Section; label: string; icon: string; badge: number | null }[]).map((tab) => (
-            <button key={tab.key} type="button" onClick={() => setSection(tab.key)}
-              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-white"}`}>
-              <i className={tab.icon}></i>{tab.label}
-              {tab.badge !== null && (
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-extrabold ${section === tab.key ? "bg-white/20 text-white" : "bg-[#e8f5f1] text-[#1a5c4f]"}`}>
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        {/* Section navigation — dropdown on mobile, pill tabs on desktop */}
+        {(() => {
+          const TABS: { key: Section; label: string; icon: string; badge: number | null }[] = [
+            { key: "overview",     label: "Overview",                                     icon: "ri-layout-grid-line",  badge: null },
+            { key: "comms",        label: "Comms",                                        icon: "ri-message-3-line",    badge: null },
+            { key: "documents",    label: "Documents",                                    icon: "ri-file-pdf-line",     badge: docCount > 0 ? docCount : null },
+            { key: "assessment",   label: isPSDOrder(order) ? "PSD Eval" : "Assessment",  icon: "ri-questionnaire-line",badge: assessmentCount > 0 ? assessmentCount : null },
+            { key: "shared_notes", label: "Provider Notes",                               icon: "ri-chat-3-line",       badge: null },
+            { key: "notes",        label: "Internal Notes",                               icon: "ri-sticky-note-line",  badge: null },
+            { key: "emails",       label: "Email Log",                                    icon: "ri-mail-send-line",    badge: order.email_log && order.email_log.length > 0 ? order.email_log.length : null },
+          ];
+          const activeTab = TABS.find((t) => t.key === section);
+          return (
+            <div className="border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+              {/* Mobile: compact select dropdown */}
+              <div className="flex sm:hidden items-center gap-2 px-4 py-2.5">
+                <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                  <i className={`${activeTab?.icon ?? "ri-layout-grid-line"} text-white text-sm`}></i>
+                </div>
+                <div className="relative flex-1">
+                  <select
+                    value={section}
+                    onChange={(e) => setSection(e.target.value as Section)}
+                    className="w-full appearance-none pl-3 pr-8 py-2 bg-white border border-gray-200 text-sm font-bold text-gray-800 rounded-lg focus:outline-none focus:border-[#1a5c4f] cursor-pointer"
+                  >
+                    {TABS.map((tab) => (
+                      <option key={tab.key} value={tab.key}>
+                        {tab.label}{tab.badge !== null ? ` (${tab.badge})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
+                    <i className="ri-arrow-down-s-line text-gray-400 text-sm"></i>
+                  </div>
+                </div>
+              </div>
+              {/* Desktop: wrapped pill tabs */}
+              <div className="hidden sm:flex items-center gap-1 px-4 py-2 flex-wrap">
+                {TABS.map((tab) => (
+                  <button key={tab.key} type="button" onClick={() => setSection(tab.key)}
+                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-white hover:text-gray-800"}`}>
+                    <i className={tab.icon}></i>
+                    {tab.label}
+                    {tab.badge !== null && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${section === tab.key ? "bg-white/20 text-white" : "bg-[#e8f5f1] text-[#1a5c4f]"}`}>
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
@@ -1085,10 +1299,50 @@ export default function OrderDetailModal({
 
           {/* ── OVERVIEW ── */}
           {section === "overview" && (
-            <div className="p-6 space-y-5">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
 
-              {/* ── PAYMENT NOT SYNCED WARNING ── */}
-              {!order.payment_intent_id && order.status !== "completed" && order.doctor_status !== "patient_notified" && (
+              {/* ── QUICK SUMMARY STRIP ── */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                {[
+                  {
+                    label: "Payment",
+                    value: order.payment_intent_id ? "Paid" : "Unpaid",
+                    icon: "ri-bank-card-line",
+                    color: order.payment_intent_id ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200",
+                  },
+                  {
+                    label: "Provider",
+                    value: order.doctor_name ?? (order.doctor_email ? order.doctor_email.split("@")[0] : "Unassigned"),
+                    icon: "ri-user-heart-line",
+                    color: order.doctor_name || order.doctor_email ? "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]" : "text-gray-500 bg-gray-50 border-gray-200",
+                  },
+                  {
+                    label: "Documents",
+                    value: docCount > 0 ? `${docCount} uploaded` : "None yet",
+                    icon: "ri-file-check-line",
+                    color: docCount > 0 ? "text-violet-700 bg-violet-50 border-violet-200" : "text-gray-400 bg-gray-50 border-gray-200",
+                  },
+                  {
+                    label: "Letter Sent",
+                    value: order.patient_notification_sent_at ? new Date(order.patient_notification_sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Not sent",
+                    icon: "ri-mail-check-line",
+                    color: order.patient_notification_sent_at ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-gray-400 bg-gray-50 border-gray-200",
+                  },
+                ].map((stat) => (
+                  <div key={stat.label} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${stat.color}`}>
+                    <div className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/60 flex-shrink-0">
+                      <i className={`${stat.icon} text-sm`}></i>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs opacity-70 leading-tight">{stat.label}</p>
+                      <p className="text-xs font-bold truncate leading-tight">{stat.value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── PAYMENT NOT SYNCED WARNING ── always show for any unpaid order unless refunded or delivered ── */}
+              {!order.payment_intent_id && order.status !== "refunded" && !order.refunded_at && order.doctor_status !== "patient_notified" && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
@@ -1209,6 +1463,13 @@ export default function OrderDetailModal({
                         : "—",
                       highlight: order.payment_method ? "text-gray-800" : "text-gray-400",
                     },
+                    {
+                      label: "Paid At",
+                      value: (order as Order & { paid_at?: string | null }).paid_at
+                        ? fmt((order as Order & { paid_at?: string | null }).paid_at!)
+                        : "—",
+                      highlight: (order as Order & { paid_at?: string | null }).paid_at ? "text-emerald-600" : "text-gray-400",
+                    },
                     { label: "Phone", value: order.phone ?? "—" },
                     {
                       label: "GHL Sync",
@@ -1226,6 +1487,81 @@ export default function OrderDetailModal({
                       <p className={`text-sm font-semibold truncate ${item.mono ? "font-mono text-gray-700" : item.highlight ?? "text-gray-800"}`}>{item.value}</p>
                     </div>
                   ))}
+
+                  {/* Stripe Payment Intent ID + Checkout Session ID — direct links to Stripe dashboard */}
+                  {order.payment_intent_id && (
+                    <div className="col-span-2 sm:col-span-3 md:col-span-4">
+                      <p className="text-xs text-gray-400 mb-1.5">Stripe Reference</p>
+                      <div className="space-y-2">
+                        {/* Payment Intent */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-semibold">PI</span>
+                          <span className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded-lg select-all">{order.payment_intent_id}</span>
+                          <a
+                            href={`https://dashboard.stripe.com/payments/${order.payment_intent_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+                          >
+                            <i className="ri-external-link-line text-xs"></i>Open in Stripe
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => navigator.clipboard.writeText(order.payment_intent_id ?? "")}
+                            className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
+                          >
+                            <i className="ri-file-copy-line text-xs"></i>Copy
+                          </button>
+                        </div>
+                        {/* Checkout Session ID */}
+                        {order.checkout_session_id ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-semibold">CS</span>
+                            <span className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded-lg select-all">{order.checkout_session_id}</span>
+                            <a
+                              href={`https://dashboard.stripe.com/payments/${order.checkout_session_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+                            >
+                              <i className="ri-external-link-line text-xs"></i>Open Session
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard.writeText(order.checkout_session_id ?? "")}
+                              className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
+                            >
+                              <i className="ri-file-copy-line text-xs"></i>Copy
+                            </button>
+                          </div>
+                        ) : (
+                          /* No session ID yet — show backfill button */
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-semibold">CS</span>
+                            <span className="text-xs text-gray-400 italic">No checkout_session_id stored</span>
+                            <button
+                              type="button"
+                              onClick={handleResendWebhook}
+                              disabled={resendingWebhook}
+                              title="Re-process the Stripe payment_intent.succeeded webhook to backfill checkout_session_id and re-trigger any missing emails"
+                              className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg hover:bg-amber-100 cursor-pointer transition-colors disabled:opacity-50"
+                            >
+                              {resendingWebhook
+                                ? <><i className="ri-loader-4-line animate-spin"></i>Processing...</>
+                                : <><i className="ri-refresh-line"></i>Resend Stripe Webhook</>
+                              }
+                            </button>
+                          </div>
+                        )}
+                        {resendWebhookMsg && (
+                          <p className={`text-xs flex items-center gap-1 font-semibold ${resendWebhookOk ? "text-emerald-700" : "text-red-600"}`}>
+                            <i className={resendWebhookOk ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                            {resendWebhookMsg}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Referred By badge */}
                   <div>
@@ -1500,52 +1836,58 @@ export default function OrderDetailModal({
                   </div>
                 ) : (
                   /* ── PAID ORDER — full actions ── */
-                  <div className="space-y-3">
-                    {/* Row 1: Always-enabled paid actions (hidden for completed or refunded orders) */}
+                  <div className="space-y-4">
+                    {/* Group 1: Order management actions */}
                     {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Resend Confirmation — only for non-completed orders */}
-                      <button
-                        type="button"
-                        onClick={handleResendConfirmation}
-                        disabled={confirmResending}
-                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-600 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-60"
-                      >
-                        {confirmResending
-                          ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
-                          : <><i className="ri-mail-check-line"></i>Resend Confirmation</>
-                        }
-                      </button>
-
-                      {/* Mark Under Review */}
-                      <button
-                        type="button"
-                        disabled={statusUpdating}
-                        onClick={() => handleSetStatus("under-review", undefined)}
-                        className={`whitespace-nowrap flex items-center gap-2 px-3 py-2.5 border rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 ${order.status === "under-review" ? "bg-gray-100 border-gray-300 text-gray-500" : "border-sky-200 text-sky-700 hover:bg-sky-50"}`}
-                      >
-                        <i className="ri-eye-line"></i>Mark Under Review
-                      </button>
-
-                      {!order.ghl_synced_at && (
-                        <button type="button" onClick={handleGhlRefire} disabled={ghlFiring}
-                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-amber-200 text-amber-700 hover:bg-amber-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50">
-                          {ghlFiring ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</> : <><i className="ri-refresh-line"></i>Retry GHL Sync</>}
+                    <div>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                        <i className="ri-settings-3-line"></i>Order Management
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {/* Resend Confirmation */}
+                        <button
+                          type="button"
+                          onClick={handleResendConfirmation}
+                          disabled={confirmResending}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-600 bg-orange-50/40 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-60"
+                        >
+                          {confirmResending
+                            ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                            : <><i className="ri-mail-check-line"></i>Resend Confirmation</>
+                          }
                         </button>
-                      )}
+
+                        {/* Mark Under Review */}
+                        <button
+                          type="button"
+                          disabled={statusUpdating}
+                          onClick={() => handleSetStatus("under-review", undefined)}
+                          className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 ${order.status === "under-review" ? "bg-gray-100 border-gray-300 text-gray-500" : "border-sky-200 text-sky-700 bg-sky-50/40 hover:bg-sky-50"}`}
+                        >
+                          <i className="ri-eye-line"></i>Mark Under Review
+                        </button>
+
+                        {!order.ghl_synced_at && (
+                          <button type="button" onClick={handleGhlRefire} disabled={ghlFiring}
+                            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-amber-200 text-amber-700 bg-amber-50/40 hover:bg-amber-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50">
+                            {ghlFiring ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</> : <><i className="ri-refresh-line"></i>Retry GHL Sync</>}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     )}
 
                     {/* Divider */}
                     <div className="border-t border-gray-100"></div>
 
-                    {/* Row 2: Provider-completion-gated actions */}
+                    {/* Group 2: Provider-completion-gated actions */}
                     <div>
-                      <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                         <i className="ri-lock-2-line"></i>
-                        Available once provider uploads completed letter
+                        Delivery Actions
+                        {!hasProviderDocs && <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— needs provider letter first</span>}
                       </p>
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {/* Mark Delivered — only when provider has docs */}
                         {(() => {
                           const canDeliver = hasProviderDocs;

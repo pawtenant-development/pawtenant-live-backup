@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
 
 interface ThankYouState {
   firstName?: string;
@@ -239,14 +240,8 @@ export default function PSDAssessmentThankYouPage() {
           sessionStorage.removeItem("esa_payment_success");
 
           if (!directSuccess) {
-            if (typeof window.fbq === "function") {
-              window.fbq("track", "Purchase", {
-                value: order.price,
-                currency: "USD",
-                content_name: "PSD Letter",
-              });
-              window.fbq("track", "Lead");
-            }
+            fireMetaPurchase({ value: order.price ?? 0, confirmationId: order.confirmationId ?? '', email: order.email, contentName: 'PSD Letter' });
+            fireLead();
             fireGHLPaidLead(order);
           }
         } catch { /* silent */ }
@@ -314,14 +309,7 @@ export default function PSDAssessmentThankYouPage() {
 
     console.log("[PSD Thank-You] Conversion params:", { rawAmount, rawOrderId, conversionValue, transactionId });
 
-    // Meta Pixel fires immediately — it has its own internal queue
-    if (typeof window.fbq === "function") {
-      window.fbq("track", "Purchase", {
-        value: conversionValue,
-        currency: "USD",
-        content_name: "PSD Letter",
-      });
-    }
+    fireMetaPurchase({ value: conversionValue, confirmationId: transactionId, email: resolvedState.email, contentName: 'PSD Letter' });
 
     // Google Ads: try immediately, then poll every 100 ms for up to 10 s
     // gtag.js loads asynchronously — on SPA navigations it may not be ready at mount

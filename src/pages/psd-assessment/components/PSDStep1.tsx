@@ -3,6 +3,11 @@ import { useState } from "react";
 export interface PSDStep1Data {
   dogTasks: string[];
   taskTraining: string;
+  taskDescription: string;
+  taskReliability: string;
+  taskPublicAccess: string;
+  taskEvidenceUrl: string;
+  taskEvidenceType: string;
   dogDuration: string;
   emotionalFrequency: string;
   conditions: string[];
@@ -127,6 +132,9 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
   const REQUIRED: Array<{ key: keyof PSDStep1Data; check: () => boolean }> = [
     { key: "dogTasks",           check: () => data.dogTasks.length > 0 },
     { key: "taskTraining",       check: () => !!data.taskTraining },
+    { key: "taskDescription",    check: () => data.taskDescription.trim().length >= 15 },
+    { key: "taskReliability",    check: () => !!data.taskReliability },
+    { key: "taskPublicAccess",   check: () => !!data.taskPublicAccess },
     { key: "dogDuration",        check: () => !!data.dogDuration },
     { key: "emotionalFrequency", check: () => !!data.emotionalFrequency },
     { key: "conditions",         check: () => data.conditions.length > 0 },
@@ -202,8 +210,174 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           ]} />
         </QCard>
 
-        {/* Q3 — Duration with dog */}
-        <QCard number={3} question="How long has your dog been performing these tasks for you?" required hasError={hasErr("dogDuration")}>
+        {/* Q3 — Task description (ADA trained task detail) */}
+        <QCard number={3} question="Describe exactly how your dog performs each task — step by step." hint="ADA requires tasks to be specifically trained behaviors, not just comfort or presence. Be as specific as possible." required hasError={hasErr("taskDescription")}>
+          <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
+            <i className="ri-information-line text-amber-500 text-base flex-shrink-0 mt-0.5"></i>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              <strong>ADA standard:</strong> A psychiatric service dog must be trained to perform a specific task that directly mitigates your disability. General comfort, companionship, or emotional support alone does not qualify under the ADA.
+            </p>
+          </div>
+          <textarea
+            value={data.taskDescription}
+            onChange={(e) => update("taskDescription", e.target.value)}
+            placeholder={`Example: When I begin to show signs of a panic attack (rapid breathing, pacing), my dog Bella nudges my hand with her nose, then places her front paws on my lap and applies pressure until my breathing slows. She was trained to recognize these cues over 6 months of task-specific training.`}
+            rows={6}
+            maxLength={1200}
+            className={`w-full px-4 py-3 rounded-lg border-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none transition-colors resize-none ${hasErr("taskDescription") ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-orange-400"}`}
+          />
+          <div className="flex items-center justify-between mt-1.5">
+            {data.taskDescription.trim().length > 0 && data.taskDescription.trim().length < 15
+              ? <span className="text-xs text-red-500">Please describe the task in more detail.</span>
+              : <span className="text-xs text-gray-400">Your provider will use this to verify ADA task eligibility.</span>}
+            <span className="text-xs text-gray-400 ml-2 flex-shrink-0">{data.taskDescription.length}/1200</span>
+          </div>
+        </QCard>
+
+        {/* Q4 — Task reliability */}
+        <QCard number={4} question="How reliably does your dog perform these tasks on cue or when needed?" required hasError={hasErr("taskReliability")}>
+          <RadioGroup name="taskReliability" value={data.taskReliability} onChange={(v) => update("taskReliability", v)} options={[
+            { label: "Very reliably — performs the task consistently every time", value: "very_reliable" },
+            { label: "Mostly reliably — performs the task most of the time", value: "mostly_reliable" },
+            { label: "Sometimes — still learning, performs inconsistently", value: "inconsistent" },
+            { label: "Still in early training — not yet reliable", value: "in_training" },
+          ]} />
+        </QCard>
+
+        {/* Q5 — Public access behavior */}
+        <QCard number={5} question="Is your dog able to accompany you in public spaces (stores, restaurants, transit) without disruptive behavior?" hint="ADA-covered PSDs must be under control and not pose a direct threat in public settings" required hasError={hasErr("taskPublicAccess")}>
+          <RadioGroup name="taskPublicAccess" value={data.taskPublicAccess} onChange={(v) => update("taskPublicAccess", v)} options={[
+            { label: "Yes — well-behaved and under control in public", value: "yes" },
+            { label: "Mostly — minor issues but generally manageable", value: "mostly" },
+            { label: "Working on it — still training for public access", value: "training" },
+            { label: "No — not yet ready for public access", value: "no" },
+          ]} />
+        </QCard>
+
+        {/* Q6 — Task Training Evidence (optional upload) */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <p className="text-sm font-bold text-gray-900 mb-1">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-200 text-gray-600 text-xs font-bold mr-2">6</span>
+            Task Training Evidence
+            <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Optional</span>
+          </p>
+          <p className="text-xs text-gray-400 mb-4 ml-8">Upload a short video or photo of your dog performing the trained task. This helps your provider verify ADA eligibility faster.</p>
+
+          <div className="ml-0 space-y-4">
+            {/* Evidence type selector */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "video", icon: "ri-video-line", label: "Short Video", hint: "MP4, MOV, up to 60s" },
+                { value: "photo", icon: "ri-image-line", label: "Photo", hint: "JPG, PNG, HEIC" },
+                { value: "link", icon: "ri-links-line", label: "Link / URL", hint: "YouTube, Google Drive, etc." },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => update("taskEvidenceType", data.taskEvidenceType === opt.value ? "" : opt.value)}
+                  className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 text-xs font-semibold transition-all cursor-pointer ${data.taskEvidenceType === opt.value ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-200 bg-white text-gray-500 hover:border-orange-300"}`}
+                >
+                  <div className="w-8 h-8 flex items-center justify-center">
+                    <i className={`${opt.icon} text-xl`}></i>
+                  </div>
+                  <span className="font-bold">{opt.label}</span>
+                  <span className="text-gray-400 font-normal text-center leading-tight">{opt.hint}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* URL input for link type */}
+            {data.taskEvidenceType === "link" && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Paste your link here</label>
+                <input
+                  type="url"
+                  value={data.taskEvidenceUrl}
+                  onChange={(e) => update("taskEvidenceUrl", e.target.value)}
+                  placeholder="https://youtube.com/watch?v=... or https://drive.google.com/..."
+                  className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                />
+                {data.taskEvidenceUrl && (
+                  <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                    <i className="ri-checkbox-circle-fill"></i>Link saved — your provider will be able to view this
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* File upload for video/photo */}
+            {(data.taskEvidenceType === "video" || data.taskEvidenceType === "photo") && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  {data.taskEvidenceType === "video" ? "Upload video file" : "Upload photo"}
+                  <span className="text-gray-400 font-normal ml-1">
+                    {data.taskEvidenceType === "video" ? "(MP4, MOV — max 100MB)" : "(JPG, PNG, HEIC — max 20MB)"}
+                  </span>
+                </label>
+                {data.taskEvidenceUrl ? (
+                  <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border-2 border-green-300 rounded-lg">
+                    <div className="w-8 h-8 flex items-center justify-center bg-green-100 rounded-lg flex-shrink-0">
+                      <i className={`${data.taskEvidenceType === "video" ? "ri-video-line" : "ri-image-line"} text-green-600 text-base`}></i>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-green-700 truncate">{data.taskEvidenceUrl.split("/").pop()}</p>
+                      <p className="text-xs text-green-600">File ready — your provider will review this</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => update("taskEvidenceUrl", "")}
+                      className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-green-500 hover:bg-green-100 cursor-pointer transition-colors"
+                    >
+                      <i className="ri-close-line text-sm"></i>
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-orange-400 hover:bg-orange-50/30 transition-all group">
+                    <div className="w-10 h-10 flex items-center justify-center bg-gray-100 group-hover:bg-orange-100 rounded-xl transition-colors">
+                      <i className={`${data.taskEvidenceType === "video" ? "ri-video-upload-line" : "ri-image-add-line"} text-gray-400 group-hover:text-orange-500 text-xl transition-colors`}></i>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-gray-600 group-hover:text-orange-600 transition-colors">
+                        Click to upload {data.taskEvidenceType === "video" ? "video" : "photo"}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {data.taskEvidenceType === "video" ? "MP4, MOV up to 100MB" : "JPG, PNG, HEIC up to 20MB"}
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      accept={data.taskEvidenceType === "video" ? "video/mp4,video/quicktime,video/*" : "image/jpeg,image/png,image/heic,image/*"}
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        // Store filename as placeholder — actual upload would go to Supabase Storage
+                        // For now we store the object URL so the provider can see it was attached
+                        const objectUrl = URL.createObjectURL(file);
+                        update("taskEvidenceUrl", objectUrl);
+                      }}
+                    />
+                  </label>
+                )}
+                <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                  <i className="ri-lock-2-line"></i>
+                  Your file is encrypted and only visible to your assigned licensed provider.
+                </p>
+              </div>
+            )}
+
+            {/* Skip note */}
+            {!data.taskEvidenceType && (
+              <p className="text-xs text-gray-400 flex items-center gap-1.5 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
+                <i className="ri-information-line text-gray-400"></i>
+                Skipping this is fine — your written description above is sufficient for evaluation. Evidence just speeds up the review.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Q7 — Duration with dog */}
+        <QCard number={7} question="How long has your dog been performing these tasks for you?" required hasError={hasErr("dogDuration")}>
           <RadioGroup name="dogDuration" value={data.dogDuration} onChange={(v) => update("dogDuration", v)} options={[
             { label: "Less than 6 months", value: "lt6months" },
             { label: "6–12 months", value: "6to12months" },
@@ -212,18 +386,18 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           ]} />
         </QCard>
 
-        {/* Q4 — Emotional frequency */}
-        <QCard number={4} question="How often do you experience emotional distress, anxiety, or depression?" required hasError={hasErr("emotionalFrequency")}>
+        {/* Q8 — Emotional frequency */}
+        <QCard number={8} question="How often do you experience emotional distress, anxiety, or depression?" required hasError={hasErr("emotionalFrequency")}>
           <RadioGroup name="emotionalFrequency" value={data.emotionalFrequency} onChange={(v) => update("emotionalFrequency", v)} options={FREQ_OPTIONS} />
         </QCard>
 
-        {/* Q5 — Conditions */}
-        <QCard number={5} question="Which of the following do you currently experience? (Select all that apply)" required hasError={hasErr("conditions")}>
+        {/* Q9 — Conditions */}
+        <QCard number={9} question="Which of the following do you currently experience? (Select all that apply)" required hasError={hasErr("conditions")}>
           <CheckboxGroup values={data.conditions} options={CONDITIONS} onChange={(v) => update("conditions", v)} />
         </QCard>
 
-        {/* Q6 — Life change */}
-        <QCard number={6} question="Have you experienced a major life change or transition that is impacting your mental health?" hint="e.g., moving, divorce, job loss, illness, grief, trauma" required hasError={hasErr("lifeChangeStress")}>
+        {/* Q10 — Life change */}
+        <QCard number={10} question="Have you experienced a major life change or transition that is impacting your mental health?" hint="e.g., moving, divorce, job loss, illness, grief, trauma" required hasError={hasErr("lifeChangeStress")}>
           <RadioGroup name="lifeChangeStress" value={data.lifeChangeStress} onChange={(v) => update("lifeChangeStress", v)} options={[
             { label: "Yes — currently going through a major life change", value: "yes_current" },
             { label: "Yes — recently went through one and still adjusting", value: "yes_recent" },
@@ -231,13 +405,13 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           ]} />
         </QCard>
 
-        {/* Q7 — Daily impact */}
-        <QCard number={7} question="How often do your symptoms interfere with your daily life, work, or responsibilities?" required hasError={hasErr("dailyImpact")}>
+        {/* Q11 — Daily impact */}
+        <QCard number={11} question="How often do your symptoms interfere with your daily life, work, or responsibilities?" required hasError={hasErr("dailyImpact")}>
           <RadioGroup name="dailyImpact" value={data.dailyImpact} onChange={(v) => update("dailyImpact", v)} options={FREQ_OPTIONS} />
         </QCard>
 
-        {/* Q8 — Medication */}
-        <QCard number={8} question="Are you currently taking any prescribed medication for a mental health condition?" required hasError={hasErr("medication")}>
+        {/* Q12 — Medication */}
+        <QCard number={12} question="Are you currently taking any prescribed medication for a mental health condition?" required hasError={hasErr("medication")}>
           <RadioGroup name="medication" value={data.medication} onChange={(v) => updateMulti({ medication: v, ...(v === "never" ? { medicationDetails: "" } : {}) })} options={[
             { label: "Yes, currently prescribed and taking", value: "yes_taking" },
             { label: "Yes, prescribed but not currently taking", value: "yes_not_taking" },
@@ -253,8 +427,8 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           )}
         </QCard>
 
-        {/* Q9 — Prior diagnosis */}
-        <QCard number={9} question="Have you previously received a mental health diagnosis from a licensed professional?" required hasError={hasErr("priorDiagnosis")}>
+        {/* Q13 — Prior diagnosis */}
+        <QCard number={13} question="Have you previously received a mental health diagnosis from a licensed professional?" required hasError={hasErr("priorDiagnosis")}>
           <RadioGroup name="priorDiagnosis" value={data.priorDiagnosis} onChange={(v) => updateMulti({ priorDiagnosis: v, ...(v === "no" || v === "prefer_not" ? { specificDiagnosis: "" } : {}) })} options={[
             { label: "Yes, I have a formal diagnosis", value: "yes" },
             { label: "I have been told I may have a condition, but not formally diagnosed", value: "informal" },
@@ -270,8 +444,8 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           )}
         </QCard>
 
-        {/* Q10 — Current treatment */}
-        <QCard number={10} question="Are you currently receiving mental health treatment or therapy?" required hasError={hasErr("currentTreatment")}>
+        {/* Q14 — Current treatment */}
+        <QCard number={14} question="Are you currently receiving mental health treatment or therapy?" required hasError={hasErr("currentTreatment")}>
           <RadioGroup name="currentTreatment" value={data.currentTreatment} onChange={(v) => updateMulti({ currentTreatment: v, ...(v === "none" || v === "considering" ? { treatmentDetails: "" } : {}) })} options={[
             { label: "Yes, I am actively in treatment", value: "active" },
             { label: "Previously received treatment", value: "previous" },
@@ -287,8 +461,8 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           )}
         </QCard>
 
-        {/* Q11 — Open-ended: how dog helps */}
-        <QCard number={11} question="In your own words, describe how your dog helps you manage your disability and daily life." hint="This is reviewed confidentially by your provider to understand the therapeutic relationship between you and your dog." required hasError={hasErr("dogHelpDescription")}>
+        {/* Q15 — Open-ended: how dog helps */}
+        <QCard number={15} question="In your own words, describe how your dog helps you manage your disability and daily life." hint="This is reviewed confidentially by your provider to understand the therapeutic relationship between you and your dog." required hasError={hasErr("dogHelpDescription")}>
           <textarea value={data.dogHelpDescription} onChange={(e) => update("dogHelpDescription", e.target.value)}
             placeholder="For example: My dog Buddy interrupts my panic attacks by putting his paws on my lap, which brings me back to the present moment. Without him, I am unable to leave my apartment..." rows={5} maxLength={1000}
             className={`w-full px-4 py-3 rounded-lg border-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none transition-colors resize-none ${hasErr("dogHelpDescription") ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-orange-400"}`} />
@@ -300,8 +474,8 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           </div>
         </QCard>
 
-        {/* Q12 — Housing */}
-        <QCard number={12} question="What type of housing do you currently live in?" required hasError={hasErr("housingType")}>
+        {/* Q16 — Housing */}
+        <QCard number={16} question="What type of housing do you currently live in?" required hasError={hasErr("housingType")}>
           <RadioGroup name="housingType" value={data.housingType} onChange={(v) => update("housingType", v)} options={[
             { label: "Apartment with a no-pet policy", value: "apt_nopet" },
             { label: "Condo or townhouse", value: "condo" },

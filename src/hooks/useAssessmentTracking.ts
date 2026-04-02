@@ -15,14 +15,15 @@
 
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { fireInitiateCheckout } from "@/lib/metaPixel";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
 
-const GOOGLE_SHEETS_WEBHOOK_URL =
-  "https://script.google.com/macros/s/AKfycbx04WIFe4-Fg2GqofuS9lrNWuFcA-IUNtQ_gK07x7Uz8Mjtk4ZTGBmSnSYfKki7NJrfIg/exec";
-const SHEETS_SECRET = "pt-esa-2026-xK9m";
+// REMOVED: GOOGLE_SHEETS_WEBHOOK_URL and SHEETS_SECRET are no longer called
+// from the browser. All Sheets syncing is handled exclusively by the
+// sync-to-sheets edge function to keep secrets out of the client bundle.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -202,13 +203,10 @@ export function useAssessmentTracking({
         });
       }
 
-      // ── 3. Meta Pixel: Lead event ────────────────────────────────────────
-      if (typeof window.fbq === "function") {
-        window.fbq("track", "InitiateCheckout", {
-          content_name: `${letterLabel} Assessment Started`,
-          content_category: "ESA Letter",
-        });
-      }
+      // ── 3. Meta Pixel: InitiateCheckout event ──────────────────────────────
+      fireInitiateCheckout({
+        content_name: `${letterLabel} Assessment Started`,
+      });
     };
 
     fireStartEvents();

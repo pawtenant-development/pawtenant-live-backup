@@ -115,21 +115,24 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
-    // ── Verify caller is a logged-in admin ─────────────────────────────────
-    const callerToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: `Bearer ${callerToken}` } },
-    });
-    const { data: { user: callerUser }, error: callerErr } = await callerClient.auth.getUser();
-    if (callerErr || !callerUser) {
-      return new Response(JSON.stringify({ ok: false, error: "Unauthorized — please refresh and try again" }), {
+    // ── Verify caller using service role key (avoids SUPABASE_ANON_KEY dependency) ──
+    const callerToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
+    if (!callerToken) {
+      return new Response(JSON.stringify({ ok: false, error: "Unauthorized — no token provided" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: { user: callerUser }, error: callerErr } = await adminClient.auth.getUser(callerToken);
+    if (callerErr || !callerUser) {
+      console.warn("[create-provider] Auth failed:", callerErr?.message ?? "no user");
+      return new Response(JSON.stringify({ ok: false, error: "Unauthorized — session expired, please refresh and try again" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: callerProfile } = await adminClient
       .from("doctor_profiles")

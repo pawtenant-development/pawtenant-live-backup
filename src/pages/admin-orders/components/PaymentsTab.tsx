@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import RefundModal from "./RefundModal";
+import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 
 interface ChargeSummary {
   id: string;
@@ -51,6 +52,7 @@ interface PaymentData {
 }
 
 type Period = "7d" | "30d" | "90d";
+type ActiveView = "payments" | "reconciliation";
 
 const PERIOD_LABELS: Record<Period, string> = {
   "7d": "Last 7 Days",
@@ -115,6 +117,7 @@ function downloadCSV(data: ChargeSummary[], refunds: RefundItem[], period: Perio
 }
 
 export default function PaymentsTab() {
+  const [activeView, setActiveView] = useState<ActiveView>("payments");
   const [period, setPeriod] = useState<Period>("30d");
   const [data, setData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,7 +128,59 @@ export default function PaymentsTab() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [orderMap, setOrderMap] = useState<Record<string, string>>({});
 
+  // ── Bulk delete for payments (owner/admin only) ──
+  const [selectedChargeIds, setSelectedChargeIds] = useState<Set<string>>(new Set());
+  const [showBulkDeletePayments, setShowBulkDeletePayments] = useState(false);
+  const [bulkDeletePayConfirmText, setBulkDeletePayConfirmText] = useState("");
+  const [bulkDeletingPay, setBulkDeletingPay] = useState(false);
+  const [bulkDeletePayMsg, setBulkDeletePayMsg] = useState("");
+  const [adminRole, setAdminRole] = useState<string | null>(null);
+
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+
+  // Load admin role on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return;
+      supabase.from("doctor_profiles").select("role, is_admin").eq("user_id", session.user.id).maybeSingle()
+        .then(({ data: prof }) => {
+          if (prof) setAdminRole((prof as { role: string | null; is_admin: boolean }).role ?? (prof as { role: string | null; is_admin: boolean }).is_admin ? "owner" : null);
+        });
+    });
+  }, []);
+
+  const canBulkDelete = adminRole === "owner" || adminRole === "admin_manager";
+
+  const handleBulkDeletePayments = async () => {
+    if (selectedChargeIds.size === 0) return;
+    setBulkDeletingPay(true);
+    // Delete matching orders from Supabase by payment_intent_id
+    let deleted = 0;
+    for (const chargeId of Array.from(selectedChargeIds)) {
+      const charge = data?.charges.find((c) => c.id === chargeId);
+      const piId = charge?.payment_intent;
+      if (piId) {
+        const { data: matchedOrders } = await supabase.from("orders").select("id").eq("payment_intent_id", piId);
+        for (const o of (matchedOrders ?? []) as { id: string }[]) {
+          await supabase.from("doctor_earnings").delete().eq("order_id", o.id);
+          await supabase.from("order_documents").delete().eq("order_id", o.id);
+          await supabase.from("doctor_notes").delete().eq("order_id", o.id);
+          await supabase.from("order_status_logs").delete().eq("order_id", o.id);
+          await supabase.from("doctor_notifications").delete().eq("order_id", o.id);
+          await supabase.from("orders").delete().eq("id", o.id);
+          deleted++;
+        }
+      }
+    }
+    // Remove from local charges list
+    setData((prev) => prev ? { ...prev, charges: prev.charges.filter((c) => !selectedChargeIds.has(c.id)) } : prev);
+    setSelectedChargeIds(new Set());
+    setShowBulkDeletePayments(false);
+    setBulkDeletePayConfirmText("");
+    setBulkDeletingPay(false);
+    setBulkDeletePayMsg(`${deleted} order record${deleted !== 1 ? "s" : ""} deleted from database. Stripe charges are unaffected.`);
+    setTimeout(() => setBulkDeletePayMsg(""), 8000);
+  };
 
   const fetchData = useCallback(async (p: Period) => {
     setLoading(true);
@@ -209,6 +264,23 @@ export default function PaymentsTab() {
 
   return (
     <div>
+      {/* View switcher */}
+      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-5 w-fit">
+        <button type="button" onClick={() => setActiveView("payments")}
+          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "payments" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+          <i className="ri-bank-card-line"></i>Payments &amp; Refunds
+        </button>
+        <button type="button" onClick={() => setActiveView("reconciliation")}
+          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "reconciliation" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+          <i className="ri-link-m"></i>Reconciliation Tool
+        </button>
+      </div>
+
+      {/* Reconciliation view */}
+      {activeView === "reconciliation" && <PaymentReconciliationPanel />}
+
+      {/* Payments view */}
+      {activeView === "payments" && <>
       {/* Header + controls */}
       <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
         <div>
@@ -293,6 +365,12 @@ export default function PaymentsTab() {
                 </button>
               </div>
 
+              {activeSection === "charges" && canBulkDelete && selectedChargeIds.size > 0 && (
+                <button type="button" onClick={() => setShowBulkDeletePayments(true)}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 cursor-pointer transition-colors">
+                  <i className="ri-delete-bin-2-line"></i>Delete DB Records ({selectedChargeIds.size})
+                </button>
+              )}
               {activeSection === "charges" && (
                 <div className="flex items-center gap-2">
                   <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
@@ -314,7 +392,13 @@ export default function PaymentsTab() {
 
             {activeSection === "charges" && (
               <>
-                <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_200px] gap-4 px-5 py-3 bg-gray-50/50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                {bulkDeletePayMsg && (
+                  <div className="mx-4 mt-3 px-4 py-2.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl text-xs font-semibold text-[#1a5c4f] flex items-center gap-2">
+                    <i className="ri-checkbox-circle-fill"></i>{bulkDeletePayMsg}
+                  </div>
+                )}
+                <div className="hidden md:grid grid-cols-[32px_2fr_1fr_1fr_1fr_200px] gap-4 px-5 py-3 bg-gray-50/50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  {canBulkDelete && <span></span>}
                   <span>Customer</span><span>Date</span><span>Status</span><span className="text-right">Amount</span><span>Actions</span>
                 </div>
                 {filteredCharges.length === 0 ? (
@@ -326,7 +410,15 @@ export default function PaymentsTab() {
                       const canRefund = !fullyRefunded && charge.status === "succeeded";
 
                       return (
-                        <div key={charge.id} className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_200px] gap-2 md:gap-4 px-5 py-3 items-center hover:bg-gray-50/50 transition-colors">
+                        <div key={charge.id} className="grid grid-cols-1 md:grid-cols-[32px_2fr_1fr_1fr_1fr_200px] gap-2 md:gap-4 px-5 py-3 items-center hover:bg-gray-50/50 transition-colors">
+                          {canBulkDelete && (
+                            <div className="hidden md:flex items-center">
+                              <button type="button" onClick={() => setSelectedChargeIds((prev) => { const n = new Set(prev); n.has(charge.id) ? n.delete(charge.id) : n.add(charge.id); return n; })}
+                                className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${selectedChargeIds.has(charge.id) ? "bg-red-500 border-red-500" : "border-gray-300 hover:border-red-400"}`}>
+                                {selectedChargeIds.has(charge.id) && <i className="ri-check-line text-white" style={{fontSize:"9px"}}></i>}
+                              </button>
+                            </div>
+                          )}
                           <div>
                             <p className="text-sm font-semibold text-gray-900 truncate">{charge.customer_name ?? charge.customer_email ?? "Anonymous"}</p>
                             {charge.customer_name && charge.customer_email && <p className="text-xs text-gray-400 truncate">{charge.customer_email}</p>}
@@ -460,6 +552,45 @@ export default function PaymentsTab() {
           onRefunded={handleRefunded}
         />
       )}
+
+      {/* Bulk Delete Payments Confirmation Modal */}
+      {showBulkDeletePayments && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setShowBulkDeletePayments(false); setBulkDeletePayConfirmText(""); }}></div>
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-11 h-11 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-delete-bin-2-fill text-red-600 text-xl"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Delete {selectedChargeIds.size} Payment Record{selectedChargeIds.size !== 1 ? "s" : ""}?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">This removes the matching order records from the database. <strong>Stripe charges are NOT affected.</strong> Cannot be undone.</p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 text-xs text-red-700 space-y-1">
+              <p className="font-bold flex items-center gap-1"><i className="ri-bank-card-line"></i>Stripe charges remain intact — only local DB records are deleted</p>
+              <p className="flex items-center gap-1"><i className="ri-shield-keyhole-line"></i>Owner / Admin access only</p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">Type <span className="font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded">DELETE</span> to confirm</label>
+              <input type="text" value={bulkDeletePayConfirmText} onChange={(e) => setBulkDeletePayConfirmText(e.target.value)}
+                placeholder="Type DELETE here" autoFocus
+                className="w-full px-3 py-2.5 border border-red-300 rounded-lg text-sm font-mono focus:outline-none focus:border-red-500 bg-white" />
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={handleBulkDeletePayments} disabled={bulkDeletingPay || bulkDeletePayConfirmText !== "DELETE"}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                {bulkDeletingPay ? <><i className="ri-loader-4-line animate-spin"></i>Deleting...</> : <><i className="ri-delete-bin-2-line"></i>Yes, Delete Records</>}
+              </button>
+              <button type="button" onClick={() => { setShowBulkDeletePayments(false); setBulkDeletePayConfirmText(""); }}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>}
     </div>
   );
 }

@@ -22,6 +22,8 @@ import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
 import CommunicationsPanel from "./components/CommunicationsPanel";
 import SystemHealthTab from "./components/SystemHealthTab";
+import OrderCard from "./components/OrderCard";
+import AdminSidebar from "./components/AdminSidebar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -255,7 +257,7 @@ function fmtSyncAge(ts: Date | null): string {
   return `${Math.floor(mins / 60)}h ago`;
 }
 
-// ─── Last-contacted badge helper ───────────────────────────────────────────
+// ── Last-contacted badge helper ───────────────────────────────────────────
 function fmtLastContacted(ts: string | null): { label: string; color: string } | null {
   if (!ts) return null;
   const diffMs   = Date.now() - new Date(ts).getTime();
@@ -290,6 +292,7 @@ export default function AdminOrdersPage() {
   const [refreshSyncMsg, setRefreshSyncMsg] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [visibleCount, setVisibleCount] = useState(50);
 
   // ── Advanced filters ──
   const [stateFilterAdv, setStateFilterAdv] = useState("all");
@@ -315,6 +318,7 @@ export default function AdminOrdersPage() {
   // ── New feature state ──
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [showStatusLog, setShowStatusLog] = useState<Order | null>(null);
   const [orderDetail, setOrderDetail] = useState<Order | null>(null);
 
@@ -338,12 +342,31 @@ export default function AdminOrdersPage() {
   const [pendingAssign, setPendingAssign] = useState<{ confirmationId: string; doctorEmail: string; doctorName: string } | null>(null);
   const [showLeadActionsModal, setShowLeadActionsModal] = useState(false);
 
+  // ── Bulk delete state (owner/admin_manager only) ──
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteMsg, setBulkDeleteMsg] = useState("");
+  const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState("");
+
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
   const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [syncTick, setSyncTick] = useState(0);
   const [unreadCommsCount, setUnreadCommsCount] = useState(0);
+
+  // ── Sidebar collapse (persisted) ─────────────────────────────────────────
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem("pw_sidebar_collapsed") === "true"; } catch { return false; }
+  });
+
+  const handleSidebarToggle = useCallback(() => {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      try { localStorage.setItem("pw_sidebar_collapsed", String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   const [sendingRecovery, setSendingRecovery] = useState<string | null>(null);
   const [recoveryMsg, setRecoveryMsg] = useState<Record<string, { ok: boolean; msg: string }>>({});
@@ -457,7 +480,7 @@ export default function AdminOrdersPage() {
 
   const loadOrderData = useCallback(async () => {
     const [ordersRes, contactsRes, profilesRes] = await Promise.all([
-      supabase.from("orders").select("*").order("created_at", { ascending: false }),
+      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at").order("created_at", { ascending: false }),
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
       supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role").order("full_name"),
     ]);
@@ -715,6 +738,42 @@ export default function AdminOrdersPage() {
     setTimeout(() => setBulkMsg(""), 6000);
   }, [bulkDoctorEmail, selectedOrders, orders, supabaseUrl, anonKey, doctorContacts]);
 
+  // ── Bulk delete handler (owner/admin_manager only) ───────────────────────
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedOrders.size === 0) return;
+    setBulkDeleting(true);
+    setBulkDeleteMsg("");
+    const ids = Array.from(selectedOrders);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const confirmationId of ids) {
+      const o = orders.find((x) => x.confirmation_id === confirmationId);
+      if (!o) continue;
+      try {
+        // Clean up related records first
+        await supabase.from("doctor_earnings").delete().eq("order_id", o.id);
+        await supabase.from("order_documents").delete().eq("order_id", o.id);
+        await supabase.from("doctor_notes").delete().eq("order_id", o.id);
+        await supabase.from("order_status_logs").delete().eq("order_id", o.id);
+        await supabase.from("doctor_notifications").delete().eq("order_id", o.id);
+        const { error } = await supabase.from("orders").delete().eq("id", o.id);
+        if (error) { failCount++; } else { successCount++; }
+      } catch { failCount++; }
+    }
+
+    setOrders((prev) => prev.filter((o) => !selectedOrders.has(o.confirmation_id)));
+    setSelectedOrders(new Set());
+    setShowBulkDeleteConfirm(false);
+    setBulkDeleteConfirmText("");
+    setBulkDeleting(false);
+    setBulkDeleteMsg(failCount === 0
+      ? `${successCount} order${successCount !== 1 ? "s" : ""} permanently deleted.`
+      : `${successCount} deleted, ${failCount} failed.`
+    );
+    setTimeout(() => setBulkDeleteMsg(""), 8000);
+  }, [selectedOrders, orders]);
+
   // ── Recovery email modal helpers ─────────────────────────────────────────
   const openRecoveryModal = useCallback((order: Order) => {
     setRecoveryModal(order);
@@ -825,6 +884,10 @@ export default function AdminOrdersPage() {
     return sortOrder === "desc" ? tB - tA : tA - tB;
   });
 
+  // ── Pagination: slice filtered to visibleCount ───────────────────────────
+  const visibleOrders = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visibleCount;
+
   const activeFilterCount = [
     stateFilterAdv !== "all",
     doctorFilter !== "all",
@@ -835,6 +898,9 @@ export default function AdminOrdersPage() {
     !!dateTo,
     showDuplicatesOnly,
   ].filter(Boolean).length;
+
+  // Reset pagination when filters/search change
+  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, dateFrom, dateTo, showDuplicatesOnly, hideRecentFollowup, sortOrder]);
 
   const clearAdvancedFilters = () => {
     setStateFilterAdv("all");
@@ -924,17 +990,6 @@ export default function AdminOrdersPage() {
     refund:       { short: "Refund",  icon: "ri-refund-line",        color: "bg-orange-50 text-orange-700" },
   };
 
-  // ── Reference labels map ──────────────────────────────────────────────────────
-
-  const REF_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-    facebook:     { label: "Facebook",     icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50" },
-    google_ads:   { label: "Google Ads",   icon: "ri-google-line",          color: "text-orange-600 bg-orange-50" },
-    social_media: { label: "Social Media", icon: "ri-share-circle-line",    color: "text-pink-600 bg-pink-50" },
-    seo:          { label: "SEO",          icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50" },
-  };
-
-  // ─── Main Page ────────────────────────────────────────────────────────────────
-
   useEffect(() => {
     const load = async () => {
       try {
@@ -993,22 +1048,22 @@ export default function AdminOrdersPage() {
       />
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
-        <Link to="/" className="cursor-pointer">
+      <nav className="bg-white border-b border-gray-100 px-3 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-50">
+        <Link to="/" className="cursor-pointer flex-shrink-0">
           <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
-            alt="PawTenant" className="h-10 w-auto object-contain" />
+            alt="PawTenant" className="h-8 sm:h-10 w-auto object-contain" />
         </Link>
-        <div className="flex items-center gap-3">
-          <Link to="/admin-guide" className="whitespace-nowrap hidden md:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#1a5c4f] transition-colors cursor-pointer">
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* Desktop-only extras */}
+          <Link to="/admin-guide" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#1a5c4f] transition-colors cursor-pointer">
             <i className="ri-book-2-line"></i> Runbook
           </Link>
-          <Link to="/admin-doctors" className="whitespace-nowrap hidden md:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#1a5c4f] transition-colors cursor-pointer">
+          <Link to="/admin-doctors" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#1a5c4f] transition-colors cursor-pointer">
             <i className="ri-stethoscope-line"></i> Providers
           </Link>
 
-          {/* ── Live sync indicator ── */}
-          {/* syncTick is read here to trigger re-render every 30s */}
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-lg" title={lastSyncedAt ? `Last synced: ${lastSyncedAt.toLocaleTimeString()}` : "Connecting…"}>
+          {/* Sync indicator */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-[#f0faf7] border border-[#b8ddd5] rounded-lg" title={lastSyncedAt ? `Last synced: ${lastSyncedAt.toLocaleTimeString()}` : "Connecting…"}>
             <span className="relative flex h-2 w-2 flex-shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#1a5c4f] opacity-50"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#1a5c4f]"></span>
@@ -1018,78 +1073,75 @@ export default function AdminOrdersPage() {
             </span>
           </div>
 
+          {/* Name/role — hidden on smallest screens */}
           {adminProfile && (
-            <div className="hidden sm:flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-2">
               <span className="text-sm font-semibold text-gray-700">{adminProfile.full_name}</span>
               {roleBadge(adminProfile.role ?? null)}
             </div>
           )}
+
           <button type="button" onClick={() => setShowBroadcast(true)} title="Broadcast Message"
-            className="whitespace-nowrap flex items-center gap-1.5 text-sm text-white bg-[#1a5c4f] hover:bg-[#17504a] transition-colors cursor-pointer px-3 py-1.5 rounded-lg">
+            className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 text-white bg-[#1a5c4f] hover:bg-[#17504a] transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm">
             <i className="ri-broadcast-line text-sm"></i>
-            <span className="hidden md:inline text-xs font-bold">Broadcast</span>
+            <span className="hidden sm:inline text-xs font-bold">Broadcast</span>
           </button>
+
           <button type="button" onClick={() => setShowChangePassword(true)} title="Change Password"
-            className="whitespace-nowrap flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1a5c4f] transition-colors cursor-pointer px-2 py-1.5 rounded-lg hover:bg-gray-50">
+            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1a5c4f] transition-colors cursor-pointer px-2 py-1.5 rounded-lg hover:bg-gray-50">
             <i className="ri-lock-password-line"></i>
             <span className="hidden md:inline text-xs font-semibold">Password</span>
           </button>
+
           <button type="button" onClick={async () => { await supabase.auth.signOut(); navigate("/admin-login"); }}
-            className="whitespace-nowrap flex items-center gap-1.5 text-sm text-gray-600 hover:text-red-500 transition-colors cursor-pointer">
-            <i className="ri-logout-box-line"></i><span className="hidden sm:inline"> Sign Out</span>
+            className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 text-sm text-gray-600 hover:text-red-500 transition-colors cursor-pointer">
+            <i className="ri-logout-box-line"></i>
+            <span className="hidden sm:inline text-xs">Sign Out</span>
           </button>
+
           <button
             type="button"
             onClick={handleRefresh}
             disabled={refreshing}
             title="Sync with Stripe + refresh all orders"
-            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:text-[#1a5c4f] hover:border-[#1a5c4f] transition-colors cursor-pointer disabled:opacity-50"
+            className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:text-[#1a5c4f] hover:border-[#1a5c4f] transition-colors cursor-pointer disabled:opacity-50"
           >
             <i className={`ri-refresh-line ${refreshing ? "animate-spin" : ""}`}></i>
             <span className="hidden sm:inline">{refreshing ? "Syncing..." : "Refresh"}</span>
           </button>
           {refreshSyncMsg && (
-            <span className="hidden sm:flex text-xs font-semibold text-emerald-600 items-center gap-1">
+            <span className="hidden md:flex text-xs font-semibold text-emerald-600 items-center gap-1">
               <i className="ri-checkbox-circle-fill"></i>{refreshSyncMsg}
             </span>
           )}
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <AdminSidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        visibleTabs={getVisibleTabs(adminProfile?.role ?? null)}
+        totalUnassigned={totalUnassigned}
+        unreadCommsCount={unreadCommsCount}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={handleSidebarToggle}
+      />
+      <div className={`${sidebarCollapsed ? "lg:ml-14" : "lg:ml-[220px]"} px-3 sm:px-4 md:px-6 py-5 sm:py-8 pb-24 lg:pb-8 transition-[margin] duration-200`}>
         {/* Header */}
-        <div className="mb-6">
+        <div className="mb-5">
           <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-1">Admin Portal</p>
-          <div className="flex items-end justify-between flex-wrap gap-4">
-            <h1 className="text-2xl font-extrabold text-gray-900">
-              {activeTab === "dashboard" ? "Dashboard" : "Dashboard"}
-            </h1>
-            <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1 overflow-x-auto flex-nowrap max-w-full">
-              {([
-                { key: "dashboard" as TabKey, label: "Dashboard",      icon: "ri-dashboard-3-line",          badge: null },
-                { key: "orders" as TabKey,    label: "Orders",         icon: "ri-file-list-3-line",          badge: totalUnassigned > 0 ? totalUnassigned : null },
-                { key: "comms" as TabKey,     label: "Communications", icon: "ri-message-3-line",            badge: unreadCommsCount > 0 ? unreadCommsCount : null },
-                { key: "customers" as TabKey, label: "Customers",      icon: "ri-group-line",                badge: null },
-                { key: "doctors" as TabKey,   label: "Providers",      icon: "ri-stethoscope-line",          badge: null },
-                { key: "earnings" as TabKey,  label: "Earnings",       icon: "ri-money-dollar-circle-line",  badge: null },
-                { key: "payments" as TabKey,  label: "Payments",       icon: "ri-bank-card-line",            badge: null },
-                { key: "team" as TabKey,      label: "Team",           icon: "ri-shield-keyhole-line",       badge: null },
-                { key: "audit" as TabKey,     label: "Audit",          icon: "ri-list-check-2",              badge: null },
-                { key: "settings" as TabKey,  label: "Settings",       icon: "ri-settings-3-line",           badge: null },
-                { key: "health" as TabKey,    label: "Health",         icon: "ri-pulse-line",                badge: null },
-              ].filter((tab) => getVisibleTabs(adminProfile?.role ?? null).includes(tab.key))).map((tab) => (
-                <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeTab === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f]"}`}>
-                  <i className={tab.icon}></i>{tab.label}
-                  {tab.badge !== null && (
-                    <span className={`ml-0.5 text-xs px-1.5 py-0.5 rounded-full font-extrabold ${activeTab === tab.key ? "bg-white/20 text-white" : "bg-amber-200 text-amber-800"}`}>
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
+          <h1 className="text-xl font-extrabold text-gray-900 capitalize">
+            {activeTab === "dashboard" ? "Dashboard" :
+             activeTab === "orders" ? "Orders" :
+             activeTab === "comms" ? "Communications" :
+             activeTab === "customers" ? "Customers" :
+             activeTab === "doctors" ? "Providers" :
+             activeTab === "earnings" ? "Earnings" :
+             activeTab === "payments" ? "Payments" :
+             activeTab === "team" ? "Team" :
+             activeTab === "audit" ? "Audit Log" :
+             activeTab === "settings" ? "Settings" : "System Health"}
+          </h1>
         </div>
 
         {/* Toasts */}
@@ -1103,6 +1155,12 @@ export default function AdminOrdersPage() {
           <div className={`mb-4 rounded-xl px-4 py-3 flex items-start gap-3 border ${bulkMsg.includes("failed") ? "bg-amber-50 border-amber-200" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
             <i className={`text-base mt-0.5 flex-shrink-0 ${bulkMsg.includes("failed") ? "ri-error-warning-line text-amber-600" : "ri-checkbox-circle-fill text-[#1a5c4f]"}`}></i>
             <p className={`text-sm font-semibold ${bulkMsg.includes("failed") ? "text-amber-800" : "text-[#1a5c4f]"}`}>{bulkMsg}</p>
+          </div>
+        )}
+        {bulkDeleteMsg && (
+          <div className={`mb-4 rounded-xl px-4 py-3 flex items-start gap-3 border ${bulkDeleteMsg.includes("failed") ? "bg-red-50 border-red-200" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
+            <i className={`text-base mt-0.5 flex-shrink-0 ${bulkDeleteMsg.includes("failed") ? "ri-error-warning-line text-red-600" : "ri-delete-bin-2-fill text-[#1a5c4f]"}`}></i>
+            <p className={`text-sm font-semibold ${bulkDeleteMsg.includes("failed") ? "text-red-700" : "text-[#1a5c4f]"}`}>{bulkDeleteMsg}</p>
           </div>
         )}
 
@@ -1216,7 +1274,8 @@ export default function AdminOrdersPage() {
                   { value: "cancelled", label: "Cancelled" },
                 ].map((opt) => (
                   <button key={opt.value} type="button" onClick={() => setStatusFilter(opt.value)}
-                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f]"}`}>
+                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f]"}`}
+                  >
                     {opt.label}
                   </button>
                 ))}
@@ -1241,7 +1300,8 @@ export default function AdminOrdersPage() {
                   {sortOrder === "desc" ? "Newest" : "Oldest"}
                 </button>
                 <button type="button" onClick={() => setShowAdvancedFilters((v) => !v)}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border cursor-pointer transition-colors ${showAdvancedFilters || activeFilterCount > 0 ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border cursor-pointer transition-colors ${showAdvancedFilters || activeFilterCount > 0 ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                >
                   <i className="ri-filter-3-line"></i>
                   Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
                 </button>
@@ -1402,421 +1462,151 @@ export default function AdminOrdersPage() {
                 )}
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                {/* Table header */}
-                <div className="hidden lg:grid grid-cols-[40px_1fr_1fr_80px_175px_160px_120px_90px] gap-3 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center justify-center">
-                    <button type="button" onClick={toggleSelectAll}
-                      className="whitespace-nowrap w-5 h-5 flex items-center justify-center rounded border-2 transition-colors cursor-pointer flex-shrink-0"
-                      style={{ borderColor: allFilteredSelected ? "#1a5c4f" : "#d1d5db", backgroundColor: allFilteredSelected ? "#1a5c4f" : "white" }}>
-                      {allFilteredSelected && <i className="ri-check-line text-white" style={{ fontSize: "10px" }}></i>}
+              <div className="space-y-3">
+                {/* Select All + count bar */}
+                <div className="bg-white rounded-xl border border-gray-200 px-4 py-2.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className="flex items-center gap-2.5 cursor-pointer group"
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${allFilteredSelected ? "bg-[#1a5c4f] border-[#1a5c4f]" : "border-gray-300 group-hover:border-[#1a5c4f]"}`}>
+                        {allFilteredSelected && <i className="ri-check-line text-white" style={{ fontSize: "11px" }}></i>}
+                      </div>
+                      <span className="text-xs font-bold text-gray-600 group-hover:text-[#1a5c4f] transition-colors">
+                        {allFilteredSelected ? "Deselect All" : "Select All"}
+                      </span>
+                    </button>
+                    {selectedOrders.size > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1a5c4f] text-white rounded-full text-xs font-bold">
+                        <i className="ri-checkbox-multiple-line" style={{ fontSize: "10px" }}></i>
+                        {selectedOrders.size} selected
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span className="font-semibold text-gray-700">{filtered.length}</span>
+                    <span>of</span>
+                    <span className="font-semibold text-gray-700">{orders.length}</span>
+                    <span>orders</span>
+                    {activeFilterCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearAdvancedFilters}
+                        className="whitespace-nowrap flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-500 hover:text-[#1a5c4f] rounded-lg text-xs font-semibold cursor-pointer transition-colors ml-1"
+                      >
+                        <i className="ri-close-line"></i>Clear filters
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── DESKTOP: bordered table with header ─────────────────── */}
+                <div className="hidden lg:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  {/* Table header */}
+                  <div className="flex items-center gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                    <div className="w-9 flex-shrink-0"></div>
+                    <div className="flex-1 min-w-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Name</div>
+                    <div className="w-[140px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Order ID</div>
+                    <div className="w-[64px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">State</div>
+                    <div className="w-[120px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Activity</div>
+                    <div className="w-[150px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</div>
+                    <div className="w-[110px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Provider</div>
+                    <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</div>
+                    <div className="w-[110px] flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</div>
+                    <div className="w-8 flex-shrink-0"></div>
+                  </div>
+                  {/* Table rows */}
+                  <div className="divide-y divide-gray-100">
+                    {visibleOrders.map((order) => (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        isExpanded={expandedCardId === order.id}
+                        onToggleExpand={() => setExpandedCardId((prev) => prev === order.id ? null : order.id)}
+                        isSelected={selectedOrders.has(order.confirmation_id)}
+                        onToggleSelect={() => toggleSelectOrder(order.confirmation_id)}
+                        notesOpen={expandedNotes === order.confirmation_id}
+                        onToggleNotes={() => setExpandedNotes(expandedNotes === order.confirmation_id ? null : order.confirmation_id)}
+                        assignableProviders={assignableProviders}
+                        pendingAssign={pendingAssign}
+                        onSetPendingAssign={setPendingAssign}
+                        onCancelPendingAssign={() => setPendingAssign(null)}
+                        onConfirmAssign={handleAssign}
+                        assigning={assigning}
+                        assignMsg={assignMsg}
+                        ghlRefiring={ghlRefiring}
+                        onGhlRefire={handleGhlRefire}
+                        ghlReFireResult={ghlReFireResult}
+                        recoveryMsg={recoveryMsg}
+                        onOpenRecovery={openRecoveryModal}
+                        unreadCommsMap={unreadCommsMap}
+                        noteCount={orderNoteCounts[order.id] ?? 0}
+                        adminProfile={adminProfile}
+                        onOpenDetail={openOrderDetail}
+                        onOpenStatusLog={(o) => setShowStatusLog(o)}
+                        onOpenAssessmentIntake={(o) => setAssessmentIntakeOrder(o)}
+                        coveredStates={coveredStates}
+                        duplicateEmailSet={duplicateEmailSet}
+                        US_STATES={US_STATES}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── MOBILE: card stack ─────────────────────────────────── */}
+                <div className="lg:hidden space-y-3">
+                  {visibleOrders.map((order) => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      isExpanded={expandedCardId === order.id}
+                      onToggleExpand={() => setExpandedCardId((prev) => prev === order.id ? null : order.id)}
+                      isSelected={selectedOrders.has(order.confirmation_id)}
+                      onToggleSelect={() => toggleSelectOrder(order.confirmation_id)}
+                      notesOpen={expandedNotes === order.confirmation_id}
+                      onToggleNotes={() => setExpandedNotes(expandedNotes === order.confirmation_id ? null : order.confirmation_id)}
+                      assignableProviders={assignableProviders}
+                      pendingAssign={pendingAssign}
+                      onSetPendingAssign={setPendingAssign}
+                      onCancelPendingAssign={() => setPendingAssign(null)}
+                      onConfirmAssign={handleAssign}
+                      assigning={assigning}
+                      assignMsg={assignMsg}
+                      ghlRefiring={ghlRefiring}
+                      onGhlRefire={handleGhlRefire}
+                      ghlReFireResult={ghlReFireResult}
+                      recoveryMsg={recoveryMsg}
+                      onOpenRecovery={openRecoveryModal}
+                      unreadCommsMap={unreadCommsMap}
+                      noteCount={orderNoteCounts[order.id] ?? 0}
+                      adminProfile={adminProfile}
+                      onOpenDetail={openOrderDetail}
+                      onOpenStatusLog={(o) => setShowStatusLog(o)}
+                      onOpenAssessmentIntake={(o) => setAssessmentIntakeOrder(o)}
+                      coveredStates={coveredStates}
+                      duplicateEmailSet={duplicateEmailSet}
+                      US_STATES={US_STATES}
+                    />
+                  ))}
+                </div>
+
+                {/* ── Load More ─────────────────────────────────────────── */}
+                {hasMore && (
+                  <div className="flex flex-col items-center gap-2 pt-4 pb-2">
+                    <p className="text-xs text-gray-400">
+                      Showing <strong className="text-gray-700">{visibleOrders.length}</strong> of <strong className="text-gray-700">{filtered.length}</strong> orders
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((c) => c + 50)}
+                      className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition-colors"
+                    >
+                      <i className="ri-arrow-down-line"></i>Load 50 More
                     </button>
                   </div>
-                  <span>Patient</span>
-                  <span>Order ID / Date</span>
-                  <span>State</span>
-                  <span>Status</span>
-                  <span>Assign Provider</span>
-                  <span>Docs / GHL</span>
-                  <span>Actions</span>
-                </div>
-
-                <div className="divide-y divide-gray-100">
-                  {filtered.map((order) => {
-                    const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
-                    const isAssigned = !!(order.doctor_email || order.doctor_user_id);
-                    const doctorStatus = isAssigned ? (order.doctor_status || "pending_review") : "unassigned";
-                    const isAssigningThis = assigning === order.confirmation_id;
-                    const msg = assignMsg[order.confirmation_id];
-                    const isSelected = selectedOrders.has(order.confirmation_id);
-                    const notesOpen = expandedNotes === order.confirmation_id;
-                    const noteCount = orderNoteCounts[order.id] ?? 0;
-
-                    return (
-                      <div key={order.id} className={`transition-colors ${isSelected ? "bg-[#f0faf7]/60" : isPSDOrder(order) ? "hover:bg-amber-50/40 bg-amber-50/20" : "hover:bg-gray-50/50"} ${order.doctor_status === "thirty_day_reissue" ? "border-l-4 border-orange-500" : isPSDOrder(order) ? "border-l-4 border-amber-400" : ""}`}>
-                        <div className="grid grid-cols-1 lg:grid-cols-[40px_1fr_1fr_80px_175px_160px_120px_90px] gap-3 px-5 py-4 items-start lg:items-center">
-                          {/* Checkbox */}
-                          <div className="hidden lg:flex items-center justify-center">
-                            <button type="button" onClick={() => toggleSelectOrder(order.confirmation_id)}
-                              className="whitespace-nowrap w-5 h-5 flex items-center justify-center rounded border-2 transition-colors cursor-pointer flex-shrink-0"
-                              style={{ borderColor: isSelected ? "#1a5c4f" : "#d1d5db", backgroundColor: isSelected ? "#1a5c4f" : "white" }}>
-                              {isSelected && <i className="ri-check-line text-white" style={{ fontSize: "10px" }}></i>}
-                            </button>
-                          </div>
-
-                          {/* Patient — clickable to open detail */}
-                          <button type="button" onClick={() => openOrderDetail(order)}
-                            className="text-left group cursor-pointer">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-sm font-bold text-gray-900 truncate group-hover:text-[#1a5c4f] transition-colors">{fullName}</p>
-                              {(unreadCommsMap[order.confirmation_id] ?? 0) > 0 && (
-                                <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-orange-500 text-white text-[9px] font-extrabold rounded-full leading-none">
-                                  {unreadCommsMap[order.confirmation_id]}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-400 truncate">{order.email}</p>
-                            {duplicateEmailSet.has(order.email.toLowerCase()) && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded text-[9px] font-extrabold mt-0.5">
-                                <i className="ri-error-warning-fill" style={{ fontSize: "9px" }}></i>DUPLICATE EMAIL
-                              </span>
-                            )}
-                            {order.phone ? (
-                              <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                <i className="ri-phone-line text-gray-400"></i>{order.phone}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-orange-400 flex items-center gap-1 mt-0.5">
-                                <i className="ri-phone-line"></i>No phone
-                              </p>
-                            )}
-                            <span className="text-xs text-[#1a5c4f] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 mt-0.5">
-                              <i className="ri-external-link-line" style={{ fontSize: "10px" }}></i>View detail
-                            </span>
-                            {isContacted(order) && (() => {
-                              const t = lastTouchTime(order);
-                              const lc = t ? fmtLastContacted(new Date(t).toISOString()) : null;
-                              return lc ? (<span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold mt-1 ${lc.color}`}><i className="ri-phone-line" style={{ fontSize: "9px" }}></i>{lc.label}</span>) : null;
-                            })()}
-                            {order.sent_followup_at && (() => {
-                              const diffMs = Date.now() - new Date(order.sent_followup_at).getTime();
-                              const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                              const label = diffDays === 0 ? "Follow-up: today" : diffDays === 1 ? "Follow-up: 1d ago" : `Follow-up: ${diffDays}d ago`;
-                              const color = diffMs <= 7 * 24 * 60 * 60 * 1000 ? "bg-teal-50 text-teal-700" : "bg-gray-100 text-gray-500";
-                              return (<span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold mt-1 ${color}`}><i className="ri-mail-check-line" style={{ fontSize: "9px" }}></i>{label}</span>);
-                            })()}
-                          </button>
-
-                          {/* Order ID */}
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-xs font-mono font-bold text-gray-700">{order.confirmation_id}</p>
-                              {isPSDOrder(order) ? (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-300 rounded text-[10px] font-extrabold">
-                                  <i className="ri-service-line" style={{ fontSize: "9px" }}></i>PSD
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] border border-[#b8ddd5] rounded text-[10px] font-extrabold">
-                                  <i className="ri-heart-line" style={{ fontSize: "9px" }}></i>ESA
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-400">
-                              {new Date(order.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                            </p>
-                            {order.delivery_speed && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-400 border border-gray-200 rounded text-[10px] font-semibold mt-1">
-                                <i className="ri-speed-line" style={{ fontSize: "9px" }}></i>{order.delivery_speed}
-                              </span>
-                            )}
-                            {order.ghl_synced_at ? (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[10px] font-semibold mt-1 ml-1" title={`Synced: ${new Date(order.ghl_synced_at).toLocaleString()}`}>
-                                <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i> {fmtGhlSync(order.ghl_synced_at)}
-                              </span>
-                            ) : order.ghl_sync_error ? (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-bold mt-1 ml-1" title={order.ghl_sync_error}>
-                                <i className="ri-error-warning-line" style={{ fontSize: "9px" }}></i> GHL fail
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-400 border border-gray-200 rounded text-[10px] font-semibold mt-1 ml-1">
-                                <i className="ri-time-line" style={{ fontSize: "9px" }}></i> GHL pending
-                              </span>
-                            )}
-                          </div>
-
-                          {/* State */}
-                          <div className="flex flex-col gap-1">
-                            <span className="text-sm font-semibold text-gray-700">{US_STATES.find(s => s.abbr === order.state)?.name ?? order.state ?? "—"}</span>
-                            {order.state && !coveredStates.has(order.state) && order.status !== "lead" && (
-                              <span
-                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[10px] font-bold whitespace-nowrap"
-                                title={`No active provider licensed in ${US_STATES.find(s => s.abbr === order.state)?.name ?? order.state}`}
-                              >
-                                <i className="ri-error-warning-fill" style={{ fontSize: "9px" }}></i>
-                                No Coverage
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Status */}
-                          <div className="flex flex-col gap-1.5">
-                            {(() => {
-                              const s = getOrderDisplayStatus(order);
-                              return (
-                                <span className={`inline-flex items-center text-xs font-semibold px-2 py-1 rounded-full w-fit ${s.color}`}>
-                                  {s.label}
-                                </span>
-                              );
-                            })()}
-                            {/* Priority badge — only visible in admin portal, not providers */}
-                            {isPriorityOrder(order) && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-[#1a5c4f] text-white w-fit">
-                                <i className="ri-vip-crown-2-line" style={{ fontSize: "9px" }}></i>(P) Priority
-                              </span>
-                            )}
-                            {/* VIP badge — orders with add-on services */}
-                            {Array.isArray(order.addon_services) && order.addon_services.length > 0 && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-gradient-to-r from-amber-400 to-orange-400 text-white w-fit">
-                                <i className="ri-vip-crown-fill" style={{ fontSize: "9px" }}></i>VIP
-                                <span className="font-normal opacity-90">{order.addon_services.length} add-on{order.addon_services.length !== 1 ? "s" : ""}</span>
-                              </span>
-                            )}
-                            {/* Fraud warning badge */}
-                            {order.fraud_warning && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-red-700 text-white w-fit">
-                                <i className="ri-spy-fill" style={{ fontSize: "9px" }}></i>FRAUD
-                              </span>
-                            )}
-                            {/* Secondary doctor status detail — shown only when assigned */}
-                            {isAssigned && order.doctor_status && order.doctor_status !== "patient_notified" && (
-                              order.doctor_status === "thirty_day_reissue" ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-extrabold bg-orange-500 text-white w-fit" style={{ animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite" }}>
-                                  <i className="ri-time-fill" style={{ fontSize: "10px" }}></i>
-                                  30-Day Reissue
-                                </span>
-                              ) : (
-                                <span className={`inline-flex items-center text-xs font-semibold px-2 py-1 rounded-full w-fit ${DOCTOR_STATUS_COLOR[order.doctor_status] ?? "bg-gray-100 text-gray-500"}`}>
-                                  {doctorStatusLabel(order.doctor_status, isAssigned)}
-                                </span>
-                              )
-                            )}
-                          </div>
-
-                          {/* Assign Provider */}
-                          <div className="space-y-1">
-                            {(!order.payment_intent_id || order.status === "lead") ? (
-                              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                                  <i className="ri-lock-2-line text-gray-300 text-sm"></i>
-                                </div>
-                                <span className="text-xs text-gray-400 italic">Assigned after payment</span>
-                              </div>
-                            ) : (order.status === "refunded" || order.refunded_at) ? (
-                              <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-                                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                                  <i className="ri-refund-line text-red-500 text-sm"></i>
-                                </div>
-                                <span className="text-xs text-red-600 font-semibold italic">Refunded — assignment disabled</span>
-                              </div>
-                            ) : order.doctor_status === "patient_notified" ? (
-                              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                                  <i className="ri-checkbox-circle-fill text-emerald-500 text-sm"></i>
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-xs font-bold text-emerald-700 truncate">
-                                    {order.doctor_name ?? "Provider"}
-                                  </p>
-                                  <p className="text-[10px] text-emerald-500">Completed — locked</p>
-                                </div>
-                              </div>
-                            ) : (
-                              <>
-                                {order.doctor_name && !(pendingAssign?.confirmationId === order.confirmation_id) && (
-                                  <p className="text-xs font-semibold text-[#1a5c4f] flex items-center gap-1 mb-1">
-                                    <i className="ri-user-heart-line"></i>{order.doctor_name}
-                                  </p>
-                                )}
-                                <div className="relative">
-                                  <select
-                                    value={
-                                      pendingAssign?.confirmationId === order.confirmation_id
-                                        ? pendingAssign.doctorEmail
-                                        : (order.doctor_email ?? "")
-                                    }
-                                    onChange={(e) => {
-                                      if (e.target.value) {
-                                        const doc = assignableProviders.find((d) => d.email === e.target.value);
-                                        setPendingAssign({
-                                          confirmationId: order.confirmation_id,
-                                          doctorEmail: e.target.value,
-                                          doctorName: doc?.full_name ?? e.target.value,
-                                        });
-                                      }
-                                    }}
-                                    disabled={isAssigningThis}
-                                    className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer disabled:opacity-60"
-                                  >
-                                    <option value="" className="text-gray-800">— {order.doctor_name ? "Reassign" : "Assign"} Provider —</option>
-                                    {assignableProviders
-                                      .filter((d) => {
-                                        if (d.is_active === false) return false;
-                                        const stateName = US_STATES.find((s) => s.abbr === order.state)?.name ?? "";
-                                        if (!stateName) return true;
-                                        const states = d.licensed_states ?? [];
-                                        return states.includes(stateName) || states.includes(order.state ?? "");
-                                      })
-                                      .map((doc) => (
-                                        <option key={doc.id} value={doc.email} className="text-gray-800">{doc.full_name}</option>
-                                      ))}
-                                  </select>
-                                  <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
-                                    {isAssigningThis
-                                      ? <i className="ri-loader-4-line animate-spin"></i>
-                                      : <i className="ri-arrow-down-s-line text-gray-400"></i>
-                                    }
-                                  </div>
-                                </div>
-
-                                {/* ── Inline confirm ── */}
-                                {pendingAssign?.confirmationId === order.confirmation_id && (
-                                  <div className="mt-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 space-y-2">
-                                    <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                                      <i className="ri-error-warning-line text-amber-500"></i>
-                                      Assign <span className="text-[#1a5c4f]">{pendingAssign.doctorName}</span>?
-                                    </p>
-                                    <p className="text-[11px] text-amber-700">
-                                      The provider will be notified via email once confirmed.
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          handleAssign(pendingAssign.confirmationId, pendingAssign.doctorEmail);
-                                          setPendingAssign(null);
-                                        }}
-                                        disabled={isAssigningThis}
-                                        className="whitespace-nowrap flex-1 flex items-center justify-center gap-1 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-md hover:bg-[#17504a] cursor-pointer disabled:opacity-60 transition-colors"
-                                      >
-                                        {isAssigningThis
-                                          ? <><i className="ri-loader-4-line animate-spin"></i>Assigning&hellip;</>
-                                          : <><i className="ri-check-line"></i>Confirm &amp; Notify</>
-                                        }
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setPendingAssign(null)}
-                                        className="whitespace-nowrap py-1.5 px-3 border border-gray-200 text-gray-500 text-xs font-semibold rounded-md hover:bg-gray-50 cursor-pointer transition-colors"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {msg && !(pendingAssign?.confirmationId === order.confirmation_id) && (
-                                  <p className={`text-xs flex items-center gap-1 ${msg === "Assigned & notified" ? "text-[#1a5c4f]" : "text-red-500"}`}>
-                                    <i className={msg === "Assigned & notified" ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{msg}
-                                  </p>
-                                )}
-                              </>
-                            )}
-                          </div>
-
-                          {/* Docs / GHL */}
-                          <div className="flex flex-col gap-1.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {order.signed_letter_url && (
-                                <a href={order.signed_letter_url} target="_blank" rel="noopener noreferrer"
-                                  className="whitespace-nowrap inline-flex items-center gap-1 px-2 py-1.5 border border-[#1a5c4f]/30 rounded-lg text-xs text-[#1a5c4f] hover:bg-[#f0faf7] cursor-pointer">
-                                  <i className="ri-shield-check-line"></i><span className="hidden lg:inline">Signed</span>
-                                </a>
-                              )}
-                              {order.assessment_answers && (
-                                <button
-                                  type="button"
-                                  onClick={() => setAssessmentIntakeOrder(order)}
-                                  className="whitespace-nowrap inline-flex items-center gap-1 px-2 py-1.5 border border-orange-200 rounded-lg text-xs text-orange-600 hover:bg-orange-50 cursor-pointer transition-colors"
-                                >
-                                  <i className="ri-file-list-3-line"></i>
-                                  <span className="hidden lg:inline">Intake</span>
-                                </button>
-                              )}
-                              {!order.signed_letter_url && <span className="text-xs text-gray-300">—</span>}
-                            </div>
-
-                            {/* Email indicators */}
-                            {order.email_log && order.email_log.length > 0 && (
-                              <div className="flex items-center gap-1 flex-wrap">
-                                {order.email_log.map((entry, idx) => {
-                                  const cfg = EMAIL_BADGE_CONFIG[entry.type];
-                                  if (!cfg) return null;
-                                  return (
-                                    <span
-                                      key={idx}
-                                      title={`${cfg.short} email — ${entry.success ? "sent" : "failed"} at ${new Date(entry.sentAt).toLocaleString()}`}
-                                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-semibold ${entry.success ? cfg.color : "bg-red-50 text-red-500"}`}
-                                    >
-                                      <i className={entry.success ? cfg.icon : "ri-close-circle-line"} style={{ fontSize: "9px" }}></i>
-                                      {cfg.short}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {!order.ghl_synced_at && (
-                              <button type="button" onClick={() => handleGhlRefire(order.confirmation_id)} disabled={ghlRefiring === order.confirmation_id}
-                                className="whitespace-nowrap inline-flex items-center gap-1 px-2 py-1.5 border border-amber-200 bg-amber-50 rounded-lg text-xs text-amber-700 border-amber-200 hover:bg-amber-100 cursor-pointer disabled:opacity-50 transition-colors">
-                                {ghlRefiring === order.confirmation_id
-                                  ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
-                                  : <><i className="ri-refresh-line"></i>Re-fire GHL</>}
-                              </button>
-                            )}
-                            {ghlReFireResult[order.confirmation_id] && (
-                              <p className={`text-xs flex items-center gap-1 leading-tight ${ghlReFireResult[order.confirmation_id].ok ? "text-emerald-600" : "text-red-500"}`}>
-                                <i className={ghlReFireResult[order.confirmation_id].ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
-                                <span className="break-all">{ghlReFireResult[order.confirmation_id].msg.slice(0, 80)}</span>
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Actions column */}
-                          <div className="hidden lg:flex flex-col gap-1.5">
-                            <button type="button" onClick={() => openOrderDetail(order)}
-                              className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5] hover:bg-[#e0f2ec] transition-colors cursor-pointer">
-                              <i className="ri-eye-line"></i>Detail
-                              {(unreadCommsMap[order.confirmation_id] ?? 0) > 0 && (
-                                <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 bg-orange-500 text-white text-[9px] font-extrabold rounded-full leading-none">
-                                  {unreadCommsMap[order.confirmation_id]}
-                                </span>
-                              )}
-                            </button>
-                            <button type="button" onClick={() => setExpandedNotes(notesOpen ? null : order.confirmation_id)}
-                              className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${notesOpen ? "bg-amber-600 text-white border-amber-600" : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"}`}>
-                              <i className="ri-sticky-note-line"></i>
-                              Notes{noteCount > 0 && <span className={`ml-0.5 text-xs px-1.5 py-0.5 rounded-full font-extrabold ${notesOpen ? "bg-white/20 text-white" : "bg-amber-200 text-amber-800"}`}>{noteCount}</span>}
-                            </button>
-                            <button type="button" onClick={() => setShowStatusLog(order)}
-                              className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer">
-                              <i className="ri-history-line"></i>History
-                            </button>
-                            {/* Send Discount Email button — Lead (Unpaid) orders only */}
-                            {(!order.payment_intent_id || order.status === "lead") && (
-                              <button
-                                type="button"
-                                onClick={() => openRecoveryModal(order)}
-                                className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${recoveryMsg[order.confirmation_id]?.ok ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-orange-500 text-white border-orange-500 hover:bg-orange-600"}`}
-                              >
-                                {recoveryMsg[order.confirmation_id]?.ok
-                                  ? <><i className="ri-mail-check-line"></i>Sent!</>
-                                  : <><i className="ri-coupon-3-line"></i>Send Discount</>
-                                }
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Inline Notes Panel */}
-                        {notesOpen && adminProfile && (
-                          <OrderNotesPanel orderId={order.id} confirmationId={order.confirmation_id}
-                            adminUserId={adminProfile.user_id} adminName={adminProfile.full_name}
-                            onClose={() => setExpandedNotes(null)} />
-                        )}
-
-                        {/* Referred By badge — shown in order row */}
-                        {order.referred_by && REF_LABELS[order.referred_by] && (
-                          <div className="flex flex-col gap-1.5">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${REF_LABELS[order.referred_by].color}`}>
-                              <i className={REF_LABELS[order.referred_by].icon} style={{ fontSize: "10px" }}></i>
-                              {REF_LABELS[order.referred_by].label}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                )}
               </div>
             )}
 
@@ -1885,8 +1675,8 @@ export default function AdminOrdersPage() {
 
       {/* ── BULK ASSIGN BAR ── */}
       {selectedOrders.size > 0 && activeTab === "orders" && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#1a5c4f] border-t border-[#17504a] px-6 py-4">
-          <div className="max-w-7xl mx-auto space-y-2">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#1a5c4f] border-t border-[#17504a] px-6 py-4 pb-[calc(1rem+56px)] lg:pb-4">
+          <div className={`${sidebarCollapsed ? "lg:ml-14" : "lg:ml-[220px]"} space-y-2 transition-[margin] duration-200`}>
             {/* Lead warning strip */}
             {(() => {
               const nonAssignableCount = orders.filter((o) =>
@@ -2037,7 +1827,7 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
                 {(() => {
-                  const leadOrders = orders.filter((o) => selectedOrders.has(o.confirmation_id) && (!o.payment_intent_id || o.status === "lead"));
+                  const leadOrders = orders.filter((o) => selectedOrders.has(o.confirmation_id) && o.status === "lead");
                   return leadOrders.length > 0 ? (
                     <button
                       type="button"
@@ -2052,6 +1842,18 @@ export default function AdminOrdersPage() {
                   ) : null;
                 })()}
               </div>
+
+              {/* Bulk Delete — owner/admin_manager only */}
+              {(adminProfile?.role === "owner" || adminProfile?.role === "admin_manager" || adminProfile?.is_admin) && (
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 bg-red-500/20 border border-red-400/40 text-red-200 hover:bg-red-500/30 text-sm font-bold rounded-lg cursor-pointer transition-colors"
+                >
+                  <i className="ri-delete-bin-2-line"></i>
+                  Delete ({selectedOrders.size})
+                </button>
+              )}
 
               <button
                 type="button"
@@ -2112,6 +1914,67 @@ export default function AdminOrdersPage() {
           order={assessmentIntakeOrder}
           onClose={() => setAssessmentIntakeOrder(null)}
         />
+      )}
+
+      {/* ── Bulk Delete Confirmation Modal (owner/admin only) ── */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setShowBulkDeleteConfirm(false); setBulkDeleteConfirmText(""); }}></div>
+          <div className="relative bg-white rounded-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-start gap-3 px-6 pt-6 pb-4">
+              <div className="w-11 h-11 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-delete-bin-2-fill text-red-600 text-xl"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Permanently Delete {selectedOrders.size} Order{selectedOrders.size !== 1 ? "s" : ""}?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  This will <strong>permanently delete</strong> all selected orders and their documents, notes, and status history. <strong>This cannot be undone.</strong>
+                </p>
+              </div>
+            </div>
+            <div className="px-6 pb-2">
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 space-y-1 text-xs text-red-700">
+                <p className="font-bold flex items-center gap-1"><i className="ri-error-warning-fill"></i>{selectedOrders.size} order{selectedOrders.size !== 1 ? "s" : ""} selected for deletion</p>
+                <p className="flex items-center gap-1"><i className="ri-file-shred-line"></i>All documents, notes, status logs &amp; earnings records will be deleted</p>
+                <p className="flex items-center gap-1"><i className="ri-bank-card-line"></i>Stripe payment records are NOT affected — only the local DB records</p>
+                <p className="flex items-center gap-1"><i className="ri-shield-keyhole-line"></i>Only owner/admin accounts can perform bulk deletion</p>
+              </div>
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Type <span className="font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded">DELETE</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={bulkDeleteConfirmText}
+                  onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
+                  placeholder="Type DELETE here"
+                  className="w-full px-3 py-2.5 border border-red-300 rounded-lg text-sm font-mono focus:outline-none focus:border-red-500 bg-white"
+                  autoFocus
+                />
+              </div>
+              <div className="flex items-center gap-2 pb-6">
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting || bulkDeleteConfirmText !== "DELETE"}
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {bulkDeleting
+                    ? <><i className="ri-loader-4-line animate-spin"></i>Deleting...</>
+                    : <><i className="ri-delete-bin-2-line"></i>Yes, Delete {selectedOrders.size} Order{selectedOrders.size !== 1 ? "s" : ""}</>
+                  }
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowBulkDeleteConfirm(false); setBulkDeleteConfirmText(""); }}
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Recovery Email Modal ── */}

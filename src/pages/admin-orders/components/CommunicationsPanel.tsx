@@ -239,18 +239,18 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
       {/* Header stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total SMS",     value: comms.filter((c) => c.type === "sms_outbound").length,  icon: "ri-message-3-line",  color: "text-[#1a5c4f]" },
-          { label: "SMS Received",  value: comms.filter((c) => c.type === "sms_inbound").length,   icon: "ri-message-3-fill",   color: "text-gray-600"  },
-          { label: "Calls",         value: callsCount,                                              icon: "ri-phone-line",       color: "text-sky-600"   },
-          { label: "Emails Sent",   value: emailEntries.filter((e) => e.success).length,            icon: "ri-mail-send-line",   color: "text-amber-600" },
+          { label: "SMS Sent",      value: comms.filter((c) => c.type === "sms_outbound").length,  icon: "ri-message-3-line",   color: "text-[#1a5c4f]",  bg: "bg-[#f0faf7]",   border: "border-[#b8ddd5]" },
+          { label: "SMS Received",  value: comms.filter((c) => c.type === "sms_inbound").length,   icon: "ri-message-3-fill",   color: "text-gray-600",   bg: "bg-gray-50",     border: "border-gray-200" },
+          { label: "Total Calls",   value: callsCount,                                              icon: "ri-phone-line",        color: "text-sky-600",    bg: "bg-sky-50",      border: "border-sky-200" },
+          { label: "Emails Sent",   value: emailEntries.filter((e) => e.success).length,            icon: "ri-mail-send-line",    color: "text-amber-600",  bg: "bg-amber-50",    border: "border-amber-200" },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-            <div className="w-9 h-9 flex items-center justify-center bg-gray-50 rounded-xl flex-shrink-0">
+          <div key={s.label} className={`bg-white border ${s.border} rounded-xl p-4 flex items-center gap-3`}>
+            <div className={`w-10 h-10 flex items-center justify-center ${s.bg} rounded-xl flex-shrink-0`}>
               <i className={`${s.icon} ${s.color} text-lg`}></i>
             </div>
             <div>
-              <p className="text-xl font-extrabold text-gray-900 leading-none">{s.value}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{s.label}</p>
+              <p className="text-2xl font-extrabold text-gray-900 leading-none">{s.value}</p>
+              <p className="text-xs text-gray-400 mt-0.5 font-medium">{s.label}</p>
             </div>
           </div>
         ))}
@@ -258,19 +258,13 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
 
       {/* Main tab switcher */}
       <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        <button
-          type="button"
-          onClick={() => setMainTab("sms_calls")}
-          className={`whitespace-nowrap px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer flex items-center gap-2 ${mainTab === "sms_calls" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-        >
+        <button type="button" onClick={() => setMainTab("sms_calls")}
+          className={`whitespace-nowrap px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer flex items-center gap-2 ${mainTab === "sms_calls" ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-chat-history-line"></i>
           SMS &amp; Calls <span className="text-xs opacity-60">({comms.length})</span>
         </button>
-        <button
-          type="button"
-          onClick={() => { setMainTab("emails"); loadEmails(); }}
-          className={`whitespace-nowrap px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer flex items-center gap-2 ${mainTab === "emails" ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-        >
+        <button type="button" onClick={() => { setMainTab("emails"); loadEmails(); }}
+          className={`whitespace-nowrap px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer flex items-center gap-2 ${mainTab === "emails" ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-mail-line"></i>
           Emails <span className="text-xs opacity-60">({emailEntries.length})</span>
         </button>
@@ -279,50 +273,54 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
       {mainTab === "sms_calls" ? (
         <>
           {/* Filter bar */}
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-                {[
-                  { key: "all",   label: `All (${comms.length})` },
-                  { key: "sms",   label: `SMS (${smsCount})` },
-                  { key: "calls", label: `Calls (${callsCount})` },
-                ].map((tab) => (
-                  <button key={tab.key} type="button"
-                    onClick={() => setTypeFilter(tab.key as typeof typeFilter)}
-                    className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${typeFilter === tab.key ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
-                    {tab.label}
-                  </button>
-                ))}
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+            <div className="flex flex-col gap-3">
+              {/* Row 1: Type + Direction filters */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Type filter */}
+                <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+                  {[
+                    { key: "all",   label: `All (${comms.length})` },
+                    { key: "sms",   label: `SMS (${smsCount})` },
+                    { key: "calls", label: `Calls (${callsCount})` },
+                  ].map((tab) => (
+                    <button key={tab.key} type="button" onClick={() => setTypeFilter(tab.key as typeof typeFilter)}
+                      className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${typeFilter === tab.key ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Direction filter */}
+                <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+                  {[
+                    { key: "all",      label: "Both" },
+                    { key: "outbound", label: "Outbound" },
+                    { key: "inbound",  label: "Inbound" },
+                  ].map((tab) => (
+                    <button key={tab.key} type="button" onClick={() => setDirFilter(tab.key as typeof dirFilter)}
+                      className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${dirFilter === tab.key ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-                {[
-                  { key: "all",      label: "Both" },
-                  { key: "outbound", label: "Outbound" },
-                  { key: "inbound",  label: "Inbound" },
-                ].map((tab) => (
-                  <button key={tab.key} type="button"
-                    onClick={() => setDirFilter(tab.key as typeof dirFilter)}
-                    className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${dirFilter === tab.key ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
-                    {tab.label}
-                  </button>
-                ))}
+              {/* Row 2: Search + refresh */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 min-w-0">
+                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search message, phone, name..."
+                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                  />
+                </div>
+                <button type="button" onClick={loadComms}
+                  className="whitespace-nowrap w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors flex-shrink-0">
+                  <i className="ri-refresh-line text-sm"></i>
+                </button>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-[220px]">
-                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search message, phone, name..."
-                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
-                />
-              </div>
-              <button type="button" onClick={loadComms}
-                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
-                <i className="ri-refresh-line text-sm"></i>
-              </button>
             </div>
           </div>
 
@@ -338,11 +336,11 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                   <i className="ri-chat-history-line text-gray-400 text-2xl"></i>
                 </div>
                 <p className="text-sm font-bold text-gray-700">No communications yet</p>
-                <p className="text-xs text-gray-400 mt-1">SMS and calls will appear here once you start reaching out to customers</p>
+                <p className="text-xs text-gray-400 mt-1">SMS and calls will appear here once sent or received</p>
               </div>
             ) : (
               <>
-                <div className="hidden md:grid grid-cols-[32px_140px_1fr_160px_120px_100px_90px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <div className="hidden md:grid grid-cols-[28px_130px_1fr_150px_110px_90px_80px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
                   <span></span>
                   <span>Type</span>
                   <span>Message / Notes</span>
@@ -361,17 +359,23 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                     const phone = entry.direction === "inbound"
                       ? (entry.phone_from ?? "—")
                       : (entry.phone_to ?? "—");
+                    const isCall = entry.type === "call_outbound" || entry.type === "call_inbound";
 
                     return (
                       <div key={entry.id}
-                        className="grid grid-cols-1 md:grid-cols-[32px_140px_1fr_160px_120px_100px_90px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors">
+                        className={`grid grid-cols-1 md:grid-cols-[28px_130px_1fr_150px_110px_90px_80px] gap-3 md:gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors ${isCall ? "border-l-2 border-sky-200" : ""}`}>
+                        {/* Dot */}
                         <div className="hidden md:flex items-center justify-center">
-                          <div className={`w-2.5 h-2.5 rounded-full ${cfg?.dot ?? "bg-gray-300"}`}></div>
+                          <div className={`w-2 h-2 rounded-full ${cfg?.dot ?? "bg-gray-300"}`}></div>
                         </div>
-                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border w-fit ${cfg?.bg ?? "bg-gray-50 border-gray-200"} ${cfg?.textColor ?? "text-gray-500"}`}>
-                          <i className={`${cfg?.icon ?? "ri-chat-1-line"} text-sm`}></i>
-                          {cfg?.label ?? entry.type}
+                        {/* Type badge */}
+                        <div>
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border w-fit ${cfg?.bg ?? "bg-gray-50 border-gray-200"} ${cfg?.textColor ?? "text-gray-500"}`}>
+                            <i className={`${cfg?.icon ?? "ri-chat-1-line"} text-sm`}></i>
+                            {cfg?.label ?? entry.type}
+                          </div>
                         </div>
+                        {/* Message */}
                         <div className="min-w-0">
                           {entry.body ? (
                             <p className="text-sm text-gray-700 truncate">{entry.body}</p>
@@ -396,6 +400,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                             </p>
                           )}
                         </div>
+                        {/* Customer */}
                         {order ? (
                           <button type="button" onClick={() => onViewOrder(order)} className="text-left group cursor-pointer min-w-0">
                             <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#1a5c4f] transition-colors">{name}</p>
@@ -410,7 +415,9 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                             )}
                           </div>
                         )}
+                        {/* Phone */}
                         <p className="text-xs font-mono text-gray-600 truncate">{fmtPhone(phone)}</p>
+                        {/* Status */}
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold w-fit ${
                           entry.status === "delivered" || entry.status === "sent"   ? "bg-[#f0faf7] text-[#1a5c4f]" :
                           entry.status === "failed"                                 ? "bg-red-50 text-red-600"       :
@@ -422,6 +429,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                            entry.status === "initiated"   ? "Ringing" :
                            (entry.status ?? "—")}
                         </span>
+                        {/* Time */}
                         <p className="text-xs text-gray-400 whitespace-nowrap">{fmtTime(entry.created_at)}</p>
                       </div>
                     );
@@ -431,10 +439,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                   <div className="flex items-center justify-center py-4 border-t border-gray-100">
                     <button type="button" onClick={loadMore} disabled={loadingMore}
                       className="whitespace-nowrap flex items-center gap-2 px-5 py-2 bg-gray-100 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-200 cursor-pointer disabled:opacity-50 transition-colors">
-                      {loadingMore
-                        ? <><i className="ri-loader-4-line animate-spin"></i>Loading...</>
-                        : <><i className="ri-arrow-down-line"></i>Load More</>
-                      }
+                      {loadingMore ? <><i className="ri-loader-4-line animate-spin"></i>Loading...</> : <><i className="ri-arrow-down-line"></i>Load More</>}
                     </button>
                   </div>
                 )}
@@ -445,47 +450,61 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
       ) : (
         <>
           {/* Email filter bar */}
-          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setEmailTypeFilter("all")}
-                  className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${emailTypeFilter === "all" ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
-                >
-                  All ({emailEntries.length})
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+            <div className="flex flex-col gap-3">
+              {/* Email type filter - select on mobile, pills on desktop */}
+              <div className="flex items-center gap-2">
+                {/* Mobile: dropdown */}
+                <div className="flex sm:hidden relative flex-1">
+                  <select
+                    value={emailTypeFilter}
+                    onChange={(e) => setEmailTypeFilter(e.target.value)}
+                    className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer"
+                  >
+                    <option value="all">All Types ({emailEntries.length})</option>
+                    {uniqueEmailTypes.map((t) => {
+                      const cfg = EMAIL_TYPE_LABEL[t];
+                      const count = emailEntries.filter((e) => e.type === t).length;
+                      return <option key={t} value={t}>{cfg?.label ?? t} ({count})</option>;
+                    })}
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+                </div>
+                {/* Desktop: pills */}
+                <div className="hidden sm:flex items-center gap-1 bg-gray-100 rounded-xl p-1 flex-wrap overflow-x-auto">
+                  <button type="button" onClick={() => setEmailTypeFilter("all")}
+                    className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${emailTypeFilter === "all" ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
+                    All ({emailEntries.length})
+                  </button>
+                  {uniqueEmailTypes.map((t) => {
+                    const cfg = EMAIL_TYPE_LABEL[t];
+                    const count = emailEntries.filter((e) => e.type === t).length;
+                    return (
+                      <button key={t} type="button" onClick={() => setEmailTypeFilter(t)}
+                        className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${emailTypeFilter === t ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
+                        {cfg?.label ?? t} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Search + refresh */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 min-w-0">
+                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search name, email, order ID..."
+                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                  />
+                </div>
+                <button type="button" onClick={loadEmails}
+                  className="whitespace-nowrap w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors flex-shrink-0">
+                  <i className="ri-refresh-line text-sm"></i>
                 </button>
-                {uniqueEmailTypes.map((t) => {
-                  const cfg = EMAIL_TYPE_LABEL[t];
-                  const count = emailEntries.filter((e) => e.type === t).length;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setEmailTypeFilter(t)}
-                      className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${emailTypeFilter === t ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
-                    >
-                      {cfg?.label ?? t} ({count})
-                    </button>
-                  );
-                })}
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-[220px]">
-                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name, email, order ID..."
-                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
-                />
-              </div>
-              <button type="button" onClick={loadEmails}
-                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
-                <i className="ri-refresh-line text-sm"></i>
-              </button>
             </div>
           </div>
 
@@ -505,7 +524,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
               </div>
             ) : (
               <>
-                <div className="hidden md:grid grid-cols-[32px_180px_1fr_180px_100px_90px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <div className="hidden md:grid grid-cols-[28px_160px_1fr_170px_90px_80px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
                   <span></span>
                   <span>Email Type</span>
                   <span>Customer</span>
@@ -520,9 +539,9 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
 
                     return (
                       <div key={entry.id}
-                        className="grid grid-cols-1 md:grid-cols-[32px_180px_1fr_180px_100px_90px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors">
+                        className="grid grid-cols-1 md:grid-cols-[28px_160px_1fr_170px_90px_80px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors">
                         <div className="hidden md:flex items-center justify-center">
-                          <div className={`w-2.5 h-2.5 rounded-full ${entry.success ? "bg-[#1a5c4f]" : "bg-red-500"}`}></div>
+                          <div className={`w-2 h-2 rounded-full ${entry.success ? "bg-[#1a5c4f]" : "bg-red-500"}`}></div>
                         </div>
                         <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border w-fit ${cfg.bg} ${cfg.color}`}>
                           <i className={`${cfg.icon} text-sm`}></i>

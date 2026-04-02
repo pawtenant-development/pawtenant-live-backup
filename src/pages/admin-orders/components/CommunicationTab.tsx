@@ -41,12 +41,14 @@ const TYPE_CONFIG: Record<string, { icon: string; label: string; color: string; 
 };
 
 const EMAIL_TYPE_LABEL: Record<string, string> = {
-  order_confirmation:   "Order Confirmation Email",
-  payment_receipt:      "Payment Receipt Email",
-  letter_ready:         "Letter Ready Email",
-  refund:               "Refund Email",
-  status_under_review:  "Status Update: Under Review",
-  status_completed:     "Status Update: Completed",
+  order_confirmation:             "Order Confirmation Email",
+  payment_receipt:                "Payment Receipt Email",
+  internal_notification:          "Internal Notification (Admin)",
+  order_confirmation_admin_fix:   "Order Confirmation (Admin Fix — failed)",
+  letter_ready:                   "Letter Ready Email",
+  refund:                         "Refund Email",
+  status_under_review:            "Status Update: Under Review",
+  status_completed:               "Status Update: Completed",
 };
 
 const EMAIL_OPTIONS = [

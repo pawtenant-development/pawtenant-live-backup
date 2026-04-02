@@ -1,10 +1,54 @@
-import { useState, useRef, useEffect } from "react";
+// Step3Checkout — Payment orchestration (Card / Klarna / QR tabs)
+import { useState, useEffect, useMemo } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
+import type { StripeElementsOptions } from "@stripe/stripe-js";
 import type { Step1Data } from "./Step1Assessment";
 import type { Step2Data } from "./Step2PersonalInfo";
-import StripePaymentForm from "./StripePaymentForm";
-import QRPaymentTab from "./QRPaymentTab";
-import KlarnaPaymentTab from "./KlarnaPaymentTab";
 import PolicyModal from "./PolicyModal";
+import StripePaymentForm from "./StripePaymentForm";
+import KlarnaPaymentTab from "./KlarnaPaymentTab";
+import QRPaymentTab from "./QRPaymentTab";
+
+// ─── Module-level Stripe constants ───────────────────────────────────────────
+const stripePromise = loadStripe(
+  import.meta.env.VITE_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ""
+);
+
+const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+
+const STRIPE_APPEARANCE: StripeElementsOptions["appearance"] = {
+  theme: "flat",
+  variables: {
+    colorPrimary: "#1a5c4f",
+    colorBackground: "#ffffff",
+    colorText: "#1f2937",
+    colorDanger: "#ef4444",
+    fontFamily: "inherit",
+    borderRadius: "8px",
+  },
+};
+
+/** One-time price — scales with pet count + delivery speed */
+function getOneTimePrice(petCount: number, deliverySpeed: string): number {
+  const tier   = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
+  const isFast = deliverySpeed !== "2-3days";
+  if (tier === 1) return isFast ? 115 : 100;
+  if (tier === 2) return isFast ? 130 : 115;
+  return               isFast ? 145 : 130;
+}
+
+/** Annual subscription price — scales with pet count + delivery speed */
+function getAnnualSubPrice(petCount: number, deliverySpeed: string): number {
+  const tier   = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
+  const isFast = deliverySpeed !== "2-3days";
+  if (tier === 1) return isFast ? 105 : 90;
+  if (tier === 2) return isFast ? 120 : 105;
+  return               isFast ? 135 : 120;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Step3Data {
   selectedDoctorId: string;
@@ -14,20 +58,7 @@ export interface Step3Data {
   addonServices?: string[];
 }
 
-// ── ESA subscription pricing by pet count (mirrors PSD tiers) ─────────────
-function getESASubPrice(petCount: number): number {
-  const count = Math.min(petCount, 3);
-  if (count >= 3) return 129;
-  if (count === 2) return 109;
-  return 99;
-}
-
-function getESASubLabel(petCount: number): string {
-  const count = Math.min(petCount, 3);
-  if (count >= 3) return "3 Pets — Annual";
-  if (count === 2) return "2 Pets — Annual";
-  return "1 Pet — Annual";
-}
+type PlanType = "one-time" | "subscription";
 
 interface Step3CheckoutProps {
   step1: Step1Data;
@@ -38,652 +69,902 @@ interface Step3CheckoutProps {
   onBack: () => void;
   submitting: boolean;
   preSelectedDoctorId?: string;
-  clientSecret?: string | null;
-  paymentError?: string;
-  onPaymentSuccess: (paymentIntentId: string) => void;
-  onPaymentError: (err: string) => void;
-  resolvedPriceCents?: number | null;
-  resolvedBasePriceCents?: number | null;
   confirmationId?: string;
   onCouponApplied?: (coupon: { code: string; discount: number } | null) => void;
   appliedCoupon?: { code: string; discount: number } | null;
+  stripeClientSecret?: string;
+  onPaymentSuccess?: (paymentIntentId: string) => void;
+  petCount?: number;
+  onBeforeRedirect?: () => void;
 }
 
-type PlanType = "one-time" | "subscription";
-type PaymentTab = "card" | "qr" | "klarna";
+// ─── SectionLabel ─────────────────────────────────────────────────────────────
 
-const ADDON_OPTIONS = [
-  { id: "zoom_call", label: "Private Zoom Call Session with Provider", subLabel: "Scheduled 30-min consultation — provider will reach out to schedule", price: 40, icon: "ri-video-chat-line", popular: true },
-  { id: "physical_mail", label: "Physical Letter via Certified Mail", subLabel: "Original signed copy mailed directly to you", price: 50, icon: "ri-mail-send-line", popular: false },
-  { id: "landlord_letter", label: "Verification Letter Addressing Landlord", subLabel: "Separate letter directly addressed to your specific landlord", price: 30, icon: "ri-building-line", popular: true },
-];
-
-function PriceOption({ plan, selected, onSelect, baseOneTime, baseSub, subLabel }: { plan: PlanType; selected: boolean; onSelect: () => void; baseOneTime: number; baseSub: number; subLabel?: string }) {
-  const isSubscription = plan === "subscription";
+function SectionLabel({ children }: { children: string }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`w-full text-left px-4 py-3 rounded-lg border transition-all duration-150 cursor-pointer ${selected ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 bg-white hover:border-gray-300"}`}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-start gap-3">
-          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${selected ? "border-[#1a5c4f] bg-[#1a5c4f]" : "border-gray-300"}`}>
-            {selected && <span className="w-1.5 h-1.5 rounded-full bg-white block" />}
-          </div>
-          <div>
-            {isSubscription ? (
-              <>
-                <p className="text-sm font-semibold text-gray-900 leading-snug">Subscribe &amp; Save: Never Lose ESA Status</p>
-                <p className="text-xs text-gray-500 mt-0.5">${baseSub}.00/yr · {subLabel}</p>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-semibold text-gray-900">One-time Purchase</p>
-                  <span className="whitespace-nowrap text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">4 interest-free payments available</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">${baseOneTime}.00</p>
-              </>
-            )}
-          </div>
-        </div>
-        {selected && <div className="w-5 h-5 flex items-center justify-center text-[#1a5c4f] flex-shrink-0"><i className="ri-checkbox-circle-fill text-lg" /></div>}
-      </div>
-    </button>
+    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+      {children}
+    </p>
   );
 }
 
-export default function Step3Checkout({
-  step2, data, onChange, onSubmit, onBack, submitting, preSelectedDoctorId,
-  clientSecret, paymentError, onPaymentSuccess, onPaymentError, resolvedPriceCents,
-  resolvedBasePriceCents, confirmationId, onCouponApplied, appliedCoupon,
-}: Step3CheckoutProps) {
-  const [agreed, setAgreed] = useState(false);
-  const [agreedError, setAgreedError] = useState(false);
-  const [couponCode, setCouponCode] = useState("");
-  const [couponApplied, setCouponApplied] = useState(false);
-  const [couponError, setCouponError] = useState("");
-  const [couponValidating, setCouponValidating] = useState(false);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [paymentTab, setPaymentTab] = useState<PaymentTab>("card");
-  const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const topRef = useRef<HTMLDivElement>(null);
+// ─── CouponRow Component ──────────────────────────────────────────────────────
 
-  const selectedAddons = data.addonServices ?? [];
-  const toggleAddon = (id: string) => {
-    const current = data.addonServices ?? [];
-    const updated = current.includes(id) ? current.filter((a) => a !== id) : [...current, id];
-    onChange({ ...data, addonServices: updated });
-  };
-  const addonTotal = ADDON_OPTIONS.filter((a) => selectedAddons.includes(a.id)).reduce((sum, a) => sum + a.price, 0);
+interface CouponRowProps {
+  basePrice: number;
+  onDiscountChange: (discount: number, code: string) => void;
+}
 
-  useEffect(() => {
+function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
+  const [code, setCode]       = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
+  const [applied, setApplied] = useState<{ code: string; discount: number } | null>(null);
+
+  const handleApply = async () => {
+    if (!code.trim()) return;
+    setLoading(true);
+    setError("");
     try {
-      const stored = sessionStorage.getItem("esa_pending_order");
-      if (stored) {
-        const obj = JSON.parse(stored) as Record<string, unknown>;
-        obj.paymentMethod = paymentTab;
-        sessionStorage.setItem("esa_pending_order", JSON.stringify(obj));
-      }
-    } catch { /* ignore */ }
-  }, [paymentTab]);
-
-  const plan = data.plan ?? "one-time";
-  const setPlan = (p: PlanType) => {
-    onChange({ ...data, plan: p });
-    if (p === "subscription" && paymentTab === "klarna") setPaymentTab("card");
-  };
-
-  const petCount = step2.pets.length;
-  const is2to3Days = step2.deliverySpeed === "2-3days";
-  const additionalDocTypes = (step2.additionalDocs?.types ?? []).filter((t) => t !== "ESA Letter");
-  const additionalDocCount = additionalDocTypes.length;
-  const additionalDocFee = additionalDocCount * 30;
-  // Per-pet ESA subscription pricing
-  const esaSubPrice = getESASubPrice(petCount);
-  const esaSubLabel = getESASubLabel(petCount);
-  // Real base prices from Stripe (fetched via edge function)
-  const baseOneTimeFallback = is2to3Days ? 100 : 115;
-  const baseSubFallback = esaSubPrice;
-  const baseFallback = plan === "one-time" ? baseOneTimeFallback : baseSubFallback;
-  const basePrice = resolvedBasePriceCents != null ? Math.round(resolvedBasePriceCents / 100) : baseFallback;
-  const resolvedTotal = resolvedPriceCents != null ? Math.round(resolvedPriceCents / 100) : null;
-  const couponDiscountAmount = appliedCoupon?.discount ?? 0;
-  const totalPrice = resolvedTotal ?? Math.max(0, basePrice + additionalDocFee + addonTotal - couponDiscountAmount);
-  const turnaround = is2to3Days ? "Within 2-3 days" : "Within 24 hours";
-  const klarnaPerPayment = (totalPrice / 4).toFixed(2);
-  const returnUrl = `${window.location.origin}/assessment/thank-you?amount=${totalPrice}&order_id=${confirmationId ?? ""}`;
-
-  // Log once the Stripe-confirmed price is resolved so we can verify the
-  // redirect URL baked into the card payment's 3DS / redirect flow
-  useEffect(() => {
-    if (resolvedPriceCents == null) return; // wait for real price — skip fallback renders
-    console.log("[ESA Checkout] returnUrl (3DS / card redirect fallback):", {
-      returnUrl,
-      totalPrice,
-      confirmationId,
-      resolvedPriceCents,
-      resolvedTotal,
-      couponDiscountAmount,
-      note: "order_id here is confirmationId (not paymentIntentId) — Stripe appends ?payment_intent= automatically on redirect",
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalPrice, confirmationId, resolvedPriceCents]);
-
-  const handleApplyCoupon = async () => {
-    const code = couponCode.trim().toUpperCase();
-    if (!code) return;
-    setCouponValidating(true);
-    setCouponError("");
-    setCouponApplied(false);
-    try {
-      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-      const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
-      const res = await fetch(`${supabaseUrl}/functions/v1/validate-coupon`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/validate-coupon`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
-        body: JSON.stringify({ code }),
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ code: code.trim().toUpperCase(), amount: basePrice }),
       });
-      const json = await res.json() as { valid: boolean; discount?: number; code?: string; error?: string };
-      if (json.valid && json.discount != null) {
-        setCouponApplied(true);
-        setCouponError("");
-        onCouponApplied?.({ code: json.code ?? code, discount: json.discount });
-        try { sessionStorage.setItem("esa_applied_coupon", JSON.stringify({ code: json.code ?? code, discount: json.discount })); } catch { /* ignore */ }
+      const data = await res.json() as {
+        valid?: boolean;
+        discount?: number;
+        error?: string;
+      };
+      if (data.valid && data.discount != null) {
+        const discount = data.discount;
+        setApplied({ code: code.trim().toUpperCase(), discount });
+        onDiscountChange(discount, code.trim().toUpperCase());
       } else {
-        setCouponError(json.error ?? "Invalid coupon code.");
-        setCouponApplied(false);
-        onCouponApplied?.(null);
-        try { sessionStorage.removeItem("esa_applied_coupon"); } catch { /* ignore */ }
+        setError(data.error ?? "Invalid or expired coupon code.");
       }
     } catch {
-      setCouponError("Could not validate coupon. Please try again.");
-      setCouponApplied(false);
+      setError("Could not validate coupon. Please try again.");
     } finally {
-      setCouponValidating(false);
+      setLoading(false);
     }
   };
 
-  const handleSaveProgress = async () => {
-    if (!confirmationId || !step2.email) return;
-    setSaveStatus("sending");
-    try {
-      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-      const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
-      const res = await fetch(`${supabaseUrl}/functions/v1/send-checkout-recovery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
-        body: JSON.stringify({ confirmationId, email: step2.email, firstName: step2.firstName, price: totalPrice }),
-      });
-      const json = await res.json() as { ok: boolean; error?: string };
-      setSaveStatus(json.ok ? "sent" : "error");
-    } catch {
-      setSaveStatus("error");
-    }
+  const handleRemove = () => {
+    setApplied(null);
+    setCode("");
+    setError("");
+    onDiscountChange(0, "");
   };
 
-  const validateBeforePayment = (): boolean => {
-    const errors: string[] = [];
-    if (!agreed) {
-      setAgreedError(true);
-      errors.push("Please agree to the Terms, Informed Consent, and HIPAA to continue.");
-    }
-    if (errors.length > 0) {
-      setValidationErrors(errors);
-      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      return false;
-    }
-    setValidationErrors([]);
-    return true;
-  };
-
-  const openPolicy = (path: string, title: string) => setPolicyModal({ url: path, title });
-
-  const couponSlot = (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 mb-3">
-      <label className="block text-xs font-semibold text-gray-600 mb-1.5 flex items-center gap-1.5">
-        <i className="ri-coupon-3-line text-orange-500" />Have a coupon code?
-      </label>
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={couponCode}
-          onChange={(e) => setCouponCode(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleApplyCoupon(); } }}
-          placeholder="Enter coupon code"
-          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#1a5c4f] bg-white"
-        />
+  if (applied) {
+    return (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 flex items-center justify-center bg-emerald-100 rounded-lg flex-shrink-0">
+            <i className="ri-coupon-3-line text-emerald-600 text-sm"></i>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-extrabold text-emerald-800 truncate">{applied.code} applied!</p>
+            <p className="text-[10px] text-emerald-600">Saving ${applied.discount.toFixed(2)}</p>
+          </div>
+        </div>
         <button
           type="button"
-          onClick={handleApplyCoupon}
-          disabled={couponValidating}
-          className="whitespace-nowrap px-3 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer disabled:opacity-60 disabled:cursor-wait flex items-center gap-1"
+          onClick={handleRemove}
+          className="whitespace-nowrap text-[10px] font-bold text-emerald-700 hover:text-red-500 transition-colors cursor-pointer flex items-center gap-1 flex-shrink-0"
         >
-          {couponValidating ? <><i className="ri-loader-4-line animate-spin" />Checking...</> : "Apply"}
+          <i className="ri-close-line text-sm"></i>Remove
         </button>
       </div>
-      {couponApplied && (
-        <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-          <i className="ri-checkbox-circle-fill" /> Coupon applied!{couponDiscountAmount > 0 ? ` $${couponDiscountAmount} off` : ""} — discount reflected in your total.
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 relative min-w-0">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center pointer-events-none">
+            <i className="ri-coupon-3-line text-gray-400 text-sm"></i>
+          </div>
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleApply()}
+            placeholder="Discount code (optional)"
+            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-[#1a5c4f] transition-colors placeholder-gray-400"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={loading || !code.trim()}
+          className={`whitespace-nowrap px-4 py-2.5 text-xs font-extrabold rounded-xl transition-colors flex-shrink-0 ${
+            loading || !code.trim()
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-[#1a5c4f] text-white hover:bg-[#164d42] cursor-pointer"
+          }`}
+        >
+          {loading ? <i className="ri-loader-4-line animate-spin"></i> : "Apply"}
+        </button>
+      </div>
+      {error && (
+        <p className="text-xs text-red-500 ml-1 flex items-center gap-1">
+          <i className="ri-error-warning-line"></i>{error}
         </p>
-      )}
-      {couponError && (
-        <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line" /> {couponError}</p>
       )}
     </div>
   );
+}
+
+// ─── SecurePaymentCard — Card / Klarna / QR tabs ──────────────────────────────
+
+type PayTabType = "card" | "klarna" | "qr";
+
+interface SecurePaymentCardProps {
+  totalPrice: number;
+  stripeClientSecret?: string;
+  onPaymentSuccess?: (paymentIntentId: string) => void;
+  petCount: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  state: string;
+  deliverySpeed: string;
+  confirmationId: string;
+  onBeforeRedirect?: () => void;
+  plan: PlanType;
+  priceBeforeDiscount: number;
+  onDiscountChange: (discount: number, code: string) => void;
+}
+
+function SecurePaymentCard({
+  totalPrice,
+  stripeClientSecret,
+  onPaymentSuccess,
+  petCount,
+  email,
+  firstName,
+  lastName,
+  state,
+  deliverySpeed,
+  confirmationId,
+  onBeforeRedirect,
+  plan,
+  priceBeforeDiscount,
+  onDiscountChange,
+}: SecurePaymentCardProps) {
+  const isSubscription = plan === "subscription";
+  const [activeTab, setActiveTab] = useState<PayTabType>("card");
+
+  // Agreement state for each tab
+  const [cardAgreed, setCardAgreed] = useState(false);
+  const [cardAgreedError, setCardAgreedError] = useState(false);
+  const [klarnaAgreed, setKlarnaAgreed] = useState(false);
+  const [klarnaAgreedError, setKlarnaAgreedError] = useState(false);
+  const [qrAgreed, setQrAgreed] = useState(false);
+  const [qrAgreedError, setQrAgreedError] = useState(false);
+
+  const [elementsOptions, setElementsOptions] = useState<StripeElementsOptions | null>(
+    isSubscription ? { appearance: STRIPE_APPEARANCE } : null
+  );
+
+  // Wire parent clientSecret for one-time payments
+  useEffect(() => {
+    if (!isSubscription && stripeClientSecret && !elementsOptions) {
+      setElementsOptions({ clientSecret: stripeClientSecret, appearance: STRIPE_APPEARANCE });
+    }
+  }, [stripeClientSecret, elementsOptions, isSubscription]);
+
+  // Reset when plan changes
+  useEffect(() => {
+    setElementsOptions(isSubscription ? { appearance: STRIPE_APPEARANCE } : null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan]);
+
+  // Coupon slot to pass to payment forms
+  const couponSlot = useMemo(() => (
+    <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={onDiscountChange} />
+  ), [priceBeforeDiscount, onDiscountChange]);
+
+  const installment = (totalPrice / 4).toFixed(2);
+
+  // Handle successful payment
+  const handlePaymentSuccess = (paymentIntentId: string) => {
+    onPaymentSuccess?.(paymentIntentId);
+  };
+
+  const handlePaymentError = (message: string) => {
+    console.error("Payment error:", message);
+    // Error is shown within the payment component
+  };
+
+  const handleBeforeSubmit = () => {
+    onBeforeRedirect?.();
+    return true;
+  };
 
   return (
-    <div ref={topRef}>
-      {policyModal && <PolicyModal url={policyModal.url} title={policyModal.title} onClose={() => setPolicyModal(null)} />}
-
-      {/* Validation Error Summary */}
-      {validationErrors.length > 0 && (
-        <div className="mb-6 bg-red-50 border border-red-300 rounded-xl px-5 py-4">
-          <div className="flex items-start gap-3">
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <i className="ri-error-warning-fill text-red-500 text-lg" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-red-800 mb-1.5">Please fix the following before submitting:</p>
-              <ul className="space-y-1">
-                {validationErrors.map((err) => (
-                  <li key={err} className="flex items-start gap-2 text-sm text-red-700">
-                    <i className="ri-arrow-right-s-line flex-shrink-0 mt-0.5" />{err}
-                  </li>
-                ))}
-              </ul>
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      {/* ── Header ── */}
+      <div className="bg-gradient-to-r from-orange-400 to-orange-300 px-4 sm:px-5 py-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 flex items-center justify-center bg-black/10 border border-black/10 rounded-xl flex-shrink-0">
+            <i className="ri-lock-2-line text-black/70 text-sm"></i>
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-extrabold text-black tracking-tight">Secure Payment</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <i className="ri-shield-check-line text-black/50 text-[10px]"></i>
+              <p className="text-[10px] text-black/50">256-bit SSL · Powered by Stripe</p>
             </div>
           </div>
         </div>
-      )}
-
-      <div className="mb-6 text-center">
-        <h2 className="text-2xl font-extrabold text-gray-900">Complete Your Payment</h2>
-        <p className="text-gray-500 text-sm mt-2">Secure checkout — your ESA letter is minutes away.</p>
+        {/* Card brand icons */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Visa */}
+          <div
+            className="h-7 px-2 flex items-center justify-center bg-white rounded"
+            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.18)", minWidth: "36px" }}
+          >
+            <span style={{ color: "#1a1f71", fontSize: "11px", fontWeight: 900, fontStyle: "italic", letterSpacing: "-0.5px" }}>
+              VISA
+            </span>
+          </div>
+          {/* Mastercard */}
+          <div
+            className="h-7 flex items-center justify-center bg-white rounded relative overflow-hidden"
+            style={{ width: "42px", boxShadow: "0 1px 4px rgba(0,0,0,0.18)" }}
+          >
+            <div style={{ position: "absolute", left: "5px", width: "20px", height: "20px", borderRadius: "50%", background: "#eb001b" }}></div>
+            <div style={{ position: "absolute", left: "17px", width: "20px", height: "20px", borderRadius: "50%", background: "#f79e1b", opacity: 0.9 }}></div>
+          </div>
+          {/* Amex */}
+          <div
+            className="h-7 px-2 flex items-center justify-center rounded"
+            style={{ background: "#006fcf", boxShadow: "0 1px 4px rgba(0,0,0,0.18)", minWidth: "36px" }}
+          >
+            <span style={{ color: "white", fontSize: "9px", fontWeight: 800, letterSpacing: "0.06em" }}>
+              AMEX
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* ── Main layout: flex-col on mobile, 5-col grid on desktop ── */}
-      {/*
-        Mobile order:  1 = RIGHT col (Order Summary + Payment)
-                       2 = LEFT col  (What's Included + Trust + Video)
-        Desktop order: LEFT (col 1-3) | RIGHT (col 4-5)
-      */}
-      <div className="flex flex-col lg:grid lg:grid-cols-5 lg:items-start gap-6">
+      {/* ── Tab switcher ── */}
+      <div className="flex border-b border-gray-100 bg-gray-50/50">
+        {/* Card tab */}
+        <button
+          type="button"
+          onClick={() => setActiveTab("card")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+            activeTab === "card"
+              ? "text-orange-400 border-b-2 border-orange-400 bg-white"
+              : "text-gray-400 hover:text-gray-600"
+          }`}
+        >
+          <i className="ri-bank-card-line text-sm"></i>Card
+        </button>
+        {/* Klarna tab - only for one-time */}
+        {!isSubscription && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("klarna")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === "klarna"
+                ? "text-[#ff679a] border-b-2 border-[#ff679a] bg-white"
+                : "text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#ffb3c7] text-[9px] font-extrabold text-[#17120e]">K</span>
+            Klarna
+          </button>
+        )}
+        {/* QR tab */}
+        <button
+          type="button"
+          onClick={() => setActiveTab("qr")}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+            activeTab === "qr"
+              ? "text-orange-400 border-b-2 border-orange-400 bg-white"
+              : "text-gray-400 hover:text-gray-600"
+          }`}
+        >
+          <i className="ri-qr-code-line text-sm"></i>QR / Mobile
+        </button>
+      </div>
 
-        {/* ── RIGHT column ── order-1 on mobile → appears before left content */}
-        <div className="order-1 lg:order-2 lg:col-start-4 lg:col-span-2 lg:row-start-1">
-          <div className="space-y-4 lg:sticky top-24">
-
-            {/* Order Summary */}
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="bg-white px-5 py-3 border-b border-gray-100">
-                <p className="text-sm font-extrabold text-gray-900">Order Summary</p>
+      {/* ══════════ CARD TAB ══════════ */}
+      {activeTab === "card" && (
+        <>
+          {/* Subscription hint */}
+          {isSubscription && (
+            <div className="mx-4 sm:mx-5 mt-4 mb-1 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-3">
+              <div className="w-7 h-7 flex items-center justify-center bg-emerald-100 rounded-lg flex-shrink-0">
+                <i className="ri-refresh-line text-emerald-600 text-sm"></i>
               </div>
-              <div className="bg-white divide-y divide-gray-100">
-                <div className="flex justify-between items-center gap-3 px-5 py-3">
-                  <span className="text-sm text-gray-700 flex-1 min-w-0">ESA Letter + {turnaround} Delivery</span>
-                  <span className="text-sm font-bold flex-shrink-0 whitespace-nowrap text-gray-800">${basePrice}.00</span>
+              <div className="min-w-0">
+                <p className="text-xs font-extrabold text-emerald-900 leading-snug">Annual Subscription</p>
+                <p className="text-[10px] text-emerald-700 mt-0.5">Billed yearly · Cancel anytime from your portal</p>
+              </div>
+            </div>
+          )}
+
+          {/* Card form */}
+          {!elementsOptions ? (
+            <div className="mx-4 sm:mx-5 my-5 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-col items-center justify-center py-8 px-4 text-center gap-3">
+              <div className="w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-2xl">
+                <i className="ri-loader-4-line animate-spin text-[#1a5c4f] text-xl"></i>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-600">Loading Secure Checkout</p>
+                <p className="text-xs text-gray-400 mt-1 leading-relaxed">Setting up your encrypted payment form...</p>
+              </div>
+            </div>
+          ) : (
+            <Elements stripe={stripePromise} options={elementsOptions}>
+              <StripePaymentForm
+                clientSecret={isSubscription ? undefined : stripeClientSecret}
+                amount={totalPrice}
+                onSuccess={handlePaymentSuccess}
+                onError={handlePaymentError}
+                onBeforeSubmit={handleBeforeSubmit}
+                agreed={cardAgreed}
+                setAgreed={setCardAgreed}
+                agreedError={cardAgreedError}
+                setAgreedError={setCardAgreedError}
+                couponSlot={couponSlot}
+              />
+            </Elements>
+          )}
+        </>
+      )}
+
+      {/* ══════════ KLARNA TAB ══════════ */}
+      {activeTab === "klarna" && !isSubscription && (
+        <>
+          {couponSlot}
+          <KlarnaPaymentTab
+            amount={totalPrice}
+            plan={plan}
+            petCount={petCount}
+            deliverySpeed={deliverySpeed}
+            email={email}
+            firstName={firstName}
+            lastName={lastName}
+            state={state}
+            agreed={klarnaAgreed}
+            setAgreed={setKlarnaAgreed}
+            agreedError={klarnaAgreedError}
+            setAgreedError={setKlarnaAgreedError}
+            confirmationId={confirmationId}
+            onSuccess={() => onPaymentSuccess?.("klarna-success")}
+          />
+        </>
+      )}
+
+      {/* ══════════ QR / MOBILE TAB ══════════ */}
+      {activeTab === "qr" && (
+        <>
+          {couponSlot}
+          <QRPaymentTab
+            amount={totalPrice}
+            plan={plan}
+            petCount={petCount}
+            deliverySpeed={deliverySpeed}
+            email={email}
+            firstName={firstName}
+            lastName={lastName}
+            state={state}
+            agreed={qrAgreed}
+            setAgreed={setQrAgreed}
+            agreedError={qrAgreedError}
+            setAgreedError={setQrAgreedError}
+            confirmationId={confirmationId}
+            onSuccess={() => onPaymentSuccess?.("qr-success")}
+          />
+        </>
+      )}
+
+      {/* ── Call to order footer ── */}
+      <div className="bg-amber-50 border-t border-amber-200 px-4 sm:px-5 py-3 flex items-start gap-2">
+        <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <i className="ri-phone-line text-amber-500 text-sm"></i>
+        </div>
+        <p className="text-xs text-amber-800 leading-relaxed">
+          Prefer to call?{" "}
+          <a href="tel:+14099655885" className="font-bold underline cursor-pointer hover:text-amber-900">
+            409-965-5885
+          </a>{" "}
+          — complete your evaluation by phone.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── YouTubeShort ─────────────────────────────────────────────────────────────
+
+function YouTubeShort() {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="px-5 pt-5 pb-3">
+        <SectionLabel>Customer Stories</SectionLabel>
+        <h3 className="text-sm font-extrabold text-gray-900">Hear From Real Pet Parents</h3>
+      </div>
+      {/* Responsive 9:16 short embed container */}
+      <div className="mx-5 mb-5 rounded-xl overflow-hidden bg-[#0f1e1a]" style={{ aspectRatio: "9/16", maxHeight: 420 }}>
+        <iframe
+          src="https://www.youtube.com/embed?listType=user_uploads&list=pawtenant&rel=0&modestbranding=1&playsinline=1"
+          title="PawTenant Customer Stories"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          className="w-full h-full"
+          style={{ border: "none" }}
+        />
+      </div>
+      <div className="px-5 pb-5">
+        <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <i key={i} className="ri-star-fill text-amber-400 text-xs"></i>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 font-medium">4.9/5 · 2,400+ verified reviews</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function Step3Checkout({
+  step2,
+  data,
+  onChange,
+  onBack,
+  stripeClientSecret,
+  onPaymentSuccess,
+  confirmationId = "",
+  petCount,
+  onBeforeRedirect,
+}: Step3CheckoutProps) {
+  const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+
+  const resolvedPetCount    = petCount ?? step2.pets?.length ?? 1;
+  const resolvedDelivery    = step2.deliverySpeed ?? "2-3days";
+  const is2to3Days          = resolvedDelivery === "2-3days";
+  const basePrice           = getOneTimePrice(resolvedPetCount, resolvedDelivery);
+  const subPrice            = getAnnualSubPrice(resolvedPetCount, resolvedDelivery);
+  const selectedPlan        = data.plan ?? "one-time";
+  const priceBeforeDiscount = selectedPlan === "subscription" ? subPrice : basePrice;
+  const totalPrice          = Math.max(0, priceBeforeDiscount - couponDiscount);
+
+  const deliveryLabel = is2to3Days ? "Standard — 2–3 day delivery" : "Priority — 24-hour delivery";
+  const deliveryBadge = is2to3Days ? "2–3 Business Days" : "Within 24 Hours";
+  const customerName  = [step2.firstName, step2.lastName].filter(Boolean).join(" ") || "—";
+
+  const openPolicy = (path: string, title: string) => setPolicyModal({ url: path, title });
+  void openPolicy;
+
+  const paymentCardProps: SecurePaymentCardProps = {
+    totalPrice,
+    stripeClientSecret,
+    onPaymentSuccess,
+    petCount: resolvedPetCount,
+    email:         step2.email,
+    firstName:     step2.firstName,
+    lastName:      step2.lastName,
+    state:         step2.state,
+    deliverySpeed: step2.deliverySpeed,
+    confirmationId,
+    onBeforeRedirect,
+    plan: selectedPlan,
+    priceBeforeDiscount,
+    onDiscountChange: (discount) => setCouponDiscount(discount),
+  };
+
+  return (
+    <div>
+      {policyModal && (
+        <PolicyModal url={policyModal.url} title={policyModal.title} onClose={() => setPolicyModal(null)} />
+      )}
+
+      {/* ── Header ── */}
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center gap-2 bg-[#e8f5f1] border border-[#b8ddd5] rounded-full px-4 py-2 mb-4">
+          <div className="w-4 h-4 flex items-center justify-center">
+            <i className="ri-shield-check-line text-[#1a5c4f] text-sm"></i>
+          </div>
+          <span className="text-xs font-bold text-[#1a5c4f] uppercase tracking-wider">
+            Secure Evaluation Checkout
+          </span>
+        </div>
+        <p className="text-sm text-gray-500 max-w-xl mx-auto leading-relaxed px-4">
+          Based on your responses, you are eligible for an ESA letter. A licensed provider
+          will review your case immediately after checkout.
+        </p>
+      </div>
+
+      <div className="flex flex-col lg:grid lg:grid-cols-5 lg:items-start gap-6 lg:gap-8">
+
+        {/* ════ RIGHT COLUMN (payment) — first on mobile ════ */}
+        <div className="order-1 lg:order-2 lg:col-start-4 lg:col-span-2">
+          <div className="lg:sticky top-28 space-y-4">
+
+            {/* ── Order Summary ── */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="bg-gradient-to-r from-orange-400 to-orange-300 px-4 sm:px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-black/50 font-bold uppercase tracking-wider mb-0.5">Order Summary</p>
+                    <p className="text-sm font-extrabold text-black leading-snug">
+                      Clinical Evaluation + ESA Documentation
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 flex items-center justify-center bg-black/10 rounded-xl flex-shrink-0">
+                    <i className="ri-file-text-line text-black/70 text-lg"></i>
+                  </div>
                 </div>
-                {additionalDocCount > 0 && (
-                  <div className="flex justify-between items-center px-5 py-2.5 bg-amber-50">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <i className="ri-file-add-line text-amber-600 text-sm flex-shrink-0" />
-                      <div className="min-w-0">
-                        <span className="text-sm text-amber-800 font-semibold">Additional Docs ({additionalDocCount})</span>
-                        <div className="flex flex-wrap gap-1 mt-0.5">
-                          {additionalDocTypes.map((t) => <span key={t} className="text-xs text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">{t}</span>)}
-                        </div>
-                      </div>
+              </div>
+
+              <div className="px-4 sm:px-5 pt-4 pb-4 space-y-4">
+                {/* Product row */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="w-9 h-9 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0 mt-0.5">
+                      <i className="ri-file-text-line text-[#1a5c4f] text-base"></i>
                     </div>
-                    <span className="text-sm font-bold text-amber-700 ml-4 whitespace-nowrap">+${additionalDocFee}.00</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Add-ons */}
-              <div className="bg-white border-t border-gray-100 px-5 py-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-6 h-6 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-                    <i className="ri-star-line text-orange-500 text-sm" />
-                  </div>
-                  <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wide">Recommended Add-ons</p>
-                  <span className="text-xs text-gray-400 font-normal normal-case tracking-normal">(optional)</span>
-                </div>
-                <div className="space-y-2">
-                  {ADDON_OPTIONS.map((addon) => {
-                    const isSelected = selectedAddons.includes(addon.id);
-                    return (
-                      <button
-                        key={addon.id}
-                        type="button"
-                        onClick={() => toggleAddon(addon.id)}
-                        className={`w-full text-left flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-all cursor-pointer ${isSelected ? "border-orange-300 bg-orange-50" : "border-gray-200 bg-gray-50 hover:border-orange-200 hover:bg-orange-50/40"}`}
-                      >
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${isSelected ? "border-orange-500 bg-orange-500" : "border-gray-300 bg-white"}`}>
-                          {isSelected && <i className="ri-check-line text-white" style={{ fontSize: "10px" }} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                              <i className={`${addon.icon} text-orange-500 text-sm`} />
-                            </div>
-                            <p className={`text-xs font-bold leading-snug ${isSelected ? "text-orange-800" : "text-gray-800"}`}>{addon.label}</p>
-                            {addon.popular && <span className="text-[9px] font-extrabold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">Popular</span>}
-                          </div>
-                          <p className="text-xs text-gray-500 mt-0.5 leading-snug">{addon.subLabel}</p>
-                        </div>
-                        <span className={`text-xs font-extrabold whitespace-nowrap flex-shrink-0 mt-0.5 ${isSelected ? "text-orange-600" : "text-gray-600"}`}>+${addon.price}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {selectedAddons.length > 0 && (
-                <div className="flex justify-between items-center px-5 py-2.5 bg-orange-50 border-t border-orange-100">
-                  <div className="flex items-center gap-2">
-                    <i className="ri-star-fill text-orange-500 text-sm" />
-                    <span className="text-sm text-orange-700 font-semibold">Add-on Services ({selectedAddons.length})</span>
-                  </div>
-                  <span className="text-sm font-bold text-orange-600 ml-4 whitespace-nowrap">+${addonTotal}.00</span>
-                </div>
-              )}
-
-              {couponDiscountAmount > 0 && (
-                <div className="flex justify-between items-center px-5 py-2.5 bg-green-50 border-t border-green-100">
-                  <div className="flex items-center gap-2">
-                    <i className="ri-coupon-3-line text-green-600 text-sm" />
-                    <span className="text-sm text-green-700 font-semibold">Coupon ({appliedCoupon?.code})</span>
-                  </div>
-                  <span className="text-sm font-bold text-green-600 ml-4 whitespace-nowrap">-${couponDiscountAmount}.00</span>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center px-5 py-3.5 bg-[#1a5c4f]">
-                <span className="text-sm font-extrabold text-white">Total Cost:</span>
-                <span className="text-xl font-extrabold text-white">${totalPrice}.00</span>
-              </div>
-            </div>
-
-            {/* Klarna badge */}
-            <div className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 flex items-center gap-3 flex-wrap">
-              <div className="flex-shrink-0 bg-[#FFB3C7] rounded-md px-2.5 py-1.5 flex items-center">
-                <span className="text-xs font-extrabold text-[#17120E] tracking-tight">Klarna.</span>
-              </div>
-              <p className="text-sm text-gray-700 min-w-0">
-                4 interest-free payments of <strong className="text-gray-900">${klarnaPerPayment}</strong>{" "}
-                <a href="https://www.klarna.com/us/pay-in-4/" target="_blank" rel="noopener noreferrer" className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer">Learn more</a>
-              </p>
-            </div>
-
-            {/* Email */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
-              <div className="flex items-center border border-gray-300 rounded-lg px-3 py-2.5 bg-white gap-2">
-                <span className="text-sm text-gray-700 flex-1 truncate">{step2.email || "your@email.com"}</span>
-                <i className="ri-user-line text-gray-400 text-sm flex-shrink-0" />
-              </div>
-            </div>
-
-            {/* Price Options */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Price Options</label>
-              {petCount > 1 && (
-                <div className="mb-2 bg-[#f0faf7] border border-[#b8ddd5] rounded-lg px-3 py-2 flex items-center gap-2">
-                  <i className="ri-information-line text-[#1a5c4f] text-sm flex-shrink-0"></i>
-                  <p className="text-xs text-[#1a5c4f]">
-                    <span className="font-bold">{petCount} pets detected —</span> subscription price reflects the multi-pet rate.
-                  </p>
-                </div>
-              )}
-              <div className="space-y-2">
-                <PriceOption plan="subscription" selected={plan === "subscription"} onSelect={() => setPlan("subscription")} baseOneTime={baseOneTimeFallback} baseSub={esaSubPrice} subLabel={esaSubLabel} />
-                <PriceOption plan="one-time" selected={plan === "one-time"} onSelect={() => setPlan("one-time")} baseOneTime={plan === "one-time" ? basePrice : baseOneTimeFallback} baseSub={esaSubPrice} subLabel={esaSubLabel} />
-              </div>
-              {/* Subscription breakdown */}
-              {plan === "subscription" && (
-                <div className="mt-2 bg-[#f0faf7] border border-[#b8ddd5] rounded-lg px-3 py-2.5 space-y-1">
-                  <p className="text-[10px] font-extrabold text-[#1a5c4f] uppercase tracking-wide flex items-center gap-1">
-                    <i className="ri-calendar-check-line"></i> Subscription Pricing by Pet Count
-                  </p>
-                  {[
-                    { pets: "1 Pet", price: 99 },
-                    { pets: "2 Pets", price: 109 },
-                    { pets: "3 Pets", price: 129 },
-                  ].map((row) => {
-                    const isActive = (petCount === 1 && row.pets === "1 Pet") || (petCount === 2 && row.pets === "2 Pets") || (petCount >= 3 && row.pets === "3 Pets");
-                    return (
-                      <div key={row.pets} className={`flex items-center justify-between text-[10px] ${isActive ? "font-bold text-[#1a5c4f]" : "text-[#1a5c4f]/70"}`}>
-                        <span className="flex items-center gap-1">
-                          {isActive && <i className="ri-arrow-right-s-line text-orange-500"></i>}
-                          {row.pets}
-                        </span>
-                        <span className="font-mono">${row.price}/yr</span>
-                      </div>
-                    );
-                  })}
-                  <p className="text-[9px] text-[#1a5c4f]/70 mt-1 leading-relaxed">Renews automatically each year. Cancel anytime.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Payment Form */}
-            <div className="space-y-3">
-              {paymentError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 flex items-start gap-2">
-                  <i className="ri-error-warning-line flex-shrink-0 mt-0.5"></i>{paymentError}
-                </div>
-              )}
-              {/* Payment tabs */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                <button type="button" onClick={() => setPaymentTab("card")} className={`whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md text-xs font-bold transition-all cursor-pointer ${paymentTab === "card" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
-                  <i className="ri-bank-card-line text-sm flex-shrink-0" /><span className="hidden sm:inline">Card</span>
-                </button>
-                {plan === "one-time" && (
-                  <button type="button" onClick={() => setPaymentTab("klarna")} className={`whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md text-xs font-bold transition-all cursor-pointer ${paymentTab === "klarna" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
-                    <span className="text-[10px] font-extrabold tracking-tight text-[#FF6A8A]">Klarna</span>
-                  </button>
-                )}
-                <button type="button" onClick={() => setPaymentTab("qr")} className={`whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-md text-xs font-bold transition-all cursor-pointer ${paymentTab === "qr" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
-                  <i className="ri-qr-code-line text-sm flex-shrink-0" /><span className="hidden sm:inline">QR</span>
-                </button>
-              </div>
-
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                {/* Card header — PSD-style */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
-                      <i className="ri-bank-card-line text-white text-sm"></i>
-                    </div>
-                    <div>
-                      <p className="text-xs font-extrabold text-gray-900">Secure Payment</p>
-                      <p className="text-[10px] text-gray-400 flex items-center gap-1">
-                        <i className="ri-lock-2-line text-[10px]"></i>256-bit SSL encrypted
+                    <div className="min-w-0">
+                      <p className="text-sm font-extrabold text-gray-800 leading-snug">ESA Letter Package</p>
+                      <p className="text-xs text-gray-400 mt-1 flex items-center gap-1.5 flex-wrap">
+                        <i className="ri-time-line text-xs flex-shrink-0"></i>
+                        <span>{deliveryLabel}</span>
                       </p>
                     </div>
                   </div>
-                  <div className="bg-[#1a5c4f]/8 border border-[#1a5c4f]/20 rounded-lg px-2.5 py-1.5 text-right">
-                    <p className="text-[9px] text-gray-500 font-medium">Amount Due</p>
-                    <p className="text-sm font-extrabold text-[#1a5c4f] leading-tight">${totalPrice}.00</p>
+                  <div className="flex flex-col items-end flex-shrink-0 mt-0.5">
+                    <span className="text-sm font-extrabold text-gray-900">${priceBeforeDiscount}.00</span>
+                    {selectedPlan === "subscription" && (
+                      <span className="text-[10px] text-gray-400 line-through">${basePrice}.00</span>
+                    )}
                   </div>
                 </div>
-                <div className="p-4">
-                  {paymentTab === "card" && (
-                    <StripePaymentForm
-                      clientSecret={clientSecret ?? null}
-                      amount={totalPrice}
-                      returnUrl={returnUrl}
-                      onSuccess={onPaymentSuccess}
-                      onError={onPaymentError}
-                      onBeforeSubmit={validateBeforePayment}
-                      agreed={agreed}
-                      setAgreed={setAgreed}
-                      agreedError={agreedError}
-                      setAgreedError={setAgreedError}
-                      couponSlot={couponSlot}
-                    />
-                  )}
-                  {paymentTab === "klarna" && (
-                    <>
-                      {couponSlot}
-                      <KlarnaPaymentTab
-                        amount={totalPrice} plan={plan} petCount={step2.pets.length} deliverySpeed={step2.deliverySpeed}
-                        email={step2.email} firstName={step2.firstName} lastName={step2.lastName}
-                        additionalDocCount={additionalDocCount} agreed={agreed} setAgreed={setAgreed}
-                        agreedError={agreedError} setAgreedError={setAgreedError} confirmationId={confirmationId ?? ""}
-                        phone={step2.phone} state={step2.state}
-                        selectedProvider=""
-                      />
-                    </>
-                  )}
-                  {paymentTab === "qr" && (
-                    <>
-                      {couponSlot}
-                      <QRPaymentTab
-                        amount={totalPrice} plan={plan} petCount={step2.pets.length} deliverySpeed={step2.deliverySpeed}
-                        email={step2.email} firstName={step2.firstName} lastName={step2.lastName}
-                        additionalDocCount={additionalDocCount} agreed={agreed} setAgreed={setAgreed}
-                        agreedError={agreedError} setAgreedError={setAgreedError} confirmationId={confirmationId ?? ""}
-                        phone={step2.phone} state={step2.state}
-                        selectedProvider=""
-                      />
-                    </>
+
+                {/* Discount row */}
+                {couponDiscount > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                        <i className="ri-coupon-3-line text-emerald-500 text-sm"></i>
+                      </div>
+                      <span className="text-xs font-semibold text-emerald-700">Discount applied</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-emerald-600">-${couponDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {/* Delivery badge */}
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
+                  <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                    <i className="ri-timer-flash-line text-amber-500 text-sm"></i>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Delivery Time</p>
+                    <p className="text-xs font-semibold text-amber-700 mt-0.5">{deliveryBadge}</p>
+                  </div>
+                </div>
+
+                {/* Included */}
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2.5">What&apos;s Included</p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    {[
+                      { icon: "ri-stethoscope-line", text: "Provider evaluation" },
+                      { icon: "ri-file-text-line",   text: "Official ESA letter PDF" },
+                      { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
+                      { icon: "ri-home-heart-line",   text: "Fair Housing Act" },
+                    ].map((item) => (
+                      <div key={item.text} className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
+                          <i className={`${item.icon} text-[#1a5c4f] text-xs`}></i>
+                        </div>
+                        <span className="text-xs text-gray-700 font-bold truncate">{item.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Total bar */}
+              <div className="bg-gradient-to-r from-orange-400 to-orange-300 px-4 sm:px-5 py-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] text-black/60 font-bold uppercase tracking-wider">Amount Due Today</p>
+                  <p className="text-[10px] text-black/50 mt-0.5 leading-snug">
+                    {selectedPlan === "subscription" ? "Annual renewal · cancel anytime" : "One-time · no recurring charges"}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="text-2xl font-extrabold text-black">${totalPrice}.00</span>
+                  {selectedPlan === "subscription" && (
+                    <p className="text-[10px] text-black/60 mt-0.5">per year</p>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Trust Badge Strip */}
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-              {[
-                { icon: "ri-shield-check-line", label: "HIPAA Compliant", color: "text-green-500" },
-                { icon: "ri-lock-2-line", label: "SSL Encrypted", color: "text-green-500" },
-                { icon: "ri-refund-2-line", label: "Money-Back", color: "text-orange-500" },
-              ].map((badge) => (
-                <div key={badge.label} className="flex flex-col items-center gap-1 bg-gray-50 border border-gray-100 rounded-xl py-3 px-1 sm:px-2 text-center">
-                  <div className="w-6 h-6 flex items-center justify-center"><i className={`${badge.icon} ${badge.color} text-base`}></i></div>
-                  <span className="text-[10px] sm:text-xs font-semibold text-gray-600 leading-tight">{badge.label}</span>
+            {/* ── Klarna info badge ── */}
+            <div className="bg-[#fff0f5] border border-[#f9c6d8] rounded-2xl px-4 sm:px-5 py-3.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="w-16 h-8 flex items-center justify-center bg-[#ffb3c7] rounded-lg text-sm font-extrabold text-[#17120e] tracking-tight flex-shrink-0">
+                  Klarna
                 </div>
-              ))}
-            </div>
-
-            {/* Save Progress */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5">
-              <div className="flex items-start gap-3">
-                <div className="w-7 h-7 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0 mt-0.5">
-                  <i className="ri-bookmark-3-line text-amber-600 text-sm"></i>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-amber-900">Not ready to pay yet?</p>
-                  <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Save your progress and we&apos;ll email you a link to pick up right where you left off.</p>
-                  {saveStatus === "sent" ? (
-                    <div className="mt-2 flex items-center gap-1.5 text-green-700"><i className="ri-checkbox-circle-fill text-green-500 text-sm"></i><span className="text-xs font-semibold">Link sent to {step2.email}</span></div>
-                  ) : saveStatus === "error" ? (
-                    <div className="mt-2 flex items-center gap-1.5 text-red-600"><i className="ri-error-warning-line text-sm"></i><span className="text-xs font-semibold">Couldn&apos;t send — please try again.</span></div>
-                  ) : (
-                    <button type="button" onClick={handleSaveProgress} disabled={saveStatus === "sending"} className="whitespace-nowrap mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 transition-colors cursor-pointer disabled:opacity-60">
-                      {saveStatus === "sending" ? <><i className="ri-loader-4-line animate-spin text-sm"></i>Sending...</> : <><i className="ri-mail-send-line text-sm"></i>Email Me My Progress Link</>}
-                    </button>
-                  )}
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-gray-800">
+                    4 interest-free payments of ${(totalPrice / 4).toFixed(2)}
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">No credit impact · Instant approval</p>
                 </div>
               </div>
             </div>
 
-            {/* SMS Consent */}
-            <label className="flex items-start gap-2.5 cursor-pointer text-gray-600">
-              <input type="checkbox" checked={data.smsConsent ?? false} onChange={(e) => onChange({ ...data, smsConsent: e.target.checked })} className="mt-0.5 accent-[#1a5c4f] flex-shrink-0" />
-              <span className="text-xs leading-relaxed">
-                <span className="font-semibold text-gray-700">(Optional)</span> By checking this box, I consent to receive automated marketing text messages (SMS/MMS) from PawTenant at the phone number provided. Message &amp; data rates may apply. Consent is not a condition of purchase.{" "}
-                <span className="text-gray-500">Reply <strong>STOP</strong> to unsubscribe. Reply <strong>HELP</strong> for help.</span>{" "}
-                <button type="button" onClick={() => openPolicy("/privacy-policy", "Privacy Policy")} className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer">Privacy Policy</button>
-                {" & "}
-                <button type="button" onClick={() => openPolicy("/terms-of-use", "Terms of Use")} className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer">Terms</button>.
+            {/* ── Plan Toggle ── */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="px-4 sm:px-5 py-3.5 border-b border-gray-100">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Price Options</p>
+              </div>
+              <div className="px-3 sm:px-4 py-4 space-y-2.5">
+                {/* Subscription */}
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...data, plan: "subscription" })}
+                  className={`w-full text-left rounded-xl border-2 px-3 sm:px-4 py-3.5 transition-all cursor-pointer ${
+                    selectedPlan === "subscription"
+                      ? "border-[#1a5c4f] bg-[#f0faf7]"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                        selectedPlan === "subscription" ? "border-[#1a5c4f]" : "border-gray-300"
+                      }`}>
+                        {selectedPlan === "subscription" && (
+                          <div className="w-2 h-2 rounded-full bg-[#1a5c4f]"></div>
+                        )}
+                      </div>
+                      <span className="text-sm font-extrabold text-gray-800">Subscribe &amp; Save</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                        BEST VALUE
+                      </span>
+                      <span className="text-sm font-extrabold text-[#1a5c4f] whitespace-nowrap">${subPrice}.00</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 ml-6 leading-relaxed">
+                    Never lose ESA status · Auto-renews annually · Cancel anytime
+                  </p>
+                  {selectedPlan === "subscription" && (
+                    <p className="text-[10px] text-emerald-600 font-semibold mt-1.5 ml-6 flex items-center gap-1">
+                      <i className="ri-checkbox-circle-fill"></i>
+                      Saving ${basePrice - subPrice}.00 per year
+                    </p>
+                  )}
+                </button>
+
+                {/* One-time */}
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...data, plan: "one-time" })}
+                  className={`w-full text-left rounded-xl border-2 px-3 sm:px-4 py-3.5 transition-all cursor-pointer ${
+                    selectedPlan === "one-time"
+                      ? "border-[#1a5c4f] bg-[#f0faf7]"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                        selectedPlan === "one-time" ? "border-[#1a5c4f]" : "border-gray-300"
+                      }`}>
+                        {selectedPlan === "one-time" && (
+                          <div className="w-2 h-2 rounded-full bg-[#1a5c4f]"></div>
+                        )}
+                      </div>
+                      <span className="text-sm font-extrabold text-gray-800">One-time Purchase</span>
+                    </div>
+                    <span className="text-sm font-extrabold text-gray-700 whitespace-nowrap">${basePrice}.00</span>
+                  </div>
+                  <p className="text-xs text-gray-500 ml-6 leading-relaxed">
+                    Single payment · 4 interest-free payments via Klarna
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* ── Secure Payment (card/Klarna/QR tabs) ── */}
+            <SecurePaymentCard {...paymentCardProps} />
+
+            {/* ── SMS Consent ── */}
+            <label className="flex items-start gap-2.5 cursor-pointer bg-white rounded-xl border border-gray-100 px-4 py-3.5 hover:border-gray-200 transition-colors">
+              <input
+                type="checkbox"
+                checked={data.smsConsent ?? false}
+                onChange={(e) => onChange({ ...data, smsConsent: e.target.checked })}
+                className="mt-0.5 accent-[#1a5c4f] flex-shrink-0 cursor-pointer"
+              />
+              <span className="text-xs text-gray-600 leading-relaxed">
+                <span className="font-semibold text-gray-700">(Optional)</span> I consent to receive
+                automated text messages from PawTenant. Reply <strong>STOP</strong> to unsubscribe.{" "}
+                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer">
+                  Privacy Policy
+                </a>{" "}
+                &amp;{" "}
+                <a href="/terms-of-use" target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer">
+                  Terms
+                </a>.
               </span>
             </label>
-
-            {/* Trust footer */}
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-gray-400 flex items-center gap-1"><i className="ri-shield-check-line text-green-500" />Safe &amp; Secure Checkout</span>
-              <div className="border border-gray-300 rounded-md px-2.5 py-1 flex items-center gap-1.5">
-                <i className="ri-lock-2-line text-gray-400 text-xs" />
-                <span className="text-xs font-bold text-gray-500">Powered by</span>
-                <span className="text-xs font-extrabold text-[#635BFF]">stripe</span>
-              </div>
-            </div>
-            <p className="text-xs text-center text-gray-400 pb-2">
-              <button type="button" onClick={() => openPolicy("/privacy-policy", "Privacy Policy")} className="text-orange-500 font-semibold hover:underline cursor-pointer">Privacy Policy</button>
-              {" · "}
-              <button type="button" onClick={() => openPolicy("/terms-of-use", "Terms of Use")} className="text-orange-500 font-semibold hover:underline cursor-pointer">Terms of Use</button>
-            </p>
           </div>
         </div>
+        {/* ══ end RIGHT ══ */}
 
-        {/* ── LEFT column ── order-2 on mobile → appears after payment section */}
-        <div className="order-2 lg:order-1 lg:col-start-1 lg:col-span-3 lg:row-start-1 space-y-5">
-          {/* What's included */}
-          <div className="bg-[#f2f8f5] rounded-xl border border-green-200 p-6">
-            <p className="text-sm font-extrabold text-gray-900 mb-1">ESA Letter + {turnaround} Delivery Included</p>
-            <p className="text-xs font-semibold text-gray-600 mb-3">Included with your ESA Letter:</p>
-            {[
-              "Legally enforced for rentals, vacation homes, and college dorms.",
-              "Compliant with the Fair Housing Act for housing.",
-              "Evaluated by a licensed Medical Provider in your state.",
-            ].map((t) => (
-              <div key={t} className="flex items-start gap-2 mb-2">
-                <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5"><i className="ri-checkbox-circle-fill text-green-600 text-base" /></div>
-                <p className="text-xs text-gray-700">{t}</p>
+        {/* ════ LEFT COLUMN — second on mobile ════ */}
+        <div className="order-2 lg:order-1 lg:col-start-1 lg:col-span-3 flex flex-col gap-5">
+
+          {/* 1 ── Guarantee Banner ── */}
+          <div className="bg-gradient-to-br from-[#e8f5f1] to-[#f5fbf9] border-2 border-[#b8ddd5] rounded-2xl p-5 sm:p-6">
+            <div className="flex items-start gap-3.5 mb-4">
+              <div className="w-11 h-11 flex items-center justify-center bg-[#1a5c4f] rounded-xl flex-shrink-0">
+                <i className="ri-shield-check-fill text-white text-xl"></i>
               </div>
-            ))}
-          </div>
-
-          {/* Trust items */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Why thousands trust PawTenant</p>
+              <div className="pt-1 min-w-0">
+                <h3 className="text-sm font-extrabold text-[#1a5c4f] leading-snug">
+                  You Only Pay for a Valid ESA Letter — Guaranteed
+                </h3>
+              </div>
+            </div>
+            <p className="text-sm text-[#1a5c4f]/80 mb-5 leading-relaxed">
+              If you are not clinically eligible or your letter is not accepted for valid
+              housing-related use, you&apos;ll receive a full refund according to our refund policy.
+            </p>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: "ri-shield-check-line", color: "text-green-500", label: "HIPAA Compliant", desc: "Your info is fully protected" },
-                { icon: "ri-award-line", color: "text-orange-500", label: "Licensed Providers", desc: "State-verified professionals" },
-                { icon: "ri-time-line", color: "text-blue-500", label: "Fast Turnaround", desc: "Letter in 24\u201372 hrs" },
-                { icon: "ri-refund-2-line", color: "text-orange-500", label: "Money-Back Guarantee", desc: "100% if you don't qualify" },
+                { icon: "ri-stethoscope-line", text: "Licensed provider review" },
+                { icon: "ri-refund-2-line",     text: "Full refund protection" },
+                { icon: "ri-shield-check-line", text: "HIPAA-secure information" },
+                { icon: "ri-timer-flash-line",  text: "Fast delivery after approval" },
               ].map((item) => (
-                <div key={item.label} className="flex items-start gap-3">
-                  <div className="w-8 h-8 flex items-center justify-center bg-gray-50 rounded-lg flex-shrink-0"><i className={`${item.icon} ${item.color} text-base`} /></div>
-                  <div>
-                    <p className="text-xs font-bold text-gray-800">{item.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
+                <div key={item.text} className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-6 h-6 flex items-center justify-center bg-[#1a5c4f] rounded-full flex-shrink-0">
+                    <i className={`${item.icon} text-white text-xs`}></i>
                   </div>
+                  <span className="text-xs font-semibold text-[#1a5c4f] leading-snug">{item.text}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Video */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="text-base font-extrabold text-gray-900 mb-4">Hear what our happy pet parents say!</h3>
-            <div className="relative bg-gray-100 rounded-xl overflow-hidden" style={{ paddingBottom: "56.25%" }}>
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                <div className="w-16 h-16 flex items-center justify-center bg-red-600 rounded-full">
-                  <i className="ri-play-fill text-white text-3xl ml-1" />
+          {/* 2 ── Evaluation Profile ── */}
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-gray-100 gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 flex items-center justify-center bg-[#f0faf7] rounded-lg flex-shrink-0">
+                  <i className="ri-user-line text-[#1a5c4f] text-sm"></i>
                 </div>
-                <p className="text-sm text-gray-500 font-medium">Video testimonial coming soon</p>
+                <p className="text-sm font-extrabold text-gray-900">Your Evaluation Profile</p>
+              </div>
+              <button
+                type="button"
+                onClick={onBack}
+                className="whitespace-nowrap flex items-center gap-1 text-xs font-semibold text-[#1a5c4f] hover:underline cursor-pointer flex-shrink-0"
+              >
+                <i className="ri-edit-line text-xs"></i>Edit info
+              </button>
+            </div>
+            <div className="px-4 sm:px-5 py-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { label: "Email",  value: step2.email || "—",            icon: "ri-mail-line" },
+                  { label: "State",  value: step2.state || "—",            icon: "ri-map-pin-line" },
+                  { label: "Phone",  value: step2.phone || "Not provided", icon: "ri-phone-line" },
+                  { label: "Name",   value: customerName,                  icon: "ri-user-line" },
+                ].map((field) => (
+                  <div key={field.label} className="flex items-start gap-2.5 min-w-0">
+                    <div className="w-7 h-7 flex items-center justify-center bg-gray-50 rounded-lg flex-shrink-0 mt-0.5">
+                      <i className={`${field.icon} text-gray-400 text-sm`}></i>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</p>
+                      <p className="text-sm font-semibold text-gray-800 truncate">{field.value}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
+            <div className="px-4 sm:px-5 pb-4">
+              <div className="bg-[#f0faf7] rounded-xl px-3 py-2 flex items-center gap-2">
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                  <i className="ri-shield-check-line text-[#1a5c4f] text-xs"></i>
+                </div>
+                <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+                  Your information is securely saved — no need to re-enter details.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 3 ── YouTube Short ── */}
+          <YouTubeShort />
+        </div>
+        {/* ══ end LEFT ══ */}
+
+      </div>
+
+      {/* ════ BOTTOM — What Happens Next ════ */}
+      <div className="mt-10 sm:mt-14">
+        <div className="text-center mb-8">
+          <SectionLabel>After Checkout</SectionLabel>
+          <h3 className="text-xl font-extrabold text-gray-900">What Happens Next</h3>
+          <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto leading-relaxed px-4">
+            Here&apos;s exactly what happens from submission to your door.
+          </p>
+        </div>
+
+        <div className="relative">
+          <div className="hidden lg:block absolute top-[38px] left-[calc(12.5%-18px)] right-[calc(12.5%-18px)] h-px bg-gray-200 z-0" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-4">
+            {[
+              { num: "01", icon: "ri-file-check-line", color: "bg-amber-500",
+                title: "Assessment Submitted",
+                desc: "Your evaluation answers are immediately available to a licensed provider in your state." },
+              { num: "02", icon: "ri-stethoscope-line", color: "bg-[#1a5c4f]",
+                title: "Licensed Provider Review",
+                desc: "A board-licensed mental health professional evaluates your case within your chosen delivery window." },
+              { num: "03", icon: "ri-mail-check-line", color: "bg-[#1a5c4f]",
+                title: "ESA Letter Delivered",
+                desc: "Your signed, official ESA letter is emailed as a professional PDF document — ready to use." },
+              { num: "04", icon: "ri-home-heart-line", color: "bg-emerald-500",
+                title: "Use for Housing",
+                desc: "Present your letter with full Fair Housing Act protection for rentals, vacation homes, or college housing." },
+            ].map((step) => (
+              <div key={step.num} className="flex lg:flex-col items-start lg:items-center gap-4 lg:gap-0 relative z-10">
+                <div className={`w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center ${step.color} rounded-2xl lg:mb-4`}>
+                  <i className={`${step.icon} text-white text-xl`}></i>
+                </div>
+                <div className="lg:text-center min-w-0">
+                  <div className="flex items-center gap-2 mb-1 lg:justify-center flex-wrap">
+                    <span className="text-[10px] font-extrabold text-gray-300">{step.num}</span>
+                    <p className="text-sm font-bold text-gray-900">{step.title}</p>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">{step.desc}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       {/* Back button */}
-      <div className="mt-6">
+      <div className="mt-10 flex flex-col sm:flex-row items-center justify-between gap-4">
         <button
           type="button"
           onClick={onBack}
-          className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-7 py-3.5 border-2 border-gray-200 text-gray-700 font-semibold text-sm rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer w-full sm:w-auto"
+          className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f]/10 border border-[#1a5c4f]/30 text-[#1a5c4f] font-bold text-sm rounded-lg hover:bg-[#1a5c4f]/15 hover:border-[#1a5c4f]/40 transition-colors cursor-pointer"
         >
-          <i className="ri-arrow-left-line" />Back
+          <i className="ri-arrow-left-line"></i>Back to Step 2
         </button>
       </div>
     </div>

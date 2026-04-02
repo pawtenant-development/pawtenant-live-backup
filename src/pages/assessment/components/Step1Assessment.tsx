@@ -148,16 +148,16 @@ interface QuestionCardProps {
 
 function QuestionCard({ number, question, required, hint, hasError, children }: QuestionCardProps) {
   return (
-    <div className={`bg-white rounded-xl border p-6 transition-all ${hasError ? "border-red-300 ring-2 ring-red-200" : "border-gray-200"}`}>
-      <p className="text-sm font-bold text-gray-900 mb-1">
-        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange-500 text-white text-xs font-bold mr-2">
+    <div className={`bg-white rounded-xl border p-4 sm:p-6 transition-all ${hasError ? "border-red-300 ring-2 ring-red-200" : "border-gray-200"}`}>
+      <p className="text-sm font-bold text-gray-900 mb-1 leading-snug">
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange-500 text-white text-xs font-bold mr-2 flex-shrink-0">
           {number}
         </span>
         {question}
         {required && <span className="text-orange-500 ml-1">*</span>}
       </p>
-      {hint && <p className="text-xs text-gray-400 mb-4 ml-8">{hint}</p>}
-      {!hint && <div className="mb-4" />}
+      {hint && <p className="text-xs text-gray-400 mb-3 sm:mb-4 ml-8">{hint}</p>}
+      {!hint && <div className="mb-3 sm:mb-4" />}
       {children}
     </div>
   );
@@ -532,11 +532,11 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
 
       </div>
 
-      <div className="mt-8 flex flex-col sm:flex-row sm:justify-end">
+      <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={handleNext}
-          className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer"
+          className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-orange-500 text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-orange-600 active:bg-orange-700 transition-colors cursor-pointer"
         >
           Continue to Your Information
           <i className="ri-arrow-right-line"></i>

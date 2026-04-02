@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
 
 interface ThankYouState {
   firstName?: string;
@@ -26,6 +27,8 @@ declare global {
     gtag?: (...args: unknown[]) => void;
   }
 }
+
+// fireMetaPurchase and fireLead are imported from @/lib/metaPixel
 
 const GOOGLE_REVIEW_URL = "https://g.page/r/YOUR_GOOGLE_PLACE_ID/review";
 
@@ -123,7 +126,7 @@ async function fireGHLPaidLead(order: PendingOrder) {
   }
 }
 
-// ── Renewal Upsell Card ────────────────────────────────────────────────────────
+// ── Annual Renewal Upsell Card ────────────────────────────────────────────────────────
 function RenewalUpsellCard({ price, planType, email }: { price: number; planType: string; email: string }) {
   const [dismissed, setDismissed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(24 * 60 * 60); // 24 hours in seconds
@@ -557,14 +560,13 @@ export default function AssessmentThankYouPage() {
 
           // Fire conversion pixels (only for redirect-based arrivals; inline fires in assessment/page.tsx)
           if (!directSuccess) {
-            if (typeof window.fbq === "function") {
-              window.fbq("track", "Purchase", {
-                value: order.price,
-                currency: "USD",
-                content_name: "ESA Letter",
-              });
-              window.fbq("track", "Lead");
-            }
+            // Enhanced Meta Purchase with eventID + external_id
+            fireMetaPurchase({
+              value: order.price ?? 0,
+              confirmationId: order.confirmationId ?? '',
+              email: order.email,
+            });
+            fireLead();
             // Mark gtag as already-handled so the bottom useEffect skips it
             gtagConversionFired.current = true;
             if (typeof window.gtag === "function") {
@@ -650,8 +652,6 @@ export default function AssessmentThankYouPage() {
   ];
 
   // ── Single authoritative Google Ads ESA Purchase conversion ─────────────
-  // Fires once per route mount. Polls until window.gtag is available so it
-  // works on SPA navigations where the gtag script may not yet be evaluated.
   useEffect(() => {
     if (gtagConversionFired.current) return;
 
@@ -664,14 +664,12 @@ export default function AssessmentThankYouPage() {
 
     console.log("[ESA Thank-You] Conversion params:", { amount, orderId, conversionValue, transactionId });
 
-    // Fire fbq immediately — it has its own queue so timing is fine
-    if (typeof window.fbq === "function") {
-      window.fbq("track", "Purchase", {
-        value: conversionValue,
-        currency: "USD",
-        content_name: "ESA Letter",
-      });
-    }
+    // Enhanced Meta Purchase with eventID + external_id
+    fireMetaPurchase({
+      value: conversionValue,
+      confirmationId: transactionId,
+      email,
+    });
 
     const fireGtag = (): boolean => {
       if (gtagConversionFired.current) return true; // already fired

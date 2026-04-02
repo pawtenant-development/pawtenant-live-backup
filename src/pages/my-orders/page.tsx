@@ -229,7 +229,9 @@ function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userE
                 <i className="ri-heart-line text-xs"></i>ESA Letter
               </span>
             )}
-            <span className="text-xs text-gray-400 font-mono">{order.confirmation_id}</span>
+            <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-900 text-white font-mono tracking-wide">
+              <i className="ri-hashtag text-gray-400 text-[10px]"></i>{order.confirmation_id}
+            </span>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             <span className="text-xs text-gray-500 font-medium">{new Date(order.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</span>

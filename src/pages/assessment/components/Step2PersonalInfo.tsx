@@ -491,11 +491,11 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
         </div>
       )}
 
-      <div className="mt-8 flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3">
+      <div className="mt-6 sm:mt-8 flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3">
         <button
           type="button"
           onClick={onBack}
-          className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-7 py-3.5 border-2 border-gray-200 text-gray-700 font-semibold text-sm rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-colors cursor-pointer w-full sm:w-auto"
+          className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-7 py-4 sm:py-3.5 border-2 border-gray-200 text-gray-700 font-semibold text-sm rounded-xl sm:rounded-lg hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer w-full sm:w-auto"
         >
           <i className="ri-arrow-left-line"></i>
           Back
@@ -503,7 +503,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
         <button
           type="button"
           onClick={handleNext}
-          className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-10 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer w-full sm:w-auto"
+          className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-orange-500 text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-orange-600 active:bg-orange-700 transition-colors cursor-pointer w-full sm:w-auto"
         >
           Continue to Checkout
           <i className="ri-arrow-right-line"></i>

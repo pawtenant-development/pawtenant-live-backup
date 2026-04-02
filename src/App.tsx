@@ -1,6 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { BrowserRouter, useNavigate, useLocation } from "react-router-dom";
 import { AppRoutes } from "./router";
+import { AdminSubdomainRoutes } from "./router/adminRoutes";
+import { isAdminSubdomain } from "./lib/subdomainConfig";
 import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n";
 import ScrollToTop from "./components/feature/ScrollToTop";
@@ -9,9 +11,11 @@ import CookieBanner from "./components/feature/CookieBanner";
 import FloatingCTA from "./components/feature/FloatingCTA";
 import MobileChatButton from "./components/feature/MobileChatButton";
 import USResidentsBanner from "./components/feature/USResidentsBanner";
+import ErrorBoundary from "./components/feature/ErrorBoundary";
 import { supabase } from "./lib/supabaseClient";
 import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
+import { firePageView } from "@/lib/metaPixel";
 
 const PORTAL_ROUTES = [
   "/admin",
@@ -19,6 +23,8 @@ const PORTAL_ROUTES = [
   "/provider-login",
   "/my-orders",
   "/customer-login",
+  "/reset-password",
+  "/admin-login",
 ];
 
 function ConditionalFloatingCTA() {
@@ -41,6 +47,23 @@ function UTMCapture() {
     sessionStorage.setItem("referrer", document.referrer || "");
     sessionStorage.setItem("utm_captured", "1");
   }, []);
+  return null;
+}
+
+/** Fires Meta Pixel PageView on every SPA route change (including initial render). */
+function MetaPageView() {
+  const { pathname } = useLocation();
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      // On initial hard load, fbq('init') already ran in index.html.
+      // Fire PageView now so React covers the initial render too.
+      isFirstRender.current = false;
+    }
+    firePageView();
+  }, [pathname]);
+
   return null;
 }
 
@@ -98,6 +121,8 @@ function TawkVisibility() {
   useEffect(() => {
     const isPortal = PORTAL_ROUTES.some((route) => pathname.startsWith(route));
 
+    // If navigating to a portal route and Tawk is already loaded, hide it immediately.
+    // If navigating back to a public page, show it again.
     // cancelled flag prevents stale polling loops from a previous route
     // from overriding the visibility set by the current route's loop.
     let cancelled = false;
@@ -109,16 +134,20 @@ function TawkVisibility() {
       const api = (window as unknown as Record<string, unknown>).Tawk_API as {
         hideWidget?: () => void;
         showWidget?: () => void;
+        isChatHidden?: () => boolean;
       } | undefined;
 
       if (api?.hideWidget && api?.showWidget) {
         if (isPortal) {
           api.hideWidget();
         } else {
-          api.showWidget();
+          // Only show if on mobile we haven't hidden it for the mobile-button reason
+          if (window.innerWidth >= 768) {
+            api.showWidget();
+          }
         }
-      } else if (attempts < 50) {
-        // Poll up to ~15 s to handle slow Tawk script loads
+      } else if (!isPortal && attempts < 50) {
+        // Only poll on public pages waiting for Tawk to load
         timerId = setTimeout(() => applyVisibility(attempts + 1), 300);
       }
     };
@@ -152,24 +181,55 @@ function GeoGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function App() {
+/**
+ * AdminApp — rendered only on admin.pawtenant.com (when feature flag is on).
+ * Strips public-site chrome (Tawk, FloatingCTA, GeoBlock, banners, etc.).
+ */
+function AdminApp() {
   return (
-    <I18nextProvider i18n={i18n}>
-      <GeoGate>
+    <ErrorBoundary>
+      <I18nextProvider i18n={i18n}>
         <BrowserRouter basename={__BASE_PATH__}>
           <ScrollToTop />
           <UTMCapture />
           <AuthHandler />
-          <TawkVisibility />
-          <AppRoutes />
+          <AdminSubdomainRoutes />
           <ScrollTopButton />
-          <CookieBanner />
-          <USResidentsBanner />
-          <ConditionalFloatingCTA />
-          <MobileChatButton />
         </BrowserRouter>
-      </GeoGate>
-    </I18nextProvider>
+      </I18nextProvider>
+    </ErrorBoundary>
+  );
+}
+
+function App() {
+  // ── Subdomain gate ────────────────────────────────────────────────────────
+  // When ADMIN_SUBDOMAIN_ENABLED=true and hostname=admin.pawtenant.com,
+  // serve only the admin portal. Zero public marketing pages exposed.
+  if (isAdminSubdomain()) {
+    return <AdminApp />;
+  }
+
+  // ── Public site (pawtenant.com) ───────────────────────────────────────────
+  return (
+    <ErrorBoundary>
+      <I18nextProvider i18n={i18n}>
+        <GeoGate>
+          <BrowserRouter basename={__BASE_PATH__}>
+            <MetaPageView />
+            <ScrollToTop />
+            <UTMCapture />
+            <AuthHandler />
+            <TawkVisibility />
+            <AppRoutes />
+            <ScrollTopButton />
+            <CookieBanner />
+            <USResidentsBanner />
+            <ConditionalFloatingCTA />
+            <MobileChatButton />
+          </BrowserRouter>
+        </GeoGate>
+      </I18nextProvider>
+    </ErrorBoundary>
   );
 }
 

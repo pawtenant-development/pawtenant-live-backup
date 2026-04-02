@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const faqs = [
   {
@@ -35,25 +35,38 @@ const faqs = [
   },
 ];
 
-const faqPageSchema = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": faqs.map((faq) => ({
-    "@type": "Question",
-    "name": faq.q,
-    "acceptedAnswer": {
-      "@type": "Answer",
-      "text": faq.a,
-    },
-  })),
-});
-
 export default function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
+  // ── Inject FAQPage schema via useEffect to avoid React 19 double-hoisting
+  // React 19 automatically hoists inline <script> tags from JSX to <head> AND
+  // keeps the original in the component output — causing Google's "Duplicate FAQPage" error.
+  useEffect(() => {
+    const id = "homepage-faq-schema";
+    if (!document.getElementById(id)) {
+      const script = document.createElement("script");
+      script.id = id;
+      script.type = "application/ld+json";
+      script.text = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": faqs.map((faq) => ({
+          "@type": "Question",
+          "name": faq.q,
+          "acceptedAnswer": { "@type": "Answer", "text": faq.a },
+        })),
+      });
+      document.head.appendChild(script);
+    }
+    return () => {
+      const s = document.getElementById(id);
+      if (s) s.remove();
+    };
+  }, []);
+
   return (
     <section id="faq" className="py-20 bg-gray-50">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: faqPageSchema }} />
+      {/* Schema is now injected via useEffect above — no inline script tag */}
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-14">
           <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-2">FAQ</p>

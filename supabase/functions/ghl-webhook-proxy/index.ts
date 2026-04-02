@@ -6,10 +6,20 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GHL_MAIN_FALLBACK =
-  "https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/d1962d95-66b5-4622-a16d-6d711c0bdd9b";
-const GHL_NETWORK_FALLBACK =
-  "https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/cfdc1278-5813-46c9-901e-39165cf0f1f3";
+// ── GHL webhook URLs loaded from Supabase secrets — never hardcoded ──────────
+// Required secrets to set in Supabase Edge Function secrets:
+//   GHL_WEBHOOK_URL         → main ESA/PSD order webhook
+//   GHL_NETWORK_WEBHOOK_URL → provider network webhook
+//   GHL_COMMS_WEBHOOK_URL   → comms/broadcast webhook (optional, falls back to GHL_WEBHOOK_URL)
+function getGhlUrl(webhookType: string | undefined): string {
+  if (webhookType === "network") {
+    return Deno.env.get("GHL_NETWORK_WEBHOOK_URL") ?? "";
+  }
+  if (webhookType === "comms") {
+    return Deno.env.get("GHL_COMMS_WEBHOOK_URL") ?? Deno.env.get("GHL_WEBHOOK_URL") ?? "";
+  }
+  return Deno.env.get("GHL_WEBHOOK_URL") ?? "";
+}
 
 // ─── Build comprehensive GHL tags from order context ─────────────────────────
 function buildOrderTags(opts: {
@@ -88,14 +98,15 @@ Deno.serve(async (req: Request) => {
 
   const { webhookType, ...payload } = body;
 
-  // ── Route to correct GHL webhook URL ─────────────────────────────────────
-  let ghlUrl: string;
-  if (webhookType === "network") {
-    ghlUrl = Deno.env.get("GHL_NETWORK_WEBHOOK_URL") ?? GHL_NETWORK_FALLBACK;
-  } else if (webhookType === "comms") {
-    ghlUrl = Deno.env.get("GHL_COMMS_WEBHOOK_URL") ?? Deno.env.get("GHL_WEBHOOK_URL") ?? GHL_MAIN_FALLBACK;
-  } else {
-    ghlUrl = Deno.env.get("GHL_WEBHOOK_URL") ?? GHL_MAIN_FALLBACK;
+  // ── Resolve GHL URL from secrets ─────────────────────────────────────────
+  const ghlUrl = getGhlUrl(webhookType as string | undefined);
+
+  if (!ghlUrl) {
+    console.error(`[GHL-PROXY] ❌ No GHL webhook URL configured for type="${webhookType ?? "main"}". Set GHL_WEBHOOK_URL / GHL_NETWORK_WEBHOOK_URL / GHL_COMMS_WEBHOOK_URL in Supabase secrets.`);
+    return new Response(
+      JSON.stringify({ ok: false, error: `GHL webhook URL not configured for type "${webhookType ?? "main"}". Set the secret in Supabase Edge Function secrets.` }),
+      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+    );
   }
 
   // ── Normalize contact fields — ensure name/email are never empty ──────────
@@ -121,21 +132,16 @@ Deno.serve(async (req: Request) => {
   // ── Build the normalized GHL payload ────────────────────────────────────
   const normalizedPayload = {
     ...payload,
-    // Always send proper contact fields
     firstName: rawFirst || fullName.split(" ")[0] || "",
     lastName: rawLast || fullName.split(" ").slice(1).join(" ") || "",
-    name: fullName,                          // GHL uses 'name' for contact display name
+    name: fullName,
     email: rawEmail,
     phone: payload.phone ?? "",
-    // Comprehensive tags
     tags: builtTags,
-    // Status field for GHL custom fields
     orderStatus: (payload.event as string) ?? (payload.leadStatus as string) ?? "",
     confirmationId: payload.confirmationId ?? "",
     state: payload.state ?? payload.patientState ?? "",
-    // Event metadata
     eventType: (payload.event as string) ?? (payload.eventType as string) ?? "",
-    // Letter type explicit
     letterType: (payload.letterType as string) ?? ((payload.confirmationId as string ?? "").toUpperCase().includes("-PSD") ? "psd" : "esa"),
   };
 
@@ -143,7 +149,7 @@ Deno.serve(async (req: Request) => {
   const confirmationId = (payload.confirmationId as string) || "(no confirmationId)";
 
   console.log(
-    `[GHL-PROXY] Firing → type="${webhookType ?? "main"}" event="${normalizedPayload.eventType}" email="${email}" id="${confirmationId}" tags=${JSON.stringify(builtTags)} url="${ghlUrl}"`
+    `[GHL-PROXY] Firing → type="${webhookType ?? "main"}" event="${normalizedPayload.eventType}" email="${email}" id="${confirmationId}" tags=${JSON.stringify(builtTags)}`
   );
 
   let ghlStatus = 0;

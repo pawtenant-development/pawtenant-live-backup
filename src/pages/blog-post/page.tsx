@@ -1,16 +1,111 @@
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { blogPosts, BlogPost } from "../../mocks/blogPosts";
 import { blogPostsExtended } from "../../mocks/blogPostsExtended";
 import { blogPostsExtended2 } from "../../mocks/blogPostsExtended2";
+import { usStates } from "../../mocks/states";
+import { detectStateFromSlug } from "../../mocks/stateBlogMap";
 
 const allBlogPosts: BlogPost[] = [...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
 
 function getBlogPostBySlug(slug: string): BlogPost | undefined {
   return allBlogPosts.find((p) => p.slug === slug);
 }
+
+// ── State-link auto-injection ───────────────────────────────────────────────
+// Maps state name → slug, sorted longest-first so "North Carolina" is matched
+// before "Carolina", "New York" before "York", etc.
+const stateSlugMap = new Map<string, string>(usStates.map((s) => [s.name, s.slug]));
+const sortedStateNames = [...stateSlugMap.keys()].sort((a, b) => b.length - a.length);
+
+/**
+ * Recursively scans `text` for state names. The first occurrence of each
+ * state (tracked in the shared `linked` Set) is wrapped in a Link.
+ * Returns an array of React nodes ready for rendering.
+ */
+function linkifyStates(text: string, linked: Set<string>): React.ReactNode[] {
+  for (const name of sortedStateNames) {
+    if (linked.has(name)) continue;
+    const idx = text.indexOf(name);
+    if (idx === -1) continue;
+    linked.add(name);
+    const slug = stateSlugMap.get(name)!;
+    const before = text.slice(0, idx);
+    const after = text.slice(idx + name.length);
+    return [
+      ...(before ? linkifyStates(before, linked) : []),
+      <Link
+        key={`sl-${name}`}
+        to={`/esa-letter-${slug}`}
+        className="text-orange-600 hover:text-orange-700 underline underline-offset-2 decoration-orange-300/60 font-medium"
+      >
+        {name}
+      </Link>,
+      ...(after ? linkifyStates(after, linked) : []),
+    ];
+  }
+  return [text];
+}
+
+// ── Popular sidebar state list (all 50 + DC, grouped by tier) ───────────────
+const sidebarStateLinks = [
+  // Tier 1 — highest traffic
+  { label: "ESA Letter California", to: "/esa-letter-california" },
+  { label: "ESA Letter Texas", to: "/esa-letter-texas" },
+  { label: "ESA Letter Florida", to: "/esa-letter-florida" },
+  { label: "ESA Letter New York", to: "/esa-letter-new-york" },
+  { label: "ESA Letter Illinois", to: "/esa-letter-illinois" },
+  { label: "ESA Letter Pennsylvania", to: "/esa-letter-pennsylvania" },
+  { label: "ESA Letter Ohio", to: "/esa-letter-ohio" },
+  { label: "ESA Letter Georgia", to: "/esa-letter-georgia" },
+  { label: "ESA Letter North Carolina", to: "/esa-letter-north-carolina" },
+  { label: "ESA Letter Michigan", to: "/esa-letter-michigan" },
+  // Tier 2
+  { label: "ESA Letter Washington", to: "/esa-letter-washington" },
+  { label: "ESA Letter Arizona", to: "/esa-letter-arizona" },
+  { label: "ESA Letter Massachusetts", to: "/esa-letter-massachusetts" },
+  { label: "ESA Letter Tennessee", to: "/esa-letter-tennessee" },
+  { label: "ESA Letter Indiana", to: "/esa-letter-indiana" },
+  { label: "ESA Letter Missouri", to: "/esa-letter-missouri" },
+  { label: "ESA Letter Maryland", to: "/esa-letter-maryland" },
+  { label: "ESA Letter Wisconsin", to: "/esa-letter-wisconsin" },
+  { label: "ESA Letter Colorado", to: "/esa-letter-colorado" },
+  { label: "ESA Letter Minnesota", to: "/esa-letter-minnesota" },
+  // Tier 3 — visible on expansion
+  { label: "ESA Letter Virginia", to: "/esa-letter-virginia" },
+  { label: "ESA Letter New Jersey", to: "/esa-letter-new-jersey" },
+  { label: "ESA Letter Oregon", to: "/esa-letter-oregon" },
+  { label: "ESA Letter Nevada", to: "/esa-letter-nevada" },
+  { label: "ESA Letter Oklahoma", to: "/esa-letter-oklahoma" },
+  { label: "ESA Letter Connecticut", to: "/esa-letter-connecticut" },
+  { label: "ESA Letter Utah", to: "/esa-letter-utah" },
+  { label: "ESA Letter Iowa", to: "/esa-letter-iowa" },
+  { label: "ESA Letter Arkansas", to: "/esa-letter-arkansas" },
+  { label: "ESA Letter Mississippi", to: "/esa-letter-mississippi" },
+  { label: "ESA Letter Kansas", to: "/esa-letter-kansas" },
+  { label: "ESA Letter New Mexico", to: "/esa-letter-new-mexico" },
+  { label: "ESA Letter Nebraska", to: "/esa-letter-nebraska" },
+  { label: "ESA Letter West Virginia", to: "/esa-letter-west-virginia" },
+  { label: "ESA Letter Idaho", to: "/esa-letter-idaho" },
+  { label: "ESA Letter Hawaii", to: "/esa-letter-hawaii" },
+  { label: "ESA Letter Maine", to: "/esa-letter-maine" },
+  { label: "ESA Letter New Hampshire", to: "/esa-letter-new-hampshire" },
+  { label: "ESA Letter Rhode Island", to: "/esa-letter-rhode-island" },
+  { label: "ESA Letter Montana", to: "/esa-letter-montana" },
+  { label: "ESA Letter Delaware", to: "/esa-letter-delaware" },
+  { label: "ESA Letter South Carolina", to: "/esa-letter-south-carolina" },
+  { label: "ESA Letter South Dakota", to: "/esa-letter-south-dakota" },
+  { label: "ESA Letter North Dakota", to: "/esa-letter-north-dakota" },
+  { label: "ESA Letter Alaska", to: "/esa-letter-alaska" },
+  { label: "ESA Letter Vermont", to: "/esa-letter-vermont" },
+  { label: "ESA Letter Wyoming", to: "/esa-letter-wyoming" },
+  { label: "ESA Letter Louisiana", to: "/esa-letter-louisiana" },
+  { label: "ESA Letter Alabama", to: "/esa-letter-alabama" },
+  { label: "ESA Letter Kentucky", to: "/esa-letter-kentucky" },
+  { label: "ESA Letter Washington DC", to: "/esa-letter-washington-dc" },
+];
 
 function InArticleCTA({ isPSD = false }: { isPSD?: boolean }) {
   return (
@@ -69,11 +164,26 @@ export default function BlogPostPage() {
   const post = getBlogPostBySlug(slug || "");
   const isPSD = post?.category === "PSD";
 
+  // Fix: search ALL blog posts for related, not just blogPosts
   const relatedPosts = post
-    ? blogPosts.filter((p) => post.relatedSlugs.includes(p.slug)).slice(0, 3)
+    ? allBlogPosts.filter((p) => post.relatedSlugs.includes(p.slug)).slice(0, 3)
+    : [];
+
+  // Detect if this post belongs to a state cluster
+  const stateEntry = slug ? detectStateFromSlug(slug) : undefined;
+  // Other posts in the same state cluster (excluding current)
+  const moreStatePosts = stateEntry
+    ? stateEntry.postSlugs
+        .filter((s) => s !== slug)
+        .map(getBlogPostBySlug)
+        .filter((p): p is BlogPost => !!p)
+        .slice(0, 3)
     : [];
 
   const canonicalUrl = `https://www.pawtenant.com/blog/${slug}`;
+
+  // One Set per render — shared across all section .map() iterations
+  const linkedStates = new Set<string>();
 
   const articleSchema = post ? JSON.stringify({
     "@context": "https://schema.org",
@@ -92,7 +202,11 @@ export default function BlogPostPage() {
     "publisher": {
       "@type": "Organization",
       "name": "PawTenant",
-      "url": "https://www.pawtenant.com/"
+      "url": "https://www.pawtenant.com/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://www.pawtenant.com/logo.png"
+      }
     },
     "mainEntityOfPage": {
       "@type": "WebPage",
@@ -108,9 +222,25 @@ export default function BlogPostPage() {
     "itemListElement": [
       { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com/" },
       { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://www.pawtenant.com/blog" },
-      { "@type": "ListItem", "position": 3, "name": post.title, "item": canonicalUrl }
+      ...(stateEntry
+        ? [{ "@type": "ListItem", "position": 3, "name": `${stateEntry.stateName} ESA Guides`, "item": `https://www.pawtenant.com/blog/state/${stateEntry.stateSlug}` }]
+        : []),
+      { "@type": "ListItem", "position": stateEntry ? 4 : 3, "name": post.title, "item": canonicalUrl }
     ]
   }) : "";
+
+  // Inject schema via useEffect — avoids React 19 hoisting / double-render issue
+  useEffect(() => {
+    if (!post) return;
+    const scripts = [articleSchema, breadcrumbSchema].map((s) => {
+      const el = document.createElement("script");
+      el.type = "application/ld+json";
+      el.text = s;
+      document.head.appendChild(el);
+      return el;
+    });
+    return () => scripts.forEach((el) => el.remove());
+  }, [post, articleSchema, breadcrumbSchema]);
 
   if (!post) {
     return (
@@ -142,22 +272,32 @@ export default function BlogPostPage() {
       <meta name="twitter:title" content={post.metaTitle} />
       <meta name="twitter:description" content={post.metaDesc} />
       <meta name="twitter:image" content={post.image} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: articleSchema }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbSchema }} />
+      <meta name="Last-Modified" content={new Date(post.date).toUTCString()} />
 
       <SharedNavbar />
 
       {/* Hero */}
       <section className="pt-24 md:pt-28 pb-0 bg-white">
         <div className="max-w-7xl mx-auto px-5">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 mb-6">
+          {/* Breadcrumb — now includes state cluster link when applicable */}
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2 mb-6 flex-wrap">
             <Link to="/blog" className="text-xs text-gray-400 hover:text-orange-500 cursor-pointer">Blog</Link>
+            {stateEntry && (
+              <>
+                <i className="ri-arrow-right-s-line text-gray-300 text-xs"></i>
+                <Link
+                  to={`/blog/state/${stateEntry.stateSlug}`}
+                  className="text-xs text-gray-400 hover:text-orange-500 cursor-pointer whitespace-nowrap"
+                >
+                  {stateEntry.stateName} Guides
+                </Link>
+              </>
+            )}
             <i className="ri-arrow-right-s-line text-gray-300 text-xs"></i>
             <span className="text-xs text-gray-400">{post.category}</span>
             <i className="ri-arrow-right-s-line text-gray-300 text-xs"></i>
             <span className="text-xs text-gray-600 truncate max-w-xs">{post.title}</span>
-          </div>
+          </nav>
 
           <div className="flex flex-col lg:flex-row gap-8 lg:gap-10">
             {/* Main Article */}
@@ -188,13 +328,15 @@ export default function BlogPostPage() {
               {/* Excerpt */}
               <p className="text-base text-gray-600 leading-relaxed mb-8 font-medium border-l-4 border-orange-400 pl-5">{post.excerpt}</p>
 
-              {/* Article Sections */}
+              {/* Article Sections — state names auto-linked */}
               <div className="prose prose-sm max-w-none space-y-8">
                 {post.sections.map((section, i) => (
                   <Fragment key={i}>
                     <div>
                       <h2 className="text-lg font-bold text-gray-900 mb-3">{section.heading}</h2>
-                      <p className="text-sm text-gray-600 leading-relaxed">{section.content}</p>
+                      <p className="text-sm text-gray-600 leading-relaxed">
+                        {linkifyStates(section.content, linkedStates)}
+                      </p>
                     </div>
                     {i === 3 && <InArticleCTA isPSD={isPSD} />}
                   </Fragment>
@@ -210,13 +352,35 @@ export default function BlogPostPage() {
                   ))}
                 </div>
               </div>
+
+              {/* State cluster link — in-article internal link */}
+              {stateEntry && (
+                <div className="mt-8 p-5 bg-[#fdf8f3] rounded-xl border border-orange-100 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 flex items-center justify-center bg-orange-100 rounded-full flex-shrink-0">
+                      <i className="ri-map-pin-2-line text-orange-500"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">More {stateEntry.stateName} ESA Guides</p>
+                      <p className="text-xs text-gray-500">{stateEntry.postSlugs.length} articles covering {stateEntry.stateName} housing rights</p>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/blog/state/${stateEntry.stateSlug}`}
+                    className="whitespace-nowrap flex items-center gap-1.5 text-xs font-semibold text-orange-600 hover:text-orange-700 cursor-pointer"
+                  >
+                    See all {stateEntry.stateName} guides
+                    <i className="ri-arrow-right-line"></i>
+                  </Link>
+                </div>
+              )}
             </article>
 
             {/* Sidebar */}
             <aside className="w-full lg:w-72 lg:flex-shrink-0">
-              <div className="lg:sticky lg:top-24">
+              <div className="lg:sticky lg:top-24 space-y-5">
                 {/* CTA Card */}
-                <div className={`${isPSD ? "bg-gray-900" : "bg-orange-500"} rounded-2xl p-6 text-center mb-5`}>
+                <div className={`${isPSD ? "bg-gray-900" : "bg-orange-500"} rounded-2xl p-6 text-center`}>
                   <div className="w-10 h-10 flex items-center justify-center bg-white/20 rounded-full mx-auto mb-3">
                     <i className={`${isPSD ? "ri-mental-health-line" : "ri-file-text-fill"} text-white text-xl`}></i>
                   </div>
@@ -236,8 +400,49 @@ export default function BlogPostPage() {
                   </Link>
                 </div>
 
+                {/* State cluster widget — only for state-specific posts */}
+                {stateEntry && moreStatePosts.length > 0 && (
+                  <div className="bg-white rounded-xl border border-orange-100 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">
+                        More {stateEntry.stateName} Guides
+                      </h3>
+                      <Link
+                        to={`/blog/state/${stateEntry.stateSlug}`}
+                        className="text-xs text-orange-500 hover:text-orange-700 font-semibold cursor-pointer whitespace-nowrap"
+                      >
+                        See all
+                      </Link>
+                    </div>
+                    <div className="space-y-3">
+                      {moreStatePosts.map((rp) => (
+                        <Link
+                          key={rp.slug}
+                          to={`/blog/${rp.slug}`}
+                          className="group flex gap-3 items-start cursor-pointer"
+                        >
+                          <div className="w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden">
+                            <img src={rp.image} alt={rp.title} title={rp.title} className="w-full h-full object-cover object-top" loading="lazy" decoding="async" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-gray-800 group-hover:text-orange-600 transition-colors leading-snug line-clamp-2">{rp.title}</p>
+                            <p className="text-xs text-gray-400 mt-1">{rp.readTime}</p>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                    <Link
+                      to={`/esa-letter-${stateEntry.stateSlug}`}
+                      className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-700 font-semibold mt-3 pt-3 border-t border-gray-100 cursor-pointer"
+                    >
+                      <i className="ri-file-text-line"></i>
+                      {stateEntry.stateName} ESA Letter Guide
+                    </Link>
+                  </div>
+                )}
+
                 {/* Quick Facts */}
-                <div className="bg-[#fdf8f3] rounded-xl p-5 border border-orange-100 mb-5">
+                <div className="bg-[#fdf8f3] rounded-xl p-5 border border-orange-100">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">Why PawTenant</h3>
                   <ul className="space-y-2.5">
                     {[
@@ -257,8 +462,8 @@ export default function BlogPostPage() {
                   </ul>
                 </div>
 
-                {/* Service Page Links — Internal Authority Flow */}
-                <div className="bg-white rounded-xl border border-gray-100 p-4 mb-5">
+                {/* Service Page Links */}
+                <div className="bg-white rounded-xl border border-gray-100 p-4">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Explore Our Services</h3>
                   <div className="space-y-2">
                     {[
@@ -283,22 +488,11 @@ export default function BlogPostPage() {
                   </div>
                 </div>
 
-                {/* Top State Guides — PageRank internal links */}
-                <div className="bg-[#fdf6ee] rounded-xl border border-orange-100 p-4 mb-5">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Popular State Guides</h3>
-                  <div className="space-y-2">
-                    {[
-                      { label: "ESA Letter California", to: "/esa-letter/california" },
-                      { label: "ESA Letter Texas", to: "/esa-letter/texas" },
-                      { label: "ESA Letter Florida", to: "/esa-letter/florida" },
-                      { label: "ESA Letter New York", to: "/esa-letter/new-york" },
-                      { label: "ESA Letter Cost California", to: "/blog/esa-letter-cost-california-2026" },
-                      { label: "Texas ESA Landlord Rights", to: "/blog/texas-esa-landlord-rights-2026" },
-                      { label: "Florida ESA Renters Guide", to: "/blog/florida-esa-letter-renters-2026" },
-                      { label: "New York ESA Apartment Guide", to: "/blog/new-york-esa-letter-apartment-2026" },
-                      { label: "ESA Letter Ohio", to: "/esa-letter/ohio" },
-                      { label: "ESA Letter Washington", to: "/esa-letter/washington" },
-                    ].map((link) => (
+                {/* Popular State Guides */}
+                <div className="bg-[#fdf6ee] rounded-xl border border-orange-100 p-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">ESA Letters by State</h3>
+                  <div className="space-y-1.5">
+                    {sidebarStateLinks.slice(0, 10).map((link) => (
                       <Link
                         key={link.to}
                         to={link.to}
@@ -310,6 +504,28 @@ export default function BlogPostPage() {
                         <span>{link.label}</span>
                       </Link>
                     ))}
+                    <details className="group">
+                      <summary className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 cursor-pointer font-semibold pt-1 select-none list-none">
+                        <i className="ri-add-circle-line group-open:hidden"></i>
+                        <i className="ri-indeterminate-circle-line hidden group-open:inline"></i>
+                        <span className="group-open:hidden">Show all 50 states</span>
+                        <span className="hidden group-open:inline">Show less</span>
+                      </summary>
+                      <div className="space-y-1.5 mt-1.5">
+                        {sidebarStateLinks.slice(10).map((link) => (
+                          <Link
+                            key={link.to}
+                            to={link.to}
+                            className="flex items-center gap-2 text-xs text-gray-600 hover:text-orange-600 transition-colors cursor-pointer"
+                          >
+                            <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                              <i className="ri-map-pin-2-line text-orange-400"></i>
+                            </div>
+                            <span>{link.label}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </details>
                   </div>
                 </div>
 

@@ -5,6 +5,7 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import { blogPosts, BlogPost } from "../../mocks/blogPosts";
 import { blogPostsExtended } from "../../mocks/blogPostsExtended";
 import { blogPostsExtended2 } from "../../mocks/blogPostsExtended2";
+import { STATE_BLOG_MAP } from "../../mocks/stateBlogMap";
 
 const allBlogPosts: BlogPost[] = [...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
 
@@ -12,12 +13,12 @@ const categories = ["All", "College & ESA", "Legal & Rights", "Housing Rights", 
 
 const trendingTopics = [
   { label: "ESA Complete Guide 2026 — What\u2019s Updated", slug: "esa-complete-guide-2026-whats-updated" },
-  { label: "PSD Complete Guide 2026", slug: "psd-complete-guide-2026-whats-updated" },
-  { label: "ESA for PTSD — Science & Evidence", slug: "how-esas-help-ptsd-2026" },
-  { label: "ESA for Anxiety & Depression 2026", slug: "esa-for-anxiety-depression-mental-health-guide-2026" },
+  { label: "ESA New Jersey 2026 — Newark, Jersey City & Hoboken", slug: "esa-new-jersey-newark-jersey-city-2026-guide" },
+  { label: "ESA NYC Co-ops & Rent-Stabilized 2026", slug: "esa-nyc-apartments-coop-rent-stabilized-2026-guide" },
+  { label: "South Florida ESA — Miami, Fort Lauderdale 2026", slug: "esa-south-florida-miami-fort-lauderdale-2026-guide" },
   { label: "HOA ESA Rights 2026", slug: "hoa-esa-rights-2026" },
+  { label: "ESA for PTSD — Science & Evidence", slug: "how-esas-help-ptsd-2026" },
   { label: "ESA Ohio 2026 — Renter Guide", slug: "esa-ohio-2026-guide" },
-  { label: "ESA Washington State 2026", slug: "esa-washington-state-2026-guide" },
   { label: "ESA California 2026 Update", slug: "esa-california-2026-update" },
   { label: "What landlords cannot do with ESA", slug: "what-landlords-cannot-legally-do-esa" },
   { label: "ESA vs service animal 2026", slug: "esa-vs-service-animal-key-differences-2026" },
@@ -178,6 +179,58 @@ function BlogSidebar({ selectedCategory, onCategoryChange }: { selectedCategory:
               <span>{link.label}</span>
             </Link>
           ))}
+        </div>
+      </div>
+
+      {/* Browse by State — links to state blog cluster pages */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+          <div className="w-5 h-5 flex items-center justify-center">
+            <i className="ri-map-pin-2-line text-orange-500"></i>
+          </div>
+          Guides by State
+        </h3>
+        <div className="space-y-1.5">
+          {STATE_BLOG_MAP.slice(0, 8).map((s) => (
+            <Link
+              key={s.stateSlug}
+              to={`/blog/state/${s.stateSlug}`}
+              className="flex items-center justify-between gap-2 text-xs text-gray-600 hover:text-orange-600 transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                  <i className="ri-map-pin-2-line text-orange-400 group-hover:text-orange-600"></i>
+                </div>
+                <span className="truncate">{s.stateName}</span>
+              </div>
+              <span className="text-gray-400 text-xs flex-shrink-0">{s.postSlugs.length}</span>
+            </Link>
+          ))}
+          <details className="group/detail">
+            <summary className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-600 cursor-pointer font-semibold pt-1 select-none list-none">
+              <i className="ri-add-circle-line group-open/detail:hidden"></i>
+              <i className="ri-indeterminate-circle-line hidden group-open/detail:inline"></i>
+              <span className="group-open/detail:hidden">More states</span>
+              <span className="hidden group-open/detail:inline">Show less</span>
+            </summary>
+            <div className="space-y-1.5 mt-1.5">
+              {STATE_BLOG_MAP.slice(8).map((s) => (
+                <Link
+                  key={s.stateSlug}
+                  to={`/blog/state/${s.stateSlug}`}
+                  className="flex items-center justify-between gap-2 text-xs text-gray-600 hover:text-orange-600 transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                      <i className="ri-map-pin-2-line text-orange-400 group-hover:text-orange-600"></i>
+                    </div>
+                    <span className="truncate">{s.stateName}</span>
+                  </div>
+                  <span className="text-gray-400 text-xs flex-shrink-0">{s.postSlugs.length}</span>
+                </Link>
+              ))}
+            </div>
+          </details>
         </div>
       </div>
     </aside>

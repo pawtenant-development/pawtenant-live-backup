@@ -3,8 +3,12 @@ import { useLocation } from "react-router-dom";
 
 export default function FloatingCTA() {
   const { pathname } = useLocation();
-  const isAssessmentPage = pathname.startsWith("/assessment") || pathname.startsWith("/psd-assessment");
   const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const isAssessmentPage = pathname.startsWith("/assessment") || pathname.startsWith("/psd-assessment");
+  const isPortalPage = ["/admin", "/provider-portal", "/provider-login", "/my-orders", "/customer-login", "/reset-password", "/admin-login"].some((r) => pathname.startsWith(r));
+
+  if (isPortalPage) return null;
 
   return (
     <>
@@ -90,8 +94,6 @@ export default function FloatingCTA() {
           </button>
         </div>
       )}
-
-
     </>
   );
 }

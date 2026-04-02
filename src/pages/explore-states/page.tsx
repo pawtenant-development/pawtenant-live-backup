@@ -115,7 +115,7 @@ export default function ExploreStatesPage() {
                 {col.map((state) => (
                   <Link
                     key={state.slug}
-                    to={`/esa-letter/${state.slug}`}
+                    to={`/esa-letter-${state.slug}`}
                     className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-orange-50 transition-colors group cursor-pointer"
                   >
                     <div className="w-5 h-5 flex items-center justify-center">

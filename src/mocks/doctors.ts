@@ -57,9 +57,9 @@ export const DOCTORS: Doctor[] = [
   {
     id: "edna-lee",
     name: "Edna Lee",
-    title: "LCSW",
-    role: "ESA Housing Documentation Expert",
-    bio: "Edna Lee is a licensed clinical social worker with expertise in mood disorders and ESA housing documentation. She is experienced in remote consultations, providing a straightforward and professional care experience for patients seeking legitimate ESA letters in New York, Texas, and Washington.",
+    title: "LPC-S, LMHC",
+    role: "Licensed Professional Counselor & Supervisor",
+    bio: "Edna Lee is a Licensed Professional Counselor & Supervisor and Licensed Mental Health Counselor. She is experienced in remote consultations, providing a straightforward and professional care experience for patients seeking legitimate ESA letters in New York, Texas, and Washington.",
     states: ["NY", "TX", "WA"],
     highlights: ["LCSW", "Mood Disorders", "Housing Documentation", "Telehealth Consultations"],
     verificationUrl: "https://www.psychologytoday.com/us/therapists/edna-lee-brooklyn-ny/1561167",

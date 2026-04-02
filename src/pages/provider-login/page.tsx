@@ -99,16 +99,24 @@ export default function ProviderLoginPage() {
     }
     setResetLoading(true);
     setResetError("");
-    const { error: err } = await supabase.auth.resetPasswordForEmail(
-      resetEmail.trim().toLowerCase(),
-      { redirectTo: `${window.location.origin}/reset-password` },
-    );
-    setResetLoading(false);
-    if (err) {
-      setResetError(err.message);
-      return;
+    try {
+      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      const res = await fetch(`${supabaseUrl}/functions/v1/provider-reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail.trim().toLowerCase() }),
+      });
+      const result = await res.json() as { ok: boolean; error?: string; message?: string };
+      setResetLoading(false);
+      if (!result.ok) {
+        setResetError(result.error ?? "Failed to send reset email. Please try again.");
+        return;
+      }
+      setResetSent(true);
+    } catch {
+      setResetLoading(false);
+      setResetError("Network error. Please check your connection and try again.");
     }
-    setResetSent(true);
   };
 
   if (checking) {

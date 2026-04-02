@@ -49,14 +49,17 @@ export default function ResetPasswordPage() {
     });
 
     // ── 3. Handle PKCE code exchange — ?code= param in URL ───────────────
+    // Covers: recovery, invite, signup, magiclink (used as fallback in invite flows)
     const code = searchParams.get("code");
     const type = searchParams.get("type");
-    if (code && (type === "recovery" || type === "invite" || type === "signup")) {
+    const validTypes = ["recovery", "invite", "signup", "magiclink", "email"];
+    if (code && (!type || validTypes.includes(type))) {
       supabase.auth.exchangeCodeForSession(code).then(({ data, error: exchErr }) => {
         if (!exchErr && data?.session) {
           setSessionReady(true);
           settle();
         } else {
+          console.warn("[reset-password] exchangeCodeForSession failed:", exchErr?.message);
           settle(); // will show "invalid/expired" UI
         }
       });

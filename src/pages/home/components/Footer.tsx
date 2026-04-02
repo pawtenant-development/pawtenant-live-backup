@@ -19,10 +19,10 @@ const siteMap = [
 ];
 
 const topStateGuides = [
-  { label: "ESA Letter California", href: "/esa-letter/california" },
-  { label: "ESA Letter Texas", href: "/esa-letter/texas" },
-  { label: "ESA Letter Florida", href: "/esa-letter/florida" },
-  { label: "ESA Letter New York", href: "/esa-letter/new-york" },
+  { label: "ESA Letter California", href: "/esa-letter-california" },
+  { label: "ESA Letter Texas", href: "/esa-letter-texas" },
+  { label: "ESA Letter Florida", href: "/esa-letter-florida" },
+  { label: "ESA Letter New York", href: "/esa-letter-new-york" },
   { label: "All 50 State Guides", href: "/explore-esa-letters-all-states" },
 ];
 

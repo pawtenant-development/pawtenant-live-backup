@@ -154,8 +154,17 @@ export default function TeamTab() {
     if (!member.email) return;
     setResetSendingId(member.id);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        const refreshed = await supabase.auth.refreshSession();
+        session = refreshed.data.session;
+      }
       const token = session?.access_token ?? "";
+      if (!token) {
+        setResetMsgMap((prev) => ({ ...prev, [member.id]: { text: "Session expired. Please refresh the page and try again." } }));
+        setResetSendingId(null);
+        return;
+      }
       const res = await fetch(`${supabaseUrl}/functions/v1/admin-send-password-reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -301,21 +310,19 @@ export default function TeamTab() {
     <div>
       {/* Stats */}
       {!loading && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {[
-            { label: "Total Staff", value: members.length, icon: "ri-team-line", color: "text-gray-700" },
-            { label: "Admin Portal Access", value: members.filter((m) => m.is_admin).length, icon: "ri-shield-star-line", color: "text-[#1a5c4f]" },
-            { label: "Active Accounts", value: members.filter((m) => m.is_active).length, icon: "ri-checkbox-circle-line", color: "text-emerald-600" },
-            { label: "Owners / Admins", value: members.filter((m) => ["owner", "admin_manager"].includes(m.role ?? "")).length, icon: "ri-vip-crown-line", color: "text-amber-600" },
+            { label: "Total Staff",         value: members.length,                                                                          icon: "ri-team-line",           color: "text-gray-700",     bg: "bg-gray-50",       border: "border-gray-200" },
+            { label: "Admin Portal Access", value: members.filter((m) => m.is_admin).length,                                                icon: "ri-shield-star-line",    color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7]",     border: "border-[#b8ddd5]" },
+            { label: "Active Accounts",     value: members.filter((m) => m.is_active).length,                                               icon: "ri-checkbox-circle-line", color: "text-emerald-600", bg: "bg-emerald-50",    border: "border-emerald-200" },
+            { label: "Owners / Admins",     value: members.filter((m) => ["owner", "admin_manager"].includes(m.role ?? "")).length,          icon: "ri-vip-crown-line",      color: "text-amber-600",    bg: "bg-amber-50",      border: "border-amber-200" },
           ].map((s) => (
-            <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 flex items-center justify-center">
-                  <i className={`${s.icon} ${s.color} text-base`}></i>
-                </div>
-                <span className="text-xs text-gray-500 font-medium">{s.label}</span>
+            <div key={s.label} className={`bg-white rounded-xl border ${s.border} p-4`}>
+              <div className={`w-9 h-9 flex items-center justify-center ${s.bg} rounded-xl mb-3`}>
+                <i className={`${s.icon} ${s.color} text-base`}></i>
               </div>
-              <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
+              <p className={`text-2xl font-extrabold ${s.color} leading-none mb-1`}>{s.value}</p>
+              <p className="text-xs text-gray-500 font-medium">{s.label}</p>
             </div>
           ))}
         </div>
@@ -328,36 +335,41 @@ export default function TeamTab() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-5 gap-4 flex-wrap">
         <div>
           <h2 className="text-base font-extrabold text-gray-900">Internal Staff &amp; Role Management</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Invite internal staff, assign dashboard roles, and control access levels. To add a licensed provider, use the <strong className="text-[#1a5c4f]">Providers tab</strong>.</p>
+          <p className="text-xs text-gray-500 mt-0.5 max-w-lg">Invite internal staff, assign dashboard roles, and control access levels. To add a licensed provider, use the <strong className="text-[#1a5c4f]">Providers tab</strong>.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setShowMatrix((v) => !v)}
             className={`whitespace-nowrap flex items-center gap-2 px-3 py-2.5 border text-sm font-bold rounded-xl cursor-pointer transition-colors ${showMatrix ? "bg-gray-100 border-gray-300 text-gray-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
-            <i className="ri-grid-line"></i>Permissions
+            <i className="ri-grid-line"></i><span className="hidden sm:inline">Permissions</span>
           </button>
           <button type="button" onClick={() => setShowModal(true)}
             className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
-            <i className="ri-user-add-line"></i>Invite Member
+            <i className="ri-user-add-line"></i><span>Invite Member</span>
           </button>
         </div>
       </div>
 
       {/* Permissions matrix */}
       {showMatrix && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-5">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <p className="text-xs font-bold text-gray-600 uppercase tracking-widest">Permissions Matrix</p>
+            <button type="button" onClick={() => setShowMatrix(false)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-400 cursor-pointer transition-colors">
+              <i className="ri-close-line text-sm"></i>
+            </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-32">Module</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider w-28">Module</th>
                   {Object.entries(ROLE_CONFIG).map(([key, cfg]) => (
-                    <th key={key} className="px-4 py-3 text-center">
+                    <th key={key} className="px-3 py-3 text-center">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${cfg.color}`}>
                         <i className={`${cfg.icon} text-xs`}></i>{cfg.label}
                       </span>
@@ -367,21 +379,21 @@ export default function TeamTab() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {PERMISSIONS.map((row) => (
-                  <tr key={row.module} className="hover:bg-gray-50/50">
-                    <td className="px-4 py-2.5 text-xs font-bold text-gray-600">{row.module}</td>
-                    <td className="px-4 py-2.5 text-center"><PermValue v={row.owner} /></td>
-                    <td className="px-4 py-2.5 text-center"><PermValue v={row.admin_manager} /></td>
-                    <td className="px-4 py-2.5 text-center"><PermValue v={row.support} /></td>
-                    <td className="px-4 py-2.5 text-center"><PermValue v={row.finance} /></td>
-                    <td className="px-4 py-2.5 text-center"><PermValue v={row.read_only} /></td>
-                    <td className="px-4 py-2.5 text-center"><PermValue v={row.provider} /></td>
+                  <tr key={row.module} className="hover:bg-gray-50/60">
+                    <td className="px-4 py-2.5 text-xs font-bold text-gray-700">{row.module}</td>
+                    <td className="px-3 py-2.5 text-center"><PermValue v={row.owner} /></td>
+                    <td className="px-3 py-2.5 text-center"><PermValue v={row.admin_manager} /></td>
+                    <td className="px-3 py-2.5 text-center"><PermValue v={row.support} /></td>
+                    <td className="px-3 py-2.5 text-center"><PermValue v={row.finance} /></td>
+                    <td className="px-3 py-2.5 text-center"><PermValue v={row.read_only} /></td>
+                    <td className="px-3 py-2.5 text-center"><PermValue v={row.provider} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
-            <p className="text-xs text-gray-400">Note: Role-based access enforcement is currently informational. Full UI-level gating can be added per module as needed.</p>
+            <p className="text-xs text-gray-400">Role-based access enforcement is currently informational. Full UI-level gating can be added per module as needed.</p>
           </div>
         </div>
       )}
@@ -392,12 +404,17 @@ export default function TeamTab() {
         </div>
       ) : members.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-xl mx-auto mb-3">
+            <i className="ri-team-line text-gray-400 text-xl"></i>
+          </div>
           <p className="text-sm font-bold text-gray-700">No team members yet</p>
+          <p className="text-xs text-gray-400 mt-1">Invite your first staff member above.</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_160px_140px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
-            <span>Name</span><span>Email</span><span>Title</span><span>Role</span><span>Status</span>
+          {/* Table header — desktop only */}
+          <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_160px_160px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <span>Name</span><span>Email</span><span>Title</span><span>Role</span><span>Status &amp; Actions</span>
           </div>
           <div className="divide-y divide-gray-100">
             {members.map((member) => {
@@ -406,21 +423,31 @@ export default function TeamTab() {
 
               return (
                 <div key={member.id}
-                  className={`px-5 py-4 transition-colors ${!member.is_active ? "opacity-60 bg-gray-50/50" : "hover:bg-gray-50/40"}`}>
-                  <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_160px_140px] gap-3 md:gap-4 items-center">
+                  className={`px-5 py-4 transition-colors ${!member.is_active ? "opacity-60 bg-gray-50/50" : "hover:bg-gray-50/30"}`}>
+                  {/* Desktop grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_1fr_160px_160px] gap-3 md:gap-4 items-center">
                     {/* Name */}
                     <div className="flex items-center gap-3">
                       <div className={`w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 text-sm font-extrabold ${member.is_active ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-gray-100 text-gray-400"}`}>
                         {member.full_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">{member.full_name}</p>
-                        <p className="text-xs text-gray-400 md:hidden">{member.email}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900 truncate">{member.full_name}</p>
+                        {/* Email shown under name on mobile */}
+                        <p className="text-xs text-gray-400 truncate md:hidden">{member.email ?? "—"}</p>
+                        {/* Role badge shown on mobile */}
+                        <div className="md:hidden mt-1">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${roleCfg.color}`}>
+                            <i className={`${roleCfg.icon} text-xs`}></i>{roleCfg.label}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
+                    {/* Email — desktop */}
                     <div className="hidden md:block text-xs text-gray-500 truncate">{member.email ?? "—"}</div>
-                    <div className="hidden md:block text-sm text-gray-500">{member.title ?? <span className="text-gray-300">—</span>}</div>
+                    {/* Title — desktop */}
+                    <div className="hidden md:block text-xs text-gray-500">{member.title ?? <span className="text-gray-300">—</span>}</div>
 
                     {/* Role selector */}
                     <div>
@@ -428,18 +455,17 @@ export default function TeamTab() {
                         <select value={currentRole}
                           onChange={(e) => handleRoleChange(member, e.target.value)}
                           disabled={togglingId === member.id}
-                          className={`appearance-none pl-2 pr-7 py-1.5 rounded-full text-xs font-bold cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 disabled:opacity-50 ${roleCfg.color}`}>
+                          className={`appearance-none pl-3 pr-7 py-1.5 rounded-full text-xs font-bold cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 disabled:opacity-50 ${roleCfg.color}`}>
                           {TEAM_INVITE_ROLES.map((key) => {
                             const cfg = ROLE_CONFIG[key];
-                            return (
-                              <option key={key} value={key} className="bg-white text-gray-800 font-normal">{cfg.label} — {cfg.desc}</option>
-                            );
+                            return <option key={key} value={key} className="bg-white text-gray-800 font-normal">{cfg.label} — {cfg.desc}</option>;
                           })}
                         </select>
                         <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 flex items-center justify-center">
                           {togglingId === member.id
                             ? <i className="ri-loader-4-line animate-spin text-current" style={{ fontSize: "10px" }}></i>
-                            : <i className="ri-arrow-down-s-line text-current" style={{ fontSize: "10px" }}></i>}
+                            : <i className="ri-arrow-down-s-line text-current" style={{ fontSize: "10px" }}></i>
+                          }
                         </div>
                       </div>
                     </div>
@@ -449,58 +475,49 @@ export default function TeamTab() {
                       <span className={`text-xs font-semibold ${member.is_active ? "text-emerald-600" : "text-gray-400"}`}>
                         {member.is_active ? "Active" : "Inactive"}
                       </span>
+                      {/* Toggle */}
                       <button type="button" onClick={() => handleToggleActive(member)} disabled={togglingId === member.id}
                         className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#1a5c4f]" : "bg-gray-300"}`}>
                         <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${member.is_active ? "translate-x-4" : "translate-x-0.5"}`}></div>
                       </button>
+                      {/* Password reset */}
                       <div className="relative group">
-                        <button
-                          type="button"
-                          onClick={() => handleSendPasswordReset(member)}
-                          disabled={resetSendingId === member.id}
+                        <button type="button" onClick={() => handleSendPasswordReset(member)} disabled={resetSendingId === member.id}
                           title={`Send password reset email to ${member.email ?? "this user"}`}
-                          className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg border border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 cursor-pointer transition-colors disabled:opacity-50"
-                        >
+                          className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg border border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 cursor-pointer transition-colors disabled:opacity-50">
                           {resetSendingId === member.id
                             ? <i className="ri-loader-4-line animate-spin text-xs"></i>
                             : <i className="ri-key-2-line text-xs"></i>
                           }
                         </button>
-                        <div className="absolute bottom-full right-0 mb-1.5 w-40 bg-gray-900 text-white text-xs rounded-lg px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
+                        <div className="absolute bottom-full right-0 mb-1.5 w-40 bg-gray-900 text-white text-xs rounded-lg px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                           Send password reset email
                         </div>
                       </div>
-                      {/* Delete button */}
+                      {/* Delete */}
                       <div className="relative group">
-                        <button
-                          type="button"
-                          onClick={() => setDeleteConfirmId(member.id)}
-                          title={`Remove ${member.full_name} from team`}
-                          className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 cursor-pointer transition-colors"
-                        >
+                        <button type="button" onClick={() => setDeleteConfirmId(member.id)} title={`Remove ${member.full_name}`}
+                          className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 cursor-pointer transition-colors">
                           <i className="ri-delete-bin-line text-xs"></i>
                         </button>
-                        <div className="absolute bottom-full right-0 mb-1.5 w-32 bg-gray-900 text-white text-xs rounded-lg px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
+                        <div className="absolute bottom-full right-0 mb-1.5 w-32 bg-gray-900 text-white text-xs rounded-lg px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                           Remove from team
                         </div>
                       </div>
                     </div>
                   </div>
+
+                  {/* Reset message */}
                   {resetMsgMap[member.id] && (
                     <div className={`mt-2 flex items-start gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${resetMsgMap[member.id].text === "Reset link sent!" ? "bg-amber-50 text-amber-800 border border-amber-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
                       <i className={`mt-0.5 flex-shrink-0 ${resetMsgMap[member.id].text === "Reset link sent!" ? "ri-checkbox-circle-line" : "ri-error-warning-line"}`}></i>
                       <div>
                         <p>{resetMsgMap[member.id].text}</p>
                         {resetMsgMap[member.id].link && (
-                          <p className="mt-1 text-amber-600">
-                            <button
-                              type="button"
-                              onClick={() => navigator.clipboard.writeText(resetMsgMap[member.id].link!)}
-                              className="underline cursor-pointer hover:text-amber-800 font-bold"
-                            >
-                              Copy reset link to clipboard
-                            </button>
-                          </p>
+                          <button type="button" onClick={() => navigator.clipboard.writeText(resetMsgMap[member.id].link!)}
+                            className="underline cursor-pointer hover:text-amber-800 font-bold mt-1">
+                            Copy reset link to clipboard
+                          </button>
                         )}
                       </div>
                     </div>
@@ -513,12 +530,12 @@ export default function TeamTab() {
       )}
 
       {/* Login link */}
-      <div className="mt-5 bg-[#0f1e1a] rounded-xl p-5 flex items-center justify-between gap-4 flex-wrap">
+      <div className="mt-6 bg-[#0f1e1a] rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <p className="text-sm font-bold text-white mb-0.5">Admin Login Portal URL</p>
           <p className="text-xs text-white/50">Share with new team members for dashboard access.</p>
         </div>
-        <div className="flex items-center gap-2 bg-white/10 rounded-xl px-4 py-2.5 font-mono text-xs text-white/70 select-all">
+        <div className="flex items-center gap-2 bg-white/10 rounded-xl px-4 py-2.5 font-mono text-xs text-white/70 select-all break-all">
           {typeof window !== "undefined" ? window.location.origin : ""}/admin-login
         </div>
       </div>
@@ -548,26 +565,19 @@ export default function TeamTab() {
                   <p className="flex items-center gap-1.5"><i className="ri-user-line"></i><strong>{member.full_name}</strong></p>
                   {member.email && <p className="flex items-center gap-1.5"><i className="ri-mail-line"></i>{member.email}</p>}
                   <p className="flex items-center gap-1.5"><i className="ri-shield-line"></i>Role: {ROLE_CONFIG[member.role ?? "provider"]?.label ?? member.role}</p>
-                  <p className="flex items-center gap-1.5 font-semibold mt-1"><i className="ri-logout-box-r-line"></i>Their Supabase login account will also be deleted</p>
+                  <p className="flex items-center gap-1.5 font-semibold mt-1"><i className="ri-logout-box-r-line"></i>Supabase login account will also be deleted</p>
                 </div>
               </div>
               <div className="px-6 py-4 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDeleteMember(member)}
-                  disabled={deletingId === member.id}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
-                >
+                <button type="button" onClick={() => handleDeleteMember(member)} disabled={deletingId === member.id}
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors">
                   {deletingId === member.id
                     ? <><i className="ri-loader-4-line animate-spin"></i>Removing...</>
                     : <><i className="ri-delete-bin-line"></i>Yes, Remove</>
                   }
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirmId(null)}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
-                >
+                <button type="button" onClick={() => setDeleteConfirmId(null)}
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
                   Cancel
                 </button>
               </div>
@@ -580,18 +590,23 @@ export default function TeamTab() {
       {showModal && (
         <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <div>
+            {/* Modal header */}
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
+              <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
+                <i className="ri-user-add-line text-[#1a5c4f] text-lg"></i>
+              </div>
+              <div className="flex-1 min-w-0">
                 <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Invite</p>
-                <h2 className="text-lg font-extrabold text-gray-900">Add Internal Staff Member</h2>
+                <h2 className="text-base font-extrabold text-gray-900">Add Internal Staff Member</h2>
               </div>
               <button type="button" onClick={() => { setShowModal(false); setForm(INIT_FORM); setFormError(""); }}
-                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer flex-shrink-0">
                 <i className="ri-close-line text-gray-500 text-lg"></i>
               </button>
             </div>
 
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Info notice */}
               <div className="bg-[#f0faf7] border border-[#c3e8df] rounded-xl px-4 py-3 flex items-start gap-2.5">
                 <i className="ri-mail-send-line text-[#1a5c4f] text-sm mt-0.5 flex-shrink-0"></i>
                 <p className="text-xs text-[#1a5c4f] leading-relaxed">An <strong>invite email</strong> will be sent automatically. They click the link to set their own password.</p>
@@ -604,50 +619,64 @@ export default function TeamTab() {
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1.5">Full Name *</label>
-                <input type="text" value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-                  placeholder="Jane Smith" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+              {/* Name + Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5">Full Name <span className="text-red-400">*</span></label>
+                  <input type="text" value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+                    placeholder="Jane Smith"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5">Email Address <span className="text-red-400">*</span></label>
+                  <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="jane@pawtenant.com"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                </div>
               </div>
+
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1.5">Email Address *</label>
-                <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="jane@pawtenant.com" className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1.5">Title (optional)</label>
+                <label className="block text-xs font-bold text-gray-600 mb-1.5">Title <span className="text-gray-400 font-normal">(optional)</span></label>
                 <input type="text" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  placeholder="Operations Manager, Support Specialist..." className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                  placeholder="Operations Manager, Support Specialist..."
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
               </div>
+
+              {/* Role selection */}
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-2">Role *</label>
+                <label className="block text-xs font-bold text-gray-600 mb-2">Role <span className="text-red-400">*</span></label>
                 <div className="grid grid-cols-2 gap-2">
                   {TEAM_INVITE_ROLES.map((key) => {
                     const cfg = ROLE_CONFIG[key];
+                    const isSelected = form.role === key;
                     return (
                       <button key={key} type="button" onClick={() => setForm((f) => ({ ...f, role: key }))}
-                        className={`whitespace-nowrap flex flex-col items-start gap-1 p-3 rounded-xl border-2 transition-colors cursor-pointer text-left ${form.role === key ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 hover:border-gray-300"}`}>
-                        <div className="flex items-center gap-1.5">
-                          <i className={`${cfg.icon} text-sm ${form.role === key ? "text-[#1a5c4f]" : "text-gray-400"}`}></i>
-                          <span className={`text-xs font-bold ${form.role === key ? "text-[#1a5c4f]" : "text-gray-600"}`}>{cfg.label}</span>
+                        className={`whitespace-nowrap flex items-start gap-2.5 p-3 rounded-xl border-2 transition-all cursor-pointer text-left ${isSelected ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 hover:border-gray-300 bg-white"}`}>
+                        <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 mt-0.5 ${isSelected ? "bg-[#1a5c4f]/10" : "bg-gray-100"}`}>
+                          <i className={`${cfg.icon} text-sm ${isSelected ? "text-[#1a5c4f]" : "text-gray-400"}`}></i>
                         </div>
-                        <span className="text-xs text-gray-400 leading-tight">{cfg.desc}</span>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-bold leading-tight ${isSelected ? "text-[#1a5c4f]" : "text-gray-700"}`}>{cfg.label}</p>
+                          <p className="text-xs text-gray-400 leading-tight mt-0.5">{cfg.desc}</p>
+                        </div>
                       </button>
                     );
                   })}
                 </div>
-                <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
-                  <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
-                  To add a licensed provider, use the <strong>Providers tab</strong> instead. Provider accounts are managed separately from internal staff.
-                </p>
+                <div className="mt-2.5 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                  <i className="ri-information-line text-amber-600 flex-shrink-0 mt-0.5 text-xs"></i>
+                  <p className="text-xs text-amber-700">
+                    To add a licensed provider, use the <strong>Providers tab</strong> instead.
+                  </p>
+                </div>
               </div>
             </div>
 
             <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
               <button type="button" onClick={() => { setShowModal(false); setForm(INIT_FORM); setFormError(""); }}
-                className="whitespace-nowrap px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer">Cancel</button>
+                className="whitespace-nowrap px-4 py-2.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors">Cancel</button>
               <button type="button" onClick={handleCreateMember} disabled={submitting}
-                className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer">
+                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
                 {submitting ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send Invite</>}
               </button>
             </div>

@@ -51,9 +51,11 @@ export default function USResidentsBanner() {
       <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
         {/* Left — icon + message */}
         <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-          {/* US flag badge */}
+          {/* US badge */}
           <div className="flex-shrink-0 flex items-center gap-1.5 bg-white/10 border border-white/20 rounded-md px-2.5 py-1.5">
-            <span className="text-lg leading-none" role="img" aria-label="US flag">🇺🇸</span>
+            <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+              <i className="ri-map-pin-2-line text-orange-400 text-sm"></i>
+            </div>
             <span className="text-white text-xs font-bold tracking-wide whitespace-nowrap">USA ONLY</span>
           </div>
 

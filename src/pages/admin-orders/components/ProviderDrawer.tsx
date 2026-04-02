@@ -82,6 +82,10 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const [resetMsg, setResetMsg] = useState<{ text: string; link?: string; success?: boolean } | null>(null);
   const [resetSending, setResetSending] = useState(false);
 
+  // Copy invite link
+  const [copyingLink, setCopyingLink] = useState(false);
+  const [copyLinkMsg, setCopyLinkMsg] = useState<{ text: string; success: boolean } | null>(null);
+
   // Auth email
   const [authEmailOpen, setAuthEmailOpen] = useState(false);
   const [authEmailInput, setAuthEmailInput] = useState("");
@@ -253,8 +257,17 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     setResetSending(true);
     setResetMsg(null);
     try {
-      const { data: { session } } = await supabase.auth.refreshSession();
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        const refreshed = await supabase.auth.refreshSession();
+        session = refreshed.data.session;
+      }
       const token = session?.access_token ?? "";
+      if (!token) {
+        setResetMsg({ text: "Session expired. Please refresh the page and try again.", success: false });
+        setResetSending(false);
+        return;
+      }
       const res = await fetch(`${supabaseUrl}/functions/v1/admin-send-password-reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -321,6 +334,45 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
       showToast(`Invite resent to ${doc.email}.`);
     } catch (err) { showToast(`Could not resend invite: ${err instanceof Error ? err.message : "Unknown error"}`); }
     finally { setResending(false); }
+  };
+
+  const handleCopyInviteLink = async () => {
+    if (!doc) return;
+    setCopyingLink(true);
+    setCopyLinkMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.refreshSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          email: doc.email, full_name: doc.name,
+          phone: doc.profile?.phone ?? doc.contact?.phone ?? null,
+          licensed_states: doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? [],
+          per_order_rate: doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null,
+        }),
+      });
+      // create-provider resend path returns ok:true but no link — we need a recovery link
+      // So we call admin-send-password-reset which returns action_link
+      const resetRes = await fetch(`${supabaseUrl}/functions/v1/admin-send-password-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email: doc.email, user_id: doc.profile?.user_id ?? undefined }),
+      });
+      const resetResult = await resetRes.json() as { ok?: boolean; action_link?: string; error?: string };
+      if (resetResult.ok && resetResult.action_link) {
+        await navigator.clipboard.writeText(resetResult.action_link);
+        setCopyLinkMsg({ text: "Invite link copied to clipboard! Valid for 1 hour.", success: true });
+      } else {
+        setCopyLinkMsg({ text: resetResult.error ?? "Could not generate invite link.", success: false });
+      }
+    } catch (err) {
+      setCopyLinkMsg({ text: `Error: ${err instanceof Error ? err.message : "Unknown"}`, success: false });
+    } finally {
+      setCopyingLink(false);
+      setTimeout(() => setCopyLinkMsg(null), 8000);
+    }
   };
 
   const handleSaveRate = async () => {
@@ -632,6 +684,26 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         {resending && <i className="ri-loader-4-line animate-spin text-[#1a5c4f] flex-shrink-0"></i>}
                       </button>
 
+                      <button type="button" onClick={handleCopyInviteLink} disabled={copyingLink}
+                        className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 text-left hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50">
+                        <div className="w-7 h-7 flex items-center justify-center bg-sky-50 rounded-lg flex-shrink-0">
+                          <i className="ri-links-line text-sky-600 text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800">{copyingLink ? "Generating link..." : "Copy Invite Link"}</p>
+                          <p className="text-xs text-gray-400">Copy setup link to share manually (e.g. if email went to spam)</p>
+                        </div>
+                        {copyingLink && <i className="ri-loader-4-line animate-spin text-sky-600 flex-shrink-0"></i>}
+                      </button>
+                      {copyLinkMsg && (
+                        <div className={`px-4 py-3 rounded-xl border text-xs font-semibold ${copyLinkMsg.success ? "bg-sky-50 text-sky-800 border-sky-200" : "bg-red-50 text-red-700 border-red-200"}`}>
+                          <div className="flex items-start gap-2">
+                            <i className={`mt-0.5 flex-shrink-0 text-sm ${copyLinkMsg.success ? "ri-checkbox-circle-line text-sky-600" : "ri-error-warning-line text-red-500"}`}></i>
+                            <p className="leading-relaxed">{copyLinkMsg.text}</p>
+                          </div>
+                        </div>
+                      )}
+
                       <button type="button" onClick={handleSendPasswordReset} disabled={resetSending}
                         className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 text-left hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50">
                         <div className="w-7 h-7 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
@@ -667,7 +739,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           <p className="text-sm font-semibold text-gray-800">Change Sign-in Email</p>
                           <p className="text-xs text-gray-400">Update the Supabase auth email (login email)</p>
                         </div>
-                        <i className={`ri-arrow-${authEmailOpen ? "up" : "down"}-s-line text-gray-400 flex-shrink-0`}></i>
+                        <i className={`${authEmailOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-gray-400 flex-shrink-0`}></i>
                       </button>
                       {authEmailOpen && (
                         <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-4">

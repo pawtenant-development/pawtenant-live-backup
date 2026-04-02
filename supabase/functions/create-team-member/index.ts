@@ -93,7 +93,6 @@ async function sendInviteEmail(toEmail: string, providerName: string, setupLink:
   return sendViaResend(toEmail, subject, html);
 }
 
-// ── Get a reliable setup link — tries magiclink then recovery (works for confirmed users) ──
 async function getSetupLink(adminClient: ReturnType<typeof createClient>, email: string, redirectTo: string): Promise<string> {
   for (const linkType of ["magiclink", "recovery"] as const) {
     try {
@@ -114,26 +113,27 @@ async function getSetupLink(adminClient: ReturnType<typeof createClient>, email:
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
-    // ── Verify caller is a logged-in admin ─────────────────────────────────
-    const callerToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: `Bearer ${callerToken}` } },
-    });
-    const { data: { user: callerUser }, error: callerErr } = await callerClient.auth.getUser();
-    if (callerErr || !callerUser) {
-      console.warn("[invite] Auth failed:", callerErr?.message ?? "no user");
-      return new Response(JSON.stringify({ ok: false, error: "Unauthorized — please refresh the page and try again" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // ── Verify caller using service role key (avoids SUPABASE_ANON_KEY dependency) ──
+    const callerToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
+    if (!callerToken) return json({ ok: false, error: "Unauthorized — no token provided" }, 401);
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+    // Verify the caller's JWT using the admin client
+    const { data: { user: callerUser }, error: callerErr } = await adminClient.auth.getUser(callerToken);
+    if (callerErr || !callerUser) {
+      console.warn("[invite] Auth failed:", callerErr?.message ?? "no user");
+      return json({ ok: false, error: "Unauthorized — session expired, please refresh and try again" }, 401);
+    }
+
+    // Check caller is admin
     const { data: callerProfile } = await adminClient
       .from("doctor_profiles")
       .select("is_admin, role")
@@ -141,13 +141,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     const isCallerAdmin = callerProfile?.is_admin === true ||
-      ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
+      ["owner", "admin_manager", "support", "admin"].includes(callerProfile?.role ?? "");
 
-    if (!isCallerAdmin) {
-      return new Response(JSON.stringify({ ok: false, error: "Access denied. Admin only." }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!isCallerAdmin) return json({ ok: false, error: "Access denied. Admin only." }, 403);
 
     const body = await req.json() as {
       email: string; full_name: string; title?: string | null; is_admin: boolean;
@@ -155,14 +151,10 @@ Deno.serve(async (req) => {
       bio?: string | null; per_order_rate?: number | null; license_number?: string | null;
     };
 
-    if (!body.email || !body.full_name) {
-      return new Response(JSON.stringify({ ok: false, error: "email and full_name are required." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!body.email || !body.full_name) return json({ ok: false, error: "email and full_name are required." }, 400);
 
     const isProvider = !body.is_admin || body.role === "provider";
-    const siteUrl = Deno.env.get("SITE_URL") ?? `https://${COMPANY_DOMAIN}`;
+    const siteUrl = `https://${COMPANY_DOMAIN}`;
     const redirectTo = `${siteUrl}/reset-password`;
     const licensedStates = body.licensed_states ?? [];
 
@@ -174,22 +166,17 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existingProfile) {
-      // RESEND CASE — provider already has a profile, just send a fresh link
       console.log(`[invite] Existing profile found for ${body.email} — resending invite`);
       const setupLink = await getSetupLink(adminClient, body.email, redirectTo);
       const emailSent = await sendInviteEmail(body.email, existingProfile.full_name ?? body.full_name, setupLink, existingProfile.is_admin ?? body.is_admin);
-      return new Response(
-        JSON.stringify({ ok: true, email: body.email, full_name: existingProfile.full_name ?? body.full_name, invite_sent: true, welcome_email_sent: emailSent, note: "Existing provider — resent invite." }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({ ok: true, email: body.email, full_name: existingProfile.full_name ?? body.full_name, invite_sent: true, welcome_email_sent: emailSent, note: "Existing profile — resent invite." });
     }
 
-    // ── NEW PROVIDER ─────────────────────────────────────────────────────────
-    // Step 1: Ensure auth user exists (try invite generateLink, fallback to createUser)
+    // ── NEW MEMBER ────────────────────────────────────────────────────────────
     let authUserId: string | null = null;
     let setupLink = `${siteUrl}/reset-password`;
 
-    // Try generateLink type "invite" first — creates user + provides action_link
+    // Try generateLink type "invite" — creates user + provides action_link
     const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
       type: "invite",
       email: body.email,
@@ -198,25 +185,20 @@ Deno.serve(async (req) => {
 
     if (!linkErr && linkData?.user) {
       authUserId = linkData.user.id;
-      // Try to extract action_link from the invite response
       const raw = linkData as unknown as Record<string, unknown>;
       const props = raw["properties"] as Record<string, string> | undefined;
       if (props?.["action_link"]) {
         setupLink = props["action_link"];
         console.log(`[invite] Got action_link from generateLink invite for ${body.email}`);
       } else {
-        // action_link missing — fall back to getSetupLink
-        console.warn(`[invite] action_link missing from invite response for ${body.email}, using getSetupLink`);
+        console.warn(`[invite] action_link missing — using getSetupLink fallback`);
         setupLink = await getSetupLink(adminClient, body.email, redirectTo);
       }
     } else {
-      // generateLink failed — check if user already exists in auth
       const alreadyExists = linkErr?.message?.includes("already been registered") ||
         (linkErr as unknown as { status?: number })?.status === 422;
-
       console.warn(`[invite] generateLink invite failed for ${body.email}: ${linkErr?.message ?? "unknown"}. alreadyExists=${alreadyExists}`);
 
-      // Find or create auth user
       const { data: listRes } = await adminClient.auth.admin.listUsers({ perPage: 1000 });
       const existingAuthUser = listRes?.users?.find((u) => u.email?.toLowerCase() === body.email.toLowerCase());
 
@@ -224,77 +206,54 @@ Deno.serve(async (req) => {
         authUserId = existingAuthUser.id;
         console.log(`[invite] Found existing auth user ${authUserId} for ${body.email}`);
       } else if (!alreadyExists) {
-        // Truly new user — create directly with email_confirm:true (they'll set pw via recovery link)
         const { data: createdUser, error: createErr } = await adminClient.auth.admin.createUser({
           email: body.email,
           email_confirm: true,
         });
         if (createErr || !createdUser?.user) {
-          console.error(`[invite] createUser fallback failed for ${body.email}:`, createErr?.message);
-          return new Response(JSON.stringify({ ok: false, error: createErr?.message ?? "Failed to create auth account." }), {
-            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+          console.error(`[invite] createUser fallback failed:`, createErr?.message);
+          return json({ ok: false, error: createErr?.message ?? "Failed to create auth account." }, 400);
         }
         authUserId = createdUser.user.id;
         console.log(`[invite] Created auth user via createUser fallback: ${authUserId}`);
       }
 
-      if (!authUserId) {
-        return new Response(JSON.stringify({ ok: false, error: "Could not create or locate auth account for this email." }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      if (!authUserId) return json({ ok: false, error: "Could not create or locate auth account for this email." }, 400);
 
-      // Get setup link using the reliable magiclink/recovery approach
       setupLink = await getSetupLink(adminClient, body.email, redirectTo);
     }
 
-    // Step 2: Insert doctor_profiles
+    // Insert doctor_profiles
     const { error: profileErr } = await adminClient.from("doctor_profiles").insert({
       user_id: authUserId, full_name: body.full_name, email: body.email,
       title: body.title ?? null, is_admin: body.is_admin, is_active: true, licensed_states: licensedStates,
     });
+
     if (profileErr) {
-      // Profile insert failed — might be a duplicate — return soft error
       console.error(`[invite] doctor_profiles insert failed for ${body.email}:`, profileErr.message);
-      // Still try to send the email so the user can access their (existing) account
       const emailSent = await sendInviteEmail(body.email, body.full_name, setupLink, body.is_admin);
-      return new Response(JSON.stringify({ ok: false, error: profileErr.message, emailSent }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ ok: false, error: profileErr.message, emailSent }, 400);
     }
 
-    // Step 3: Insert/update doctor_contacts (for provider users)
+    // Insert/update doctor_contacts for provider users
     if (isProvider) {
       const { data: ec } = await adminClient.from("doctor_contacts").select("id").eq("email", body.email.toLowerCase()).maybeSingle();
       if (ec) {
-        await adminClient.from("doctor_contacts").update({
-          full_name: body.full_name, phone: body.phone ?? null, licensed_states: licensedStates,
-          notes: body.bio ?? null, per_order_rate: body.per_order_rate ?? null, is_active: true,
-        }).eq("id", ec.id);
+        await adminClient.from("doctor_contacts").update({ full_name: body.full_name, phone: body.phone ?? null, licensed_states: licensedStates, notes: body.bio ?? null, per_order_rate: body.per_order_rate ?? null, is_active: true }).eq("id", ec.id);
       } else {
-        await adminClient.from("doctor_contacts").insert({
-          full_name: body.full_name, email: body.email.toLowerCase(), phone: body.phone ?? null,
-          licensed_states: licensedStates, notes: body.bio ?? null,
-          per_order_rate: body.per_order_rate ?? null, is_active: true,
-        });
+        await adminClient.from("doctor_contacts").insert({ full_name: body.full_name, email: body.email.toLowerCase(), phone: body.phone ?? null, licensed_states: licensedStates, notes: body.bio ?? null, per_order_rate: body.per_order_rate ?? null, is_active: true });
       }
     }
 
-    // Step 4: Send invite email — always, regardless of link quality
+    // Send invite email
     const emailSent = await sendInviteEmail(body.email, body.full_name, setupLink, body.is_admin);
     console.log(`[invite] Invite email sent=${emailSent} for ${body.email} (userId=${authUserId})`);
 
-    return new Response(
-      JSON.stringify({ ok: true, email: body.email, full_name: body.full_name, invite_sent: true, welcome_email_sent: emailSent }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ ok: true, email: body.email, full_name: body.full_name, invite_sent: true, welcome_email_sent: emailSent });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[invite] Unhandled error:", msg);
-    return new Response(JSON.stringify({ ok: false, error: `Server error: ${msg}` }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ ok: false, error: `Server error: ${msg}` }, 500);
   }
 });

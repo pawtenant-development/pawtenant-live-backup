@@ -21,36 +21,6 @@
       "permanent": true
     },
     {
-      "source": "/esa-letter-texas",
-      "destination": "/esa-letter/texas",
-      "permanent": true
-    },
-    {
-      "source": "/esa-letter-texas/",
-      "destination": "/esa-letter/texas",
-      "permanent": true
-    },
-    {
-      "source": "/esa-letter-arkansas",
-      "destination": "/esa-letter/arkansas",
-      "permanent": true
-    },
-    {
-      "source": "/esa-letter-arkansas/",
-      "destination": "/esa-letter/arkansas",
-      "permanent": true
-    },
-    {
-      "source": "/esa-letter-california",
-      "destination": "/esa-letter/california",
-      "permanent": true
-    },
-    {
-      "source": "/esa-letter-california/",
-      "destination": "/esa-letter/california",
-      "permanent": true
-    },
-    {
       "source": "/explore-esa-letters-in-all-states",
       "destination": "/explore-esa-letters-all-states",
       "permanent": true
@@ -88,6 +58,22 @@
     {
       "source": "/how-to-get-psd-letter/",
       "destination": "/how-to-get-psd-letter",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter/:state",
+      "destination": "/esa-letter-:state",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter/:state/",
+      "destination": "/esa-letter-:state",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "page_id", "value": "586" }],
+      "destination": "/",
       "permanent": true
     }
   ],

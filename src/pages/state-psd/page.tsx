@@ -347,7 +347,7 @@ export default function StatePSDPage() {
                 ))}
               </ul>
               <div className="mt-5 pt-4 border-t border-gray-100">
-                <Link to={`/esa-letter/${stateData.slug}`} className="text-orange-500 hover:text-orange-600 text-xs font-semibold cursor-pointer">
+                <Link to={`/esa-letter-${stateData.slug}`} className="text-orange-500 hover:text-orange-600 text-xs font-semibold cursor-pointer">
                   Looking for an ESA letter in {stateData.name}? &rarr;
                 </Link>
               </div>
@@ -432,7 +432,7 @@ export default function StatePSDPage() {
           <h2 className="text-xl font-bold text-gray-900 mb-6">Related Resources for {stateData.name} Residents</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { to: `/esa-letter/${stateData.slug}`, label: `ESA Letter in ${stateData.name}`, icon: "ri-heart-line" },
+              { to: `/esa-letter-${stateData.slug}`, label: `ESA Letter in ${stateData.name}`, icon: "ri-heart-line" },
               { to: "/how-to-get-psd-letter", label: "How to Get a PSD Letter", icon: "ri-guide-line" },
               { to: "/all-about-service-dogs", label: "Service Dogs Guide", icon: "ri-guide-line" },
               { to: "/resource-center", label: "Full ESA & PSD Resource Center", icon: "ri-book-open-line" },

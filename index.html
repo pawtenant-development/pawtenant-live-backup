@@ -166,56 +166,6 @@
     }
     </script>
 
-    <!-- Schema.org: FAQPage (homepage FAQs) -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "What is an Emotional Support Animal?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "An ESA is a companion animal that provides emotional support to individuals with mental or emotional disabilities. Unlike service animals, ESAs do not require specific training, but they do require a valid ESA letter from a licensed mental health professional."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Who qualifies for an ESA letter?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Anyone experiencing a mental or emotional health condition recognized by the DSM-5 may qualify, including anxiety, depression, PTSD, bipolar disorder, phobias, and many others."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Can my landlord refuse my ESA?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Under the Fair Housing Act, landlords must make reasonable accommodations for tenants with ESAs. They can only refuse if the animal poses a direct safety threat or would cause undue hardship to the property."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "How long is an ESA letter valid?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "ESA letters are typically valid for one year. We recommend annual renewal to ensure your letter remains current and compliant with your landlord's requirements."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Can landlords charge pet fees for an ESA?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "No. Under the Fair Housing Act, landlords cannot charge pet fees, pet deposits, or pet rent for an Emotional Support Animal. An ESA is not considered a pet under federal law."
-          }
-        }
-      ]
-    }
-    </script>
-
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- TRACKING TAGS — Replace XXXXXXXXXX with your real IDs    -->
     <!-- ═══════════════════════════════════════════════════════════ -->
@@ -232,9 +182,10 @@
       gtag('config', 'GT-55KSTVFH');
     </script>
 
-    <!-- Meta Pixel (Facebook) — Replace YOUR_PIXEL_ID with your Facebook Pixel ID -->
-    <!-- Tracks: page views, social traffic, ad conversions from all Facebook/Instagram campaigns -->
-    <!-- <script>
+    <!-- Meta Pixel (Facebook) — Pixel ID: 2970753196590228 -->
+    <!-- fbevents.js loads once here. PageView is fired by MetaPageView (src/App.tsx) -->
+    <!-- on every SPA route change. Lead, InitiateCheckout, Purchase fired from React. -->
+    <script>
       !function(f,b,e,v,n,t,s)
       {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
       n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -243,12 +194,12 @@
       t.src=v;s=b.getElementsByTagName(e)[0];
       s.parentNode.insertBefore(t,s)}(window, document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init', 'YOUR_PIXEL_ID');
-      fbq('track', 'PageView');
+      fbq('init', '2970753196590228');
+      // PageView fired by React MetaPageView on every route change — no duplicate here
     </script>
     <noscript><img height="1" width="1" style="display:none"
-      src="https://www.facebook.com/tr?id=YOUR_PIXEL_ID&ev=PageView&noscript=1"
-    /></noscript> -->
+      src="https://www.facebook.com/tr?id=2970753196590228&ev=PageView&noscript=1"
+    /></noscript>
 
     <!-- UTM + GCLID + FBCLID Capture — saves traffic source to sessionStorage for conversion attribution -->
     <script>
@@ -343,22 +294,32 @@
       })();
     </script>
 
-    <!-- Tawk.to Live Chat Widget -->
+    <!-- Tawk.to Live Chat Widget — only load on public website pages, never on portals -->
     <script type="text/javascript">
-      var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-      // On mobile (<768px) hide Tawk's own bubble — our custom draggable button handles it
-      Tawk_API.onLoad = function() {
-        if (window.innerWidth < 768) {
-          Tawk_API.hideWidget();
-        }
-      };
-      (function(){
-        var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-        s1.async=true;
-        s1.src='https://embed.tawk.to/67056599cec6d0125df35425/1i9mh9opi';
-        s1.charset='UTF-8';
-        s1.setAttribute('crossorigin','*');
-        s0.parentNode.insertBefore(s1,s0);
+      (function() {
+        var portalPrefixes = ['/admin', '/provider-portal', '/provider-login', '/my-orders', '/customer-login', '/reset-password', '/admin-login'];
+        var path = window.location.pathname;
+        var isPortal = portalPrefixes.some(function(p) { return path === p || path.startsWith(p + '/') || path.startsWith(p + '?'); });
+        if (isPortal) return; // Don't load Tawk on portal pages at all
+
+        var Tawk_API = window.Tawk_API || {};
+        window.Tawk_API = Tawk_API;
+        window.Tawk_LoadStart = new Date();
+
+        // On mobile (<768px) hide Tawk's own bubble — our custom draggable button handles it
+        Tawk_API.onLoad = function() {
+          if (window.innerWidth < 768) {
+            Tawk_API.hideWidget();
+          }
+        };
+
+        var s1 = document.createElement("script");
+        var s0 = document.getElementsByTagName("script")[0];
+        s1.async = true;
+        s1.src = 'https://embed.tawk.to/67056599cec6d0125df35425/1i9mh9opi';
+        s1.charset = 'UTF-8';
+        s1.setAttribute('crossorigin', '*');
+        s0.parentNode.insertBefore(s1, s0);
       })();
     </script>
   </body>

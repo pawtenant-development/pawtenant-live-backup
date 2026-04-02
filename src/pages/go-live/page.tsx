@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabaseClient";
 
 type CheckItem = {
   id: string;
@@ -171,6 +173,167 @@ const SECTIONS: Section[] = [
       },
     ],
   },
+  {
+    id: "prod-confirmation",
+    step: 7,
+    title: "Production Confirmation — Vercel & Stripe",
+    subtitle: "Two manual steps that can't be done in code — must be done before going live.",
+    icon: "ri-settings-4-line",
+    color: "text-violet-600 bg-violet-50 border-violet-100",
+    items: [
+      {
+        id: "vercel-env-scope",
+        label: "Scope live keys to Production only in Vercel",
+        detail: "Vercel → your project → Settings → Environment Variables. Edit each key below and uncheck Preview + Development — Production only.",
+        code: "VITE_PUBLIC_SUPABASE_URL  |  VITE_PUBLIC_SUPABASE_ANON_KEY  |  VITE_STRIPE_PUBLISHABLE_KEY",
+        codeLabel: "Keys to scope:",
+        warning: "Until this is done, every preview branch URL is connected to your real live database and Stripe account.",
+        link: { href: "https://vercel.com/dashboard", text: "Open Vercel Dashboard →" },
+      },
+      {
+        id: "stripe-webhook-prod",
+        label: "Confirm Stripe live webhook points to the correct Supabase URL",
+        detail: "Stripe Dashboard (Live mode) → Developers → Webhooks. Verify the endpoint URL is exactly as shown below — not a dev or staging URL.",
+        code: "https://cvwbozlbbmrjxznknouq.supabase.co/functions/v1/stripe-webhook",
+        codeLabel: "Expected endpoint:",
+        warning: "If the webhook points to a wrong URL, payments succeed but orders never update — silent failure.",
+        link: { href: "https://dashboard.stripe.com/webhooks", text: "Open Stripe Webhooks →" },
+      },
+    ],
+  },
+  {
+    id: "email-deliverability",
+    step: 8,
+    title: "Email Deliverability — SPF, DKIM, DMARC",
+    subtitle: "Without these DNS records, ESA confirmation emails and letters land in spam. Worst possible time for that to happen.",
+    icon: "ri-mail-check-line",
+    color: "text-emerald-600 bg-emerald-50 border-emerald-100",
+    items: [
+      {
+        id: "spf-record",
+        label: "Add SPF record to pawtenant.com DNS",
+        detail: "Log into your domain registrar (Namecheap / GoDaddy / Cloudflare etc.) and add a TXT record for the root domain (@). Resend's SPF is below — if you already have an SPF record, merge it rather than adding a second one.",
+        code: "v=spf1 include:amazonses.com ~all",
+        codeLabel: "SPF TXT value (via Resend):",
+        note: "Check your exact SPF record in Resend → Settings → Domains → pawtenant.com for the current recommended value.",
+        link: { href: "https://resend.com/domains", text: "Open Resend Domains →" },
+      },
+      {
+        id: "dkim-record",
+        label: "Add DKIM CNAME records from Resend",
+        detail: "Resend → Domains → pawtenant.com will show you 2–3 CNAME records to add. These are unique to your account — copy them directly from the dashboard.",
+        link: { href: "https://resend.com/domains", text: "Get DKIM records from Resend →" },
+        note: "DNS propagation can take up to 48 hours, but usually under 30 minutes.",
+      },
+      {
+        id: "dmarc-record",
+        label: "Add DMARC TXT record",
+        detail: "Add a TXT record for the subdomain _dmarc.pawtenant.com. Start with 'none' policy — it monitors without blocking, safe for launch.",
+        code: "v=DMARC1; p=none; rua=mailto:hello@pawtenant.com",
+        codeLabel: "DMARC TXT value:",
+      },
+      {
+        id: "email-test",
+        label: "Run a deliverability test after DNS propagates",
+        detail: "Send a test email through the site and check it against mail-tester.com or use Google Admin Toolbox to verify SPF/DKIM pass.",
+        link: { href: "https://www.mail-tester.com", text: "Open mail-tester.com →" },
+      },
+    ],
+  },
+  {
+    id: "google-reviews",
+    step: 9,
+    title: "Google Business & Reviews",
+    subtitle: "Social proof at the exact moment a customer has just paid — high conversion impact.",
+    icon: "ri-star-line",
+    color: "text-amber-600 bg-amber-50 border-amber-100",
+    items: [
+      {
+        id: "gbp-verify",
+        label: "Verify your Google Business Profile if not already done",
+        detail: "Google sends a postcard or offers instant verification for some categories. Verified profiles show up in Maps and local search.",
+        link: { href: "https://business.google.com", text: "Open Google Business Profile →" },
+      },
+      {
+        id: "get-place-id",
+        label: "Get your real Google Place ID",
+        detail: "Go to the Google Place ID Finder, search for 'Pawtenant', and copy the Place ID (starts with ChIJ...).",
+        link: { href: "https://developers.google.com/maps/documentation/javascript/examples/places-placeid-finder", text: "Open Place ID Finder →" },
+        note: "Once you have it, send it to Readdy and the two thank-you pages will be updated automatically.",
+        warning: "Both /assessment-thankyou and /psd-assessment-thankyou currently have a placeholder Place ID — the review link won't work until this is replaced.",
+      },
+    ],
+  },
+  {
+    id: "seo-crawl",
+    step: 10,
+    title: "SEO — Crawl Health & URL Fixes",
+    subtitle: "Protect rankings from the old WordPress site and stop the contact subdomain from cluttering Google's index.",
+    icon: "ri-search-eye-line",
+    color: "text-sky-600 bg-sky-50 border-sky-100",
+    items: [
+      {
+        id: "contact-noindex",
+        label: "Block contact.pawtenant.com from Google indexing",
+        detail: "The GHL contact site is public but shouldn't appear in search results. Add a noindex meta tag and robots.txt to that subdomain via GHL's page settings. The page stays accessible — it just won't be crawled.",
+        note: "After adding, verify in Google Search Console → URL Inspection that the page is not indexed.",
+      },
+      {
+        id: "gsc-export",
+        label: "Export all currently indexed WordPress URLs from Google Search Console",
+        detail: "GSC → Pages → Indexing → Indexed. Export the list. Look for old patterns like /esa-letter-california/ — these need to redirect to the new format /esa-letter/california.",
+        link: { href: "https://search.google.com/search-console", text: "Open Google Search Console →" },
+      },
+      {
+        id: "301-redirects",
+        label: "Add 301 redirects for old WordPress URL patterns in vercel.json",
+        detail: "Map each old URL to the correct new one. Example: /esa-letter-california/ → /esa-letter/california. Without these, any Google traffic to old URLs hits a 404 and rankings are lost permanently.",
+        note: "Share the exported GSC URL list with Readdy and the redirects will be added to vercel.json in one pass.",
+      },
+      {
+        id: "gsc-sitemap",
+        label: "Submit sitemap to Google Search Console",
+        detail: "GSC → Sitemaps → Add a new sitemap. The sitemap is already live and production-ready.",
+        code: "https://www.pawtenant.com/sitemap.xml",
+        codeLabel: "Sitemap URL:",
+        link: { href: "https://search.google.com/search-console/sitemaps", text: "Open GSC Sitemaps →" },
+      },
+    ],
+  },
+  {
+    id: "attribution",
+    step: 11,
+    title: "Attribution & Conversion Tracking",
+    subtitle: "Know exactly which channel and campaign is generating revenue before you start spending on ads.",
+    icon: "ri-bar-chart-grouped-line",
+    color: "text-rose-600 bg-rose-50 border-rose-100",
+    items: [
+      {
+        id: "utm-columns",
+        label: "Add UTM + click ID columns to Google Sheets",
+        detail: "utm_source, utm_medium, utm_campaign, utm_term, gclid, fbclid. These are already captured on the frontend — just need to be written through to the sheet. Share with Readdy to implement.",
+        note: "Once live, every new order row will show exactly which Google/Facebook/TikTok campaign drove it.",
+      },
+      {
+        id: "traffic-source-fix",
+        label: "Upgrade trafficSource logic to map correctly",
+        detail: "Current logic often falls through to 'Direct / Unknown'. The fix maps gclid → Google Ads, fbclid → Facebook Ads, utm_source=tiktok → TikTok Ads, referrer present but no UTMs → Referral, nothing → Direct.",
+        note: "This is a code change — let Readdy handle it alongside the UTM columns above.",
+      },
+      {
+        id: "meta-pixel-test",
+        label: "Verify Meta Pixel fires correctly in production",
+        detail: "Open Meta Events Manager → Test Events tab. Load the assessment page, complete a checkout, and confirm Lead + Purchase events appear with correct values.",
+        link: { href: "https://business.facebook.com/events_manager", text: "Open Meta Events Manager →" },
+      },
+      {
+        id: "gads-conversion",
+        label: "Verify Google Ads conversion tracking fires on checkout completion",
+        detail: "Google Ads → Tools → Measurement → Conversions. Use Google Tag Assistant or the Ads conversion debugger to confirm a Purchase event fires after payment.",
+        link: { href: "https://ads.google.com/aw/conversions", text: "Open Google Ads Conversions →" },
+      },
+    ],
+  },
 ];
 
 function CopyButton({ text }: { text: string }) {
@@ -193,7 +356,40 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export default function GoLivePage() {
+  const navigate = useNavigate();
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+
+  // ── Admin auth gate ────────────────────────────────────────────────────────
+  // Only allow access if the visitor has an active Supabase session (i.e. is
+  // logged in to the admin panel). Anyone who just guesses /go-live gets
+  // redirected to /admin-login with a ?next= so they land here after sign-in.
+  useEffect(() => {
+    const verify = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate("/admin-login?next=/go-live", { replace: true });
+        return;
+      }
+      setAuthorized(true);
+      setAuthChecked(true);
+    };
+    verify();
+  }, [navigate]);
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-slate-500">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authorized) return null;
 
   const totalItems = SECTIONS.reduce((acc, s) => acc + s.items.length, 0);
   const doneCount = Object.values(checked).filter(Boolean).length;
@@ -263,6 +459,38 @@ export default function GoLivePage() {
               <div key={row.label} className="px-6 py-3 flex items-start gap-3">
                 <div className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-full flex items-center justify-center text-xs ${row.ok ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-500"}`}>
                   <i className={row.ok ? "ri-check-line" : "ri-close-line"} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">{row.label}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{row.value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Pre-deploy security fixes — already completed */}
+        <div className="mb-8 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+            <div className="w-9 h-9 flex items-center justify-center rounded-xl bg-emerald-100 border border-emerald-200 text-emerald-600">
+              <i className="ri-shield-check-line text-lg" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">Pre-Deploy Security Fixes — Completed</p>
+              <p className="text-xs text-slate-500">These were fixed before launch — nothing to action</p>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {[
+              { label: "Sheets secret removed from browser bundle", value: "SHEETS_SECRET + webhook URL deleted from frontend code. All syncing now routes through sync-to-sheets edge function only." },
+              { label: "robots.txt disallow paths corrected", value: "/assessment-thankyou and /psd-assessment-thankyou now match actual routes." },
+              { label: "Meta Pixel console logs stripped from production", value: "All 6 console.log/warn calls in metaPixel.ts wrapped in import.meta.env.DEV — silent in production." },
+              { label: "React Error Boundary added", value: "Any unhandled component crash now shows a clean error page instead of a blank white screen." },
+              { label: "/go-live page access-controlled", value: "Redirects to /admin-login if no active admin session. Not publicly accessible." },
+            ].map((row) => (
+              <div key={row.label} className="px-6 py-3 flex items-start gap-3">
+                <div className="mt-0.5 w-5 h-5 flex-shrink-0 rounded-full flex items-center justify-center text-xs bg-emerald-100 text-emerald-600">
+                  <i className="ri-check-line" />
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-700">{row.label}</p>

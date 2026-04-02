@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import PolicyModal from "./PolicyModal";
+
+const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface KlarnaPaymentTabProps {
   amount: number;
@@ -10,20 +15,33 @@ interface KlarnaPaymentTabProps {
   email: string;
   firstName: string;
   lastName: string;
-  additionalDocCount: number;
+  phone?: string;
+  state: string;
+  additionalDocCount?: number;
   agreed: boolean;
   setAgreed: (v: boolean) => void;
   agreedError: boolean;
   setAgreedError: (v: boolean) => void;
-  // ── Order-level metadata (required for webhook matching) ────────────────
   confirmationId: string;
-  phone: string;
-  state: string;
-  selectedProvider: string;
+  selectedProvider?: string;
+  onSuccess?: () => void;
 }
 
-const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+// ─── Processing Overlay ───────────────────────────────────────────────────────
+
+function ProcessingOverlay() {
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl px-8 py-10 flex flex-col items-center gap-4 shadow-2xl">
+        <div className="w-12 h-12 border-4 border-gray-100 border-t-[#ff679a] rounded-full animate-spin" />
+        <p className="text-sm font-bold text-gray-700">Preparing Klarna Checkout...</p>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function KlarnaPaymentTab({
   amount,
@@ -33,37 +51,35 @@ export default function KlarnaPaymentTab({
   email,
   firstName,
   lastName,
-  additionalDocCount,
+  phone,
+  state,
+  additionalDocCount = 0,
   agreed,
   setAgreed,
   agreedError,
   setAgreedError,
   confirmationId,
-  phone,
-  state,
   selectedProvider,
+  onSuccess,
 }: KlarnaPaymentTabProps) {
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState("");
-  const [opened, setOpened] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [checkCount, setCheckCount] = useState(0);
-  const [paymentDetected, setPaymentDetected] = useState(false);
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
 
-  const installmentAmount = (amount / 4).toFixed(2);
+  const installment = (amount / 4).toFixed(2);
 
-  const fetchCheckoutUrl = useCallback(async () => {
+  const handleContinue = async () => {
+    if (!agreed) {
+      setAgreedError(true);
+      return;
+    }
+
     setLoading(true);
-    setFetchError("");
+    setAgreedError(false);
+
     try {
-      const successUrl = `${window.location.origin}/assessment/thank-you?amount=${amount}&order_id={CHECKOUT_SESSION_ID}`;
-      const cancelUrl = `${window.location.origin}/assessment`;
-
-      console.log("[Klarna] successUrl being sent to Stripe:", successUrl);
-
       const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
         method: "POST",
         headers: {
@@ -76,62 +92,39 @@ export default function KlarnaPaymentTab({
           petCount,
           deliverySpeed,
           email,
-          customerName: `${firstName} ${lastName}`.trim(),
+          firstName,
+          lastName,
+          phone,
+          state,
           additionalDocCount,
-          successUrl,
-          cancelUrl,
+          confirmationId,
+          selectedProvider,
           paymentMethods: ["card", "klarna"],
-          metadata: {
-            confirmationId,
-            firstName,
-            lastName,
-            email,
-            phone,
-            state,
-            selectedProvider,
-            planType: plan,
-            deliverySpeed,
-            petCount: String(petCount),
-            additionalDocCount: String(additionalDocCount),
-          },
+          successUrl: `${window.location.origin}/assessment-thankyou?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${window.location.origin}/assessment?step=3&canceled=true`,
         }),
       });
 
-      const json = await res.json() as { url?: string; sessionId?: string; error?: string };
+      const data = await res.json();
 
-      if (json.url) {
-        setCheckoutUrl(json.url);
-        setSessionId(json.sessionId ?? null);
+      if (data.url) {
+        setCheckoutUrl(data.url);
+        window.open(data.url, "_blank");
       } else {
-        setFetchError(json.error ?? "Unable to generate Klarna payment link.");
+        throw new Error(data.error || "Failed to create checkout session");
       }
-    } catch {
-      setFetchError("Network error — please try again.");
+    } catch (err) {
+      console.error("Klarna checkout error:", err);
+      setAgreedError(true);
     } finally {
       setLoading(false);
     }
-  }, [plan, petCount, deliverySpeed, email, firstName, lastName, additionalDocCount]);
-
-  useEffect(() => {
-    fetchCheckoutUrl();
-  }, [fetchCheckoutUrl]);
-
-  const handleOpenKlarna = () => {
-    if (!checkoutUrl) return;
-    if (!agreed) {
-      setAgreedError(true);
-      return;
-    }
-    window.open(checkoutUrl, "_blank", "noopener,noreferrer");
-    setOpened(true);
   };
 
-  const handleCheckPayment = async () => {
-    if (!sessionId) {
-      setCheckCount((c) => c + 1);
-      return;
-    }
-    setChecking(true);
+  const checkPaymentStatus = async () => {
+    if (!confirmationId) return;
+    
+    setCheckingStatus(true);
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
         method: "POST",
@@ -140,206 +133,193 @@ export default function KlarnaPaymentTab({
           apikey: SUPABASE_KEY,
           Authorization: `Bearer ${SUPABASE_KEY}`,
         },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ confirmationId }),
       });
-      const data = await res.json() as { paid?: boolean; error?: string };
+
+      const data = await res.json();
+
       if (data.paid) {
-        setPaymentDetected(true);
-        console.log("[Klarna] Payment confirmed via poll — navigating with params:", {
-          amount,
-          order_id: sessionId ?? confirmationId,
-          note: "sessionId used when available; falls back to confirmationId",
-        });
-        setTimeout(() => navigate(`/assessment/thank-you?amount=${amount}&order_id=${sessionId ?? confirmationId}`), 1200);
+        setPaymentCompleted(true);
+        onSuccess?.();
       } else {
-        setCheckCount((c) => c + 1);
+        // Show a message that payment is still pending
+        alert("Payment not yet completed. Please finish payment in the Klarna window and try again.");
       }
-    } catch {
-      setCheckCount((c) => c + 1);
+    } catch (err) {
+      console.error("Error checking payment status:", err);
     } finally {
-      setChecking(false);
+      setCheckingStatus(false);
     }
   };
 
-  // ── Loading ────────────────────────────────────────────────────────────────
-  if (loading) {
+  if (paymentCompleted) {
     return (
-      <div className="flex flex-col items-center justify-center py-10 gap-3">
-        <div className="w-10 h-10 flex items-center justify-center">
-          <i className="ri-loader-4-line animate-spin text-[#FF6A8A] text-2xl" />
-        </div>
-        <p className="text-sm font-semibold text-gray-600">Preparing Klarna checkout…</p>
-        <p className="text-xs text-gray-400">Just a moment</p>
-      </div>
-    );
-  }
-
-  // ── Error ──────────────────────────────────────────────────────────────────
-  if (fetchError || !checkoutUrl) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8 gap-4 text-center">
-        <div className="w-10 h-10 flex items-center justify-center text-red-400">
-          <i className="ri-error-warning-line text-2xl" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-gray-800">Couldn&apos;t load Klarna</p>
-          <p className="text-xs text-gray-500 mt-1">{fetchError || "Something went wrong."}</p>
-        </div>
-        <button
-          type="button"
-          onClick={fetchCheckoutUrl}
-          className="whitespace-nowrap inline-flex items-center gap-2 px-4 py-2 bg-[#FF6A8A] text-white text-xs font-bold rounded-lg hover:bg-[#e55a7a] cursor-pointer"
-        >
-          <i className="ri-refresh-line" />
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
-  // ── Payment confirmed ──────────────────────────────────────────────────────
-  if (paymentDetected) {
-    return (
-      <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
-        <div className="w-14 h-14 flex items-center justify-center rounded-full bg-green-100">
-          <i className="ri-checkbox-circle-fill text-green-600 text-3xl" />
-        </div>
-        <p className="text-base font-extrabold text-gray-900">Payment confirmed!</p>
-        <p className="text-sm text-gray-500">Redirecting you now…</p>
-        <div className="w-8 h-8 flex items-center justify-center">
-          <i className="ri-loader-4-line animate-spin text-[#1a5c4f] text-xl" />
+      <div className="mx-4 sm:mx-5 my-5 space-y-4">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center">
+          <div className="w-12 h-12 flex items-center justify-center bg-emerald-100 rounded-full mx-auto mb-3">
+            <i className="ri-check-line text-emerald-600 text-xl"></i>
+          </div>
+          <h3 className="text-sm font-extrabold text-emerald-800 mb-1">Payment Completed!</h3>
+          <p className="text-xs text-emerald-600">Your order has been confirmed. Redirecting...</p>
         </div>
       </div>
     );
   }
 
-  // ── Klarna ready ───────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      {/* Klarna branding header */}
-      <div className="bg-[#FFF0F5] rounded-xl px-5 py-4 text-center border border-[#FFD6E5]">
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <div className="bg-[#FFB3C7] rounded-md px-3 py-1.5 inline-flex items-center">
-            <span className="text-sm font-extrabold text-[#17120E] tracking-tight">Klarna.</span>
-          </div>
-          <span className="text-xs font-semibold text-[#FF6A8A]">Pay Later</span>
-        </div>
-        <p className="text-base font-extrabold text-gray-900">
-          4 payments of <span className="text-[#FF6A8A]">${installmentAmount}</span>
-        </p>
-        <p className="text-xs text-gray-500 mt-0.5">
-          No interest · No fees · Split your ${amount}.00 into 4 easy payments
-        </p>
-      </div>
-
-      {/* How it works */}
-      <div className="bg-gray-50 rounded-xl px-4 py-3.5 space-y-2.5">
-        {[
-          { icon: "ri-arrow-right-circle-line", step: "1", label: `Pay $${installmentAmount} today` },
-          { icon: "ri-calendar-line", step: "2", label: `$${installmentAmount} in 2 weeks` },
-          { icon: "ri-calendar-line", step: "3", label: `$${installmentAmount} in 4 weeks` },
-          { icon: "ri-calendar-line", step: "4", label: `$${installmentAmount} in 6 weeks` },
-        ].map((s) => (
-          <div key={s.step} className="flex items-center gap-3">
-            <div className="w-6 h-6 flex items-center justify-center rounded-full bg-[#FF6A8A]/10 flex-shrink-0">
-              <span className="text-[10px] font-extrabold text-[#FF6A8A]">{s.step}</span>
-            </div>
-            <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-              <i className={`${s.icon} text-gray-400 text-sm`} />
-            </div>
-            <span className="text-xs text-gray-600">{s.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Terms checkbox — above pay button */}
-      <label className={`flex items-start gap-2.5 cursor-pointer p-3 rounded-lg border transition-colors ${agreedError ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50 hover:border-[#1a5c4f]/30"}`}>
-        <input
-          type="checkbox"
-          checked={agreed}
-          onChange={(e) => {
-            setAgreed(e.target.checked);
-            if (e.target.checked) setAgreedError(false);
-          }}
-          className="mt-0.5 accent-[#1a5c4f] flex-shrink-0"
+    <>
+      {loading && <ProcessingOverlay />}
+      
+      {policyModal && (
+        <PolicyModal
+          url={policyModal.url}
+          title={policyModal.title}
+          onClose={() => setPolicyModal(null)}
         />
-        <span className={`text-xs leading-relaxed ${agreedError ? "text-red-600" : "text-gray-600"}`}>
-          I agree to the PawTenant{" "}
-          <Link to="/terms-of-use" className="text-[#1a5c4f] font-semibold hover:underline" target="_blank">Service Terms</Link>
-          {", "}
-          <a href="#" className="text-[#1a5c4f] font-semibold hover:underline">Informed Consent</a>
-          {", and "}
-          <Link to="/privacy-policy" className="text-[#1a5c4f] font-semibold hover:underline" target="_blank">HIPAA</Link>
-          . I confirm I am at least 18 years of age.
-        </span>
-      </label>
-      {agreedError && (
-        <p className="text-xs text-red-500 -mt-2 flex items-center gap-1.5">
-          <i className="ri-error-warning-line" />
-          Please agree to the terms to continue.
-        </p>
       )}
 
-      {/* Pay button */}
-      <button
-        type="button"
-        onClick={handleOpenKlarna}
-        className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-[#FFB3C7] text-[#17120E] text-sm font-extrabold rounded-lg hover:bg-[#ffa0b8] transition-colors cursor-pointer"
-      >
-        <i className="ri-external-link-line" />
-        Continue with Klarna
-      </button>
+      <div className="mx-4 sm:mx-5 my-5 space-y-4">
+        {/* Klarna branding */}
+        <div className="flex items-center gap-3">
+          <div className="w-16 h-8 flex items-center justify-center bg-[#ffb3c7] rounded-lg text-sm font-extrabold text-[#17120e] tracking-tight flex-shrink-0">
+            Klarna
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-extrabold text-gray-900">4 Interest-Free Payments</p>
+            <p className="text-xs text-gray-500">No hidden fees · No credit impact</p>
+          </div>
+        </div>
 
-      {/* Already paid check */}
-      {opened && (
-        <div className="space-y-3">
-          <p className="text-xs text-center text-gray-500">
-            Already completed your Klarna payment? Click below to confirm:
+        {/* Installment breakdown */}
+        <div className="bg-[#fff0f5] border border-[#f9c6d8] rounded-xl p-4 space-y-2.5">
+          {[1, 2, 3, 4].map((n) => (
+            <div key={n} className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-extrabold flex-shrink-0 ${n === 1 ? "bg-[#ff679a] text-white" : "bg-[#ffb3c7]/50 text-[#17120e]"}`}>
+                  {n}
+                </div>
+                <span className="text-xs text-gray-700 font-semibold">
+                  {n === 1 ? "Today" : `In ${(n - 1) * 2} weeks`}
+                </span>
+              </div>
+              <span className={`text-sm font-extrabold flex-shrink-0 ${n === 1 ? "text-[#ff679a]" : "text-gray-700"}`}>
+                ${installment}
+              </span>
+            </div>
+          ))}
+          <div className="border-t border-[#f9c6d8] pt-2 flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-500">Total</span>
+            <span className="text-sm font-extrabold text-gray-900">${amount}.00</span>
+          </div>
+        </div>
+
+        {/* Agreement checkbox */}
+        <label
+          className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-[#ff679a]/30 transition-colors ${
+            agreedError ? "border-red-300 bg-red-50" : "bg-gray-50 border-gray-200"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => {
+              setAgreed(e.target.checked);
+              if (e.target.checked) setAgreedError(false);
+            }}
+            className="mt-0.5 accent-[#ff679a] flex-shrink-0 cursor-pointer"
+          />
+          <span className="text-xs text-gray-600 leading-relaxed">
+            I agree to the{" "}
+            <button
+              type="button"
+              onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Terms of Use" })}
+              className="text-[#ff679a] font-semibold hover:underline cursor-pointer"
+            >
+              Terms of Use
+            </button>
+            ,{" "}
+            <button
+              type="button"
+              onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Informed Consent" })}
+              className="text-[#ff679a] font-semibold hover:underline cursor-pointer"
+            >
+              Informed Consent
+            </button>
+            , and{" "}
+            <button
+              type="button"
+              onClick={() => setPolicyModal({ url: "/privacy-policy", title: "HIPAA Acknowledgment" })}
+              className="text-[#ff679a] font-semibold hover:underline cursor-pointer"
+            >
+              HIPAA Acknowledgment
+            </button>
+            .
+          </span>
+        </label>
+        {agreedError && (
+          <p className="text-xs text-red-500 ml-1">
+            Please agree to the terms before continuing.
           </p>
+        )}
+
+        {/* Continue button */}
+        {!checkoutUrl ? (
           <button
             type="button"
-            onClick={handleCheckPayment}
-            disabled={checking}
-            className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-2.5 border-2 border-[#1a5c4f] text-[#1a5c4f] text-sm font-bold rounded-lg hover:bg-[#f0faf7] transition-colors cursor-pointer disabled:opacity-70"
+            onClick={handleContinue}
+            disabled={loading}
+            className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-[#ff679a] hover:bg-[#e85a8c] disabled:bg-gray-300 text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
           >
-            {checking ? (
-              <>
-                <i className="ri-loader-4-line animate-spin" />
-                Checking...
-              </>
-            ) : (
-              <>
-                <i className="ri-checkbox-circle-line" />
-                I&apos;ve completed payment{checkCount > 0 ? " — try again" : ""}
-              </>
-            )}
+            <div className="w-16 h-5 flex items-center justify-center bg-white/20 rounded text-[9px] font-extrabold">
+              Klarna
+            </div>
+            Continue with Klarna
           </button>
-          {checkCount > 0 && !checking && (
-            <p className="text-xs text-center text-amber-600 flex items-center justify-center gap-1.5">
-              <i className="ri-time-line" />
-              Payment not detected yet — wait 30 seconds and try again.
-            </p>
-          )}
-        </div>
-      )}
+        ) : (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => window.open(checkoutUrl, "_blank")}
+              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-[#ff679a] hover:bg-[#e85a8c] text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
+            >
+              <i className="ri-external-link-line"></i>
+              Reopen Klarna Checkout
+            </button>
+            <button
+              type="button"
+              onClick={checkPaymentStatus}
+              disabled={checkingStatus}
+              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
+            >
+              {checkingStatus ? (
+                <>
+                  <i className="ri-loader-4-line animate-spin"></i>
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <i className="ri-check-double-line"></i>
+                  I&apos;ve Completed Payment
+                </>
+              )}
+            </button>
+          </div>
+        )}
 
-      {/* Fine print */}
-      <div className="flex items-center justify-center gap-1.5 pt-1">
-        <div className="w-4 h-4 flex items-center justify-center">
-          <i className="ri-shield-check-line text-gray-400 text-xs" />
+        {/* Info note */}
+        <div className="flex items-start gap-2.5 bg-gray-50 rounded-xl px-3 py-3 border border-gray-100">
+          <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <i className="ri-information-line text-gray-400 text-sm"></i>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            You&apos;ll be redirected to Klarna&apos;s secure checkout to complete your installment plan. Your ESA letter process begins immediately after approval.
+          </p>
         </div>
-        <span className="text-xs text-gray-400">
-          No credit check · Available to US customers ·{" "}
-          <a
-            href="https://www.klarna.com/us/pay-in-4/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#FF6A8A] hover:underline cursor-pointer"
-          >
-            Learn more
-          </a>
-        </span>
+
+        <p className="text-[10px] text-center text-gray-400">
+          Available for one-time purchases · Subject to Klarna eligibility
+        </p>
       </div>
-    </div>
+    </>
   );
 }

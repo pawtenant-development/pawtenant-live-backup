@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 
 // Lazy-loaded pages for code splitting
@@ -40,10 +40,12 @@ const ResetPasswordPage = lazy(() => import("../pages/reset-password/page"));
 const AdminDoctorsPage = lazy(() => import("../pages/admin-doctors/page"));
 const ProviderLoginPage = lazy(() => import("../pages/provider-login/page"));
 const ProviderPortalPage = lazy(() => import("../pages/provider-portal/page"));
+const AdminProviderPreview = lazy(() => import("../pages/admin-orders/components/AdminProviderPreview"));
 const PSDAssessmentPage = lazy(() => import("../pages/psd-assessment/page"));
 const PSDAssessmentThankYouPage = lazy(() => import("../pages/psd-assessment-thankyou/page"));
 const StatePSDPage = lazy(() => import("../pages/state-psd/page"));
 const ResourceCenterPage = lazy(() => import("../pages/resource-center/page"));
+const BlogStatePage = lazy(() => import("../pages/blog-state/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -65,6 +67,11 @@ function P({ C }: { C: React.ComponentType }) {
   );
 }
 
+function ESAStateRedirect() {
+  const { state } = useParams<{ state: string }>();
+  return <Navigate to={`/esa-letter-${state ?? ""}`} replace />;
+}
+
 const routes: RouteObject[] = [
   { path: "/", element: <P C={Home} /> },
   { path: "/apply-page", element: <Navigate to="/assessment" replace /> },
@@ -76,7 +83,10 @@ const routes: RouteObject[] = [
   { path: "/housing-rights-esa", element: <P C={HousingRightsPage} /> },
   { path: "/esa-letter-cost", element: <P C={ESALetterCostPage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
-  { path: "/esa-letter/:state", element: <P C={StateESAPage} /> },
+  // PRIMARY route — flat /esa-letter-[state] format (matches old WordPress URLs)
+  { path: "/esa-letter-:state", element: <P C={StateESAPage} /> },
+  // Redirect any /esa-letter/[state] traffic → /esa-letter-[state] (301 equivalent client-side)
+  { path: "/esa-letter/:state", element: <ESAStateRedirect /> },
   { path: "/all-about-service-dogs", element: <P C={ServiceDogsPage} /> },
   { path: "/how-to-get-psd-letter", element: <P C={HowToGetPSDLetterPage} /> },
   { path: "/privacy-policy", element: <P C={PrivacyPolicyPage} /> },
@@ -89,6 +99,7 @@ const routes: RouteObject[] = [
   { path: "/airline-pet-policy", element: <P C={AirlinePetPolicyPage} /> },
   { path: "/service-animal-vs-esa", element: <P C={ServiceAnimalVsESAPage} /> },
   { path: "/blog", element: <P C={BlogPage} /> },
+  { path: "/blog/state/:state", element: <P C={BlogStatePage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },
@@ -101,6 +112,7 @@ const routes: RouteObject[] = [
   { path: "/admin-doctors", element: <P C={AdminDoctorsPage} /> },
   { path: "/provider-login", element: <P C={ProviderLoginPage} /> },
   { path: "/provider-portal", element: <P C={ProviderPortalPage} /> },
+  { path: "/admin/provider-preview", element: <P C={AdminProviderPreview} /> },
   { path: "/admin-guide", element: <P C={AdminGuidePage} /> },
   { path: "/reset-password", element: <P C={ResetPasswordPage} /> },
   { path: "/psd-assessment", element: <P C={PSDAssessmentPage} /> },
