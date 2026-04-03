@@ -93,8 +93,16 @@ export default function DoctorProfilePage() {
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-2xl overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center gap-5 p-8 md:p-10 pb-6 border-b border-gray-100">
-              <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-orange-100 flex-shrink-0 bg-orange-50">
-                <img src={doctor.image} alt={doctor.name} className="w-full h-full object-cover object-top" />
+              <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-orange-100 flex-shrink-0 bg-orange-50 flex items-center justify-center">
+                {doctor.image ? (
+                  <img src={doctor.image} alt={doctor.name} className="w-full h-full object-cover object-top"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <span className="text-2xl font-extrabold text-orange-400 select-none">
+                    {doctor.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
+                  </span>
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <a href={doctor.verificationUrl} target="_blank" rel="nofollow noreferrer"

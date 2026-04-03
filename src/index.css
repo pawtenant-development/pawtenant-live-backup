@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hero image: shift left on mobile so both dog and woman are visible */
+.hero-img-position {
+  object-position: 18% top;
+}
+@media (min-width: 768px) {
+  .hero-img-position {
+    object-position: 30% top;
+  }
+}
+
 /* ── Zoom & Scale Compatibility ───────────────────────────────────────────── */
 html {
   /* Allow browser zoom (ctrl+/- / pinch) to scale all rem-based units */

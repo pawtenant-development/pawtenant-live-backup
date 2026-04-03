@@ -165,7 +165,7 @@ export default function BlogStatePage() {
             </div>
             <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
               <Link
-                to={`/esa-letter-${stateSlug}`}
+                to={`/esa-letter/${stateSlug}`}
                 className="whitespace-nowrap flex items-center justify-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-md hover:border-orange-300 hover:text-orange-600 transition-colors cursor-pointer"
               >
                 <i className="ri-file-text-line text-orange-500"></i>
@@ -297,7 +297,7 @@ export default function BlogStatePage() {
                 </h3>
                 <div className="space-y-2">
                   {[
-                    { label: `${entry.stateName} ESA Letter Guide`, to: `/esa-letter-${stateSlug}` },
+                    { label: `${entry.stateName} ESA Letter Guide`, to: `/esa-letter/${stateSlug}` },
                     { label: "ESA Housing Rights Guide", to: "/housing-rights-esa" },
                     { label: "ESA Laws by State", to: "/explore-esa-letters-all-states" },
                     { label: "ESA Letter Cost", to: "/esa-letter-cost" },
@@ -415,7 +415,7 @@ export default function BlogStatePage() {
               Get My ESA Letter — Starting at $100
             </Link>
             <Link
-              to={`/esa-letter-${stateSlug}`}
+              to={`/esa-letter/${stateSlug}`}
               className="whitespace-nowrap inline-block px-8 py-3.5 bg-white border border-gray-200 text-gray-700 font-semibold text-sm rounded-md hover:border-orange-300 hover:text-orange-600 transition-colors cursor-pointer"
             >
               {entry.stateName} ESA Law Guide

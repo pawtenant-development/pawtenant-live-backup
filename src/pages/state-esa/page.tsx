@@ -23,7 +23,7 @@ export default function StateESAPage() {
 
     const title = `ESA Letter ${stateData.name} 2026 — Licensed LMHP, Same-Day Delivery | PawTenant`;
     const description = `Need an ESA letter in ${stateData.name}? PawTenant connects you with ${stateData.name}-licensed mental health professionals. Valid for housing across all of ${stateData.name}, HIPAA-secure, same-day delivery, 100% money-back guarantee. ${stateData.name} ESA housing rights explained.`;
-    const canonical = `https://www.pawtenant.com/esa-letter-${stateData.slug}`;
+    const canonical = `https://www.pawtenant.com/esa-letter/${stateData.slug}`;
 
     document.title = title;
 
@@ -148,7 +148,7 @@ export default function StateESAPage() {
               to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
               className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
-              <i className="ri-footprint-fill"></i>
+              <i className="ri-file-text-line"></i>
               Get An ESA Letter Now
             </Link>
           </div>
@@ -179,7 +179,7 @@ export default function StateESAPage() {
                 to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
                 className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
               >
-                <i className="ri-footprint-fill"></i>
+                <i className="ri-file-text-line"></i>
                 Get An ESA Letter Now
               </Link>
             </div>
@@ -227,7 +227,7 @@ export default function StateESAPage() {
                   to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
                   className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
                 >
-                  <i className="ri-footprint-fill"></i>
+                  <i className="ri-file-text-line"></i>
                   Get An ESA Letter Now
                 </Link>
               </div>
@@ -260,7 +260,7 @@ export default function StateESAPage() {
                   to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
                   className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
                 >
-                  <i className="ri-footprint-fill"></i>
+                  <i className="ri-file-text-line"></i>
                   Get An ESA Letter Now
                 </Link>
               </div>
@@ -315,7 +315,7 @@ export default function StateESAPage() {
             to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
             className="whitespace-nowrap inline-flex items-center gap-2 px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
-            <i className="ri-footprint-fill"></i>
+            <i className="ri-file-text-line"></i>
             Get Your ESA Letter
           </Link>
         </div>

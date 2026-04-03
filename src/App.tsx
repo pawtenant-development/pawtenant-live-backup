@@ -115,16 +115,43 @@ function AuthHandler() {
   return null;
 }
 
+// Injects / removes a <style> tag that hard-hides the Tawk iframe on portal pages.
+// This is a belt-and-suspenders fallback for when the JS API isn't ready yet.
+const TAWK_HIDE_STYLE_ID = "tawk-portal-hide";
+
+function injectTawkHideStyle() {
+  if (document.getElementById(TAWK_HIDE_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = TAWK_HIDE_STYLE_ID;
+  style.textContent = `
+    iframe[title*="chat"],
+    iframe[src*="tawk.to"],
+    #tawkchat-container,
+    .tawk-min-container,
+    .tawk-bubble-container,
+    [id^="tawk-"] { display: none !important; visibility: hidden !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+function removeTawkHideStyle() {
+  const el = document.getElementById(TAWK_HIDE_STYLE_ID);
+  if (el) el.remove();
+}
+
 function TawkVisibility() {
   const { pathname } = useLocation();
 
   useEffect(() => {
     const isPortal = PORTAL_ROUTES.some((route) => pathname.startsWith(route));
 
-    // If navigating to a portal route and Tawk is already loaded, hide it immediately.
-    // If navigating back to a public page, show it again.
-    // cancelled flag prevents stale polling loops from a previous route
-    // from overriding the visibility set by the current route's loop.
+    // Immediately inject CSS hide on portal pages — no waiting for JS API
+    if (isPortal) {
+      injectTawkHideStyle();
+    } else {
+      removeTawkHideStyle();
+    }
+
     let cancelled = false;
     let timerId: ReturnType<typeof setTimeout> | null = null;
 
@@ -141,13 +168,13 @@ function TawkVisibility() {
         if (isPortal) {
           api.hideWidget();
         } else {
-          // Only show if on mobile we haven't hidden it for the mobile-button reason
           if (window.innerWidth >= 768) {
             api.showWidget();
           }
         }
-      } else if (!isPortal && attempts < 50) {
-        // Only poll on public pages waiting for Tawk to load
+      } else if (attempts < 60) {
+        // Poll on both portal and public pages — portal pages need to hide Tawk
+        // even if it loads slightly after the SPA navigation
         timerId = setTimeout(() => applyVisibility(attempts + 1), 300);
       }
     };

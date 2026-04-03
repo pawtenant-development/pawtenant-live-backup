@@ -38,7 +38,7 @@ function linkifyStates(text: string, linked: Set<string>): React.ReactNode[] {
       ...(before ? linkifyStates(before, linked) : []),
       <Link
         key={`sl-${name}`}
-        to={`/esa-letter-${slug}`}
+        to={`/esa-letter/${slug}`}
         className="text-orange-600 hover:text-orange-700 underline underline-offset-2 decoration-orange-300/60 font-medium"
       >
         {name}
@@ -52,59 +52,59 @@ function linkifyStates(text: string, linked: Set<string>): React.ReactNode[] {
 // ── Popular sidebar state list (all 50 + DC, grouped by tier) ───────────────
 const sidebarStateLinks = [
   // Tier 1 — highest traffic
-  { label: "ESA Letter California", to: "/esa-letter-california" },
-  { label: "ESA Letter Texas", to: "/esa-letter-texas" },
-  { label: "ESA Letter Florida", to: "/esa-letter-florida" },
-  { label: "ESA Letter New York", to: "/esa-letter-new-york" },
-  { label: "ESA Letter Illinois", to: "/esa-letter-illinois" },
-  { label: "ESA Letter Pennsylvania", to: "/esa-letter-pennsylvania" },
-  { label: "ESA Letter Ohio", to: "/esa-letter-ohio" },
-  { label: "ESA Letter Georgia", to: "/esa-letter-georgia" },
-  { label: "ESA Letter North Carolina", to: "/esa-letter-north-carolina" },
-  { label: "ESA Letter Michigan", to: "/esa-letter-michigan" },
+  { label: "ESA Letter California", to: "/esa-letter/california" },
+  { label: "ESA Letter Texas", to: "/esa-letter/texas" },
+  { label: "ESA Letter Florida", to: "/esa-letter/florida" },
+  { label: "ESA Letter New York", to: "/esa-letter/new-york" },
+  { label: "ESA Letter Illinois", to: "/esa-letter/illinois" },
+  { label: "ESA Letter Pennsylvania", to: "/esa-letter/pennsylvania" },
+  { label: "ESA Letter Ohio", to: "/esa-letter/ohio" },
+  { label: "ESA Letter Georgia", to: "/esa-letter/georgia" },
+  { label: "ESA Letter North Carolina", to: "/esa-letter/north-carolina" },
+  { label: "ESA Letter Michigan", to: "/esa-letter/michigan" },
   // Tier 2
-  { label: "ESA Letter Washington", to: "/esa-letter-washington" },
-  { label: "ESA Letter Arizona", to: "/esa-letter-arizona" },
-  { label: "ESA Letter Massachusetts", to: "/esa-letter-massachusetts" },
-  { label: "ESA Letter Tennessee", to: "/esa-letter-tennessee" },
-  { label: "ESA Letter Indiana", to: "/esa-letter-indiana" },
-  { label: "ESA Letter Missouri", to: "/esa-letter-missouri" },
-  { label: "ESA Letter Maryland", to: "/esa-letter-maryland" },
-  { label: "ESA Letter Wisconsin", to: "/esa-letter-wisconsin" },
-  { label: "ESA Letter Colorado", to: "/esa-letter-colorado" },
-  { label: "ESA Letter Minnesota", to: "/esa-letter-minnesota" },
+  { label: "ESA Letter Washington", to: "/esa-letter/washington" },
+  { label: "ESA Letter Arizona", to: "/esa-letter/arizona" },
+  { label: "ESA Letter Massachusetts", to: "/esa-letter/massachusetts" },
+  { label: "ESA Letter Tennessee", to: "/esa-letter/tennessee" },
+  { label: "ESA Letter Indiana", to: "/esa-letter/indiana" },
+  { label: "ESA Letter Missouri", to: "/esa-letter/missouri" },
+  { label: "ESA Letter Maryland", to: "/esa-letter/maryland" },
+  { label: "ESA Letter Wisconsin", to: "/esa-letter/wisconsin" },
+  { label: "ESA Letter Colorado", to: "/esa-letter/colorado" },
+  { label: "ESA Letter Minnesota", to: "/esa-letter/minnesota" },
   // Tier 3 — visible on expansion
-  { label: "ESA Letter Virginia", to: "/esa-letter-virginia" },
-  { label: "ESA Letter New Jersey", to: "/esa-letter-new-jersey" },
-  { label: "ESA Letter Oregon", to: "/esa-letter-oregon" },
-  { label: "ESA Letter Nevada", to: "/esa-letter-nevada" },
-  { label: "ESA Letter Oklahoma", to: "/esa-letter-oklahoma" },
-  { label: "ESA Letter Connecticut", to: "/esa-letter-connecticut" },
-  { label: "ESA Letter Utah", to: "/esa-letter-utah" },
-  { label: "ESA Letter Iowa", to: "/esa-letter-iowa" },
-  { label: "ESA Letter Arkansas", to: "/esa-letter-arkansas" },
-  { label: "ESA Letter Mississippi", to: "/esa-letter-mississippi" },
-  { label: "ESA Letter Kansas", to: "/esa-letter-kansas" },
-  { label: "ESA Letter New Mexico", to: "/esa-letter-new-mexico" },
-  { label: "ESA Letter Nebraska", to: "/esa-letter-nebraska" },
-  { label: "ESA Letter West Virginia", to: "/esa-letter-west-virginia" },
-  { label: "ESA Letter Idaho", to: "/esa-letter-idaho" },
-  { label: "ESA Letter Hawaii", to: "/esa-letter-hawaii" },
-  { label: "ESA Letter Maine", to: "/esa-letter-maine" },
-  { label: "ESA Letter New Hampshire", to: "/esa-letter-new-hampshire" },
-  { label: "ESA Letter Rhode Island", to: "/esa-letter-rhode-island" },
-  { label: "ESA Letter Montana", to: "/esa-letter-montana" },
-  { label: "ESA Letter Delaware", to: "/esa-letter-delaware" },
-  { label: "ESA Letter South Carolina", to: "/esa-letter-south-carolina" },
-  { label: "ESA Letter South Dakota", to: "/esa-letter-south-dakota" },
-  { label: "ESA Letter North Dakota", to: "/esa-letter-north-dakota" },
-  { label: "ESA Letter Alaska", to: "/esa-letter-alaska" },
-  { label: "ESA Letter Vermont", to: "/esa-letter-vermont" },
-  { label: "ESA Letter Wyoming", to: "/esa-letter-wyoming" },
-  { label: "ESA Letter Louisiana", to: "/esa-letter-louisiana" },
-  { label: "ESA Letter Alabama", to: "/esa-letter-alabama" },
-  { label: "ESA Letter Kentucky", to: "/esa-letter-kentucky" },
-  { label: "ESA Letter Washington DC", to: "/esa-letter-washington-dc" },
+  { label: "ESA Letter Virginia", to: "/esa-letter/virginia" },
+  { label: "ESA Letter New Jersey", to: "/esa-letter/new-jersey" },
+  { label: "ESA Letter Oregon", to: "/esa-letter/oregon" },
+  { label: "ESA Letter Nevada", to: "/esa-letter/nevada" },
+  { label: "ESA Letter Oklahoma", to: "/esa-letter/oklahoma" },
+  { label: "ESA Letter Connecticut", to: "/esa-letter/connecticut" },
+  { label: "ESA Letter Utah", to: "/esa-letter/utah" },
+  { label: "ESA Letter Iowa", to: "/esa-letter/iowa" },
+  { label: "ESA Letter Arkansas", to: "/esa-letter/arkansas" },
+  { label: "ESA Letter Mississippi", to: "/esa-letter/mississippi" },
+  { label: "ESA Letter Kansas", to: "/esa-letter/kansas" },
+  { label: "ESA Letter New Mexico", to: "/esa-letter/new-mexico" },
+  { label: "ESA Letter Nebraska", to: "/esa-letter/nebraska" },
+  { label: "ESA Letter West Virginia", to: "/esa-letter/west-virginia" },
+  { label: "ESA Letter Idaho", to: "/esa-letter/idaho" },
+  { label: "ESA Letter Hawaii", to: "/esa-letter/hawaii" },
+  { label: "ESA Letter Maine", to: "/esa-letter/maine" },
+  { label: "ESA Letter New Hampshire", to: "/esa-letter/new-hampshire" },
+  { label: "ESA Letter Rhode Island", to: "/esa-letter/rhode-island" },
+  { label: "ESA Letter Montana", to: "/esa-letter/montana" },
+  { label: "ESA Letter Delaware", to: "/esa-letter/delaware" },
+  { label: "ESA Letter South Carolina", to: "/esa-letter/south-carolina" },
+  { label: "ESA Letter South Dakota", to: "/esa-letter/south-dakota" },
+  { label: "ESA Letter North Dakota", to: "/esa-letter/north-dakota" },
+  { label: "ESA Letter Alaska", to: "/esa-letter/alaska" },
+  { label: "ESA Letter Vermont", to: "/esa-letter/vermont" },
+  { label: "ESA Letter Wyoming", to: "/esa-letter/wyoming" },
+  { label: "ESA Letter Louisiana", to: "/esa-letter/louisiana" },
+  { label: "ESA Letter Alabama", to: "/esa-letter/alabama" },
+  { label: "ESA Letter Kentucky", to: "/esa-letter/kentucky" },
+  { label: "ESA Letter Washington DC", to: "/esa-letter/washington-dc" },
 ];
 
 function InArticleCTA({ isPSD = false }: { isPSD?: boolean }) {
@@ -432,7 +432,7 @@ export default function BlogPostPage() {
                       ))}
                     </div>
                     <Link
-                      to={`/esa-letter-${stateEntry.stateSlug}`}
+                      to={`/esa-letter/${stateEntry.stateSlug}`}
                       className="flex items-center gap-1.5 text-xs text-orange-500 hover:text-orange-700 font-semibold mt-3 pt-3 border-t border-gray-100 cursor-pointer"
                     >
                       <i className="ri-file-text-line"></i>

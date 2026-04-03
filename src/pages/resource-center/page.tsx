@@ -257,7 +257,7 @@ export default function ResourceCenterPage() {
             {esaStatesToShow.map(state => (
               <Link
                 key={state.slug}
-                to={`/esa-letter-${state.slug}`}
+                to={`/esa-letter/${state.slug}`}
                 className="flex items-center gap-2 p-3 bg-[#fdf6ee] rounded-xl hover:bg-orange-100 transition-colors cursor-pointer group"
               >
                 <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0 group-hover:bg-orange-200 transition-colors">

@@ -98,12 +98,19 @@ export default function DoctorsSection() {
                 style={{ minWidth: "288px", maxWidth: "288px" }}
               >
                 {/* Photo */}
-                <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-orange-100 mb-4 flex-shrink-0 bg-orange-50">
-                  <img
-                    src={doctor.image}
-                    alt={doctor.name}
-                    className="w-full h-full object-cover object-top"
-                  />
+                <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-orange-100 mb-4 flex-shrink-0 bg-orange-50 flex items-center justify-center">
+                  {doctor.image ? (
+                    <img
+                      src={doctor.image}
+                      alt={doctor.name}
+                      className="w-full h-full object-cover object-top"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; (e.currentTarget.parentElement as HTMLElement).setAttribute("data-initials", "true"); }}
+                    />
+                  ) : (
+                    <span className="text-2xl font-extrabold text-orange-400 select-none">
+                      {doctor.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Badge */}

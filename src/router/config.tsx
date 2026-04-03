@@ -69,7 +69,7 @@ function P({ C }: { C: React.ComponentType }) {
 
 function ESAStateRedirect() {
   const { state } = useParams<{ state: string }>();
-  return <Navigate to={`/esa-letter-${state ?? ""}`} replace />;
+  return <Navigate to={`/esa-letter/${state ?? ""}`} replace />;
 }
 
 const routes: RouteObject[] = [
@@ -83,10 +83,8 @@ const routes: RouteObject[] = [
   { path: "/housing-rights-esa", element: <P C={HousingRightsPage} /> },
   { path: "/esa-letter-cost", element: <P C={ESALetterCostPage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
-  // PRIMARY route — flat /esa-letter-[state] format (matches old WordPress URLs)
-  { path: "/esa-letter-:state", element: <P C={StateESAPage} /> },
-  // Redirect any /esa-letter/[state] traffic → /esa-letter-[state] (301 equivalent client-side)
-  { path: "/esa-letter/:state", element: <ESAStateRedirect /> },
+  // PRIMARY route — /esa-letter/[state] format
+  { path: "/esa-letter/:state", element: <P C={StateESAPage} /> },
   { path: "/all-about-service-dogs", element: <P C={ServiceDogsPage} /> },
   { path: "/how-to-get-psd-letter", element: <P C={HowToGetPSDLetterPage} /> },
   { path: "/privacy-policy", element: <P C={PrivacyPolicyPage} /> },

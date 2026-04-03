@@ -125,7 +125,7 @@ export default function HousingRightsPage() {
                 to="/assessment"
                 className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
               >
-                <i className="ri-footprint-fill"></i>
+                <i className="ri-file-text-line"></i>
                 Get an ESA Letter Now
               </Link>
             </div>
@@ -234,7 +234,7 @@ export default function HousingRightsPage() {
                     to="/assessment"
                     className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
                   >
-                    <i className="ri-footprint-fill"></i>
+                    <i className="ri-file-text-line"></i>
                     Get An ESA Letter Now
                   </Link>
                 </div>

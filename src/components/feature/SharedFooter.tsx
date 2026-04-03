@@ -42,9 +42,6 @@ const footerCols = [
 const socialLinks = [
   { icon: "ri-facebook-fill", href: "https://www.facebook.com/PawTenant/", label: "Facebook" },
   { icon: "ri-instagram-line", href: "https://www.instagram.com/pawtenant/", label: "Instagram" },
-  { icon: "ri-youtube-line", href: "#", label: "YouTube" },
-  { icon: "ri-pinterest-line", href: "#", label: "Pinterest" },
-  { icon: "ri-twitter-x-line", href: "#", label: "X / Twitter" },
 ];
 
 export default function SharedFooter() {

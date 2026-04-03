@@ -115,7 +115,7 @@ export default function ExploreStatesPage() {
                 {col.map((state) => (
                   <Link
                     key={state.slug}
-                    to={`/esa-letter-${state.slug}`}
+                    to={`/esa-letter/${state.slug}`}
                     className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-orange-50 transition-colors group cursor-pointer"
                   >
                     <div className="w-5 h-5 flex items-center justify-center">
@@ -134,7 +134,7 @@ export default function ExploreStatesPage() {
               to="/assessment"
               className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
-              <i className="ri-footprint-fill"></i>
+              <i className="ri-file-text-line"></i>
               Get An ESA Letter Now
             </Link>
           </div>

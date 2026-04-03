@@ -144,7 +144,7 @@ export default function ServiceDogsPage() {
                 to="/psd-assessment"
                 className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
               >
-                <i className="ri-footprint-fill"></i>
+                <i className="ri-mental-health-line"></i>
                 Get Your PSD Letter Now
               </Link>
             </div>
@@ -167,7 +167,7 @@ export default function ServiceDogsPage() {
                 to="/psd-assessment"
                 className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
               >
-                <i className="ri-footprint-fill"></i>
+                <i className="ri-mental-health-line"></i>
                 Get Your PSD Letter Now
               </Link>
             </div>
@@ -243,7 +243,7 @@ export default function ServiceDogsPage() {
                   to="/psd-assessment"
                   className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 border border-orange-500 text-orange-500 font-semibold rounded-md hover:bg-orange-50 transition-colors cursor-pointer text-sm"
                 >
-                  <i className="ri-footprint-fill"></i>
+                  <i className="ri-send-plane-line"></i>
                   Apply For PSD Letter
                 </Link>
               </div>
