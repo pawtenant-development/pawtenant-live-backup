@@ -10,6 +10,12 @@ const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e6353
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 
+const HEADER_BG = "#4a9e8a";
+const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
+const HEADER_TEXT = "#ffffff";
+const HEADER_SUB = "rgba(255,255,255,0.82)";
+const ACCENT = "#1a5c4f";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -17,11 +23,8 @@ const corsHeaders = {
 
 function escapeHtml(value = "") {
   return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function baseLayout(badge: string, heading: string, subheading: string, body: string): string {
@@ -33,11 +36,11 @@ function baseLayout(badge: string, heading: string, subheading: string, body: st
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
       <tr>
-        <td style="background:#1a5c4f;padding:32px;text-align:center;">
+        <td style="background:${HEADER_BG};padding:32px;text-align:center;">
           <img src="${LOGO_URL}" width="180" alt="PawTenant" style="display:block;margin:0 auto 16px;height:auto;" />
-          <div style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
-          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#ffffff;line-height:1.3;">${heading}</h1>
-          <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.75);">${subheading}</p>
+          <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
+          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">${heading}</h1>
+          <p style="margin:0;font-size:14px;color:${HEADER_SUB};">${subheading}</p>
         </td>
       </tr>
       <tr>
@@ -45,8 +48,8 @@ function baseLayout(badge: string, heading: string, subheading: string, body: st
       </tr>
       <tr>
         <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a></p>
         </td>
       </tr>
     </table>
@@ -73,12 +76,12 @@ function buildDiscountBanner(discountCode: string, discountPercent: number, disc
 
   return `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
     <tr>
-      <td style="background:linear-gradient(135deg,#1a5c4f,#2d8b73);border-radius:12px;padding:20px 24px;text-align:center;">
+      <td style="background:linear-gradient(135deg,${ACCENT},#2d8b73);border-radius:12px;padding:20px 24px;text-align:center;">
         <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.1em;">Special Offer Just For You</p>
         <p style="margin:0 0 12px;font-size:22px;font-weight:800;color:#ffffff;">${escapeHtml(savings)}</p>
         <div style="display:inline-block;background:#ffffff;border-radius:8px;padding:10px 24px;margin-bottom:8px;">
           <p style="margin:0;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;">Use promo code at checkout</p>
-          <p style="margin:0;font-size:20px;font-weight:800;color:#1a5c4f;letter-spacing:0.08em;">${escapeHtml(discountCode)}</p>
+          <p style="margin:0;font-size:20px;font-weight:800;color:${ACCENT};letter-spacing:0.08em;">${escapeHtml(discountCode)}</p>
         </div>
         <p style="margin:8px 0 0;font-size:12px;color:rgba(255,255,255,0.65);">Applies automatically when you return &mdash; expires in 48 hours</p>
       </td>
@@ -99,7 +102,6 @@ function buildRecoveryEmail(
   const name = escapeHtml(firstName || "there");
   const hasDiscount = !!(discountCode && discountCode.trim());
   const letterLabel = isPsd ? "PSD Letter" : "ESA Letter";
-  const accentColor = isPsd ? "#d97706" : "#f97316"; // amber for PSD, orange for ESA
 
   const psdBadge = isPsd
     ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
@@ -153,7 +155,7 @@ function buildRecoveryEmail(
         ${benefits.map((benefit) => `
         <tr>
           <td style="padding:7px 0;vertical-align:top;width:30px;">
-            <div style="width:20px;height:20px;background:#1a5c4f;border-radius:50%;text-align:center;line-height:20px;font-size:10px;font-weight:700;color:#fff;">&#10003;</div>
+            <div style="width:20px;height:20px;background:${ACCENT};border-radius:50%;text-align:center;line-height:20px;font-size:10px;font-weight:700;color:#fff;">&#10003;</div>
           </td>
           <td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">${benefit}</td>
         </tr>`).join("")}
@@ -162,7 +164,7 @@ function buildRecoveryEmail(
   </table>`;
 
   const customMsgSection = customMessage && customMessage.trim()
-    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f9;border-left:4px solid #1a5c4f;border-radius:4px;margin-bottom:24px;">
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f9;border-left:4px solid ${ACCENT};border-radius:4px;margin-bottom:24px;">
         <tr><td style="padding:14px 16px;">
           <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;font-style:italic;">${escapeHtml(customMessage)}</p>
         </td></tr>
@@ -190,7 +192,7 @@ function buildRecoveryEmail(
     ${psdBadge}
     ${statusCard}
     ${customMsgSection}
-    ${ctaButton(resumeUrl, hasDiscount ? "Claim My Discount &amp; Complete" : `Complete My ${escapeHtml(letterLabel)} Payment`, isPsd ? "#d97706" : (hasDiscount ? "#1a5c4f" : "#f97316"))}
+    ${ctaButton(resumeUrl, hasDiscount ? "Claim My Discount &amp; Complete" : `Complete My ${escapeHtml(letterLabel)} Payment`, isPsd ? "#d97706" : (hasDiscount ? ACCENT : "#f97316"))}
     ${benefitsCard}
     <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">
       Have questions? Reply to this email or call us at <strong style="color:#374151;">(409) 965-5885</strong>. This link expires in 7 days.
@@ -242,7 +244,6 @@ serve(async (req) => {
     const firstName = (body.firstName || order.first_name || "").trim();
     const price = body.price ?? order.price;
 
-    // Determine letter type — prefer explicit param, then DB field, then detect from confirmationId
     const rawLetterType = body.letterType || (order.letter_type as string | null) || "";
     const isPsd = rawLetterType === "psd" || confirmationId.includes("-PSD");
 
@@ -266,7 +267,6 @@ serve(async (req) => {
       }
     }
 
-    // Build resume link for correct assessment page
     const assessmentPath = isPsd ? "psd-assessment" : "assessment";
     const resumeLink = `${SITE_URL}/${assessmentPath}?resume=${encodeURIComponent(confirmationId)}`;
     const orderTotal = price != null ? `$${Number(price).toFixed(2)}` : "Varies by plan";
@@ -283,10 +283,7 @@ serve(async (req) => {
 
     const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: FROM_EMAIL,
         to: [email],

@@ -90,9 +90,70 @@ const AUDIENCE_OPTIONS: AudienceOption[] = [
 ];
 
 const EMAIL_TEMPLATES = [
+  // ── Lead Recovery ──────────────────────────────────────────────────────────
+  {
+    id: "finish_esa",
+    label: "Finish Your ESA Letter",
+    group: "Lead Recovery",
+    subject: "You're One Step Away — Complete Your ESA Letter",
+    body: `Hi {name},
+
+You're one step away from getting your ESA letter. Complete your order here and get protected today.
+
+Your assessment answers are already saved — just finish the payment and our licensed providers will review your case within 24 hours.`,
+    ctaLabel: "Complete My ESA Letter",
+    ctaUrl: "https://pawtenant.com/assessment",
+  },
+  {
+    id: "still_thinking",
+    label: "Still Thinking?",
+    group: "Lead Recovery",
+    subject: "Still Thinking? Get Your ESA Letter Today — Avoid Housing Issues",
+    body: `Hi {name},
+
+Still thinking about your ESA letter? Don't wait until your landlord asks — get protected today.
+
+Our licensed mental health professionals are standing by to complete your evaluation. Most letters are delivered within 24 hours.
+
+Avoid housing issues before they start. Complete your application now.`,
+    ctaLabel: "Get My ESA Letter Now",
+    ctaUrl: "https://pawtenant.com/assessment",
+  },
+  {
+    id: "abandoned_checkout",
+    label: "Abandoned Checkout Recovery",
+    group: "Lead Recovery",
+    subject: "Complete Your ESA Letter — Your Assessment is Saved",
+    body: `Hi {name},
+
+We noticed you started your ESA letter application but didn't complete checkout. Your assessment answers are saved — you can pick up right where you left off.
+
+Our licensed providers are ready to review your case. Most letters are delivered within 24 hours of payment.
+
+Don't let your housing protections lapse — complete your order today.`,
+    ctaLabel: "Complete My Payment",
+    ctaUrl: "https://pawtenant.com/assessment",
+  },
+  {
+    id: "consultation_booking",
+    label: "Confirm Provider Consultation",
+    group: "Lead Recovery",
+    subject: "Your Provider Consultation is Confirmed — Complete Your Payment",
+    body: `Hi {name},
+
+Your consultation with a licensed PawTenant provider has been confirmed!
+
+To lock in your appointment and get your ESA letter, please complete your payment. Our providers are ready to review your case and deliver your letter within 24 hours.
+
+Don't miss your spot — complete your payment now.`,
+    ctaLabel: "Complete My Booking",
+    ctaUrl: "https://pawtenant.com/assessment",
+  },
+  // ── Existing Customers ─────────────────────────────────────────────────────
   {
     id: "renewal",
     label: "ESA Renewal",
+    group: "Existing Customers",
     subject: "Time to Renew Your ESA Letter — Stay Protected",
     body: `Hi {name},
 
@@ -107,20 +168,54 @@ Don't let your ESA protections lapse. Renew today and keep your housing rights s
   {
     id: "psd_upsell",
     label: "PSD Upgrade",
-    subject: "Upgrade to a Psychiatric Service Dog Letter — Fly Anywhere",
+    group: "Existing Customers",
+    subject: "Upgrade to a Psychiatric Service Dog Letter — Full Public Access",
     body: `Hi {name},
 
 Did you know you can upgrade your ESA letter to a full Psychiatric Service Dog (PSD) letter?
 
-A PSD letter grants your dog access to public spaces, transportation, and more. Unlike ESA letters, PSD protections extend beyond housing.
+A PSD letter grants your dog access to public spaces, transportation, and more. Unlike ESA letters, PSD protections extend beyond housing under the Americans with Disabilities Act.
 
 Our licensed providers can evaluate your eligibility and issue a PSD letter — usually within 24 hours.`,
     ctaLabel: "Get My PSD Letter",
     ctaUrl: "https://pawtenant.com/how-to-get-psd-letter",
   },
   {
+    id: "order_confirmed",
+    label: "Order Confirmed",
+    group: "Existing Customers",
+    subject: "Your ESA Letter Order is Confirmed — PawTenant",
+    body: `Hi {name},
+
+Thank you for your order! Your ESA letter application has been received and is now being reviewed by one of our licensed mental health professionals.
+
+You can track your order status at any time by logging into your customer portal. We'll notify you as soon as your letter is ready — usually within 24 hours.
+
+Thank you for trusting PawTenant with your ESA needs.`,
+    ctaLabel: "Track My Order",
+    ctaUrl: "https://pawtenant.com/my-orders",
+  },
+  {
+    id: "discount",
+    label: "Discount / Promo",
+    group: "Existing Customers",
+    subject: "Exclusive Offer from PawTenant — Just for You",
+    body: `Hi {name},
+
+As one of our valued customers, we wanted to share an exclusive offer just for you.
+
+Whether you need a renewal, an upgrade, or a letter for a new pet — our licensed mental health professionals are here to help.
+
+Use the button below to claim your offer. This is a limited-time deal available only to our existing customers.
+
+Thank you for trusting PawTenant with your ESA needs.`,
+    ctaLabel: "Claim My Offer",
+    ctaUrl: "https://pawtenant.com/assessment",
+  },
+  {
     id: "promo",
     label: "Promotion / Offer",
+    group: "Existing Customers",
     subject: "Special Offer from PawTenant — For Our Valued Customers",
     body: `Hi {name},
 
@@ -135,6 +230,7 @@ Thank you for trusting PawTenant with your ESA needs.`,
   {
     id: "update",
     label: "General Update",
+    group: "General",
     subject: "An Important Update from PawTenant",
     body: `Hi {name},
 
@@ -149,6 +245,7 @@ Thank you for being a PawTenant customer.`,
   {
     id: "custom",
     label: "Custom",
+    group: "General",
     subject: "",
     body: "",
     ctaLabel: "Visit My Portal",
@@ -158,23 +255,51 @@ Thank you for being a PawTenant customer.`,
 
 const SMS_TEMPLATES = [
   {
+    id: "finish_esa",
+    label: "Finish Your ESA Letter",
+    group: "Lead Recovery",
+    text: "Hi {name}, you're one step away from your ESA letter! Complete your order here: pawtenant.com/assessment — Reply STOP to opt out.",
+  },
+  {
+    id: "still_thinking",
+    label: "Still Thinking?",
+    group: "Lead Recovery",
+    text: "Hi {name}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment — Reply STOP to opt out.",
+  },
+  {
+    id: "consultation_booking",
+    label: "Consultation Confirmed",
+    group: "Lead Recovery",
+    text: "Hi {name}, your provider consultation with PawTenant is confirmed! Complete your payment to lock in your spot: pawtenant.com/assessment",
+  },
+  {
     id: "renewal",
     label: "ESA Renewal",
+    group: "Existing Customers",
     text: "Hi {name}! Your ESA letter may need renewal soon. Renew today at pawtenant.com/renew-esa-letter — our licensed providers complete it within 24-48hrs. Reply STOP to opt out.",
+  },
+  {
+    id: "order_confirmed",
+    label: "Order Confirmed",
+    group: "Existing Customers",
+    text: "Hi {name}, your ESA letter order with PawTenant is confirmed! Track your order at pawtenant.com/my-orders. We'll notify you when your letter is ready.",
   },
   {
     id: "promo",
     label: "Promotion",
+    group: "Existing Customers",
     text: "Hi {name}! PawTenant here with an exclusive offer for our valued customers. Visit pawtenant.com to see your options. Questions? Reply to this message.",
   },
   {
     id: "update",
     label: "Status Update",
+    group: "General",
     text: "Hi {name}, this is PawTenant. We have an important update regarding your account. Log into pawtenant.com/my-orders to view details. Reply STOP to opt out.",
   },
   {
     id: "custom",
     label: "Custom",
+    group: "General",
     text: "",
   },
 ];
@@ -317,7 +442,8 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
 
           <!-- Header -->
           <div style="background:#1a5c4f;padding:28px 32px;text-align:center;">
-            <span style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">🐾 PawTenant</span>
+            <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
+            <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
           </div>
 
           <!-- Body -->
@@ -329,8 +455,9 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
 
           <!-- Footer -->
           <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 36px;text-align:center;">
-            <p style="margin:0 0 6px 0;font-size:12px;color:#6b7280;">Sent by ${adminName || "PawTenant Admin"} via PawTenant</p>
-            <p style="margin:0;font-size:11px;color:#9ca3af;">PawTenant · ESA &amp; PSD Letters · <a href="https://pawtenant.com" style="color:#9ca3af;">pawtenant.com</a></p>
+            <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:hello@pawtenant.com" style="color:#1a5c4f;text-decoration:none;">hello@pawtenant.com</a></p>
+            <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Sent by ${adminName || "PawTenant Admin"} via PawTenant</p>
+            <p style="margin:0;font-size:11px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Letter Consultations &nbsp;&middot;&nbsp; <a href="https://pawtenant.com" style="color:#9ca3af;">pawtenant.com</a></p>
           </div>
         </div>
       </td>
@@ -833,22 +960,37 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
               {/* ── Email compose ── */}
               {channel === "email" && (
                 <div className="space-y-4">
-                  {/* Template picker */}
+                  {/* Template picker — grouped */}
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Template</p>
-                    <div className="flex flex-wrap gap-2">
-                      {EMAIL_TEMPLATES.map((t) => (
-                        <button key={t.id} type="button"
-                          onClick={() => handleEmailTemplateSelect(t.id)}
-                          className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                            emailTemplateId === t.id
-                              ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
-                              : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"
-                          }`}>
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
+                    {(() => {
+                      const groups = [...new Set(EMAIL_TEMPLATES.map((t) => t.group))];
+                      return (
+                        <div className="space-y-2">
+                          {groups.map((grp) => (
+                            <div key={grp}>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                                <i className={`text-xs ${grp === "Lead Recovery" ? "ri-user-follow-line text-orange-400" : grp === "Existing Customers" ? "ri-group-line text-[#1a5c4f]" : "ri-settings-3-line text-gray-400"}`}></i>
+                                {grp}
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {EMAIL_TEMPLATES.filter((t) => t.group === grp).map((t) => (
+                                  <button key={t.id} type="button"
+                                    onClick={() => handleEmailTemplateSelect(t.id)}
+                                    className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                                      emailTemplateId === t.id
+                                        ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
+                                        : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"
+                                    }`}>
+                                    {t.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Subject */}
@@ -1011,19 +1153,34 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
                 <div className="space-y-4">
                   <div>
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Template</p>
-                    <div className="flex flex-wrap gap-2">
-                      {SMS_TEMPLATES.map((t) => (
-                        <button key={t.id} type="button"
-                          onClick={() => handleSmsTemplateSelect(t.id)}
-                          className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                            smsTemplateId === t.id
-                              ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
-                              : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"
-                          }`}>
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
+                    {(() => {
+                      const groups = [...new Set(SMS_TEMPLATES.map((t) => t.group))];
+                      return (
+                        <div className="space-y-2">
+                          {groups.map((grp) => (
+                            <div key={grp}>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                                <i className={`text-xs ${grp === "Lead Recovery" ? "ri-user-follow-line text-orange-400" : grp === "Existing Customers" ? "ri-group-line text-[#1a5c4f]" : "ri-settings-3-line text-gray-400"}`}></i>
+                                {grp}
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {SMS_TEMPLATES.filter((t) => t.group === grp).map((t) => (
+                                  <button key={t.id} type="button"
+                                    onClick={() => handleSmsTemplateSelect(t.id)}
+                                    className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                                      smsTemplateId === t.id
+                                        ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
+                                        : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"
+                                    }`}>
+                                    {t.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1.5">

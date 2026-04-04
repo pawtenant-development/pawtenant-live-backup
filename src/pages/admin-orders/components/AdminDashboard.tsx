@@ -20,6 +20,13 @@ interface Order {
   signed_letter_url: string | null;
   patient_notification_sent_at: string | null;
   email_log?: { type: string; sentAt: string; success: boolean }[] | null;
+  // Attribution fields
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  gclid?: string | null;
+  fbclid?: string | null;
+  referred_by?: string | null;
 }
 
 interface DoctorContact {
@@ -104,6 +111,44 @@ function getOrderDisplayStatus(order: Order): { label: string; key: string } {
   return { label: "Lead (Paid) · Assigned", key: "lead_paid_assigned" };
 }
 
+// ── Traffic source derivation (mirrors sync-to-sheets logic) ─────────────────
+function deriveTrafficSource(order: Order): string {
+  const utmSrc = (order.utm_source ?? "").toLowerCase();
+  const utmMed = (order.utm_medium ?? "").toLowerCase();
+  const gclid = order.gclid ?? "";
+  const fbclid = order.fbclid ?? "";
+  const referred = (order.referred_by ?? "").toLowerCase();
+
+  if (gclid) return "Google Ads";
+  if (utmSrc === "google" && ["cpc", "paid", "ppc", "paidsearch"].includes(utmMed)) return "Google Ads";
+  if (fbclid) return "Facebook / Instagram";
+  if (utmSrc === "facebook") return "Facebook";
+  if (utmSrc === "instagram") return "Instagram";
+  if (utmSrc === "tiktok") return "TikTok";
+  if (utmSrc === "google" || utmMed === "organic") return "Google Organic";
+  if (referred.includes("google")) return "Google";
+  if (referred.includes("tiktok")) return "TikTok";
+  if (referred.includes("facebook") || referred.includes("instagram")) return "Facebook";
+  if (referred.includes("seo") || referred.includes("organic")) return "Google Organic";
+  if (referred && referred !== "direct" && referred !== "unknown") return referred;
+  return "Direct / Unknown";
+}
+
+const SOURCE_COLORS: Record<string, { bar: string; badge: string; icon: string }> = {
+  "Google Ads":          { bar: "bg-[#1a5c4f]",  badge: "bg-[#f0faf7] text-[#1a5c4f]",   icon: "ri-google-line" },
+  "Facebook / Instagram":{ bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",         icon: "ri-facebook-circle-line" },
+  "Facebook":            { bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",         icon: "ri-facebook-circle-line" },
+  "Instagram":           { bar: "bg-pink-500",    badge: "bg-pink-50 text-pink-700",       icon: "ri-instagram-line" },
+  "TikTok":              { bar: "bg-gray-800",    badge: "bg-gray-100 text-gray-700",      icon: "ri-tiktok-line" },
+  "Google Organic":      { bar: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700", icon: "ri-search-line" },
+  "Google":              { bar: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700", icon: "ri-search-line" },
+  "Direct / Unknown":    { bar: "bg-gray-300",    badge: "bg-gray-100 text-gray-500",      icon: "ri-global-line" },
+};
+
+function getSourceColor(source: string) {
+  return SOURCE_COLORS[source] ?? { bar: "bg-amber-400", badge: "bg-amber-50 text-amber-700", icon: "ri-share-line" };
+}
+
 export default function AdminDashboard({ orders, doctorContacts, loading, onTabChange }: AdminDashboardProps) {
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [alertExpanded, setAlertExpanded] = useState(true);
@@ -143,7 +188,13 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     const leadPaidAssigned      = activeOrders.filter(o => !!o.payment_intent_id && !!(o.doctor_email || (o as Order & { doctor_user_id?: string }).doctor_user_id) && o.doctor_status !== "patient_notified").length;
     const completedOrders       = activeOrders.filter(o => o.doctor_status === "patient_notified").length;
     const paidOrders            = activeOrders.filter(o => !!o.payment_intent_id).length;
-    const awaitingProvider      = activeOrders.filter(o => (o.doctor_status === "pending_review" || o.doctor_status === "in_review") && o.doctor_status !== "patient_notified").length;
+    // Pending provider review = ASSIGNED orders where provider hasn't submitted yet
+    // Must be paid + assigned + NOT yet completed
+    const pendingProviderReview = activeOrders.filter(o =>
+      !!o.payment_intent_id &&
+      !!(o.doctor_email || (o as Order & { doctor_user_id?: string }).doctor_user_id) &&
+      o.doctor_status !== "patient_notified"
+    ).length;
     const activeProviders       = doctorContacts.filter(d => d.is_active !== false).length;
     const inactiveProviders     = doctorContacts.filter(d => d.is_active === false).length;
 
@@ -161,7 +212,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
       leadPaidAssigned,
       completedOrders,
       paidOrders,
-      awaitingProvider,
+      pendingProviderReview,
       activeProviders,
       inactiveProviders,
       cancelledThisMonth,
@@ -191,6 +242,28 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     return `${Math.round((paid / total) * 100)}%`;
   }, [orders]);
 
+  // ── Traffic source breakdown ─────────────────────────────────────────────
+  const sourceBreakdown = useMemo(() => {
+    const counts: Record<string, { total: number; paid: number }> = {};
+    for (const o of orders) {
+      if (o.status === "cancelled") continue;
+      const src = deriveTrafficSource(o);
+      if (!counts[src]) counts[src] = { total: 0, paid: 0 };
+      counts[src].total += 1;
+      if (o.payment_intent_id) counts[src].paid += 1;
+    }
+    return Object.entries(counts)
+      .map(([source, { total, paid }]) => ({
+        source,
+        total,
+        paid,
+        convRate: total > 0 ? Math.round((paid / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [orders]);
+
+  const maxSourceTotal = useMemo(() => Math.max(...sourceBreakdown.map(s => s.total), 1), [sourceBreakdown]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -205,14 +278,14 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
   // Split metric cards into two groups
   const urgentCards = [
     {
-      label: "Abandoned Checkouts",
-      value: stats.abandonedCheckouts,
-      icon: "ri-shopping-cart-line",
-      bg: "bg-red-50",
-      iconColor: "text-red-500",
-      borderColor: "border-red-200",
+      label: "Unpaid Leads",
+      value: stats.leadUnpaid,
+      icon: "ri-user-follow-line",
+      bg: "bg-amber-50",
+      iconColor: "text-amber-600",
+      borderColor: "border-amber-200",
       tab: "orders",
-      note: "Unpaid leads older than 1 hour",
+      note: `${stats.abandonedCheckouts} older than 1 hour — need recovery`,
     },
     {
       label: "Paid · Unassigned",
@@ -225,24 +298,24 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
       note: "Payment received — needs provider",
     },
     {
-      label: "Lead (Unpaid)",
-      value: stats.leadUnpaid,
-      icon: "ri-user-follow-line",
-      bg: "bg-amber-50",
-      iconColor: "text-amber-600",
-      borderColor: "border-amber-200",
+      label: "Pending Provider Review",
+      value: stats.pendingProviderReview,
+      icon: "ri-time-line",
+      bg: "bg-[#f0faf7]",
+      iconColor: "text-[#1a5c4f]",
+      borderColor: "border-[#b8ddd5]",
       tab: "orders",
-      note: "Assessment started, no payment yet",
+      note: "Assigned & paid — provider hasn't submitted yet",
     },
     {
-      label: "Awaiting Provider",
-      value: stats.awaitingProvider,
-      icon: "ri-time-line",
-      bg: "bg-violet-50",
-      iconColor: "text-violet-600",
-      borderColor: "border-violet-200",
+      label: "Cancellations",
+      value: stats.cancelledThisMonth,
+      icon: "ri-forbid-2-line",
+      bg: "bg-red-50",
+      iconColor: "text-red-500",
+      borderColor: "border-red-200",
       tab: "orders",
-      note: "Assigned — pending review / in review",
+      note: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
     },
   ];
 
@@ -292,14 +365,14 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
       isString: false,
     },
     {
-      label: "Cancellations",
-      value: stats.cancelledThisMonth,
-      icon: "ri-forbid-2-line",
-      bg: "bg-red-50",
-      iconColor: "text-red-500",
-      borderColor: "border-red-200",
+      label: "Total Paid Orders",
+      value: stats.paidOrders,
+      icon: "ri-bank-card-line",
+      bg: "bg-[#f0faf7]",
+      iconColor: "text-[#1a5c4f]",
+      borderColor: "border-[#b8ddd5]",
       tab: "orders",
-      note: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      note: "All time — includes completed",
       isString: false,
     },
   ];
@@ -371,7 +444,10 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
               </button>
               <button type="button" onClick={() => setAlertExpanded(v => !v)}
                 className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-xl bg-red-100 text-red-600 hover:bg-red-200 cursor-pointer transition-colors">
-                <i className={`ri-arrow-${alertExpanded ? "up" : "down"}-s-line text-sm`}></i>
+                {alertExpanded
+                  ? <i className="ri-arrow-up-s-line text-sm"></i>
+                  : <i className="ri-arrow-down-s-line text-sm"></i>
+                }
               </button>
               <button type="button" onClick={() => setAlertDismissed(true)}
                 className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-xl bg-red-100 text-red-400 hover:bg-red-200 hover:text-red-600 cursor-pointer transition-colors">
@@ -507,8 +583,8 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             </div>
             <p className="text-xs font-bold text-[#1a5c4f] uppercase tracking-wide">Pending Provider Review</p>
           </div>
-          <p className="text-2xl font-extrabold text-[#1a5c4f] mb-1">{stats.awaitingProvider}</p>
-          <p className="text-xs text-[#1a5c4f]/70">Assigned orders where provider hasn&apos;t submitted the letter yet.</p>
+          <p className="text-2xl font-extrabold text-[#1a5c4f] mb-1">{stats.pendingProviderReview}</p>
+          <p className="text-xs text-[#1a5c4f]/70">Paid &amp; assigned orders where the provider hasn&apos;t submitted the letter yet.</p>
         </div>
       </div>
 
@@ -539,6 +615,60 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
           })}
         </div>
       </div>
+
+      {/* ── REFERRED BY SOURCE BREAKDOWN ── */}
+      {sourceBreakdown.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div>
+              <p className="text-sm font-extrabold text-gray-900">Lead Source Breakdown</p>
+              <p className="text-xs text-gray-400 mt-0.5">Which channels are driving leads &amp; conversions</p>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-400 font-semibold">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#1a5c4f] inline-block"></span>Paid</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block"></span>Total Leads</span>
+            </div>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            {sourceBreakdown.map(({ source, total, paid, convRate }) => {
+              const cfg = getSourceColor(source);
+              const paidPct = Math.round((paid / maxSourceTotal) * 100);
+              const totalPct = Math.round((total / maxSourceTotal) * 100);
+              return (
+                <div key={source} className="group">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-6 h-6 flex items-center justify-center rounded-lg flex-shrink-0 ${cfg.badge}`}>
+                        <i className={`${cfg.icon} text-xs`}></i>
+                      </div>
+                      <span className="text-xs font-bold text-gray-800 truncate">{source}</span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                      <span className="text-xs text-gray-400 font-semibold">{total} leads</span>
+                      <span className={`text-xs font-extrabold px-2 py-0.5 rounded-full ${cfg.badge}`}>{paid} paid</span>
+                      <span className={`text-xs font-bold w-10 text-right ${convRate >= 50 ? "text-[#1a5c4f]" : convRate >= 25 ? "text-amber-600" : "text-gray-400"}`}>{convRate}%</span>
+                    </div>
+                  </div>
+                  {/* Stacked bar */}
+                  <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="absolute inset-y-0 left-0 bg-gray-200 rounded-full transition-all" style={{ width: `${totalPct}%` }}></div>
+                    <div className={`absolute inset-y-0 left-0 ${cfg.bar} rounded-full transition-all`} style={{ width: `${paidPct}%` }}></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Summary row */}
+          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs text-gray-500">
+              <strong className="text-gray-700">{sourceBreakdown.reduce((s, r) => s + r.total, 0)}</strong> total leads across <strong className="text-gray-700">{sourceBreakdown.length}</strong> channels
+            </p>
+            <p className="text-xs text-gray-500">
+              Top channel: <strong className="text-gray-700">{sourceBreakdown[0]?.source ?? "—"}</strong> ({sourceBreakdown[0]?.total ?? 0} leads)
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Recent Activity */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

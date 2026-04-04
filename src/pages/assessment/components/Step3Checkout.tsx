@@ -300,8 +300,11 @@ function SecurePaymentCard({
           <div className="min-w-0">
             <p className="text-sm font-extrabold text-black tracking-tight">Secure Payment</p>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <i className="ri-shield-check-line text-black/50 text-[10px]"></i>
-              <p className="text-[10px] text-black/50">256-bit SSL · Powered by Stripe</p>
+              <div className="flex items-center gap-1.5 bg-white/90 rounded-md px-2 py-0.5">
+                <span className="text-[10px] font-bold text-[#635BFF]">256-bit SSL</span>
+                <span className="text-[10px] text-gray-400">·</span>
+                <span className="text-[10px] font-bold text-[#635BFF]">Powered by Stripe</span>
+              </div>
             </div>
           </div>
         </div>

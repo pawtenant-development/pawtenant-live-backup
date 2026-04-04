@@ -13,50 +13,34 @@ const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
+const HEADER_BG = "#4a9e8a";
+const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
+const HEADER_TEXT = "#ffffff";
+const HEADER_SUB = "rgba(255,255,255,0.82)";
+const ACCENT = "#1a5c4f";
+
 async function sendViaResend(opts: {
-  to: string;
-  subject: string;
-  html: string;
+  to: string; subject: string; html: string;
   tags?: Array<{ name: string; value: string }>;
 }): Promise<boolean> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
-  if (!apiKey) {
-    console.error("[notify-customer-refund] RESEND_API_KEY secret is not set");
-    return false;
-  }
+  if (!apiKey) { console.error("[notify-customer-refund] RESEND_API_KEY secret is not set"); return false; }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [opts.to],
-        subject: opts.subject,
-        html: opts.html,
-        ...(opts.tags ? { tags: opts.tags } : {}),
-      }),
+      body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html, ...(opts.tags ? { tags: opts.tags } : {}) }),
     });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error(`[notify-customer-refund] Resend error ${res.status}: ${errBody}`);
-      return false;
-    }
+    if (!res.ok) { const errBody = await res.text(); console.error(`[notify-customer-refund] Resend error ${res.status}: ${errBody}`); return false; }
     return true;
-  } catch (err) {
-    console.error("[notify-customer-refund] Resend fetch error:", err);
-    return false;
-  }
+  } catch (err) { console.error("[notify-customer-refund] Resend fetch error:", err); return false; }
 }
 
 function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function safeName(firstName = "") {
-  return escapeHtml(firstName || "Customer");
-}
+function safeName(firstName = "") { return escapeHtml(firstName || "Customer"); }
 
 function formatDate(value: string | undefined) {
   if (!value) return "";
@@ -73,18 +57,18 @@ function baseLayout(badge: string, heading: string, subheading: string, body: st
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
       <tr>
-        <td style="background:#1a5c4f;padding:32px;text-align:center;">
+        <td style="background:${HEADER_BG};padding:32px;text-align:center;">
           <img src="${LOGO_URL}" width="180" alt="PawTenant" style="display:block;margin:0 auto 16px;height:auto;" />
-          <div style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
-          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#ffffff;line-height:1.3;">${heading}</h1>
-          <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.75);">${subheading}</p>
+          <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
+          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">${heading}</h1>
+          <p style="margin:0;font-size:14px;color:${HEADER_SUB};">${subheading}</p>
         </td>
       </tr>
       <tr><td style="padding:32px;">${body}</td></tr>
       <tr>
         <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a></p>
         </td>
       </tr>
     </table>
@@ -112,7 +96,7 @@ function stepsCard(title: string, steps: string[]): string {
   const stepsHtml = steps.map((step, i) => `
     <tr>
       <td style="padding:7px 0;vertical-align:top;width:30px;">
-        <div style="width:22px;height:22px;background:#1a5c4f;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">${i + 1}</div>
+        <div style="width:22px;height:22px;background:${ACCENT};border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">${i + 1}</div>
       </td>
       <td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">${step}</td>
     </tr>`).join("");
@@ -133,16 +117,12 @@ function ctaButton(url: string, text: string): string {
 }
 
 function buildRefundEmail(opts: {
-  firstName?: string;
-  confirmationId: string;
-  formattedAmount: string;
-  reasonLabel?: string;
-  issuedAt?: string;
-  note?: string;
+  firstName?: string; confirmationId: string; formattedAmount: string;
+  reasonLabel?: string; issuedAt?: string; note?: string;
 }): string {
   const name = safeName(opts.firstName);
   const detailRows: Array<[string, string, string?]> = [
-    ["Order ID", escapeHtml(opts.confirmationId), "#1a5c4f"],
+    ["Order ID", escapeHtml(opts.confirmationId), ACCENT],
     ["Refund Amount", escapeHtml(opts.formattedAmount), "#059669"],
     ["Reason", escapeHtml(opts.reasonLabel ?? "Customer Request")],
     ["Issued On", escapeHtml(formatDate(opts.issuedAt))],
@@ -162,7 +142,7 @@ function buildRefundEmail(opts: {
     ])}
     ${ctaButton(PORTAL_URL, "View My Order")}
     <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">
-      Questions about your refund? <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a> or <strong style="color:#374151;">(409) 965-5885</strong>.
+      Questions about your refund? <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a> or <strong style="color:#374151;">(409) 965-5885</strong>.
     </p>`;
 
   return baseLayout("Refund Issued", "Your refund has been processed", "The funds are on their way back to you", body);
@@ -192,9 +172,6 @@ Deno.serve(async (req: Request) => {
 
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.replace("Bearer ", "").trim();
-
-  // Allow internal service-to-service calls using the service role key
-  // (e.g. called from create-refund edge function)
   const isInternalCall = token === serviceKey;
 
   let actorName = "Internal Service";
@@ -202,14 +179,11 @@ Deno.serve(async (req: Request) => {
   let actorRole = "service";
 
   if (!isInternalCall) {
-    // External call — require admin JWT
     const callerClient = createClient(supabaseUrl, token);
     const { data: { user }, error: authErr } = await callerClient.auth.getUser();
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
-
     const { data: callerProfile } = await adminClient.from("doctor_profiles").select("is_admin, full_name, role").eq("user_id", user.id).maybeSingle();
     if (!callerProfile?.is_admin) return json({ error: "Forbidden — admin only" }, 403);
-
     actorName = callerProfile.full_name ?? "Admin";
     actorId = user.id;
     actorRole = callerProfile.role ?? "admin_manager";
@@ -251,18 +225,10 @@ Deno.serve(async (req: Request) => {
     to: order.email,
     subject: `Refund Confirmation — Order ${confirmationId}`,
     html,
-    tags: [
-      { name: "confirmation_id", value: confirmationId },
-      { name: "email_type", value: "refund" },
-    ],
+    tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "refund" }],
   });
 
-  await appendEmailLog(adminClient, confirmationId, {
-    type: "refund",
-    sentAt: new Date().toISOString(),
-    to: order.email,
-    success: emailSent,
-  });
+  await appendEmailLog(adminClient, confirmationId, { type: "refund", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
 
   let ghlOk = false;
   let ghlStatus = 0;
@@ -288,9 +254,7 @@ Deno.serve(async (req: Request) => {
   }
 
   await adminClient.from("audit_logs").insert({
-    actor_id: actorId,
-    actor_name: actorName,
-    actor_role: actorRole,
+    actor_id: actorId, actor_name: actorName, actor_role: actorRole,
     object_type: "refund", object_id: confirmationId,
     action: "refund_customer_notified",
     description: `Refund notification sent to ${order.email} for ${formattedAmount} — order ${confirmationId}`,
@@ -298,11 +262,5 @@ Deno.serve(async (req: Request) => {
     metadata: { confirmationId, note, ghlStatus, isInternal: isInternalCall },
   });
 
-  console.log(`[notify-customer-refund] Email sent=${emailSent}, GHL ok=${ghlOk}, confirmationId=${confirmationId}`);
-
-  return json({
-    ok: true,
-    message: `Refund notification sent to ${order.email} (${formattedAmount})`,
-    confirmationId, patientEmail: order.email, refundAmount, ghlOk, ghlStatus, emailSent,
-  });
+  return json({ ok: true, message: `Refund notification sent to ${order.email} (${formattedAmount})`, confirmationId, patientEmail: order.email, refundAmount, ghlOk, ghlStatus, emailSent });
 });

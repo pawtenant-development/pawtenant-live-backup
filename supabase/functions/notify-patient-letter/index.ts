@@ -14,53 +14,28 @@ const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
-// ── Resend helper ──────────────────────────────────────────────────────────
+const HEADER_BG = "#4a9e8a";
+const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
+const HEADER_TEXT = "#ffffff";
+const HEADER_SUB = "rgba(255,255,255,0.82)";
+const ACCENT = "#1a5c4f";
 
-async function sendViaResend(opts: {
-  to: string;
-  subject: string;
-  html: string;
-}): Promise<boolean> {
+async function sendViaResend(opts: { to: string; subject: string; html: string }): Promise<boolean> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
-  if (!apiKey) {
-    console.error("[notify-patient-letter] RESEND_API_KEY secret is not set");
-    return false;
-  }
+  if (!apiKey) { console.error("[notify-patient-letter] RESEND_API_KEY secret is not set"); return false; }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [opts.to],
-        subject: opts.subject,
-        html: opts.html,
-      }),
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html }),
     });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error(`[notify-patient-letter] Resend error ${res.status}: ${errBody}`);
-      return false;
-    }
+    if (!res.ok) { const errBody = await res.text(); console.error(`[notify-patient-letter] Resend error ${res.status}: ${errBody}`); return false; }
     return true;
-  } catch (err) {
-    console.error("[notify-patient-letter] Resend fetch error:", err);
-    return false;
-  }
+  } catch (err) { console.error("[notify-patient-letter] Resend fetch error:", err); return false; }
 }
 
-// ── Template helpers ──────────────────────────────────────────────────────
-
 function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function baseLayout(badge: string, heading: string, subheading: string, body: string): string {
@@ -72,20 +47,18 @@ function baseLayout(badge: string, heading: string, subheading: string, body: st
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
       <tr>
-        <td style="background:#1a5c4f;padding:32px;text-align:center;">
+        <td style="background:${HEADER_BG};padding:32px;text-align:center;">
           <img src="${LOGO_URL}" width="180" alt="PawTenant" style="display:block;margin:0 auto 16px;height:auto;" />
-          <div style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
-          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#ffffff;line-height:1.3;">${heading}</h1>
-          <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.75);">${subheading}</p>
+          <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
+          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">${heading}</h1>
+          <p style="margin:0;font-size:14px;color:${HEADER_SUB};">${subheading}</p>
         </td>
       </tr>
-      <tr>
-        <td style="padding:32px;">${body}</td>
-      </tr>
+      <tr><td style="padding:32px;">${body}</td></tr>
       <tr>
         <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a></p>
         </td>
       </tr>
     </table>
@@ -113,7 +86,7 @@ function stepsCard(title: string, steps: string[]): string {
   const stepsHtml = steps.map((step, i) => `
     <tr>
       <td style="padding:7px 0;vertical-align:top;width:30px;">
-        <div style="width:22px;height:22px;background:#1a5c4f;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">${i + 1}</div>
+        <div style="width:22px;height:22px;background:${ACCENT};border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">${i + 1}</div>
       </td>
       <td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">${step}</td>
     </tr>`).join("");
@@ -142,10 +115,7 @@ function docIcon(label = "") {
 }
 
 function buildDocumentsReadyEmail(opts: {
-  firstName?: string;
-  confirmationId: string;
-  doctorName?: string;
-  doctorMessage?: string | null;
+  firstName?: string; confirmationId: string; doctorName?: string; doctorMessage?: string | null;
 }, docs: Array<{ label: string; url: string }> = []): string {
   const name = escapeHtml(opts.firstName || "there");
   const providerName = escapeHtml(opts.doctorName ?? "Your Provider");
@@ -157,7 +127,7 @@ function buildDocumentsReadyEmail(opts: {
           <span style="margin-right:6px;">${docIcon(doc.label)}</span> ${escapeHtml(doc.label)}
         </td>
         <td style="padding:8px 0;text-align:right;vertical-align:middle;">
-          <a href="${escapeHtml(doc.url)}" style="display:inline-block;background:#1a5c4f;color:#fff;font-size:12px;font-weight:700;text-decoration:none;padding:6px 14px;border-radius:6px;">Download</a>
+          <a href="${escapeHtml(doc.url)}" style="display:inline-block;background:${ACCENT};color:#fff;font-size:12px;font-weight:700;text-decoration:none;padding:6px 14px;border-radius:6px;">Download</a>
         </td>
       </tr>`).join("")
     : `<tr><td colspan="2" style="padding:8px 0;font-size:13px;color:#6b7280;">Documents are available in your portal below.</td></tr>`;
@@ -170,8 +140,8 @@ function buildDocumentsReadyEmail(opts: {
   </table>`;
 
   const doctorNoteHtml = opts.doctorMessage
-    ? `<div style="background:#f0faf7;border-left:4px solid #1a5c4f;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:24px;">
-        <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#1a5c4f;text-transform:uppercase;letter-spacing:0.08em;">A note from ${providerName}</p>
+    ? `<div style="background:#f0faf7;border-left:4px solid ${ACCENT};border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:24px;">
+        <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:${ACCENT};text-transform:uppercase;letter-spacing:0.08em;">A note from ${providerName}</p>
         <p style="margin:0;font-size:14px;color:#374151;line-height:1.7;font-style:italic;">&ldquo;${escapeHtml(opts.doctorMessage)}&rdquo;</p>
       </div>`
     : "";
@@ -184,8 +154,8 @@ function buildDocumentsReadyEmail(opts: {
     ${doctorNoteHtml}
     ${docsCard}
     ${detailCard("Order Summary", [
-      ["Order ID", escapeHtml(opts.confirmationId), "#1a5c4f"],
-      ["Completed By", providerName, "#1a5c4f"],
+      ["Order ID", escapeHtml(opts.confirmationId), ACCENT],
+      ["Completed By", providerName, ACCENT],
       ["Status", '<span style="color:#059669;font-weight:700;">Completed</span>'],
     ])}
     ${ctaButton(PORTAL_URL, "View All Documents")}
@@ -195,17 +165,14 @@ function buildDocumentsReadyEmail(opts: {
       "Contact us at any time if you need a renewal or have questions",
     ])}
     <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">
-      Your ESA letter is legally recognized under the Fair Housing Act. If you ever need assistance, we&rsquo;re always here at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a>.
+      Your ESA letter is legally recognized under the Fair Housing Act. If you ever need assistance, we&rsquo;re always here at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a>.
     </p>`;
 
   return baseLayout("Documents Ready", "Your ESA Letter is here!", "Your signed documents are ready for download", body);
 }
 
 function jsonResp(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
 }
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
@@ -225,11 +192,8 @@ async function sendPatientEmail(opts: {
   signedLetterUrl: string | null; doctorName: string; orderDocs: OrderDoc[]; doctorMessage?: string | null;
 }): Promise<boolean> {
   const allDocs: Array<{ label: string; url: string }> = [];
-  if (opts.signedLetterUrl) {
-    allDocs.push({ label: "Signed ESA Letter", url: opts.signedLetterUrl });
-  }
-  opts.orderDocs
-    .filter((d) => d.customer_visible && d.file_url !== opts.signedLetterUrl)
+  if (opts.signedLetterUrl) allDocs.push({ label: "Signed ESA Letter", url: opts.signedLetterUrl });
+  opts.orderDocs.filter((d) => d.customer_visible && d.file_url !== opts.signedLetterUrl)
     .forEach((doc) => allDocs.push({ label: doc.label, url: doc.file_url }));
 
   const docCount = allDocs.length;
@@ -240,26 +204,18 @@ async function sendPatientEmail(opts: {
     allDocs,
   );
 
-  return sendViaResend({
-    to: opts.patientEmail,
-    subject: `Your Documents Are Ready — Order ${opts.confirmationId}${subjectSuffix}`,
-    html,
-  });
+  return sendViaResend({ to: opts.patientEmail, subject: `Your Documents Are Ready — Order ${opts.confirmationId}${subjectSuffix}`, html });
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
 
-  // ── Auth: validate JWT, get user ──────────────────────────────────────────
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error: authErr } = await createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-  ).auth.getUser(token);
+  const { data: { user }, error: authErr } = await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!).auth.getUser(token);
   if (authErr || !user) return jsonResp({ error: "Unauthorized" }, 401);
 
   let body: Record<string, unknown>;
@@ -270,95 +226,48 @@ Deno.serve(async (req: Request) => {
   const doctorMessage = (body.doctorMessage as string | null | undefined) ?? null;
   if (!confirmationId) return jsonResp({ error: "confirmationId is required" }, 400);
 
-  // ── Fetch order ───────────────────────────────────────────────────────────
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select("id, confirmation_id, email, first_name, last_name, state, doctor_user_id, doctor_email, doctor_name, signed_letter_url, price, doctor_status, patient_notification_sent_at")
-    .eq("confirmation_id", confirmationId)
-    .maybeSingle();
+    .eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return jsonResp({ error: `Order not found: ${confirmationId}` }, 404);
 
-  // ── Authorization: admin OR assigned provider ─────────────────────────────
-  // Primary check: doctor_user_id matches
   const isAssignedByUserId = order.doctor_user_id === user.id;
-
-  // Fallback check: match by email (handles orders where doctor_user_id wasn't written at assignment time)
   let isAssignedByEmail = false;
   if (!isAssignedByUserId && order.doctor_email) {
-    const { data: providerProfile } = await supabase
-      .from("doctor_profiles")
-      .select("user_id, email")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
+    const { data: providerProfile } = await supabase.from("doctor_profiles").select("user_id, email").eq("user_id", user.id).maybeSingle();
     if (providerProfile?.email && order.doctor_email.toLowerCase() === providerProfile.email.toLowerCase()) {
       isAssignedByEmail = true;
-      // Back-fill doctor_user_id so future calls use the faster primary path
-      await supabase
-        .from("orders")
-        .update({ doctor_user_id: user.id })
-        .eq("confirmation_id", confirmationId);
-      console.log(`[notify-patient-letter] Back-filled doctor_user_id for order ${confirmationId}`);
+      await supabase.from("orders").update({ doctor_user_id: user.id }).eq("confirmation_id", confirmationId);
     }
   }
 
-  const { data: callerProfile } = await supabase
-    .from("doctor_profiles")
-    .select("is_admin, user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: callerProfile } = await supabase.from("doctor_profiles").select("is_admin, user_id").eq("user_id", user.id).maybeSingle();
   const isAdmin = callerProfile?.is_admin === true;
 
-  if (!isAdmin && !isAssignedByUserId && !isAssignedByEmail) {
-    return jsonResp({ error: "Access denied — not assigned to this case" }, 403);
-  }
+  if (!isAdmin && !isAssignedByUserId && !isAssignedByEmail) return jsonResp({ error: "Access denied — not assigned to this case" }, 403);
 
-  // ── Fetch documents ───────────────────────────────────────────────────────
-  const { data: orderDocs } = await supabase
-    .from("order_documents")
-    .select("*")
-    .eq("order_id", order.id)
-    .eq("customer_visible", true)
-    .order("uploaded_at", { ascending: true });
+  const { data: orderDocs } = await supabase.from("order_documents").select("*").eq("order_id", order.id).eq("customer_visible", true).order("uploaded_at", { ascending: true });
   const docs = (orderDocs as OrderDoc[]) ?? [];
   const totalDocCount = (order.signed_letter_url ? 1 : 0) + docs.filter((d) => d.file_url !== order.signed_letter_url).length;
 
-  if (!order.signed_letter_url && docs.length === 0) {
-    return jsonResp({ error: "No documents available to send for this order" }, 400);
-  }
+  if (!order.signed_letter_url && docs.length === 0) return jsonResp({ error: "No documents available to send for this order" }, 400);
 
-  // ── Mark order completed ──────────────────────────────────────────────────
-  const { error: updateErr } = await supabase
-    .from("orders")
-    .update({
-      patient_notification_sent_at: new Date().toISOString(),
-      doctor_status: "patient_notified",
-      status: "completed",
-    })
-    .eq("confirmation_id", confirmationId);
+  const { error: updateErr } = await supabase.from("orders").update({
+    patient_notification_sent_at: new Date().toISOString(),
+    doctor_status: "patient_notified",
+    status: "completed",
+  }).eq("confirmation_id", confirmationId);
   if (updateErr) return jsonResp({ error: `Failed to update order: ${updateErr.message}` }, 500);
 
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || order.email;
-
-  // ── Create earnings record if not already present ─────────────────────────
-  const { data: existingEarning } = await supabase
-    .from("doctor_earnings")
-    .select("id")
-    .eq("confirmation_id", confirmationId)
-    .maybeSingle();
+  const { data: existingEarning } = await supabase.from("doctor_earnings").select("id").eq("confirmation_id", confirmationId).maybeSingle();
   let earningsCreated = false;
-
   const resolvedDoctorUserId = isAssignedByEmail ? user.id : order.doctor_user_id;
 
   if (!existingEarning && resolvedDoctorUserId) {
-    const { data: doctorProfile } = await supabase
-      .from("doctor_profiles")
-      .select("full_name, email, per_order_rate")
-      .eq("user_id", resolvedDoctorUserId)
-      .maybeSingle();
-
+    const { data: doctorProfile } = await supabase.from("doctor_profiles").select("full_name, email, per_order_rate").eq("user_id", resolvedDoctorUserId).maybeSingle();
     const perOrderRate = (doctorProfile as { per_order_rate?: number | null } | null)?.per_order_rate ?? null;
-
     await supabase.from("doctor_earnings").insert({
       doctor_user_id: resolvedDoctorUserId,
       doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "",
@@ -374,7 +283,6 @@ Deno.serve(async (req: Request) => {
     earningsCreated = true;
   }
 
-  // ── Send patient email ────────────────────────────────────────────────────
   const emailSent = await sendPatientEmail({
     patientEmail: order.email,
     patientFirstName: order.first_name ?? "there",
@@ -385,49 +293,26 @@ Deno.serve(async (req: Request) => {
     doctorMessage: doctorMessage?.trim() || null,
   });
 
-  await appendEmailLog(supabase, confirmationId, {
-    type: "letter_ready",
-    sentAt: new Date().toISOString(),
-    to: order.email,
-    success: emailSent,
-  });
+  await appendEmailLog(supabase, confirmationId, { type: "letter_ready", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
 
   if (emailSent && docs.length > 0) {
-    await supabase
-      .from("order_documents")
-      .update({ sent_to_customer: true })
+    await supabase.from("order_documents").update({ sent_to_customer: true })
       .in("id", docs.filter((d) => d.file_url !== order.signed_letter_url).map((d) => d.id));
   }
 
-  // ── Fire GHL webhook (non-blocking) ──────────────────────────────────────
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
     body: JSON.stringify({
-      webhookType: "main",
-      event: "documents_ready_for_patient",
-      email: order.email,
-      firstName: order.first_name ?? "",
-      lastName: order.last_name ?? "",
-      confirmationId,
-      patientName,
-      patientState: order.state ?? "",
-      documentsCount: totalDocCount,
-      notifiedAt: new Date().toISOString(),
-      leadStatus: "Documents Ready — Patient Notified",
-      tags: ["Documents Ready", "Patient Notified"],
+      webhookType: "main", event: "documents_ready_for_patient",
+      email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "",
+      confirmationId, patientName, patientState: order.state ?? "",
+      documentsCount: totalDocCount, notifiedAt: new Date().toISOString(),
+      leadStatus: "Documents Ready — Patient Notified", tags: ["Documents Ready", "Patient Notified"],
     }),
   }).catch(() => {});
 
-  return jsonResp({
-    ok: true,
-    message: `Patient notified for order ${confirmationId}`,
-    confirmationId,
-    patientEmail: order.email,
-    docsEmailed: totalDocCount,
-    emailSent,
-    earningsCreated,
-  });
+  return jsonResp({ ok: true, message: `Patient notified for order ${confirmationId}`, confirmationId, patientEmail: order.email, docsEmailed: totalDocCount, emailSent, earningsCreated });
 });

@@ -11,6 +11,13 @@ const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e6353
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
+const HEADER_BG = "#4a9e8a";
+const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
+const HEADER_TEXT = "#ffffff";
+const HEADER_SUB = "rgba(255,255,255,0.82)";
+const ACCENT = "#1a5c4f";
+const ORANGE = "#f97316";
+
 function buildInviteHtml(providerName: string, toEmail: string, setupLink: string, isAdmin: boolean): string {
   const portalLabel = isAdmin ? "Admin Dashboard" : "Provider Portal";
   const portalPath = isAdmin ? "/admin-orders" : "/provider-portal";
@@ -18,16 +25,16 @@ function buildInviteHtml(providerName: string, toEmail: string, setupLink: strin
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 20px;">
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;">
     <tr><td align="center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <tr>
-          <td style="background:#1a5c4f;padding:32px;text-align:center;">
+          <td style="background:${HEADER_BG};padding:32px;text-align:center;">
             <img src="${LOGO_URL}" alt="${COMPANY_NAME}" width="180" style="display:block;margin:0 auto 18px;max-width:180px;" />
-            <div style="display:inline-block;background:rgba(255,255,255,0.15);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:5px 16px;border-radius:999px;margin-bottom:14px;">Account Invite</div>
-            <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;line-height:1.3;">Welcome to ${COMPANY_NAME}${isAdmin ? "" : ", " + firstName}!</h1>
-            <p style="margin:10px 0 0;font-size:14px;color:#a7d5ca;line-height:1.5;">Your ${isAdmin ? "admin" : "provider"} account is ready. Click below to set your password and get started.</p>
+            <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:5px 16px;border-radius:999px;margin-bottom:14px;">Account Invite</div>
+            <h1 style="margin:0;font-size:22px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">Welcome to ${COMPANY_NAME}${isAdmin ? "" : ", " + firstName}!</h1>
+            <p style="margin:10px 0 0;font-size:14px;color:${HEADER_SUB};line-height:1.5;">Your ${isAdmin ? "admin" : "provider"} account is ready. Click below to set your password and get started.</p>
           </td>
         </tr>
         <tr>
@@ -36,7 +43,7 @@ function buildInviteHtml(providerName: string, toEmail: string, setupLink: strin
             <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">An account has been created for you on the <strong>${COMPANY_NAME} ${portalLabel}</strong>. Click the button below to set your password.</p>
             <table cellpadding="0" cellspacing="0" style="margin:28px auto;">
               <tr>
-                <td style="background:#ff6a00;border-radius:10px;">
+                <td style="background:${ORANGE};border-radius:10px;">
                   <a href="${setupLink}" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:800;color:#ffffff;text-decoration:none;">Set My Password &amp; Activate Account &rarr;</a>
                 </td>
               </tr>
@@ -48,8 +55,8 @@ function buildInviteHtml(providerName: string, toEmail: string, setupLink: strin
                   <table width="100%" cellpadding="0" cellspacing="0">
                     <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;width:120px;">Name</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${providerName}</td></tr>
                     <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Login Email</td><td style="padding:5px 0;font-size:13px;color:#111827;">${toEmail}</td></tr>
-                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Role</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#1a5c4f;">${isAdmin ? "Admin" : "Licensed Provider"}</td></tr>
-                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Portal</td><td style="padding:5px 0;font-size:13px;color:#111827;"><a href="https://${COMPANY_DOMAIN}${portalPath}" style="color:#1a5c4f;font-weight:700;text-decoration:none;">${COMPANY_DOMAIN}${portalPath}</a></td></tr>
+                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Role</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${isAdmin ? "Admin" : "Licensed Provider"}</td></tr>
+                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Portal</td><td style="padding:5px 0;font-size:13px;color:#111827;"><a href="https://${COMPANY_DOMAIN}${portalPath}" style="color:${ACCENT};font-weight:700;text-decoration:none;">${COMPANY_DOMAIN}${portalPath}</a></td></tr>
                   </table>
                 </td>
               </tr>
@@ -60,7 +67,7 @@ function buildInviteHtml(providerName: string, toEmail: string, setupLink: strin
         </tr>
         <tr>
           <td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:18px 32px;text-align:center;">
-            <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
+            <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
             <p style="margin:0;font-size:11px;color:#d1d5db;">${COMPANY_NAME} &mdash; ${COMPANY_DOMAIN}</p>
           </td>
         </tr>
@@ -106,7 +113,6 @@ async function getSetupLink(adminClient: ReturnType<typeof createClient>, email:
       console.warn(`[invite] ${linkType} failed: ${error?.message}`);
     } catch (e) { console.warn(`[invite] ${linkType} threw:`, e); }
   }
-  console.warn("[invite] All link types failed — using fallback URL");
   return `https://${COMPANY_DOMAIN}/reset-password`;
 }
 
@@ -120,29 +126,15 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // ── Verify caller using service role key (avoids SUPABASE_ANON_KEY dependency) ──
     const callerToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
     if (!callerToken) return json({ ok: false, error: "Unauthorized — no token provided" }, 401);
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-
-    // Verify the caller's JWT using the admin client
     const { data: { user: callerUser }, error: callerErr } = await adminClient.auth.getUser(callerToken);
-    if (callerErr || !callerUser) {
-      console.warn("[invite] Auth failed:", callerErr?.message ?? "no user");
-      return json({ ok: false, error: "Unauthorized — session expired, please refresh and try again" }, 401);
-    }
+    if (callerErr || !callerUser) return json({ ok: false, error: "Unauthorized — session expired, please refresh and try again" }, 401);
 
-    // Check caller is admin
-    const { data: callerProfile } = await adminClient
-      .from("doctor_profiles")
-      .select("is_admin, role")
-      .eq("user_id", callerUser.id)
-      .maybeSingle();
-
-    const isCallerAdmin = callerProfile?.is_admin === true ||
-      ["owner", "admin_manager", "support", "admin"].includes(callerProfile?.role ?? "");
-
+    const { data: callerProfile } = await adminClient.from("doctor_profiles").select("is_admin, role").eq("user_id", callerUser.id).maybeSingle();
+    const isCallerAdmin = callerProfile?.is_admin === true || ["owner", "admin_manager", "support", "admin"].includes(callerProfile?.role ?? "");
     if (!isCallerAdmin) return json({ ok: false, error: "Access denied. Admin only." }, 403);
 
     const body = await req.json() as {
@@ -158,25 +150,17 @@ Deno.serve(async (req) => {
     const redirectTo = `${siteUrl}/reset-password`;
     const licensedStates = body.licensed_states ?? [];
 
-    // ── CHECK: Does a doctor_profiles row exist for this email? ─────────────
-    const { data: existingProfile } = await adminClient
-      .from("doctor_profiles")
-      .select("id, user_id, full_name, is_admin, email")
-      .ilike("email", body.email)
-      .maybeSingle();
+    const { data: existingProfile } = await adminClient.from("doctor_profiles").select("id, user_id, full_name, is_admin, email").ilike("email", body.email).maybeSingle();
 
     if (existingProfile) {
-      console.log(`[invite] Existing profile found for ${body.email} — resending invite`);
       const setupLink = await getSetupLink(adminClient, body.email, redirectTo);
       const emailSent = await sendInviteEmail(body.email, existingProfile.full_name ?? body.full_name, setupLink, existingProfile.is_admin ?? body.is_admin);
       return json({ ok: true, email: body.email, full_name: existingProfile.full_name ?? body.full_name, invite_sent: true, welcome_email_sent: emailSent, note: "Existing profile — resent invite." });
     }
 
-    // ── NEW MEMBER ────────────────────────────────────────────────────────────
     let authUserId: string | null = null;
     let setupLink = `${siteUrl}/reset-password`;
 
-    // Try generateLink type "invite" — creates user + provides action_link
     const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
       type: "invite",
       email: body.email,
@@ -189,53 +173,36 @@ Deno.serve(async (req) => {
       const props = raw["properties"] as Record<string, string> | undefined;
       if (props?.["action_link"]) {
         setupLink = props["action_link"];
-        console.log(`[invite] Got action_link from generateLink invite for ${body.email}`);
       } else {
-        console.warn(`[invite] action_link missing — using getSetupLink fallback`);
         setupLink = await getSetupLink(adminClient, body.email, redirectTo);
       }
     } else {
-      const alreadyExists = linkErr?.message?.includes("already been registered") ||
-        (linkErr as unknown as { status?: number })?.status === 422;
-      console.warn(`[invite] generateLink invite failed for ${body.email}: ${linkErr?.message ?? "unknown"}. alreadyExists=${alreadyExists}`);
-
+      const alreadyExists = linkErr?.message?.includes("already been registered") || (linkErr as unknown as { status?: number })?.status === 422;
       const { data: listRes } = await adminClient.auth.admin.listUsers({ perPage: 1000 });
       const existingAuthUser = listRes?.users?.find((u) => u.email?.toLowerCase() === body.email.toLowerCase());
 
       if (existingAuthUser) {
         authUserId = existingAuthUser.id;
-        console.log(`[invite] Found existing auth user ${authUserId} for ${body.email}`);
       } else if (!alreadyExists) {
-        const { data: createdUser, error: createErr } = await adminClient.auth.admin.createUser({
-          email: body.email,
-          email_confirm: true,
-        });
-        if (createErr || !createdUser?.user) {
-          console.error(`[invite] createUser fallback failed:`, createErr?.message);
-          return json({ ok: false, error: createErr?.message ?? "Failed to create auth account." }, 400);
-        }
+        const { data: createdUser, error: createErr } = await adminClient.auth.admin.createUser({ email: body.email, email_confirm: true });
+        if (createErr || !createdUser?.user) return json({ ok: false, error: createErr?.message ?? "Failed to create auth account." }, 400);
         authUserId = createdUser.user.id;
-        console.log(`[invite] Created auth user via createUser fallback: ${authUserId}`);
       }
 
       if (!authUserId) return json({ ok: false, error: "Could not create or locate auth account for this email." }, 400);
-
       setupLink = await getSetupLink(adminClient, body.email, redirectTo);
     }
 
-    // Insert doctor_profiles
     const { error: profileErr } = await adminClient.from("doctor_profiles").insert({
       user_id: authUserId, full_name: body.full_name, email: body.email,
       title: body.title ?? null, is_admin: body.is_admin, is_active: true, licensed_states: licensedStates,
     });
 
     if (profileErr) {
-      console.error(`[invite] doctor_profiles insert failed for ${body.email}:`, profileErr.message);
       const emailSent = await sendInviteEmail(body.email, body.full_name, setupLink, body.is_admin);
       return json({ ok: false, error: profileErr.message, emailSent }, 400);
     }
 
-    // Insert/update doctor_contacts for provider users
     if (isProvider) {
       const { data: ec } = await adminClient.from("doctor_contacts").select("id").eq("email", body.email.toLowerCase()).maybeSingle();
       if (ec) {
@@ -245,15 +212,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send invite email
     const emailSent = await sendInviteEmail(body.email, body.full_name, setupLink, body.is_admin);
-    console.log(`[invite] Invite email sent=${emailSent} for ${body.email} (userId=${authUserId})`);
-
     return json({ ok: true, email: body.email, full_name: body.full_name, invite_sent: true, welcome_email_sent: emailSent });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[invite] Unhandled error:", msg);
     return json({ ok: false, error: `Server error: ${msg}` }, 500);
   }
 });

@@ -1,6 +1,6 @@
 // AdminSidebar — Fixed vertical navigation with collapsible icon-only mode
 type TabKey =
-  | "dashboard" | "orders" | "comms" | "customers" | "doctors"
+  | "dashboard" | "orders" | "analytics" | "comms" | "customers" | "doctors"
   | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
 
 interface AdminSidebarProps {
@@ -14,9 +14,10 @@ interface AdminSidebarProps {
 }
 
 const TAB_CONFIG: { key: TabKey; label: string; icon: string }[] = [
-  { key: "dashboard", label: "Dashboard",      icon: "ri-dashboard-3-line" },
-  { key: "orders",    label: "Orders",         icon: "ri-file-list-3-line" },
-  { key: "comms",     label: "Comms",          icon: "ri-message-3-line" },
+  { key: "dashboard",  label: "Dashboard",  icon: "ri-dashboard-3-line" },
+  { key: "orders",     label: "Orders",     icon: "ri-file-list-3-line" },
+  { key: "analytics",  label: "Analytics",  icon: "ri-bar-chart-2-line" },
+  { key: "comms",      label: "Comms",      icon: "ri-message-3-line" },
   { key: "customers", label: "Customers",      icon: "ri-group-line" },
   { key: "doctors",   label: "Providers",      icon: "ri-stethoscope-line" },
   { key: "earnings",  label: "Earnings",       icon: "ri-money-dollar-circle-line" },

@@ -15,21 +15,28 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 const PROVIDER_PORTAL_PATH = "/provider-portal";
 
+const HEADER_BG = "#4a9e8a";
+const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
+const HEADER_TEXT = "#ffffff";
+const HEADER_SUB = "rgba(255,255,255,0.82)";
+const ACCENT = "#1a5c4f";
+const ORANGE = "#f97316";
+
 function buildProviderInviteHtml(providerName: string, toEmail: string, setupLink: string): string {
   const firstName = providerName.split(" ")[0];
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 20px;">
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;">
     <tr><td align="center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
         <tr>
-          <td style="background:#1a5c4f;padding:32px;text-align:center;">
+          <td style="background:${HEADER_BG};padding:32px;text-align:center;">
             <img src="${LOGO_URL}" alt="${COMPANY_NAME}" width="180" style="display:block;margin:0 auto 18px;max-width:180px;" />
-            <div style="display:inline-block;background:rgba(255,255,255,0.15);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:5px 16px;border-radius:999px;margin-bottom:14px;">Provider Invitation</div>
-            <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;line-height:1.3;">Welcome to ${COMPANY_NAME}, ${firstName}!</h1>
-            <p style="margin:10px 0 0;font-size:14px;color:#a7d5ca;line-height:1.5;">Your provider account is ready. Set your password and start reviewing cases.</p>
+            <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:5px 16px;border-radius:999px;margin-bottom:14px;">Provider Invitation</div>
+            <h1 style="margin:0;font-size:22px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">Welcome to ${COMPANY_NAME}, ${firstName}!</h1>
+            <p style="margin:10px 0 0;font-size:14px;color:${HEADER_SUB};line-height:1.5;">Your provider account is ready. Set your password and start reviewing cases.</p>
           </td>
         </tr>
         <tr>
@@ -40,7 +47,7 @@ function buildProviderInviteHtml(providerName: string, toEmail: string, setupLin
             </p>
             <table cellpadding="0" cellspacing="0" style="margin:28px auto;">
               <tr>
-                <td style="background:#ff6a00;border-radius:10px;">
+                <td style="background:${ORANGE};border-radius:10px;">
                   <a href="${setupLink}" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:800;color:#ffffff;text-decoration:none;">Activate My Provider Account &rarr;</a>
                 </td>
               </tr>
@@ -52,8 +59,8 @@ function buildProviderInviteHtml(providerName: string, toEmail: string, setupLin
                   <table width="100%" cellpadding="0" cellspacing="0">
                     <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;width:120px;">Name</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${providerName}</td></tr>
                     <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Login Email</td><td style="padding:5px 0;font-size:13px;color:#111827;">${toEmail}</td></tr>
-                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Role</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#1a5c4f;">Licensed Provider</td></tr>
-                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Portal</td><td style="padding:5px 0;font-size:13px;"><a href="https://${COMPANY_DOMAIN}${PROVIDER_PORTAL_PATH}" style="color:#1a5c4f;font-weight:700;text-decoration:none;">${COMPANY_DOMAIN}${PROVIDER_PORTAL_PATH}</a></td></tr>
+                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Role</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">Licensed Provider</td></tr>
+                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Portal</td><td style="padding:5px 0;font-size:13px;"><a href="https://${COMPANY_DOMAIN}${PROVIDER_PORTAL_PATH}" style="color:${ACCENT};font-weight:700;text-decoration:none;">${COMPANY_DOMAIN}${PROVIDER_PORTAL_PATH}</a></td></tr>
                   </table>
                 </td>
               </tr>
@@ -64,7 +71,7 @@ function buildProviderInviteHtml(providerName: string, toEmail: string, setupLin
         </tr>
         <tr>
           <td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:18px 32px;text-align:center;">
-            <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
+            <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
             <p style="margin:0;font-size:11px;color:#d1d5db;">${COMPANY_NAME} &mdash; ${COMPANY_DOMAIN}</p>
           </td>
         </tr>
@@ -116,7 +123,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // ── Verify caller using service role key (avoids SUPABASE_ANON_KEY dependency) ──
     const callerToken = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
     if (!callerToken) {
       return new Response(JSON.stringify({ ok: false, error: "Unauthorized — no token provided" }), {
@@ -125,24 +131,15 @@ Deno.serve(async (req) => {
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-
     const { data: { user: callerUser }, error: callerErr } = await adminClient.auth.getUser(callerToken);
     if (callerErr || !callerUser) {
-      console.warn("[create-provider] Auth failed:", callerErr?.message ?? "no user");
       return new Response(JSON.stringify({ ok: false, error: "Unauthorized — session expired, please refresh and try again" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { data: callerProfile } = await adminClient
-      .from("doctor_profiles")
-      .select("is_admin, role")
-      .eq("user_id", callerUser.id)
-      .maybeSingle();
-
-    const isCallerAdmin = callerProfile?.is_admin === true ||
-      ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
-
+    const { data: callerProfile } = await adminClient.from("doctor_profiles").select("is_admin, role").eq("user_id", callerUser.id).maybeSingle();
+    const isCallerAdmin = callerProfile?.is_admin === true || ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
     if (!isCallerAdmin) {
       return new Response(JSON.stringify({ ok: false, error: "Access denied. Admin only." }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -150,14 +147,8 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json() as {
-      email: string;
-      full_name: string;
-      title?: string | null;
-      phone?: string | null;
-      licensed_states?: string[];
-      bio?: string | null;
-      per_order_rate?: number | null;
-      license_number?: string | null;
+      email: string; full_name: string; title?: string | null; phone?: string | null;
+      licensed_states?: string[]; bio?: string | null; per_order_rate?: number | null; license_number?: string | null;
     };
 
     if (!body.email || !body.full_name) {
@@ -171,43 +162,21 @@ Deno.serve(async (req) => {
     const siteUrl = Deno.env.get("SITE_URL") ?? `https://${COMPANY_DOMAIN}`;
     const redirectTo = `${siteUrl}/reset-password`;
 
-    // ── CHECK: Does a provider profile already exist for this email? ─────────
-    const { data: existingProfile } = await adminClient
-      .from("doctor_profiles")
-      .select("id, user_id, full_name, is_admin")
-      .ilike("email", normalizedEmail)
-      .maybeSingle();
+    const { data: existingProfile } = await adminClient.from("doctor_profiles").select("id, user_id, full_name, is_admin").ilike("email", normalizedEmail).maybeSingle();
 
     if (existingProfile) {
-      // RESEND INVITE — provider already exists, just send a fresh setup link
-      console.log(`[create-provider] Existing profile found for ${normalizedEmail} — resending invite`);
       const setupLink = await getSetupLink(adminClient, normalizedEmail, redirectTo);
       const emailSent = await sendProviderInviteEmail(normalizedEmail, existingProfile.full_name ?? body.full_name, setupLink);
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          email: normalizedEmail,
-          full_name: existingProfile.full_name ?? body.full_name,
-          invite_sent: true,
-          welcome_email_sent: emailSent,
-          note: "Existing provider — resent invite email.",
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ ok: true, email: normalizedEmail, full_name: existingProfile.full_name ?? body.full_name, invite_sent: true, welcome_email_sent: emailSent, note: "Existing provider — resent invite email." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ── NEW PROVIDER ─────────────────────────────────────────────────────────
     let authUserId: string | null = null;
     let setupLink = `${siteUrl}/reset-password`;
 
-    // Try generateLink type "invite" — creates auth user + provides action_link
     const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
       type: "invite",
       email: normalizedEmail,
-      options: {
-        data: { full_name: body.full_name, is_admin: false, role: "provider" },
-        redirectTo,
-      },
+      options: { data: { full_name: body.full_name, is_admin: false, role: "provider" }, redirectTo },
     });
 
     if (!linkErr && linkData?.user) {
@@ -216,116 +185,55 @@ Deno.serve(async (req) => {
       const props = raw["properties"] as Record<string, string> | undefined;
       if (props?.["action_link"]) {
         setupLink = props["action_link"];
-        console.log(`[create-provider] Got action_link from generateLink invite for ${normalizedEmail}`);
       } else {
-        console.warn(`[create-provider] action_link missing for ${normalizedEmail}, using getSetupLink fallback`);
         setupLink = await getSetupLink(adminClient, normalizedEmail, redirectTo);
       }
     } else {
-      const alreadyExists = linkErr?.message?.includes("already been registered") ||
-        (linkErr as unknown as { status?: number })?.status === 422;
-      console.warn(`[create-provider] generateLink invite failed for ${normalizedEmail}: ${linkErr?.message}. alreadyExists=${alreadyExists}`);
-
+      const alreadyExists = linkErr?.message?.includes("already been registered") || (linkErr as unknown as { status?: number })?.status === 422;
       const { data: listRes } = await adminClient.auth.admin.listUsers({ perPage: 1000 });
       const existingAuthUser = listRes?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
 
       if (existingAuthUser) {
         authUserId = existingAuthUser.id;
-        console.log(`[create-provider] Found existing auth user ${authUserId} for ${normalizedEmail}`);
       } else {
-        const { data: createdUser, error: createErr } = await adminClient.auth.admin.createUser({
-          email: normalizedEmail,
-          email_confirm: true,
-        });
+        const { data: createdUser, error: createErr } = await adminClient.auth.admin.createUser({ email: normalizedEmail, email_confirm: true });
         if (createErr || !createdUser?.user) {
-          console.error(`[create-provider] createUser fallback failed:`, createErr?.message);
-          return new Response(JSON.stringify({ ok: false, error: createErr?.message ?? "Failed to create auth account." }), {
-            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+          return new Response(JSON.stringify({ ok: false, error: createErr?.message ?? "Failed to create auth account." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         authUserId = createdUser.user.id;
-        console.log(`[create-provider] Created auth user via createUser fallback: ${authUserId}`);
       }
 
       if (!authUserId) {
-        return new Response(JSON.stringify({ ok: false, error: "Could not create or locate auth account for this email." }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ ok: false, error: "Could not create or locate auth account for this email." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       setupLink = await getSetupLink(adminClient, normalizedEmail, redirectTo);
     }
 
-    // Insert doctor_profiles — always provider (is_admin: false, role: "provider")
     const { error: profileErr } = await adminClient.from("doctor_profiles").insert({
-      user_id: authUserId,
-      full_name: body.full_name,
-      email: normalizedEmail,
-      title: body.title ?? null,
-      phone: body.phone ?? null,
-      license_number: body.license_number ?? null,
-      bio: body.bio ?? null,
-      is_admin: false,        // ALWAYS false — providers are never admin
-      role: "provider",       // ALWAYS "provider" — explicit, never inherits team roles
-      is_active: true,
+      user_id: authUserId, full_name: body.full_name, email: normalizedEmail,
+      title: body.title ?? null, phone: body.phone ?? null, license_number: body.license_number ?? null,
+      bio: body.bio ?? null, is_admin: false, role: "provider", is_active: true,
       licensed_states: licensedStates,
       per_order_rate: (body.per_order_rate != null && body.per_order_rate >= 0) ? body.per_order_rate : null,
     });
 
     if (profileErr) {
-      console.error(`[create-provider] doctor_profiles insert failed for ${normalizedEmail}:`, profileErr.message);
       const emailSent = await sendProviderInviteEmail(normalizedEmail, body.full_name, setupLink);
-      return new Response(JSON.stringify({ ok: false, error: profileErr.message, emailSent }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ ok: false, error: profileErr.message, emailSent }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Upsert doctor_contacts — keeps assignment dropdown and order routing working
-    const { data: ec } = await adminClient
-      .from("doctor_contacts")
-      .select("id")
-      .eq("email", normalizedEmail)
-      .maybeSingle();
-
+    const { data: ec } = await adminClient.from("doctor_contacts").select("id").eq("email", normalizedEmail).maybeSingle();
     if (ec) {
-      await adminClient.from("doctor_contacts").update({
-        full_name: body.full_name,
-        phone: body.phone ?? null,
-        licensed_states: licensedStates,
-        notes: body.bio ?? null,
-        per_order_rate: body.per_order_rate ?? null,
-        is_active: true,
-      }).eq("id", ec.id);
+      await adminClient.from("doctor_contacts").update({ full_name: body.full_name, phone: body.phone ?? null, licensed_states: licensedStates, notes: body.bio ?? null, per_order_rate: body.per_order_rate ?? null, is_active: true }).eq("id", ec.id);
     } else {
-      await adminClient.from("doctor_contacts").insert({
-        full_name: body.full_name,
-        email: normalizedEmail,
-        phone: body.phone ?? null,
-        licensed_states: licensedStates,
-        notes: body.bio ?? null,
-        per_order_rate: body.per_order_rate ?? null,
-        is_active: true,
-      });
+      await adminClient.from("doctor_contacts").insert({ full_name: body.full_name, email: normalizedEmail, phone: body.phone ?? null, licensed_states: licensedStates, notes: body.bio ?? null, per_order_rate: body.per_order_rate ?? null, is_active: true });
     }
 
     const emailSent = await sendProviderInviteEmail(normalizedEmail, body.full_name, setupLink);
-    console.log(`[create-provider] Provider created: ${normalizedEmail} (userId=${authUserId}) — emailSent=${emailSent}`);
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        email: normalizedEmail,
-        full_name: body.full_name,
-        invite_sent: true,
-        welcome_email_sent: emailSent,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ ok: true, email: normalizedEmail, full_name: body.full_name, invite_sent: true, welcome_email_sent: emailSent }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[create-provider] Unhandled error:", msg);
-    return new Response(JSON.stringify({ ok: false, error: `Server error: ${msg}` }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ ok: false, error: `Server error: ${msg}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

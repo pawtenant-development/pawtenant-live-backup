@@ -4,6 +4,17 @@ import { supabase } from "../../../lib/supabaseClient";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
+interface SequenceStats {
+  emails_24h: number;
+  sms_24h: number;
+  step1_count: number;
+  step2_count: number;
+  step3_count: number;
+  opted_out_total: number;
+  active_leads: number;
+  converted_leads: number;
+}
+
 interface OrphanedUser {
   id: string;
   email: string;
@@ -94,6 +105,14 @@ export default function SystemHealthTab() {
   const [runMsg,     setRunMsg]     = useState("");
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({});
 
+  // ── Sequence Results ────────────────────────────────────────────────────
+  const [seqStats, setSeqStats] = useState<SequenceStats | null>(null);
+  const [seqLoading, setSeqLoading] = useState(true);
+
+  // ── Google Sheets manual sync ───────────────────────────────────────────
+  const [syncingSheets, setSyncingSheets] = useState(false);
+  const [sheetsSyncMsg, setSheetsSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   // ── Auth Cleanup ────────────────────────────────────────────────────────
   const [authScanLoading, setAuthScanLoading] = useState(false);
   const [authScanResult, setAuthScanResult] = useState<{
@@ -107,6 +126,100 @@ export default function SystemHealthTab() {
   const [deletingAllOrphans, setDeletingAllOrphans] = useState(false);
   const [authDeleteResults, setAuthDeleteResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
 
+  const triggerSheetsSync = async () => {
+    setSyncingSheets(true);
+    setSheetsSyncMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-to-sheets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ triggeredBy: "manual" }),
+      });
+      const result = await res.json() as { ok: boolean; synced?: number; error?: string; sheetName?: string };
+      if (result.ok) {
+        setSheetsSyncMsg({ ok: true, text: `Synced ${result.synced ?? 0} rows to "${result.sheetName ?? "PawTenant Leads"}"` });
+      } else {
+        setSheetsSyncMsg({ ok: false, text: result.error ?? "Sync failed" });
+      }
+    } catch {
+      setSheetsSyncMsg({ ok: false, text: "Network error — check Supabase secrets" });
+    }
+    setSyncingSheets(false);
+    setTimeout(() => setSheetsSyncMsg(null), 8000);
+  };
+
+  const loadSequenceStats = useCallback(async () => {
+    setSeqLoading(true);
+    try {
+      const since24h = new Date(Date.now() - 86400000).toISOString();
+
+      // Count auto-sequence outbound SMS in last 24h
+      const { count: smsCount } = await supabase
+        .from("communications")
+        .select("*", { count: "exact", head: true })
+        .eq("type", "sms_outbound")
+        .eq("sent_by", "Auto-Sequence")
+        .gte("created_at", since24h);
+
+      // Count emails sent by sequence steps (via seq_*_sent_at timestamps in last 24h)
+      const { count: step1Count } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("seq_30min_sent_at", since24h);
+
+      const { count: step2Count } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("seq_24h_sent_at", since24h);
+
+      const { count: step3Count } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("seq_3day_sent_at", since24h);
+
+      // Total opted out
+      const { count: optedOutTotal } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .eq("followup_opt_out", true);
+
+      // Active leads (unpaid, not opted out, not cancelled)
+      const { count: activeLeads } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .is("payment_intent_id", null)
+        .is("paid_at", null)
+        .neq("status", "completed")
+        .neq("status", "cancelled")
+        .eq("followup_opt_out", false);
+
+      // Converted leads (leads that eventually paid — have seq_30min_sent_at but also paid_at)
+      const { count: convertedLeads } = await supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .not("seq_30min_sent_at", "is", null)
+        .not("paid_at", "is", null);
+
+      const emailsTotal = (step1Count ?? 0) + (step2Count ?? 0) + (step3Count ?? 0);
+
+      setSeqStats({
+        emails_24h: emailsTotal,
+        sms_24h: smsCount ?? 0,
+        step1_count: step1Count ?? 0,
+        step2_count: step2Count ?? 0,
+        step3_count: step3Count ?? 0,
+        opted_out_total: optedOutTotal ?? 0,
+        active_leads: activeLeads ?? 0,
+        converted_leads: convertedLeads ?? 0,
+      });
+    } catch {
+      // silently fail — non-critical
+    }
+    setSeqLoading(false);
+  }, []);
+
   const loadHistory = useCallback(async () => {
     const { data } = await supabase
       .from("system_health_logs")
@@ -119,7 +232,10 @@ export default function SystemHealthTab() {
     setLoadingLog(false);
   }, []);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    loadHistory();
+    loadSequenceStats();
+  }, [loadHistory, loadSequenceStats]);
 
   const runCheck = async () => {
     setRunning(true);
@@ -369,6 +485,149 @@ export default function SystemHealthTab() {
         )}
       </div>
 
+      {/* ── SEQUENCE RESULTS ── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
+              <i className="ri-mail-send-line text-[#1a5c4f] text-base"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-gray-900">Sequence Results</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Auto follow-up performance — emails &amp; SMS sent by the 30min / 24h / 3-day sequence</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadSequenceStats}
+            disabled={seqLoading}
+            className="whitespace-nowrap flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 disabled:opacity-60 cursor-pointer transition-colors"
+          >
+            {seqLoading
+              ? <><i className="ri-loader-4-line animate-spin"></i>Loading...</>
+              : <><i className="ri-refresh-line"></i>Refresh</>
+            }
+          </button>
+        </div>
+
+        {seqLoading ? (
+          <div className="px-5 py-8 flex items-center justify-center gap-2 text-sm text-gray-400">
+            <i className="ri-loader-4-line animate-spin"></i>Loading sequence stats...
+          </div>
+        ) : seqStats ? (
+          <div className="px-5 py-4 space-y-4">
+            {/* Last 24h headline stats */}
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Last 24 Hours</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Emails Sent", value: seqStats.emails_24h, icon: "ri-mail-line", color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]" },
+                  { label: "SMS Sent", value: seqStats.sms_24h, icon: "ri-message-2-line", color: "text-sky-600", bg: "bg-sky-50" },
+                  { label: "Step 1 (30min)", value: seqStats.step1_count, icon: "ri-time-line", color: "text-gray-600", bg: "bg-gray-50" },
+                  { label: "Step 2 (24h)", value: seqStats.step2_count, icon: "ri-calendar-line", color: "text-amber-600", bg: "bg-amber-50" },
+                ].map(s => (
+                  <div key={s.label} className={`${s.bg} rounded-xl border border-gray-200 p-4`}>
+                    <div className="w-7 h-7 flex items-center justify-center bg-white rounded-lg mb-2 flex-shrink-0">
+                      <i className={`${s.icon} ${s.color} text-sm`}></i>
+                    </div>
+                    <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-gray-500 font-semibold mt-0.5 leading-tight">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* All-time pipeline stats */}
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">All-Time Pipeline</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Step 3 (3-Day)", value: seqStats.step3_count, icon: "ri-gift-line", color: "text-violet-600", bg: "bg-violet-50" },
+                  { label: "Active Leads", value: seqStats.active_leads, icon: "ri-user-follow-line", color: "text-orange-600", bg: "bg-orange-50" },
+                  { label: "Converted", value: seqStats.converted_leads, icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]" },
+                  { label: "Opted Out", value: seqStats.opted_out_total, icon: "ri-mail-forbid-line", color: "text-red-500", bg: "bg-red-50" },
+                ].map(s => (
+                  <div key={s.label} className={`${s.bg} rounded-xl border border-gray-200 p-4`}>
+                    <div className="w-7 h-7 flex items-center justify-center bg-white rounded-lg mb-2 flex-shrink-0">
+                      <i className={`${s.icon} ${s.color} text-sm`}></i>
+                    </div>
+                    <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-gray-500 font-semibold mt-0.5 leading-tight">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Conversion rate callout */}
+            {seqStats.converted_leads > 0 && (seqStats.converted_leads + seqStats.active_leads + seqStats.opted_out_total) > 0 && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
+                <i className="ri-line-chart-line text-[#1a5c4f] text-lg flex-shrink-0"></i>
+                <div>
+                  <p className="text-sm font-bold text-[#1a5c4f]">
+                    {Math.round((seqStats.converted_leads / (seqStats.converted_leads + seqStats.active_leads + seqStats.opted_out_total)) * 100)}% conversion rate
+                  </p>
+                  <p className="text-xs text-[#1a5c4f]/70 mt-0.5">
+                    {seqStats.converted_leads} leads converted after receiving at least one sequence email
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-start gap-2 text-xs text-gray-400">
+              <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
+              <p>Sequence fires every 30 minutes via pg_cron. &quot;Last 24h&quot; counts are based on when each step was sent. &quot;Converted&quot; = leads that received at least the 30min email and later paid.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="px-5 py-8 text-center text-sm text-gray-400">
+            <i className="ri-bar-chart-line text-2xl block mb-2"></i>
+            No sequence data available yet
+          </div>
+        )}
+      </div>
+
+      {/* ── GOOGLE SHEETS MANUAL SYNC ── */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 flex items-center justify-center bg-emerald-50 rounded-xl flex-shrink-0">
+              <i className="ri-file-excel-2-line text-emerald-600 text-base"></i>
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-gray-900">Google Sheets Sync</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Manually push all orders to the &ldquo;PawTenant Leads&rdquo; sheet tab. Fires a full sync — replaces all rows with fresh data.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+            {sheetsSyncMsg && (
+              <span className={`text-xs font-semibold flex items-center gap-1.5 ${sheetsSyncMsg.ok ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                <i className={sheetsSyncMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                {sheetsSyncMsg.text}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={triggerSheetsSync}
+              disabled={syncingSheets}
+              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-60 cursor-pointer transition-colors"
+            >
+              {syncingSheets
+                ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
+                : <><i className="ri-refresh-line"></i>Sync to Sheets Now</>
+              }
+            </button>
+          </div>
+        </div>
+        <div className="px-5 py-3 bg-gray-50 flex items-start gap-3">
+          <i className="ri-information-line text-gray-400 text-sm flex-shrink-0 mt-0.5"></i>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Requires <strong>GOOGLE_SHEETS_WEBHOOK_URL</strong> and <strong>SHEETS_SECRET</strong> to be set in Supabase Edge Function secrets.
+            The sync sends all orders to your Apps Script webhook which writes them to the <strong>PawTenant Leads</strong> tab.
+            New orders are also synced automatically when they&apos;re created.
+          </p>
+        </div>
+      </div>
+
       {/* ── HEALTH CHECKS ── */}
       {/* Header + run button */}
 
@@ -529,7 +788,10 @@ export default function SystemHealthTab() {
                           <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>All good
                         </span>
                       )}
-                      <i className={`ri-arrow-${isOpen ? "up" : "down"}-s-line text-gray-400 text-sm ml-1`}></i>
+                      {isOpen
+                        ? <i className="ri-arrow-up-s-line text-gray-400 text-sm ml-1"></i>
+                        : <i className="ri-arrow-down-s-line text-gray-400 text-sm ml-1"></i>
+                      }
                     </div>
                   </button>
 

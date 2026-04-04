@@ -1,7 +1,8 @@
 // SettingsTab — GHL, Stripe, and Email integration health
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import CouponManagementPanel from "./CouponManagementPanel";
+import UTMLinkGenerator from "./UTMLinkGenerator";
 
 interface GhlStats {
   total: number;
@@ -634,6 +635,288 @@ function GoogleSheetsSyncPanel({ supabaseUrl }: { supabaseUrl: string }) {
   );
 }
 
+// ── Email Templates Preview ──────────────────────────────────────────────────
+
+const PREVIEW_TEMPLATES = [
+  {
+    id: "order_confirmed",
+    label: "Order Confirmed",
+    group: "Transactional",
+    subject: "Your ESA Letter Order is Confirmed — PawTenant",
+    body: `Hi {name},
+
+Thank you for your order! Your ESA letter application has been received and is now being reviewed by one of our licensed mental health professionals.
+
+You can track your order status at any time by logging into your customer portal. We'll notify you as soon as your letter is ready — usually within 24 hours.
+
+Thank you for trusting PawTenant with your ESA needs.`,
+    ctaLabel: "Track My Order",
+    ctaUrl: "https://pawtenant.com/my-orders",
+  },
+  {
+    id: "letter_ready",
+    label: "ESA Letter Ready",
+    group: "Transactional",
+    subject: "Your ESA Letter is Ready — Download Now",
+    body: `Hi {name},
+
+Great news! Your ESA letter has been reviewed and signed by a licensed mental health professional. Your official ESA letter is now ready to download.
+
+Your letter is valid for housing purposes under the Fair Housing Act. Present it to your landlord or property manager to request reasonable accommodation for your emotional support animal.
+
+If you have any questions about your letter, please don't hesitate to contact us.`,
+    ctaLabel: "Download My ESA Letter",
+    ctaUrl: "https://pawtenant.com/my-orders",
+  },
+  {
+    id: "renewal",
+    label: "ESA Renewal Reminder",
+    group: "Marketing",
+    subject: "Time to Renew Your ESA Letter — Stay Protected",
+    body: `Hi {name},
+
+Your ESA letter may be approaching its annual renewal date. Most landlords and housing providers require an up-to-date letter from a licensed professional.
+
+Renewing is quick and easy — our licensed providers are standing by to complete your evaluation within 24-48 hours.
+
+Don't let your ESA protections lapse. Renew today and keep your housing rights secure.`,
+    ctaLabel: "Renew My ESA Letter",
+    ctaUrl: "https://pawtenant.com/renew-esa-letter",
+  },
+  {
+    id: "finish_esa",
+    label: "Abandoned Checkout Recovery",
+    group: "Marketing",
+    subject: "You're One Step Away — Complete Your ESA Letter",
+    body: `Hi {name},
+
+You're one step away from getting your ESA letter. Complete your order here and get protected today.
+
+Your assessment answers are already saved — just finish the payment and our licensed providers will review your case within 24 hours.`,
+    ctaLabel: "Complete My ESA Letter",
+    ctaUrl: "https://pawtenant.com/assessment",
+  },
+  {
+    id: "psd_upsell",
+    label: "PSD Upgrade Offer",
+    group: "Marketing",
+    subject: "Upgrade to a Psychiatric Service Dog Letter — Full Public Access",
+    body: `Hi {name},
+
+Did you know you can upgrade your ESA letter to a full Psychiatric Service Dog (PSD) letter?
+
+A PSD letter grants your dog access to public spaces, transportation, and more. Unlike ESA letters, PSD protections extend beyond housing under the Americans with Disabilities Act.
+
+Our licensed providers can evaluate your eligibility and issue a PSD letter — usually within 24 hours.`,
+    ctaLabel: "Get My PSD Letter",
+    ctaUrl: "https://pawtenant.com/how-to-get-psd-letter",
+  },
+  {
+    id: "broadcast_promo",
+    label: "Broadcast Promo (Light Green)",
+    group: "Broadcast",
+    subject: "Exclusive Offer from PawTenant — Just for You",
+    body: `Hi {name},
+
+As one of our valued customers, we wanted to share an exclusive offer just for you.
+
+Whether you need a renewal, an upgrade, or a letter for a new pet — our licensed mental health professionals are here to help.
+
+Use the button below to claim your offer. This is a limited-time deal available only to our existing customers.
+
+Thank you for trusting PawTenant with your ESA needs.`,
+    ctaLabel: "Claim My Offer",
+    ctaUrl: "https://pawtenant.com/assessment",
+  },
+];
+
+function buildEmailHtml(subject: string, body: string, ctaLabel: string, ctaUrl: string, previewName = "Jane"): string {
+  const previewBody = body.replace(/\{name\}/g, previewName);
+  const paragraphs = previewBody
+    .split("\n\n")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 16px 0;line-height:1.65;color:#374151;">${p.replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+
+  const ctaHtml = ctaLabel && ctaUrl
+    ? `<div style="text-align:center;margin:28px 0;">
+        <a href="${ctaUrl}" style="display:inline-block;background:#1a5c4f;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${ctaLabel}</a>
+      </div>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 16px;">
+    <tr>
+      <td align="center">
+        <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+          <div style="background:#1a5c4f;padding:28px 32px;text-align:center;">
+            <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
+            <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
+          </div>
+          <div style="padding:32px 36px;">
+            ${subject ? `<h1 style="margin:0 0 22px 0;font-size:20px;font-weight:800;color:#111827;line-height:1.3;">${subject}</h1>` : ""}
+            ${paragraphs}
+            ${ctaHtml}
+          </div>
+          <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 36px;text-align:center;">
+            <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:hello@pawtenant.com" style="color:#1a5c4f;text-decoration:none;">hello@pawtenant.com</a></p>
+            <p style="margin:0;font-size:11px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Letter Consultations &nbsp;&middot;&nbsp; <a href="https://pawtenant.com" style="color:#9ca3af;">pawtenant.com</a></p>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+function EmailTemplatesPreview() {
+  const [selectedId, setSelectedId] = useState(PREVIEW_TEMPLATES[0].id);
+  const [previewName, setPreviewName] = useState("Jane");
+  const [showRaw, setShowRaw] = useState(false);
+
+  const selected = PREVIEW_TEMPLATES.find((t) => t.id === selectedId) ?? PREVIEW_TEMPLATES[0];
+
+  const html = useMemo(
+    () => buildEmailHtml(selected.subject, selected.body, selected.ctaLabel, selected.ctaUrl, previewName),
+    [selected, previewName]
+  );
+
+  const groups = [...new Set(PREVIEW_TEMPLATES.map((t) => t.group))];
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
+            <i className="ri-eye-line text-[#1a5c4f] text-lg"></i>
+          </div>
+          <div>
+            <h3 className="text-sm font-extrabold text-gray-900">Email Templates Preview</h3>
+            <p className="text-xs text-gray-400">Visually QA every email template before sending — no send required</p>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#f0faf7] text-[#1a5c4f]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#1a5c4f] flex-shrink-0"></span>
+          {PREVIEW_TEMPLATES.length} templates
+        </span>
+      </div>
+
+      <div className="flex flex-col lg:flex-row" style={{ minHeight: "520px" }}>
+        {/* Left: template picker */}
+        <div className="w-full lg:w-56 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4">
+          {/* Preview name */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Preview As</label>
+            <input
+              type="text"
+              value={previewName}
+              onChange={(e) => setPreviewName(e.target.value || "Jane")}
+              placeholder="Jane"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] bg-white"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">Replaces &lbrace;name&rbrace; in preview</p>
+          </div>
+
+          {/* Template list grouped */}
+          <div className="space-y-3">
+            {groups.map((grp) => (
+              <div key={grp}>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                  <i className={`text-xs ${grp === "Transactional" ? "ri-mail-check-line text-[#1a5c4f]" : grp === "Marketing" ? "ri-megaphone-line text-amber-500" : "ri-broadcast-line text-violet-500"}`}></i>
+                  {grp}
+                </p>
+                <div className="space-y-1">
+                  {PREVIEW_TEMPLATES.filter((t) => t.group === grp).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSelectedId(t.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                        selectedId === t.id
+                          ? "bg-[#1a5c4f] text-white"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* View toggle */}
+          <div className="pt-2 border-t border-gray-200">
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setShowRaw(false)}
+                className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${!showRaw ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500"}`}
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRaw(true)}
+                className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${showRaw ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500"}`}
+              >
+                HTML
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: preview pane */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Subject bar */}
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center gap-3">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex-shrink-0">Subject:</span>
+            <span className="text-xs font-semibold text-gray-800 truncate">{selected.subject}</span>
+            <span className={`ml-auto flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              selected.group === "Transactional" ? "bg-[#f0faf7] text-[#1a5c4f]" :
+              selected.group === "Marketing" ? "bg-amber-50 text-amber-700" :
+              "bg-violet-50 text-violet-700"
+            }`}>{selected.group}</span>
+          </div>
+
+          {/* Preview notice */}
+          <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+            <i className="ri-information-line text-amber-500 text-xs flex-shrink-0"></i>
+            <p className="text-[11px] text-amber-700 font-semibold">
+              Preview only — &lbrace;name&rbrace; replaced with &ldquo;{previewName}&rdquo; · No email is sent
+            </p>
+          </div>
+
+          {/* Iframe or raw HTML */}
+          {showRaw ? (
+            <div className="flex-1 overflow-auto bg-gray-900 p-4">
+              <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all leading-relaxed">
+                {html}
+              </pre>
+            </div>
+          ) : (
+            <div className="flex-1 bg-[#f3f4f6]" style={{ minHeight: "420px" }}>
+              <iframe
+                srcDoc={html}
+                title={`Email Preview: ${selected.label}`}
+                className="w-full h-full border-0"
+                style={{ minHeight: "420px" }}
+                sandbox="allow-same-origin"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsTab() {
   const [ghl, setGhl] = useState<GhlStats | null>(null);
   const [stripe, setStripe] = useState<StripeStats | null>(null);
@@ -1071,6 +1354,12 @@ export default function SettingsTab() {
 
       {/* ── Data Retention Policy ── */}
       <DataRetentionPanel />
+
+      {/* ── Email Templates Preview ── */}
+      <EmailTemplatesPreview />
+
+      {/* ── UTM Campaign Link Generator ── */}
+      <UTMLinkGenerator />
 
       {/* ── Admin Dashboard Source of Truth ── */}
       <div className="bg-[#0f1e1a] rounded-xl p-5">

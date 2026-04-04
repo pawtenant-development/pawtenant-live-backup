@@ -209,13 +209,13 @@ export default function Footer() {
 
         {/* Bottom Bar */}
         <div className="border-t border-gray-300 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-gray-500 text-xs text-center">
+          <p className="text-gray-600 text-xs text-center">
             &copy; {new Date().getFullYear()} PawTenant. All rights reserved. ESA letters provided by licensed mental health professionals.
           </p>
           <div className="flex items-center gap-4">
-            <Link to="/privacy-policy" rel="nofollow" className="text-gray-400 text-xs hover:text-orange-500 transition-colors cursor-pointer">Privacy Policy</Link>
-            <Link to="/terms-of-use" rel="nofollow" className="text-gray-400 text-xs hover:text-orange-500 transition-colors cursor-pointer">Terms of Service</Link>
-            <a href="#" rel="nofollow" className="text-gray-400 text-xs hover:text-orange-500 transition-colors cursor-pointer">HIPAA Notice</a>
+            <Link to="/privacy-policy" rel="nofollow" className="text-gray-600 text-xs hover:text-orange-500 transition-colors cursor-pointer underline underline-offset-2 decoration-gray-400">Privacy Policy</Link>
+            <Link to="/terms-of-use" rel="nofollow" className="text-gray-600 text-xs hover:text-orange-500 transition-colors cursor-pointer underline underline-offset-2 decoration-gray-400">Terms of Service</Link>
+            <a href="#" rel="nofollow" className="text-gray-600 text-xs hover:text-orange-500 transition-colors cursor-pointer underline underline-offset-2 decoration-gray-400">HIPAA Notice</a>
           </div>
         </div>
       </div>

@@ -28,6 +28,9 @@ interface CommunicationTabProps {
   adminName: string;
   emailLog?: { type: string; sentAt: string; to: string; success: boolean }[] | null;
   hasDocuments?: boolean;
+  price?: number | null;
+  letterType?: string | null;
+  state?: string | null;
 }
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
@@ -49,15 +52,46 @@ const EMAIL_TYPE_LABEL: Record<string, string> = {
   refund:                         "Refund Email",
   status_under_review:            "Status Update: Under Review",
   status_completed:               "Status Update: Completed",
+  checkout_recovery:              "Abandoned Checkout Recovery",
+  followup_email:                 "Lead Follow-up Email",
+  consultation_booking:           "Provider Consultation Booking",
 };
 
-const EMAIL_OPTIONS = [
-  { value: "order_confirmation", label: "📧 Resend Order Confirmation", desc: "Resends the initial order confirmation + payment receipt email" },
-  { value: "under-review",  label: "📋 Under Review Update",    desc: "Lets the customer know their case is being reviewed" },
-  { value: "completed",     label: "✅ Completed Update",       desc: "Notifies the customer their order is done" },
-  { value: "letter_ready",  label: "📄 Resend Documents Email", desc: "Re-sends the letter/documents email to the customer" },
+// ── Email template groups ──────────────────────────────────────────────────
+interface EmailOption {
+  value: string;
+  label: string;
+  desc: string;
+  badge?: string;
+  badgeColor?: string;
+}
+
+const EMAIL_OPTION_GROUPS: { group: string; icon: string; options: EmailOption[] }[] = [
+  {
+    group: "Order Updates",
+    icon: "ri-file-list-3-line",
+    options: [
+      { value: "order_confirmation", label: "Resend Order Confirmation", desc: "Resends the initial order confirmation + payment receipt email", badge: "Transactional", badgeColor: "bg-[#f0faf7] text-[#1a5c4f]" },
+      { value: "under-review",       label: "Under Review Update",       desc: "Lets the customer know their case is being reviewed", badge: "Status", badgeColor: "bg-sky-50 text-sky-700" },
+      { value: "completed",          label: "Completed Update",          desc: "Notifies the customer their order is done", badge: "Status", badgeColor: "bg-emerald-50 text-emerald-700" },
+      { value: "letter_ready",       label: "Resend Documents Email",    desc: "Re-sends the letter/documents email to the customer", badge: "Documents", badgeColor: "bg-amber-50 text-amber-700" },
+    ],
+  },
+  {
+    group: "Lead Recovery",
+    icon: "ri-user-follow-line",
+    options: [
+      { value: "checkout_recovery",    label: "Abandoned Checkout Recovery", desc: "Remind them to complete their ESA/PSD assessment payment — CTA takes them back to checkout", badge: "Recovery", badgeColor: "bg-orange-50 text-orange-600" },
+      { value: "followup_lead",        label: "Lead Follow-up",              desc: "Still thinking? Nudge them to get their ESA letter today", badge: "Follow-up", badgeColor: "bg-amber-50 text-amber-700" },
+      { value: "consultation_booking", label: "Confirm Provider Consultation", desc: "Confirm their upcoming consultation booking with a licensed provider — CTA links to checkout", badge: "Booking", badgeColor: "bg-violet-50 text-violet-700" },
+    ],
+  },
 ];
 
+// Flat list for logic
+const ALL_EMAIL_OPTIONS: EmailOption[] = EMAIL_OPTION_GROUPS.flatMap((g) => g.options);
+
+// ── SMS Templates ──────────────────────────────────────────────────────────
 const SMS_TEMPLATES = [
   {
     label: "Order Confirmed",
@@ -82,6 +116,30 @@ const SMS_TEMPLATES = [
     bg: "bg-sky-50 border-sky-200 hover:border-sky-400",
     getMessage: (firstName: string, _orderId: string) =>
       `Hi ${firstName}, your ESA assessment is under review by our licensed provider. We'll notify you as soon as it's complete, usually within 24 hours.`,
+  },
+  {
+    label: "Finish Your ESA Letter",
+    icon: "ri-mail-send-line",
+    color: "text-orange-600",
+    bg: "bg-orange-50 border-orange-200 hover:border-orange-400",
+    getMessage: (firstName: string, orderId: string) =>
+      `Hi ${firstName}, you're one step away from your ESA letter! Complete your order here: pawtenant.com/assessment?resume=${orderId} — Reply STOP to opt out.`,
+  },
+  {
+    label: "Still Thinking?",
+    icon: "ri-lightbulb-line",
+    color: "text-amber-700",
+    bg: "bg-amber-50 border-amber-200 hover:border-amber-400",
+    getMessage: (firstName: string, orderId: string) =>
+      `Hi ${firstName}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment?resume=${orderId} — Reply STOP to opt out.`,
+  },
+  {
+    label: "Consultation Booked",
+    icon: "ri-calendar-check-line",
+    color: "text-violet-700",
+    bg: "bg-violet-50 border-violet-200 hover:border-violet-400",
+    getMessage: (firstName: string, orderId: string) =>
+      `Hi ${firstName}, your provider consultation with PawTenant is confirmed! Complete your payment to lock in your spot: pawtenant.com/assessment?resume=${orderId}`,
   },
   {
     label: "Need More Info",
@@ -129,6 +187,8 @@ export default function CommunicationTab({
   adminName,
   emailLog,
   hasDocuments = false,
+  price,
+  letterType,
 }: CommunicationTabProps) {
   const [comms, setComms]               = useState<CommunicationEntry[]>([]);
   const [loading, setLoading]           = useState(true);
@@ -149,6 +209,8 @@ export default function CommunicationTab({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const firstName = patientName.split(" ")[0] || "there";
+  const isPsd = letterType === "psd" || confirmationId.includes("-PSD");
+  const resumeUrl = `https://www.pawtenant.com/${isPsd ? "psd-assessment" : "assessment"}?resume=${encodeURIComponent(confirmationId)}`;
 
   // ── Load communications ────────────────────────────────────────────────
   const loadComms = useCallback(async () => {
@@ -273,6 +335,18 @@ export default function CommunicationTab({
       } else if (emailType === "letter_ready") {
         endpoint = "notify-patient-letter";
         if (doctorNote.trim()) payload.doctorMessage = doctorNote.trim();
+      } else if (emailType === "checkout_recovery") {
+        endpoint = "send-checkout-recovery";
+        payload = { confirmationId };
+      } else if (emailType === "followup_lead") {
+        endpoint = "send-followup-email";
+        payload = { confirmationId };
+      } else if (emailType === "consultation_booking") {
+        endpoint = "send-checkout-recovery";
+        payload = {
+          confirmationId,
+          customMessage: `Your consultation with a licensed ${isPsd ? "PSD" : "ESA"} provider has been confirmed! Please complete your payment to lock in your appointment.`,
+        };
       } else {
         endpoint = "notify-order-status";
         payload.newStatus = emailType;
@@ -283,19 +357,21 @@ export default function CommunicationTab({
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-      const result = await res.json() as { ok?: boolean; emailSent?: boolean; error?: string; skipped?: boolean; reason?: string; to?: string };
+      const result = await res.json() as { ok?: boolean; emailSent?: boolean; error?: string; skipped?: boolean; reason?: string; to?: string; message?: string };
 
       if (result.ok && result.skipped) {
         setEmailMsg(`Skipped: ${result.reason ?? "already sent"}`);
-      } else if (result.ok && (result.emailSent || emailType === "order_confirmation")) {
-        setEmailMsg(emailType === "order_confirmation"
-          ? `Confirmation email resent to ${result.to ?? "customer"}!`
-          : "Email sent!");
+      } else if (result.ok) {
+        const successMsg =
+          emailType === "order_confirmation" ? `Confirmation email resent to ${result.to ?? "customer"}!` :
+          emailType === "checkout_recovery"  ? `Abandoned checkout recovery email sent to ${email}!` :
+          emailType === "followup_lead"      ? `Follow-up email sent to ${email}!` :
+          emailType === "consultation_booking" ? `Consultation booking email sent to ${email}!` :
+          "Email sent!";
+        setEmailMsg(successMsg);
         setDoctorNote("");
-      } else if (result.ok && result.emailSent === false) {
-        setEmailMsg("Sent (SMTP not configured — check secrets)");
       } else {
-        setEmailMsg(result.error ?? "Failed to send");
+        setEmailMsg(result.error ?? result.message ?? "Failed to send");
       }
     } catch { setEmailMsg("Network error"); }
     setSendingEmail(false);
@@ -305,7 +381,10 @@ export default function CommunicationTab({
   const smsCount  = allEntries.filter((e) => e.type === "sms_outbound" || e.type === "sms_inbound").length;
   const callCount = allEntries.filter((e) => e.type === "call_outbound" || e.type === "call_inbound").length;
 
-  const selectedEmailOption = EMAIL_OPTIONS.find((o) => o.value === emailType);
+  const selectedEmailOption = ALL_EMAIL_OPTIONS.find((o) => o.value === emailType);
+
+  // Determine if selected email type needs CTA note
+  const isRecoveryType = ["checkout_recovery", "followup_lead", "consultation_booking"].includes(emailType);
 
   return (
     <div className="p-6 space-y-5 h-full flex flex-col">
@@ -344,7 +423,7 @@ export default function CommunicationTab({
 
           {/* Template chips */}
           {showTemplates && (
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
               {SMS_TEMPLATES.map((tpl) => (
                 <button
                   key={tpl.label}
@@ -400,27 +479,44 @@ export default function CommunicationTab({
             <span className="text-xs text-amber-600/60 font-mono truncate max-w-[90px]">{email}</span>
           </div>
 
-          {/* Email type selector */}
-          <div className="space-y-1.5">
-            {EMAIL_OPTIONS.map((opt) => (
-              <label
-                key={opt.value}
-                className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${emailType === opt.value ? "bg-white border-amber-400" : "bg-amber-50/50 border-transparent hover:border-amber-200"} ${opt.value === "letter_ready" && !hasDocuments ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <input
-                  type="radio"
-                  name="emailType"
-                  value={opt.value}
-                  checked={emailType === opt.value}
-                  onChange={() => setEmailType(opt.value)}
-                  disabled={opt.value === "letter_ready" && !hasDocuments}
-                  className="mt-0.5 accent-amber-500 cursor-pointer"
-                />
-                <div>
-                  <p className="text-xs font-bold text-gray-700 leading-none mb-0.5">{opt.label}</p>
-                  <p className="text-xs text-gray-400 leading-snug">{opt.desc}</p>
-                </div>
-              </label>
+          {/* Email type selector — grouped */}
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
+            {EMAIL_OPTION_GROUPS.map((group) => (
+              <div key={group.group}>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1 mb-1 px-0.5">
+                  <i className={`${group.icon} text-xs`}></i>{group.group}
+                </p>
+                {group.options.map((opt) => {
+                  const isDisabled = opt.value === "letter_ready" && !hasDocuments;
+                  return (
+                    <label
+                      key={opt.value}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors mb-1 ${emailType === opt.value ? "bg-white border-amber-400" : "bg-amber-50/50 border-transparent hover:border-amber-200"} ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="emailType"
+                        value={opt.value}
+                        checked={emailType === opt.value}
+                        onChange={() => setEmailType(opt.value)}
+                        disabled={isDisabled}
+                        className="mt-0.5 accent-amber-500 cursor-pointer flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-bold text-gray-700 leading-none">{opt.label}</p>
+                          {opt.badge && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${opt.badgeColor}`}>
+                              {opt.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 leading-snug mt-0.5">{opt.desc}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
             ))}
           </div>
 
@@ -433,6 +529,17 @@ export default function CommunicationTab({
               placeholder="Optional personal note from provider..."
               className="w-full px-3 py-2 border border-amber-200 rounded-lg text-xs bg-white focus:outline-none focus:border-amber-400 resize-none"
             />
+          )}
+
+          {/* CTA note for recovery-type emails */}
+          {isRecoveryType && (
+            <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
+              <i className="ri-cursor-line text-orange-500 text-sm flex-shrink-0 mt-0.5"></i>
+              <p className="text-xs text-orange-700 leading-relaxed">
+                Email includes a <strong>CTA button</strong> that takes the customer directly to their checkout page at{" "}
+                <span className="font-mono text-[10px] break-all">{resumeUrl}</span>
+              </p>
+            </div>
           )}
 
           <button
@@ -491,6 +598,21 @@ export default function CommunicationTab({
               {callMsg}
             </p>
           )}
+
+          {/* Quick info */}
+          <div className="pt-2 border-t border-gray-100 space-y-1.5">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Order Info</p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">Type</span>
+              <span className={`text-xs font-bold ${isPsd ? "text-amber-700" : "text-[#1a5c4f]"}`}>{isPsd ? "PSD Letter" : "ESA Letter"}</span>
+            </div>
+            {price != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Amount</span>
+                <span className="text-xs font-bold text-gray-700">${price}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -532,7 +654,6 @@ export default function CommunicationTab({
           filtered.map((entry) => {
             const cfg   = TYPE_CONFIG[entry.type] ?? TYPE_CONFIG.email;
             const right = cfg.alignRight;
-
             const isCallEntry = entry.type === "call_outbound" || entry.type === "call_inbound";
 
             return (
@@ -563,24 +684,14 @@ export default function CommunicationTab({
                     )}
                   </div>
                   {entry.body && <p className="text-sm text-gray-800 leading-relaxed">{entry.body}</p>}
-                  {/* ── Recording audio player ── */}
                   {isCallEntry && entry.recording_url && (
                     <div className="mt-1">
-                      <audio
-                        controls
-                        preload="none"
-                        className="w-full h-9 rounded-lg"
-                        style={{ minWidth: "240px" }}
-                      >
+                      <audio controls preload="none" className="w-full h-9 rounded-lg" style={{ minWidth: "240px" }}>
                         <source src={entry.recording_url} type="audio/mpeg" />
                         Your browser does not support the audio element.
                       </audio>
-                      <a
-                        href={entry.recording_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 mt-1 text-xs text-sky-600 hover:underline cursor-pointer"
-                      >
+                      <a href={entry.recording_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 mt-1 text-xs text-sky-600 hover:underline cursor-pointer">
                         <i className="ri-download-line"></i>Download recording
                       </a>
                     </div>

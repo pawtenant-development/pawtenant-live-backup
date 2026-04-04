@@ -13,49 +13,32 @@ const ADMIN_PORTAL_URL = `https://${COMPANY_DOMAIN}/admin-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
-// ── Resend helper ──────────────────────────────────────────────────────────
+const HEADER_BG = "#4a9e8a";
+const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
+const HEADER_TEXT = "#ffffff";
+const HEADER_SUB = "rgba(255,255,255,0.82)";
+const ACCENT = "#1a5c4f";
+const ORANGE = "#f97316";
 
 async function sendViaResend(opts: {
-  to: string;
-  subject: string;
-  html: string;
+  to: string; subject: string; html: string;
   tags?: Array<{ name: string; value: string }>;
 }): Promise<boolean> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
-  if (!apiKey) {
-    console.error("[notify-provider-application] RESEND_API_KEY secret is not set");
-    return false;
-  }
+  if (!apiKey) { console.error("[notify-provider-application] RESEND_API_KEY secret is not set"); return false; }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [opts.to],
-        subject: opts.subject,
-        html: opts.html,
-        ...(opts.tags ? { tags: opts.tags } : {}),
-      }),
+      body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html, ...(opts.tags ? { tags: opts.tags } : {}) }),
     });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error(`[notify-provider-application] Resend error ${res.status}: ${errBody}`);
-      return false;
-    }
+    if (!res.ok) { const errBody = await res.text(); console.error(`[notify-provider-application] Resend error ${res.status}: ${errBody}`); return false; }
     return true;
-  } catch (err) {
-    console.error("[notify-provider-application] Resend fetch error:", err);
-    return false;
-  }
+  } catch (err) { console.error("[notify-provider-application] Resend fetch error:", err); return false; }
 }
 
-// ── Template helpers ───────────────────────────────────────────────────────
-
 function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function baseEmailLayout({ badge, heading, subheading, content, footerTagline = `${COMPANY_NAME} • Secure ESA Consultation Support` }: {
@@ -63,27 +46,28 @@ function baseEmailLayout({ badge, heading, subheading, content, footerTagline = 
 }) {
   return `<!DOCTYPE html>
 <html>
-<body style="margin:0;background:#F3F4F6;font-family:Arial;">
-<table width="100%" style="padding:24px;">
-<tr><td align="center">
-<table width="680" style="background:#fff;border-radius:20px;border:1px solid #E5E7EB;overflow:hidden;">
-<tr>
-<td style="padding:30px;background:#F7F7F8;text-align:center;border-bottom:1px solid #E5E7EB;">
-<img src="${LOGO_URL}" width="220" style="margin-bottom:16px;" alt="${COMPANY_NAME}" />
-<div style="background:#FFF1E8;color:#FF6A00;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:bold;display:inline-block;">${badge}</div>
-<h2 style="margin:16px 0 6px;color:#111827;">${heading}</h2>
-<p style="color:#6B7280;margin:0;">${subheading}</p>
-</td>
-</tr>
-<tr><td style="padding:30px;">${content}</td></tr>
-<tr>
-<td style="padding:20px;background:#F9FAFB;text-align:center;border-top:1px solid #E5E7EB;">
-<p style="font-size:13px;color:#6B7280;margin:0 0 4px;">${footerTagline}</p>
-<p style="font-size:12px;color:#9CA3AF;margin:0;">${SUPPORT_EMAIL}</p>
-</td>
-</tr>
-</table>
-</td></tr>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
+      <tr>
+        <td style="background:${HEADER_BG};padding:32px;text-align:center;">
+          <img src="${LOGO_URL}" width="180" alt="${COMPANY_NAME}" style="display:block;margin:0 auto 16px;height:auto;" />
+          <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
+          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">${heading}</h1>
+          <p style="margin:0;font-size:14px;color:${HEADER_SUB};">${subheading}</p>
+        </td>
+      </tr>
+      <tr><td style="padding:32px;">${content}</td></tr>
+      <tr>
+        <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">${footerTagline}</p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">${SUPPORT_EMAIL}</p>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
 </table>
 </body>
 </html>`;
@@ -91,56 +75,43 @@ function baseEmailLayout({ badge, heading, subheading, content, footerTagline = 
 
 function button(url: string, text: string) {
   return `<div style="text-align:center;margin:25px 0;">
-    <a href="${escapeHtml(url)}" style="background:#FF6A00;color:#fff;padding:14px 26px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:14px;">${text}</a>
+    <a href="${escapeHtml(url)}" style="background:${ORANGE};color:#fff;padding:14px 26px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block;">${text}</a>
   </div>`;
 }
 
 function card(title: string, body: string) {
-  return `<div style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:14px;padding:20px;margin-top:20px;">
-    <p style="color:#FF6A00;font-size:12px;font-weight:bold;margin:0 0 14px;">${title}</p>
+  return `<div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:14px;padding:20px;margin-top:20px;">
+    <p style="color:${ORANGE};font-size:12px;font-weight:bold;margin:0 0 14px;">${title}</p>
     ${body}
   </div>`;
 }
 
 function row(label: string, value: string) {
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #F3F4F6;">
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #f3f4f6;">
     <tr>
-      <td style="padding:7px 0;font-size:13px;color:#9CA3AF;width:45%;">${escapeHtml(label)}</td>
+      <td style="padding:7px 0;font-size:13px;color:#9ca3af;width:45%;">${escapeHtml(label)}</td>
       <td style="padding:7px 0;font-size:13px;font-weight:600;color:#111827;text-align:right;">${escapeHtml(value)}</td>
     </tr>
   </table>`;
 }
 
 function step(num: string, title: string, desc: string) {
-  return `<div style="display:flex;align-items:flex-start;padding:10px 0;border-bottom:1px solid #F3F4F6;">
-    <div style="min-width:28px;height:28px;background:#FF6A00;border-radius:50%;text-align:center;line-height:28px;font-size:12px;font-weight:bold;color:#fff;margin-right:14px;">${num}</div>
+  return `<div style="display:flex;align-items:flex-start;padding:10px 0;border-bottom:1px solid #f3f4f6;">
+    <div style="min-width:28px;height:28px;background:${ACCENT};border-radius:50%;text-align:center;line-height:28px;font-size:12px;font-weight:bold;color:#fff;margin-right:14px;">${num}</div>
     <div>
       <p style="margin:0 0 3px;font-size:13px;font-weight:600;color:#111827;">${escapeHtml(title)}</p>
-      <p style="margin:0;font-size:12px;color:#6B7280;">${escapeHtml(desc)}</p>
+      <p style="margin:0;font-size:12px;color:#6b7280;">${escapeHtml(desc)}</p>
     </div>
   </div>`;
 }
 
 interface ApplicationPayload {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  licenseTypes?: string;
-  licenseNumber?: string;
-  licenseState?: string;
-  additionalStates?: string;
-  yearsExperience?: string;
-  practiceName?: string;
-  practiceType?: string;
-  specializations?: string;
-  monthlyCapacity?: string;
-  esaExperience?: string;
-  telehealthReady?: string;
-  bio?: string;
-  profileUrl?: string;
-  headshotUrl?: string;
-  documentsCount?: number;
+  firstName: string; lastName: string; email: string; phone?: string;
+  licenseTypes?: string; licenseNumber?: string; licenseState?: string;
+  additionalStates?: string; yearsExperience?: string; practiceName?: string;
+  practiceType?: string; specializations?: string; monthlyCapacity?: string;
+  esaExperience?: string; telehealthReady?: string; bio?: string;
+  profileUrl?: string; headshotUrl?: string; documentsCount?: number;
 }
 
 function buildProviderConfirmationEmail(opts: ApplicationPayload): string {
@@ -160,21 +131,21 @@ function buildProviderConfirmationEmail(opts: ApplicationPayload): string {
 
   const content = `
     <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;">Hi <strong>${escapeHtml(opts.firstName)}</strong>,</p>
-    <p style="margin:0 0 24px;font-size:14px;color:#4B5563;line-height:1.7;">
+    <p style="margin:0 0 24px;font-size:14px;color:#4b5563;line-height:1.7;">
       We&apos;ve received your application to join our network of licensed mental health professionals. Our clinical team will carefully review your credentials and reach out within <strong>48 hours</strong> to schedule your onboarding call.
     </p>
     ${card("Your Application Summary", summaryRows)}
     ${card("What Happens Next", stepsHtml)}
-    <p style="margin:24px 0 6px;font-size:14px;color:#4B5563;">Have questions in the meantime?</p>
-    <p style="margin:0;font-size:14px;color:#4B5563;">
-      Reach out at <a href="mailto:${SUPPORT_EMAIL}" style="color:#FF6A00;font-weight:600;text-decoration:none;">${SUPPORT_EMAIL}</a> and we&apos;ll be happy to help.
+    <p style="margin:24px 0 6px;font-size:14px;color:#4b5563;">Have questions in the meantime?</p>
+    <p style="margin:0;font-size:14px;color:#4b5563;">
+      Reach out at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};font-weight:600;text-decoration:none;">${SUPPORT_EMAIL}</a> and we&apos;ll be happy to help.
     </p>
   `;
 
   return baseEmailLayout({
     badge: "Application Received",
     heading: "Application Received!",
-    subheading: `Therapist Network &mdash; ${COMPANY_NAME}`,
+    subheading: `Therapist Network — ${COMPANY_NAME}`,
     content,
     footerTagline: `${COMPANY_NAME} • Therapist Network`,
   });
@@ -201,8 +172,8 @@ function buildAdminNotificationEmail(opts: ApplicationPayload): string {
   ].map(([label, value]) => row(label, value)).join("");
 
   const bioSection = opts.bio ? `
-    <div style="margin-top:14px;padding:12px 16px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;">
-      <p style="margin:0 0 6px;font-size:11px;font-weight:bold;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.08em;">Bio</p>
+    <div style="margin-top:14px;padding:12px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;">
+      <p style="margin:0 0 6px;font-size:11px;font-weight:bold;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;">Bio</p>
       <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">${escapeHtml(opts.bio)}</p>
     </div>` : "";
 
@@ -212,7 +183,7 @@ function buildAdminNotificationEmail(opts: ApplicationPayload): string {
     </p>
     ${card("Applicant Details", allRows + bioSection)}
     ${button(ADMIN_PORTAL_URL, "Review in Admin Portal →")}
-    <p style="margin:0;font-size:13px;color:#9CA3AF;text-align:center;">
+    <p style="margin:0;font-size:13px;color:#9ca3af;text-align:center;">
       Log in to the admin portal to approve or reject this application.
     </p>
   `;
@@ -238,9 +209,7 @@ Deno.serve(async (req: Request) => {
   try { body = (await req.json()) as ApplicationPayload; }
   catch { return json({ error: "Invalid JSON body" }, 400); }
 
-  if (!body.firstName || !body.email) {
-    return json({ error: "firstName and email are required" }, 400);
-  }
+  if (!body.firstName || !body.email) return json({ error: "firstName and email are required" }, 400);
 
   const adminEmail = Deno.env.get("ADMIN_EMAIL") ?? SUPPORT_EMAIL;
 

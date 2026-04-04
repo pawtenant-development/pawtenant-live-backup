@@ -9,6 +9,9 @@ const corsHeaders = {
 const GOOGLE_SHEETS_WEBHOOK_URL = Deno.env.get("GOOGLE_SHEETS_WEBHOOK_URL") ?? "";
 const SHEETS_SECRET = Deno.env.get("SHEETS_SECRET") ?? "";
 
+// ── Sheet name — must match exactly what's in your Google Sheet tab ──
+const SHEET_NAME = "PawTenant Leads";
+
 /**
  * Canonical ordered column list — sent with every sync so the Apps Script
  * can keep the sheet header row in sync automatically.
@@ -230,6 +233,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         secret: SHEETS_SECRET,
         action: "full_sync",
+        sheetName: SHEET_NAME,
         columns: COLUMNS,
         rows,
       }),
@@ -240,7 +244,7 @@ Deno.serve(async (req: Request) => {
     try { parsed = JSON.parse(responseText); } catch { /* ignore */ }
 
     return new Response(
-      JSON.stringify({ ok: true, synced: rows.length, columns: COLUMNS.length, sheetsResponse: parsed }),
+      JSON.stringify({ ok: true, synced: rows.length, columns: COLUMNS.length, sheetName: SHEET_NAME, sheetsResponse: parsed }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: unknown) {

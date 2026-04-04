@@ -404,7 +404,7 @@ export default function StripePaymentForm({
           disabled={!canSubmit}
           className={`whitespace-nowrap w-full py-4 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-colors ${
             canSubmit
-              ? "bg-orange-400 text-white hover:bg-orange-500 cursor-pointer"
+              ? "bg-orange-400 text-black hover:bg-orange-500 cursor-pointer"
               : "bg-orange-50 border-2 border-dashed border-orange-200 text-orange-300 cursor-not-allowed select-none"
           }`}
         >

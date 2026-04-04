@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import OrderNotesPanel from "./OrderNotesPanel";
 import CommunicationTab from "./CommunicationTab";
+import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
 import PSDAssessmentView from "./PSDAssessmentView";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
 import {
@@ -207,11 +208,42 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
 };
 
 const REF_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  facebook:     { label: "Facebook",     icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
+  // Short keys (legacy)
+  facebook:     { label: "Facebook / Instagram Ads", icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
   google_ads:   { label: "Google Ads",   icon: "ri-google-line",          color: "text-orange-600 bg-orange-50 border-orange-200" },
   social_media: { label: "Social Media", icon: "ri-share-circle-line",    color: "text-pink-600 bg-pink-50 border-pink-200" },
   seo:          { label: "SEO",          icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+  // Full string values stored in DB
+  "Facebook / Instagram Ads": { label: "Facebook / Instagram Ads", icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
+  "Google Ads":               { label: "Google Ads",               icon: "ri-google-line",          color: "text-orange-600 bg-orange-50 border-orange-200" },
+  "Google Organic":           { label: "Google Organic (SEO)",     icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+  "TikTok Ads":               { label: "TikTok Ads",               icon: "ri-tiktok-line",          color: "text-gray-900 bg-gray-100 border-gray-300" },
+  "Instagram Ads":            { label: "Instagram Ads",            icon: "ri-instagram-line",       color: "text-pink-600 bg-pink-50 border-pink-200" },
+  "Twitter / X":              { label: "Twitter / X",              icon: "ri-twitter-x-line",       color: "text-gray-800 bg-gray-100 border-gray-300" },
+  "YouTube Ads":              { label: "YouTube Ads",              icon: "ri-youtube-line",         color: "text-red-600 bg-red-50 border-red-200" },
+  "Email Campaign":           { label: "Email Campaign",           icon: "ri-mail-send-line",       color: "text-violet-600 bg-violet-50 border-violet-200" },
+  "Referral":                 { label: "Referral",                 icon: "ri-share-forward-line",   color: "text-teal-600 bg-teal-50 border-teal-200" },
+  "Direct":                   { label: "Direct",                   icon: "ri-cursor-line",          color: "text-gray-600 bg-gray-50 border-gray-200" },
 };
+
+function resolveRefConfig(referredBy: string | null): { label: string; icon: string; color: string } | null {
+  if (!referredBy) return null;
+  if (REF_CONFIG[referredBy]) return REF_CONFIG[referredBy];
+  // Fuzzy match: check if any key is contained in the value
+  const lower = referredBy.toLowerCase();
+  if (lower.includes("facebook") || lower.includes("instagram")) return REF_CONFIG["Facebook / Instagram Ads"];
+  if (lower.includes("google") && lower.includes("organic")) return REF_CONFIG["Google Organic"];
+  if (lower.includes("google")) return REF_CONFIG["Google Ads"];
+  if (lower.includes("tiktok")) return REF_CONFIG["TikTok Ads"];
+  if (lower.includes("twitter") || lower.includes(" x ") || lower.includes("/ x")) return REF_CONFIG["Twitter / X"];
+  if (lower.includes("youtube")) return REF_CONFIG["YouTube Ads"];
+  if (lower.includes("email")) return REF_CONFIG["Email Campaign"];
+  if (lower.includes("referral")) return REF_CONFIG["Referral"];
+  if (lower.includes("seo") || lower.includes("organic")) return REF_CONFIG["Google Organic"];
+  if (lower.includes("direct")) return REF_CONFIG["Direct"];
+  // Unknown but has a value — show it as-is with a generic icon
+  return { label: referredBy, icon: "ri-share-circle-line", color: "text-gray-600 bg-gray-50 border-gray-200" };
+}
 
 export default function OrderDetailModal({
   order: initialOrder,
@@ -1294,6 +1326,9 @@ export default function OrderDetailModal({
               adminName={adminProfile.full_name}
               emailLog={order.email_log}
               hasDocuments={!!order.signed_letter_url}
+              price={order.price}
+              letterType={order.letter_type ?? null}
+              state={order.state ?? null}
             />
           )}
 
@@ -1566,14 +1601,17 @@ export default function OrderDetailModal({
                   {/* Referred By badge */}
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">Referred By</p>
-                    {order.referred_by && REF_CONFIG[order.referred_by] ? (
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${REF_CONFIG[order.referred_by].color}`}>
-                        <i className={REF_CONFIG[order.referred_by].icon}></i>
-                        {REF_CONFIG[order.referred_by].label}
-                      </span>
-                    ) : (
-                      <p className="text-sm font-semibold text-gray-400">Direct / Unknown</p>
-                    )}
+                    {(() => {
+                      const cfg = resolveRefConfig(order.referred_by);
+                      return cfg ? (
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${cfg.color}`}>
+                          <i className={cfg.icon}></i>
+                          {cfg.label}
+                        </span>
+                      ) : (
+                        <p className="text-sm font-semibold text-gray-400">Direct / Unknown</p>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -2059,6 +2097,20 @@ export default function OrderDetailModal({
                   </p>
                 )}
               </div>
+
+              {/* ── TRUSTPILOT REVIEW REQUEST — completed orders only ── */}
+              {order.doctor_status === "patient_notified" && (
+                <TrustpilotReviewPanel
+                  orderId={order.id}
+                  confirmationId={order.confirmation_id}
+                  email={order.email}
+                  phone={order.phone ?? null}
+                  firstName={order.first_name ?? null}
+                  lastName={order.last_name ?? null}
+                  supabaseUrl={supabaseUrl}
+                  anonKey={anonKey}
+                />
+              )}
 
               {/* Emails Sent */}
               <div className="bg-white rounded-xl border border-gray-200 p-4">

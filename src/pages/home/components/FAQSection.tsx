@@ -65,15 +65,15 @@ export default function FAQSection() {
   }, []);
 
   return (
-    <section id="faq" className="py-20 bg-gray-50">
+    <section id="faq" className="py-20 bg-gray-50" aria-label="Frequently Asked Questions">
       {/* Schema is now injected via useEffect above — no inline script tag */}
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-14">
-          <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-2">FAQ</p>
+          <p className="text-orange-600 text-sm font-semibold tracking-widest uppercase mb-2">FAQ</p>
           <h2 className="text-3xl font-extrabold text-gray-900">
             Frequently Asked <span className="text-orange-500">Questions</span>
           </h2>
-          <p className="text-gray-500 mt-3 max-w-xl mx-auto text-sm">
+          <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
             Everything you need to know about ESA letters, the process, and your rights.
           </p>
         </div>
@@ -88,14 +88,21 @@ export default function FAQSection() {
                 className="w-full flex items-center justify-between p-5 text-left cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
                 aria-expanded={openIndex === idx}
+                aria-controls={`faq-answer-${idx}`}
+                id={`faq-question-${idx}`}
               >
                 <span className="text-gray-900 font-semibold text-sm pr-4">{faq.q}</span>
-                <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                <div className="w-6 h-6 flex items-center justify-center flex-shrink-0" aria-hidden="true">
                   <i className={`text-orange-500 text-lg transition-transform duration-200 ${openIndex === idx ? "ri-subtract-line" : "ri-add-line"}`}></i>
                 </div>
               </button>
               {openIndex === idx && (
-                <div className="px-5 pb-5 text-gray-500 text-sm leading-relaxed border-t border-gray-100 pt-4">
+                <div
+                  id={`faq-answer-${idx}`}
+                  role="region"
+                  aria-labelledby={`faq-question-${idx}`}
+                  className="px-5 pb-5 text-gray-700 text-sm leading-relaxed border-t border-gray-100 pt-4"
+                >
                   {faq.a}
                 </div>
               )}

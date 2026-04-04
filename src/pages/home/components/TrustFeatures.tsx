@@ -54,7 +54,7 @@ export default function TrustFeatures() {
             Why Thousands Trust Us for Their{" "}
             <span className="text-orange-500">ESA Letters</span>
           </h2>
-          <p className="text-gray-500 mt-3 max-w-xl mx-auto text-sm">
+          <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
             We make getting a legitimate emotional support animal letter fast, affordable, and completely stress-free.
           </p>
         </div>
@@ -70,7 +70,7 @@ export default function TrustFeatures() {
                 <i className={`${f.icon} text-xl`}></i>
               </div>
               <h3 className="text-gray-900 font-bold text-base mb-2">{f.title}</h3>
-              <p className="text-gray-500 text-sm leading-relaxed">{f.desc}</p>
+              <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
             </div>
           ))}
         </div>

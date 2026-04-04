@@ -1,5 +1,7 @@
 // OrderCard — Mobile card + Desktop table row (expandable)
+import { useState } from "react";
 import OrderNotesPanel from "./OrderNotesPanel";
+import { supabase } from "@/lib/supabaseClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface Order {
@@ -18,6 +20,9 @@ export interface Order {
   dispute_status?: string | null; dispute_reason?: string | null; dispute_created_at?: string | null;
   fraud_warning?: boolean | null; fraud_warning_at?: string | null;
   subscription_status?: string | null; letter_type?: string | null;
+  payment_failure_reason?: string | null; payment_failed_at?: string | null;
+  seq_30min_sent_at?: string | null; seq_24h_sent_at?: string | null; seq_3day_sent_at?: string | null;
+  followup_opt_out?: boolean | null; seq_opted_out_at?: string | null;
 }
 
 export interface DoctorContact {
@@ -39,9 +44,11 @@ export interface OrderCardProps {
   ghlRefiring: string | null; onGhlRefire: (cid: string) => void;
   ghlReFireResult: Record<string, { ok: boolean; msg: string }>;
   recoveryMsg: Record<string, { ok: boolean; msg: string }>; onOpenRecovery: (order: Order) => void;
+  onSendRecoveryDirect?: (order: Order) => void; sendingRecoveryDirect?: string | null;
   unreadCommsMap: Record<string, number>; noteCount: number; adminProfile: AdminProfile | null;
   onOpenDetail: (order: Order) => void; onOpenStatusLog: (order: Order) => void;
   onOpenAssessmentIntake: (order: Order) => void;
+  onToggleOptOut?: (order: Order) => void;
   coveredStates: Set<string>; duplicateEmailSet: Set<string>;
   US_STATES: { name: string; abbr: string }[];
 }
@@ -91,6 +98,15 @@ function fmtRelative(ts: string) {
   const d = Math.floor(h / 24); return d < 7 ? `${d}d ago` : new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 function fmtDate(ts: string) { return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }); }
+
+function getSeqStatus(o: Order): { label: string; color: string; icon: string } | null {
+  if (!o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at) return null;
+  if (o.followup_opt_out) return { label: "Opted Out", color: "bg-gray-100 text-gray-400", icon: "ri-mail-forbid-line" };
+  if (o.seq_3day_sent_at) return { label: "3-day sent", color: "bg-violet-100 text-violet-700", icon: "ri-coupon-3-line" };
+  if (o.seq_24h_sent_at) return { label: "24h sent", color: "bg-amber-100 text-amber-700", icon: "ri-time-line" };
+  if (o.seq_30min_sent_at) return { label: "30min sent", color: "bg-sky-100 text-sky-700", icon: "ri-mail-send-line" };
+  return null;
+}
 function doctorStatusLabel(s: string | null, assigned: boolean) {
   if (!assigned) return "Unassigned"; if (!s) return "Pending";
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -108,8 +124,9 @@ export default function OrderCard({
   notesOpen, onToggleNotes, assignableProviders, pendingAssign,
   onSetPendingAssign, onCancelPendingAssign, onConfirmAssign,
   assigning, assignMsg, ghlRefiring, onGhlRefire, ghlReFireResult,
-  recoveryMsg, onOpenRecovery, unreadCommsMap, noteCount, adminProfile,
+  recoveryMsg, onOpenRecovery, onSendRecoveryDirect, sendingRecoveryDirect, unreadCommsMap, noteCount, adminProfile,
   onOpenDetail, onOpenStatusLog, onOpenAssessmentIntake,
+  onToggleOptOut,
   coveredStates, duplicateEmailSet, US_STATES,
 }: OrderCardProps) {
   const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
@@ -125,17 +142,106 @@ export default function OrderCard({
   const unreadComms = unreadCommsMap[order.confirmation_id] ?? 0;
   const isPendingThisAssign = pendingAssign?.confirmationId === order.confirmation_id;
   const isLead = order.status === "lead" || !order.payment_intent_id;
+  const seqStatus = getSeqStatus(order);
   const isRefunded = order.status === "refunded" || !!order.refunded_at;
   const isCompleted = order.doctor_status === "patient_notified";
   const showAssignSection = !isLead && !isRefunded && !isCompleted;
   const showRecovery = isLead;
   const showGhlRefire = !order.ghl_synced_at;
+  const hasPaymentFailure = !!(order.payment_failure_reason && isLead);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
-  const borderAccent = order.doctor_status === "thirty_day_reissue" ? "border-l-4 border-l-orange-400" : isPSD ? "border-l-4 border-l-amber-400" : "";
+  const borderAccent = hasPaymentFailure
+    ? "border-l-4 border-l-red-400"
+    : order.doctor_status === "thirty_day_reissue"
+    ? "border-l-4 border-l-orange-400"
+    : isPSD
+    ? "border-l-4 border-l-amber-400"
+    : "";
+
+  // ── GHL Call handler ──────────────────────────────────────────────────────
+  const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+  const [calling, setCalling] = useState(false);
+  const [callMsg, setCallMsg] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleGhlCall = async (e: React.MouseEvent) => {
+    stop(e);
+    if (!order.phone) return;
+    setCalling(true);
+    setCallMsg(null);
+    try {
+      // Use the authenticated session token — NOT the anon key
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      if (!token) {
+        setCallMsg({ ok: false, msg: "Not authenticated — please log in again" });
+        setCalling(false);
+        return;
+      }
+      const res = await fetch(`${supabaseUrl}/functions/v1/make-outbound-call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          toPhone: order.phone,
+          orderId: order.id,
+          confirmationId: order.confirmation_id,
+          sentBy: "Admin",
+        }),
+      });
+      const data = await res.json() as { ok: boolean; sid?: string; status?: string; message?: string; error?: string };
+      setCallMsg({ ok: data.ok, msg: data.ok ? `Call initiated — ${data.status ?? "connecting"}` : (data.error ?? "Call failed") });
+      setTimeout(() => setCallMsg(null), 6000);
+    } catch {
+      setCallMsg({ ok: false, msg: "Network error — please try again" });
+      setTimeout(() => setCallMsg(null), 4000);
+    }
+    setCalling(false);
+  };
 
   // ── Shared expanded details panel (used by both mobile and desktop) ─────────
   const ExpandedDetails = () => (
     <div className="space-y-4">
+      {/* Payment failure alert banner + one-click recovery */}
+      {hasPaymentFailure && (
+        <div className="bg-red-50 border border-red-200 rounded-xl overflow-hidden">
+          <div className="flex items-start gap-2.5 px-3 py-2.5">
+            <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <i className="ri-bank-card-line text-red-500 text-sm"></i>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-extrabold text-red-700 mb-0.5">Payment Failed</p>
+              <p className="text-xs text-red-600 leading-relaxed">{order.payment_failure_reason}</p>
+              {order.payment_failed_at && (
+                <p className="text-[10px] text-red-400 mt-0.5">{fmtRelative(order.payment_failed_at)}</p>
+              )}
+            </div>
+          </div>
+          {/* One-click recovery CTA */}
+          <div className="border-t border-red-200 px-3 py-2 flex items-center justify-between gap-2 bg-red-100/40">
+            <p className="text-[10px] text-red-500 leading-tight">
+              Send a recovery email with a direct checkout link
+            </p>
+            {onSendRecoveryDirect && (
+              <button
+                type="button"
+                onClick={(e) => { stop(e); onSendRecoveryDirect(order); }}
+                disabled={sendingRecoveryDirect === order.confirmation_id || recoveryMsg[order.confirmation_id]?.ok}
+                className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer transition-colors disabled:opacity-60 flex-shrink-0 ${
+                  recoveryMsg[order.confirmation_id]?.ok
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-white text-red-700 border-red-300 hover:bg-red-50"
+                }`}
+              >
+                {sendingRecoveryDirect === order.confirmation_id
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Sending…</>
+                  : recoveryMsg[order.confirmation_id]?.ok
+                  ? <><i className="ri-mail-check-line"></i>Sent!</>
+                  : <><i className="ri-mail-send-line"></i>Send Recovery Email</>
+                }
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {/* Contact */}
       <div className="flex flex-wrap gap-3">
         <a href={`mailto:${order.email}`} onClick={stop}
@@ -185,6 +291,28 @@ export default function OrderCard({
           <button type="button" onClick={(e) => { stop(e); onOpenAssessmentIntake(order); }}
             className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-semibold cursor-pointer hover:bg-orange-100 transition-colors">
             <i className="ri-file-list-3-line text-xs"></i>Intake
+          </button>
+        )}
+        {/* Sequence status chip */}
+        {seqStatus && (
+          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold ${seqStatus.color}`}>
+            <i className={`${seqStatus.icon} text-xs`}></i>{seqStatus.label}
+          </span>
+        )}
+        {/* Opt-out toggle — only for leads */}
+        {isLead && (order.seq_30min_sent_at || order.seq_24h_sent_at || order.seq_3day_sent_at) && onToggleOptOut && (
+          <button
+            type="button"
+            onClick={(e) => { stop(e); onToggleOptOut(order); }}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+              order.followup_opt_out
+                ? "bg-gray-100 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"
+                : "bg-red-50 text-red-600 hover:bg-red-100"
+            }`}
+            title={order.followup_opt_out ? "Re-enable automated follow-ups" : "Stop automated follow-ups for this lead"}
+          >
+            <i className={`text-xs ${order.followup_opt_out ? "ri-mail-check-line" : "ri-mail-forbid-line"}`}></i>
+            {order.followup_opt_out ? "Re-enable Sequence" : "Stop Sequence"}
           </button>
         )}
       </div>
@@ -255,7 +383,28 @@ export default function OrderCard({
             {ghlRefiring === order.confirmation_id ? <><i className="ri-loader-4-line animate-spin"></i>Syncing…</> : <><i className="ri-refresh-line"></i>Re-fire GHL</>}
           </button>
         )}
+        {/* GHL Call button */}
+        {order.phone && (
+          <button
+            type="button"
+            onClick={handleGhlCall}
+            disabled={calling}
+            title={`Call ${order.phone} via GHL`}
+            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg cursor-pointer disabled:opacity-50 transition-colors"
+          >
+            {calling
+              ? <><i className="ri-loader-4-line animate-spin"></i>Calling…</>
+              : <><i className="ri-phone-line"></i>Call via GHL</>
+            }
+          </button>
+        )}
       </div>
+      {callMsg && (
+        <p className={`text-xs flex items-center gap-1 ${callMsg.ok ? "text-emerald-600" : "text-red-500"}`}>
+          <i className={callMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+          {callMsg.msg}
+        </p>
+      )}
       {ghlReFireResult[order.confirmation_id] && (
         <p className={`text-xs flex items-center gap-1 ${ghlReFireResult[order.confirmation_id].ok ? "text-emerald-600" : "text-red-500"}`}>
           <i className={ghlReFireResult[order.confirmation_id].ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
@@ -280,6 +429,15 @@ export default function OrderCard({
           MOBILE CARD LAYOUT  (< lg — unchanged)
           ══════════════════════════════════════════════════════════════════════ */}
       <div className={`lg:hidden bg-white rounded-xl border border-gray-100 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-200 group cursor-pointer ${borderAccent}`} onClick={onToggleExpand}>
+        {/* Payment failed inline banner on collapsed card */}
+        {hasPaymentFailure && (
+          <div className="flex items-center gap-2 px-4 pt-3 pb-0">
+            <i className="ri-bank-card-line text-red-500 text-xs flex-shrink-0"></i>
+            <p className="text-[10px] font-bold text-red-600 truncate">
+              Payment Failed: {order.payment_failure_reason}
+            </p>
+          </div>
+        )}
         {/* Collapsed header */}
         <div className="flex items-center gap-3 px-4 py-4">
           <div className="hidden sm:flex items-center flex-shrink-0" onClick={stop}>
@@ -388,6 +546,26 @@ export default function OrderCard({
           {/* Status — w-[150px] */}
           <div className="w-[150px] flex-shrink-0 pr-4">
             <span className={`whitespace-nowrap inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${displayStatus.color}`}>{displayStatus.label}</span>
+            {hasPaymentFailure && (
+              <div className="flex items-center gap-1 mt-1" title={order.payment_failure_reason ?? ""}>
+                <i className="ri-bank-card-line text-red-400 text-[10px]"></i>
+                <span className="text-[9px] font-bold text-red-500 truncate max-w-[120px]">{order.payment_failure_reason}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Sequence Status — w-[100px] */}
+          <div className="w-[100px] flex-shrink-0 pr-4">
+            {isLead && seqStatus ? (
+              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold ${seqStatus.color}`}>
+                <i className={`${seqStatus.icon} text-[9px]`}></i>
+                {seqStatus.label}
+              </span>
+            ) : isLead ? (
+              <span className="text-[10px] text-gray-300 italic">No seq</span>
+            ) : (
+              <span className="text-[10px] text-gray-300 italic">—</span>
+            )}
           </div>
 
           {/* Provider — w-[110px] */}
@@ -416,7 +594,7 @@ export default function OrderCard({
           </div>
 
           {/* Quick actions — w-[110px] */}
-          <div className="w-[110px] flex-shrink-0 flex items-center gap-1" onClick={stop}>
+          <div className="w-[110px] flex-shrink-0 flex items-center gap-1 flex-wrap" onClick={stop}>
             <button type="button" title="View Details" onClick={(e) => { stop(e); onOpenDetail(order); }}
               className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer text-sm">
               <i className="ri-eye-line"></i>
@@ -429,6 +607,18 @@ export default function OrderCard({
               className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer text-sm">
               <i className="ri-history-line"></i>
             </button>
+            {/* GHL Call button */}
+            {order.phone && (
+              <button
+                type="button"
+                title={`Call ${order.phone} via GHL`}
+                onClick={handleGhlCall}
+                disabled={calling}
+                className={`whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer text-sm ${callMsg?.ok ? "text-emerald-600 bg-emerald-50" : "text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50"} disabled:opacity-50`}
+              >
+                {calling ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-phone-line"></i>}
+              </button>
+            )}
             {/* Preview Provider Portal - Admin Preview Mode */}
             {isAssigned && (
               <a 
@@ -443,9 +633,30 @@ export default function OrderCard({
               </a>
             )}
             {showRecovery && (
-              <button type="button" title="Send Recovery Email" onClick={(e) => { stop(e); onOpenRecovery(order); }}
-                className={`whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer text-sm ${recoveryMsg[order.confirmation_id]?.ok ? "text-emerald-500 bg-emerald-50" : "text-orange-400 hover:text-orange-600 hover:bg-orange-50"}`}>
-                <i className={recoveryMsg[order.confirmation_id]?.ok ? "ri-mail-check-line" : "ri-coupon-3-line"}></i>
+              <button
+                type="button"
+                title={hasPaymentFailure ? "Send Recovery Email (Payment Failed)" : "Send Recovery Email"}
+                onClick={(e) => {
+                  stop(e);
+                  if (hasPaymentFailure && onSendRecoveryDirect) {
+                    onSendRecoveryDirect(order);
+                  } else {
+                    onOpenRecovery(order);
+                  }
+                }}
+                disabled={hasPaymentFailure && sendingRecoveryDirect === order.confirmation_id}
+                className={`whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer text-sm disabled:opacity-50 ${
+                  recoveryMsg[order.confirmation_id]?.ok
+                    ? "text-emerald-500 bg-emerald-50"
+                    : hasPaymentFailure
+                    ? "text-red-500 hover:text-red-700 hover:bg-red-50"
+                    : "text-orange-400 hover:text-orange-600 hover:bg-orange-50"
+                }`}
+              >
+                {hasPaymentFailure && sendingRecoveryDirect === order.confirmation_id
+                  ? <i className="ri-loader-4-line animate-spin"></i>
+                  : <i className={recoveryMsg[order.confirmation_id]?.ok ? "ri-mail-check-line" : hasPaymentFailure ? "ri-mail-send-line" : "ri-coupon-3-line"}></i>
+                }
               </button>
             )}
           </div>

@@ -17,6 +17,7 @@ import SettingsTab from "./components/SettingsTab";
 import LeadActionsModal from "./components/LeadActionsModal";
 import AssessmentIntakeModal from "./components/AssessmentIntakeModal";
 import AdminDashboard from "./components/AdminDashboard";
+import AnalyticsTab from "./components/AnalyticsTab";
 import IncomingCallBanner from "./components/IncomingCallBanner";
 import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
@@ -24,6 +25,7 @@ import CommunicationsPanel from "./components/CommunicationsPanel";
 import SystemHealthTab from "./components/SystemHealthTab";
 import OrderCard from "./components/OrderCard";
 import AdminSidebar from "./components/AdminSidebar";
+import NotificationsBell from "./components/NotificationsBell";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +92,13 @@ interface Order {
   fraud_warning_at?: string | null;
   subscription_status?: string | null;
   letter_type?: string | null;
+  payment_failure_reason?: string | null;
+  payment_failed_at?: string | null;
+  seq_30min_sent_at?: string | null;
+  seq_24h_sent_at?: string | null;
+  seq_3day_sent_at?: string | null;
+  followup_opt_out?: boolean | null;
+  seq_opted_out_at?: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -185,9 +194,9 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
 
 // ─── Role-based tab visibility ─────────────────────────────────────────────
 
-type TabKey = "dashboard" | "orders" | "comms" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
+type TabKey = "dashboard" | "orders" | "analytics" | "comms" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
 
-const ALL_TABS: TabKey[] = ["dashboard", "orders", "comms", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
+const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
 
 function getVisibleTabs(role: string | null): TabKey[] {
   switch (role) {
@@ -196,13 +205,13 @@ function getVisibleTabs(role: string | null): TabKey[] {
       return ALL_TABS;
     case "support":
       // Support: orders, customers, doctors, audit — no payments, earnings, team, settings
-      return ["dashboard", "orders", "comms", "customers", "doctors", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "audit", "health"];
     case "finance":
       // Finance: orders, customers, payments, earnings, audit — no team, settings, doctors
-      return ["dashboard", "orders", "comms", "customers", "payments", "earnings", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "customers", "payments", "earnings", "audit", "health"];
     case "read_only":
       // Read-only: orders, customers, doctors, payments, audit — no team, settings, earnings
-      return ["dashboard", "orders", "comms", "customers", "doctors", "payments", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "payments", "audit", "health"];
     default:
       return ALL_TABS;
   }
@@ -300,6 +309,7 @@ export default function AdminOrdersPage() {
   const [selectedProviderFilter, setSelectedProviderFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [referredByFilter, setReferredByFilter] = useState("all");
+  const [sequenceFilter, setSequenceFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -348,6 +358,9 @@ export default function AdminOrdersPage() {
   const [bulkDeleteMsg, setBulkDeleteMsg] = useState("");
   const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState("");
 
+  // ── Bulk stop sequence state ──
+  const [bulkStoppingSequence, setBulkStoppingSequence] = useState(false);
+
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
   const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
@@ -370,6 +383,7 @@ export default function AdminOrdersPage() {
 
   const [sendingRecovery, setSendingRecovery] = useState<string | null>(null);
   const [recoveryMsg, setRecoveryMsg] = useState<Record<string, { ok: boolean; msg: string }>>({});
+  const [sendingRecoveryDirect, setSendingRecoveryDirect] = useState<string | null>(null);
 
   // ── Recovery email modal state ──
   const [recoveryModal, setRecoveryModal] = useState<Order | null>(null);
@@ -480,7 +494,7 @@ export default function AdminOrdersPage() {
 
   const loadOrderData = useCallback(async () => {
     const [ordersRes, contactsRes, profilesRes] = await Promise.all([
-      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at").order("created_at", { ascending: false }),
+      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at").order("created_at", { ascending: false }),
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
       supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role").order("full_name"),
     ]);
@@ -774,6 +788,70 @@ export default function AdminOrdersPage() {
     setTimeout(() => setBulkDeleteMsg(""), 8000);
   }, [selectedOrders, orders]);
 
+  // ── Toggle follow-up opt-out ─────────────────────────────────────────────
+  const handleToggleOptOut = useCallback(async (order: Order) => {
+    const newVal = !order.followup_opt_out;
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? "";
+    await fetch(`${supabaseUrl}/functions/v1/lead-followup-sequence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: newVal ? "opt_out" : "opt_in", orderId: order.id }),
+    });
+    setOrders((prev) => prev.map((o) => o.id === order.id ? { ...o, followup_opt_out: newVal, seq_opted_out_at: newVal ? new Date().toISOString() : null } : o));
+  }, [supabaseUrl]);
+
+  // ── Bulk stop sequence for selected unpaid leads ─────────────────────────
+  const handleBulkStopSequence = useCallback(async () => {
+    setBulkStoppingSequence(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? "";
+    // Only opt-out leads that are unpaid and not already opted out
+    const eligibleOrders = orders.filter((o) =>
+      selectedOrders.has(o.confirmation_id) &&
+      (!o.payment_intent_id || o.status === "lead") &&
+      !o.followup_opt_out
+    );
+    await Promise.all(
+      eligibleOrders.map((o) =>
+        fetch(`${supabaseUrl}/functions/v1/lead-followup-sequence`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "opt_out", orderId: o.id }),
+        }).catch(() => null)
+      )
+    );
+    const now = new Date().toISOString();
+    setOrders((prev) =>
+      prev.map((o) =>
+        eligibleOrders.some((e) => e.id === o.id)
+          ? { ...o, followup_opt_out: true, seq_opted_out_at: now }
+          : o
+      )
+    );
+    setBulkStoppingSequence(false);
+    setBulkMsg(`Sequence stopped for ${eligibleOrders.length} lead${eligibleOrders.length !== 1 ? "s" : ""}`);
+    setTimeout(() => setBulkMsg(""), 5000);
+  }, [orders, selectedOrders, supabaseUrl]);
+
+  // ── One-click recovery for payment-failed cards ──────────────────────────
+  const handleSendRecoveryDirect = useCallback(async (order: Order) => {
+    setSendingRecoveryDirect(order.confirmation_id);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-checkout-recovery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+        body: JSON.stringify({ confirmationId: order.confirmation_id, email: order.email, firstName: order.first_name ?? "", price: order.price }),
+      });
+      const result = await res.json() as { ok: boolean; error?: string; message?: string };
+      const msg = result.ok ? "Recovery email sent!" : (result.error ?? "Failed to send");
+      setRecoveryMsg((prev) => ({ ...prev, [order.confirmation_id]: { ok: result.ok, msg } }));
+    } catch {
+      setRecoveryMsg((prev) => ({ ...prev, [order.confirmation_id]: { ok: false, msg: "Network error" } }));
+    }
+    setSendingRecoveryDirect(null);
+  }, [supabaseUrl, anonKey]);
+
   // ── Recovery email modal helpers ─────────────────────────────────────────
   const openRecoveryModal = useCallback((order: Order) => {
     setRecoveryModal(order);
@@ -848,6 +926,8 @@ export default function AdminOrdersPage() {
       matchStatus = o.status === "disputed" || !!o.dispute_id;
     } else if (statusFilter === "cancelled") {
       matchStatus = o.status === "cancelled";
+    } else if (statusFilter === "payment_failed") {
+      matchStatus = !!(o.payment_failure_reason && (o.status === "lead" || !o.payment_intent_id));
     } else {
       matchStatus = o.status === statusFilter || o.doctor_status === statusFilter;
     }
@@ -861,6 +941,22 @@ export default function AdminOrdersPage() {
       || (paymentFilter === "unpaid" && !o.payment_intent_id);
     const matchRef = referredByFilter === "all"
       || (referredByFilter === "none" ? !o.referred_by : o.referred_by === referredByFilter);
+    // Sequence filter — only applies to leads (unpaid)
+    let matchSequence = true;
+    if (sequenceFilter !== "all") {
+      const isLead = !o.payment_intent_id || o.status === "lead";
+      if (sequenceFilter === "no_sequence") {
+        matchSequence = isLead && !o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at && !o.followup_opt_out;
+      } else if (sequenceFilter === "30min_sent") {
+        matchSequence = isLead && !!o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at;
+      } else if (sequenceFilter === "24h_sent") {
+        matchSequence = isLead && !!o.seq_24h_sent_at && !o.seq_3day_sent_at;
+      } else if (sequenceFilter === "3day_sent") {
+        matchSequence = isLead && !!o.seq_3day_sent_at;
+      } else if (sequenceFilter === "opted_out") {
+        matchSequence = isLead && !!o.followup_opt_out;
+      }
+    }
     const matchDateFrom = !dateFrom || new Date(o.created_at) >= new Date(dateFrom);
     const matchDateTo = !dateTo || new Date(o.created_at) <= new Date(dateTo + "T23:59:59");
     const matchDuplicates = !showDuplicatesOnly || duplicateContactSet.has(o.email.toLowerCase()) || (!!o.phone && duplicateContactSet.has(o.phone.replace(/\D/g, "")));
@@ -872,7 +968,7 @@ export default function AdminOrdersPage() {
       (o.state ?? "").toLowerCase().includes(q) ||
       (o.doctor_name ?? "").toLowerCase().includes(q) ||
       (o.phone ?? "").includes(q);
-    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchDateFrom && matchDateTo && matchSearch && matchDuplicates;
+    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateFrom && matchDateTo && matchSearch && matchDuplicates;
   }).filter((o) => {
     if (!hideRecentFollowup) return true;
     if (!o.sent_followup_at) return true;
@@ -894,13 +990,14 @@ export default function AdminOrdersPage() {
     selectedProviderFilter !== "all",
     paymentFilter !== "all",
     referredByFilter !== "all",
+    sequenceFilter !== "all",
     !!dateFrom,
     !!dateTo,
     showDuplicatesOnly,
   ].filter(Boolean).length;
 
   // Reset pagination when filters/search change
-  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, dateFrom, dateTo, showDuplicatesOnly, hideRecentFollowup, sortOrder]);
+  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateFrom, dateTo, showDuplicatesOnly, hideRecentFollowup, sortOrder]);
 
   const clearAdvancedFilters = () => {
     setStateFilterAdv("all");
@@ -908,6 +1005,7 @@ export default function AdminOrdersPage() {
     setSelectedProviderFilter("all");
     setPaymentFilter("all");
     setReferredByFilter("all");
+    setSequenceFilter("all");
     setDateFrom("");
     setDateTo("");
     setShowDuplicatesOnly(false);
@@ -1081,6 +1179,13 @@ export default function AdminOrdersPage() {
             </div>
           )}
 
+          <NotificationsBell
+            onViewOrder={(confirmationId) => {
+              const order = orders.find((o) => o.confirmation_id === confirmationId);
+              if (order) { openOrderDetail(order); setActiveTab("orders"); }
+            }}
+          />
+
           <button type="button" onClick={() => setShowBroadcast(true)} title="Broadcast Message"
             className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 text-white bg-[#1a5c4f] hover:bg-[#17504a] transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm">
             <i className="ri-broadcast-line text-sm"></i>
@@ -1133,6 +1238,7 @@ export default function AdminOrdersPage() {
           <h1 className="text-xl font-extrabold text-gray-900 capitalize">
             {activeTab === "dashboard" ? "Dashboard" :
              activeTab === "orders" ? "Orders" :
+             activeTab === "analytics" ? "Analytics" :
              activeTab === "comms" ? "Communications" :
              activeTab === "customers" ? "Customers" :
              activeTab === "doctors" ? "Providers" :
@@ -1171,6 +1277,17 @@ export default function AdminOrdersPage() {
             doctorContacts={doctorContacts}
             loading={loading}
             onTabChange={(tab) => setActiveTab(tab as TabKey)}
+          />
+        )}
+
+        {/* ── ANALYTICS TAB ── */}
+        {activeTab === "analytics" && (
+          <AnalyticsTab
+            orders={orders}
+            onViewOrder={(order) => {
+              openOrderDetail(order);
+              setActiveTab("orders");
+            }}
           />
         )}
 
@@ -1225,6 +1342,13 @@ export default function AdminOrdersPage() {
                     color: "text-emerald-600",
                     filter: "completed",
                   },
+                  {
+                    label: "Payment Failed",
+                    value: orders.filter((o) => !!(o.payment_failure_reason) && (o.status === "lead" || !o.payment_intent_id)).length,
+                    icon: "ri-bank-card-line",
+                    color: "text-red-500",
+                    filter: "payment_failed",
+                  },
                 ].map((s) => (
                   <button
                     key={s.label}
@@ -1272,6 +1396,7 @@ export default function AdminOrdersPage() {
                   { value: "refunded", label: "Refunded" },
                   { value: "disputed", label: "Disputed" },
                   { value: "cancelled", label: "Cancelled" },
+                  { value: "payment_failed", label: "Payment Failed" },
                 ].map((opt) => (
                   <button key={opt.value} type="button" onClick={() => setStatusFilter(opt.value)}
                     className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f]"}`}
@@ -1338,6 +1463,68 @@ export default function AdminOrdersPage() {
                 </span>
               </div>
             )}
+
+            {/* ── Sequence quick-filter chip bar (always visible on orders tab) ── */}
+            {!loading && (() => {
+              const leads = orders.filter((o) => !o.payment_intent_id || o.status === "lead");
+              const counts = {
+                all: leads.length,
+                no_sequence: leads.filter((o) => !o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at && !o.followup_opt_out).length,
+                "30min_sent": leads.filter((o) => !!o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at).length,
+                "24h_sent": leads.filter((o) => !!o.seq_24h_sent_at && !o.seq_3day_sent_at).length,
+                "3day_sent": leads.filter((o) => !!o.seq_3day_sent_at).length,
+                opted_out: leads.filter((o) => !!o.followup_opt_out).length,
+              };
+              const chips: { value: string; label: string; icon: string; activeColor: string; count: number }[] = [
+                { value: "all",          label: "All Leads",      icon: "ri-group-line",          activeColor: "bg-gray-700 text-white border-gray-700",          count: counts.all },
+                { value: "no_sequence",  label: "Not Started",    icon: "ri-time-line",            activeColor: "bg-gray-500 text-white border-gray-500",          count: counts.no_sequence },
+                { value: "30min_sent",   label: "30min Sent",     icon: "ri-mail-check-line",      activeColor: "bg-sky-600 text-white border-sky-600",            count: counts["30min_sent"] },
+                { value: "24h_sent",     label: "24h Sent",       icon: "ri-mail-send-line",       activeColor: "bg-amber-500 text-white border-amber-500",        count: counts["24h_sent"] },
+                { value: "3day_sent",    label: "3-Day Sent",     icon: "ri-gift-line",            activeColor: "bg-violet-600 text-white border-violet-600",      count: counts["3day_sent"] },
+                { value: "opted_out",    label: "Opted Out",      icon: "ri-forbid-line",          activeColor: "bg-red-500 text-white border-red-500",            count: counts.opted_out },
+              ];
+              return (
+                <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 mb-2">
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                      <i className="ri-mail-send-line text-[#1a5c4f] text-sm"></i>
+                    </div>
+                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Sequence Stage</span>
+                    {sequenceFilter !== "all" && (
+                      <button
+                        type="button"
+                        onClick={() => setSequenceFilter("all")}
+                        className="whitespace-nowrap ml-auto flex items-center gap-1 px-2 py-0.5 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
+                      >
+                        <i className="ri-close-line"></i>Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {chips.map((chip) => (
+                      <button
+                        key={chip.value}
+                        type="button"
+                        onClick={() => setSequenceFilter(chip.value)}
+                        className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                          sequenceFilter === chip.value
+                            ? chip.activeColor
+                            : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+                        }`}
+                      >
+                        <i className={chip.icon}></i>
+                        {chip.label}
+                        <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold ${
+                          sequenceFilter === chip.value ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          {chip.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ── Advanced filters ── */}
             {showAdvancedFilters && (
@@ -1410,6 +1597,27 @@ export default function AdminOrdersPage() {
                         <option value="social_media">Social Media</option>
                         <option value="seo">SEO</option>
                         <option value="none">Direct / Unknown</option>
+                      </select>
+                      <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+                    </div>
+                  </div>
+                  {/* Sequence Status */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1">
+                      Sequence Status
+                      <span title="Filter leads by their follow-up sequence stage. Only applies to unpaid leads." className="cursor-help">
+                        <i className="ri-information-line text-gray-400 text-xs"></i>
+                      </span>
+                    </label>
+                    <div className="relative">
+                      <select value={sequenceFilter} onChange={(e) => setSequenceFilter(e.target.value)}
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                        <option value="all">All Sequences</option>
+                        <option value="no_sequence">No Sequence Sent</option>
+                        <option value="30min_sent">30min Email Sent</option>
+                        <option value="24h_sent">24h Email Sent</option>
+                        <option value="3day_sent">3-Day Email Sent</option>
+                        <option value="opted_out">Opted Out</option>
                       </select>
                       <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
                     </div>
@@ -1512,6 +1720,7 @@ export default function AdminOrdersPage() {
                     <div className="w-[64px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">State</div>
                     <div className="w-[120px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Activity</div>
                     <div className="w-[150px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</div>
+                    <div className="w-[100px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sequence</div>
                     <div className="w-[110px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Provider</div>
                     <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</div>
                     <div className="w-[110px] flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</div>
@@ -1541,12 +1750,15 @@ export default function AdminOrdersPage() {
                         ghlReFireResult={ghlReFireResult}
                         recoveryMsg={recoveryMsg}
                         onOpenRecovery={openRecoveryModal}
+                        onSendRecoveryDirect={handleSendRecoveryDirect}
+                        sendingRecoveryDirect={sendingRecoveryDirect}
                         unreadCommsMap={unreadCommsMap}
                         noteCount={orderNoteCounts[order.id] ?? 0}
                         adminProfile={adminProfile}
                         onOpenDetail={openOrderDetail}
                         onOpenStatusLog={(o) => setShowStatusLog(o)}
                         onOpenAssessmentIntake={(o) => setAssessmentIntakeOrder(o)}
+                        onToggleOptOut={handleToggleOptOut}
                         coveredStates={coveredStates}
                         duplicateEmailSet={duplicateEmailSet}
                         US_STATES={US_STATES}
@@ -1579,12 +1791,15 @@ export default function AdminOrdersPage() {
                       ghlReFireResult={ghlReFireResult}
                       recoveryMsg={recoveryMsg}
                       onOpenRecovery={openRecoveryModal}
+                      onSendRecoveryDirect={handleSendRecoveryDirect}
+                      sendingRecoveryDirect={sendingRecoveryDirect}
                       unreadCommsMap={unreadCommsMap}
                       noteCount={orderNoteCounts[order.id] ?? 0}
                       adminProfile={adminProfile}
                       onOpenDetail={openOrderDetail}
                       onOpenStatusLog={(o) => setShowStatusLog(o)}
                       onOpenAssessmentIntake={(o) => setAssessmentIntakeOrder(o)}
+                      onToggleOptOut={handleToggleOptOut}
                       coveredStates={coveredStates}
                       duplicateEmailSet={duplicateEmailSet}
                       US_STATES={US_STATES}
@@ -1826,6 +2041,39 @@ export default function AdminOrdersPage() {
                     </button>
                   </div>
                 )}
+                {/* ── Bulk Stop Sequence — only for unpaid leads with active sequences ── */}
+                {(() => {
+                  const eligibleLeads = orders.filter((o) =>
+                    selectedOrders.has(o.confirmation_id) &&
+                    (!o.payment_intent_id || o.status === "lead") &&
+                    !o.followup_opt_out &&
+                    (o.seq_30min_sent_at || o.seq_24h_sent_at || o.seq_3day_sent_at)
+                  );
+                  const notStartedLeads = orders.filter((o) =>
+                    selectedOrders.has(o.confirmation_id) &&
+                    (!o.payment_intent_id || o.status === "lead") &&
+                    !o.followup_opt_out &&
+                    !o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at
+                  );
+                  const totalOptable = eligibleLeads.length + notStartedLeads.length;
+                  return totalOptable > 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleBulkStopSequence}
+                      disabled={bulkStoppingSequence}
+                      title="Stop automated follow-up emails for selected unpaid leads. Paid orders stop automatically — this is for manually opting out leads who asked to stop."
+                      className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-red-500/20 border border-red-400/40 text-red-200 hover:bg-red-500/30 text-sm font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      {bulkStoppingSequence
+                        ? <><i className="ri-loader-4-line animate-spin"></i>Stopping...</>
+                        : <><i className="ri-forbid-line"></i>Stop Sequence</>
+                      }
+                      <span className="bg-red-400/30 text-red-100 text-xs font-bold px-1.5 py-0.5 rounded-full">
+                        {totalOptable}
+                      </span>
+                    </button>
+                  ) : null;
+                })()}
                 {(() => {
                   const leadOrders = orders.filter((o) => selectedOrders.has(o.confirmation_id) && o.status === "lead");
                   return leadOrders.length > 0 ? (

@@ -62,7 +62,7 @@ export default function PricingSection() {
           <h2 className="text-3xl font-extrabold text-gray-900">
             Simple <span className="text-orange-500">Pricing</span> — No Hidden Fees
           </h2>
-          <p className="text-gray-500 mt-3 max-w-xl mx-auto text-sm">
+          <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
             Choose your delivery speed. All packages include a full, legally valid ESA letter from a licensed mental health professional.
           </p>
         </div>
@@ -83,7 +83,7 @@ export default function PricingSection() {
 
               <div className="mb-6">
                 <h3 className="text-gray-900 font-bold text-base mb-1">{plan.name}</h3>
-                <p className="text-gray-400 text-xs mb-3">{plan.sub}</p>
+                <p className="text-gray-600 text-xs mb-3">{plan.sub}</p>
                 <div className="flex items-end gap-1">
                   <span className="text-4xl font-extrabold text-gray-900">{plan.price}</span>
                   <span className="text-gray-400 text-sm mb-1.5">

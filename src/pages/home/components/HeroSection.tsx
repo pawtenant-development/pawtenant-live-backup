@@ -11,12 +11,16 @@ export default function HeroSection() {
           <source
             media="(max-width: 767px)"
             srcSet="https://readdy.ai/api/search-image?query=warm%20cozy%20living%20room%20with%20a%20happy%20smiling%20woman%20sitting%20on%20sofa%20and%20her%20golden%20retriever%20dog%20sitting%20right%20next%20to%20her%20both%20clearly%20visible%20in%20frame%2C%20soft%20morning%20light%2C%20home%20interior%2C%20natural%20warm%20tones%2C%20lifestyle%20photography%2C%20professional%20photography%2C%20wide%20shot%20showing%20both%20subjects%20equally&width=600&height=900&seq=hero-mobile-v2&orientation=portrait"
+            width={600}
+            height={900}
           />
           {/* Desktop: original wide landscape image */}
           <img
             src="https://readdy.ai/api/search-image?query=warm%20cozy%20living%20room%20with%20a%20happy%20woman%20sitting%20on%20sofa%20using%20laptop%20while%20her%20golden%20retriever%20dog%20rests%20beside%20her%2C%20soft%20morning%20light%2C%20home%20interior%20with%20plants%2C%20natural%20warm%20tones%2C%20lifestyle%20photography%2C%20shallow%20depth%20of%20field%2C%20professional%20photography&width=1440&height=900&seq=hero001&orientation=landscape"
             alt="Woman with dog getting ESA letter online"
             className="w-full h-full object-cover hero-img-position"
+            width={1440}
+            height={900}
             fetchPriority="high"
             loading="eager"
             decoding="async"
@@ -60,7 +64,7 @@ export default function HeroSection() {
                 </div>
                 <div>
                   <p className="text-white text-sm font-bold leading-tight">{s.value}</p>
-                  <p className="text-gray-400 text-xs">{s.label}</p>
+                  <p className="text-gray-300 text-xs">{s.label}</p>
                 </div>
               </div>
             ))}

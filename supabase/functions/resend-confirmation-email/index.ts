@@ -14,56 +14,37 @@ const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
+const HEADER_BG = "#4a9e8a";
+const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
+const HEADER_TEXT = "#ffffff";
+const HEADER_SUB = "rgba(255,255,255,0.82)";
+const ACCENT = "#1a5c4f";
+
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
 }
 
 function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 async function sendViaResend(opts: {
-  to: string;
-  subject: string;
-  html: string;
+  to: string; subject: string; html: string;
   tags?: Array<{ name: string; value: string }>;
 }): Promise<{ sent: boolean; resendId?: string; error?: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
-  if (!apiKey) {
-    console.error("[resend-confirmation] RESEND_API_KEY secret is not set");
-    return { sent: false, error: "RESEND_API_KEY not configured" };
-  }
+  if (!apiKey) return { sent: false, error: "RESEND_API_KEY not configured" };
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [opts.to],
-        subject: opts.subject,
-        html: opts.html,
-        ...(opts.tags ? { tags: opts.tags } : {}),
-      }),
+      body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html, ...(opts.tags ? { tags: opts.tags } : {}) }),
     });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error(`[resend-confirmation] Resend error ${res.status}: ${errBody}`);
-      return { sent: false, error: `Resend ${res.status}: ${errBody}` };
-    }
+    if (!res.ok) { const errBody = await res.text(); return { sent: false, error: `Resend ${res.status}: ${errBody}` }; }
     const data = await res.json() as { id?: string };
     return { sent: true, resendId: data.id };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[resend-confirmation] fetch error:", msg);
-    return { sent: false, error: msg };
+    return { sent: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -76,18 +57,18 @@ function baseLayout(badge: string, heading: string, subheading: string, body: st
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
       <tr>
-        <td style="background:#1a5c4f;padding:32px;text-align:center;">
+        <td style="background:${HEADER_BG};padding:32px;text-align:center;">
           <img src="${LOGO_URL}" width="180" alt="PawTenant" style="display:block;margin:0 auto 16px;height:auto;" />
-          <div style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
-          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#ffffff;line-height:1.3;">${heading}</h1>
-          <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.75);">${subheading}</p>
+          <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">${badge}</div>
+          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">${heading}</h1>
+          <p style="margin:0;font-size:14px;color:${HEADER_SUB};">${subheading}</p>
         </td>
       </tr>
       <tr><td style="padding:32px;">${body}</td></tr>
       <tr>
         <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a></p>
         </td>
       </tr>
     </table>
@@ -115,7 +96,7 @@ function stepsCard(title: string, steps: string[]): string {
   const stepsHtml = steps.map((step, i) => `
     <tr>
       <td style="padding:7px 0;vertical-align:top;width:30px;">
-        <div style="width:22px;height:22px;background:#1a5c4f;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">${i + 1}</div>
+        <div style="width:22px;height:22px;background:${ACCENT};border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">${i + 1}</div>
       </td>
       <td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">${step}</td>
     </tr>`).join("");
@@ -136,15 +117,9 @@ function ctaButton(url: string, text: string): string {
 }
 
 function buildConfirmationEmail(opts: {
-  firstName: string;
-  confirmationId: string;
-  state: string;
-  planType: string;
-  deliverySpeed: string;
-  formattedPrice: string;
-  receiptUrl?: string;
-  couponCode?: string | null;
-  couponDiscount?: number | null;
+  firstName: string; confirmationId: string; state: string; planType: string;
+  deliverySpeed: string; formattedPrice: string; receiptUrl?: string;
+  couponCode?: string | null; couponDiscount?: number | null;
 }) {
   const name = escapeHtml(opts.firstName || "there");
   const deliveryLabel = opts.deliverySpeed === "priority"
@@ -152,18 +127,18 @@ function buildConfirmationEmail(opts: {
     : "Standard &mdash; 2&ndash;3 Business Days";
 
   const couponValue = opts.couponCode
-    ? `<span style="background:#f0faf7;color:#1a5c4f;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${escapeHtml(opts.couponCode)}</span>${opts.couponDiscount ? ` <span style="color:#059669;font-weight:700;">(-$${opts.couponDiscount}.00 saved)</span>` : ""}`
+    ? `<span style="background:#f0faf7;color:${ACCENT};padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${escapeHtml(opts.couponCode)}</span>${opts.couponDiscount ? ` <span style="color:#059669;font-weight:700;">(-$${opts.couponDiscount}.00 saved)</span>` : ""}`
     : "";
 
   const detailRows: Array<[string, string, string?]> = [
-    ["Order ID", escapeHtml(opts.confirmationId), "#1a5c4f"],
+    ["Order ID", escapeHtml(opts.confirmationId), ACCENT],
     ["State", escapeHtml(opts.state)],
     ["Plan", escapeHtml(opts.planType)],
     ["Delivery", deliveryLabel],
     ["Amount Paid", escapeHtml(opts.formattedPrice)],
   ];
   if (opts.couponCode) detailRows.push(["Coupon Applied", couponValue]);
-  if (opts.receiptUrl) detailRows.push(["Receipt", `<a href="${escapeHtml(opts.receiptUrl)}" style="color:#1a5c4f;text-decoration:none;">View Payment Receipt &rarr;</a>`]);
+  if (opts.receiptUrl) detailRows.push(["Receipt", `<a href="${escapeHtml(opts.receiptUrl)}" style="color:${ACCENT};text-decoration:none;">View Payment Receipt &rarr;</a>`]);
 
   const body = `
     <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi <strong>${name}</strong>,</p>
@@ -186,50 +161,35 @@ function buildConfirmationEmail(opts: {
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean; error?: string; resendId?: string };
 
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
+function sleep(ms: number) { return new Promise<void>((resolve) => setTimeout(resolve, ms)); }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   let body: { confirmationId?: string; force?: boolean };
-  try {
-    body = await req.json() as { confirmationId?: string; force?: boolean };
-  } catch {
-    return json({ error: "Invalid JSON" }, 400);
-  }
+  try { body = await req.json() as { confirmationId?: string; force?: boolean }; }
+  catch { return json({ error: "Invalid JSON" }, 400); }
 
   const { confirmationId, force = false } = body;
   if (!confirmationId) return json({ error: "confirmationId is required" }, 400);
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select("id, confirmation_id, email, first_name, last_name, state, plan_type, delivery_speed, price, payment_intent_id, email_log, coupon_code, coupon_discount, status")
-    .eq("confirmation_id", confirmationId)
-    .maybeSingle();
+    .eq("confirmation_id", confirmationId).maybeSingle();
 
-  if (orderErr || !order) {
-    return json({ ok: false, error: `Order not found: ${orderErr?.message ?? "no row"}` }, 404);
-  }
+  if (orderErr || !order) return json({ ok: false, error: `Order not found: ${orderErr?.message ?? "no row"}` }, 404);
 
   const email = order.email as string;
   if (!email) return json({ ok: false, error: "Order has no email address" }, 400);
 
-  // ── Idempotency check — skip if already sent successfully (unless force=true) ──
   const currentLog: EmailLogEntry[] = (order.email_log as EmailLogEntry[]) ?? [];
   const alreadySent = currentLog.some((e) => e.type === "order_confirmation" && e.success === true);
-  if (alreadySent && !force) {
-    return json({ ok: true, emailSent: false, skipped: true, reason: "Confirmation email already sent", to: email });
-  }
+  if (alreadySent && !force) return json({ ok: true, emailSent: false, skipped: true, reason: "Confirmation email already sent", to: email });
 
-  // ── Fetch Stripe receipt URL ──
   let receiptUrl = "";
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
   if (stripeKey && order.payment_intent_id) {
@@ -241,9 +201,7 @@ Deno.serve(async (req: Request) => {
         const charge = await stripe.charges.retrieve(chargeId);
         receiptUrl = charge.receipt_url ?? "";
       }
-    } catch (err) {
-      console.warn(`[resend-confirmation] Could not fetch Stripe receipt: ${err}`);
-    }
+    } catch (err) { console.warn(`[resend-confirmation] Could not fetch Stripe receipt: ${err}`); }
   }
 
   const priceInDollars = (order.price as number) ?? 0;
@@ -259,7 +217,7 @@ Deno.serve(async (req: Request) => {
     couponDiscount: order.coupon_discount as number | null,
   });
 
-  let result = { sent: false, error: "Not attempted" };
+  let result = { sent: false, error: "Not attempted", resendId: undefined as string | undefined };
   let attempt = 0;
 
   while (attempt < 3 && !result.sent) {
@@ -267,19 +225,14 @@ Deno.serve(async (req: Request) => {
       to: email,
       subject: `Order Confirmed — ${confirmationId}`,
       html,
-      tags: [
-        { name: "confirmation_id", value: confirmationId },
-        { name: "email_type", value: "order_confirmation" },
-      ],
+      tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "order_confirmation" }],
     });
     if (!result.sent) {
       attempt++;
-      console.error(`[resend-confirmation] Attempt ${attempt} failed: ${result.error}`);
       if (attempt < 3) await sleep(attempt * 2000);
     }
   }
 
-  // ── Log the attempt ──
   const newEntry: EmailLogEntry = {
     type: "order_confirmation",
     sentAt: new Date().toISOString(),
@@ -288,14 +241,9 @@ Deno.serve(async (req: Request) => {
     ...(result.error && !result.sent ? { error: result.error } : {}),
     ...(result.resendId ? { resendId: result.resendId } : {}),
   };
-  await supabase
-    .from("orders")
-    .update({ email_log: [...currentLog, newEntry] })
-    .eq("confirmation_id", confirmationId);
+  await supabase.from("orders").update({ email_log: [...currentLog, newEntry] }).eq("confirmation_id", confirmationId);
 
-  if (!result.sent) {
-    return json({ ok: false, error: `Failed after 3 attempts: ${result.error}` }, 500);
-  }
+  if (!result.sent) return json({ ok: false, error: `Failed after 3 attempts: ${result.error}` }, 500);
 
   return json({ ok: true, emailSent: true, to: email });
 });
