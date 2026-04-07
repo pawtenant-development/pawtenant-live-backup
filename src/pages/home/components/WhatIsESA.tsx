@@ -44,9 +44,9 @@ export default function WhatIsESA() {
   return (
     <section className="py-20 bg-[#f0fdf4]">
       <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
           {/* Image */}
-          <div className="rounded-2xl overflow-hidden h-96 lg:h-auto">
+          <div className="rounded-2xl overflow-hidden min-h-80">
             <img
               src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/13037e49-5dee-4f4b-ae8a-c2d1ab78b6d5_What-Is-an-Emotional-Support-Animal-ESA.jpg?v=f7097c36da8144b17b45b9d7d5a1d06f"
               alt="What is an emotional support animal ESA — licensed LMHP letter for mental health housing rights"
@@ -55,7 +55,7 @@ export default function WhatIsESA() {
           </div>
 
           {/* Content */}
-          <div>
+          <div className="flex flex-col">
             <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-3">Understanding ESAs</p>
             <h2 className="text-3xl font-extrabold text-gray-900 mb-5">
               What Is an Emotional Support Animal (ESA)?

@@ -107,7 +107,8 @@ Deno.serve(async (req) => {
   {
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
     const authToken  = Deno.env.get("TWILIO_AUTH_TOKEN");
-    const fromPhone  = Deno.env.get("TWILIO_FROM_PHONE");
+    // Use TWILIO_PHONE_NUMBER — matches what send-sms uses
+    const fromPhone  = Deno.env.get("TWILIO_PHONE_NUMBER");
 
     if (!accountSid || !authToken) {
       checks.push({ name: "Twilio SMS", category: "communications", status: "fail", message: "TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN secret missing" });
@@ -157,8 +158,8 @@ Deno.serve(async (req) => {
 
   // ── 7. Email (Resend / SMTP) ────────────────────────────────────────────
   {
-    const resendKey  = Deno.env.get("RESEND_API_KEY");
-    const smtpHost   = Deno.env.get("SMTP_HOST");
+    const resendKey   = Deno.env.get("RESEND_API_KEY");
+    const smtpHost    = Deno.env.get("SMTP_HOST");
     const sendgridKey = Deno.env.get("SENDGRID_API_KEY");
 
     if (!resendKey && !smtpHost && !sendgridKey) {
@@ -197,7 +198,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── 9. Edge Functions self-check (list them) ────────────────────────────
+  // ── 9. Edge Functions self-check ────────────────────────────────────────
   const criticalFunctions = [
     "assign-doctor",
     "notify-patient-letter",
@@ -215,7 +216,6 @@ Deno.serve(async (req) => {
         method: "OPTIONS",
       });
       const latencyMs = Date.now() - t0;
-      // OPTIONS should return 200 or 204 for valid functions
       const ok = res.status === 200 || res.status === 204;
       checks.push({
         name: `Edge Fn: ${fnName}`,
@@ -272,7 +272,6 @@ Deno.serve(async (req) => {
   const totalCompleted = orders.filter(o => o.doctor_status === "patient_notified").length;
   const totalOrders    = orders.length;
 
-  // Order health check result
   if (paidUnassignedOver24h > 0) {
     checks.push({
       name: "Order Health",

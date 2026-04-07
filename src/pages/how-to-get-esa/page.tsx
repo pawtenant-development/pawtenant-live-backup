@@ -274,8 +274,8 @@ export default function HowToGetESAPage() {
       {/* What Is ESA */}
       <section className="py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="flex flex-col">
               <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Understanding ESAs</span>
               <h2 className="text-3xl font-bold text-gray-900 mb-5">What Is an Emotional Support Animal?</h2>
               <p className="text-gray-600 leading-relaxed mb-4">
@@ -295,7 +295,7 @@ export default function HowToGetESAPage() {
                 Get an ESA Letter Now
               </Link>
             </div>
-            <div className="rounded-2xl overflow-hidden h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src="https://readdy.ai/api/search-image?query=person%20hugging%20their%20dog%20a%20labrador%20indoors%20warm%20natural%20light%20close%20emotional%20bond%20between%20human%20and%20pet%20cozy%20home%20background%20soft%20tones%20beige%20and%20warm%20white%20emotional%20support%20calming%20portrait&width=700&height=500&seq=howesa02&orientation=landscape"
                 alt="Emotional Support Animal"
@@ -309,15 +309,15 @@ export default function HowToGetESAPage() {
       {/* Why Do I Need */}
       <section className="py-16 bg-gradient-to-br from-orange-500 to-orange-600">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div className="rounded-2xl overflow-hidden h-80">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src="https://readdy.ai/api/search-image?query=woman%20sitting%20peacefully%20in%20a%20bright%20living%20room%20with%20her%20cat%20on%20her%20lap%20looking%20calm%20and%20relaxed%20warm%20sunlight%20plants%20in%20background%20cozy%20home%20environment%20natural%20tones%20mental%20wellness&width=700&height=500&seq=howesa03&orientation=landscape"
                 alt="Why need an ESA letter"
                 className="w-full h-full object-cover object-top"
               />
             </div>
-            <div>
+            <div className="flex flex-col">
               <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-200 mb-3">Why It Matters</span>
               <h2 className="text-3xl font-bold text-white mb-8">Why Do I Need an ESA Letter?</h2>
               {[

@@ -210,7 +210,7 @@ export default function HousingRightsPage() {
               </div>
             </div>
             <div>
-              <div className="rounded-2xl overflow-hidden h-64 mb-8">
+              <div className="rounded-2xl overflow-hidden min-h-64 mb-8">
                 <img
                   src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/d865c255-b615-451f-a02d-71420df80d88_Housing-Protection-Support.jpg?v=c3cc0edf08b5cac53b799c74d0c40b95"
                   alt="ESA housing protection support — Fair Housing Act tenant rights for emotional support animal owners"

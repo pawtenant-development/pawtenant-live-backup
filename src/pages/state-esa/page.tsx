@@ -299,11 +299,11 @@ export default function StateESAPage() {
       {/* Laws Summary */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="flex flex-col">
               <h2 className="text-3xl font-bold text-gray-900 mb-5">{stateData.name} ESA Laws</h2>
               <p className="text-gray-600 leading-relaxed mb-6">{stateData.lawsSummary}</p>
-              <div className="bg-[#fdf6ee] rounded-xl p-6 mb-6">
+              <div className="bg-[#fdf6ee] rounded-xl p-6 mb-6 flex-1">
                 <h3 className="text-sm font-bold text-gray-900 mb-4">To Be Protected in {stateData.name}:</h3>
                 <ul className="space-y-3">
                   {stateData.lawsBullets.map((b) => (
@@ -318,13 +318,13 @@ export default function StateESAPage() {
               </div>
               <Link
                 to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
+                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm self-start"
               >
                 <i className="ri-file-text-line"></i>
                 Get An ESA Letter Now
               </Link>
             </div>
-            <div className="rounded-2xl overflow-hidden h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.petScene%20%20%20%20warm%20tones%20cozy%20atmosphere%29%7D&width=700&height=450&seq=state-laws-${stateData.abbreviation}-v2&orientation=landscape`}
                 alt={`ESA in ${stateData.name}`}
@@ -338,19 +338,19 @@ export default function StateESAPage() {
       {/* Advantages */}
       <section className="py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="rounded-2xl overflow-hidden h-72">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="rounded-2xl overflow-hidden min-h-72">
               <img
                 src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.catScene%20%20%20%20warm%20tones%20emotional%20wellness%29%7D&width=700&height=450&seq=state-adv-${stateData.abbreviation}-v2&orientation=landscape`}
                 alt={`ESA advantages in ${stateData.name}`}
                 className="w-full h-full object-cover object-top"
               />
             </div>
-            <div>
+            <div className="flex flex-col">
               <h2 className="text-3xl font-bold text-gray-900 mb-7">
                 Advantages of Having an Emotional Support Animal for {stateData.name} Residents
               </h2>
-              <div className="space-y-5">
+              <div className="space-y-5 flex-1">
                 {stateData.advantages.map((adv) => (
                   <div key={adv.title} className="flex items-start gap-4">
                     <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0 mt-0.5">
@@ -380,10 +380,10 @@ export default function StateESAPage() {
       {/* Why Pawtenant */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="flex flex-col">
               <h2 className="text-3xl font-bold text-gray-900 mb-8">Why PawTenant?</h2>
-              <div className="space-y-5">
+              <div className="space-y-5 flex-1">
                 {whyPawtenant.map((item) => (
                   <div key={item.title} className="flex items-start gap-4">
                     <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
@@ -406,10 +406,10 @@ export default function StateESAPage() {
                 </Link>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.telehealth%20%20%20%20warm%20professional%29%7D&width=700&height=500&seq=state-tele-${stateData.abbreviation}-v2&orientation=landscape`}
-                alt="PawTenant telehealth consultation"
+                src="https://readdy.ai/api/search-image?query=adorable%20yellow%20labrador%20retriever%20puppy%20sitting%20on%20a%20cozy%20white%20sofa%20indoors%2C%20soft%20warm%20natural%20light%20from%20window%2C%20fluffy%20fur%2C%20big%20brown%20eyes%20looking%20at%20camera%2C%20happy%20expression%2C%20clean%20bright%20home%20interior%2C%20lifestyle%20pet%20photography%2C%20warm%20beige%20tones&width=700&height=500&seq=cute-lab-esa-section-01&orientation=landscape"
+                alt="Cute Labrador Retriever dog — ESA companion"
                 className="w-full h-full object-cover object-top"
               />
             </div>

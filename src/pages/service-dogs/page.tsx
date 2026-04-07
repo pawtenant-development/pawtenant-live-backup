@@ -155,8 +155,8 @@ export default function ServiceDogsPage() {
       {/* What is a Service Dog */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="flex flex-col">
               {serviceDogInfo.map((info) => (
                 <div key={info.title} className="mb-8">
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">{info.title}</h2>
@@ -171,7 +171,7 @@ export default function ServiceDogsPage() {
                 Get Your PSD Letter Now
               </Link>
             </div>
-            <div className="rounded-2xl overflow-hidden h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/561aa113-dc1b-4213-a6f8-e9f681bd9156_Removing-Barriers-Between-People--Their-Support-Animals.jpg?v=9b0341ba256bb320f627993afbd6b622"
                 alt="Removing barriers between people and their emotional support animals — service dog assistance"
@@ -215,8 +215,8 @@ export default function ServiceDogsPage() {
       {/* PSD Section */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="rounded-2xl overflow-hidden h-80">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/626a4b1c-6e1e-4903-b4bd-b67a5b1e37f7_What-is-a-PSD-Letter.jpg?v=8af77abe89f837f83927117fef15ce63"
                 alt="What is a psychiatric service dog PSD letter and how it protects your housing and travel rights"
@@ -255,8 +255,8 @@ export default function ServiceDogsPage() {
       {/* Training */}
       <section className="py-16 bg-[#fdf6ee]">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="flex flex-col">
               <h2 className="text-3xl font-bold text-gray-900 mb-6">Service Dog Training and Certification</h2>
               <p className="text-gray-600 text-sm leading-relaxed mb-5">
                 Service dog training is a rigorous process designed to develop the specific skills and commands that allow service dogs to effectively assist their handlers. This training process helps ensure that service dogs can perform their tasks reliably in various environments and circumstances. Obedience training typically involves basic commands such as sit, stay, heel, come, and more specialized training related to their specific service role.
@@ -271,7 +271,7 @@ export default function ServiceDogsPage() {
                 </p>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden h-72">
+            <div className="rounded-2xl overflow-hidden min-h-72">
               <img
                 src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/925edf71-8f53-4f8f-8180-12a475777e58_How-to-Get-a-Psychiatric-Service-Dog-Letter.jpg?v=d622f9279132e3d201c18ec9bc2a95ab"
                 alt="How to get a psychiatric service dog PSD letter — training and licensed professional assessment"

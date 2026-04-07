@@ -177,8 +177,8 @@ export default function HowToGetPSDLetterPage() {
       {/* What Is a PSD Letter */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-center">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-stretch">
+            <div className="flex flex-col">
               <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">What Is It?</span>
               <h2 className="text-3xl font-bold text-gray-900 mb-5">What Is a Psychiatric Service Dog Letter?</h2>
               <p className="text-gray-600 text-sm leading-relaxed mb-4">
@@ -199,7 +199,7 @@ export default function HowToGetPSDLetterPage() {
                 </p>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden h-96">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/626a4b1c-6e1e-4903-b4bd-b67a5b1e37f7_What-is-a-PSD-Letter.jpg?v=8af77abe89f837f83927117fef15ce63"
                 alt="What is a psychiatric service dog PSD letter — official documentation for housing and travel rights"
@@ -274,8 +274,8 @@ export default function HowToGetPSDLetterPage() {
       {/* PSD Tasks */}
       <section className="py-16 bg-[#fdf6ee]">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-stretch">
+            <div className="flex flex-col">
               <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Task Training</span>
               <h2 className="text-3xl font-bold text-gray-900 mb-5">What Tasks Must a Psychiatric Service Dog Perform?</h2>
               <p className="text-gray-600 text-sm leading-relaxed mb-5">
@@ -362,8 +362,8 @@ export default function HowToGetPSDLetterPage() {
       {/* Why PawTenant */}
       <section className="py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-center">
-            <div className="rounded-2xl overflow-hidden h-80">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-stretch">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0"
                 alt="Licensed mental health professional conducting telehealth PSD letter consultation for psychiatric service dog"

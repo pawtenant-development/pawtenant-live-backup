@@ -210,12 +210,12 @@ export default function StatePSDPage() {
       {/* Laws Section */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="flex flex-col">
               <span className="text-xs font-bold uppercase tracking-widest text-orange-500 mb-3 block">Legal Framework</span>
               <h2 className="text-3xl font-bold text-gray-900 mb-5">{stateData.name} PSD Laws & Protections</h2>
               <p className="text-gray-600 leading-relaxed mb-6">{stateData.lawsSummary}</p>
-              <div className="bg-[#fdf6ee] rounded-xl p-6 mb-6">
+              <div className="bg-[#fdf6ee] rounded-xl p-6 mb-6 flex-1">
                 <h3 className="text-sm font-bold text-gray-900 mb-4">Your PSD Rights in {stateData.name}:</h3>
                 <ul className="space-y-3">
                   {stateData.lawsBullets.map((b) => (
@@ -230,13 +230,13 @@ export default function StatePSDPage() {
               </div>
               <Link
                 to="/psd-assessment"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
+                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm self-start"
               >
                 <i className="ri-mental-health-line"></i>
                 Get My PSD Letter in {stateData.name}
               </Link>
             </div>
-            <div className="rounded-2xl overflow-hidden h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
                 src={`https://readdy.ai/api/search-image?query=professional%20handler%20with%20trained%20psychiatric%20service%20dog%20$%7BstateData.name%7D%20therapy%20dog%20in%20public%20space%20calm%20disciplined%20well-behaved%20service%20dog%20vest%20service%20animal%20rights%20housing&width=700&height=450&seq=psd${stateData.abbreviation}02&orientation=landscape`}
                 alt={`Psychiatric Service Dog rights in ${stateData.name}`}
@@ -272,20 +272,20 @@ export default function StatePSDPage() {
       {/* Advantages */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="rounded-2xl overflow-hidden h-72">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="rounded-2xl overflow-hidden min-h-72">
               <img
                 src={`https://readdy.ai/api/search-image?query=person%20with%20service%20dog%20sitting%20peacefully%20in%20park%20$%7BstateData.name%7D%20calm%20relaxed%20therapy%20dog%20handler%20outdoor%20natural%20light%20warm%20tones%20mental%20health%20support%20emotional%20wellbeing&width=700&height=450&seq=psd${stateData.abbreviation}03&orientation=landscape`}
                 alt={`PSD advantages in ${stateData.name}`}
                 className="w-full h-full object-cover object-top"
               />
             </div>
-            <div>
+            <div className="flex flex-col">
               <span className="text-xs font-bold uppercase tracking-widest text-orange-500 mb-3 block">Why It Matters</span>
               <h2 className="text-3xl font-bold text-gray-900 mb-7">
                 Advantages of a Psychiatric Service Dog in {stateData.name}
               </h2>
-              <div className="space-y-5">
+              <div className="space-y-5 flex-1">
                 {stateData.advantages.map((adv) => (
                   <div key={adv.title} className="flex items-start gap-4">
                     <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0 mt-0.5">
@@ -360,10 +360,10 @@ export default function StatePSDPage() {
       {/* Why PawTenant */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+            <div className="flex flex-col">
               <h2 className="text-3xl font-bold text-gray-900 mb-8">Why PawTenant for Your {stateData.name} PSD Letter?</h2>
-              <div className="space-y-5">
+              <div className="space-y-5 flex-1">
                 {whyPawtenant.map((item) => (
                   <div key={item.title} className="flex items-start gap-4">
                     <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
@@ -386,10 +386,10 @@ export default function StatePSDPage() {
                 </Link>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src={`https://readdy.ai/api/search-image?query=telehealth%20doctor%20consultation%20on%20laptop%20screen%20licensed%20mental%20health%20professional%20patient%20at%20home%20with%20trained%20service%20dog%20nearby%20modern%20home%20office%20warm%20professional%20setting%20video%20call&width=700&height=500&seq=psd${stateData.abbreviation}04&orientation=landscape`}
-                alt="PawTenant PSD telehealth consultation"
+                src="https://readdy.ai/api/search-image?query=adorable%20yellow%20labrador%20retriever%20puppy%20sitting%20on%20a%20cozy%20white%20sofa%20indoors%2C%20soft%20warm%20natural%20light%20from%20window%2C%20fluffy%20fur%2C%20big%20brown%20eyes%20looking%20at%20camera%2C%20happy%20expression%2C%20clean%20bright%20home%20interior%2C%20lifestyle%20pet%20photography%2C%20warm%20beige%20tones&width=700&height=500&seq=cute-lab-psd-section-01&orientation=landscape"
+                alt="Cute Labrador Retriever dog — PSD companion"
                 className="w-full h-full object-cover object-top"
               />
             </div>
