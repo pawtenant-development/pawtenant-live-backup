@@ -16,6 +16,7 @@ import { supabase } from "./lib/supabaseClient";
 import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
 import { firePageView } from "@/lib/metaPixel";
+import { captureFromUrl } from "@/lib/attributionStore";
 
 const PORTAL_ROUTES = [
   "/admin",
@@ -34,19 +35,44 @@ function ConditionalFloatingCTA() {
   return <FloatingCTA />;
 }
 
+/**
+ * UTMCapture — captures all traffic attribution params on every page load.
+ *
+ * ── FBCLID PERSISTENCE CONTRACT ───────────────────────────────────────────────
+ * fbclid is captured on EVERY route change (not just the first page load).
+ * This is critical because:
+ *   1. A user may land on /home without fbclid, then click an ad link to /assessment?fbclid=xxx
+ *   2. The fbclid must survive Step 1 → Step 2 → Checkout → Order creation
+ *   3. It must be stored in orders.fbclid for Meta CAPI deduplication
+ *
+ * Strategy:
+ *   - fbclid: always overwrite if present in URL (never skip)
+ *   - UTMs / gclid: only capture once (first landing) — they don't change mid-session
+ *   - landing_url: only set once (first page the user arrived on)
+ *   - referrer: only set once (document.referrer is empty after SPA navigation)
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+/**
+ * UTMCapture — delegates all attribution capture/restore/merge logic to
+ * attributionStore.captureFromUrl(). Runs on every SPA route change.
+ *
+ * The store handles:
+ *   - fbclid/gclid/utm_* capture from URL
+ *   - fbclid restore from localStorage when missing from URL
+ *   - session_id generation (once per session)
+ *   - first_seen_at timestamp (once per session)
+ *   - landing_url + referrer (once per session)
+ *   - Dev logging of all captured/restored/skipped values
+ */
 function UTMCapture() {
+  const { pathname, search } = useLocation();
+
   useEffect(() => {
-    if (sessionStorage.getItem("utm_captured")) return;
-    const params = new URLSearchParams(window.location.search);
-    const keys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid"];
-    keys.forEach((k) => {
-      const v = params.get(k);
-      if (v) sessionStorage.setItem(k, v);
-    });
-    sessionStorage.setItem("landing_url", window.location.href);
-    sessionStorage.setItem("referrer", document.referrer || "");
-    sessionStorage.setItem("utm_captured", "1");
-  }, []);
+    captureFromUrl(search);
+  // Re-run on every route change so fbclid is captured wherever it appears
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, search]);
+
   return null;
 }
 
@@ -120,16 +146,30 @@ function AuthHandler() {
 const TAWK_HIDE_STYLE_ID = "tawk-portal-hide";
 
 function injectTawkHideStyle() {
-  if (document.getElementById(TAWK_HIDE_STYLE_ID)) return;
+  const existing = document.getElementById(TAWK_HIDE_STYLE_ID);
+  if (existing) return;
   const style = document.createElement("style");
   style.id = TAWK_HIDE_STYLE_ID;
+  // Cover every possible Tawk selector — iframes, containers, bubbles, dynamic classes
   style.textContent = `
     iframe[title*="chat"],
+    iframe[title*="Chat"],
     iframe[src*="tawk.to"],
+    iframe[src*="embed.tawk"],
     #tawkchat-container,
+    #tawkchat-minified-container,
     .tawk-min-container,
     .tawk-bubble-container,
-    [id^="tawk-"] { display: none !important; visibility: hidden !important; }
+    .tawk-custom-color,
+    [id^="tawk-"],
+    [class^="tawk-"],
+    div[style*="tawk"],
+    #tawk-bubble-container {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -139,18 +179,145 @@ function removeTawkHideStyle() {
   if (el) el.remove();
 }
 
+// ── Tawk.to API type ──────────────────────────────────────────────────────────
+interface TawkAPI {
+  hideWidget?: () => void;
+  showWidget?: () => void;
+  isChatHidden?: () => boolean;
+  minimize?: () => void;
+  endChat?: () => void;
+  /** Set visitor attributes — used to pass current page to agents */
+  setAttributes?: (attrs: Record<string, string>, callback?: () => void) => void;
+  /** Fire a custom event visible in the Tawk dashboard */
+  addEvent?: (name: string, meta: Record<string, string>, callback?: () => void) => void;
+  onLoad?: () => void;
+}
+
+function getTawkAPI(): TawkAPI | undefined {
+  return (window as unknown as Record<string, unknown>).Tawk_API as TawkAPI | undefined;
+}
+
+/**
+ * Aggressively silences Tawk on portal pages:
+ * - Hides the widget
+ * - Minimizes any open chat window
+ * - Ends any active chat session (stops ringing)
+ * - Mutes the onLoad handler so it can't re-show itself
+ */
+function silenceTawkForPortal(): void {
+  try {
+    const api = getTawkAPI();
+    if (!api) return;
+    if (typeof api.hideWidget === "function") api.hideWidget();
+    if (typeof api.minimize === "function") api.minimize();
+    if (typeof api.endChat === "function") api.endChat();
+    // Override onLoad so if Tawk finishes loading after navigation it stays hidden
+    api.onLoad = function () {
+      const a = getTawkAPI();
+      if (a?.hideWidget) a.hideWidget();
+      if (a?.minimize) a.minimize();
+    };
+  } catch {
+    // Never throw
+  }
+}
+
+/**
+ * Sends the current SPA route to Tawk.to so agents can see which page
+ * the visitor is on when they start a chat — not just the initial landing page.
+ *
+ * Uses two Tawk APIs:
+ *  - setAttributes: updates the visitor card in the agent dashboard
+ *  - addEvent: logs a "page-view" event in the conversation timeline
+ *
+ * Both calls are fire-and-forget with empty callbacks — never throws.
+ */
+function sendTawkPageView(pathname: string): void {
+  const api = getTawkAPI();
+  if (!api) return;
+
+  const pageLabel = pathname === "/" ? "Home" : pathname;
+  const fullUrl = window.location.href;
+
+  try {
+    if (typeof api.setAttributes === "function") {
+      api.setAttributes(
+        {
+          "current-page": pageLabel,
+          "current-url": fullUrl,
+        },
+        () => {},
+      );
+    }
+  } catch {
+    // Never throw — Tawk API can be finicky
+  }
+
+  try {
+    if (typeof api.addEvent === "function") {
+      api.addEvent(
+        "page-view",
+        {
+          page: pageLabel,
+          url: fullUrl,
+        },
+        () => {},
+      );
+    }
+  } catch {
+    // Never throw
+  }
+}
+
 function TawkVisibility() {
   const { pathname } = useLocation();
 
   useEffect(() => {
     const isPortal = PORTAL_ROUTES.some((route) => pathname.startsWith(route));
 
-    // Immediately inject CSS hide on portal pages — no waiting for JS API
+    // ── Portal pages: kill Tawk with zero tolerance ───────────────────────
     if (isPortal) {
+      // 1. Inject CSS hide immediately — blocks any flash before JS runs
       injectTawkHideStyle();
-    } else {
-      removeTawkHideStyle();
+      // 2. Kill via API synchronously
+      silenceTawkForPortal();
+
+      // 3. MutationObserver: nuke any Tawk node the moment it appears in the DOM
+      const observer = new MutationObserver(() => {
+        silenceTawkForPortal();
+        // Also forcibly hide any tawk iframes that sneak in
+        document.querySelectorAll<HTMLElement>(
+          'iframe[src*="tawk.to"], iframe[src*="embed.tawk"], [id^="tawk-"], [class^="tawk-"]'
+        ).forEach((el) => {
+          el.style.setProperty("display", "none", "important");
+          el.style.setProperty("visibility", "hidden", "important");
+          el.style.setProperty("opacity", "0", "important");
+        });
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // 4. Short polling as belt-and-suspenders (3s max)
+      let cancelled = false;
+      let attempts = 0;
+      const poll = setInterval(() => {
+        if (cancelled) { clearInterval(poll); return; }
+        silenceTawkForPortal();
+        attempts++;
+        if (attempts >= 30) clearInterval(poll);
+      }, 100);
+
+      return () => {
+        cancelled = true;
+        clearInterval(poll);
+        observer.disconnect();
+      };
     }
+
+    // ── Public pages: remove CSS hide, show widget ────────────────────────
+    removeTawkHideStyle();
+    // Also remove the preemptive hide injected by index.html (if navigating from portal → public)
+    const preemptive = document.getElementById("tawk-portal-preemptive-hide");
+    if (preemptive) preemptive.remove();
 
     let cancelled = false;
     let timerId: ReturnType<typeof setTimeout> | null = null;
@@ -158,23 +325,19 @@ function TawkVisibility() {
     const applyVisibility = (attempts = 0) => {
       if (cancelled) return;
 
-      const api = (window as unknown as Record<string, unknown>).Tawk_API as {
-        hideWidget?: () => void;
-        showWidget?: () => void;
-        isChatHidden?: () => boolean;
-      } | undefined;
+      const api = getTawkAPI();
 
       if (api?.hideWidget && api?.showWidget) {
-        if (isPortal) {
-          api.hideWidget();
-        } else {
-          if (window.innerWidth >= 768) {
-            api.showWidget();
-          }
+        if (window.innerWidth >= 768) {
+          api.showWidget();
+        }
+        // ── SPA page tracking: notify Tawk of the current route ──────────
+        try {
+          sendTawkPageView(pathname);
+        } catch {
+          // silent
         }
       } else if (attempts < 60) {
-        // Poll on both portal and public pages — portal pages need to hide Tawk
-        // even if it loads slightly after the SPA navigation
         timerId = setTimeout(() => applyVisibility(attempts + 1), 300);
       }
     };

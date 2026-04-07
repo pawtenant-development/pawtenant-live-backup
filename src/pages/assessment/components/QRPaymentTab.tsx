@@ -25,7 +25,10 @@ interface QRPaymentTabProps {
   setAgreedError: (v: boolean) => void;
   confirmationId: string;
   selectedProvider?: string;
+  letterType?: "esa" | "psd";
   onSuccess?: () => void;
+  /** Applied coupon code to pass to backend for discount */
+  couponCode?: string;
 }
 
 // ─── Processing Overlay ───────────────────────────────────────────────────────
@@ -61,7 +64,9 @@ export default function QRPaymentTab({
   setAgreedError,
   confirmationId,
   selectedProvider,
+  letterType = "esa",
   onSuccess,
+  couponCode,
 }: QRPaymentTabProps) {
   const [loading, setLoading] = useState(false);
   const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
@@ -69,6 +74,7 @@ export default function QRPaymentTab({
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [statusError, setStatusError] = useState("");
 
   // Generate checkout URL when terms are agreed
   useEffect(() => {
@@ -82,6 +88,8 @@ export default function QRPaymentTab({
     setLoading(true);
 
     try {
+      const planType = plan === "subscription" ? "subscription" : "one-time";
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
         method: "POST",
         headers: {
@@ -90,20 +98,19 @@ export default function QRPaymentTab({
           Authorization: `Bearer ${SUPABASE_KEY}`,
         },
         body: JSON.stringify({
-          plan,
+          letterType,
           petCount,
           deliverySpeed,
           email,
           firstName,
           lastName,
-          phone,
           state,
-          additionalDocCount,
           confirmationId,
-          selectedProvider,
-          paymentMethods: ["card", "link"],
-          successUrl: `${window.location.origin}/assessment-thankyou?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${window.location.origin}/assessment?step=3&canceled=true`,
+          mode: "qr",
+          planType,
+          origin: window.location.origin,
+          // Pass coupon code for backend discount application
+          ...(couponCode ? { couponCode } : {}),
         }),
       });
 
@@ -123,29 +130,26 @@ export default function QRPaymentTab({
 
   const checkPaymentStatus = async () => {
     if (!confirmationId) return;
-    
     setCheckingStatus(true);
+    setStatusError("");
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
-        body: JSON.stringify({ confirmationId }),
-      });
+      const { createClient } = await import("@supabase/supabase-js");
+      const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+      const { data } = await sb
+        .from("orders")
+        .select("status, paid_at")
+        .eq("confirmation_id", confirmationId)
+        .maybeSingle();
 
-      const data = await res.json();
-
-      if (data.paid) {
+      if (data && data.paid_at) {
         setPaymentCompleted(true);
         onSuccess?.();
       } else {
-        alert("Payment not yet completed. Please finish payment on your mobile device and try again.");
+        setStatusError("Payment not yet completed. Please finish payment on your mobile device and try again.");
       }
     } catch (err) {
       console.error("Error checking payment status:", err);
+      setStatusError("Could not verify payment status. Please try again.");
     } finally {
       setCheckingStatus(false);
     }
@@ -329,24 +333,32 @@ export default function QRPaymentTab({
 
         {/* I've completed payment button */}
         {agreed && checkoutUrl && (
-          <button
-            type="button"
-            onClick={checkPaymentStatus}
-            disabled={checkingStatus}
-            className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
-          >
-            {checkingStatus ? (
-              <>
-                <i className="ri-loader-4-line animate-spin"></i>
-                Checking...
-              </>
-            ) : (
-              <>
-                <i className="ri-check-double-line"></i>
-                I&apos;ve Completed Payment
-              </>
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={checkPaymentStatus}
+              disabled={checkingStatus}
+              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
+            >
+              {checkingStatus ? (
+                <>
+                  <i className="ri-loader-4-line animate-spin"></i>
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <i className="ri-check-double-line"></i>
+                  I&apos;ve Completed Payment
+                </>
+              )}
+            </button>
+            {statusError && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                <i className="ri-information-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
+                <p className="text-xs text-amber-700 leading-relaxed">{statusError}</p>
+              </div>
             )}
-          </button>
+          </div>
         )}
 
         {/* Info note */}

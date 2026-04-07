@@ -4,6 +4,8 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import ProviderOrderDetail from "./components/ProviderOrderDetail";
 import ProviderEarnings from "./components/ProviderEarnings";
+import ProviderLicensePanel from "./components/ProviderLicensePanel";
+import ProviderProfilePanel from "./components/ProviderProfilePanel";
 
 interface DoctorProfile {
   user_id: string;
@@ -56,7 +58,7 @@ interface Notification {
   created_at: string;
 }
 
-type TabKey = "orders" | "earnings";
+type TabKey = "orders" | "earnings" | "license" | "profile";
 type StatusFilter = "all" | "new" | "in_progress" | "completed";
 
 const DOCTOR_STATUS_LABEL: Record<string, string> = {
@@ -107,7 +109,7 @@ export default function ProviderPortalPage() {
   const [profileDropdown, setProfileDropdown] = useState(false);
 
   // New-case toast — auto-dismissed after 6s
-  const [newCaseToast, setNewCaseToast] = useState<{ title: string; message: string } | null>(null);
+  const [newCaseToast, setNewCaseToast] = useState<{ title: string; message: string; type?: "success" | "error" | "warning" } | null>(null);
   const toastTimerRef = useState<ReturnType<typeof setTimeout> | null>(null);
 
   // Close dropdowns when clicking outside
@@ -148,16 +150,16 @@ export default function ProviderPortalPage() {
     auth();
   }, [navigate]);
 
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (showSpinner = true) => {
     if (!profile) return;
-    setLoadingOrders(true);
+    if (showSpinner) setLoadingOrders(true);
     const { data } = await supabase
       .from("orders")
       .select("id, confirmation_id, email, first_name, last_name, phone, state, status, doctor_status, doctor_user_id, price, payment_intent_id, delivery_speed, selected_provider, assessment_answers, letter_url, signed_letter_url, patient_notification_sent_at, created_at, letter_type, refunded_at, refund_amount, addon_services")
       .eq("doctor_user_id", profile.user_id)
       .order("created_at", { ascending: false });
     setOrders((data as Order[]) ?? []);
-    setLoadingOrders(false);
+    if (showSpinner) setLoadingOrders(false);
   }, [profile]);
 
   const loadNotifications = useCallback(async () => {
@@ -196,9 +198,23 @@ export default function ProviderPortalPage() {
   }, [profile]);
 
   useEffect(() => {
-    loadOrders();
+    loadOrders(true); // show spinner on first load only
     loadNotifications();
   }, [loadOrders, loadNotifications]);
+
+  // ── Polling fallback for critical status changes (refunds/cancellations) ──
+  // Runs silently in the background — NO loading spinner, NO list flicker.
+  // Real-time subscriptions catch most updates instantly; polling is a safety net.
+  useEffect(() => {
+    if (!profile) return;
+    const interval = setInterval(() => {
+      // Only poll when tab is visible — silent background refresh (showSpinner=false)
+      if (document.visibilityState === "visible") {
+        loadOrders(false);
+      }
+    }, 15000); // 15s is plenty — real-time handles instant updates
+    return () => clearInterval(interval);
+  }, [profile, loadOrders]);
 
   // ── Real-time subscriptions — fire the moment admin assigns/updates anything ──
   useEffect(() => {
@@ -228,8 +244,28 @@ export default function ProviderPortalPage() {
         },
         (payload) => {
           const updated = payload.new as Order;
+          const oldOrder = payload.old as Order;
           setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
           setSelectedOrder((prev) => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
+
+          // Show toast for refund/cancellation status changes
+          if (updated.status === "refunded" && oldOrder.status !== "refunded") {
+            setNewCaseToast({
+              title: "Order Refunded",
+              message: `Order ${updated.confirmation_id} has been refunded. No further action needed.`,
+              type: "warning"
+            });
+            if (toastTimerRef[0]) clearTimeout(toastTimerRef[0]);
+            toastTimerRef[0] = setTimeout(() => setNewCaseToast(null), 8000);
+          } else if (updated.status === "cancelled" && oldOrder.status !== "cancelled") {
+            setNewCaseToast({
+              title: "Order Cancelled",
+              message: `Order ${updated.confirmation_id} has been cancelled by admin.`,
+              type: "error"
+            });
+            if (toastTimerRef[0]) clearTimeout(toastTimerRef[0]);
+            toastTimerRef[0] = setTimeout(() => setNewCaseToast(null), 8000);
+          }
         }
       )
       .on(
@@ -245,7 +281,7 @@ export default function ProviderPortalPage() {
           // Show in-page toast for new case assignments
           const notif = payload.new as Notification;
           if (notif.type === "case_assigned") {
-            setNewCaseToast({ title: notif.title, message: notif.message });
+            setNewCaseToast({ title: notif.title, message: notif.message, type: "success" });
             if (toastTimerRef[0]) clearTimeout(toastTimerRef[0]);
             toastTimerRef[0] = setTimeout(() => setNewCaseToast(null), 6000);
           }
@@ -482,13 +518,21 @@ export default function ProviderPortalPage() {
         </div>
       </nav>
 
-      {/* ── New Case Toast ── */}
+      {/* ── Toast Notifications ── */}
       {newCaseToast && (
         <div className="fixed bottom-6 right-6 z-[200] max-w-sm w-full">
-          <div className="bg-[#1a5c4f] text-white rounded-2xl shadow-lg overflow-hidden">
+          <div className={`${
+            newCaseToast.type === "error" ? "bg-red-600" :
+            newCaseToast.type === "warning" ? "bg-amber-500" :
+            "bg-[#1a5c4f]"
+          } text-white rounded-2xl shadow-lg overflow-hidden`}>
             <div className="px-5 py-4 flex items-start gap-3">
               <div className="w-9 h-9 flex items-center justify-center bg-white/20 rounded-xl flex-shrink-0 mt-0.5">
-                <i className="ri-folder-received-line text-white text-base"></i>
+                <i className={`${
+                  newCaseToast.type === "error" ? "ri-close-circle-line" :
+                  newCaseToast.type === "warning" ? "ri-refund-line" :
+                  "ri-folder-received-line"
+                } text-white text-base`}></i>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-extrabold text-white">{newCaseToast.title}</p>
@@ -503,7 +547,7 @@ export default function ProviderPortalPage() {
               </button>
             </div>
             <div className="h-1 bg-white/20">
-              <div className="h-full bg-white/60 rounded-full" style={{ width: "100%", animation: "shrink 6s linear forwards" }}></div>
+              <div className="h-full bg-white/60 rounded-full" style={{ width: "100%", animation: "shrink 8s linear forwards" }}></div>
             </div>
           </div>
           <style>{`@keyframes shrink { from { width: 100%; } to { width: 0%; } }`}</style>
@@ -548,6 +592,8 @@ export default function ProviderPortalPage() {
           {([
             { key: "orders" as TabKey, label: "My Cases", icon: "ri-folder-line" },
             { key: "earnings" as TabKey, label: "Earnings", icon: "ri-money-dollar-circle-line" },
+            { key: "license" as TabKey, label: "My Licenses", icon: "ri-shield-check-line" },
+            { key: "profile" as TabKey, label: "Profile", icon: "ri-user-settings-line" },
           ]).map((tab) => (
             <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
               className={`whitespace-nowrap relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-extrabold transition-colors cursor-pointer ${activeTab === tab.key ? "bg-white text-[#1a5c4f]" : "text-gray-500 hover:text-gray-700"}`}>
@@ -699,6 +745,16 @@ export default function ProviderPortalPage() {
         {/* ── EARNINGS TAB ── */}
         {activeTab === "earnings" && profile && (
           <ProviderEarnings userId={profile.user_id} />
+        )}
+
+        {/* ── LICENSE TAB ── */}
+        {activeTab === "license" && profile && (
+          <ProviderLicensePanel userId={profile.user_id} providerName={profile.full_name} />
+        )}
+
+        {/* ── PROFILE TAB ── */}
+        {activeTab === "profile" && profile && (
+          <ProviderProfilePanel userId={profile.user_id} providerName={profile.full_name} />
         )}
       </div>
 

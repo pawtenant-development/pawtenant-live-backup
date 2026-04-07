@@ -61,6 +61,47 @@ function getPriceId(
   return ESA_ONETIME_PRICE_IDS[tier][level];
 }
 
+/**
+ * Resolve a Stripe coupon ID from a coupon code string.
+ * 1. Try direct coupon ID lookup.
+ * 2. Fall back to promotion code lookup.
+ */
+async function resolveStripeCouponId(
+  stripe: Stripe,
+  couponCode: string,
+): Promise<string | null> {
+  if (!couponCode) return null;
+
+  // 1. Try direct coupon lookup
+  try {
+    const coupon = await stripe.coupons.retrieve(couponCode);
+    if (coupon && coupon.valid) {
+      console.info(`[create-checkout-session] Resolved coupon by ID: ${coupon.id}`);
+      return coupon.id;
+    }
+  } catch {
+    // Not a direct coupon ID
+  }
+
+  // 2. Try promotion code lookup
+  try {
+    const promoCodes = await stripe.promotionCodes.list({ code: couponCode, active: true, limit: 1 });
+    if (promoCodes.data.length > 0) {
+      const promoCode = promoCodes.data[0];
+      const couponId = typeof promoCode.coupon === "string"
+        ? promoCode.coupon
+        : promoCode.coupon.id;
+      console.info(`[create-checkout-session] Resolved coupon via promo code ${couponCode} → coupon ${couponId}`);
+      return couponId;
+    }
+  } catch {
+    // Promotion code lookup failed
+  }
+
+  console.warn(`[create-checkout-session] Could not resolve Stripe coupon for code: ${couponCode}`);
+  return null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -86,6 +127,8 @@ Deno.serve(async (req: Request) => {
   const mode           = (body.mode           as string) ?? "klarna";  // "klarna" | "qr" | "card"
   const planType       = (body.planType       as string) ?? "one-time";
   const origin         = (body.origin         as string) ?? "https://www.pawtenant.com";
+  // Coupon code from frontend (already validated by our DB validate-coupon function)
+  const couponCode     = (body.couponCode     as string) ?? "";
 
   if (!email || !confirmationId) {
     return json({ error: "email and confirmationId are required" }, 400);
@@ -110,12 +153,20 @@ Deno.serve(async (req: Request) => {
     pet_count: String(petCount),
     payment_mode: mode,
     plan_type: planType,
+    ...(couponCode ? { coupon_code: couponCode } : {}),
   };
 
   try {
     // ── SUBSCRIPTION CHECKOUT ──────────────────────────────────────────────
     if (planType === "subscription") {
-      const session = await stripe.checkout.sessions.create({
+      // Resolve coupon to Stripe coupon ID if provided
+      let stripeCouponId: string | null = null;
+      if (couponCode) {
+        stripeCouponId = await resolveStripeCouponId(stripe, couponCode);
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sessionParams: any = {
         mode: "subscription",
         line_items: [{ price: priceId, quantity: 1 }],
         customer_email: email,
@@ -128,8 +179,16 @@ Deno.serve(async (req: Request) => {
         payment_intent_data: {
           receipt_email: null,
         },
-      });
-      console.info(`[create-checkout-session] Subscription session ${session.id} for ${confirmationId} (${letterType})`);
+      };
+
+      // Apply coupon discount if resolved
+      if (stripeCouponId) {
+        sessionParams.discounts = [{ coupon: stripeCouponId }];
+        console.info(`[create-checkout-session] Applying coupon ${stripeCouponId} (code: ${couponCode}) to subscription session`);
+      }
+
+      const session = await stripe.checkout.sessions.create(sessionParams);
+      console.info(`[create-checkout-session] Subscription session ${session.id} for ${confirmationId} (${letterType}), coupon=${couponCode || "none"}`);
       return json({ url: session.url, sessionId: session.id });
     }
 
@@ -157,8 +216,17 @@ Deno.serve(async (req: Request) => {
       sessionParams.payment_method_types = ["card", "link"];
     }
 
+    // Apply coupon to one-time checkout sessions too
+    if (couponCode) {
+      const stripeCouponId = await resolveStripeCouponId(stripe, couponCode);
+      if (stripeCouponId) {
+        sessionParams.discounts = [{ coupon: stripeCouponId }];
+        console.info(`[create-checkout-session] Applying coupon ${stripeCouponId} (code: ${couponCode}) to one-time session`);
+      }
+    }
+
     const session = await stripe.checkout.sessions.create(sessionParams);
-    console.info(`[create-checkout-session] ${mode} session ${session.id} for ${confirmationId} (${letterType})`);
+    console.info(`[create-checkout-session] ${mode} session ${session.id} for ${confirmationId} (${letterType}), coupon=${couponCode || "none"}`);
     return json({ url: session.url, sessionId: session.id });
 
   } catch (err: unknown) {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import AssessmentNavbar from "./components/AssessmentNavbar";
 import StepIndicator from "./components/StepIndicator";
 import Step1Assessment, { type Step1Data } from "./components/Step1Assessment";
 import Step2PersonalInfo, { type Step2Data } from "./components/Step2PersonalInfo";
@@ -7,12 +8,20 @@ import Step3Checkout, { type Step3Data } from "./components/Step3Checkout";
 import ExitIntentOverlay from "./components/ExitIntentOverlay";
 import WhatHappensNext from "./components/WhatHappensNext";
 import LiveStatusBanner from "./components/LiveStatusBanner";
-import AssessmentSupportWidget from "./components/AssessmentSupportWidget";
+
 
 import { getDoctorsForState, ALL_STATES } from "../../mocks/doctors";
 import { supabase } from "../../lib/supabaseClient";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
 import { fireMetaPurchase, fireLead, fireInitiateCheckout } from "@/lib/metaPixel";
+import { logAudit, loggedFetch } from "@/lib/auditLogger";
+import {
+  buildAttributionJson,
+  getAttribution,
+  setConfirmationId,
+  setCouponCode,
+  setSelectedState,
+} from "@/lib/attributionStore";
 
 const defaultStep1: Step1Data = {
   emotionalFrequency: "",
@@ -328,10 +337,51 @@ export default function AssessmentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [stripeClientSecret, setStripeClientSecret] = useState("");
+  const [stripeSecretLoading, setStripeSecretLoading] = useState(false);
+  const [stripeSecretError, setStripeSecretError] = useState("");
+  const stripeSecretInFlight = useRef(false); // dedupe concurrent calls
   const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
   const [resumeNotFound, setResumeNotFound] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
+
+  // ── Sync confirmation ID + coupon into attribution store ─────────────────
+  useEffect(() => {
+    setConfirmationId(confirmationId.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (appliedCoupon?.code) setCouponCode(appliedCoupon.code);
+  }, [appliedCoupon]);
+
+  useEffect(() => {
+    if (preSelectedState) setSelectedState(preSelectedState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preSelectedState]);
   const isTestMode = searchParams.get("testCheckout") === "1";
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const handleResendLink = async () => {
+    const email = resendEmail.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return;
+    setResendState("sending");
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-checkout-recovery`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ email, letterType: "esa" }),
+      });
+      const result = await res.json() as { ok?: boolean; error?: string };
+      setResendState(result.ok ? "sent" : "error");
+    } catch {
+      setResendState("error");
+    }
+  };
   // Stripe removed - payment processing disabled
 
   // Generate once per session
@@ -390,6 +440,20 @@ export default function AssessmentPage() {
         if (!result.ok || !result.order) {
           setResumeNotFound(true);
           setResumeLoading(false);
+          // Log the failure so we can track how often resume links fail
+          void logAudit({
+            actor_name: "system",
+            actor_role: "system",
+            object_type: "system",
+            object_id: resumeConfirmationId,
+            action: "resume_order_not_found",
+            description: `Resume flow: order not found for confirmation ID ${resumeConfirmationId}`,
+            metadata: {
+              confirmation_id: resumeConfirmationId,
+              error: result.error ?? "not_found",
+              timestamp: new Date().toISOString(),
+            },
+          });
           return;
         }
 
@@ -440,8 +504,22 @@ export default function AssessmentPage() {
         window.scrollTo({ top: 0, behavior: "smooth" });
         // Fetch Stripe client_secret immediately for resume flow
         fetchClientSecret(loadedStep2, resumeConfirmationId);
-      } catch {
+      } catch (err) {
         setResumeNotFound(true);
+        // Log network/parse errors so we can distinguish them from "not found"
+        void logAudit({
+          actor_name: "system",
+          actor_role: "system",
+          object_type: "system",
+          object_id: resumeConfirmationId,
+          action: "resume_order_network_error",
+          description: `Resume flow: network or parse error for confirmation ID ${resumeConfirmationId}`,
+          metadata: {
+            confirmation_id: resumeConfirmationId,
+            error: err instanceof Error ? err.message : String(err),
+            timestamp: new Date().toISOString(),
+          },
+        });
       } finally {
         setResumeLoading(false);
       }
@@ -482,36 +560,82 @@ export default function AssessmentPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Retry fetchClientSecret when step 3 mounts with a valid email ────────
+  // Covers the case where the initial call was skipped (empty email at the
+  // time of the resume/test-mode trigger) but the email is now available.
+  useEffect(() => {
+    if (currentStep !== 3) return;
+    if (stripeClientSecret) return; // already have one — don't re-fetch
+    const email = step2.email?.trim();
+    if (!email || !email.includes("@") || !email.includes(".")) return;
+    fetchClientSecret(step2, confirmationId.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, step2.email]);
+
   // ── Fetch Stripe client_secret from server ────────────────────────────────
   // Accepts step2 data directly so it works both from goNext (current state)
   // and from the resume useEffect (state hasn't updated yet).
   const fetchClientSecret = async (s2: Step2Data, confId: string) => {
+    // Guard: email must be a valid non-empty address before calling Stripe
+    if (!s2.email || !s2.email.includes("@") || !s2.email.includes(".")) return;
+    // In-flight lock — prevents duplicate concurrent calls (resume + retry + useEffect)
+    if (stripeSecretInFlight.current) return;
+    stripeSecretInFlight.current = true;
+    setStripeSecretLoading(true);
+    setStripeSecretError("");
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment-intent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
+      const res = await loggedFetch(
+        "create-payment-intent",
+        `${SUPABASE_URL}/functions/v1/create-payment-intent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+          },
+          body: JSON.stringify({
+            deliverySpeed:  s2.deliverySpeed,
+            petCount:       s2.pets?.length ?? 1,
+            email:          s2.email,
+            confirmationId: confId,
+            firstName:      s2.firstName,
+            lastName:       s2.lastName,
+            state:          s2.state,
+          }),
         },
-        body: JSON.stringify({
-          deliverySpeed:  s2.deliverySpeed,
-          email:          s2.email,
-          confirmationId: confId,
-          firstName:      s2.firstName,
-          lastName:       s2.lastName,
-          state:          s2.state,
-        }),
-      });
+        confId,
+      );
       const result = (await res.json()) as { clientSecret?: string; error?: string };
       if (result.clientSecret) {
         setStripeClientSecret(result.clientSecret);
+        setStripeSecretError("");
       } else {
-        console.error("[fetchClientSecret] No clientSecret returned:", result.error);
+        const errMsg = result.error ?? "Payment setup failed. Please try again.";
+        setStripeSecretError(errMsg);
+        void logAudit({
+          actor_name: "assessment_flow",
+          actor_role: "client",
+          object_type: "payment",
+          object_id: confId,
+          action: "stripe_no_client_secret",
+          description: `create-payment-intent returned no clientSecret: ${errMsg}`,
+          metadata: {
+            confirmation_id: confId,
+            error: errMsg,
+            email_present: !!s2.email,
+            delivery_speed: s2.deliverySpeed,
+            timestamp: new Date().toISOString(),
+          },
+        });
       }
     } catch (err) {
-      console.error("[fetchClientSecret] Network error:", err);
-      // Silent — user can still see the loading state; they can call to order
+      const errMsg = err instanceof Error ? err.message : "Network error — please check your connection.";
+      setStripeSecretError(errMsg);
+      // loggedFetch already logged the network error
+    } finally {
+      setStripeSecretLoading(false);
+      stripeSecretInFlight.current = false;
     }
   };
 
@@ -639,38 +763,69 @@ export default function AssessmentPage() {
     const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
     const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
     const is2to3Days = step2.deliverySpeed === "2-3days";
-    const estimatedPrice = is2to3Days ? 90 : 115;
+    const petTier = step2.pets.length >= 3 ? 3 : step2.pets.length === 2 ? 2 : 1;
+    const estimatedPrice = petTier === 1
+      ? (is2to3Days ? 90 : 115)
+      : petTier === 2
+        ? (is2to3Days ? 115 : 130)
+        : (is2to3Days ? 130 : 145);
+
+    // ── Capture full attribution at Step 2 via centralized store ──────────
+    const attr = getAttribution();
+    const gclidVal       = attr.gclid;
+    const fbclidVal      = attr.fbclid;
+    const utmSourceVal   = attr.utm_source;
+    const utmMediumVal   = attr.utm_medium;
+    const utmCampaignVal = attr.utm_campaign;
+    const utmTermVal     = attr.utm_term;
+    const utmContentVal  = attr.utm_content;
+    const landingUrlVal  = attr.landing_url;
+    const attributionJsonVal = buildAttributionJson("step2_lead");
 
     // Primary: service-role edge function (bypasses all RLS + CHECK constraints)
     try {
-      await fetch(`${supabaseUrl}/functions/v1/get-resume-order`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-        },
-        body: JSON.stringify({
-          action: "upsert",
-          confirmationId: confirmationId.current,
-          email: step2.email,
-          firstName: step2.firstName,
-          lastName: step2.lastName,
-          phone: step2.phone,
-          state: step2.state,
-          deliverySpeed: step2.deliverySpeed,
-          price: estimatedPrice,
-          letterType: "esa",
-          status: "lead",
-          referredBy: referredBy ?? "",
-          assessmentAnswers: {
-            ...step1,
-            pets: step2.pets,
-            dob: step2.dob,
-            additionalDocs: step2.additionalDocs ?? null,
+      await loggedFetch(
+        "get-resume-order/upsert-lead",
+        `${supabaseUrl}/functions/v1/get-resume-order`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
           },
-        }),
-      });
+          body: JSON.stringify({
+            action: "upsert",
+            confirmationId: confirmationId.current,
+            email: step2.email,
+            firstName: step2.firstName,
+            lastName: step2.lastName,
+            phone: step2.phone,
+            state: step2.state,
+            deliverySpeed: step2.deliverySpeed,
+            price: estimatedPrice,
+            letterType: "esa",
+            status: "lead",
+            referredBy: referredBy ?? "",
+            gclid:        gclidVal,
+            fbclid:       fbclidVal,
+            utmSource:    utmSourceVal,
+            utmMedium:    utmMediumVal,
+            utmCampaign:  utmCampaignVal,
+            utmTerm:      utmTermVal,
+            utmContent:   utmContentVal,
+            landingUrl:   landingUrlVal,
+            attributionJson: attributionJsonVal,
+            assessmentAnswers: {
+              ...step1,
+              pets: step2.pets,
+              dob: step2.dob,
+              additionalDocs: step2.additionalDocs ?? null,
+            },
+          }),
+        },
+        confirmationId.current,
+      );
     } catch {
       // Fallback: direct anon client insert
       try {
@@ -688,6 +843,15 @@ export default function AssessmentPage() {
           letter_type: "esa",
           status: "lead",
           referred_by: referredBy,
+          gclid:        gclidVal,
+          fbclid:       fbclidVal,
+          utm_source:   utmSourceVal,
+          utm_medium:   utmMediumVal,
+          utm_campaign: utmCampaignVal,
+          utm_term:     utmTermVal,
+          utm_content:  utmContentVal,
+          landing_url:  landingUrlVal,
+          attribution_json: attributionJsonVal,
           additional_documents_requested: step2.additionalDocs ?? null,
           assessment_answers: {
             ...step1,
@@ -701,7 +865,7 @@ export default function AssessmentPage() {
       }
     }
 
-    // Trigger full Google Sheets sync so letterType/orderStatus/paymentStatus are correct
+    // Trigger full Google Sheets sync — now includes attribution fields for abandoned leads
     triggerSheetsFullSync();
   };
 
@@ -743,27 +907,16 @@ export default function AssessmentPage() {
           planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
           addonServices: (step3.addonServices ?? []).length > 0 ? step3.addonServices : null,
           referredBy: referredBy ?? "",
-          gclid: sessionStorage.getItem("gclid") ?? null,
-          fbclid: sessionStorage.getItem("fbclid") ?? null,
-          utmSource: sessionStorage.getItem("utm_source") ?? null,
-          utmMedium: sessionStorage.getItem("utm_medium") ?? null,
-          utmCampaign: sessionStorage.getItem("utm_campaign") ?? null,
-          utmTerm: sessionStorage.getItem("utm_term") ?? null,
-          utmContent: sessionStorage.getItem("utm_content") ?? null,
-          landingUrl: sessionStorage.getItem("landing_url") ?? null,
-          attributionJson: {
-            gclid: sessionStorage.getItem("gclid"),
-            fbclid: sessionStorage.getItem("fbclid"),
-            utm_source: sessionStorage.getItem("utm_source"),
-            utm_medium: sessionStorage.getItem("utm_medium"),
-            utm_campaign: sessionStorage.getItem("utm_campaign"),
-            utm_term: sessionStorage.getItem("utm_term"),
-            utm_content: sessionStorage.getItem("utm_content"),
-            referrer: sessionStorage.getItem("referrer"),
-            landing_url: sessionStorage.getItem("landing_url"),
-            ref: tracking.ref || null,
-            captured_at: paidAt,
-          },
+          gclid:      getAttribution().gclid,
+          fbclid:     getAttribution().fbclid,
+          utmSource:  getAttribution().utm_source,
+          utmMedium:  getAttribution().utm_medium,
+          utmCampaign: getAttribution().utm_campaign,
+          utmTerm:    getAttribution().utm_term,
+          utmContent: getAttribution().utm_content,
+          landingUrl: getAttribution().landing_url,
+          sessionId:  getAttribution().session_id,
+          attributionJson: buildAttributionJson("payment_confirmed"),
           // Always include pets, dob and additionalDocs so the
           // payment upsert doesn't overwrite the full assessment saved at lead time.
           assessmentAnswers: {
@@ -813,18 +966,28 @@ export default function AssessmentPage() {
    * fire GHL, Meta Pixel, PDF generation, etc. on return.
    */
   const handleBeforeRedirect = () => {
+    const petTier = step2.pets.length >= 3 ? 3 : step2.pets.length === 2 ? 2 : 1;
     const is2to3Days = step2.deliverySpeed === "2-3days";
-    const price = is2to3Days ? 100 : 115;
+    const isSubscription = step3.plan === "subscription";
+
+    // Compute the correct price based on plan type (subscription vs one-time)
+    const price = isSubscription
+      ? (petTier === 1 ? (is2to3Days ? 90 : 105) : petTier === 2 ? (is2to3Days ? 105 : 120) : (is2to3Days ? 120 : 135))
+      : (petTier === 1 ? (is2to3Days ? 100 : 115) : petTier === 2 ? (is2to3Days ? 115 : 130) : (is2to3Days ? 130 : 145));
+
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
+    const speedLabel = is2to3Days ? "Standard" : "Priority";
+    const pricingLabel = `${speedLabel} ($${price})`;
+    const planType = isSubscription ? "Subscription (Annual)" : "One-Time Purchase";
 
     const pendingOrder = {
       firstName:        step2.firstName,
       lastName:         step2.lastName,
       email:            step2.email,
       selectedProvider: docName,
-      pricingPlan:      is2to3Days ? "Standard ($100)" : "Priority ($115)",
-      planType:         "One-Time Purchase",
+      pricingPlan:      pricingLabel,
+      planType,
       deliverySpeed:    step2.deliverySpeed,
       price,
       confirmationId:   confirmationId.current,
@@ -839,9 +1002,12 @@ export default function AssessmentPage() {
   const handlePaymentSuccess = async (paymentIntentId: string) => {
     paymentCompletedRef.current = true; // prevent unmount cleanup from cancelling the subscription
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
-    // Use real price from Stripe; fall back to local estimate
+    // Compute correct price based on actual pet count + delivery speed + plan
+    const petTier = step2.pets.length >= 3 ? 3 : step2.pets.length === 2 ? 2 : 1;
     const is2to3Days = step2.deliverySpeed === "2-3days";
-    const price = is2to3Days ? 100 : 115;
+    const price = step3.plan === "subscription"
+      ? (petTier === 1 ? (is2to3Days ? 90 : 105) : petTier === 2 ? (is2to3Days ? 105 : 120) : (is2to3Days ? 120 : 135))
+      : (petTier === 1 ? (is2to3Days ? 100 : 115) : petTier === 2 ? (is2to3Days ? 115 : 130) : (is2to3Days ? 130 : 145));
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
 
     // Read payment method stored in session storage by Step3Checkout
@@ -920,22 +1086,9 @@ export default function AssessmentPage() {
       {/* Discount popup — only appears on checkout step, 18s delay */}
 
 
-      {/* Floating support widget — always visible, especially useful on checkout step */}
-      {!resumeLoading && !resumeNotFound && (
-        <AssessmentSupportWidget currentStep={currentStep} />
-      )}
 
-      {/* Dev Quick-Test button — jump to checkout with test data instantly */}
-      {!isTestMode && (
-        <a
-          href="/assessment?testCheckout=1"
-          className="fixed bottom-20 right-4 z-40 bg-amber-400 hover:bg-amber-500 text-white text-[10px] font-extrabold px-3 py-2 rounded-xl shadow-md cursor-pointer whitespace-nowrap flex items-center gap-1.5 transition-colors"
-          title="Jump to checkout with test data"
-        >
-          <i className="ri-flask-line text-sm"></i>
-          Test Checkout
-        </a>
-      )}
+
+
 
       {/* Exit Intent Overlay */}
       <ExitIntentOverlay
@@ -945,30 +1098,7 @@ export default function AssessmentPage() {
       />
 
       {/* Minimal Navbar */}
-      <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
-        <Link to="/" className="flex items-center gap-2 cursor-pointer">
-          <img
-            src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
-            alt="PawTenant"
-            className="h-10 w-auto object-contain"
-          />
-        </Link>
-        <div className="flex items-center gap-5">
-          <a
-            href="tel:+14099655885"
-            className="hidden sm:flex items-center gap-1.5 text-sm text-gray-600 hover:text-orange-500 transition-colors cursor-pointer"
-          >
-            <div className="w-5 h-5 flex items-center justify-center">
-              <i className="ri-phone-line text-orange-500"></i>
-            </div>
-            409-965-5885
-          </a>
-          <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 rounded-full px-3 py-1.5">
-            <i className="ri-shield-check-line text-orange-500 text-xs"></i>
-            <span className="text-xs font-semibold text-orange-700">HIPAA Secure</span>
-          </div>
-        </div>
-      </nav>
+      <AssessmentNavbar />
 
 
 
@@ -982,12 +1112,51 @@ export default function AssessmentPage() {
             <p className="text-sm text-gray-400 mb-6">This only takes a second.</p>
           </div>
         ) : resumeNotFound ? (
-          <div className="flex flex-col items-center justify-center py-32 text-center">
+          <div className="flex flex-col items-center justify-center py-20 text-center max-w-md mx-auto">
             <div className="w-16 h-16 flex items-center justify-center bg-orange-100 rounded-full mb-4">
               <i className="ri-error-warning-line text-orange-500 text-2xl"></i>
             </div>
             <h2 className="text-xl font-extrabold text-gray-900 mb-2">Link expired or not found</h2>
-            <p className="text-sm text-gray-500 mb-6 max-w-sm">This payment link may have expired or already been used. Start a fresh assessment below.</p>
+            <p className="text-sm text-gray-500 mb-6 max-w-sm">This payment link may have expired or already been used. Enter your email below to receive a new payment link, or start a fresh assessment.</p>
+
+            {/* Resend payment link form */}
+            <div className="w-full bg-white border border-gray-100 rounded-xl p-5 mb-5 text-left">
+              <p className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wide">Resend my payment link</p>
+              {resendState === "sent" ? (
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                  <i className="ri-checkbox-circle-fill text-green-500"></i>
+                  <span className="text-sm font-semibold">Check your inbox — we sent a new payment link.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={resendEmail}
+                      onChange={(e) => setResendEmail(e.target.value)}
+                      placeholder="your@email.com"
+                      className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 transition-colors"
+                      onKeyDown={(e) => { if (e.key === "Enter") handleResendLink(); }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleResendLink}
+                      disabled={resendState === "sending"}
+                      className="whitespace-nowrap px-4 py-2.5 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 disabled:opacity-60 cursor-pointer transition-colors"
+                    >
+                      {resendState === "sending" ? <i className="ri-loader-4-line animate-spin"></i> : "Send Link"}
+                    </button>
+                  </div>
+                  {resendState === "error" && (
+                    <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                      <i className="ri-error-warning-line"></i>
+                      Couldn&apos;t find an order for that email. Try starting a fresh assessment or call us at 409-965-5885.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={() => { setResumeNotFound(false); setCurrentStep(1); }}
@@ -1077,6 +1246,9 @@ export default function AssessmentPage() {
                   submitting={submitting}
                   preSelectedDoctorId={preSelectedDoctorId}
                   stripeClientSecret={stripeClientSecret}
+                  stripeSecretLoading={stripeSecretLoading}
+                  stripeSecretError={stripeSecretError}
+                  onRetryClientSecret={() => fetchClientSecret(step2, confirmationId.current)}
                   onPaymentSuccess={handlePaymentSuccess}
                   confirmationId={confirmationId.current}
                   onCouponApplied={setAppliedCoupon}

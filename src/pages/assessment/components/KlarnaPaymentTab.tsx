@@ -24,7 +24,10 @@ interface KlarnaPaymentTabProps {
   setAgreedError: (v: boolean) => void;
   confirmationId: string;
   selectedProvider?: string;
+  letterType?: "esa" | "psd";
   onSuccess?: () => void;
+  /** Applied coupon code to pass to backend for discount */
+  couponCode?: string;
 }
 
 // ─── Processing Overlay ───────────────────────────────────────────────────────
@@ -60,13 +63,16 @@ export default function KlarnaPaymentTab({
   setAgreedError,
   confirmationId,
   selectedProvider,
+  letterType = "esa",
   onSuccess,
+  couponCode,
 }: KlarnaPaymentTabProps) {
   const [loading, setLoading] = useState(false);
   const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [statusError, setStatusError] = useState("");
 
   const installment = (amount / 4).toFixed(2);
 
@@ -80,6 +86,8 @@ export default function KlarnaPaymentTab({
     setAgreedError(false);
 
     try {
+      const planType = plan === "subscription" ? "subscription" : "one-time";
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
         method: "POST",
         headers: {
@@ -88,20 +96,19 @@ export default function KlarnaPaymentTab({
           Authorization: `Bearer ${SUPABASE_KEY}`,
         },
         body: JSON.stringify({
-          plan,
+          letterType,
           petCount,
           deliverySpeed,
           email,
           firstName,
           lastName,
-          phone,
           state,
-          additionalDocCount,
           confirmationId,
-          selectedProvider,
-          paymentMethods: ["card", "klarna"],
-          successUrl: `${window.location.origin}/assessment-thankyou?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${window.location.origin}/assessment?step=3&canceled=true`,
+          mode: "klarna",
+          planType,
+          origin: window.location.origin,
+          // Pass coupon code for backend discount application
+          ...(couponCode ? { couponCode } : {}),
         }),
       });
 
@@ -123,30 +130,26 @@ export default function KlarnaPaymentTab({
 
   const checkPaymentStatus = async () => {
     if (!confirmationId) return;
-    
     setCheckingStatus(true);
+    setStatusError("");
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
-        body: JSON.stringify({ confirmationId }),
-      });
+      const { createClient } = await import("@supabase/supabase-js");
+      const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+      const { data } = await sb
+        .from("orders")
+        .select("status, paid_at")
+        .eq("confirmation_id", confirmationId)
+        .maybeSingle();
 
-      const data = await res.json();
-
-      if (data.paid) {
+      if (data && data.paid_at) {
         setPaymentCompleted(true);
         onSuccess?.();
       } else {
-        // Show a message that payment is still pending
-        alert("Payment not yet completed. Please finish payment in the Klarna window and try again.");
+        setStatusError("Payment not yet completed. Please finish payment in the Klarna window and try again.");
       }
     } catch (err) {
       console.error("Error checking payment status:", err);
+      setStatusError("Could not verify payment status. Please try again.");
     } finally {
       setCheckingStatus(false);
     }
@@ -303,6 +306,12 @@ export default function KlarnaPaymentTab({
                 </>
               )}
             </button>
+            {statusError && (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                <i className="ri-information-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
+                <p className="text-xs text-amber-700 leading-relaxed">{statusError}</p>
+              </div>
+            )}
           </div>
         )}
 

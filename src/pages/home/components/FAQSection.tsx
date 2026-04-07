@@ -33,6 +33,14 @@ const faqs = [
     q: "What is the difference between Basic and Premium packages?",
     a: "Both packages include a legitimate ESA letter from a licensed professional. The Premium Package adds priority same-day processing and a discounted annual renewal. If you need your letter urgently or want renewal savings, the Premium Package is the better value.",
   },
+  {
+    q: "Can my landlord verify my ESA letter?",
+    a: "Yes. Every finalized ESA letter issued through PawTenant includes a unique Verification ID. Landlords can enter this ID at pawtenant.com/verify to instantly confirm the letter's authenticity and the provider's license — without accessing any of your personal health information. Your diagnosis and medical details are never disclosed during verification.",
+  },
+  {
+    q: "Does landlord verification expose my private health information?",
+    a: "No. The verification system is designed to be privacy-safe. It only confirms that the letter is genuine and was issued by a licensed mental health professional. Your diagnosis, treatment history, and any other health details remain completely confidential and are protected under HIPAA.",
+  },
 ];
 
 export default function FAQSection() {
@@ -65,7 +73,7 @@ export default function FAQSection() {
   }, []);
 
   return (
-    <section id="faq" className="py-20 bg-gray-50" aria-label="Frequently Asked Questions">
+    <section id="faq" className="py-20 bg-[#FFF7ED]" aria-label="Frequently Asked Questions">
       {/* Schema is now injected via useEffect above — no inline script tag */}
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-14">

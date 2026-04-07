@@ -98,6 +98,8 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
       if (!email) return;
       const profile = profiles.find((p) => (p.email ?? "").toLowerCase() === email) ?? null;
       const contact = contacts.find((c) => c.email.toLowerCase() === email) ?? null;
+      // Skip entries that have no profile AND contact is inactive — these are removed providers
+      if (!profile && contact && contact.is_active === false) return;
       merged.push({ profile, contact, email, name: profile?.full_name ?? contact?.full_name ?? email, workload: workloadMap.get(email) ?? { active: 0, completed: 0 } });
     });
     merged.sort((a, b) => a.name.localeCompare(b.name));
@@ -122,10 +124,44 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
   useEffect(() => { loadData(); loadPendingApps(); }, []);
 
   // Sync selectedDoc state after data refresh so drawer shows updated info
-  const handleRefresh = () => {
-    loadData();
+  const handleRefresh = async () => {
+    setLoading(true);
+    const [profilesRes, contactsRes, ordersRes] = await Promise.all([
+      supabase.from("doctor_profiles").select("*").order("full_name"),
+      supabase.from("doctor_contacts").select("id, full_name, email, phone, notes, licensed_states, is_active, photo_url, per_order_rate").order("full_name"),
+      supabase.from("orders").select("doctor_email, doctor_user_id, status").not("doctor_email", "is", null),
+    ]);
+    const allProfiles = (profilesRes.data as DoctorProfile[]) ?? [];
+    const profiles = allProfiles.filter((p) => !NON_PROVIDER_ROLES.has(p.role ?? ""));
+    const contacts = (contactsRes.data as DoctorContact[]) ?? [];
+    const orders = (ordersRes.data as { doctor_email: string | null; doctor_user_id: string | null; status: string }[]) ?? [];
+
+    const workloadMap = new Map<string, WorkloadStats>();
+    orders.forEach((o) => {
+      const key = (o.doctor_email ?? "").toLowerCase();
+      if (!key) return;
+      const existing = workloadMap.get(key) ?? { active: 0, completed: 0 };
+      if (o.status === "completed" || o.status === "cancelled") { existing.completed += 1; } else { existing.active += 1; }
+      workloadMap.set(key, existing);
+    });
+
+    const allEmails = new Set([...profiles.map((p) => (p.email ?? "").toLowerCase()), ...contacts.map((c) => c.email.toLowerCase())]);
+    const merged: DoctorRow[] = [];
+    allEmails.forEach((email) => {
+      if (!email) return;
+      const profile = profiles.find((p) => (p.email ?? "").toLowerCase() === email) ?? null;
+      const contact = contacts.find((c) => c.email.toLowerCase() === email) ?? null;
+      if (!profile && contact && contact.is_active === false) return;
+      merged.push({ profile, contact, email, name: profile?.full_name ?? contact?.full_name ?? email, workload: workloadMap.get(email) ?? { active: 0, completed: 0 } });
+    });
+    merged.sort((a, b) => a.name.localeCompare(b.name));
+    setDoctors(merged);
+    setLoading(false);
+
+    // Re-sync the open drawer with fresh data
     if (selectedDoc) {
-      // Drawer will re-sync via useEffect on doc change — just reload list
+      const freshDoc = merged.find((d) => d.email === selectedDoc.email);
+      if (freshDoc) setSelectedDoc(freshDoc);
     }
   };
 
@@ -167,22 +203,40 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
 
   const handleExportCSV = () => {
     const esc = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const headers = ["Name","Email","Phone","Title","Rate ($/order)","Licensed States","State Count","Active Cases","Completed Cases","Status","Portal","Member Since"];
+    const headers = [
+      "Name","Email","Phone","Title","NPI Number","State License Numbers",
+      "Rate ($/order)","Licensed States","State Count",
+      "Active Cases","Completed Cases","Status","Portal","Member Since"
+    ];
     const rows = doctors.map((doc) => {
       const states = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
       const isActive = doc.profile ? doc.profile.is_active !== false : doc.contact?.is_active !== false;
       const rate = doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null;
-      return [doc.name, doc.email, doc.contact?.phone ?? doc.profile?.phone ?? "", doc.profile?.title ?? "",
-        rate != null ? String(rate) : "", states.join("; "), String(states.length), String(doc.workload.active), String(doc.workload.completed),
-        isActive ? "Active" : "Inactive", doc.profile ? "Portal Account" : "No Portal",
-        doc.profile?.created_at ? new Date(doc.profile.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""].map(esc).join(",");
+      const npi = (doc.profile as unknown as { npi_number?: string | null })?.npi_number ?? "";
+      const stateLicenses = (doc.profile as unknown as { state_license_numbers?: Record<string, string> | null })?.state_license_numbers ?? {};
+      const stateLicensesStr = Object.entries(stateLicenses).map(([s, l]) => `${s}:${l}`).join(" | ");
+      return [
+        doc.name, doc.email,
+        doc.contact?.phone ?? doc.profile?.phone ?? "",
+        doc.profile?.title ?? "",
+        npi,
+        stateLicensesStr,
+        rate != null ? String(rate) : "",
+        states.join("; "),
+        String(states.length),
+        String(doc.workload.active),
+        String(doc.workload.completed),
+        isActive ? "Active" : "Inactive",
+        doc.profile ? "Portal Account" : "No Portal",
+        doc.profile?.created_at ? new Date(doc.profile.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "",
+      ].map(esc).join(",");
     });
     const csv = [headers.map(esc).join(","), ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `providers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `providers-npi-licenses-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
@@ -226,7 +280,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
               <span className="px-2.5 py-1 bg-amber-500 text-white text-xs font-extrabold rounded-full">{pendingApps.length}</span>
             </div>
             <div className="w-5 h-5 flex items-center justify-center text-amber-700 flex-shrink-0">
-              <i className={`ri-arrow-${pendingExpanded ? "up" : "down"}-s-line text-lg`}></i>
+              {pendingExpanded ? <i className="ri-arrow-up-s-line text-lg"></i> : <i className="ri-arrow-down-s-line text-lg"></i>}
             </div>
           </button>
           {pendingExpanded && (
@@ -292,8 +346,9 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleExportCSV} disabled={doctors.length === 0}
+            title="Export provider roster with NPI numbers and state license numbers"
             className="whitespace-nowrap flex items-center gap-2 px-3 py-2 border border-[#1a5c4f] text-[#1a5c4f] bg-[#f0faf7] text-sm font-bold rounded-xl hover:bg-[#e0f2ec] disabled:opacity-50 cursor-pointer transition-colors">
-            <i className="ri-download-2-line"></i><span className="hidden sm:inline">Export CSV</span>
+            <i className="ri-download-2-line"></i><span className="hidden sm:inline">Export NPI + Licenses</span>
           </button>
           <button type="button" onClick={() => setShowCreate(true)}
             className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
@@ -436,7 +491,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
                     className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border cursor-pointer transition-colors flex-shrink-0 ${isSelected ? "bg-[#1a5c4f] border-[#1a5c4f] text-white" : "border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"}`}>
                     <i className="ri-settings-3-line text-sm"></i>
                     <span className="hidden sm:inline">Manage</span>
-                    <i className={`ri-arrow-${isSelected ? "right" : "right"}-s-line text-xs`}></i>
+                    <i className="ri-arrow-right-s-line text-xs"></i>
                   </button>
                 </div>
               </div>

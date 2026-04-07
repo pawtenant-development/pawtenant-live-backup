@@ -4,36 +4,42 @@ const reasons = [
     color: "bg-orange-100 text-orange-500",
     title: "Fast Processing",
     desc: "Same-day or next-day ESA letter delivery for most applicants.",
+    link: null,
   },
   {
     icon: "ri-award-line",
-    color: "bg-teal-100 text-teal-600",
+    color: "bg-amber-100 text-amber-700",
     title: "Licensed Professionals",
     desc: "All evaluations are conducted by state-licensed mental health professionals.",
+    link: null,
   },
   {
     icon: "ri-lock-2-line",
     color: "bg-orange-100 text-orange-500",
     title: "Secure &amp; Confidential",
     desc: "Your data is fully protected with HIPAA-compliant security protocols.",
+    link: null,
   },
   {
     icon: "ri-customer-service-2-line",
-    color: "bg-teal-100 text-teal-600",
+    color: "bg-amber-100 text-amber-700",
     title: "Trusted Service",
     desc: "Thousands of satisfied customers with a 4.9-star average rating.",
+    link: null,
   },
   {
     icon: "ri-map-2-line",
     color: "bg-orange-100 text-orange-500",
     title: "Nationwide Coverage",
     desc: "We serve clients in all 50 states with state-specific compliant letters.",
+    link: null,
   },
   {
     icon: "ri-money-dollar-circle-line",
-    color: "bg-teal-100 text-teal-600",
+    color: "bg-amber-100 text-amber-700",
     title: "Transparent Pricing",
     desc: "No hidden fees or surprise charges — what you see is what you pay.",
+    link: null,
   },
 ];
 
@@ -82,6 +88,28 @@ export default function WhyChooseSection() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Verification highlight card — centered below the grid */}
+        <div className="flex justify-center mt-6">
+          <a
+            href="/verifiable-esa-letters"
+            className="flex items-start gap-4 p-5 bg-[#FFF7ED] rounded-xl border border-orange-200 hover:border-orange-400 transition-colors cursor-pointer group w-full max-w-md"
+          >
+            <div className="w-11 h-11 flex items-center justify-center rounded-lg flex-shrink-0 bg-[#92400e] text-white">
+              <i className="ri-shield-check-line text-xl"></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-gray-900 font-bold text-sm group-hover:text-[#92400e] transition-colors">Landlord-Verifiable Letters</h3>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#92400e] bg-orange-100 px-2 py-0.5 rounded-full whitespace-nowrap">Unique</span>
+              </div>
+              <p className="text-gray-500 text-sm leading-relaxed">Every letter includes a QR code &amp; Verification ID — landlords confirm authenticity in seconds.</p>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#92400e] mt-2 group-hover:underline">
+                How it works <i className="ri-arrow-right-line text-xs"></i>
+              </span>
+            </div>
+          </a>
         </div>
 
         <div className="text-center mt-12">

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import ExpiryChecker from "./components/ExpiryChecker";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 
 const renewalPlans = [
@@ -88,7 +89,7 @@ const renewalSteps = [
   },
   {
     step: "03",
-    icon: "ri-file-check-2-line",
+    icon: "ri-file-check-line",
     title: "Receive Your Renewed Letter",
     desc: "Your updated ESA letter — with a new issue date and your therapist's current credentials — is delivered to your inbox within 24 hours. Ready to use immediately.",
   },
@@ -176,6 +177,7 @@ export default function RenewESALetterPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [billingCycle, setBillingCycle] = useState<"onetime" | "annual">("annual");
   const [checkoutPlan, setCheckoutPlan] = useState<SelectedPlan | null>(null);
+  const { withAttribution } = useAttributionParams();
 
   const openCheckout = (plan: typeof renewalPlans[0], cycle: "onetime" | "annual") => {
     const petTier = plan.name === "1 Pet" ? "1" : plan.name === "2 Pets" ? "2" : "3";
@@ -212,7 +214,7 @@ export default function RenewESALetterPage() {
         <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-1 text-center">
           <i className="ri-alarm-warning-line text-yellow-300 flex-shrink-0"></i>
           <span>ESA letters expire after 12 months — an expired letter gives your landlord the right to deny your animal.</span>
-          <Link to="/assessment" className="whitespace-nowrap underline font-bold hover:text-yellow-200 transition-colors cursor-pointer">
+          <Link to={withAttribution("/assessment")} className="whitespace-nowrap underline font-bold hover:text-yellow-200 transition-colors cursor-pointer">
             Renew yours now →
           </Link>
         </div>
@@ -710,7 +712,7 @@ export default function RenewESALetterPage() {
             </div>
             <div className="rounded-2xl overflow-hidden h-[450px]">
               <img
-                src="https://readdy.ai/api/search-image?query=happy%20person%20sitting%20at%20home%20desk%20laptop%20smiling%20just%20received%20important%20document%20relief%20satisfaction%20pet%20dog%20nearby%20cozy%20warm%20home%20office%20emotional%20support%20animal%20renewal%20approved&width=700&height=500&seq=renewwhy02&orientation=portrait"
+                src="https://readdy.ai/api/search-image?query=happy%20person%20sitting%20at%20home%20desk%20laptop%20smiling%20just%20received%20important%20document%20relief%20satisfaction%20pet%20dog%20nearby%20cozy%20warm%20home%20office%20emotional%20support%20animal%20renewal%20approved&width=500&height=700&seq=renewwhy02-portrait-v2&orientation=portrait"
                 alt="Happy ESA letter renewal client"
                 className="w-full h-full object-cover object-top"
               />

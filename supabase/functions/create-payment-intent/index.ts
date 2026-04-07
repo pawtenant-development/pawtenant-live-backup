@@ -14,8 +14,22 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function getESAOneTimeAmount(deliverySpeed: string): number {
-  return deliverySpeed === "2-3days" ? 10000 : 11500;
+// ─── ESA One-time pricing (pet-count aware) ───────────────────────────────────
+function getESAOneTimeAmount(petCount: number, deliverySpeed: string): number {
+  const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
+  const isPriority = deliverySpeed !== "2-3days";
+  if (tier === 1) return isPriority ? 11500 : 10000;
+  if (tier === 2) return isPriority ? 13000 : 11500;
+  return               isPriority ? 14500 : 13000;
+}
+
+// ─── ESA Annual subscription pricing (pet-count aware) ───────────────────────
+function getESAAnnualAmount(petCount: number, deliverySpeed: string): number {
+  const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
+  const isPriority = deliverySpeed !== "2-3days";
+  if (tier === 1) return isPriority ? 10500 : 9000;
+  if (tier === 2) return isPriority ? 12000 : 10500;
+  return               isPriority ? 13500 : 12000;
 }
 
 function getPSDOneTimeAmount(petCount: number, deliverySpeed: string): number {
@@ -38,11 +52,49 @@ const PSD_ANNUAL_PRICE_IDS: Record<number, string> = {
   3: "price_1TG6TKGwm9wIWlgiNFZbRloA",
 };
 
-const ADDON_AMOUNTS: Record<string, number> = {
-  zoom_call: 4000,
-  physical_mail: 5000,
-  landlord_letter: 3000,
-};
+/**
+ * Resolve a Stripe coupon ID from a coupon code string.
+ * Strategy:
+ *  1. Try to retrieve a Stripe Coupon directly by ID (coupon code = coupon ID).
+ *  2. If that fails, try to retrieve a Stripe PromotionCode by code string and
+ *     return the underlying coupon ID.
+ * Returns the Stripe coupon ID to attach to the subscription, or null if not found.
+ */
+async function resolveStripeCouponId(
+  stripe: Stripe,
+  couponCode: string,
+): Promise<string | null> {
+  if (!couponCode) return null;
+
+  // 1. Try direct coupon lookup (coupon ID = code)
+  try {
+    const coupon = await stripe.coupons.retrieve(couponCode);
+    if (coupon && coupon.valid) {
+      console.info(`[create-payment-intent] Resolved coupon by ID: ${coupon.id}`);
+      return coupon.id;
+    }
+  } catch {
+    // Not a direct coupon ID — try promotion code next
+  }
+
+  // 2. Try promotion code lookup
+  try {
+    const promoCodes = await stripe.promotionCodes.list({ code: couponCode, active: true, limit: 1 });
+    if (promoCodes.data.length > 0) {
+      const promoCode = promoCodes.data[0];
+      const couponId = typeof promoCode.coupon === "string"
+        ? promoCode.coupon
+        : promoCode.coupon.id;
+      console.info(`[create-payment-intent] Resolved coupon via promo code ${couponCode} → coupon ${couponId}`);
+      return couponId;
+    }
+  } catch {
+    // Promotion code lookup failed
+  }
+
+  console.warn(`[create-payment-intent] Could not resolve Stripe coupon for code: ${couponCode}`);
+  return null;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -69,9 +121,10 @@ Deno.serve(async (req: Request) => {
   const lastName        = (body.lastName         as string)   ?? "";
   const state           = (body.state            as string)   ?? "";
   const customerName    = (body.customerName     as string)   ?? `${firstName} ${lastName}`.trim();
-  const addonServices   = (body.addonServices    as string[]) ?? [];
   const cancelSubId     = (body.cancelSubscriptionId as string) ?? "";
   const paymentMethodId = (body.paymentMethodId  as string)   ?? "";
+  // Coupon code from frontend (validated by our DB validate-coupon function)
+  const couponCode      = (body.couponCode       as string)   ?? "";
 
   // ── Action: cancel_subscription ──────────────────────────────────────────
   if (action === "cancel_subscription" && cancelSubId) {
@@ -139,6 +192,7 @@ Deno.serve(async (req: Request) => {
         try { await stripe.subscriptions.cancel(cancelSubId); } catch { /* best-effort */ }
       }
 
+      // ── Find or create Stripe customer ──────────────────────────────────
       let customerId: string;
       const existing = await stripe.customers.list({ email, limit: 1 });
       if (existing.data.length > 0) {
@@ -161,7 +215,17 @@ Deno.serve(async (req: Request) => {
         } catch { /* best-effort */ }
       }
 
-      const subscription = await stripe.subscriptions.create({
+      // ── Resolve coupon → Stripe coupon ID ───────────────────────────────
+      // The coupon code was already validated by our DB validate-coupon function.
+      // Here we resolve it to a Stripe coupon/promotion code ID to attach to the subscription.
+      let stripeCouponId: string | null = null;
+      if (couponCode) {
+        stripeCouponId = await resolveStripeCouponId(stripe, couponCode);
+      }
+
+      // ── Build subscription params ────────────────────────────────────────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const subscriptionParams: any = {
         customer: customerId,
         items: [{ price: priceId }],
         payment_behavior: "default_incomplete",
@@ -178,8 +242,17 @@ Deno.serve(async (req: Request) => {
           first_name: firstName,
           last_name: lastName,
           state,
+          ...(couponCode ? { coupon_code: couponCode } : {}),
         },
-      });
+      };
+
+      // Attach coupon to subscription if resolved
+      if (stripeCouponId) {
+        subscriptionParams.coupon = stripeCouponId;
+        console.info(`[create-payment-intent] Applying coupon ${stripeCouponId} (code: ${couponCode}) to subscription`);
+      }
+
+      const subscription = await stripe.subscriptions.create(subscriptionParams);
 
       // @ts-ignore
       const invoice = subscription.latest_invoice as Stripe.Invoice;
@@ -195,7 +268,11 @@ Deno.serve(async (req: Request) => {
         await stripe.paymentIntents.update(paymentIntent.id, { receipt_email: null });
       } catch { /* best-effort */ }
 
-      console.info(`[create-payment-intent] Subscription ${subscription.id} created for ${confirmationId || email}`);
+      const displayAmount = letterType === "psd"
+        ? getPSDOneTimeAmount(petCount, deliverySpeed)
+        : getESAAnnualAmount(petCount, deliverySpeed);
+
+      console.info(`[create-payment-intent] Subscription ${subscription.id} created for ${confirmationId || email} — pet_count=${petCount}, delivery=${deliverySpeed}, display_amount=$${displayAmount / 100}, coupon=${couponCode || "none"}`);
 
       return json({
         clientSecret:    paymentIntent.client_secret,
@@ -211,14 +288,11 @@ Deno.serve(async (req: Request) => {
     if (letterType === "psd") {
       baseAmount = getPSDOneTimeAmount(petCount, deliverySpeed);
     } else {
-      baseAmount = getESAOneTimeAmount(deliverySpeed);
+      baseAmount = getESAOneTimeAmount(petCount, deliverySpeed);
     }
 
-    const addonTotal  = addonServices.reduce((s: number, id: string) => s + (ADDON_AMOUNTS[id] ?? 0), 0);
-    const totalAmount = baseAmount + addonTotal;
-
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: totalAmount,
+      amount: baseAmount,
       currency: "usd",
       payment_method_types: ["card"],
       // receipt_email intentionally omitted — we send our own branded receipt via Resend
@@ -231,15 +305,14 @@ Deno.serve(async (req: Request) => {
         letter_type: letterType,
         delivery_speed: deliverySpeed,
         pet_count: String(petCount),
-        addon_services: addonServices.join(","),
       },
     });
 
-    console.info(`[create-payment-intent] PI ${paymentIntent.id} — $${totalAmount / 100} (${letterType}) — cid: ${confirmationId || "none"}`);
+    console.info(`[create-payment-intent] PI ${paymentIntent.id} — $${baseAmount / 100} (${letterType}, ${petCount} pet(s), ${deliverySpeed}) — cid: ${confirmationId || "none"}`);
 
     return json({
       clientSecret:    paymentIntent.client_secret,
-      amount:          totalAmount,
+      amount:          baseAmount,
       basePriceAmount: baseAmount,
       paymentIntentId: paymentIntent.id,
     });

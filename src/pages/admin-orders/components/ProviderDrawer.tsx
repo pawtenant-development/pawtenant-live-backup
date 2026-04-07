@@ -2,12 +2,16 @@
 // NEVER calls create-team-member or any team-member endpoint.
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import ImpersonateProviderView from "./ImpersonateProviderView";
 
 type AvailabilityStatus = "active" | "at_capacity" | "inactive";
+
+interface StateLicense { state: string; license_number: string; }
 
 interface DoctorProfile {
   id: string; user_id: string; full_name: string; title: string | null;
   email: string | null; phone: string | null; license_number: string | null;
+  npi_number: string | null; state_license_numbers: Record<string, string> | null;
   bio: string | null; is_admin: boolean; is_active: boolean;
   availability_status: AvailabilityStatus | null;
   licensed_states: string[] | null; per_order_rate: number | null;
@@ -49,9 +53,9 @@ const US_STATES_ABBR: { name: string; abbr: string }[] = [
 ];
 
 const AVAIL_CONFIG: Record<AvailabilityStatus, { label: string; desc: string; icon: string; badge: string; btn: string }> = {
-  active:      { label: "Active",       desc: "Accepting new assignments",          icon: "ri-checkbox-circle-fill",   badge: "bg-[#e8f5f1] text-[#1a5c4f] border-[#b8ddd5]",                        btn: "border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f]" },
-  at_capacity: { label: "At Capacity",  desc: "No new assignments — still visible", icon: "ri-time-line",              badge: "bg-amber-50 text-amber-700 border-amber-200",                          btn: "border-amber-200 bg-amber-50 text-amber-700" },
-  inactive:    { label: "Inactive",     desc: "Hidden from website + assignments",  icon: "ri-forbid-line",            badge: "bg-gray-100 text-gray-500 border-gray-200",                            btn: "border-gray-200 bg-gray-50 text-gray-500" },
+  active:      { label: "Active",       desc: "Accepting new assignments",          icon: "ri-checkbox-circle-fill",   badge: "bg-[#e8f5f1] text-[#1a5c4f] border-[#b8ddd5]",       btn: "border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f]" },
+  at_capacity: { label: "At Capacity",  desc: "No new assignments — still visible", icon: "ri-time-line",              badge: "bg-amber-50 text-amber-700 border-amber-200",          btn: "border-amber-200 bg-amber-50 text-amber-700" },
+  inactive:    { label: "Inactive",     desc: "Hidden from website + assignments",  icon: "ri-forbid-line",            badge: "bg-gray-100 text-gray-500 border-gray-200",            btn: "border-gray-200 bg-gray-50 text-gray-500" },
 };
 
 interface ProviderDrawerProps {
@@ -66,9 +70,12 @@ interface ProviderDrawerProps {
 export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefresh, onOpenStates, onDelete }: ProviderDrawerProps) {
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
-  const [activeTab, setActiveTab] = useState<"overview" | "notes">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "notes" | "portal">("overview");
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ full_name: "", phone: "", title: "", license_number: "", bio: "", notes: "", per_order_rate: "", photo_url: "" });
+  const [form, setForm] = useState({
+    full_name: "", phone: "", title: "", license_number: "", npi_number: "",
+    bio: "", notes: "", per_order_rate: "", photo_url: "",
+  });
   const [saving, setSaving] = useState(false);
 
   // Photo upload
@@ -106,6 +113,12 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const [submittingNote, setSubmittingNote] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
 
+  // Helper: convert state_license_numbers object to array for display
+  const objToStateLicenses = (obj: Record<string, string> | null): StateLicense[] => {
+    if (!obj) return [];
+    return Object.entries(obj).map(([state, license_number]) => ({ state, license_number }));
+  };
+
   useEffect(() => {
     if (doc) {
       setForm({
@@ -113,6 +126,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
         phone: doc.contact?.phone ?? doc.profile?.phone ?? "",
         title: doc.profile?.title ?? "",
         license_number: doc.profile?.license_number ?? "",
+        npi_number: doc.profile?.npi_number ?? "",
         bio: doc.profile?.bio ?? "",
         notes: doc.contact?.notes ?? "",
         per_order_rate: doc.profile?.per_order_rate != null ? String(doc.profile.per_order_rate) : (doc.contact?.per_order_rate != null ? String(doc.contact.per_order_rate) : ""),
@@ -130,7 +144,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     }
   }, [doc?.email]);
 
-  // Load notes when Notes tab is opened
   useEffect(() => {
     if (activeTab === "notes" && doc) loadNotes();
   }, [activeTab, doc?.email]);
@@ -169,7 +182,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 5000); };
 
-  // Photo helpers
   const handlePhotoFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
     setPhotoFile(file);
@@ -213,7 +225,9 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     if (doc.profile) {
       updates.push(supabase.from("doctor_profiles").update({
         full_name: form.full_name, phone: form.phone || null, title: form.title || null,
-        license_number: form.license_number || null, bio: form.bio || null,
+        license_number: form.license_number || null,
+        npi_number: form.npi_number || null,
+        bio: form.bio || null,
         photo_url: finalPhotoUrl || null, per_order_rate: safeRate,
       }).eq("id", doc.profile.id));
     }
@@ -343,7 +357,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     try {
       const { data: { session } } = await supabase.auth.refreshSession();
       const token = session?.access_token ?? "";
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
+      await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -353,8 +367,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
           per_order_rate: doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null,
         }),
       });
-      // create-provider resend path returns ok:true but no link — we need a recovery link
-      // So we call admin-send-password-reset which returns action_link
       const resetRes = await fetch(`${supabaseUrl}/functions/v1/admin-send-password-reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -402,6 +414,9 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const currentPhotoUrl = photoPreview || form.photo_url || doc?.profile?.photo_url || doc?.contact?.photo_url || "";
   const availCfg = AVAIL_CONFIG[availabilityStatus];
 
+  // Get existing state licenses for view mode
+  const existingStateLicenses = objToStateLicenses(doc?.profile?.state_license_numbers ?? null);
+
   return (
     <>
       <div
@@ -438,15 +453,15 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
 
             {/* Tabs */}
             <div className="flex border-b border-gray-100 flex-shrink-0 px-6">
-              {(["overview", "notes"] as const).map((tab) => (
+              {(["overview", "notes", "portal"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
                   className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer capitalize ${activeTab === tab ? "border-[#1a5c4f] text-[#1a5c4f]" : "border-transparent text-gray-400 hover:text-gray-600"}`}
                 >
-                  <i className={tab === "overview" ? "ri-user-line" : "ri-sticky-note-line"}></i>
-                  {tab === "overview" ? "Overview" : "Admin Notes"}
+                  <i className={tab === "overview" ? "ri-user-line" : tab === "notes" ? "ri-sticky-note-line" : "ri-eye-line"}></i>
+                  {tab === "overview" ? "Overview" : tab === "notes" ? "Admin Notes" : "View Portal"}
                   {tab === "notes" && providerNotes.length > 0 && (
                     <span className="px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] text-xs font-extrabold rounded-full">{providerNotes.length}</span>
                   )}
@@ -519,7 +534,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         { label: "Full Name", key: "full_name", type: "text", placeholder: "Dr. Jane Smith" },
                         { label: "Phone", key: "phone", type: "tel", placeholder: "+1 (555) 000-0000" },
                         { label: "Title / Credentials", key: "title", type: "text", placeholder: "PhD, LCSW, MD" },
-                        { label: "License Number", key: "license_number", type: "text", placeholder: "LIC-000000" },
                       ].map(({ label, key, type, placeholder }) => (
                         <div key={key}>
                           <label className="block text-xs font-semibold text-gray-500 mb-1">{label}</label>
@@ -529,6 +543,27 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
                         </div>
                       ))}
+
+                      {/* NPI Number */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">
+                          NPI Number
+                          <span className="ml-1 text-gray-400 font-normal">(National Provider Identifier)</span>
+                        </label>
+                        <input type="text" value={form.npi_number}
+                          onChange={(e) => setForm((f) => ({ ...f, npi_number: e.target.value }))}
+                          placeholder="e.g. 1234567890"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                      </div>
+
+                      {/* State License Numbers — managed via Manage States */}
+                      <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-2">
+                        <i className="ri-information-line text-[#1a5c4f] text-sm flex-shrink-0 mt-0.5"></i>
+                        <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+                          State license numbers are managed in <strong>Manage States</strong> — click the &quot;Manage States&quot; button below to add or update license numbers per state.
+                        </p>
+                      </div>
+
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Bio <span className="font-normal text-gray-400">(shown to customers)</span></label>
                         <textarea value={form.bio} onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
@@ -570,7 +605,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         { label: "Email", value: doc.email },
                         { label: "Phone", value: doc.contact?.phone ?? doc.profile?.phone ?? "—" },
                         { label: "Title", value: doc.profile?.title ?? "—" },
-                        { label: "License #", value: doc.profile?.license_number ?? "—" },
                         { label: "Portal", value: doc.profile ? "Account active" : "No portal account" },
                         { label: "Member Since", value: doc.profile?.created_at ? new Date(doc.profile.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—" },
                       ].map(({ label, value }) => (
@@ -579,13 +613,38 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           <span className="text-xs font-semibold text-gray-700 text-right">{value}</span>
                         </div>
                       ))}
+
+                      {/* NPI Number */}
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="text-xs text-gray-400 flex-shrink-0 w-24">NPI #</span>
+                        <span className="text-xs font-semibold text-gray-700 text-right font-mono">
+                          {doc.profile?.npi_number ?? "—"}
+                        </span>
+                      </div>
+
+                      {/* State License Numbers */}
+                      {existingStateLicenses.length > 0 && (
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-xs font-bold text-gray-500 mb-2">State License Numbers</p>
+                          <div className="space-y-1.5">
+                            {existingStateLicenses.map(({ state, license_number }) => (
+                              <div key={state} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg px-3 py-1.5">
+                                <span className="text-xs font-bold text-gray-600 uppercase w-8 flex-shrink-0">{state}</span>
+                                <span className="text-xs font-mono text-gray-700 flex-1 text-right">{license_number}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-1.5">Used for customer license verification</p>
+                        </div>
+                      )}
+
                       {doc.profile?.bio && (
                         <div className="pt-2 border-t border-gray-100">
                           <p className="text-xs font-semibold text-gray-500 mb-1">Bio</p>
                           <p className="text-xs text-gray-600 leading-relaxed">{doc.profile.bio}</p>
                         </div>
                       )}
-                      {doc.contact?.notes && (
+                      {doc.contact?.notes && doc.contact.notes.trim() !== (doc.profile?.bio ?? "").trim() && (
                         <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-1">
                           <p className="text-xs font-bold text-amber-700 mb-0.5">Internal Note</p>
                           <p className="text-xs text-amber-800 leading-relaxed">{doc.contact.notes}</p>
@@ -691,7 +750,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-800">{copyingLink ? "Generating link..." : "Copy Invite Link"}</p>
-                          <p className="text-xs text-gray-400">Copy setup link to share manually (e.g. if email went to spam)</p>
+                          <p className="text-xs text-gray-400">Copy setup link to share manually</p>
                         </div>
                         {copyingLink && <i className="ri-loader-4-line animate-spin text-sky-600 flex-shrink-0"></i>}
                       </button>
@@ -768,7 +827,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Availability &amp; Access</p>
                   <p className="text-xs text-gray-400 mb-3">Controls whether this provider receives new case assignments and appears on the website.</p>
 
-                  {/* 3-state picker */}
                   <div className="space-y-1.5 mb-4">
                     {(["active", "at_capacity", "inactive"] as AvailabilityStatus[]).map((status) => {
                       const cfg = AVAIL_CONFIG[status];
@@ -795,7 +853,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                     })}
                   </div>
 
-                  {/* Delete */}
                   <button type="button" onClick={() => onDelete(doc)}
                     className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-red-200 text-left hover:bg-red-50 cursor-pointer transition-colors">
                     <div className="w-7 h-7 flex items-center justify-center bg-red-50 rounded-lg flex-shrink-0">
@@ -813,7 +870,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
             {/* ══════════ NOTES TAB ══════════ */}
             {activeTab === "notes" && (
               <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
-                {/* Add note */}
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Add Admin Note</p>
                   <p className="text-xs text-gray-400 mb-3">Private — only visible to admin users. Timestamped automatically.</p>
@@ -838,7 +894,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   </div>
                 </div>
 
-                {/* Notes list */}
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
                     Notes History {providerNotes.length > 0 && <span className="text-[#1a5c4f] ml-1">{providerNotes.length}</span>}
@@ -876,6 +931,32 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* ══════════ PORTAL VIEW TAB ══════════ */}
+            {activeTab === "portal" && doc?.profile && (
+              <div className="flex-1 overflow-y-auto px-4 py-4 bg-[#f8f7f4]">
+                <ImpersonateProviderView
+                  provider={{
+                    user_id: doc.profile.user_id,
+                    full_name: doc.profile.full_name,
+                    email: doc.profile.email,
+                    per_order_rate: doc.profile.per_order_rate,
+                    photo_url: doc.profile.photo_url,
+                  }}
+                />
+              </div>
+            )}
+            {activeTab === "portal" && !doc?.profile && (
+              <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+                <div className="w-16 h-16 flex items-center justify-center bg-gray-100 rounded-full mb-4">
+                  <i className="ri-user-forbid-line text-gray-400 text-2xl"></i>
+                </div>
+                <p className="text-sm font-bold text-gray-700 mb-1">No Portal Account</p>
+                <p className="text-xs text-gray-400 max-w-[240px]">
+                  This provider doesn&apos;t have a portal account yet. They need to complete setup before you can view their portal.
+                </p>
               </div>
             )}
           </>

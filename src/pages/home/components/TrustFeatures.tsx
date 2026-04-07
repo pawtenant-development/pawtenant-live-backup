@@ -8,8 +8,8 @@ const features = [
   },
   {
     icon: "ri-file-shield-2-line",
-    color: "text-[#1a5c4f]",
-    cardBg: "bg-[#f0faf7]",
+    color: "text-[#92400e]",
+    cardBg: "bg-[#FFF7ED]",
     title: "Legitimate ESA Letters",
     desc: "Every letter meets federal and state housing requirements and is signed by a licensed clinician.",
   },
@@ -22,8 +22,8 @@ const features = [
   },
   {
     icon: "ri-lock-password-line",
-    color: "text-[#1a5c4f]",
-    cardBg: "bg-[#f0faf7]",
+    color: "text-[#92400e]",
+    cardBg: "bg-[#FFF7ED]",
     title: "100% Confidential",
     desc: "Your personal information and health details are protected under HIPAA regulations at all times.",
   },
@@ -35,11 +35,13 @@ const features = [
     desc: "Our ESA letters are fully compliant with the Fair Housing Act, protecting your right to live with your pet.",
   },
   {
-    icon: "ri-cursor-line",
-    color: "text-[#1a5c4f]",
-    cardBg: "bg-[#f0faf7]",
-    title: "Simple Online Process",
-    desc: "Complete the entire process from your phone or computer — no appointments or waiting rooms needed.",
+    icon: "ri-verified-badge-line",
+    color: "text-[#92400e]",
+    cardBg: "bg-[#FFF7ED]",
+    title: "Landlord Verification",
+    desc: "Every finalized letter includes a Verification ID. Landlords can confirm authenticity online — your health details are never disclosed.",
+    link: "/ESA-letter-verification",
+    linkLabel: "How it works",
   },
 ];
 
@@ -66,11 +68,20 @@ export default function TrustFeatures() {
               key={f.title}
               className={`${f.cardBg} rounded-xl p-6 hover:shadow-sm transition-shadow border border-gray-100`}
             >
-              <div className={`w-11 h-11 flex items-center justify-center rounded-lg mb-4 ${f.cardBg === "bg-[#f0faf7]" ? "bg-[#d6f0e8]" : "bg-orange-100"} ${f.color}`}>
+              <div className={`w-11 h-11 flex items-center justify-center rounded-lg mb-4 ${f.cardBg === "bg-[#FFF7ED]" ? "bg-orange-100" : "bg-orange-100"} ${f.color}`}>
                 <i className={`${f.icon} text-xl`}></i>
               </div>
               <h3 className="text-gray-900 font-bold text-base mb-2">{f.title}</h3>
               <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
+              {"link" in f && f.link && (
+                <a
+                  href={f.link}
+                  className="whitespace-nowrap inline-flex items-center gap-1 mt-3 text-xs font-bold text-[#92400e] hover:underline cursor-pointer"
+                >
+                  {f.linkLabel}
+                  <i className="ri-arrow-right-line text-xs"></i>
+                </a>
+              )}
             </div>
           ))}
         </div>

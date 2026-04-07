@@ -2,6 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Brand Color CSS Variables ────────────────────────────────────────────── */
+:root {
+  /* Primary brand orange */
+  --brand-orange:       #F97316;
+  --brand-orange-dark:  #ea6c0a;
+  --brand-orange-light: #fed7aa;
+
+  /* Warm cream — replaces the green-tinted #f0faf7 on public pages */
+  --brand-cream:        #FFF7ED;
+  --brand-cream-dark:   #fdecd5;
+  --brand-cream-border: #f5d9b8;
+
+  /* Deep warm amber — replaces #1a5c4f dark green on public pages */
+  --brand-deep:         #92400e;
+  --brand-deep-mid:     #b45309;
+  --brand-deep-light:   #fef3c7;
+  --brand-deep-bg:      #fffbf5;
+
+  /* Warm accent */
+  --brand-warm:         #78350f;
+}
+
+/* Utility classes for brand colors */
+.bg-brand-cream    { background-color: var(--brand-cream); }
+.bg-brand-deep     { background-color: var(--brand-deep); }
+.text-brand-deep   { color: var(--brand-deep); }
+.text-brand-mid    { color: var(--brand-deep-mid); }
+.border-brand-cream { border-color: var(--brand-cream-border); }
+
 /* Hero image: shift left on mobile so both dog and woman are visible */
 .hero-img-position {
   object-position: 18% top;

@@ -8,6 +8,8 @@ interface OrderDocument {
   label: string;
   doc_type: string;
   file_url: string;
+  processed_file_url: string | null;
+  footer_injected: boolean;
   uploaded_at: string;
   sent_to_customer: boolean;
   customer_visible: boolean;
@@ -96,7 +98,6 @@ function OrderStatusTimeline({ order }: { order: Order }) {
   const getStepState = (idx: number) => {
     if (order.status === "cancelled") return "inactive";
     if (order.status === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) return "inactive";
-    // Only mark all done when provider has actually completed (patient_notified)
     if (order.doctor_status === "patient_notified") return "done";
     if (idx < stepIndex) return "done";
     if (idx === stepIndex) return "active";
@@ -112,15 +113,15 @@ function OrderStatusTimeline({ order }: { order: Order }) {
         return (
           <div key={step.key} className="flex items-start flex-1 last:flex-none">
             <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm transition-colors ${done ? "bg-[#1a5c4f] text-white" : active ? "bg-amber-400 text-white" : "bg-gray-100 text-gray-400"}`}>
+              <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm transition-colors ${done ? "bg-orange-500 text-white" : active ? "bg-amber-400 text-white" : "bg-gray-100 text-gray-400"}`}>
                 <i className={`${step.icon} ${active ? "animate-pulse" : ""}`}></i>
               </div>
-              <p className={`text-center mt-1 max-w-[60px] leading-tight ${done ? "text-[#1a5c4f]" : active ? "text-amber-600" : "text-gray-400"}`} style={{ fontSize: "10px", fontWeight: 600 }}>
+              <p className={`text-center mt-1 max-w-[60px] leading-tight ${done ? "text-orange-500" : active ? "text-amber-600" : "text-gray-400"}`} style={{ fontSize: "10px", fontWeight: 600 }}>
                 {step.label}
               </p>
             </div>
             {idx < steps.length - 1 && (
-              <div className={`flex-1 h-0.5 mx-1 mt-4 ${idx < stepIndex ? "bg-[#1a5c4f]" : "bg-gray-200"}`}></div>
+              <div className={`flex-1 h-0.5 mx-1 mt-4 ${idx < stepIndex ? "bg-orange-400" : "bg-gray-200"}`}></div>
             )}
           </div>
         );
@@ -130,25 +131,25 @@ function OrderStatusTimeline({ order }: { order: Order }) {
 }
 
 function DocumentsSection({ order }: { order: Order }) {
-  // Documents are ONLY visible after admin has officially notified the patient (patient_notified)
-  // letter_sent = provider uploaded internally — customer must NOT see it until admin sends
   const providerCompleted = order.doctor_status === "patient_notified";
 
   const allDocs: Array<{ label: string; doc_type: string; file_url: string; uploaded_at?: string; isLegacy?: boolean }> = [];
 
   if (providerCompleted) {
-    // Only show the provider-signed letter — NOT the auto-generated template (letter_url)
     if (order.signed_letter_url) {
+      const matchingDoc = order.documents?.find(
+        (d) => d.file_url === order.signed_letter_url && d.footer_injected && d.processed_file_url
+      );
+      const serveUrl = matchingDoc?.processed_file_url ?? order.signed_letter_url;
       const docLabel = isPSDOrder(order) ? "Signed PSD Letter" : "Signed ESA Letter";
-      allDocs.push({ label: docLabel, doc_type: "signed_letter", file_url: order.signed_letter_url, isLegacy: true });
+      allDocs.push({ label: docLabel, doc_type: "signed_letter", file_url: serveUrl, isLegacy: true });
     }
   }
 
-  // order_documents from DB — only show customer_visible ones after provider completes
-  // Skip any that share the same URL as signed_letter_url to avoid duplicates
   if (providerCompleted && order.documents) {
     order.documents.filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url).forEach((d) => {
-      allDocs.push({ label: d.label, doc_type: d.doc_type, file_url: d.file_url, uploaded_at: d.uploaded_at });
+      const serveUrl = (d.footer_injected && d.processed_file_url) ? d.processed_file_url : d.file_url;
+      allDocs.push({ label: d.label, doc_type: d.doc_type, file_url: serveUrl, uploaded_at: d.uploaded_at });
     });
   }
 
@@ -157,22 +158,21 @@ function DocumentsSection({ order }: { order: Order }) {
   return (
     <div className="mt-4">
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-6 h-6 flex items-center justify-center bg-[#f0faf7] rounded-md flex-shrink-0">
-          <i className="ri-folder-open-line text-[#1a5c4f] text-sm"></i>
+        <div className="w-6 h-6 flex items-center justify-center bg-orange-50 rounded-md flex-shrink-0">
+          <i className="ri-folder-open-line text-orange-500 text-sm"></i>
         </div>
         <p className="text-sm font-extrabold text-gray-900">My Documents</p>
-        <span className="text-xs font-bold px-2 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded-full">{allDocs.length}</span>
+        <span className="text-xs font-bold px-2 py-0.5 bg-orange-50 text-orange-600 rounded-full">{allDocs.length}</span>
       </div>
         <div className="space-y-2">
         {allDocs.map((doc, idx) => {
           const icon = DOC_TYPE_ICON[doc.doc_type] ?? "ri-file-line";
           const typeLabel = DOC_TYPE_LABEL[doc.doc_type] ?? "Document";
           return (
-            <div key={idx} className="bg-white rounded-xl border border-gray-200 px-4 py-3 hover:border-[#1a5c4f]/30 transition-colors">
-              {/* Top row: icon + label info */}
+            <div key={idx} className="bg-white rounded-xl border border-gray-200 px-4 py-3 hover:border-orange-200 transition-colors">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 flex items-center justify-center bg-[#f0faf7] rounded-lg flex-shrink-0">
-                  <i className={`${icon} text-[#1a5c4f] text-base`}></i>
+                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
+                  <i className={`${icon} text-orange-500 text-base`}></i>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900 truncate">{doc.label}</p>
@@ -181,14 +181,13 @@ function DocumentsSection({ order }: { order: Order }) {
                   </p>
                 </div>
               </div>
-              {/* Buttons row: indented to align with text, stacks naturally */}
               <div className="flex items-center gap-2 mt-2.5 pl-12">
                 <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
                   className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer transition-colors">
                   <i className="ri-eye-line"></i>View
                 </a>
                 <a href={doc.file_url} download
-                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors">
+                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors">
                   <i className="ri-download-line"></i>Download
                 </a>
               </div>
@@ -238,7 +237,7 @@ function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userE
             <button
               type="button"
               onClick={onContactSupport}
-              className="whitespace-nowrap inline-flex items-center gap-1 text-xs font-semibold text-[#1a5c4f] hover:text-orange-500 transition-colors cursor-pointer"
+              className="whitespace-nowrap inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-orange-500 transition-colors cursor-pointer"
             >
               <i className="ri-question-line"></i>Help
             </button>
@@ -337,7 +336,7 @@ function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userE
         {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !(order as Order & { refunded_at?: string | null }).refunded_at && order.status !== "cancelled" && (
           <div className={`rounded-xl px-4 py-3 text-xs flex items-start gap-2 mb-4 ${
             order.doctor_status === "letter_sent"
-              ? "bg-[#f0faf7] border border-[#b8ddd5] text-[#1a5c4f]"
+              ? "bg-[#FFF7ED] border border-orange-200 text-orange-700"
               : order.doctor_status === "in_review" || order.doctor_status === "approved"
               ? "bg-sky-50 border border-sky-200 text-sky-700"
               : order.doctor_status === "pending_review"
@@ -397,6 +396,30 @@ function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userE
         {/* Documents section */}
         <DocumentsSection order={order} />
 
+        {/* Landlord Verification Badge — shown when letter is delivered */}
+        {order.doctor_status === "patient_notified" && (
+          <div className="mt-4 bg-[#FFF7ED] border border-orange-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <div className="w-9 h-9 flex items-center justify-center bg-orange-500 rounded-lg flex-shrink-0">
+              <i className="ri-shield-check-line text-white text-base"></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold text-orange-600 mb-0.5">Your letter is landlord-verifiable</p>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Your ESA letter includes a unique <strong>Verification ID</strong> and QR code. Landlords can instantly confirm its authenticity at{" "}
+                <a href="/ESA-letter-verification" className="underline underline-offset-2 font-bold hover:text-orange-600 cursor-pointer">pawtenant.com/ESA-letter-verification</a>{" "}
+                — zero health info disclosed.
+              </p>
+              <a
+                href="/ESA-letter-verification"
+                className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-orange-500 hover:text-orange-600 transition-colors cursor-pointer"
+              >
+                <i className="ri-qr-code-line"></i>See how verification works
+                <i className="ri-arrow-right-s-line"></i>
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Additional docs requested indicator */}
         {order.additional_documents_requested && (order.additional_documents_requested.types ?? []).filter((t) => t !== "ESA Letter").length > 0 && (
           <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 flex items-start gap-2">
@@ -434,18 +457,17 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
 
   if (isSubscription) {
     const isUrgent = daysLeft <= 30;
-    const accentColor = isPSD ? "amber" : "green";
     return (
-      <div className={`rounded-xl border overflow-hidden ${isUrgent ? "border-orange-300 bg-orange-50" : isPSD ? "border-amber-200 bg-amber-50" : "border-green-200 bg-[#f0faf7]"}`}>
+      <div className={`rounded-xl border overflow-hidden ${isUrgent ? "border-orange-300 bg-orange-50" : isPSD ? "border-amber-200 bg-amber-50" : "border-orange-200 bg-[#FFF7ED]"}`}>
         <div className="px-5 py-4 flex items-start gap-4">
-          <div className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 ${isUrgent ? "bg-orange-100" : isPSD ? "bg-amber-100" : "bg-green-100"}`}>
-            <i className={`text-lg ${isUrgent ? "ri-alarm-warning-line text-orange-500" : isPSD ? "ri-service-line text-amber-600" : "ri-shield-check-line text-green-600"}`}></i>
+          <div className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 ${isUrgent ? "bg-orange-100" : isPSD ? "bg-amber-100" : "bg-orange-100"}`}>
+            <i className={`text-lg ${isUrgent ? "ri-alarm-warning-line text-orange-500" : isPSD ? "ri-service-line text-amber-600" : "ri-shield-check-line text-orange-500"}`}></i>
           </div>
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-extrabold ${isUrgent ? "text-orange-800" : isPSD ? "text-amber-800" : "text-green-800"}`}>
+            <p className={`text-sm font-extrabold ${isUrgent ? "text-orange-800" : isPSD ? "text-amber-800" : "text-orange-700"}`}>
               {isUrgent ? `Your ${isPSD ? "PSD" : "ESA"} coverage renews in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : `Your ${isPSD ? "PSD" : "ESA"} coverage is active`}
             </p>
-            <p className={`text-xs mt-0.5 ${isUrgent ? "text-orange-700" : isPSD ? "text-amber-700" : "text-green-700"}`}>
+            <p className={`text-xs mt-0.5 ${isUrgent ? "text-orange-700" : isPSD ? "text-amber-700" : "text-orange-600"}`}>
               Annual renewal on <strong>{renewalDate}</strong>
             </p>
             {isUrgent && (
@@ -457,8 +479,8 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
           </div>
           {!isUrgent && (
             <div className="text-right flex-shrink-0">
-              <p className={`text-2xl font-extrabold ${isPSD ? "text-amber-700" : "text-green-700"}`}>{daysLeft}</p>
-              <p className={`text-xs font-semibold ${isPSD ? "text-amber-600" : "text-green-600"}`}>days left</p>
+              <p className={`text-2xl font-extrabold ${isPSD ? "text-amber-700" : "text-orange-500"}`}>{daysLeft}</p>
+              <p className={`text-xs font-semibold ${isPSD ? "text-amber-600" : "text-orange-400"}`}>days left</p>
             </div>
           )}
         </div>
@@ -501,8 +523,8 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <div className="bg-[#1a5c4f] px-5 py-3 flex items-center gap-2">
+    <div className="rounded-xl border border-orange-200 bg-white overflow-hidden">
+      <div className="bg-orange-500 px-5 py-3 flex items-center gap-2">
         <i className="ri-refresh-line text-white text-sm"></i>
         <p className="text-sm font-extrabold text-white">Renew Your ESA Coverage</p>
       </div>
@@ -516,15 +538,15 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
             <p className="text-xl font-extrabold text-gray-900">$90<span className="text-sm font-semibold text-gray-500">.00</span></p>
             <p className="text-xs text-gray-500 mt-0.5">Same-day turnaround available</p>
           </div>
-          <div className="bg-[#f0faf7] rounded-lg p-3 border border-[#1a5c4f]/30 relative">
+          <div className="bg-[#FFF7ED] rounded-lg p-3 border border-orange-300 relative">
             <span className="absolute -top-2 left-3 bg-orange-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
-            <p className="text-xs font-bold text-[#1a5c4f] mb-0.5">Subscribe &amp; Save</p>
-            <p className="text-xl font-extrabold text-[#1a5c4f]">$100<span className="text-sm font-semibold">/yr</span></p>
-            <p className="text-xs text-green-700 mt-0.5">Auto-renews · Never lose coverage</p>
+            <p className="text-xs font-bold text-orange-700 mb-0.5">Subscribe &amp; Save</p>
+            <p className="text-xl font-extrabold text-orange-500">$100<span className="text-sm font-semibold">/yr</span></p>
+            <p className="text-xs text-orange-600 mt-0.5">Auto-renews · Never lose coverage</p>
           </div>
         </div>
         <a href={renewUrl}
-          className="whitespace-nowrap w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#1a5c4f] text-white font-extrabold text-sm rounded-lg hover:bg-[#17504a] transition-colors cursor-pointer">
+          className="whitespace-nowrap w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-orange-500 text-white font-extrabold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
           <i className="ri-refresh-line"></i>Renew My ESA Letter
         </a>
       </div>
@@ -560,7 +582,7 @@ export default function MyOrdersPage() {
         const orderIds = loadedOrders.map((o) => o.id);
         const { data: docsData } = await supabase
           .from("order_documents")
-          .select("*")
+          .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
           .in("order_id", orderIds)
           .eq("customer_visible", true)
           .order("uploaded_at", { ascending: true });
@@ -631,7 +653,7 @@ export default function MyOrdersPage() {
           <button
             type="button"
             onClick={() => setSupportOpen(true)}
-            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-[#1a5c4f] transition-colors cursor-pointer"
+            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-orange-500 transition-colors cursor-pointer"
           >
             <i className="ri-customer-service-2-line text-orange-500"></i>Support
           </button>
@@ -648,7 +670,7 @@ export default function MyOrdersPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
         {/* Header */}
         <div className="mb-8">
-          <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-1">Customer Portal</p>
+          <p className="text-xs text-orange-500 font-bold uppercase tracking-widest mb-1">Customer Portal</p>
           <h1 className="text-2xl font-extrabold text-gray-900">
             {userName ? `Welcome back, ${userName.charAt(0).toUpperCase() + userName.slice(1)}` : "My Orders"}
           </h1>
@@ -688,7 +710,7 @@ export default function MyOrdersPage() {
             {completedOrders.length > 0 && (
               <div className="mt-8">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                  <div className="w-7 h-7 flex items-center justify-center bg-orange-500 rounded-lg flex-shrink-0">
                     <i className="ri-refresh-line text-white text-sm"></i>
                   </div>
                   <h2 className="text-base font-extrabold text-gray-900">Coverage Renewal</h2>
@@ -724,7 +746,7 @@ export default function MyOrdersPage() {
             <button
               type="button"
               onClick={() => setSupportOpen(true)}
-              className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] transition-colors cursor-pointer"
+              className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition-colors cursor-pointer"
             >
               <i className="ri-message-3-line"></i>Send a Message
             </button>

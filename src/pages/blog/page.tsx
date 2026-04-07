@@ -5,9 +5,10 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import { blogPosts, BlogPost } from "../../mocks/blogPosts";
 import { blogPostsExtended } from "../../mocks/blogPostsExtended";
 import { blogPostsExtended2 } from "../../mocks/blogPostsExtended2";
+import { blogPostsVerification } from "../../mocks/blogPostsVerification";
 import { STATE_BLOG_MAP } from "../../mocks/stateBlogMap";
 
-const allBlogPosts: BlogPost[] = [...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
+const allBlogPosts: BlogPost[] = [...blogPostsVerification, ...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
 
 const categories = ["All", "College & ESA", "Legal & Rights", "Housing Rights", "Housing & Insurance", "Travel & ESA", "Getting Started", "Mental Health"];
 

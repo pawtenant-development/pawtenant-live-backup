@@ -156,14 +156,14 @@ export default function CustomerLoginPage() {
               <button
                 type="button"
                 onClick={() => { setTab("signin"); setError(""); setSuccessMsg(""); }}
-                className={`whitespace-nowrap flex-1 py-3.5 text-sm font-bold transition-colors cursor-pointer ${tab === "signin" ? "text-[#1a5c4f] border-b-2 border-[#1a5c4f]" : "text-gray-400 hover:text-gray-600"}`}
+                className={`whitespace-nowrap flex-1 py-3.5 text-sm font-bold transition-colors cursor-pointer ${tab === "signin" ? "text-orange-500 border-b-2 border-orange-500" : "text-gray-400 hover:text-gray-600"}`}
               >
                 Sign In
               </button>
               <button
                 type="button"
                 onClick={() => { setTab("signup"); setError(""); setSuccessMsg(""); }}
-                className={`whitespace-nowrap flex-1 py-3.5 text-sm font-bold transition-colors cursor-pointer ${tab === "signup" ? "text-[#1a5c4f] border-b-2 border-[#1a5c4f]" : "text-gray-400 hover:text-gray-600"}`}
+                className={`whitespace-nowrap flex-1 py-3.5 text-sm font-bold transition-colors cursor-pointer ${tab === "signup" ? "text-orange-500 border-b-2 border-orange-500" : "text-gray-400 hover:text-gray-600"}`}
               >
                 Create Account
               </button>
@@ -198,7 +198,7 @@ export default function CustomerLoginPage() {
                     </div>
                     <p className="text-sm font-bold text-gray-800 mb-1">Reset email sent!</p>
                     <p className="text-xs text-gray-500 mb-4">Check your inbox for the password reset link.</p>
-                    <button type="button" onClick={() => { setShowReset(false); setResetSent(false); }} className="whitespace-nowrap text-sm text-[#1a5c4f] font-semibold hover:underline cursor-pointer">
+                    <button type="button" onClick={() => { setShowReset(false); setResetSent(false); }} className="whitespace-nowrap text-sm text-orange-500 font-semibold hover:underline cursor-pointer">
                       Back to Sign In
                     </button>
                   </div>
@@ -213,10 +213,10 @@ export default function CustomerLoginPage() {
                         value={resetEmail}
                         onChange={(e) => setResetEmail(e.target.value)}
                         placeholder="your@email.com"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#1a5c4f]"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
                       />
                     </div>
-                    <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3 bg-[#1a5c4f] text-white font-bold text-sm rounded-lg hover:bg-[#17504a] transition-colors cursor-pointer disabled:opacity-60">
+                    <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer disabled:opacity-60">
                       {loading ? "Sending..." : "Send Reset Link"}
                     </button>
                     <button type="button" onClick={() => setShowReset(false)} className="whitespace-nowrap w-full text-sm text-gray-400 hover:text-gray-600 cursor-pointer">
@@ -235,7 +235,7 @@ export default function CustomerLoginPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="your@email.com"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#1a5c4f]"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
                     />
                   </div>
                   <div>
@@ -247,7 +247,7 @@ export default function CustomerLoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Enter your password"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:border-[#1a5c4f]"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:border-orange-400"
                       />
                       <button
                         type="button"
@@ -258,19 +258,19 @@ export default function CustomerLoginPage() {
                       </button>
                     </div>
                     <div className="text-right mt-1">
-                      <button type="button" onClick={() => setShowReset(true)} className="whitespace-nowrap text-xs text-[#1a5c4f] hover:underline cursor-pointer">
+                      <button type="button" onClick={() => setShowReset(true)} className="whitespace-nowrap text-xs text-orange-500 hover:underline cursor-pointer">
                         Forgot password?
                       </button>
                     </div>
                   </div>
-                  <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3.5 bg-[#1a5c4f] text-white font-extrabold text-sm rounded-lg hover:bg-[#17504a] transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
+                  <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3.5 bg-orange-500 text-white font-extrabold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
                     {loading ? <><i className="ri-loader-4-line animate-spin" />Signing in...</> : "Sign In to My Orders"}
                   </button>
                 </form>
               ) : (
                 /* Sign Up Form */
                 <form onSubmit={handleSignUp} className="space-y-4">
-                  <div className="bg-[#f0faf7] border border-[#c3e8df] rounded-lg px-4 py-3 text-xs text-[#1a5c4f]">
+                  <div className="bg-[#FFF7ED] border border-orange-200 rounded-lg px-4 py-3 text-xs text-orange-700">
                     <i className="ri-information-line mr-1.5"></i>
                     Use the <strong>same email</strong> you used when purchasing to automatically link your orders.
                   </div>
@@ -282,7 +282,7 @@ export default function CustomerLoginPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="your@email.com"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#1a5c4f]"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
                     />
                   </div>
                   <div>
@@ -294,7 +294,7 @@ export default function CustomerLoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Min. 6 characters"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:border-[#1a5c4f]"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:border-orange-400"
                       />
                       <button
                         type="button"
@@ -313,10 +313,10 @@ export default function CustomerLoginPage() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Re-enter your password"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#1a5c4f]"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
                     />
                   </div>
-                  <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3.5 bg-[#1a5c4f] text-white font-extrabold text-sm rounded-lg hover:bg-[#17504a] transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
+                  <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3.5 bg-orange-500 text-white font-extrabold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
                     {loading ? <><i className="ri-loader-4-line animate-spin" />Creating account...</> : "Create Account"}
                   </button>
                 </form>

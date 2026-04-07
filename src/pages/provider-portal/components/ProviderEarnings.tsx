@@ -1,11 +1,12 @@
 // ProviderEarnings — Provider's own earnings view
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
 interface OrderInfo {
   status: string;
   doctor_status: string | null;
   refunded_at: string | null;
+  refund_amount?: number | null;
 }
 
 interface Earning {
@@ -41,6 +42,30 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
   const [filterStatus, setFilterStatus] = useState("all");
   const [perOrderRate, setPerOrderRate] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
+  const [paidToast, setPaidToast] = useState<{ name: string; amount: number | null } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Visibility filter — same logic used in both initial load and real-time ──
+  const applyVisibilityFilter = useCallback((raw: Earning[]): Earning[] =>
+    raw.filter((e) => {
+      if (e.status === "paid") return true;
+      const order = e.orders as OrderInfo | null;
+      if (!order) return false;
+      if (order.doctor_status === "patient_notified") return true;
+      if (order.refunded_at || order.status === "refunded" || order.status === "cancelled") return false;
+      return false;
+    }),
+  []);
+
+  // ── Fetch a single earning row (with joined order info) by id ──
+  const fetchEarningById = useCallback(async (id: string): Promise<Earning | null> => {
+    const { data } = await supabase
+      .from("doctor_earnings")
+      .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, orders!order_id(status, doctor_status, refunded_at)")
+      .eq("id", id)
+      .maybeSingle();
+    return (data as Earning | null);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -58,41 +83,76 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
       ]);
 
       const raw = (earningsRes.data as Earning[]) ?? [];
-
-      // Only show earnings for completed orders, or already-paid earnings
-      // Rule: pending earnings → only if order doctor_status = "patient_notified" AND not refunded/cancelled
-      //       paid earnings    → always show (payment was already issued)
-      const filtered = raw.filter((e) => {
-        if (e.status === "paid") return true; // always show paid earnings
-        const order = e.orders as OrderInfo | null;
-        if (!order) return false; // no linked order → hide pending/unknown
-        if (
-          order.refunded_at ||
-          order.status === "refunded" ||
-          order.status === "cancelled"
-        ) return false; // refunded/cancelled → never show unpaid earnings
-        return order.doctor_status === "patient_notified"; // only show if fully completed
-      });
-
-      setEarnings(filtered);
+      setEarnings(applyVisibilityFilter(raw));
       setPerOrderRate((profileRes.data as { per_order_rate: number | null } | null)?.per_order_rate ?? null);
       setLoading(false);
     };
     load();
-  }, [userId]);
+  }, [userId, applyVisibilityFilter]);
 
-  // ── Real-time: update per_order_rate the moment admin saves it ──
+  // ── Real-time: doctor_earnings INSERT / UPDATE ──
   useEffect(() => {
     const channel = supabase
-      .channel(`earnings-profile-${userId}`)
+      .channel(`earnings-live-${userId}`)
+      // New earning record added by admin
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "doctor_profiles",
-          filter: `user_id=eq.${userId}`,
-        },
+        { event: "INSERT", schema: "public", table: "doctor_earnings", filter: `doctor_user_id=eq.${userId}` },
+        async (payload) => {
+          const inserted = payload.new as Earning;
+          // Fetch with joined order info so visibility filter works correctly
+          const full = await fetchEarningById(inserted.id);
+          if (!full) return;
+          const visible = applyVisibilityFilter([full]);
+          if (visible.length === 0) return;
+          setEarnings((prev) =>
+            prev.some((e) => e.id === full.id) ? prev : [full, ...prev]
+          );
+        }
+      )
+      // Earning updated — most importantly: pending → paid
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "doctor_earnings", filter: `doctor_user_id=eq.${userId}` },
+        async (payload) => {
+          const updated = payload.new as Earning;
+          const old = payload.old as Earning;
+
+          // Fetch full row with joined order so we have all fields
+          const full = await fetchEarningById(updated.id);
+
+          setEarnings((prev) => {
+            const exists = prev.some((e) => e.id === updated.id);
+            if (!full) {
+              // If we can't fetch it, just patch what we have
+              return prev.map((e) => e.id === updated.id ? { ...e, ...updated } : e);
+            }
+            const visible = applyVisibilityFilter([full]);
+            if (visible.length === 0) {
+              // No longer visible — remove it
+              return prev.filter((e) => e.id !== updated.id);
+            }
+            if (exists) {
+              return prev.map((e) => e.id === full.id ? full : e);
+            }
+            // Newly visible (e.g. order just completed) — insert at top
+            return [full, ...prev];
+          });
+
+          // Show "paid" toast when status flips from pending → paid
+          if (old.status !== "paid" && updated.status === "paid") {
+            const name = updated.patient_name ?? "a patient";
+            const amount = updated.doctor_amount;
+            setPaidToast({ name, amount });
+            if (toastTimer.current) clearTimeout(toastTimer.current);
+            toastTimer.current = setTimeout(() => setPaidToast(null), 6000);
+          }
+        }
+      )
+      // ── Real-time: per_order_rate changes ──
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "doctor_profiles", filter: `user_id=eq.${userId}` },
         (payload) => {
           const updated = payload.new as { per_order_rate: number | null };
           if (updated.per_order_rate !== undefined) {
@@ -101,8 +161,12 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
         }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [userId]);
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, [userId, applyVisibilityFilter, fetchEarningById]);
 
   const summary = useMemo(() => {
     const completed = earnings.filter((e) => e.status !== "cancelled");
@@ -129,6 +193,36 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
 
   return (
     <div className="space-y-5">
+      {/* ── Payment received toast ── */}
+      {paidToast && (
+        <div className="fixed bottom-6 right-6 z-[200] max-w-sm w-full animate-in slide-in-from-bottom-4">
+          <div className="bg-[#1a5c4f] text-white rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 flex items-start gap-3">
+              <div className="w-9 h-9 flex items-center justify-center bg-white/20 rounded-xl flex-shrink-0 mt-0.5">
+                <i className="ri-money-dollar-circle-fill text-white text-base"></i>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-extrabold text-white">Payment Received!</p>
+                <p className="text-xs text-white/75 mt-0.5 leading-relaxed">
+                  {paidToast.amount != null ? `$${paidToast.amount} ` : ""}for {paidToast.name} has been marked as paid.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaidToast(null)}
+                className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/20 cursor-pointer transition-colors flex-shrink-0"
+              >
+                <i className="ri-close-line text-white/70 text-sm"></i>
+              </button>
+            </div>
+            <div className="h-1 bg-white/20">
+              <div className="h-full bg-white/60 rounded-full" style={{ width: "100%", animation: "shrink 6s linear forwards" }}></div>
+            </div>
+          </div>
+          <style>{`@keyframes shrink { from { width: 100%; } to { width: 0%; } }`}</style>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
@@ -248,55 +342,64 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
             </div>
           ) : (
             <div className="space-y-3">
-              {filtered.map((earning) => (
-                <div key={earning.id}
-                  className={`bg-white rounded-xl border p-5 ${earning.status === "paid" ? "border-[#b8ddd5]" : "border-gray-200"}`}>
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-sm font-bold text-gray-900">{earning.patient_name ?? "—"}</p>
-                        <span className="text-xs text-gray-400 font-mono">{earning.confirmation_id ?? "—"}</span>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        {earning.patient_state && (
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <i className="ri-map-pin-line text-gray-400"></i>{earning.patient_state}
+              {filtered.map((earning) => {
+                const orderInfo = earning.orders as OrderInfo | null;
+                const wasRefunded = !!(orderInfo?.refunded_at || orderInfo?.status === "refunded");
+                return (
+                  <div key={earning.id}
+                    className={`bg-white rounded-xl border p-5 ${earning.status === "paid" ? "border-[#b8ddd5]" : wasRefunded ? "border-orange-200" : "border-gray-200"}`}>
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <p className="text-sm font-bold text-gray-900">{earning.patient_name ?? "—"}</p>
+                          <span className="text-xs text-gray-400 font-mono">{earning.confirmation_id ?? "—"}</span>
+                          {wasRefunded && earning.status !== "paid" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 border border-orange-300 rounded-full text-[10px] font-extrabold text-orange-700">
+                              <i className="ri-refund-line"></i>Order Refunded — Payment Still Owed
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {earning.patient_state && (
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <i className="ri-map-pin-line text-gray-400"></i>{earning.patient_state}
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-400">
+                            {new Date(earning.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                           </span>
+                          {earning.paid_at && (
+                            <span className="text-xs text-[#1a5c4f] flex items-center gap-1">
+                              <i className="ri-checkbox-circle-fill"></i>
+                              Paid {new Date(earning.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                          )}
+                          {earning.payment_reference && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f5f1] border border-[#b8ddd5] rounded-full text-xs font-semibold text-[#1a5c4f]">
+                              <i className="ri-bank-card-line"></i>
+                              {earning.payment_reference}
+                            </span>
+                          )}
+                        </div>
+                        {earning.notes && (
+                          <p className="text-xs text-gray-400 italic mt-1.5">&quot;{earning.notes}&quot;</p>
                         )}
-                        <span className="text-xs text-gray-400">
-                          {new Date(earning.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className={`text-lg font-extrabold ${earning.doctor_amount != null ? "text-[#1a5c4f]" : "text-gray-300"}`}>
+                            {earning.doctor_amount != null ? `$${earning.doctor_amount}` : "TBD"}
+                          </p>
+                        </div>
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_STYLE[earning.status] ?? STATUS_STYLE.pending}`}>
+                          <i className={earning.status === "paid" ? "ri-checkbox-circle-fill" : "ri-time-line"}></i>
+                          {earning.status === "paid" ? "Paid" : earning.status === "pending" ? "Awaiting Payment" : "Cancelled"}
                         </span>
-                        {earning.paid_at && (
-                          <span className="text-xs text-[#1a5c4f] flex items-center gap-1">
-                            <i className="ri-checkbox-circle-fill"></i>
-                            Paid {new Date(earning.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                          </span>
-                        )}
-                        {earning.payment_reference && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f5f1] border border-[#b8ddd5] rounded-full text-xs font-semibold text-[#1a5c4f]">
-                            <i className="ri-bank-card-line"></i>
-                            {earning.payment_reference}
-                          </span>
-                        )}
                       </div>
-                      {earning.notes && (
-                        <p className="text-xs text-gray-400 italic mt-1.5">&quot;{earning.notes}&quot;</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <p className={`text-lg font-extrabold ${earning.doctor_amount != null ? "text-[#1a5c4f]" : "text-gray-300"}`}>
-                          {earning.doctor_amount != null ? `$${earning.doctor_amount}` : "TBD"}
-                        </p>
-                      </div>
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${STATUS_STYLE[earning.status] ?? STATUS_STYLE.pending}`}>
-                        <i className={earning.status === "paid" ? "ri-checkbox-circle-fill" : "ri-time-line"}></i>
-                        {earning.status === "paid" ? "Paid" : earning.status === "pending" ? "Awaiting Payment" : "Cancelled"}
-                      </span>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

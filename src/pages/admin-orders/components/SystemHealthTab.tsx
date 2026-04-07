@@ -1,6 +1,7 @@
 // SystemHealthTab — Automated health monitoring + Auth Cleanup tool
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import LegacyImportPanel from "./LegacyImportPanel";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
@@ -104,6 +105,64 @@ export default function SystemHealthTab() {
   const [loadingLog, setLoadingLog] = useState(true);
   const [runMsg,     setRunMsg]     = useState("");
   const [expanded,   setExpanded]   = useState<Record<string, boolean>>({});
+
+  // ── Audit Log Failures ──────────────────────────────────────────────────
+  interface AuditFailure {
+    id: string;
+    action: string;
+    description: string | null;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+  }
+  const [auditFailures, setAuditFailures] = useState<AuditFailure[]>([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditFilter, setAuditFilter] = useState<"all" | "stripe" | "edge_function" | "resume">("all");
+  const [clearingOld, setClearingOld] = useState(false);
+  const [clearMsg, setClearMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const loadAuditFailures = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const { data } = await supabase
+        .from("audit_logs")
+        .select("id, action, description, metadata, created_at")
+        .in("action", [
+          "network_error_stripe", "http_error_stripe", "stripe_no_client_secret",
+          "network_error_edge_function", "http_error_edge_function",
+          "network_error_ghl", "http_error_ghl",
+          "resume_order_not_found", "resume_order_network_error",
+        ])
+        .order("created_at", { ascending: false })
+        .limit(100);
+      setAuditFailures((data as AuditFailure[]) ?? []);
+    } catch { /* silent */ }
+    setAuditLoading(false);
+  }, []);
+
+  const clearOldErrors = async () => {
+    setClearingOld(true);
+    setClearMsg(null);
+    try {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { error } = await supabase
+        .from("audit_logs")
+        .delete()
+        .lt("created_at", cutoff)
+        .in("action", [
+          "network_error_stripe", "http_error_stripe", "stripe_no_client_secret",
+          "network_error_edge_function", "http_error_edge_function",
+          "network_error_ghl", "http_error_ghl",
+          "resume_order_not_found", "resume_order_network_error",
+        ]);
+      if (error) throw error;
+      setClearMsg({ ok: true, text: "Old errors cleared (30+ days)" });
+      await loadAuditFailures();
+    } catch {
+      setClearMsg({ ok: false, text: "Failed to clear old errors" });
+    }
+    setClearingOld(false);
+    setTimeout(() => setClearMsg(null), 4000);
+  };
 
   // ── Sequence Results ────────────────────────────────────────────────────
   const [seqStats, setSeqStats] = useState<SequenceStats | null>(null);
@@ -235,7 +294,8 @@ export default function SystemHealthTab() {
   useEffect(() => {
     loadHistory();
     loadSequenceStats();
-  }, [loadHistory, loadSequenceStats]);
+    loadAuditFailures();
+  }, [loadHistory, loadSequenceStats, loadAuditFailures]);
 
   const runCheck = async () => {
     setRunning(true);
@@ -585,6 +645,220 @@ export default function SystemHealthTab() {
           </div>
         )}
       </div>
+
+      {/* ── ASSESSMENT FLOW ERROR LOG ── */}
+      {(() => {
+        const FILTER_TABS: { key: "all" | "stripe" | "edge_function" | "resume"; label: string; icon: string; actions: string[] }[] = [
+          {
+            key: "all",
+            label: "All",
+            icon: "ri-error-warning-line",
+            actions: [
+              "network_error_stripe","http_error_stripe","stripe_no_client_secret",
+              "network_error_edge_function","http_error_edge_function",
+              "network_error_ghl","http_error_ghl",
+              "resume_order_not_found","resume_order_network_error",
+            ],
+          },
+          {
+            key: "stripe",
+            label: "Stripe",
+            icon: "ri-bank-card-line",
+            actions: ["network_error_stripe","http_error_stripe","stripe_no_client_secret"],
+          },
+          {
+            key: "edge_function",
+            label: "Edge Functions",
+            icon: "ri-code-s-slash-line",
+            actions: ["network_error_edge_function","http_error_edge_function","network_error_ghl","http_error_ghl"],
+          },
+          {
+            key: "resume",
+            label: "Resume Flow",
+            icon: "ri-link-m",
+            actions: ["resume_order_not_found","resume_order_network_error"],
+          },
+        ];
+
+        const activeTab = FILTER_TABS.find(t => t.key === auditFilter)!;
+        const filtered = auditFailures.filter(f => activeTab.actions.includes(f.action));
+
+        const categoryLabel = (action: string): { label: string; color: string; bg: string } => {
+          if (action.includes("stripe") || action === "stripe_no_client_secret")
+            return { label: "Stripe", color: "text-violet-700", bg: "bg-violet-50" };
+          if (action.includes("edge_function") || action.includes("ghl"))
+            return { label: "Edge Fn", color: "text-sky-700", bg: "bg-sky-50" };
+          if (action.includes("resume"))
+            return { label: "Resume", color: "text-amber-700", bg: "bg-amber-50" };
+          return { label: "Other", color: "text-gray-600", bg: "bg-gray-100" };
+        };
+
+        return (
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 flex items-center justify-center bg-red-50 rounded-xl flex-shrink-0">
+                  <i className="ri-bug-line text-red-500 text-base"></i>
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-gray-900">Assessment Flow Error Log</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Network failures, Stripe errors, and resume flow issues — last 100 events
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {clearMsg && (
+                  <span className={`text-xs font-semibold flex items-center gap-1 ${clearMsg.ok ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                    <i className={clearMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                    {clearMsg.text}
+                  </span>
+                )}
+                {auditFailures.length > 0 && (
+                  <span className="text-xs font-bold px-2.5 py-1 bg-red-50 text-red-600 rounded-full border border-red-200">
+                    {auditFailures.length} event{auditFailures.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={clearOldErrors}
+                  disabled={clearingOld || auditLoading}
+                  className="whitespace-nowrap flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100 disabled:opacity-60 cursor-pointer transition-colors"
+                >
+                  {clearingOld
+                    ? <><i className="ri-loader-4-line animate-spin"></i>Clearing...</>
+                    : <><i className="ri-delete-bin-6-line"></i>Clear Old Errors</>
+                  }
+                </button>
+                <button
+                  type="button"
+                  onClick={loadAuditFailures}
+                  disabled={auditLoading}
+                  className="whitespace-nowrap flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 disabled:opacity-60 cursor-pointer transition-colors"
+                >
+                  {auditLoading
+                    ? <><i className="ri-loader-4-line animate-spin"></i>Loading...</>
+                    : <><i className="ri-refresh-line"></i>Refresh</>
+                  }
+                </button>
+              </div>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex border-b border-gray-100 bg-gray-50/50 px-5 gap-1 pt-2">
+              {FILTER_TABS.map(tab => {
+                const count = auditFailures.filter(f => tab.actions.includes(f.action)).length;
+                const isActive = auditFilter === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setAuditFilter(tab.key)}
+                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-colors cursor-pointer ${
+                      isActive
+                        ? "border-red-500 text-red-600 bg-white"
+                        : "border-transparent text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    <i className={tab.icon}></i>
+                    {tab.label}
+                    {count > 0 && (
+                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${isActive ? "bg-red-100 text-red-600" : "bg-gray-200 text-gray-500"}`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Content */}
+            {auditLoading ? (
+              <div className="px-5 py-10 flex items-center justify-center gap-2 text-sm text-gray-400">
+                <i className="ri-loader-4-line animate-spin"></i>Loading error log...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="px-5 py-12 text-center">
+                <div className="w-12 h-12 flex items-center justify-center bg-[#f0faf7] rounded-full mx-auto mb-3">
+                  <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-xl"></i>
+                </div>
+                <p className="text-sm font-bold text-gray-700">No errors recorded</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {auditFilter === "all"
+                    ? "The assessment flow has had no logged failures yet."
+                    : `No ${activeTab.label} errors in the log.`}
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {/* Column headers */}
+                <div className="hidden sm:grid grid-cols-12 gap-3 px-5 py-2 bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  <div className="col-span-2">Time</div>
+                  <div className="col-span-2">Category</div>
+                  <div className="col-span-3">Endpoint</div>
+                  <div className="col-span-3">Error</div>
+                  <div className="col-span-2">Conf. ID</div>
+                </div>
+                {filtered.map(failure => {
+                  const cat = categoryLabel(failure.action);
+                  const meta = failure.metadata ?? {};
+                  const endpoint = (meta.endpoint as string) ?? failure.action.replace(/_/g, " ");
+                  const errorMsg = (meta.error as string) ?? (failure.description ?? "—");
+                  const confId = (meta.confirmation_id as string) ?? null;
+                  const httpStatus = meta.http_status as number | undefined;
+
+                  return (
+                    <div key={failure.id} className="px-5 py-3 hover:bg-gray-50/50 transition-colors">
+                      {/* Mobile layout */}
+                      <div className="sm:hidden space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.bg} ${cat.color}`}>{cat.label}</span>
+                          <span className="text-[10px] text-gray-400">{fmtRelative(failure.created_at)}</span>
+                        </div>
+                        <p className="text-xs font-bold text-gray-700 font-mono">{endpoint}</p>
+                        <p className="text-xs text-red-600 leading-relaxed">{errorMsg.slice(0, 120)}{errorMsg.length > 120 ? "…" : ""}</p>
+                        {confId && <p className="text-[10px] text-gray-400 font-mono">{confId}</p>}
+                      </div>
+                      {/* Desktop layout */}
+                      <div className="hidden sm:grid grid-cols-12 gap-3 items-start">
+                        <div className="col-span-2">
+                          <p className="text-xs text-gray-500">{fmtRelative(failure.created_at)}</p>
+                          <p className="text-[10px] text-gray-300 mt-0.5">{fmtTime(failure.created_at)}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${cat.bg} ${cat.color}`}>
+                            {cat.label}
+                          </span>
+                          {httpStatus && (
+                            <span className="block text-[10px] text-gray-400 mt-0.5">HTTP {httpStatus}</span>
+                          )}
+                        </div>
+                        <div className="col-span-3 min-w-0">
+                          <p className="text-xs font-mono text-gray-700 truncate" title={endpoint}>{endpoint}</p>
+                        </div>
+                        <div className="col-span-3 min-w-0">
+                          <p className="text-xs text-red-600 leading-relaxed line-clamp-2" title={errorMsg}>{errorMsg}</p>
+                        </div>
+                        <div className="col-span-2 min-w-0">
+                          {confId ? (
+                            <p className="text-[10px] font-mono text-gray-500 truncate" title={confId}>{confId}</p>
+                          ) : (
+                            <span className="text-[10px] text-gray-300">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── LEGACY IMPORT ── */}
+      <LegacyImportPanel />
 
       {/* ── GOOGLE SHEETS MANUAL SYNC ── */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">

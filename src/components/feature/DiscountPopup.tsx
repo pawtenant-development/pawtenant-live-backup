@@ -1,8 +1,24 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const POPUP_KEY = "pt_discount_popup_shown";
-const MAX_SHOWS = 2;
+const POPUP_LAST_SHOWN_KEY = "pt_discount_popup_last_shown";
+const POPUP_SESSION_ID_KEY = "pt_discount_popup_session_id";
+const MIN_MINUTES_BETWEEN_SHOWS = 5;
+const MAX_MINUTES_BETWEEN_SHOWS = 15;
 const COUNTDOWN_SECONDS = 10 * 60;
+
+function getRandomMinutes(): number {
+  return Math.floor(Math.random() * (MAX_MINUTES_BETWEEN_SHOWS - MIN_MINUTES_BETWEEN_SHOWS + 1)) + MIN_MINUTES_BETWEEN_SHOWS;
+}
+
+function getSessionId(): string {
+  let sessionId = sessionStorage.getItem(POPUP_SESSION_ID_KEY);
+  if (!sessionId) {
+    sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(POPUP_SESSION_ID_KEY, sessionId);
+  }
+  return sessionId;
+}
 
 interface DiscountPopupProps {
   delayMs?: number;
@@ -15,17 +31,47 @@ export default function DiscountPopup({ delayMs = 7000 }: DiscountPopupProps) {
   const [timeLeft, setTimeLeft] = useState(COUNTDOWN_SECONDS);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const shown = useRef(false);
+  const reShowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const shouldShow = () => {
-    const count = parseInt(sessionStorage.getItem(POPUP_KEY) ?? "0", 10);
-    return count < MAX_SHOWS;
-  };
+  const shouldShow = useCallback((): boolean => {
+    const sessionId = getSessionId();
+    const storedSessionId = sessionStorage.getItem(POPUP_SESSION_ID_KEY + "_shown_in");
+    const lastShown = parseInt(sessionStorage.getItem(POPUP_LAST_SHOWN_KEY) ?? "0", 10);
+    const now = Date.now();
 
-  const showPopup = () => {
-    if (shown.current || !shouldShow()) return;
+    // If this is a new session (different session ID), allow showing
+    if (storedSessionId !== sessionId) {
+      return true;
+    }
+
+    // Check if enough time has passed (5-15 minutes)
+    const minutesSinceLastShow = (now - lastShown) / (1000 * 60);
+    return minutesSinceLastShow >= MIN_MINUTES_BETWEEN_SHOWS;
+  }, []);
+
+  const scheduleReShow = useCallback(() => {
+    if (reShowTimeoutRef.current) {
+      clearTimeout(reShowTimeoutRef.current);
+    }
+    const randomMinutes = getRandomMinutes();
+    reShowTimeoutRef.current = setTimeout(() => {
+      shown.current = false;
+      showPopup();
+    }, randomMinutes * 60 * 1000);
+  }, []);
+
+  const showPopup = useCallback(() => {
+    if (shown.current || !shouldShow()) {
+      // If we can't show now, schedule for later
+      if (!shouldShow()) {
+        scheduleReShow();
+      }
+      return;
+    }
     shown.current = true;
-    const count = parseInt(sessionStorage.getItem(POPUP_KEY) ?? "0", 10);
-    sessionStorage.setItem(POPUP_KEY, String(count + 1));
+    const sessionId = getSessionId();
+    sessionStorage.setItem(POPUP_SESSION_ID_KEY + "_shown_in", sessionId);
+    sessionStorage.setItem(POPUP_LAST_SHOWN_KEY, String(Date.now()));
     setVisible(true);
     timerRef.current = setInterval(() => {
       setTimeLeft((t) => {
@@ -36,16 +82,23 @@ export default function DiscountPopup({ delayMs = 7000 }: DiscountPopupProps) {
         return t - 1;
       });
     }, 1000);
-  };
+  }, [shouldShow, scheduleReShow]);
 
   useEffect(() => {
     const timeout = setTimeout(showPopup, delayMs);
     return () => {
       clearTimeout(timeout);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (reShowTimeoutRef.current) clearTimeout(reShowTimeoutRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [delayMs, showPopup]);
+
+  const handleDismiss = () => {
+    setVisible(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    // Schedule re-show after random 5-15 minutes
+    scheduleReShow();
+  };
 
   const handleReveal = () => {
     setRevealed(true);
@@ -59,11 +112,6 @@ export default function DiscountPopup({ delayMs = 7000 }: DiscountPopupProps) {
         setVisible(false);
       }, 1800);
     });
-  };
-
-  const handleDismiss = () => {
-    setVisible(false);
-    if (timerRef.current) clearInterval(timerRef.current);
   };
 
   if (!visible) return null;
@@ -132,7 +180,7 @@ export default function DiscountPopup({ delayMs = 7000 }: DiscountPopupProps) {
               <button
                 type="button"
                 onClick={handleReveal}
-                className="whitespace-nowrap w-full py-3.5 rounded-xl font-extrabold text-sm bg-[#1a5c4f] hover:bg-[#17504a] text-white transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
+                className="whitespace-nowrap w-full py-3.5 rounded-xl font-extrabold text-sm bg-orange-500 hover:bg-orange-600 text-white transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
               >
                 <div className="w-4 h-4 flex items-center justify-center">
                   <i className="ri-gift-2-line"></i>
@@ -143,7 +191,7 @@ export default function DiscountPopup({ delayMs = 7000 }: DiscountPopupProps) {
               <div className="space-y-3">
                 <div className="bg-orange-50 border-2 border-dashed border-orange-300 rounded-xl px-5 py-3.5 text-center">
                   <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Your Promo Code</p>
-                  <p className="text-3xl font-extrabold text-[#1a5c4f] tracking-[0.25em]">20PAW</p>
+                  <p className="text-3xl font-extrabold text-orange-600 tracking-[0.25em]">20PAW</p>
                 </div>
                 <button
                   type="button"

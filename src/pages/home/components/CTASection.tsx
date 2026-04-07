@@ -1,4 +1,8 @@
+import { useAttributionParams } from "@/hooks/useAttributionParams";
+
 export default function CTASection() {
+  const { withAttribution } = useAttributionParams();
+
   return (
     <section className="relative py-24 overflow-hidden">
       {/* Background */}
@@ -8,7 +12,7 @@ export default function CTASection() {
           alt="Still have questions about ESA letters"
           className="w-full h-full object-cover object-top"
         />
-        <div className="absolute inset-0 bg-[#1e4d3f]/85"></div>
+        <div className="absolute inset-0 bg-[#78350f]/85"></div>
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">
@@ -21,7 +25,7 @@ export default function CTASection() {
         </p>
         <div className="flex flex-wrap justify-center gap-4">
           <a
-            href="/assessment"
+            href={withAttribution("/assessment")}
             className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-4 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
             Get My ESA Letter Now

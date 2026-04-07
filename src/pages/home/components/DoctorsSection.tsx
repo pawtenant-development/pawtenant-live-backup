@@ -113,16 +113,30 @@ export default function DoctorsSection() {
                   )}
                 </div>
 
-                {/* Badge */}
-                <a
-                  href={doctor.verificationUrl}
-                  target="_blank"
-                  rel="nofollow noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 text-xs font-semibold mb-3 hover:bg-green-100 transition-colors cursor-pointer"
-                >
-                  <i className="ri-shield-check-line text-green-500"></i>
-                  Verified Professional
-                </a>
+                {/* Badges row */}
+                <div className="flex flex-wrap items-center justify-center gap-1.5 mb-3">
+                  <a
+                    href={doctor.verificationUrl}
+                    target="_blank"
+                    rel="nofollow noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 text-xs font-semibold hover:bg-green-100 transition-colors cursor-pointer"
+                  >
+                    <i className="ri-shield-check-line text-green-500"></i>
+                    Verified
+                  </a>
+                  {doctor.npi_number && (
+                    <a
+                      href={`https://npiregistry.cms.hhs.gov/search?number=${doctor.npi_number}`}
+                      target="_blank"
+                      rel="nofollow noreferrer"
+                      title={`NPI # ${doctor.npi_number} — verified via CMS NPPES`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FFF7ED] border border-orange-200 text-[#92400e] text-xs font-bold hover:bg-orange-100 transition-colors cursor-pointer"
+                    >
+                      <i className="ri-medal-line text-[#92400e] text-xs"></i>
+                      NPI Verified
+                    </a>
+                  )}
+                </div>
 
                 {/* Name & Title */}
                 <h3 className="text-gray-900 font-bold text-base leading-snug mb-1">{doctor.name}</h3>

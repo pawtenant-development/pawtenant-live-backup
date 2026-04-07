@@ -80,6 +80,9 @@ const PET_TYPES = ["Dog", "Cat", "Bird", "Rabbit", "Hamster", "Guinea Pig", "Oth
 
 const emptyPet = (): PetInfo => ({ name: "", age: "", breed: "", type: "", weight: "" });
 
+// RFC-5322-lite email regex — catches the most common format errors
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 function validateAge(dob: string): boolean {
   if (!dob) return false;
   const birth = new Date(dob);
@@ -98,6 +101,7 @@ function validateAge(dob: string): boolean {
 export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode = "esa" }: Step2PersonalInfoProps) {
   const isPSD = mode === "psd";
   const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const [errorMessages, setErrorMessages] = useState<Record<string, string>>({});
   const [dobError, setDobError] = useState<string>("");
 
   const update = (field: keyof Step2Data, val: string | PetInfo[] | AdditionalDocInfo | undefined) => {
@@ -124,9 +128,16 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
 
   const validate = () => {
     const errs: Record<string, boolean> = {};
+    const msgs: Record<string, string> = {};
     if (!data.firstName) errs.firstName = true;
     if (!data.lastName) errs.lastName = true;
-    if (!data.email) errs.email = true;
+    if (!data.email) {
+      errs.email = true;
+      msgs.email = "Email address is required.";
+    } else if (!EMAIL_RE.test(data.email.trim())) {
+      errs.email = true;
+      msgs.email = "Please enter a valid email address (e.g. john@example.com).";
+    }
     if (!data.phone) errs.phone = true;
     if (!data.dob) {
       errs.dob = true;
@@ -149,6 +160,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
     });
 
     setErrors(errs);
+    setErrorMessages(msgs);
     return Object.keys(errs).length === 0;
   };
 
@@ -209,12 +221,20 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
             label="Email Address"
             required
             error={errors.email}
+            errorMsg={errorMessages.email || "Email address is required."}
             hint="To receive your Letter digitally"
           >
             <input
               type="email"
               value={data.email}
-              onChange={(e) => update("email", e.target.value)}
+              onChange={(e) => {
+                update("email", e.target.value);
+                // Clear email error inline as user types a valid address
+                if (errors.email && EMAIL_RE.test(e.target.value.trim())) {
+                  setErrors((prev) => { const n = { ...prev }; delete n.email; return n; });
+                  setErrorMessages((prev) => { const n = { ...prev }; delete n.email; return n; });
+                }
+              }}
               placeholder="john@example.com"
               className={errors.email ? errorInputClass : inputClass}
             />

@@ -1,6 +1,10 @@
 // AnalyticsTab — Traffic source & order analytics for admin portal
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import AdSpendPanel from "./AdSpendPanel";
+import GoogleAdsSyncPanel from "./GoogleAdsSyncPanel";
+import MetaCAPIPanel from "./MetaCAPIPanel";
+import UnifiedBackfillPanel from "./UnifiedBackfillPanel";
 
 interface Order {
   id: string;
@@ -509,6 +513,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const [trendGranularity, setTrendGranularity] = useState<"daily" | "weekly">("daily");
   const [csvExporting, setCsvExporting] = useState(false);
   const [reviewLogs, setReviewLogs] = useState<{ object_id: string; action: string; created_at: string }[]>([]);
+  const [analyticsView, setAnalyticsView] = useState<"overview" | "ad_roi" | "google_ads_sync" | "meta_capi" | "backfill">("overview");
   const PAGE_SIZE = 20;
 
   // ── Fetch review request audit logs ──────────────────────────────────────
@@ -731,6 +736,32 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     return Array.from(s).sort();
   }, [orders]);
 
+  // ── Revenue by channel (for AdSpendPanel ROI calc) ───────────────────────
+  const revenueByChannel = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredOrders.forEach((o) => {
+      if (!o.payment_intent_id) return;
+      const ch = resolveChannel(o.referred_by);
+      map[ch] = (map[ch] ?? 0) + (o.price ?? 0);
+    });
+    return map;
+  }, [filteredOrders]);
+
+  // ── Paid order count by channel (for CPA calc) ───────────────────────────
+  const paidOrdersByChannel = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredOrders.forEach((o) => {
+      if (!o.payment_intent_id) return;
+      const ch = resolveChannel(o.referred_by);
+      map[ch] = (map[ch] ?? 0) + 1;
+    });
+    return map;
+  }, [filteredOrders]);
+
+  // Date strings for AdSpendPanel
+  const dateFromStr = rangeFrom.toISOString().slice(0, 10);
+  const dateToStr = rangeTo.toISOString().slice(0, 10);
+
   // ── CSV Export handler ────────────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
     setCsvExporting(true);
@@ -743,6 +774,50 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
 
   return (
     <div className="space-y-5">
+
+      {/* ── View switcher ── */}
+      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
+        {[
+          { key: "overview",       label: "Analytics Overview", icon: "ri-bar-chart-2-line" },
+          { key: "ad_roi",         label: "Ad Spend & ROI",     icon: "ri-advertisement-line" },
+          { key: "google_ads_sync",label: "Google Ads Sync",    icon: "ri-google-fill" },
+          { key: "meta_capi",      label: "Meta CAPI",          icon: "ri-facebook-fill" },
+          { key: "backfill",       label: "Conversion Backfill", icon: "ri-refresh-line" },
+        ].map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => setAnalyticsView(v.key as typeof analyticsView)}
+            className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${analyticsView === v.key ? "bg-white text-[#1a5c4f]" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            <i className={v.icon}></i>
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Google Ads Sync view ── */}
+      {analyticsView === "google_ads_sync" && <GoogleAdsSyncPanel />}
+
+      {/* ── Meta CAPI view ── */}
+      {analyticsView === "meta_capi" && <MetaCAPIPanel />}
+
+      {/* ── Unified Conversion Backfill view ── */}
+      {analyticsView === "backfill" && <UnifiedBackfillPanel />}
+
+      {/* ── Ad ROI view ── */}
+      {analyticsView === "ad_roi" && (
+        <AdSpendPanel
+          revenueByChannel={revenueByChannel}
+          paidOrdersByChannel={paidOrdersByChannel}
+          dateFrom={dateFromStr}
+          dateTo={dateToStr}
+          datePreset={datePreset}
+        />
+      )}
+
+      {/* ── Overview view ── */}
+      {analyticsView === "overview" && <>
 
       {/* ── Filter bar ── */}
       <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
@@ -1020,7 +1095,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
               <DonutChart segments={donutSegments} />
               <div className="flex-1 space-y-2 min-w-0">
                 {channelStats.slice(0, 6).map((ch) => (
-                  <div key={ch.channel} className="flex items-center gap-2">
+                  <div key={ch.channel} className="flex items-center gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ch.cfg.chartColor }}></div>
                     <span className="text-xs text-gray-600 truncate flex-1">{ch.cfg.label}</span>
                     <span className="text-xs font-bold text-gray-900 flex-shrink-0">{ch.total}</span>
@@ -1266,6 +1341,8 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           </>
         )}
       </div>
+
+      </>}
     </div>
   );
 }

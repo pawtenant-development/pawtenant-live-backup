@@ -420,11 +420,24 @@ export default function StripePaymentForm({
             </>
           )}
         </button>
-        <p className="text-[11px] text-center text-gray-400 mt-2.5 leading-relaxed px-2">
-          {paymentError
-            ? "Please correct the issue above and try again."
-            : "Your licensed provider begins reviewing your case immediately after payment."}
-        </p>
+        {paymentError ? (
+          <p className="text-[11px] text-center text-gray-400 mt-2.5 leading-relaxed px-2">
+            Please correct the issue above and try again.
+          </p>
+        ) : (
+          <div className="flex items-center justify-center gap-2 mt-2.5">
+            <div className="flex items-center gap-1.5 bg-gray-100 rounded-md px-2.5 py-1">
+              <i className="ri-shield-check-line text-xs" style={{ color: "#6390FC" }}></i>
+              <span className="text-[10px] font-bold" style={{ color: "#6390FC" }}>256-bit SSL</span>
+              <span className="text-[10px] text-gray-300">·</span>
+              <span className="text-[10px] font-bold" style={{ color: "#6390FC" }}>Powered by</span>
+              {/* Stripe wordmark — official colors */}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "1px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#6390FC", letterSpacing: "-0.3px", fontFamily: "system-ui, sans-serif" }}>stripe</span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

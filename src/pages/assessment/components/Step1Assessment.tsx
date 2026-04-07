@@ -255,6 +255,21 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
         </div>
       </div>
 
+      {/* Landlord Verification Badge */}
+      <div className="mb-5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-3">
+        <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+          <i className="ri-shield-check-fill text-white text-sm"></i>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-extrabold text-[#1a5c4f]">Landlord-Verifiable Letter Included</p>
+          <p className="text-xs text-[#1a5c4f]/70 mt-0.5">Every PawTenant letter includes a unique QR Verification ID — landlords can confirm authenticity instantly, no health info disclosed.</p>
+        </div>
+        <a href="/ESA-letter-verification" target="_blank" rel="noopener noreferrer"
+          className="whitespace-nowrap text-xs font-bold text-[#1a5c4f] hover:underline cursor-pointer flex-shrink-0 flex items-center gap-1">
+          <i className="ri-external-link-line text-xs"></i>Learn more
+        </a>
+      </div>
+
       {errors.length > 0 && (
         <div className="mb-6 bg-red-50 border border-red-200 rounded-lg px-5 py-4 text-sm text-red-700 flex items-center gap-2">
           <i className="ri-error-warning-line text-base"></i>

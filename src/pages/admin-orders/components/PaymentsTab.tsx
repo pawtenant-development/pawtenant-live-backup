@@ -548,6 +548,7 @@ export default function PaymentsTab() {
       {selectedCharge && (
         <RefundModal
           charge={selectedCharge}
+          confirmationId={selectedCharge.payment_intent ? orderMap[selectedCharge.payment_intent] : undefined}
           onClose={() => setSelectedCharge(null)}
           onRefunded={handleRefunded}
         />

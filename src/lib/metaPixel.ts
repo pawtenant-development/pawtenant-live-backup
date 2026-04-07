@@ -5,7 +5,59 @@
  * The fbevents.js script is loaded once via index.html.
  * PageView is fired by MetaPageView in App.tsx on every SPA route change.
  * Purchase deduplication uses sessionStorage keyed by confirmationId.
+ *
+ * ── EVENT_ID FORMAT CONTRACT (IMMUTABLE) ─────────────────────────────────────
+ * The event_id format is defined ONCE here as META_PURCHASE_EVENT_ID_FORMAT
+ * and must NEVER be changed without a coordinated update to the CAPI function.
+ *
+ * Format:  "purchase_{confirmationId}"
+ * Builder: buildMetaPurchaseEventId(confirmationId)
+ *
+ * This is the key Meta uses to deduplicate the browser pixel event against
+ * the server-side CAPI event. If they match → counted once. If they differ
+ * → double-counted.
+ *
+ * ── WHERE THIS IS USED ────────────────────────────────────────────────────────
+ * Frontend (this file):
+ *   fireMetaPurchase() → buildMetaPurchaseEventId(confirmationId)
+ *
+ * Backend (supabase/functions/send-meta-capi-event/index.ts):
+ *   eventId = `purchase_${confirmationId}`   ← MUST match META_PURCHASE_EVENT_ID_FORMAT
+ *
+ * Backend (supabase/functions/send-meta-events/index.ts):
+ *   event_id = `purchase_${confirmation_id}` ← MUST match META_PURCHASE_EVENT_ID_FORMAT
+ *
+ * ── CHANGE PROTOCOL ──────────────────────────────────────────────────────────
+ * If you ever need to change this format:
+ *   1. Update META_PURCHASE_EVENT_ID_FORMAT below
+ *   2. Update the matching string in send-meta-capi-event/index.ts
+ *   3. Update the matching string in send-meta-events/index.ts
+ *   4. Deploy all three simultaneously — any mismatch causes double-counting
+ * ─────────────────────────────────────────────────────────────────────────────
  */
+
+/**
+ * ── CANONICAL EVENT_ID FORMAT ─────────────────────────────────────────────────
+ * This is the single source of truth for the Meta Purchase event_id format.
+ * The backend CAPI functions MUST produce the same string.
+ *
+ * Format: "purchase_{confirmationId}"
+ * Example: "purchase_PT-ABC123"
+ *
+ * DO NOT change this format. If you must, update all three locations listed above.
+ */
+export const META_PURCHASE_EVENT_ID_PREFIX = "purchase_" as const;
+
+/**
+ * Builds the canonical Meta Purchase event_id for a given confirmation ID.
+ * Use this in ALL places that generate a Purchase event_id — never hardcode.
+ *
+ * @param confirmationId - The order confirmation ID (e.g. "PT-ABC123")
+ * @returns The canonical event_id string (e.g. "purchase_PT-ABC123")
+ */
+export function buildMetaPurchaseEventId(confirmationId: string): string {
+  return `${META_PURCHASE_EVENT_ID_PREFIX}${confirmationId}`;
+}
 
 declare global {
   interface Window {
@@ -73,8 +125,18 @@ export function fireInitiateCheckout(params: {
  * Includes:
  *   - value + currency (USD)
  *   - order_id for server-side matching
- *   - eventID for Conversions API deduplication
+ *   - eventID for Conversions API deduplication (MUST match backend CAPI event_id)
  *   - external_id (SHA-256 hashed email) for advanced matching
+ *
+ * ── DEDUPLICATION ─────────────────────────────────────────────────────────────
+ * eventID = "purchase_{confirmationId}"
+ *
+ * This MUST match the event_id sent by the backend CAPI function:
+ *   supabase/functions/send-meta-capi-event/index.ts
+ *
+ * Meta uses this shared event_id to deduplicate the browser pixel event
+ * against the server-side CAPI event, counting the conversion only once.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 export async function fireMetaPurchase(opts: {
   value: number;
@@ -102,7 +164,12 @@ export async function fireMetaPurchase(opts: {
   }
 
   const hashedEmail = opts.email ? await sha256Hex(opts.email) : '';
-  const eventId = `purchase_${opts.confirmationId}`;
+
+  // ── CRITICAL: event_id MUST match backend CAPI event_id ──────────────────
+  // Uses buildMetaPurchaseEventId() — the single source of truth for this format.
+  // Backend functions MUST produce the same string: `purchase_${confirmationId}`
+  // See META_PURCHASE_EVENT_ID_PREFIX and buildMetaPurchaseEventId() above.
+  const eventId = buildMetaPurchaseEventId(opts.confirmationId);
 
   // Set external_id for advanced matching (helps lookalike + custom audiences)
   if (hashedEmail) {
@@ -122,10 +189,12 @@ export async function fireMetaPurchase(opts: {
       eventId,
       hashedEmail: hashedEmail ? '[sha256 hashed]' : '[none]',
       confirmationId: opts.confirmationId,
+      deduplicationNote: 'eventID must match backend CAPI event_id = purchase_{confirmationId}',
     });
   }
 
-  // eventID enables server-side Conversions API deduplication (future-ready)
+  // eventID enables server-side Conversions API deduplication
+  // Meta will match this against the CAPI event sent by send-meta-capi-event
   window.fbq('track', 'Purchase', payload, { eventID: eventId });
 
   // Mark as fired — prevents double-fire on re-render, refresh, or concurrent effects

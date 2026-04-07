@@ -1,4 +1,8 @@
+import { useAttributionParams } from "@/hooks/useAttributionParams";
+
 export default function HeroSection() {
+  const { withAttribution } = useAttributionParams();
+
   return (
     <section
       id="get-started"
@@ -87,7 +91,7 @@ export default function HeroSection() {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
             <a
-              href="/assessment"
+              href={withAttribution("/assessment")}
               className="whitespace-nowrap px-7 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer inline-flex items-center justify-center gap-2"
             >
               Get Your ESA Letter Now

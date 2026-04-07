@@ -53,6 +53,42 @@ export interface OrderCardProps {
   US_STATES: { name: string; abbr: string }[];
 }
 
+// ─── Referral source config ───────────────────────────────────────────────────
+const REF_BADGE: Record<string, { label: string; icon: string; color: string }> = {
+  "Facebook / Instagram Ads": { label: "Facebook",  icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
+  "Google Ads":               { label: "Google",    icon: "ri-google-line",          color: "text-orange-600 bg-orange-50 border-orange-200" },
+  "Google Organic":           { label: "Organic",   icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+  "TikTok Ads":               { label: "TikTok",    icon: "ri-tiktok-line",          color: "text-gray-900 bg-gray-100 border-gray-300" },
+  "Instagram Ads":            { label: "Instagram", icon: "ri-instagram-line",       color: "text-pink-600 bg-pink-50 border-pink-200" },
+  "Twitter / X":              { label: "Twitter/X", icon: "ri-twitter-x-line",       color: "text-gray-800 bg-gray-100 border-gray-300" },
+  "YouTube Ads":              { label: "YouTube",   icon: "ri-youtube-line",         color: "text-red-600 bg-red-50 border-red-200" },
+  "Email Campaign":           { label: "Email",     icon: "ri-mail-send-line",       color: "text-violet-600 bg-violet-50 border-violet-200" },
+  "Referral":                 { label: "Referral",  icon: "ri-share-forward-line",   color: "text-teal-600 bg-teal-50 border-teal-200" },
+  "Direct":                   { label: "Direct",    icon: "ri-cursor-line",          color: "text-gray-600 bg-gray-50 border-gray-200" },
+  // Legacy short keys
+  facebook:     { label: "Facebook",  icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
+  google_ads:   { label: "Google",    icon: "ri-google-line",          color: "text-orange-600 bg-orange-50 border-orange-200" },
+  social_media: { label: "Social",    icon: "ri-share-circle-line",    color: "text-pink-600 bg-pink-50 border-pink-200" },
+  seo:          { label: "Organic",   icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+};
+
+function resolveRefBadge(referredBy: string | null): { label: string; icon: string; color: string } | null {
+  if (!referredBy) return null;
+  if (REF_BADGE[referredBy]) return REF_BADGE[referredBy];
+  const lower = referredBy.toLowerCase();
+  if (lower.includes("facebook") || lower.includes("instagram")) return REF_BADGE["Facebook / Instagram Ads"];
+  if (lower.includes("google") && lower.includes("organic")) return REF_BADGE["Google Organic"];
+  if (lower.includes("google")) return REF_BADGE["Google Ads"];
+  if (lower.includes("tiktok")) return REF_BADGE["TikTok Ads"];
+  if (lower.includes("twitter") || lower.includes("/ x")) return REF_BADGE["Twitter / X"];
+  if (lower.includes("youtube")) return REF_BADGE["YouTube Ads"];
+  if (lower.includes("email")) return REF_BADGE["Email Campaign"];
+  if (lower.includes("referral")) return REF_BADGE["Referral"];
+  if (lower.includes("seo") || lower.includes("organic")) return REF_BADGE["Google Organic"];
+  if (lower.includes("direct")) return REF_BADGE["Direct"];
+  return { label: referredBy.slice(0, 10), icon: "ri-share-circle-line", color: "text-gray-600 bg-gray-50 border-gray-200" };
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function isPSDOrder(o: Pick<Order, "letter_type" | "confirmation_id">) {
   return o.letter_type === "psd" || o.confirmation_id.includes("-PSD");
@@ -63,8 +99,11 @@ function getOrderDisplayStatus(o: Order): { label: string; color: string } {
   if (o.status === "disputed" || o.dispute_id) return { label: "Disputed", color: "bg-red-100 text-red-700" };
   if (o.fraud_warning) return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
   if (o.status === "refunded" || o.refunded_at) return { label: "Refunded", color: "bg-red-100 text-red-600" };
-  if (o.doctor_status === "patient_notified") return { label: "Completed", color: "bg-emerald-100 text-emerald-700" };
-  if (o.status === "lead" || !o.payment_intent_id) return { label: "Lead (Unpaid)", color: "bg-amber-100 text-amber-700" };
+  if (o.doctor_status === "patient_notified" || o.doctor_status === "completed") return { label: "Completed", color: "bg-emerald-100 text-emerald-700" };
+  if (o.status === "lead" || !o.payment_intent_id) {
+    if (o.payment_failure_reason) return { label: "Payment Failed", color: "bg-red-100 text-red-700" };
+    return { label: "Lead (Unpaid)", color: "bg-amber-100 text-amber-700" };
+  }
   if (!o.doctor_email && !o.doctor_user_id) return { label: "Paid · Unassigned", color: "bg-sky-100 text-sky-700" };
   return { label: "Under Review", color: "bg-violet-100 text-violet-700" };
 }
@@ -144,7 +183,7 @@ export default function OrderCard({
   const isLead = order.status === "lead" || !order.payment_intent_id;
   const seqStatus = getSeqStatus(order);
   const isRefunded = order.status === "refunded" || !!order.refunded_at;
-  const isCompleted = order.doctor_status === "patient_notified";
+  const isCompleted = order.doctor_status === "patient_notified" || order.doctor_status === "completed";
   const showAssignSection = !isLead && !isRefunded && !isCompleted;
   const showRecovery = isLead;
   const showGhlRefire = !order.ghl_synced_at;
@@ -326,7 +365,7 @@ export default function OrderCard({
               disabled={isAssigningThis} onClick={stop}
               className="w-full sm:w-64 appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer disabled:opacity-60">
               <option value="">— {order.doctor_name ? "Reassign" : "Assign"} Provider —</option>
-              {assignableProviders.filter((d) => { if (d.is_active === false) return false; const sName = US_STATES.find((s) => s.abbr === order.state)?.name ?? ""; const states = d.licensed_states ?? []; return !sName || states.includes(sName) || states.includes(order.state ?? ""); }).map((doc) => (
+              {assignableProviders.filter((d) => { if (d.is_active === false) return false; const sName = US_STATES.find((s) => s.abbr === order.state)?.name ?? ""; const sAbbr = order.state ?? ""; const states = d.licensed_states ?? []; return !sAbbr || states.includes(sAbbr) || states.includes(sName) || states.some((st) => US_STATES.find((u) => u.name === st)?.abbr === sAbbr); }).map((doc) => (
                 <option key={doc.id} value={doc.email}>{doc.full_name}</option>
               ))}
             </select>
@@ -357,31 +396,11 @@ export default function OrderCard({
           <i className="ri-eye-line"></i>View Details
           {unreadComms > 0 && <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 bg-orange-500 text-white text-[9px] font-extrabold rounded-full">{unreadComms}</span>}
         </button>
-        <button type="button" onClick={(e) => { stop(e); onToggleNotes(); }}
-          className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${notesOpen ? "bg-amber-500 text-white border-amber-500" : "bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100"}`}>
-          <i className="ri-sticky-note-line"></i>Notes{noteCount > 0 && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-extrabold ${notesOpen ? "bg-white/20" : "bg-amber-200 text-amber-800"}`}>{noteCount}</span>}
-        </button>
-        <button type="button" onClick={(e) => { stop(e); onOpenStatusLog(order); }}
-          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-gray-100 bg-gray-50 text-gray-600 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors">
-          <i className="ri-history-line"></i>History
-        </button>
         {isAssigned && (
           <a href={`/provider-portal?order=${order.confirmation_id}`} target="_blank" rel="noopener noreferrer" onClick={stop}
             className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f] hover:bg-[#e0f2ec] rounded-lg cursor-pointer transition-colors">
             <i className="ri-external-link-line"></i>Provider View
           </a>
-        )}
-        {showRecovery && (
-          <button type="button" onClick={(e) => { stop(e); onOpenRecovery(order); }}
-            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border cursor-pointer transition-colors ${recoveryMsg[order.confirmation_id]?.ok ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100"}`}>
-            {recoveryMsg[order.confirmation_id]?.ok ? <><i className="ri-mail-check-line"></i>Sent!</> : <><i className="ri-coupon-3-line"></i>Recovery</>}
-          </button>
-        )}
-        {showGhlRefire && (
-          <button type="button" onClick={(e) => { stop(e); onGhlRefire(order.confirmation_id); }} disabled={ghlRefiring === order.confirmation_id}
-            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-amber-100 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg cursor-pointer disabled:opacity-50 transition-colors">
-            {ghlRefiring === order.confirmation_id ? <><i className="ri-loader-4-line animate-spin"></i>Syncing…</> : <><i className="ri-refresh-line"></i>Re-fire GHL</>}
-          </button>
         )}
         {/* GHL Call button */}
         {order.phone && (
@@ -458,6 +477,15 @@ export default function OrderCard({
                      : <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded text-[10px] font-extrabold">ESA</span>}
               {isPriority && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#1a5c4f] text-white rounded text-[10px] font-extrabold"><i className="ri-vip-crown-2-line" style={{ fontSize: "8px" }}></i>P</span>}
               {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold">DUP</span>}
+              {(() => {
+                const ref = resolveRefBadge(order.referred_by);
+                return ref ? (
+                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-extrabold ${ref.color}`} title={`Source: ${ref.label}`}>
+                    <i className={`${ref.icon}`} style={{ fontSize: "8px" }}></i>
+                    {ref.label}
+                  </span>
+                ) : null;
+              })()}
               <span className={`sm:hidden inline-flex items-center gap-0.5 text-[10px] font-semibold ${lastActivity.color}`}><i className={lastActivity.icon} style={{ fontSize: "9px" }}></i>{lastActivity.label}</span>
             </div>
           </div>
@@ -469,7 +497,25 @@ export default function OrderCard({
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className={`whitespace-nowrap text-xs font-bold px-2.5 py-1 rounded-full ${displayStatus.color}`}>{displayStatus.label}</span>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className={`whitespace-nowrap inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${displayStatus.color}`}>
+                {hasPaymentFailure && <i className="ri-bank-card-line text-[10px]"></i>}
+                {displayStatus.label}
+              </span>
+              {hasPaymentFailure && (
+                <>
+                  <p className="text-[9px] font-semibold text-red-500 leading-tight text-right max-w-[130px] truncate" title={order.payment_failure_reason ?? ""}>
+                    {order.payment_failure_reason}
+                  </p>
+                  {order.payment_failed_at && (
+                    <p className="text-[9px] text-red-400 leading-tight flex items-center gap-0.5">
+                      <i className="ri-time-line" style={{ fontSize: "8px" }}></i>
+                      {fmtRelative(order.payment_failed_at)}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
             <div className="w-5 h-5 flex items-center justify-center text-gray-300 transition-transform duration-200" style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
               <i className="ri-arrow-right-s-line text-base"></i>
             </div>
@@ -505,11 +551,20 @@ export default function OrderCard({
                 {unreadComms > 0 && <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 bg-orange-500 text-white text-[8px] font-extrabold rounded-full">{unreadComms}</span>}
               </div>
               <p className="text-[10px] text-gray-400 truncate mt-0.5 max-w-[180px]">{order.email}</p>
-              <div className="flex items-center gap-1 mt-0.5">
+              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                 {isPSD ? <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">PSD</span>
                        : <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded">ESA</span>}
                 {isPriority && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#1a5c4f] text-white rounded">VIP</span>}
                 {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">DUP</span>}
+                {(() => {
+                  const ref = resolveRefBadge(order.referred_by);
+                  return ref ? (
+                    <span className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${ref.color}`} title={`Source: ${ref.label}`}>
+                      <i className={`${ref.icon}`} style={{ fontSize: "8px" }}></i>
+                      {ref.label}
+                    </span>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>
@@ -545,11 +600,21 @@ export default function OrderCard({
 
           {/* Status — w-[150px] */}
           <div className="w-[150px] flex-shrink-0 pr-4">
-            <span className={`whitespace-nowrap inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${displayStatus.color}`}>{displayStatus.label}</span>
+            <span className={`whitespace-nowrap inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${displayStatus.color}`}>
+              {hasPaymentFailure && <i className="ri-bank-card-line text-[10px]"></i>}
+              {displayStatus.label}
+            </span>
             {hasPaymentFailure && (
-              <div className="flex items-center gap-1 mt-1" title={order.payment_failure_reason ?? ""}>
-                <i className="ri-bank-card-line text-red-400 text-[10px]"></i>
-                <span className="text-[9px] font-bold text-red-500 truncate max-w-[120px]">{order.payment_failure_reason}</span>
+              <div className="mt-1 space-y-0.5">
+                <p className="text-[9px] font-semibold text-red-500 leading-tight truncate max-w-[130px]" title={order.payment_failure_reason ?? ""}>
+                  {order.payment_failure_reason}
+                </p>
+                {order.payment_failed_at && (
+                  <p className="text-[9px] text-red-400 leading-tight flex items-center gap-0.5">
+                    <i className="ri-time-line" style={{ fontSize: "8px" }}></i>
+                    {fmtRelative(order.payment_failed_at)}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -585,6 +650,22 @@ export default function OrderCard({
             </div>
           </div>
 
+          {/* Pets — w-[60px] */}
+          <div className="w-[60px] flex-shrink-0 pr-4">
+            {(() => {
+              const pets = (order.assessment_answers as Record<string, unknown> | null)?.pets;
+              const count = Array.isArray(pets) ? pets.length : null;
+              return count != null && count > 0 ? (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${count > 1 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+                  <i className="ri-heart-line" style={{ fontSize: "9px" }}></i>
+                  {count}
+                </span>
+              ) : (
+                <span className="text-[10px] text-gray-300 italic">—</span>
+              );
+            })()}
+          </div>
+
           {/* Time (Delivery Speed) — w-[80px] */}
           <div className="w-[80px] flex-shrink-0 pr-4">
             {order.delivery_speed
@@ -598,14 +679,6 @@ export default function OrderCard({
             <button type="button" title="View Details" onClick={(e) => { stop(e); onOpenDetail(order); }}
               className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer text-sm">
               <i className="ri-eye-line"></i>
-            </button>
-            <button type="button" title={notesOpen ? "Close Notes" : `Notes${noteCount > 0 ? ` (${noteCount})` : ""}`} onClick={(e) => { stop(e); onToggleNotes(); }}
-              className={`whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer text-sm ${notesOpen ? "text-amber-600 bg-amber-50" : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"}`}>
-              <i className="ri-sticky-note-line"></i>
-            </button>
-            <button type="button" title="Status History" onClick={(e) => { stop(e); onOpenStatusLog(order); }}
-              className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer text-sm">
-              <i className="ri-history-line"></i>
             </button>
             {/* GHL Call button */}
             {order.phone && (
@@ -631,33 +704,6 @@ export default function OrderCard({
               >
                 <i className="ri-external-link-line"></i>
               </a>
-            )}
-            {showRecovery && (
-              <button
-                type="button"
-                title={hasPaymentFailure ? "Send Recovery Email (Payment Failed)" : "Send Recovery Email"}
-                onClick={(e) => {
-                  stop(e);
-                  if (hasPaymentFailure && onSendRecoveryDirect) {
-                    onSendRecoveryDirect(order);
-                  } else {
-                    onOpenRecovery(order);
-                  }
-                }}
-                disabled={hasPaymentFailure && sendingRecoveryDirect === order.confirmation_id}
-                className={`whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer text-sm disabled:opacity-50 ${
-                  recoveryMsg[order.confirmation_id]?.ok
-                    ? "text-emerald-500 bg-emerald-50"
-                    : hasPaymentFailure
-                    ? "text-red-500 hover:text-red-700 hover:bg-red-50"
-                    : "text-orange-400 hover:text-orange-600 hover:bg-orange-50"
-                }`}
-              >
-                {hasPaymentFailure && sendingRecoveryDirect === order.confirmation_id
-                  ? <i className="ri-loader-4-line animate-spin"></i>
-                  : <i className={recoveryMsg[order.confirmation_id]?.ok ? "ri-mail-check-line" : hasPaymentFailure ? "ri-mail-send-line" : "ri-coupon-3-line"}></i>
-                }
-              </button>
             )}
           </div>
 

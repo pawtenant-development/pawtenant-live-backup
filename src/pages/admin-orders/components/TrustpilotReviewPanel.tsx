@@ -143,7 +143,11 @@ export default function TrustpilotReviewPanel({
 
       const res = await fetch(`${supabaseUrl}/functions/v1/send-review-request`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: anonKey,
+        },
         body: JSON.stringify({
           confirmationId,
           email,
@@ -165,6 +169,8 @@ export default function TrustpilotReviewPanel({
             object_id: orderId,
             description: `Trustpilot review email sent to ${email} for order ${confirmationId}`,
             metadata: { confirmationId, to: email, channel: "email" },
+            actor_name: "Admin",
+            actor_role: "admin",
           });
         } catch { /* non-critical */ }
       } else {
@@ -190,7 +196,11 @@ export default function TrustpilotReviewPanel({
 
       const res = await fetch(`${supabaseUrl}/functions/v1/send-review-request`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: anonKey,
+        },
         body: JSON.stringify({
           confirmationId,
           phone,
@@ -212,6 +222,8 @@ export default function TrustpilotReviewPanel({
             object_id: orderId,
             description: `Trustpilot review SMS sent to ${phone} for order ${confirmationId}`,
             metadata: { confirmationId, to: phone, channel: "sms" },
+            actor_name: "Admin",
+            actor_role: "admin",
           });
         } catch { /* non-critical */ }
       } else {

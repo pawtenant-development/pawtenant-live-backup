@@ -6,6 +6,7 @@ import { blogPosts, BlogPost } from "../../mocks/blogPosts";
 import { blogPostsExtended } from "../../mocks/blogPostsExtended";
 import { blogPostsExtended2 } from "../../mocks/blogPostsExtended2";
 import { STATE_BLOG_MAP, getStateBlogEntry } from "../../mocks/stateBlogMap";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 const allBlogPosts: BlogPost[] = [...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
 
@@ -60,6 +61,7 @@ function PostCard({ post }: { post: BlogPost }) {
 export default function BlogStatePage() {
   const { state: stateSlug } = useParams<{ state: string }>();
   const entry = getStateBlogEntry(stateSlug || "");
+  const { withAttribution } = useAttributionParams();
 
   const statePosts = useMemo(() => {
     if (!entry) return [];
@@ -172,7 +174,7 @@ export default function BlogStatePage() {
                 {entry.stateName} ESA Letter Info
               </Link>
               <Link
-                to="/assessment"
+                to={withAttribution("/assessment")}
                 className="whitespace-nowrap flex items-center justify-center gap-2 px-5 py-2.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
               >
                 Get My ESA Letter
@@ -283,7 +285,7 @@ export default function BlogStatePage() {
                   Licensed {entry.stateName} mental health professionals. FHA-compliant, same-day delivery, 100% money-back guarantee.
                 </p>
                 <Link
-                  to="/assessment"
+                  to={withAttribution("/assessment")}
                   className="whitespace-nowrap block text-center bg-white text-orange-600 font-bold text-xs px-4 py-2.5 rounded-md hover:bg-orange-50 transition-colors cursor-pointer"
                 >
                   Start Free Assessment
@@ -301,7 +303,7 @@ export default function BlogStatePage() {
                     { label: "ESA Housing Rights Guide", to: "/housing-rights-esa" },
                     { label: "ESA Laws by State", to: "/explore-esa-letters-all-states" },
                     { label: "ESA Letter Cost", to: "/esa-letter-cost" },
-                    { label: "Start Your ESA Assessment", to: "/assessment" },
+                    { label: "Start Your ESA Assessment", to: withAttribution("/assessment") },
                   ].map((link) => (
                     <Link
                       key={link.to}
@@ -409,7 +411,7 @@ export default function BlogStatePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
-              to="/assessment"
+              to={withAttribution("/assessment")}
               className="whitespace-nowrap inline-block px-8 py-3.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
               Get My ESA Letter — Starting at $100

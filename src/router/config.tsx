@@ -46,6 +46,9 @@ const PSDAssessmentThankYouPage = lazy(() => import("../pages/psd-assessment-tha
 const StatePSDPage = lazy(() => import("../pages/state-psd/page"));
 const ResourceCenterPage = lazy(() => import("../pages/resource-center/page"));
 const BlogStatePage = lazy(() => import("../pages/blog-state/page"));
+const VerifyEntryPage = lazy(() => import("../pages/verify/page"));
+const VerifyResultPage = lazy(() => import("../pages/verify-result/page"));
+const ESALetterVerificationPage = lazy(() => import("../pages/esa-letter-verification/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -117,6 +120,11 @@ const routes: RouteObject[] = [
   { path: "/psd-assessment/thank-you", element: <P C={PSDAssessmentThankYouPage} /> },
   { path: "/psd-letter/:state", element: <P C={StatePSDPage} /> },
   { path: "/resource-center", element: <P C={ResourceCenterPage} /> },
+  { path: "/verify", element: <P C={VerifyEntryPage} /> },
+  { path: "/verify/:letterId", element: <P C={VerifyResultPage} /> },
+  { path: "/ESA-letter-verification", element: <P C={ESALetterVerificationPage} /> },
+  { path: "/landlord-verification", element: <Navigate to="/ESA-letter-verification" replace /> },
+  { path: "/verifiable-esa-letters", element: <P C={lazy(() => import("../pages/verifiable-esa-letters/page"))} /> },
   { path: "*", element: <P C={NotFound} /> },
 ];
 

@@ -445,6 +445,7 @@ export default function AdminOrdersPage() {
           const newOrder = payload.new as Order;
           setOrders((prev) => {
             if (prev.some((o) => o.id === newOrder.id)) return prev;
+            // Always prepend — filtered sort will place it correctly
             return [newOrder, ...prev];
           });
           setLastSyncedAt(new Date());
@@ -494,7 +495,7 @@ export default function AdminOrdersPage() {
 
   const loadOrderData = useCallback(async () => {
     const [ordersRes, contactsRes, profilesRes] = await Promise.all([
-      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at").order("created_at", { ascending: false }),
+      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id").order("created_at", { ascending: false }),
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
       supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role").order("full_name"),
     ]);
@@ -892,6 +893,42 @@ export default function AdminOrdersPage() {
 
   const selectedProviders = Array.from(new Set(orders.map((o) => o.selected_provider).filter(Boolean))) as string[];
 
+  // ── Duplicate email + phone detection (must be before `filtered`) ─────────
+  const duplicateEmailSet = useMemo(() => {
+    const counts: Record<string, number> = {};
+    orders.forEach((o) => {
+      const key = o.email.toLowerCase();
+      counts[key] = (counts[key] ?? 0) + 1;
+    });
+    return new Set(
+      Object.entries(counts).filter(([, c]) => c > 1).map(([e]) => e)
+    );
+  }, [orders]);
+
+  // Combined set: any email OR normalised phone that appears on 2+ orders
+  const duplicateContactSet = useMemo(() => {
+    const emailCounts: Record<string, number> = {};
+    const phoneCounts: Record<string, number> = {};
+    orders.forEach((o) => {
+      const ek = o.email.toLowerCase();
+      emailCounts[ek] = (emailCounts[ek] ?? 0) + 1;
+      if (o.phone) {
+        const pk = o.phone.replace(/\D/g, "");
+        if (pk.length >= 7) phoneCounts[pk] = (phoneCounts[pk] ?? 0) + 1;
+      }
+    });
+    const dupeEmails = new Set(Object.entries(emailCounts).filter(([, c]) => c > 1).map(([k]) => k));
+    const dupePhones = new Set(Object.entries(phoneCounts).filter(([, c]) => c > 1).map(([k]) => k));
+    return new Set([...dupeEmails, ...dupePhones]);
+  }, [orders]);
+
+  const duplicateCount = useMemo(() => {
+    return orders.filter(
+      (o) => duplicateContactSet.has(o.email.toLowerCase()) ||
+             (!!o.phone && duplicateContactSet.has(o.phone.replace(/\D/g, "")))
+    ).length;
+  }, [orders, duplicateContactSet]);
+
   // ── Last-contacted filter ────────────────────────────────────────────────
   const isContacted = (o: Order) =>
     !!o.last_contacted_at || (Array.isArray(o.email_log) && o.email_log.length > 0);
@@ -975,8 +1012,13 @@ export default function AdminOrdersPage() {
     const age = Date.now() - new Date(o.sent_followup_at).getTime();
     return age > 7 * 24 * 60 * 60 * 1000;
   }).sort((a, b) => {
-    const tA = new Date(a.created_at).getTime();
-    const tB = new Date(b.created_at).getTime();
+    const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (tA === tB) {
+      return sortOrder === "desc"
+        ? (b.id ?? "").localeCompare(a.id ?? "")
+        : (a.id ?? "").localeCompare(b.id ?? "");
+    }
     return sortOrder === "desc" ? tB - tA : tA - tB;
   });
 
@@ -1021,42 +1063,6 @@ export default function AdminOrdersPage() {
   );
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((o) => selectedOrders.has(o.confirmation_id));
-
-  // ── Duplicate email + phone detection ────────────────────────────────────
-  const duplicateEmailSet = useMemo(() => {
-    const counts: Record<string, number> = {};
-    orders.forEach((o) => {
-      const key = o.email.toLowerCase();
-      counts[key] = (counts[key] ?? 0) + 1;
-    });
-    return new Set(
-      Object.entries(counts).filter(([, c]) => c > 1).map(([e]) => e)
-    );
-  }, [orders]);
-
-  // Combined set: any email OR normalised phone that appears on 2+ orders
-  const duplicateContactSet = useMemo(() => {
-    const emailCounts: Record<string, number> = {};
-    const phoneCounts: Record<string, number> = {};
-    orders.forEach((o) => {
-      const ek = o.email.toLowerCase();
-      emailCounts[ek] = (emailCounts[ek] ?? 0) + 1;
-      if (o.phone) {
-        const pk = o.phone.replace(/\D/g, "");
-        if (pk.length >= 7) phoneCounts[pk] = (phoneCounts[pk] ?? 0) + 1;
-      }
-    });
-    const dupeEmails = new Set(Object.entries(emailCounts).filter(([, c]) => c > 1).map(([k]) => k));
-    const dupePhones = new Set(Object.entries(phoneCounts).filter(([, c]) => c > 1).map(([k]) => k));
-    return new Set([...dupeEmails, ...dupePhones]);
-  }, [orders]);
-
-  const duplicateCount = useMemo(() => {
-    return orders.filter(
-      (o) => duplicateContactSet.has(o.email.toLowerCase()) ||
-             (!!o.phone && duplicateContactSet.has(o.phone.replace(/\D/g, "")))
-    ).length;
-  }, [orders, duplicateContactSet]);
 
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
@@ -1722,6 +1728,7 @@ export default function AdminOrdersPage() {
                     <div className="w-[150px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</div>
                     <div className="w-[100px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sequence</div>
                     <div className="w-[110px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Provider</div>
+                    <div className="w-[60px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Pets</div>
                     <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</div>
                     <div className="w-[110px] flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</div>
                     <div className="w-8 flex-shrink-0"></div>

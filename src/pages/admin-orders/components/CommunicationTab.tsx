@@ -1,23 +1,6 @@
-// CommunicationTab — SMS compose, email compose, call initiation, full comms log per order
-import { useState, useEffect, useRef, useCallback } from "react";
+// CommunicationTab — SMS compose, email compose, call initiation, email delivery log per order
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
-
-interface CommunicationEntry {
-  id: string;
-  order_id: string | null;
-  confirmation_id: string | null;
-  type: string;
-  direction: string;
-  body: string | null;
-  phone_from: string | null;
-  phone_to: string | null;
-  duration_seconds: number | null;
-  status: string | null;
-  twilio_sid: string | null;
-  sent_by: string | null;
-  recording_url: string | null;
-  created_at: string;
-}
 
 interface CommunicationTabProps {
   orderId: string;
@@ -31,31 +14,16 @@ interface CommunicationTabProps {
   price?: number | null;
   letterType?: string | null;
   state?: string | null;
+  doctorEmail?: string | null;
+  doctorName?: string | null;
+  onResendProviderEmail?: () => void;
+  resendingProvider?: boolean;
+  resendProviderMsg?: string;
+  onLoadEmailLog?: () => void;
+  emailLogLoading?: boolean;
 }
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-
-const TYPE_CONFIG: Record<string, { icon: string; label: string; color: string; bgColor: string; alignRight?: boolean }> = {
-  sms_outbound:  { icon: "ri-message-3-line",      label: "SMS Sent",      color: "text-[#1a5c4f]",  bgColor: "bg-[#f0faf7] border-[#b8ddd5]",  alignRight: true },
-  sms_inbound:   { icon: "ri-message-3-fill",       label: "SMS Received",  color: "text-gray-700",   bgColor: "bg-white border-gray-200" },
-  call_outbound: { icon: "ri-phone-line",            label: "Call Outbound", color: "text-sky-700",    bgColor: "bg-sky-50 border-sky-200",       alignRight: true },
-  call_inbound:  { icon: "ri-phone-incoming-line",   label: "Call Inbound",  color: "text-violet-700", bgColor: "bg-violet-50 border-violet-200" },
-  email:         { icon: "ri-mail-line",             label: "Email",         color: "text-gray-500",   bgColor: "bg-gray-50 border-gray-200" },
-};
-
-const EMAIL_TYPE_LABEL: Record<string, string> = {
-  order_confirmation:             "Order Confirmation Email",
-  payment_receipt:                "Payment Receipt Email",
-  internal_notification:          "Internal Notification (Admin)",
-  order_confirmation_admin_fix:   "Order Confirmation (Admin Fix — failed)",
-  letter_ready:                   "Letter Ready Email",
-  refund:                         "Refund Email",
-  status_under_review:            "Status Update: Under Review",
-  status_completed:               "Status Update: Completed",
-  checkout_recovery:              "Abandoned Checkout Recovery",
-  followup_email:                 "Lead Follow-up Email",
-  consultation_booking:           "Provider Consultation Booking",
-};
 
 // ── Email template groups ──────────────────────────────────────────────────
 interface EmailOption {
@@ -88,7 +56,6 @@ const EMAIL_OPTION_GROUPS: { group: string; icon: string; options: EmailOption[]
   },
 ];
 
-// Flat list for logic
 const ALL_EMAIL_OPTIONS: EmailOption[] = EMAIL_OPTION_GROUPS.flatMap((g) => g.options);
 
 // ── SMS Templates ──────────────────────────────────────────────────────────
@@ -167,16 +134,178 @@ const SMS_TEMPLATES = [
   },
 ];
 
-function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("en-US", {
-    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-  });
-}
+const EMAIL_CONTENT_MAP: Record<string, { subject: string; bodyHtml: (name: string, orderId: string, email: string) => string }> = {
+  order_confirmation: {
+    subject: "Your PawTenant Order is Confirmed!",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#1a5c4f;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Order Confirmed</h2>
+          <p style="color:rgba(255,255,255,0.75);margin:6px 0 0;font-size:13px;">Thank you for choosing PawTenant</p>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Your ESA consultation order has been confirmed. A licensed mental health professional will review your assessment and prepare your ESA letter.</p>
+          <div style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:8px;padding:16px;margin:16px 0;">
+            <p style="margin:0 0 4px;font-size:12px;color:#666;">Order ID</p>
+            <p style="margin:0;font-size:16px;font-weight:700;color:#1a5c4f;font-family:monospace;">${orderId}</p>
+          </div>
+          <p style="color:#444;font-size:14px;">Track your order at <a href="https://pawtenant.com/my-orders" style="color:#1a5c4f;font-weight:600;">pawtenant.com/my-orders</a></p>
+        </div>
+      </div>`,
+  },
+  payment_receipt: {
+    subject: "Payment Receipt — PawTenant",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#1a5c4f;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Payment Received</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">We've received your payment for your ESA letter consultation. Your order <strong>${orderId}</strong> is now being processed.</p>
+          <p style="color:#444;font-size:14px;">You'll receive your ESA letter via email once your provider completes the evaluation.</p>
+        </div>
+      </div>`,
+  },
+  letter_ready: {
+    subject: "Your ESA Letter is Ready — PawTenant",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#1a5c4f;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Your ESA Letter is Ready!</h2>
+          <p style="color:rgba(255,255,255,0.75);margin:6px 0 0;font-size:13px;">Download your documents now</p>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Great news! Your ESA letter has been signed and is ready to download. Log in to your portal to access your documents.</p>
+          <div style="text-align:center;margin:20px 0;">
+            <a href="https://pawtenant.com/my-orders" style="display:inline-block;background:#1a5c4f;color:#fff;padding:12px 28px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;">Download My ESA Letter</a>
+          </div>
+          <p style="color:#888;font-size:12px;">Order ID: ${orderId}</p>
+        </div>
+      </div>`,
+  },
+  status_under_review: {
+    subject: "Your ESA Order is Under Review — PawTenant",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#0369a1;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Order Under Review</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Your ESA assessment is currently being reviewed by a licensed mental health professional. We'll notify you as soon as your letter is ready.</p>
+          <p style="color:#888;font-size:12px;">Order ID: ${orderId}</p>
+        </div>
+      </div>`,
+  },
+  status_completed: {
+    subject: "Your ESA Order is Complete — PawTenant",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#059669;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Order Completed</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Your ESA order is complete! Your letter is available in your portal. Thank you for choosing PawTenant.</p>
+          <p style="color:#888;font-size:12px;">Order ID: ${orderId}</p>
+        </div>
+      </div>`,
+  },
+  refund: {
+    subject: "Refund Processed — PawTenant",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#dc2626;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Refund Processed</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Your refund has been processed and should appear in your account within 3–5 business days.</p>
+          <p style="color:#888;font-size:12px;">Order ID: ${orderId}</p>
+        </div>
+      </div>`,
+  },
+  provider_assigned_customer: {
+    subject: "A Provider Has Been Assigned to Your Case — PawTenant",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#1a5c4f;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Provider Assigned</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">A licensed mental health professional has been assigned to your case and will begin reviewing your assessment shortly.</p>
+          <p style="color:#888;font-size:12px;">Order ID: ${orderId}</p>
+        </div>
+      </div>`,
+  },
+  provider_assigned_provider: {
+    subject: "New Case Assigned — PawTenant Provider Portal",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#1a5c4f;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">New Case Assigned</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">A new ESA case has been assigned to you. Please log in to your provider portal to review the patient's assessment and prepare their letter.</p>
+          <p style="color:#444;font-size:14px;"><a href="https://pawtenant.com/provider-portal" style="color:#1a5c4f;font-weight:600;">Log in to Provider Portal →</a></p>
+          <p style="color:#888;font-size:12px;">Order ID: ${orderId}</p>
+        </div>
+      </div>`,
+  },
+  internal_notification: {
+    subject: "Internal Notification — PawTenant Admin",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:24px 32px;">
+        <p style="color:#374151;font-size:14px;"><strong>Internal notification</strong> for order <span style="font-family:monospace;color:#1a5c4f;">${orderId}</span></p>
+        <p style="color:#6b7280;font-size:13px;">This is an admin-only notification. Customer: ${name}</p>
+      </div>`,
+  },
+  thirty_day_reminder: {
+    subject: "30-Day Period Complete — Official Letter Required",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#d97706;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">30-Day Reissue Required</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">The 30-day evaluation period for order <strong>${orderId}</strong> is complete. Please log in to issue the official letter for this patient.</p>
+        </div>
+      </div>`,
+  },
+  cancelled: {
+    subject: "Your Order Has Been Cancelled — PawTenant",
+    bodyHtml: (name, orderId) => `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+        <div style="background:#dc2626;padding:24px 32px;border-radius:12px 12px 0 0;">
+          <h2 style="color:#fff;margin:0;font-size:18px;">Order Cancelled</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;padding:24px 32px;border-radius:0 0 12px 12px;">
+          <p style="color:#111;font-size:15px;">Hi <strong>${name}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Your order <strong>${orderId}</strong> has been cancelled. If you have any questions, please contact our support team.</p>
+        </div>
+      </div>`,
+  },
+};
 
-function fmtDuration(secs: number): string {
-  if (secs < 60) return `${secs}s`;
-  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-}
+const EMAIL_TYPE_CONFIG_LOCAL: Record<string, { label: string; icon: string; color: string; failColor: string }> = {
+  order_confirmation: { label: "Order Confirmation", icon: "ri-mail-check-line", color: "text-[#1a5c4f] bg-[#e8f5f1] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
+  payment_receipt: { label: "Payment Receipt", icon: "ri-file-text-line", color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  letter_ready: { label: "Letter Ready", icon: "ri-file-check-line", color: "text-violet-700 bg-violet-50 border-violet-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  refund: { label: "Refund Confirmation", icon: "ri-refund-line", color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  status_under_review: { label: "Status: Under Review", icon: "ri-eye-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  status_completed: { label: "Status: Completed", icon: "ri-checkbox-circle-line", color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  internal_notification: { label: "Internal Notification", icon: "ri-notification-3-line", color: "text-gray-600 bg-gray-50 border-gray-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  provider_assigned_provider: { label: "Provider Assignment Notice", icon: "ri-user-received-line", color: "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
+  provider_assigned_customer: { label: "Provider Assigned (Patient)", icon: "ri-user-star-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  thirty_day_reminder: { label: "30-Day Reissue Reminder", icon: "ri-time-fill", color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  cancelled: { label: "Cancellation Notice", icon: "ri-close-circle-line", color: "text-red-700 bg-red-50 border-red-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+};
 
 export default function CommunicationTab({
   orderId,
@@ -189,16 +318,21 @@ export default function CommunicationTab({
   hasDocuments = false,
   price,
   letterType,
+  doctorEmail: _doctorEmail,
+  doctorName: _doctorName,
+  onResendProviderEmail: _onResendProviderEmail,
+  resendingProvider: _resendingProvider,
+  resendProviderMsg: _resendProviderMsg,
+  onLoadEmailLog: _onLoadEmailLog,
+  emailLogLoading: _emailLogLoading,
 }: CommunicationTabProps) {
-  const [comms, setComms]               = useState<CommunicationEntry[]>([]);
-  const [loading, setLoading]           = useState(true);
   const [smsText, setSmsText]           = useState("");
   const [sending, setSending]           = useState(false);
   const [sendMsg, setSendMsg]           = useState("");
   const [calling, setCalling]           = useState(false);
   const [callMsg, setCallMsg]           = useState("");
-  const [activeTab, setActiveTab]       = useState<"all" | "sms" | "calls">("all");
   const [showTemplates, setShowTemplates] = useState(false);
+  const [expandedEmailIdx, setExpandedEmailIdx] = useState<number | null>(null);
 
   // Email state
   const [emailType, setEmailType]       = useState("under-review");
@@ -206,75 +340,12 @@ export default function CommunicationTab({
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailMsg, setEmailMsg]         = useState("");
 
-  const bottomRef = useRef<HTMLDivElement>(null);
-
   const firstName = patientName.split(" ")[0] || "there";
   const isPsd = letterType === "psd" || confirmationId.includes("-PSD");
   const resumeUrl = `https://www.pawtenant.com/${isPsd ? "psd-assessment" : "assessment"}?resume=${encodeURIComponent(confirmationId)}`;
 
-  // ── Load communications ────────────────────────────────────────────────
-  const loadComms = useCallback(async () => {
-    const { data } = await supabase
-      .from("communications")
-      .select("*")
-      .eq("order_id", orderId)
-      .order("created_at", { ascending: true });
-    setComms((data as CommunicationEntry[]) ?? []);
-    setLoading(false);
-  }, [orderId]);
-
-  useEffect(() => { loadComms(); }, [loadComms]);
-
-  // ── Real-time subscription ─────────────────────────────────────────────
-  useEffect(() => {
-    const channel = supabase
-      .channel(`comms-${orderId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "communications", filter: `order_id=eq.${orderId}` },
-        (payload) => {
-          setComms((prev) => {
-            const entry = payload.new as CommunicationEntry;
-            if (prev.some((c) => c.id === entry.id)) return prev;
-            return [...prev, entry];
-          });
-          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-        },
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [orderId]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [comms]);
-
-  // ── Merge email_log into timeline ──────────────────────────────────────
-  const emailEntries: CommunicationEntry[] = (emailLog ?? []).map((e, idx) => ({
-    id: `email-${idx}`,
-    order_id: orderId,
-    confirmation_id: confirmationId,
-    type: "email",
-    direction: "outbound",
-    body: EMAIL_TYPE_LABEL[e.type] ?? e.type,
-    phone_from: null,
-    phone_to: e.to,
-    duration_seconds: null,
-    status: e.success ? "sent" : "failed",
-    twilio_sid: null,
-    sent_by: "System",
-    created_at: e.sentAt,
-  }));
-
-  const allEntries = [...comms, ...emailEntries].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  );
-
-  const filtered = allEntries.filter((e) => {
-    if (activeTab === "sms")   return e.type === "sms_outbound" || e.type === "sms_inbound";
-    if (activeTab === "calls") return e.type === "call_outbound" || e.type === "call_inbound";
-    return true;
-  });
+  const selectedEmailOption = ALL_EMAIL_OPTIONS.find((o) => o.value === emailType);
+  const isRecoveryType = ["checkout_recovery", "followup_lead", "consultation_booking"].includes(emailType);
 
   // ── Send SMS ───────────────────────────────────────────────────────────
   const handleSendSMS = async () => {
@@ -299,7 +370,7 @@ export default function CommunicationTab({
   };
 
   // ── Outbound call ──────────────────────────────────────────────────────
-  const handleCall = async () => {
+  const handleCall = useCallback(async () => {
     if (!phone) { setCallMsg("No phone number on this order"); return; }
     setCalling(true);
     setCallMsg("");
@@ -312,12 +383,12 @@ export default function CommunicationTab({
         body: JSON.stringify({ orderId, confirmationId, toPhone: phone, sentBy: adminName }),
       });
       const result = await res.json() as { ok: boolean; error?: string };
-      if (result.ok) { setCallMsg("Call initiated — connecting now..."); loadComms(); }
+      if (result.ok) { setCallMsg("Call initiated — connecting now..."); }
       else { setCallMsg(result.error ?? "Call failed"); }
     } catch { setCallMsg("Network error"); }
     setCalling(false);
     setTimeout(() => setCallMsg(""), 6000);
-  };
+  }, [orderId, confirmationId, phone, adminName]);
 
   // ── Send Email ─────────────────────────────────────────────────────────
   const handleSendEmail = async () => {
@@ -326,10 +397,8 @@ export default function CommunicationTab({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token ?? "";
-
       let endpoint = "";
       let payload: Record<string, unknown> = { confirmationId };
-
       if (emailType === "order_confirmation") {
         endpoint = "resend-confirmation-email";
       } else if (emailType === "letter_ready") {
@@ -351,14 +420,12 @@ export default function CommunicationTab({
         endpoint = "notify-order-status";
         payload.newStatus = emailType;
       }
-
       const res = await fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
       const result = await res.json() as { ok?: boolean; emailSent?: boolean; error?: string; skipped?: boolean; reason?: string; to?: string; message?: string };
-
       if (result.ok && result.skipped) {
         setEmailMsg(`Skipped: ${result.reason ?? "already sent"}`);
       } else if (result.ok) {
@@ -377,14 +444,6 @@ export default function CommunicationTab({
     setSendingEmail(false);
     setTimeout(() => setEmailMsg(""), 5000);
   };
-
-  const smsCount  = allEntries.filter((e) => e.type === "sms_outbound" || e.type === "sms_inbound").length;
-  const callCount = allEntries.filter((e) => e.type === "call_outbound" || e.type === "call_inbound").length;
-
-  const selectedEmailOption = ALL_EMAIL_OPTIONS.find((o) => o.value === emailType);
-
-  // Determine if selected email type needs CTA note
-  const isRecoveryType = ["checkout_recovery", "followup_lead", "consultation_booking"].includes(emailType);
 
   return (
     <div className="p-6 space-y-5 h-full flex flex-col">
@@ -407,8 +466,6 @@ export default function CommunicationTab({
               <p className="text-xs text-amber-700 font-semibold">No phone number — add one to enable SMS</p>
             </div>
           )}
-
-          {/* Template toggle */}
           <button
             type="button"
             onClick={() => setShowTemplates((v) => !v)}
@@ -418,10 +475,8 @@ export default function CommunicationTab({
               <i className="ri-layout-grid-line text-sm"></i>
               Quick Templates
             </span>
-            <i className={`ri-arrow-${showTemplates ? "up" : "down"}-s-line text-sm transition-transform`}></i>
+            <i className={showTemplates ? "ri-arrow-up-s-line text-sm" : "ri-arrow-down-s-line text-sm"}></i>
           </button>
-
-          {/* Template chips */}
           {showTemplates && (
             <div className="grid grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
               {SMS_TEMPLATES.map((tpl) => (
@@ -429,10 +484,7 @@ export default function CommunicationTab({
                   key={tpl.label}
                   type="button"
                   disabled={!phone}
-                  onClick={() => {
-                    setSmsText(tpl.getMessage(firstName, confirmationId));
-                    setShowTemplates(false);
-                  }}
+                  onClick={() => { setSmsText(tpl.getMessage(firstName, confirmationId)); setShowTemplates(false); }}
                   className={`whitespace-nowrap flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${tpl.bg} ${tpl.color}`}
                 >
                   <i className={`${tpl.icon} text-sm flex-shrink-0`}></i>
@@ -441,7 +493,6 @@ export default function CommunicationTab({
               ))}
             </div>
           )}
-
           <textarea
             value={smsText}
             onChange={(e) => setSmsText(e.target.value.slice(0, 320))}
@@ -478,8 +529,6 @@ export default function CommunicationTab({
             <p className="text-xs font-bold text-amber-700 uppercase tracking-widest">Send Email</p>
             <span className="text-xs text-amber-600/60 font-mono truncate max-w-[90px]">{email}</span>
           </div>
-
-          {/* Email type selector — grouped */}
           <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
             {EMAIL_OPTION_GROUPS.map((group) => (
               <div key={group.group}>
@@ -519,8 +568,6 @@ export default function CommunicationTab({
               </div>
             ))}
           </div>
-
-          {/* Optional note for letter resend */}
           {emailType === "letter_ready" && (
             <textarea
               value={doctorNote}
@@ -530,8 +577,6 @@ export default function CommunicationTab({
               className="w-full px-3 py-2 border border-amber-200 rounded-lg text-xs bg-white focus:outline-none focus:border-amber-400 resize-none"
             />
           )}
-
-          {/* CTA note for recovery-type emails */}
           {isRecoveryType && (
             <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
               <i className="ri-cursor-line text-orange-500 text-sm flex-shrink-0 mt-0.5"></i>
@@ -541,7 +586,6 @@ export default function CommunicationTab({
               </p>
             </div>
           )}
-
           <button
             type="button"
             onClick={handleSendEmail}
@@ -598,8 +642,6 @@ export default function CommunicationTab({
               {callMsg}
             </p>
           )}
-
-          {/* Quick info */}
           <div className="pt-2 border-t border-gray-100 space-y-1.5">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Order Info</p>
             <div className="flex items-center justify-between">
@@ -616,106 +658,109 @@ export default function CommunicationTab({
         </div>
       </div>
 
-      {/* ── Timeline filters ── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-          {[
-            { key: "all",   label: `All (${allEntries.length})` },
-            { key: "sms",   label: `SMS (${smsCount})` },
-            { key: "calls", label: `Calls (${callCount})` },
-          ].map((tab) => (
-            <button key={tab.key} type="button"
-              onClick={() => setActiveTab(tab.key as typeof activeTab)}
-              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeTab === tab.key ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <button type="button" onClick={loadComms} className="whitespace-nowrap text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 cursor-pointer">
-          <i className="ri-refresh-line"></i>Refresh
-        </button>
-      </div>
-
-      {/* ── Timeline ── */}
-      <div className="flex-1 overflow-y-auto space-y-2 min-h-[200px]">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-center">
-            <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mb-3">
-              <i className="ri-chat-history-line text-gray-400 text-xl"></i>
+      {/* ── Email Delivery Log ── */}
+      <div className="flex-1 overflow-y-auto">
+        {(emailLog ?? []).length > 0 ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                <i className="ri-mail-line text-sm"></i>
+                Email Delivery Log ({(emailLog ?? []).length} emails)
+              </p>
+              <p className="text-[10px] text-gray-400">Click any email to preview its content</p>
             </div>
-            <p className="text-sm font-bold text-gray-600">No communication history yet</p>
-            <p className="text-xs text-gray-400 mt-1">Send an SMS, email, or make a call above to get started</p>
-          </div>
-        ) : (
-          filtered.map((entry) => {
-            const cfg   = TYPE_CONFIG[entry.type] ?? TYPE_CONFIG.email;
-            const right = cfg.alignRight;
-            const isCallEntry = entry.type === "call_outbound" || entry.type === "call_inbound";
+            {(emailLog ?? []).map((entry, idx) => {
+              const cfg = EMAIL_TYPE_CONFIG_LOCAL[entry.type] ?? {
+                label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                icon: "ri-mail-line",
+                color: "text-gray-600 bg-gray-50 border-gray-200",
+                failColor: "text-red-600 bg-red-50 border-red-200",
+              };
+              const colorClass = entry.success ? cfg.color : cfg.failColor;
+              const isExpanded = expandedEmailIdx === idx;
+              const contentTemplate = EMAIL_CONTENT_MAP[entry.type];
+              const fName = patientName.split(" ")[0] || "there";
 
-            return (
-              <div key={entry.id} className={`flex ${right ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-xl border px-4 py-3 space-y-2 ${cfg.bgColor}`}>
-                  <div className={`flex items-center gap-1.5 ${right ? "flex-row-reverse" : ""}`}>
-                    <i className={`${cfg.icon} ${cfg.color} text-sm`}></i>
-                    <span className={`text-xs font-bold ${cfg.color}`}>{cfg.label}</span>
-                    {entry.status === "failed" && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full text-xs font-bold">
-                        <i className="ri-close-circle-line" style={{ fontSize: "9px" }}></i>Failed
+              return (
+                <div key={idx} className="rounded-xl border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedEmailIdx(isExpanded ? null : idx)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 transition-colors cursor-pointer hover:opacity-90 ${colorClass}`}
+                  >
+                    <div className="w-7 h-7 flex items-center justify-center flex-shrink-0">
+                      <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} text-base`}></i>
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-xs font-bold leading-tight">{cfg.label}</p>
+                      <p className="text-xs opacity-70 leading-tight truncate">
+                        To: {entry.to} &middot; {new Date(entry.sentAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-white/60">
+                        {entry.success
+                          ? <><i className="ri-checkbox-circle-fill"></i>Sent</>
+                          : <><i className="ri-close-circle-fill"></i>Failed</>}
                       </span>
-                    )}
-                    {entry.status === "delivered" && (
-                      <span className="inline-flex items-center gap-0.5 text-xs text-gray-400">
-                        <i className="ri-check-double-line" style={{ fontSize: "10px" }}></i>
-                      </span>
-                    )}
-                    {isCallEntry && entry.recording_url && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">
-                        <i className="ri-record-circle-line" style={{ fontSize: "9px" }}></i>Recorded
-                      </span>
-                    )}
-                    {isCallEntry && !entry.recording_url && entry.status !== "in_progress" && entry.status !== "initiated" && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded-full text-xs">
-                        <i className="ri-mic-off-line" style={{ fontSize: "9px" }}></i>No recording
-                      </span>
-                    )}
-                  </div>
-                  {entry.body && <p className="text-sm text-gray-800 leading-relaxed">{entry.body}</p>}
-                  {isCallEntry && entry.recording_url && (
-                    <div className="mt-1">
-                      <audio controls preload="none" className="w-full h-9 rounded-lg" style={{ minWidth: "240px" }}>
-                        <source src={entry.recording_url} type="audio/mpeg" />
-                        Your browser does not support the audio element.
-                      </audio>
-                      <a href={entry.recording_url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 mt-1 text-xs text-sky-600 hover:underline cursor-pointer">
-                        <i className="ri-download-line"></i>Download recording
-                      </a>
+                      <i className={isExpanded ? "ri-arrow-up-s-line text-sm opacity-60" : "ri-arrow-down-s-line text-sm opacity-60"}></i>
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t border-current/10 bg-white">
+                      {contentTemplate ? (
+                        <div>
+                          <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                            <i className="ri-mail-line text-gray-400 text-sm flex-shrink-0"></i>
+                            <div className="min-w-0">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Subject: </span>
+                              <span className="text-xs font-semibold text-gray-700">{contentTemplate.subject}</span>
+                            </div>
+                            <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+                              <span className="text-[10px] text-gray-400">To: {entry.to}</span>
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <div
+                              className="rounded-lg overflow-hidden border border-gray-100"
+                              style={{ maxHeight: 320, overflowY: "auto" }}
+                              dangerouslySetInnerHTML={{
+                                __html: contentTemplate.bodyHtml(fName, confirmationId, email),
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="px-4 py-4 flex items-center gap-3">
+                          <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg flex-shrink-0">
+                            <i className="ri-mail-line text-gray-400 text-sm"></i>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-gray-700">{cfg.label}</p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              Sent to <span className="font-mono">{entry.to}</span> on {new Date(entry.sentAt).toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1 italic">Full email content preview not available for this type.</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
-                  <div className={`flex items-center gap-2 text-xs text-gray-400 ${right ? "flex-row-reverse" : ""}`}>
-                    <span>{fmtTime(entry.created_at)}</span>
-                    {entry.sent_by && <span>· {entry.sent_by}</span>}
-                    {entry.duration_seconds != null && entry.duration_seconds > 0 && (
-                      <span className="flex items-center gap-0.5">
-                        <i className="ri-time-line" style={{ fontSize: "10px" }}></i>
-                        {fmtDuration(entry.duration_seconds)}
-                      </span>
-                    )}
-                    {entry.phone_to && entry.type !== "email" && (
-                      <span className="font-mono text-gray-300">{entry.phone_to}</span>
-                    )}
-                  </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-14 text-center">
+            <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full mb-2">
+              <i className="ri-mail-line text-gray-300 text-lg"></i>
+            </div>
+            <p className="text-sm font-bold text-gray-500">No emails logged yet</p>
+            <p className="text-xs text-gray-400 mt-1">Email activity will appear here once emails are sent for this order</p>
+          </div>
         )}
-        <div ref={bottomRef} />
       </div>
+
     </div>
   );
 }

@@ -18,6 +18,7 @@ import CTASection from "./components/CTASection";
 import ContactSection from "./components/ContactSection";
 import TopStatesSection from "./components/TopStatesSection";
 import MediaGallery from "./components/MediaGallery";
+import VerificationTrustCard from "../../components/feature/VerificationTrustCard";
 import { Link } from "react-router-dom";
 
 const ORGANIZATION_SCHEMA = {
@@ -148,6 +149,7 @@ export default function Home() {
       <ESALetterSection />
       <PricingSection />
       <WhyChooseSection />
+      <VerificationTrustCard variant="section" />
       <TopStatesSection />
       <div className="hidden md:block"><DoctorsSection /></div>
       <TestimonialsSection />

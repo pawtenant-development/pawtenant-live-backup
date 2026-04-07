@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 
+const EXIT_INTENT_KEY = "exit_intent_shown";
+
 interface ExitIntentOverlayProps {
   progressPercent: number;
   currentStep: number;
@@ -62,7 +64,8 @@ export default function ExitIntentOverlay({
 }: ExitIntentOverlayProps) {
   const BENEFITS = letterType === "psd" ? PSD_BENEFITS : ESA_BENEFITS;
   const [visible, setVisible] = useState(false);
-  const [hasShown, setHasShown] = useState(() => sessionStorage.getItem("exit_intent_shown") === "true");
+  // Track if already shown this tab-switch session — resets when overlay is closed
+  const hasShownRef = useRef(false);
   const [leaving, setLeaving] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
 
@@ -70,28 +73,55 @@ export default function ExitIntentOverlay({
   const { mins, secs, expired } = useCountdown(STEP3_DISCOUNT_MINS, visible && isStep3);
 
   const show = useCallback(() => {
-    if (hasShown) return;
-    sessionStorage.setItem("exit_intent_shown", "true");
+    // Only show once per tab-switch event — reset after dismiss
+    if (hasShownRef.current) return;
+    const sessionShown = sessionStorage.getItem(EXIT_INTENT_KEY);
+    // Allow re-triggering on subsequent tab switches within same session
+    // but only once per tab-switch event (not continuously)
+    hasShownRef.current = true;
+    sessionStorage.setItem(EXIT_INTENT_KEY, "true");
     setVisible(true);
-    setHasShown(true);
-  }, [hasShown]);
+  }, []);
 
   useEffect(() => {
+    let cooldown: ReturnType<typeof setTimeout> | null = null;
+
     const handleVisibilityChange = () => {
+      if (document.hidden) return;
+      // User returned from another tab — reset hasShownRef after cooldown
+      // This means the popup can show again if they switch tabs multiple times
+      // but only once per tab-switch (not on every render)
+      if (cooldown) clearTimeout(cooldown);
+      cooldown = setTimeout(() => {
+        hasShownRef.current = false;
+      }, 500);
+    };
+
+    const handleHidden = () => {
       if (document.hidden) show();
     };
+
+    document.addEventListener("visibilitychange", handleHidden);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleHidden);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (cooldown) clearTimeout(cooldown);
+    };
   }, [show]);
 
   const handleStay = () => {
     setVisible(false);
+    hasShownRef.current = false; // Reset so it can show again on next tab switch
     onStay();
   };
 
   const handleLeave = () => {
     setLeaving(true);
-    setTimeout(() => setVisible(false), 300);
+    setTimeout(() => {
+      setVisible(false);
+      hasShownRef.current = false; // Reset so it can show again on next tab switch
+    }, 300);
   };
 
   const handleCopyCode = async () => {

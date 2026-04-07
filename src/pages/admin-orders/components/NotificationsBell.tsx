@@ -4,7 +4,7 @@ import { supabase } from "../../../lib/supabaseClient";
 
 interface Notification {
   id: string;
-  type: "new_order" | "payment_failed" | "inbound_sms" | "inbound_call" | "dispute" | "refund" | "system";
+  type: "new_order" | "payment_failed" | "inbound_sms" | "inbound_call" | "dispute" | "refund" | "system" | "provider_rejected";
   title: string;
   body: string;
   orderId?: string;
@@ -33,13 +33,14 @@ function fmtTime(ts: string): string {
 }
 
 const TYPE_CONFIG: Record<Notification["type"], { icon: string; color: string; bg: string; dot: string }> = {
-  new_order:      { icon: "ri-file-add-line",        color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7]",   dot: "bg-[#1a5c4f]" },
-  payment_failed: { icon: "ri-bank-card-line",        color: "text-red-600",     bg: "bg-red-50",      dot: "bg-red-500" },
-  inbound_sms:    { icon: "ri-message-3-fill",        color: "text-violet-600",  bg: "bg-violet-50",   dot: "bg-violet-500" },
-  inbound_call:   { icon: "ri-phone-fill",             color: "text-sky-600",     bg: "bg-sky-50",      dot: "bg-sky-500" },
-  dispute:        { icon: "ri-error-warning-line",    color: "text-red-700",     bg: "bg-red-50",      dot: "bg-red-600" },
-  refund:         { icon: "ri-refund-line",           color: "text-orange-600",  bg: "bg-orange-50",   dot: "bg-orange-500" },
-  system:         { icon: "ri-settings-3-line",       color: "text-gray-500",    bg: "bg-gray-50",     dot: "bg-gray-400" },
+  new_order:         { icon: "ri-file-add-line",        color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7]",   dot: "bg-[#1a5c4f]" },
+  payment_failed:    { icon: "ri-bank-card-line",        color: "text-red-600",     bg: "bg-red-50",      dot: "bg-red-500" },
+  inbound_sms:       { icon: "ri-message-3-fill",        color: "text-violet-600",  bg: "bg-violet-50",   dot: "bg-violet-500" },
+  inbound_call:      { icon: "ri-phone-fill",             color: "text-sky-600",     bg: "bg-sky-50",      dot: "bg-sky-500" },
+  dispute:           { icon: "ri-error-warning-line",    color: "text-red-700",     bg: "bg-red-50",      dot: "bg-red-600" },
+  refund:            { icon: "ri-refund-line",           color: "text-orange-600",  bg: "bg-orange-50",   dot: "bg-orange-500" },
+  system:            { icon: "ri-settings-3-line",       color: "text-gray-500",    bg: "bg-gray-50",     dot: "bg-gray-400" },
+  provider_rejected: { icon: "ri-close-circle-line",    color: "text-red-600",     bg: "bg-red-50",      dot: "bg-red-500" },
 };
 
 const STORAGE_KEY = "pw_admin_notifications";
@@ -193,6 +194,34 @@ export default function NotificationsBell({ onViewOrder }: NotificationsBellProp
           confirmationId: o.confirmation_id,
           customerName: name,
           createdAt: o.dispute_created_at ?? new Date().toISOString(),
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [addNotification]);
+
+  // ── Real-time: provider rejections ────────────────────────────────────
+  useEffect(() => {
+    const channel = supabase
+      .channel("notif-provider-rejected")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "doctor_notifications",
+        filter: "type=eq.provider_rejected_admin",
+      }, (payload) => {
+        const n = payload.new as {
+          id: string; title: string; message: string; confirmation_id?: string;
+          order_id?: string; created_at: string;
+        };
+        addNotification({
+          id: `provider-rejected-${n.id}`,
+          type: "provider_rejected",
+          title: n.title,
+          body: n.message,
+          orderId: n.order_id ?? undefined,
+          confirmationId: n.confirmation_id ?? undefined,
+          createdAt: n.created_at,
         });
       })
       .subscribe();

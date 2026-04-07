@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
 
-const SAMPLE_IMG = "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/d5c2b190-6abf-4941-a56f-b87176d58c71_Form.jpeg?v=03c9d5d5b72b8f96e5834a9845014399";
+const SAMPLE_IMG = "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8496bb5f-3256-4901-86f7-84bbb2ec3596_PawTenant-ESA-document-with-callouts.png?v=56e54caa565cc010fb19c7679d66a2b4";
 
 const badges = [
   { icon: "ri-shield-check-fill", label: "Legally Compliant", color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100" },
@@ -12,6 +13,7 @@ const badges = [
 export default function ESALetterSection() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const { withAttribution } = useAttributionParams();
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -89,7 +91,7 @@ export default function ESALetterSection() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === "Enter" && setLightboxOpen(true)}
-              aria-label="View full sample ESA letter"
+              aria-label="View annotated sample ESA letter with key sections highlighted"
             >
               {/* Sample badge */}
               <div className="absolute top-4 right-4 z-20 bg-white/95 backdrop-blur-sm border border-orange-200 text-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
@@ -108,7 +110,7 @@ export default function ESALetterSection() {
 
               <img
                 src={SAMPLE_IMG}
-                alt="PawTenant ESA Letter Sample"
+                alt="PawTenant ESA Letter sample document with callouts highlighting licensed provider signature, NPI number, and patient details"
                 className="w-full h-auto object-top block"
               />
             </div>
@@ -150,7 +152,7 @@ export default function ESALetterSection() {
             </div>
             <div className="text-center mt-8">
               <a
-                href="/assessment"
+                href={withAttribution("/assessment")}
                 className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
               >
                 <i className="ri-file-text-line"></i>
@@ -185,7 +187,7 @@ export default function ESALetterSection() {
             </div>
             <img
               src={SAMPLE_IMG}
-              alt="PawTenant ESA Letter Sample — Full View"
+              alt="PawTenant ESA Letter sample document — full view with annotated callouts showing key sections"
               className="w-full h-auto block rounded-2xl"
             />
           </div>

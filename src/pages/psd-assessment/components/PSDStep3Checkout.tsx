@@ -9,6 +9,7 @@ import type { PSDStep1Data } from "./PSDStep1";
 import KlarnaPaymentTab from "../../assessment/components/KlarnaPaymentTab";
 import QRPaymentTab from "../../assessment/components/QRPaymentTab";
 import StripePaymentForm from "../../assessment/components/StripePaymentForm";
+import StripeCardForm from "../../assessment/components/StripeCardForm";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -53,25 +54,6 @@ function getSubscriptionLabel(petCount: number): string {
   if (count === 2) return "2 Dogs — Annual";
   return "1 Dog — Annual";
 }
-
-const ADDON_OPTIONS = [
-  {
-    id: "physical_mail",
-    label: "Physical Letter via Certified Mail",
-    subLabel: "Original signed copy mailed directly to you",
-    price: 50,
-    icon: "ri-mail-send-line",
-    popular: false,
-  },
-  {
-    id: "landlord_letter",
-    label: "Verification Letter Addressing Landlord",
-    subLabel: "Separate letter directly addressed to your specific landlord",
-    price: 30,
-    icon: "ri-building-line",
-    popular: true,
-  },
-];
 
 const PLANS: {
   key: PSDPlan;
@@ -258,6 +240,8 @@ function SecurePaymentCard({
   const [klarnaAgreedError, setKlarnaAgreedError] = useState(false);
   const [qrAgreed, setQrAgreed] = useState(false);
   const [qrAgreedError, setQrAgreedError] = useState(false);
+  // Track applied coupon code to pass to Klarna/QR tabs and subscription backend
+  const [appliedCouponCode, setAppliedCouponCode] = useState("");
 
   useEffect(() => {
     if (!isSubscription && clientSecret && !elementsOptions) {
@@ -271,11 +255,30 @@ function SecurePaymentCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlan]);
 
+  // Wrap onDiscountChange to also capture the coupon code
+  const handleDiscountChange = (discount: number, code: string) => {
+    setAppliedCouponCode(discount > 0 ? code : "");
+    onDiscountChange(discount, code);
+  };
+
   const couponSlot = useMemo(() => (
-    <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={onDiscountChange} />
-  ), [priceBeforeDiscount, onDiscountChange]);
+    <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={handleDiscountChange} />
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [priceBeforeDiscount]);
 
   const deliverySpeed = selectedPlan === "standard" ? "2-3days" : "24h";
+
+  // Subscription params for StripeCardForm lazy flow
+  const subscriptionParams = {
+    petCount,
+    deliverySpeed,
+    email,
+    firstName,
+    lastName,
+    state,
+    confirmationId,
+    letterType: "psd" as const,
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -355,30 +358,46 @@ function SecurePaymentCard({
               </div>
             </div>
           )}
-          {!elementsOptions ? (
-            <div className="mx-4 sm:mx-5 my-5 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-col items-center justify-center py-8 px-4 text-center gap-3">
-              <div className="w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-2xl">
-                <i className="ri-loader-4-line animate-spin text-[#1a5c4f] text-xl"></i>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-gray-600">Loading Secure Checkout</p>
-                <p className="text-xs text-gray-400 mt-1 leading-relaxed">Setting up your encrypted payment form...</p>
-              </div>
-            </div>
-          ) : (
-            <Elements stripe={stripePromise} options={elementsOptions}>
-              <StripePaymentForm
-                clientSecret={isSubscription ? undefined : (clientSecret ?? undefined)}
-                amount={totalPrice}
-                onSuccess={onPaymentSuccess}
-                onError={() => {}}
-                agreed={cardAgreed}
-                setAgreed={setCardAgreed}
-                agreedError={cardAgreedError}
-                setAgreedError={setCardAgreedError}
-                couponSlot={couponSlot}
+
+          {/* ── SUBSCRIPTION: use StripeCardForm with lazy backend call ── */}
+          {isSubscription ? (
+            <Elements stripe={stripePromise} options={{ appearance: STRIPE_APPEARANCE }}>
+              <StripeCardForm
+                totalPrice={totalPrice}
+                isSubscription={true}
+                subscriptionParams={subscriptionParams}
+                priceBeforeDiscount={priceBeforeDiscount}
+                onDiscountChange={handleDiscountChange}
+                onPaymentSuccess={onPaymentSuccess}
               />
             </Elements>
+          ) : (
+            /* ── ONE-TIME: wait for clientSecret, then use StripePaymentForm ── */
+            !elementsOptions ? (
+              <div className="mx-4 sm:mx-5 my-5 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-col items-center justify-center py-8 px-4 text-center gap-3">
+                <div className="w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-2xl">
+                  <i className="ri-loader-4-line animate-spin text-[#1a5c4f] text-xl"></i>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-600">Loading Secure Checkout</p>
+                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">Setting up your encrypted payment form...</p>
+                </div>
+              </div>
+            ) : (
+              <Elements stripe={stripePromise} options={elementsOptions}>
+                <StripePaymentForm
+                  clientSecret={clientSecret ?? undefined}
+                  amount={totalPrice}
+                  onSuccess={onPaymentSuccess}
+                  onError={() => {}}
+                  agreed={cardAgreed}
+                  setAgreed={setCardAgreed}
+                  agreedError={cardAgreedError}
+                  setAgreedError={setCardAgreedError}
+                  couponSlot={couponSlot}
+                />
+              </Elements>
+            )
           )}
         </>
       )}
@@ -390,6 +409,7 @@ function SecurePaymentCard({
           <KlarnaPaymentTab
             amount={totalPrice}
             plan="one-time"
+            letterType="psd"
             petCount={petCount}
             deliverySpeed={deliverySpeed}
             email={email}
@@ -402,6 +422,7 @@ function SecurePaymentCard({
             setAgreedError={setKlarnaAgreedError}
             confirmationId={confirmationId}
             onSuccess={() => onPaymentSuccess("klarna-success")}
+            couponCode={appliedCouponCode}
           />
         </>
       )}
@@ -413,6 +434,7 @@ function SecurePaymentCard({
           <QRPaymentTab
             amount={totalPrice}
             plan={isSubscription ? "subscription" : "one-time"}
+            letterType="psd"
             petCount={petCount}
             deliverySpeed={deliverySpeed}
             email={email}
@@ -425,6 +447,7 @@ function SecurePaymentCard({
             setAgreedError={setQrAgreedError}
             confirmationId={confirmationId}
             onSuccess={() => onPaymentSuccess("qr-success")}
+            couponCode={appliedCouponCode}
           />
         </>
       )}
@@ -496,24 +519,16 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
   const [resolvedBasePriceCents, setResolvedBasePriceCents] = useState<number | null>(null);
   const [initError, setInitError] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [couponDiscount, setCouponDiscount] = useState(0);
 
   const subscriptionIdRef = useRef<string | null>(null);
   const paymentCompletedRef = useRef(false);
 
-  const toggleAddon = (id: string) => {
-    setSelectedAddons((prev) => prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]);
-  };
-
-  const addonTotal = ADDON_OPTIONS.filter((a) => selectedAddons.includes(a.id))
-    .reduce((sum, a) => sum + a.price, 0);
-
   const planBasePrice = getPSDPlanPrice(selectedPlan, step2.pets.length);
   const displayBasePriceDollars = resolvedBasePriceCents != null
     ? Math.round(resolvedBasePriceCents / 100)
     : planBasePrice;
-  const priceBeforeDiscount = displayBasePriceDollars + addonTotal;
+  const priceBeforeDiscount = displayBasePriceDollars;
   const displayPrice = Math.max(0, priceBeforeDiscount - couponDiscount);
 
   const deliveryLabel = selectedPlan === "standard" ? "Standard — 2–3 day delivery" : selectedPlan === "subscription" ? "Annual Subscription" : "Priority — 24-hour delivery";
@@ -561,8 +576,6 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
             letterType: "psd",
             email: step2.email,
             customerName: `${step2.firstName} ${step2.lastName}`,
-            additionalDocCount: 0,
-            addonServices: selectedAddons,
             cancelSubscriptionId: prevSubscriptionId,
             metadata: {
               confirmationId,
@@ -597,7 +610,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
     const timer = setTimeout(() => { init(); }, 350);
     return () => { cancelled = true; clearTimeout(timer); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPlan, confirmationId, JSON.stringify(selectedAddons)]);
+  }, [selectedPlan, confirmationId]);
 
   useEffect(() => {
     return () => {
@@ -627,7 +640,38 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
     paymentCompletedRef.current = true;
     const plan = selectedPlan === "subscription" ? "subscription" : "one-time";
     const deliverySpeed = selectedPlan === "standard" ? "2-3days" : "24h";
+    const paidAt = new Date().toISOString();
     triggerSheetsSync();
+
+    // ── Read full attribution from sessionStorage at payment time ──────────
+    const gclidVal       = sessionStorage.getItem("gclid") ?? null;
+    // fbclid: prefer sessionStorage (current-session), fall back to localStorage (durable)
+    const fbclidVal      = sessionStorage.getItem("fbclid") ?? localStorage.getItem("fbclid") ?? null;
+    const utmSourceVal   = sessionStorage.getItem("utm_source") ?? null;
+    const utmMediumVal   = sessionStorage.getItem("utm_medium") ?? null;
+    const utmCampaignVal = sessionStorage.getItem("utm_campaign") ?? null;
+    const utmTermVal     = sessionStorage.getItem("utm_term") ?? null;
+    const utmContentVal  = sessionStorage.getItem("utm_content") ?? null;
+    const landingUrlVal  = sessionStorage.getItem("landing_url") ?? null;
+    const referrerVal    = sessionStorage.getItem("referrer") ?? null;
+
+    // fbclid_ts: millisecond timestamp when fbclid was first captured (for fbc generation in CAPI)
+    const fbclidTsVal = localStorage.getItem("fbclid_ts") ?? null;
+
+    const attributionJsonVal = {
+      gclid:          gclidVal,
+      fbclid:         fbclidVal,
+      fbclid_ts:      fbclidTsVal,
+      utm_source:     utmSourceVal,
+      utm_medium:     utmMediumVal,
+      utm_campaign:   utmCampaignVal,
+      utm_term:       utmTermVal,
+      utm_content:    utmContentVal,
+      referrer:       referrerVal,
+      landing_url:    landingUrlVal,
+      captured_at:    paidAt,
+      captured_stage: "payment_success",
+    };
 
     try {
       await fetch(`${SUPABASE_URL}/functions/v1/get-resume-order`, {
@@ -644,10 +688,21 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
           deliverySpeed,
           price: displayPrice,
           paymentIntentId,
+          paidAt,
           planType: plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
           letterType: "psd",
           status: "processing",
           assessmentAnswers: { ...step1, pets: step2.pets, dob: step2.dob, letterType: "psd" },
+          // ── Full attribution at payment time ──
+          gclid:        gclidVal,
+          fbclid:       fbclidVal,
+          utm_source:    utmSourceVal,
+          utm_medium:    utmMediumVal,
+          utm_campaign:  utmCampaignVal,
+          utm_term:      utmTermVal,
+          utm_content:   utmContentVal,
+          landing_url:   landingUrlVal,
+          attribution_json: attributionJsonVal,
         }),
       });
     } catch { /* silent */ }
@@ -669,7 +724,18 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
         plan_type: plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
         letter_type: "psd",
         status: "processing",
+        paid_at: paidAt,
         assessment_answers: { ...step1, pets: step2.pets, dob: step2.dob, letterType: "psd" },
+        // ── Attribution columns — written at payment time ──
+        gclid:           gclidVal,
+        fbclid:          fbclidVal,
+        utm_source:      utmSourceVal,
+        utm_medium:      utmMediumVal,
+        utm_campaign:    utmCampaignVal,
+        utm_term:        utmTermVal,
+        utm_content:     utmContentVal,
+        landing_url:     landingUrlVal,
+        attribution_json: attributionJsonVal,
       }, { onConflict: "confirmation_id", ignoreDuplicates: false });
     } catch { /* silent */ }
 
@@ -744,23 +810,6 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
                     )}
                   </div>
                 </div>
-
-                {/* Add-ons in summary */}
-                {selectedAddons.length > 0 && (
-                  <div className="space-y-1.5">
-                    {ADDON_OPTIONS.filter((a) => selectedAddons.includes(a.id)).map((addon) => (
-                      <div key={addon.id} className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <div className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
-                            <i className={`${addon.icon} text-amber-500 text-xs`}></i>
-                          </div>
-                          <span className="text-gray-600 truncate">{addon.label}</span>
-                        </div>
-                        <span className="font-bold text-gray-700 flex-shrink-0 ml-2">+${addon.price}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 {/* Coupon discount */}
                 {couponDiscount > 0 && (
@@ -852,57 +901,13 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
                   </div>
                 </div>
 
-                {/* Add-ons */}
-                <div>
-                  <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                    <i className="ri-star-line text-amber-500"></i>Optional Add-ons
-                  </p>
-                  <div className="space-y-2">
-                    {ADDON_OPTIONS.map((addon) => {
-                      const isAddonSelected = selectedAddons.includes(addon.id);
-                      return (
-                        <button
-                          key={addon.id}
-                          type="button"
-                          onClick={() => toggleAddon(addon.id)}
-                          className={`w-full text-left flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-all cursor-pointer ${
-                            isAddonSelected ? "border-amber-400 bg-amber-50" : "border-gray-200 bg-white hover:border-amber-200 hover:bg-amber-50/40"
-                          }`}
-                        >
-                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${
-                            isAddonSelected ? "border-amber-600 bg-amber-600" : "border-gray-300 bg-white"
-                          }`}>
-                            {isAddonSelected && <i className="ri-check-line text-white" style={{ fontSize: "9px" }}></i>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <div className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
-                                <i className={`${addon.icon} text-amber-600 text-xs`}></i>
-                              </div>
-                              <p className={`text-xs font-bold leading-snug ${isAddonSelected ? "text-amber-900" : "text-gray-800"}`}>
-                                {addon.label}
-                              </p>
-                              {addon.popular && (
-                                <span className="text-[9px] font-extrabold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">Popular</span>
-                              )}
-                            </div>
-                            <p className="text-[10px] text-gray-500 mt-0.5 leading-snug">{addon.subLabel}</p>
-                          </div>
-                          <span className={`text-xs font-extrabold whitespace-nowrap flex-shrink-0 mt-0.5 ${isAddonSelected ? "text-amber-700" : "text-gray-600"}`}>
-                            +${addon.price}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
 
               {/* Total bar */}
               <div className="bg-gradient-to-r from-orange-400 to-orange-300 px-4 sm:px-5 py-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[10px] text-black/60 font-bold uppercase tracking-wider">Amount Due Today</p>
-                  <p className="text-[10px] text-black/50 mt-0.5 leading-snug">
+                  <p className="text-[10px] text-black/50 mt-0.5 leading-relaxed">
                     {selectedPlan === "subscription" ? "Annual renewal · cancel anytime" : "One-time · no recurring charges"}
                   </p>
                 </div>

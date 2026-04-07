@@ -8,9 +8,6 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
-const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
-const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER") ?? "";
 
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
 const SITE_URL = "https://www.pawtenant.com";
@@ -19,12 +16,11 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 const DISCOUNT_CODE = "20PAW";
 
-// Header colors
-const HEADER_BG = "#4a9e8a";       // light green header
+const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
 const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
-const ACCENT = "#1a5c4f";          // dark green for links/buttons/circles
+const ACCENT = "#1a5c4f";
 
 const MAX_SEQUENCE_AGE_DAYS = 3;
 
@@ -49,44 +45,71 @@ function unsubscribeFooter(orderId: string): string {
     </td></tr>`;
 }
 
-async function sendSMS(phone: string, message: string, orderId: string, confirmationId: string, supabase: ReturnType<typeof createClient>) {
-  let p = phone.replace(/\D/g, "");
-  if (p.length === 10) p = "1" + p;
-  if (!p.startsWith("+")) p = "+" + p;
-
-  const creds = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-  const body = new URLSearchParams({ To: p, From: TWILIO_FROM_NUMBER, Body: message });
-
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`, {
-    method: "POST",
-    headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-  const data = await res.json() as { sid?: string; error_message?: string; status?: string };
-
-  await supabase.from("communications").insert({
-    order_id: orderId,
-    confirmation_id: confirmationId,
-    type: "sms_outbound",
-    direction: "outbound",
-    body: message,
-    phone_from: TWILIO_FROM_NUMBER,
-    phone_to: p,
-    status: res.ok ? (data.status ?? "sent") : "failed",
-    twilio_sid: data.sid ?? null,
-    sent_by: "Auto-Sequence",
-  });
-
-  return res.ok;
-}
-
-async function sendEmail(to: string, subject: string, html: string) {
+async function sendEmail(to: string, subject: string, html: string): Promise<{ sent: boolean; resend_id?: string }> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from: FROM_EMAIL, to: [to], subject, html, reply_to: SUPPORT_EMAIL }),
   });
-  return res.ok;
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("[lead-followup-sequence] Resend error:", res.status, errText);
+    return { sent: false };
+  }
+  const data = await res.json() as { id?: string };
+  return { sent: true, resend_id: data.id };
+}
+
+// ── Write audit log entry ─────────────────────────────────────────────────────
+async function writeAuditLog(
+  supabase: ReturnType<typeof createClient>,
+  opts: {
+    action: string;
+    description: string;
+    object_id: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  const { error } = await supabase.from("audit_logs").insert({
+    actor_name: "Auto-Sequence",
+    actor_role: "system",
+    object_type: "sequence",
+    object_id: opts.object_id,
+    action: opts.action,
+    description: opts.description,
+    metadata: opts.metadata ?? null,
+  });
+  if (error) console.error("[lead-followup-sequence] audit_log insert error:", error.message);
+}
+
+// ── Write to communications table so it shows in order comms tab ─────────────
+async function writeCommLog(
+  supabase: ReturnType<typeof createClient>,
+  opts: {
+    order_id: string;
+    confirmation_id: string;
+    subject: string;
+    step: string;
+    email: string;
+    resend_id?: string;
+  }
+) {
+  const { error } = await supabase.from("communications").insert({
+    order_id: opts.order_id,
+    confirmation_id: opts.confirmation_id,
+    type: "email",
+    direction: "outbound",
+    body: `[Auto-Sequence] ${opts.subject}`,
+    phone_to: opts.email,
+    status: "sent",
+    sent_by: `Auto-Sequence (${opts.step})`,
+    twilio_sid: opts.resend_id ?? null,
+  });
+  if (error) {
+    console.error("[lead-followup-sequence] communications insert error:", error.message, "order_id:", opts.order_id);
+  } else {
+    console.log("[lead-followup-sequence] comm log written for order:", opts.order_id, "step:", opts.step);
+  }
 }
 
 function baseLayout(badge: string, heading: string, subheading: string, bodyHtml: string, orderId: string): string {
@@ -239,6 +262,13 @@ Deno.serve(async (req: Request) => {
 
       if (updateErr) return html(buildUnsubscribePage(false), 500);
 
+      await writeAuditLog(supabase, {
+        action: "seq_unsubscribed",
+        description: `Lead unsubscribed from follow-up sequence (${order.email})`,
+        object_id: orderId,
+        metadata: { email: order.email },
+      });
+
       return html(buildUnsubscribePage(true, order.email as string));
     }
 
@@ -292,48 +322,72 @@ Deno.serve(async (req: Request) => {
       const resumeLink = `${SITE_URL}/${assessmentPath}?resume=${encodeURIComponent(lead.confirmation_id as string)}`;
       const firstName = (lead.first_name as string) || "";
       const email = lead.email as string;
-      const phone = (lead.phone as string) || "";
       const orderId = lead.id as string;
       const confirmationId = lead.confirmation_id as string;
 
       if (ageMin >= 30 && !lead.seq_30min_sent_at) {
         const subject = `Complete Your ${letterType === "psd" ? "PSD" : "ESA"} Letter — Your answers are saved`;
-        await sendEmail(email, subject, build30MinEmail(firstName, resumeLink, letterType, orderId));
-        if (phone && TWILIO_ACCOUNT_SID) {
-          const smsMsg = `Hi ${firstName || "there"}! You started your ${letterType === "psd" ? "PSD" : "ESA"} letter assessment with PawTenant but didn't finish. Your answers are saved — complete checkout here: ${resumeLink}`;
-          await sendSMS(phone, smsMsg, orderId, confirmationId, supabase);
-        }
+        const { sent, resend_id } = await sendEmail(email, subject, build30MinEmail(firstName, resumeLink, letterType, orderId));
         await supabase.from("orders").update({ seq_30min_sent_at: now.toISOString() }).eq("id", orderId);
+        if (sent) {
+          await writeCommLog(supabase, { order_id: orderId, confirmation_id: confirmationId, subject, step: "30min", email, resend_id });
+        }
+        await writeAuditLog(supabase, {
+          action: "seq_30min_sent",
+          description: `30-min follow-up sent to ${email} (${confirmationId})`,
+          object_id: confirmationId,
+          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: sent, step: "30min" },
+        });
         results.step1_30min++;
         continue;
       }
 
       if (ageHours >= 24 && !lead.seq_24h_sent_at) {
         const subject = `Still thinking? Get your ${letterType === "psd" ? "PSD" : "ESA"} letter today and avoid housing issues.`;
-        await sendEmail(email, subject, build24hEmail(firstName, resumeLink, letterType, orderId));
-        if (phone && TWILIO_ACCOUNT_SID) {
-          const smsMsg = `Hi ${firstName || "there"}, still thinking about your ${letterType === "psd" ? "PSD" : "ESA"} letter? Thousands of pet owners use PawTenant to protect their housing rights. Complete your application: ${resumeLink}`;
-          await sendSMS(phone, smsMsg, orderId, confirmationId, supabase);
-        }
+        const { sent, resend_id } = await sendEmail(email, subject, build24hEmail(firstName, resumeLink, letterType, orderId));
         await supabase.from("orders").update({ seq_24h_sent_at: now.toISOString() }).eq("id", orderId);
+        if (sent) {
+          await writeCommLog(supabase, { order_id: orderId, confirmation_id: confirmationId, subject, step: "24h", email, resend_id });
+        }
+        await writeAuditLog(supabase, {
+          action: "seq_24h_sent",
+          description: `24-hour follow-up sent to ${email} (${confirmationId})`,
+          object_id: confirmationId,
+          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: sent, step: "24h" },
+        });
         results.step2_24h++;
         continue;
       }
 
       if (ageDays >= 3 && !lead.seq_3day_sent_at) {
-        const resumeWithPromo = `${resumeLink}&promo=${encodeURIComponent(DISCOUNT_CODE)}`;
         const subject = `Here's $20 off your ${letterType === "psd" ? "PSD" : "ESA"} letter (limited time) — Discount code: ${DISCOUNT_CODE}`;
-        await sendEmail(email, subject, build3DayEmail(firstName, resumeLink, letterType, orderId));
-        if (phone && TWILIO_ACCOUNT_SID) {
-          const smsMsg = `Hi ${firstName || "there"}! Here's $20 off your ${letterType === "psd" ? "PSD" : "ESA"} letter — limited time. Use code ${DISCOUNT_CODE} at checkout: ${resumeWithPromo}`;
-          await sendSMS(phone, smsMsg, orderId, confirmationId, supabase);
-        }
+        const { sent, resend_id } = await sendEmail(email, subject, build3DayEmail(firstName, resumeLink, letterType, orderId));
         await supabase.from("orders").update({ seq_3day_sent_at: now.toISOString() }).eq("id", orderId);
+        if (sent) {
+          await writeCommLog(supabase, { order_id: orderId, confirmation_id: confirmationId, subject, step: "3day", email, resend_id });
+        }
+        await writeAuditLog(supabase, {
+          action: "seq_3day_sent",
+          description: `3-day follow-up + $20 discount sent to ${email} (${confirmationId})`,
+          object_id: confirmationId,
+          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: sent, step: "3day", discount_code: DISCOUNT_CODE },
+        });
         results.step3_3day++;
         continue;
       }
 
       results.skipped++;
+    }
+
+    // Write a summary audit log for the run
+    const totalFired = results.step1_30min + results.step2_24h + results.step3_3day;
+    if (totalFired > 0) {
+      await writeAuditLog(supabase, {
+        action: "seq_run_complete",
+        description: `Sequence run: ${totalFired} email(s) sent — 30min: ${results.step1_30min}, 24h: ${results.step2_24h}, 3day: ${results.step3_3day}`,
+        object_id: "system",
+        metadata: { ...results, total_leads: leads?.length ?? 0 },
+      });
     }
 
     console.log("[lead-followup-sequence] Results:", results);

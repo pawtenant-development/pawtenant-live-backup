@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 const plans = [
   {
@@ -53,6 +54,8 @@ const plans = [
 ];
 
 export default function PricingSection() {
+  const { withAttribution } = useAttributionParams();
+
   return (
     <section id="pricing" className="py-20 bg-orange-50">
       <div className="max-w-7xl mx-auto px-6">
@@ -104,7 +107,7 @@ export default function PricingSection() {
               </ul>
 
               <Link
-                to="/assessment"
+                to={withAttribution("/assessment")}
                 className={`whitespace-nowrap w-full py-3 text-sm font-bold rounded-md transition-colors cursor-pointer text-center block ${plan.btnColor}`}
               >
                 Get Started — {plan.price}
@@ -113,12 +116,20 @@ export default function PricingSection() {
           ))}
         </div>
 
-        {/* Guarantee */}
-        <div className="text-center mt-10">
+        {/* Trust badges row */}
+        <div className="flex flex-wrap items-center justify-center gap-4 mt-10">
           <div className="inline-flex items-center gap-2 text-sm text-gray-600">
             <i className="ri-shield-check-line text-orange-500 text-lg"></i>
             <strong>100% Money-Back Guarantee</strong> — If you don&apos;t qualify, you pay nothing.
           </div>
+          <span className="hidden sm:block text-gray-300">|</span>
+          <a
+            href="/ESA-letter-verification"
+            className="whitespace-nowrap inline-flex items-center gap-2 px-4 py-2 bg-[#FFF7ED] border border-orange-200 text-[#92400e] text-sm font-bold rounded-full hover:bg-orange-100 transition-colors cursor-pointer"
+          >
+            <i className="ri-qr-code-line text-base"></i>
+            Landlord-Verifiable Letters — Unique QR &amp; Verification ID
+          </a>
         </div>
       </div>
     </section>

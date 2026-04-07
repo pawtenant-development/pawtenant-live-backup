@@ -600,16 +600,25 @@ export default function AssessmentThankYouPage() {
     }
   }, [stripeSessionId, paymentIntentParam, urlAmount, urlOrderId]);
 
+  // Use URL ?amount= as the authoritative price (actual Stripe charge amount)
+  // Fall back to session storage price if URL param is absent
+  const urlAmountParsed = urlAmount ? parseFloat(urlAmount) : null;
+
   const {
     firstName = "there",
     email = "",
     selectedProvider = "your assigned provider",
-    pricingPlan = "Standard ($90)",
     planType = "One-Time Purchase",
     deliverySpeed = "2-3days",
-    price = 90,
     confirmationId = `PT-${Date.now().toString(36).toUpperCase()}`,
   } = resolvedState;
+
+  // Authoritative price: URL param wins over session storage
+  const price = urlAmountParsed ?? resolvedState.price ?? 90;
+
+  // Rebuild pricingPlan label from actual price + delivery speed so it's always accurate
+  const speedLabel = deliverySpeed === "24hours" ? "Priority" : "Standard";
+  const pricingPlan = resolvedState.pricingPlan ?? `${speedLabel} ($${price})`;
 
   const deliveryLabel = deliverySpeed === "24hours" ? "Within 24 Hours" : "Within 2–3 Business Days";
   const deliveryShort = deliverySpeed === "24hours" ? "24 hours" : "2–3 business days";

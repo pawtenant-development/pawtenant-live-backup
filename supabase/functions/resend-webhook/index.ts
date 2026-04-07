@@ -1,169 +1,251 @@
+// supabase/functions/resend-webhook/index.ts
+// Handles inbound Resend email webhook events (email.delivered, email.bounced, etc.)
+// Signature verification via Svix (used by Resend internally)
+// Returns 200 OK for all non-critical outcomes — never 400 for unhandled event types
+
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function json(body: unknown, status = 200): Response {
+function ok(body: unknown = { received: true }): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+  });
+}
+
+function err(body: unknown, status = 500): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 }
 
+// ─── Svix HMAC-SHA256 signature verification ────────────────────────────────
+// Resend uses Svix for webhook signing. The signed content is:
+//   `${svix-id}.${svix-timestamp}.${rawBody}`
+// The secret is base64-encoded after stripping the "whsec_" prefix.
+async function verifyResendSignature(
+  rawBody: string,
+  headers: Headers,
+  secret: string,
+): Promise<boolean> {
+  const svixId        = headers.get("svix-id");
+  const svixTimestamp = headers.get("svix-timestamp");
+  const svixSignature = headers.get("svix-signature");
+
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    console.error("[resend-webhook] Missing Svix headers:", { svixId, svixTimestamp, svixSignature });
+    return false;
+  }
+
+  // Replay protection — reject if timestamp is older than 5 minutes
+  const ts = parseInt(svixTimestamp, 10);
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - ts) > 300) {
+    console.error(`[resend-webhook] Timestamp too old or too far in future: ${svixTimestamp} (now: ${nowSec})`);
+    return false;
+  }
+
+  // Strip "whsec_" prefix and decode base64 secret
+  const secretBase64 = secret.startsWith("whsec_") ? secret.slice(6) : secret;
+  let secretBytes: Uint8Array;
+  try {
+    secretBytes = Uint8Array.from(atob(secretBase64), (c) => c.charCodeAt(0));
+  } catch {
+    console.error("[resend-webhook] Failed to decode webhook secret — check RESEND_WEBHOOK_SECRET format");
+    return false;
+  }
+
+  const signedContent = `${svixId}.${svixTimestamp}.${rawBody}`;
+  const encoder = new TextEncoder();
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secretBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(signedContent));
+  const computedSig = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
+
+  // svix-signature header may contain multiple sigs: "v1,<sig1> v1,<sig2>"
+  const incomingSigs = svixSignature.split(" ").map((s) => s.replace(/^v1,/, ""));
+  const match = incomingSigs.some((sig) => sig === computedSig);
+
+  if (!match) {
+    console.error("[resend-webhook] Signature mismatch", {
+      computed: computedSig,
+      received: incomingSigs,
+      svixId,
+      svixTimestamp,
+    });
+  }
+
+  return match;
+}
+
+// ─── Event handlers ──────────────────────────────────────────────────────────
+
+async function handleEmailBounced(
+  supabase: ReturnType<typeof createClient>,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const emailId  = data.email_id  as string | undefined;
+  const toEmail  = (data.to as string[] | undefined)?.[0];
+  const bounceType = data.bounce?.type as string | undefined;
+
+  console.warn("[resend-webhook] email.bounced", { emailId, toEmail, bounceType });
+
+  // Log to audit_logs for visibility
+  try {
+    await supabase.from("audit_logs").insert({
+      action: "email_bounced",
+      object_type: "email",
+      object_id: emailId ?? toEmail ?? "unknown",
+      details: { email_id: emailId, to: toEmail, bounce_type: bounceType, raw: data },
+    });
+  } catch (e) {
+    console.warn("[resend-webhook] Could not write bounce audit log:", e);
+  }
+}
+
+async function handleEmailComplained(
+  supabase: ReturnType<typeof createClient>,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const emailId = data.email_id as string | undefined;
+  const toEmail = (data.to as string[] | undefined)?.[0];
+
+  console.warn("[resend-webhook] email.complained (spam report)", { emailId, toEmail });
+
+  try {
+    await supabase.from("audit_logs").insert({
+      action: "email_spam_complaint",
+      object_type: "email",
+      object_id: emailId ?? toEmail ?? "unknown",
+      details: { email_id: emailId, to: toEmail, raw: data },
+    });
+  } catch (e) {
+    console.warn("[resend-webhook] Could not write complaint audit log:", e);
+  }
+}
+
+function handleEmailDelivered(data: Record<string, unknown>): void {
+  const emailId = data.email_id as string | undefined;
+  const toEmail = (data.to as string[] | undefined)?.[0];
+  console.info("[resend-webhook] email.delivered ✓", { emailId, toEmail });
+}
+
+function handleEmailOpened(data: Record<string, unknown>): void {
+  const emailId = data.email_id as string | undefined;
+  console.info("[resend-webhook] email.opened", { emailId });
+}
+
+function handleEmailClicked(data: Record<string, unknown>): void {
+  const emailId = data.email_id as string | undefined;
+  const link    = data.click?.link as string | undefined;
+  console.info("[resend-webhook] email.clicked", { emailId, link });
+}
+
+// ─── Main handler ─────────────────────────────────────────────────────────────
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (req.method !== "POST") return err({ error: "Method not allowed" }, 405);
 
-  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-  if (!stripeKey) return json({ error: "Stripe not configured" }, 500);
+  // 1. Read raw body FIRST (before any parsing — required for signature verification)
+  let rawBody: string;
+  try {
+    rawBody = await req.text();
+  } catch {
+    console.error("[resend-webhook] Failed to read request body");
+    return err({ error: "Failed to read body" }, 500);
+  }
 
-  // @ts-ignore
-  const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
+  // 2. Log incoming payload immediately (before any validation)
+  console.info("[resend-webhook] Incoming payload:", rawBody.slice(0, 1000));
 
+  // 3. Parse JSON
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    console.error("[resend-webhook] Invalid JSON body:", rawBody.slice(0, 200));
+    // Return 200 even for bad JSON — Resend should not retry indefinitely
+    return ok({ received: false, reason: "invalid_json" });
+  }
+
+  const eventType = payload.type as string | undefined;
+  console.info("[resend-webhook] Event type:", eventType ?? "(none)");
+
+  // 4. Verify signature if secret is configured
+  const webhookSecret = Deno.env.get("RESEND_WEBHOOK_SECRET");
+  if (webhookSecret) {
+    const valid = await verifyResendSignature(rawBody, req.headers, webhookSecret);
+    if (!valid) {
+      console.error("[resend-webhook] ❌ Signature verification FAILED — rejecting event:", eventType);
+      // Return 400 ONLY for signature failures (security boundary — must reject forged requests)
+      return err({ error: "Invalid webhook signature" }, 400);
+    }
+    console.info("[resend-webhook] ✓ Signature verified");
+  } else {
+    console.warn("[resend-webhook] RESEND_WEBHOOK_SECRET not set — skipping signature verification (set it in Supabase secrets)");
+  }
+
+  // 5. Initialize Supabase client (only for events that need DB writes)
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  let body: Record<string, unknown>;
-  try { body = (await req.json()) as Record<string, unknown>; }
-  catch { return json({ error: "Invalid JSON body" }, 400); }
+  const data = (payload.data ?? {}) as Record<string, unknown>;
 
-  const confirmationId  = (body.confirmationId  as string) ?? "";
-  const paymentIntentId = (body.paymentIntentId as string) ?? "";
-
-  if (!confirmationId || !paymentIntentId) {
-    return json({ error: "confirmationId and paymentIntentId are required" }, 400);
-  }
-
+  // 6. Route to event handler — always return 200 for unhandled types
   try {
-    // 1. Fetch the PI from Stripe
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"],
-    });
+    switch (eventType) {
+      case "email.delivered":
+        handleEmailDelivered(data);
+        break;
 
-    if (pi.status !== "succeeded") {
-      return json({ ok: false, error: `Payment intent status is "${pi.status}" — only succeeded payments can be re-processed` }, 400);
+      case "email.bounced":
+        await handleEmailBounced(supabase, data);
+        break;
+
+      case "email.complained":
+        await handleEmailComplained(supabase, data);
+        break;
+
+      case "email.opened":
+        handleEmailOpened(data);
+        break;
+
+      case "email.clicked":
+        handleEmailClicked(data);
+        break;
+
+      case "email.delivery_delayed":
+        console.warn("[resend-webhook] email.delivery_delayed", { email_id: data.email_id });
+        break;
+
+      default:
+        // ✅ Fallback: always 200 for unhandled event types — never 400
+        console.info(`[resend-webhook] Unhandled event type "${eventType}" — acknowledged and ignored`);
+        return ok({ received: true, handled: false, event_type: eventType });
     }
-
-    // 2. Try to find the checkout session
-    let checkoutSessionId: string | null = null;
-
-    if (pi.metadata?.checkout_session_id) {
-      checkoutSessionId = pi.metadata.checkout_session_id;
-    } else {
-      try {
-        const sessions = await stripe.checkout.sessions.list({
-          payment_intent: paymentIntentId,
-          limit: 1,
-        });
-        if (sessions.data.length > 0) {
-          checkoutSessionId = sessions.data[0].id;
-        }
-      } catch (err) {
-        console.warn("[resend-webhook] Could not search checkout sessions:", err);
-      }
-    }
-
-    // 3. Get the order from DB
-    const { data: order } = await supabase
-      .from("orders")
-      .select("id, confirmation_id, status, payment_intent_id, checkout_session_id, email, first_name, last_name, price, payment_method, email_log, paid_at")
-      .eq("confirmation_id", confirmationId)
-      .maybeSingle();
-
-    if (!order) {
-      return json({ ok: false, error: `Order ${confirmationId} not found in database` }, 404);
-    }
-
-    // 4. Build the update payload
-    const updatePayload: Record<string, unknown> = {
-      payment_intent_id: paymentIntentId,
-      status: "processing",
-    };
-
-    if (checkoutSessionId && !order.checkout_session_id) {
-      updatePayload.checkout_session_id = checkoutSessionId;
-    }
-
-    if (!order.paid_at) {
-      updatePayload.paid_at = new Date(pi.created * 1000).toISOString();
-    }
-
-    if (!order.payment_method) {
-      const pmType = pi.payment_method_types?.[0] ?? "card";
-      updatePayload.payment_method = pmType;
-    }
-
-    if (!order.price && pi.amount_received) {
-      updatePayload.price = Math.round(pi.amount_received / 100);
-    }
-
-    // 5. Write to DB
-    const { error: updateError } = await supabase
-      .from("orders")
-      .update(updatePayload)
-      .eq("confirmation_id", confirmationId);
-
-    if (updateError) {
-      return json({ ok: false, error: `DB update failed: ${updateError.message}` }, 500);
-    }
-
-    // 6. Patch PI metadata in Stripe if needed
-    if (checkoutSessionId && !pi.metadata?.checkout_session_id) {
-      try {
-        await stripe.paymentIntents.update(paymentIntentId, {
-          metadata: { ...pi.metadata, checkout_session_id: checkoutSessionId },
-        });
-      } catch (err) {
-        console.warn("[resend-webhook] Could not patch PI metadata:", err);
-      }
-    }
-
-    // 7. Write status log (correct schema: new_status, changed_by, changed_at)
-    try {
-      await supabase.from("order_status_logs").insert({
-        order_id: order.id,
-        confirmation_id: confirmationId,
-        new_status: "processing",
-        changed_by: "admin_resend_webhook",
-        changed_at: new Date().toISOString(),
-      });
-    } catch { /* non-critical */ }
-
-    // 8. Write audit log (correct schema: object_type, object_id)
-    try {
-      await supabase.from("audit_logs").insert({
-        action: "admin_resend_webhook",
-        object_type: "order",
-        object_id: confirmationId,
-        details: {
-          confirmation_id: confirmationId,
-          payment_intent_id: paymentIntentId,
-          checkout_session_id: checkoutSessionId ?? null,
-          fields_updated: Object.keys(updatePayload),
-          timestamp: new Date().toISOString(),
-        },
-      });
-    } catch { /* non-critical */ }
-
-    console.info(`[resend-webhook] ✓ Re-processed ${confirmationId} — PI: ${paymentIntentId}${checkoutSessionId ? ` | Session: ${checkoutSessionId}` : ""}`);
-
-    return json({
-      ok: true,
-      message: `Payment re-processed successfully.${checkoutSessionId ? ` checkout_session_id ${checkoutSessionId} backfilled.` : " No checkout session found for this payment intent."}`,
-      checkoutSessionId: checkoutSessionId ?? null,
-      fieldsUpdated: Object.keys(updatePayload),
-    });
-
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Stripe error";
-    console.error("[resend-webhook] Error:", message);
-    return json({ ok: false, error: message }, 500);
+  } catch (handlerErr) {
+    // Handler errors are non-critical — still return 200 to prevent Resend retries
+    console.error(`[resend-webhook] Handler error for "${eventType}":`, handlerErr);
+    return ok({ received: true, handled: false, handler_error: true, event_type: eventType });
   }
+
+  return ok({ received: true, handled: true, event_type: eventType });
 });

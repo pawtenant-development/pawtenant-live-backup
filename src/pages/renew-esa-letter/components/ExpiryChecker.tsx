@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 type CheckResult = {
   status: "expired" | "critical" | "warning" | "safe";
@@ -13,6 +14,7 @@ export default function ExpiryChecker() {
   const [issueDate, setIssueDate] = useState("");
   const [result, setResult] = useState<CheckResult | null>(null);
   const [checked, setChecked] = useState(false);
+  const { withAttribution } = useAttributionParams();
 
   const handleCheck = () => {
     if (!issueDate) return;
@@ -182,7 +184,7 @@ export default function ExpiryChecker() {
           {result.status === "safe" ? (
             <div className="space-y-2">
               <Link
-                to="/assessment"
+                to={withAttribution("/assessment")}
                 className={`whitespace-nowrap w-full py-3 rounded-lg text-white text-sm font-bold transition-colors cursor-pointer text-center block ${cfg.urgencyBg}`}
               >
                 <i className="ri-refresh-line mr-1.5"></i>
@@ -198,7 +200,7 @@ export default function ExpiryChecker() {
           ) : (
             <div className="space-y-2">
               <Link
-                to="/assessment"
+                to={withAttribution("/assessment")}
                 className={`whitespace-nowrap w-full py-3 rounded-lg text-white text-sm font-bold transition-colors cursor-pointer text-center block ${cfg.urgencyBg}`}
               >
                 <i className="ri-refresh-line mr-1.5"></i>

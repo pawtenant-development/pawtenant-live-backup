@@ -53,6 +53,7 @@ const TYPE_STYLE: Record<string, { color: string; icon: string; label: string }>
   letter:     { color: "bg-lime-100 text-lime-700",       icon: "ri-file-pdf-line",           label: "Letter" },
   system:     { color: "bg-gray-100 text-gray-500",       icon: "ri-settings-3-line",        label: "System" },
   status:     { color: "bg-sky-50 text-sky-700",          icon: "ri-refresh-line",            label: "Status Change" },
+  sequence:   { color: "bg-violet-100 text-violet-700",   icon: "ri-mail-send-line",          label: "Lead Sequence" },
 };
 
 const ACTION_FRIENDLY: Record<string, string> = {
@@ -66,6 +67,11 @@ const ACTION_FRIENDLY: Record<string, string> = {
   doctor_assigned:       "Doctor assigned",
   doctor_reassigned:     "Doctor reassigned",
   order_status_updated:  "Order status updated",
+  seq_30min_sent:        "30-min follow-up sent",
+  seq_24h_sent:          "24-hour follow-up sent",
+  seq_3day_sent:         "3-day follow-up + $20 discount sent",
+  seq_run_complete:      "Sequence run completed",
+  seq_unsubscribed:      "Lead unsubscribed from sequence",
 };
 
 function fmt(ts: string) {

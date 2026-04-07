@@ -105,7 +105,7 @@ const faqs = [
   { q: "Choosing Between An ESA And A Service Animal", a: "Service animals are trained for specific tasks and protected under the ADA in public spaces. ESAs provide emotional comfort and are protected under the FHA for housing. If you need housing protection and emotional support, an ESA letter is the right choice." },
 ];
 
-const SAMPLE_IMG = "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/d5c2b190-6abf-4941-a56f-b87176d58c71_Form.jpeg?v=03c9d5d5b72b8f96e5834a9845014399";
+const SAMPLE_IMG = "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8496bb5f-3256-4901-86f7-84bbb2ec3596_PawTenant-ESA-document-with-callouts.png?v=56e54caa565cc010fb19c7679d66a2b4";
 
 export default function ESALetterCostPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -277,7 +277,7 @@ export default function ESALetterCostPage() {
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === "Enter" && setLightboxOpen(true)}
-                aria-label="View full sample ESA letter"
+                aria-label="View annotated sample ESA letter with key sections highlighted"
               >
                 {/* Sample badge */}
                 <div className="absolute top-4 right-4 z-20 bg-white/95 backdrop-blur-sm border border-orange-200 text-orange-600 text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
@@ -296,7 +296,7 @@ export default function ESALetterCostPage() {
 
                 <img
                   src={SAMPLE_IMG}
-                  alt="PawTenant ESA Letter Sample"
+                  alt="PawTenant ESA Letter sample document with callouts highlighting licensed provider signature, NPI number, and patient details"
                   className="w-full h-auto object-top block"
                 />
               </div>
@@ -422,7 +422,7 @@ export default function ESALetterCostPage() {
             </div>
             <img
               src={SAMPLE_IMG}
-              alt="PawTenant ESA Letter Sample — Full View"
+              alt="PawTenant ESA Letter sample document — full view with annotated callouts showing key sections"
               className="w-full h-auto block rounded-2xl"
             />
           </div>

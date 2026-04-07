@@ -3,6 +3,146 @@ import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { getStateBySlug } from "../../mocks/states";
+import PrivacySafeVerificationNote from "../../components/feature/PrivacySafeVerificationNote";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
+
+// ── State-specific image themes ───────────────────────────────────────────────
+// Each state gets a unique visual environment so pages look distinct
+const STATE_IMAGE_THEMES: Record<string, {
+  hero: string;       // hero background scene
+  petScene: string;   // person + pet at home scene
+  catScene: string;   // cat/wellness scene
+  telehealth: string; // telehealth scene
+  petBreed: string;   // specific breed for variety
+}> = {
+  TX: {
+    hero: "warm Texas ranch style home interior with wooden beams and leather furniture, golden afternoon sunlight, a happy husky dog sitting beside owner on a rustic sofa, cozy southwestern decor, warm amber tones",
+    petScene: "person relaxing on a porch in Texas with their husky dog, wide open sky, warm golden hour light, ranch style home, peaceful outdoor setting",
+    catScene: "woman sitting in a bright Texas home with her tabby cat on her lap, warm sunlight through large windows, southwestern decor, relaxed and happy",
+    telehealth: "person doing telehealth video call on laptop at a Texas ranch style home desk, warm wood tones, dog resting nearby, professional and cozy",
+    petBreed: "husky",
+  },
+  CA: {
+    hero: "modern California coastal home interior with ocean view windows, bright natural light, a golden retriever dog sitting beside owner on a white linen sofa, minimalist decor, warm cream tones",
+    petScene: "person with their golden retriever dog in a bright California apartment, large windows with city view, modern minimalist interior, warm natural light",
+    catScene: "woman in a sunny California home with her cat on her lap, plants everywhere, bright airy interior, relaxed and peaceful, coastal vibes",
+    telehealth: "person doing telehealth consultation on laptop in a modern California home office, ocean light, dog nearby, clean minimalist setting",
+    petBreed: "golden retriever",
+  },
+  FL: {
+    hero: "bright Florida home interior with tropical plants and large windows, warm humid sunlight, a friendly labrador dog sitting beside owner on a light sofa, coastal decor, warm cream and white tones",
+    petScene: "person with their labrador dog relaxing in a Florida home, tropical plants, bright warm sunlight, coastal interior, happy and peaceful",
+    catScene: "woman in a bright Florida apartment with her cat, tropical plants in background, warm sunlight, relaxed and happy, coastal home vibes",
+    telehealth: "person doing telehealth video call on laptop in a Florida home, tropical plants visible, dog nearby, bright warm setting",
+    petBreed: "labrador",
+  },
+  NY: {
+    hero: "modern New York City apartment interior with large windows showing city skyline, warm evening light, a french bulldog sitting beside owner on a modern sofa, urban chic decor, warm neutral tones",
+    petScene: "person with their french bulldog in a New York City apartment, city skyline visible through large windows, modern urban interior, warm evening light",
+    catScene: "woman in a New York apartment with her cat on her lap, city view through windows, modern urban decor, cozy and relaxed",
+    telehealth: "person doing telehealth consultation on laptop in a New York City apartment, city skyline in background, dog nearby, modern urban setting",
+    petBreed: "french bulldog",
+  },
+  IL: {
+    hero: "cozy Chicago style apartment interior with brick walls and warm lighting, a border collie dog sitting beside owner on a comfortable sofa, urban industrial chic decor, warm amber tones",
+    petScene: "person with their border collie dog in a Chicago apartment, brick walls, warm lighting, urban cozy interior, happy and relaxed",
+    catScene: "woman in a Chicago apartment with her cat, brick wall background, warm cozy lighting, relaxed and happy",
+    telehealth: "person doing telehealth video call on laptop in a Chicago apartment, brick walls, dog nearby, warm cozy setting",
+    petBreed: "border collie",
+  },
+  WA: {
+    hero: "Pacific Northwest home interior with large windows showing pine trees and mountains, soft rainy day light, a husky dog sitting beside owner on a cozy sofa, natural wood decor, cool green tones",
+    petScene: "person with their husky dog in a Pacific Northwest home, pine trees visible through windows, natural wood interior, soft natural light",
+    catScene: "woman in a Seattle home with her cat, pine trees visible outside, natural wood decor, cozy rainy day atmosphere",
+    telehealth: "person doing telehealth consultation on laptop in a Pacific Northwest home, pine trees outside, dog nearby, natural wood setting",
+    petBreed: "husky",
+  },
+  CO: {
+    hero: "Colorado mountain home interior with exposed wood beams and stone fireplace, warm golden light, a golden retriever dog sitting beside owner on a rustic sofa, mountain lodge decor, warm amber tones",
+    petScene: "person with their golden retriever dog in a Colorado mountain home, stone fireplace, warm wood interior, cozy mountain lodge atmosphere",
+    catScene: "woman in a Colorado mountain cabin with her cat, stone fireplace, warm wood decor, cozy and relaxed",
+    telehealth: "person doing telehealth video call on laptop in a Colorado mountain home, stone fireplace, dog nearby, warm rustic setting",
+    petBreed: "golden retriever",
+  },
+  AZ: {
+    hero: "Arizona desert modern home interior with terracotta tiles and cacti through windows, warm desert sunlight, a pitbull dog sitting beside owner on a modern sofa, southwestern decor, warm terracotta tones",
+    petScene: "person with their pitbull dog relaxing in an Arizona desert home, cacti visible through windows, southwestern decor, warm desert light",
+    catScene: "woman in an Arizona home with her cat, desert plants visible, warm terracotta decor, relaxed and happy",
+    telehealth: "person doing telehealth consultation on laptop in an Arizona desert home, cacti outside, dog nearby, warm southwestern setting",
+    petBreed: "pitbull",
+  },
+  GA: {
+    hero: "Southern Georgia home interior with wrap-around porch visible through windows, warm humid sunlight, a beagle dog sitting beside owner on a comfortable sofa, southern charm decor, warm cream tones",
+    petScene: "person with their beagle dog on a Georgia porch, southern style home, warm afternoon light, lush green yard visible",
+    catScene: "woman in a Georgia home with her cat, southern style decor, warm sunlight, relaxed and happy",
+    telehealth: "person doing telehealth video call on laptop in a Georgia home, southern style interior, dog nearby, warm comfortable setting",
+    petBreed: "beagle",
+  },
+  PA: {
+    hero: "Pennsylvania colonial style home interior with hardwood floors and warm fireplace, autumn light through windows, a labrador dog sitting beside owner on a classic sofa, traditional decor, warm amber tones",
+    petScene: "person with their labrador dog in a Pennsylvania home, hardwood floors, warm fireplace, traditional interior, cozy autumn atmosphere",
+    catScene: "woman in a Pennsylvania home with her cat, hardwood floors, warm fireplace, traditional decor, cozy and relaxed",
+    telehealth: "person doing telehealth consultation on laptop in a Pennsylvania home, hardwood floors, dog nearby, warm traditional setting",
+    petBreed: "labrador",
+  },
+  OH: {
+    hero: "Ohio suburban home interior with large backyard visible through windows, warm afternoon sunlight, a golden retriever dog sitting beside owner on a comfortable sofa, classic American home decor, warm cream tones",
+    petScene: "person with their golden retriever dog in an Ohio suburban home, large backyard visible, warm afternoon light, classic American interior",
+    catScene: "woman in an Ohio home with her cat, suburban backyard visible, warm sunlight, relaxed and happy",
+    telehealth: "person doing telehealth video call on laptop in an Ohio suburban home, backyard visible, dog nearby, warm comfortable setting",
+    petBreed: "golden retriever",
+  },
+  NC: {
+    hero: "North Carolina craftsman home interior with mountain views through windows, warm natural light, a poodle dog sitting beside owner on a comfortable sofa, craftsman decor, warm wood tones",
+    petScene: "person with their poodle dog in a North Carolina craftsman home, mountain views, warm natural light, craftsman interior",
+    catScene: "woman in a North Carolina home with her cat, mountain views through windows, craftsman decor, relaxed and happy",
+    telehealth: "person doing telehealth consultation on laptop in a North Carolina home, mountain views, dog nearby, warm craftsman setting",
+    petBreed: "poodle",
+  },
+  MI: {
+    hero: "Michigan lakeside home interior with lake views through large windows, soft natural light, a husky dog sitting beside owner on a comfortable sofa, lake house decor, cool blue and warm wood tones",
+    petScene: "person with their husky dog in a Michigan lake house, lake views through windows, natural wood interior, soft natural light",
+    catScene: "woman in a Michigan lake house with her cat, lake views, natural wood decor, relaxed and peaceful",
+    telehealth: "person doing telehealth video call on laptop in a Michigan lake house, lake views, dog nearby, natural wood setting",
+    petBreed: "husky",
+  },
+  TN: {
+    hero: "Tennessee farmhouse interior with exposed wood beams and country decor, warm golden light, a golden retriever dog sitting beside owner on a farmhouse sofa, country charm decor, warm amber tones",
+    petScene: "person with their golden retriever dog in a Tennessee farmhouse, exposed wood beams, warm golden light, country interior",
+    catScene: "woman in a Tennessee farmhouse with her cat, exposed wood beams, warm country decor, relaxed and happy",
+    telehealth: "person doing telehealth consultation on laptop in a Tennessee farmhouse, wood beams, dog nearby, warm country setting",
+    petBreed: "golden retriever",
+  },
+  MN: {
+    hero: "Minnesota Scandinavian style home interior with snow visible through windows, warm cozy lighting, a husky dog sitting beside owner on a comfortable sofa, hygge decor, warm cream and wood tones",
+    petScene: "person with their husky dog in a Minnesota home, snow visible outside, warm cozy interior, Scandinavian hygge atmosphere",
+    catScene: "woman in a Minnesota home with her cat, snow outside, warm cozy decor, relaxed and happy",
+    telehealth: "person doing telehealth video call on laptop in a Minnesota home, snow outside, dog nearby, warm cozy setting",
+    petBreed: "husky",
+  },
+  OR: {
+    hero: "Oregon Pacific Northwest home interior with forest views through large windows, soft green natural light, a border collie dog sitting beside owner on a modern sofa, eco-modern decor, cool green and wood tones",
+    petScene: "person with their border collie dog in an Oregon home, forest views through windows, eco-modern interior, soft natural light",
+    catScene: "woman in an Oregon home with her cat, forest views, eco-modern decor, relaxed and peaceful",
+    telehealth: "person doing telehealth consultation on laptop in an Oregon home, forest views, dog nearby, eco-modern setting",
+    petBreed: "border collie",
+  },
+};
+
+// Default theme for states without specific themes
+const DEFAULT_THEME = {
+  hero: "cozy modern home interior with warm natural light, a happy dog sitting beside owner on a comfortable sofa, warm cream and beige tones, lifestyle photography",
+  petScene: "person with their dog relaxing at home, bright living room, warm sunlight, cozy atmosphere, pet owner calm and peaceful modern home interior",
+  catScene: "woman smiling with her cat on her lap in a bright cozy apartment, looking relaxed and happy, warm tones, plants in background, emotional wellness",
+  telehealth: "telehealth consultation doctor on laptop screen patient at home with their dog nearby, warm home setting, online mental health appointment, modern technology cozy and professional",
+  petBreed: "mixed breed dog",
+};
+
+function getStateTheme(abbreviation: string) {
+  return STATE_IMAGE_THEMES[abbreviation] ?? DEFAULT_THEME;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const whyPawtenant = [
   { title: "Experienced Professionals You Can Trust", desc: "Our licensed team knows state and has years of experience providing ESA letters that meet all legal standards.", icon: "ri-shield-check-line" },
@@ -15,8 +155,10 @@ const whyPawtenant = [
 export default function StateESAPage() {
   const { state: stateSlug } = useParams<{ state: string }>();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const { withAttribution } = useAttributionParams();
 
   const stateData = getStateBySlug(stateSlug || "");
+  const theme = stateData ? getStateTheme(stateData.abbreviation) : DEFAULT_THEME;
 
   useEffect(() => {
     if (!stateData) return;
@@ -58,7 +200,6 @@ export default function StateESAPage() {
     setMeta("twitter:title", title, true);
     setMeta("twitter:description", description, true);
 
-    // FAQPage + BreadcrumbList JSON-LD
     const existingSchema = document.getElementById("state-esa-schema");
     if (existingSchema) existingSchema.remove();
 
@@ -123,7 +264,7 @@ export default function StateESAPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src={`https://readdy.ai/api/search-image?query=cozy%20home%20interior%20in%20$%7BstateData.name%7D%20warm%20living%20room%20with%20a%20happy%20dog%20sitting%20beside%20owner%20natural%20light%20calming%20atmosphere%20beige%20and%20warm%20tones%20ESA%20emotional%20support%20animal%20housing&width=1440&height=600&seq=state${stateData.abbreviation}01&orientation=landscape`}
+            src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.hero%20%20%20%20ESA%20emotional%20support%20animal%20housing%20warm%20tones%20lifestyle%20photography%29%7D&width=1440&height=600&seq=state-hero-${stateData.abbreviation}-v2&orientation=landscape`}
             alt={`ESA Letter in ${stateData.name}`}
             className="w-full h-full object-cover object-top"
           />
@@ -145,7 +286,7 @@ export default function StateESAPage() {
               {stateData.introText}
             </p>
             <Link
-              to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
+              to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
               className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
               <i className="ri-file-text-line"></i>
@@ -176,7 +317,7 @@ export default function StateESAPage() {
                 </ul>
               </div>
               <Link
-                to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
+                to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
                 className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
               >
                 <i className="ri-file-text-line"></i>
@@ -185,7 +326,7 @@ export default function StateESAPage() {
             </div>
             <div className="rounded-2xl overflow-hidden h-80">
               <img
-                src={`https://readdy.ai/api/search-image?query=happy%20person%20with%20their%20dog%20relaxing%20at%20home%20in%20$%7BstateData.name%7D%20bright%20living%20room%20warm%20sunlight%20cozy%20atmosphere%20pet%20owner%20calm%20and%20peaceful%20modern%20home%20interior&width=700&height=450&seq=state${stateData.abbreviation}02&orientation=landscape`}
+                src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.petScene%20%20%20%20warm%20tones%20cozy%20atmosphere%29%7D&width=700&height=450&seq=state-laws-${stateData.abbreviation}-v2&orientation=landscape`}
                 alt={`ESA in ${stateData.name}`}
                 className="w-full h-full object-cover object-top"
               />
@@ -200,7 +341,7 @@ export default function StateESAPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="rounded-2xl overflow-hidden h-72">
               <img
-                src={`https://readdy.ai/api/search-image?query=woman%20smiling%20with%20her%20cat%20on%20her%20lap%20in%20a%20bright%20cozy%20apartment%20looking%20relaxed%20and%20happy%20warm%20tones%20plants%20in%20background%20$%7BstateData.name%7D%20home%20emotional%20wellness&width=700&height=450&seq=state${stateData.abbreviation}03&orientation=landscape`}
+                src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.catScene%20%20%20%20warm%20tones%20emotional%20wellness%29%7D&width=700&height=450&seq=state-adv-${stateData.abbreviation}-v2&orientation=landscape`}
                 alt={`ESA advantages in ${stateData.name}`}
                 className="w-full h-full object-cover object-top"
               />
@@ -224,7 +365,7 @@ export default function StateESAPage() {
               </div>
               <div className="mt-7">
                 <Link
-                  to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
+                  to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
                   className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
                 >
                   <i className="ri-file-text-line"></i>
@@ -257,7 +398,7 @@ export default function StateESAPage() {
               </div>
               <div className="mt-7">
                 <Link
-                  to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
+                  to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
                   className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
                 >
                   <i className="ri-file-text-line"></i>
@@ -267,7 +408,7 @@ export default function StateESAPage() {
             </div>
             <div className="rounded-2xl overflow-hidden h-80">
               <img
-                src={`https://readdy.ai/api/search-image?query=telehealth%20consultation%20doctor%20on%20laptop%20screen%20patient%20at%20home%20with%20their%20dog%20nearby%20warm%20home%20setting%20online%20mental%20health%20appointment%20modern%20technology%20cozy%20and%20professional&width=700&height=500&seq=state${stateData.abbreviation}04&orientation=landscape`}
+                src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.telehealth%20%20%20%20warm%20professional%29%7D&width=700&height=500&seq=state-tele-${stateData.abbreviation}-v2&orientation=landscape`}
                 alt="PawTenant telehealth consultation"
                 className="w-full h-full object-cover object-top"
               />
@@ -306,13 +447,38 @@ export default function StateESAPage() {
         </div>
       </section>
 
+      {/* Verification Trust Strip */}
+      <section className="py-10 bg-[#FFF7ED]">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-white border border-orange-200 rounded-xl px-6 py-5">
+            <div className="w-10 h-10 flex items-center justify-center bg-orange-500 rounded-lg flex-shrink-0">
+              <i className="ri-verified-badge-line text-white text-base"></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-extrabold text-orange-600 mb-1">Landlord Verification Included</p>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Every finalized {stateData.name} ESA letter includes a unique Verification ID. Landlords can confirm authenticity at pawtenant.com/verify — your health information is never disclosed.
+              </p>
+              <PrivacySafeVerificationNote variant="inline" className="mt-2" />
+            </div>
+            <Link
+              to="/ESA-letter-verification"
+              className="whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-bold text-orange-600 border border-orange-400 px-4 py-2 rounded-lg hover:bg-orange-500 hover:text-white transition-colors cursor-pointer flex-shrink-0"
+            >
+              How it works
+              <i className="ri-arrow-right-line text-xs"></i>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="py-16 bg-white">
         <div className="max-w-2xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">Book Your ESA Letter Consultation Today</h2>
           <p className="text-gray-500 mb-8">Feel confident with a trusted and reliable service</p>
           <Link
-            to={`/assessment?state=${stateData.abbreviation}&ref=state-page`}
+            to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
             className="whitespace-nowrap inline-flex items-center gap-2 px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
             <i className="ri-file-text-line"></i>

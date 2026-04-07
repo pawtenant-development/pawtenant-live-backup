@@ -49,7 +49,7 @@ function getMotivationalCopy(
   if (currentStep === 1) {
     if (answered === 0)
       return {
-        headline: "Let's find out if you qualify",
+        headline: "Check if you qualify for an ESA letter in 2 minutes",
         sub: "Answer honestly — this confidential screening takes about 2 minutes.",
       };
     if (answered < 5)
@@ -91,7 +91,7 @@ export default function StepIndicator({
       {/* Motivational headline */}
       <div className="text-center mb-3 sm:mb-4">
         <p className="text-sm sm:text-base font-bold text-gray-900 mb-0.5 sm:mb-1 px-2">{headline}</p>
-        <p className="text-xs text-gray-500 px-4">{sub}</p>
+
       </div>
 
       {/* Step pills */}

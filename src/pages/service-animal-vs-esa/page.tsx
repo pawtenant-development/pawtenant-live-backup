@@ -78,7 +78,7 @@ export default function ServiceAnimalVsESAPage() {
             </div>
             <div className="hidden md:block">
               <img
-                src="https://readdy.ai/api/search-image?query=three%20dogs%20sitting%20together%20one%20with%20service%20vest%20one%20therapy%20dog%20vest%20one%20emotional%20support%20bandana%20professional%20clean%20white%20background%20animals%20side%20by%20side&width=600&height=500&seq=savesahero&orientation=portrait"
+                src="https://readdy.ai/api/search-image?query=three%20dogs%20sitting%20together%20one%20with%20service%20vest%20one%20therapy%20dog%20vest%20one%20emotional%20support%20bandana%20professional%20clean%20white%20background%20animals%20side%20by%20side&width=700&height=400&seq=savesahero-landscape&orientation=landscape"
                 alt="Service animal, therapy dog, and ESA comparison"
                 className="w-full h-[400px] object-cover object-top rounded-2xl"
               />

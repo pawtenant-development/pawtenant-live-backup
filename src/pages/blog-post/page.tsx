@@ -5,10 +5,11 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import { blogPosts, BlogPost } from "../../mocks/blogPosts";
 import { blogPostsExtended } from "../../mocks/blogPostsExtended";
 import { blogPostsExtended2 } from "../../mocks/blogPostsExtended2";
+import { blogPostsVerification } from "../../mocks/blogPostsVerification";
 import { usStates } from "../../mocks/states";
 import { detectStateFromSlug } from "../../mocks/stateBlogMap";
 
-const allBlogPosts: BlogPost[] = [...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
+const allBlogPosts: BlogPost[] = [...blogPostsVerification, ...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
 
 function getBlogPostBySlug(slug: string): BlogPost | undefined {
   return allBlogPosts.find((p) => p.slug === slug);
@@ -352,6 +353,27 @@ export default function BlogPostPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Cross-link CTA to verifiable-esa-letters */}
+              {'ctaLink' in post && post.ctaLink && (
+                <div className="mt-6 p-5 bg-[#f0faf7] rounded-xl border border-[#b8ddd5] flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 flex items-center justify-center bg-[#1a5c4f] rounded-full flex-shrink-0">
+                      <i className="ri-shield-check-line text-white"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{'ctaText' in post && post.ctaText ? post.ctaText : "Learn more about PawTenant's verifiable ESA letters"}</p>
+                    </div>
+                  </div>
+                  <Link
+                    to={post.ctaLink}
+                    className="whitespace-nowrap flex items-center gap-1.5 text-xs font-semibold text-[#1a5c4f] hover:text-[#145244] cursor-pointer"
+                  >
+                    Learn more
+                    <i className="ri-arrow-right-line"></i>
+                  </Link>
+                </div>
+              )}
 
               {/* State cluster link — in-article internal link */}
               {stateEntry && (

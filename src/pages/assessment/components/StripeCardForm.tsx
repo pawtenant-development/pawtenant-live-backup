@@ -182,9 +182,17 @@ export default function StripeCardForm({
   const [processing,    setProcessing]    = useState(false);
   const [fieldsDone, setFieldsDone] = useState({ number: false, expiry: false, cvc: false });
   const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
+  // Track applied coupon code so it can be sent to backend for subscription discount
+  const [appliedCouponCode, setAppliedCouponCode] = useState("");
 
   const allFieldsComplete = fieldsDone.number && fieldsDone.expiry && fieldsDone.cvc;
   const canSubmit = !processing && !!stripe && !!elements;
+
+  // Wrap onDiscountChange to also capture the coupon code
+  const handleDiscountChange = (discount: number, code: string) => {
+    setAppliedCouponCode(discount > 0 ? code : "");
+    onDiscountChange?.(discount, code);
+  };
 
   // ── Subscription lazy flow ────────────────────────────────────────────────
   const handleSubscriptionPay = async () => {
@@ -213,7 +221,7 @@ export default function StripeCardForm({
       return;
     }
 
-    // Step 2: create subscription on backend — backend finds/creates customer and returns clientSecret
+    // Step 2: create subscription on backend — pass couponCode if one was applied
     let subClientSecret: string;
     try {
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/create-payment-intent`, {
@@ -235,6 +243,8 @@ export default function StripeCardForm({
           state: subscriptionParams.state,
           confirmationId: subscriptionParams.confirmationId,
           letterType: subscriptionParams.letterType ?? "esa",
+          // Pass coupon code so backend can apply Stripe discount
+          couponCode: appliedCouponCode || undefined,
           metadata: {
             confirmationId: subscriptionParams.confirmationId,
             firstName: subscriptionParams.firstName,
@@ -392,7 +402,7 @@ export default function StripeCardForm({
         <div className="px-5 pb-4">
           <CouponRow
             basePrice={priceBeforeDiscount ?? totalPrice}
-            onDiscountChange={onDiscountChange}
+            onDiscountChange={handleDiscountChange}
           />
         </div>
       )}

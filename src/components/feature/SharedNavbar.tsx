@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 interface DropdownItem {
   label: string;
@@ -97,17 +98,33 @@ export default function SharedNavbar() {
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useLocation();
   const isHome = location.pathname === "/";
+  const { withAttribution } = useAttributionParams();
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 40);
-    window.addEventListener("scroll", handleScroll);
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 40);
+      // Close mobile menu on scroll
+      if (menuOpen) setMenuOpen(false);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [menuOpen]);
 
   useEffect(() => {
     setMenuOpen(false);
     setActiveDropdown(null);
+    setMobileExpanded(null);
   }, [location.pathname]);
+
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (menuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [menuOpen]);
 
   const handleMouseEnter = (label: string) => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -131,248 +148,341 @@ export default function SharedNavbar() {
   const hoverColor = "hover:text-orange-500";
 
   return (
-    <nav
-      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
-        scrolled || !isHome ? "bg-white shadow-sm" : "bg-transparent"
-      }`}
-    >
-      <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between" ref={dropdownRef}>
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 cursor-pointer flex-shrink-0">
-          <img
-            src={
-              scrolled || !isHome
-                ? "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
-                : "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/d2641cf9cd0cc381736d2232d3da5f7c.png"
-            }
-            alt="PawTenant"
-            className={`h-14 w-auto object-contain transition-all ${!scrolled && isHome ? "brightness-0 invert" : ""}`}
-          />
-        </Link>
+    <>
+      <nav
+        className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
+          scrolled || !isHome ? "bg-white shadow-sm" : "bg-transparent"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between" ref={dropdownRef}>
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 cursor-pointer flex-shrink-0">
+            <img
+              src={
+                scrolled || !isHome
+                  ? "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+                  : "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/d2641cf9cd0cc381736d2232d3da5f7c.png"
+              }
+              alt="PawTenant"
+              className={`h-10 sm:h-14 w-auto object-contain transition-all ${!scrolled && isHome ? "brightness-0 invert" : ""}`}
+            />
+          </Link>
 
-        {/* Desktop Nav */}
-        <div className="hidden lg:flex items-center gap-1">
-          {navGroups.map((group) => (
-            <div
-              key={group.label}
-              className="relative"
-              onMouseEnter={() => handleMouseEnter(group.label)}
-              onMouseLeave={handleMouseLeave}
-            >
-              <button
-                className={`flex items-center gap-1 px-3 py-2 text-sm font-medium transition-colors ${textColor} ${hoverColor} whitespace-nowrap cursor-pointer rounded-md hover:bg-black/5`}
+          {/* Desktop Nav */}
+          <div className="hidden lg:flex items-center gap-1">
+            {navGroups.map((group) => (
+              <div
+                key={group.label}
+                className="relative"
+                onMouseEnter={() => handleMouseEnter(group.label)}
+                onMouseLeave={handleMouseLeave}
               >
-                {group.label}
-                <i className={`ri-arrow-down-s-line text-xs transition-transform duration-200 ${activeDropdown === group.label ? "rotate-180" : ""}`}></i>
-              </button>
-
-              {/* Mega Menu */}
-              {group.megaMenu && activeDropdown === group.label && (
-                <div
-                  className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 p-6 min-w-[600px]"
-                  onMouseEnter={() => handleMouseEnter(group.label)}
-                  onMouseLeave={handleMouseLeave}
+                <button
+                  className={`flex items-center gap-1 px-3 py-2 text-sm font-medium transition-colors ${textColor} ${hoverColor} whitespace-nowrap cursor-pointer rounded-md hover:bg-black/5`}
                 >
-                  <div className="grid grid-cols-2 gap-8">
-                    {group.columns?.map((col) => (
-                      <div key={col.title}>
-                        <p className="text-xs font-bold uppercase tracking-widest text-orange-500 mb-3">{col.title}</p>
-                        <ul className="space-y-1">
-                          {col.items.map((item) => (
-                            <li key={item.href}>
-                              <Link
-                                to={item.href}
-                                className="group flex flex-col px-3 py-2 rounded-lg hover:bg-orange-50 transition-colors cursor-pointer"
-                              >
-                                <span className="text-sm font-medium text-gray-800 group-hover:text-orange-600">{item.label}</span>
-                                {item.desc && <span className="text-xs text-gray-400 mt-0.5">{item.desc}</span>}
-                              </Link>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                  {group.label}
+                  <i className={`ri-arrow-down-s-line text-xs transition-transform duration-200 ${activeDropdown === group.label ? "rotate-180" : ""}`}></i>
+                </button>
+
+                {/* Mega Menu */}
+                {group.megaMenu && activeDropdown === group.label && (
+                  <div
+                    className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 p-6 min-w-[600px]"
+                    onMouseEnter={() => handleMouseEnter(group.label)}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <div className="grid grid-cols-2 gap-8">
+                      {group.columns?.map((col) => (
+                        <div key={col.title}>
+                          <p className="text-xs font-bold uppercase tracking-widest text-orange-500 mb-3">{col.title}</p>
+                          <ul className="space-y-1">
+                            {col.items.map((item) => (
+                              <li key={item.href}>
+                                <Link
+                                  to={item.href}
+                                  className="group flex flex-col px-3 py-2 rounded-lg hover:bg-orange-50 transition-colors cursor-pointer"
+                                >
+                                  <span className="text-sm font-medium text-gray-800 group-hover:text-orange-600">{item.label}</span>
+                                  {item.desc && <span className="text-xs text-gray-400 mt-0.5">{item.desc}</span>}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Regular Dropdown */}
+                {!group.megaMenu && activeDropdown === group.label && group.items && (
+                  <div
+                    className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-2 min-w-[220px]"
+                    onMouseEnter={() => handleMouseEnter(group.label)}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    {group.items.map((item) => (
+                      <Link
+                        key={item.href}
+                        to={item.href}
+                        className="group flex flex-col px-4 py-2.5 hover:bg-orange-50 transition-colors cursor-pointer"
+                      >
+                        <span className="text-sm font-medium text-gray-800 group-hover:text-orange-600">{item.label}</span>
+                        {item.desc && <span className="text-xs text-gray-400">{item.desc}</span>}
+                      </Link>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* Regular Dropdown */}
-              {!group.megaMenu && activeDropdown === group.label && group.items && (
-                <div
-                  className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-2 min-w-[220px]"
-                  onMouseEnter={() => handleMouseEnter(group.label)}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  {group.items.map((item) => (
-                    <Link
-                      key={item.href}
-                      to={item.href}
-                      className="group flex flex-col px-4 py-2.5 hover:bg-orange-50 transition-colors cursor-pointer"
-                    >
-                      <span className="text-sm font-medium text-gray-800 group-hover:text-orange-600">{item.label}</span>
-                      {item.desc && <span className="text-xs text-gray-400">{item.desc}</span>}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          <div className="w-px h-5 bg-gray-300/50 mx-2"></div>
-
-          <a
-            href="tel:+14099655885"
-            className={`text-sm font-medium flex items-center gap-1 transition-colors ${hoverColor} ${textColor} whitespace-nowrap px-2`}
-          >
-            <i className="ri-phone-line text-xs"></i>
-            (409) 965-5885
-          </a>
-
-          <Link
-            to="/join-our-network"
-            className={`whitespace-nowrap text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-black/5 ${textColor} ${hoverColor}`}
-          >
-            For Therapists
-          </Link>
-
-          {/* Apply Now with ESA/PSD dropdown */}
-          <div
-            ref={applyRef}
-            className="relative ml-1"
-            onMouseEnter={handleApplyEnter}
-            onMouseLeave={handleApplyLeave}
-          >
-            <button
-              type="button"
-              className="whitespace-nowrap flex items-center gap-1.5 px-5 py-2 bg-orange-500 text-white text-sm font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
-            >
-              Apply Now
-              <i className={`ri-arrow-down-s-line text-xs transition-transform duration-200 ${applyOpen ? "rotate-180" : ""}`}></i>
-            </button>
-
-            {applyOpen && (
-              <div
-                className="absolute top-full right-0 mt-1 bg-white rounded-xl border border-gray-100 py-1.5 min-w-[220px] z-50"
-                onMouseEnter={handleApplyEnter}
-                onMouseLeave={handleApplyLeave}
-              >
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-4 pt-1.5 pb-1">I&apos;m applying for...</p>
-                <Link
-                  to="/assessment"
-                  className="flex items-start gap-3 px-4 py-2.5 hover:bg-orange-50 transition-colors cursor-pointer group"
-                  onClick={() => setApplyOpen(false)}
-                >
-                  <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0 mt-0.5">
-                    <i className="ri-heart-line text-orange-500 text-sm"></i>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800 group-hover:text-orange-600">ESA Letter</p>
-                    <p className="text-xs text-gray-400 leading-tight">Emotional Support Animal — housing rights</p>
-                  </div>
-                </Link>
-                <Link
-                  to="/psd-assessment"
-                  className="flex items-start gap-3 px-4 py-2.5 hover:bg-amber-50 transition-colors cursor-pointer group"
-                  onClick={() => setApplyOpen(false)}
-                >
-                  <div className="w-8 h-8 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0 mt-0.5">
-                    <i className="ri-service-line text-amber-600 text-sm"></i>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800 group-hover:text-amber-700">PSD Letter</p>
-                    <p className="text-xs text-gray-400 leading-tight">Psychiatric Service Dog — full ADA access</p>
-                  </div>
-                </Link>
+                )}
               </div>
-            )}
-          </div>
+            ))}
 
-          <Link to="/customer-login" className="whitespace-nowrap flex items-center gap-1.5 text-sm text-gray-600 hover:text-orange-500 transition-colors cursor-pointer">
-            <div className="w-5 h-5 flex items-center justify-center">
-              <i className="ri-user-line text-orange-400"></i>
-            </div>
-            My Orders
-          </Link>
-        </div>
+            <div className="w-px h-5 bg-gray-300/50 mx-2"></div>
 
-        {/* Mobile Hamburger */}
-        <button
-          className="lg:hidden cursor-pointer"
-          onClick={() => setMenuOpen(!menuOpen)}
-          aria-label="Toggle menu"
-        >
-          <i className={`text-2xl ${scrolled || !isHome ? "text-gray-800" : "text-white"} ${menuOpen ? "ri-close-line" : "ri-menu-line"}`}></i>
-        </button>
-      </div>
-
-      {/* Mobile Menu */}
-      {menuOpen && (
-        <div className="lg:hidden bg-white border-t border-gray-100 px-6 py-4 flex flex-col gap-2 max-h-[80vh] overflow-y-auto">
-          {navGroups.map((group) => (
-            <div key={group.label}>
-              <button
-                className="w-full flex items-center justify-between py-2.5 text-sm font-semibold text-gray-800 cursor-pointer"
-                onClick={() => setMobileExpanded(mobileExpanded === group.label ? null : group.label)}
-              >
-                {group.label}
-                <i className={`ri-arrow-down-s-line transition-transform ${mobileExpanded === group.label ? "rotate-180" : ""}`}></i>
-              </button>
-              {mobileExpanded === group.label && (
-                <div className="pl-3 pb-2 flex flex-col gap-1">
-                  {group.megaMenu
-                    ? group.columns?.flatMap((col) => col.items).map((item) => (
-                        <Link
-                          key={item.href}
-                          to={item.href}
-                          className="py-1.5 text-sm text-gray-600 hover:text-orange-500"
-                          onClick={() => setMenuOpen(false)}
-                        >
-                          {item.label}
-                        </Link>
-                      ))
-                    : group.items?.map((item) => (
-                        <Link
-                          key={item.href}
-                          to={item.href}
-                          className="py-1.5 text-sm text-gray-600 hover:text-orange-500"
-                          onClick={() => setMenuOpen(false)}
-                        >
-                          {item.label}
-                        </Link>
-                      ))}
-                </div>
-              )}
-            </div>
-          ))}
-          <div className="border-t border-gray-100 pt-3 mt-1 flex flex-col gap-3">
-            <a href="tel:+14099655885" className="text-sm font-medium text-gray-700 hover:text-orange-500 flex items-center gap-1">
-              <i className="ri-phone-line"></i> (409) 965-5885
+            <a
+              href="tel:+14099655885"
+              className={`text-sm font-medium flex items-center gap-1 transition-colors ${hoverColor} ${textColor} whitespace-nowrap px-2`}
+            >
+              <i className="ri-phone-line text-xs"></i>
+              (409) 965-5885
             </a>
+
             <Link
               to="/join-our-network"
-              className="whitespace-nowrap text-sm font-medium text-gray-700 hover:text-orange-500"
-              onClick={() => setMenuOpen(false)}
+              className={`whitespace-nowrap text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-black/5 ${textColor} ${hoverColor}`}
             >
               For Therapists
             </Link>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Apply For:</p>
+
+            {/* Apply Now with ESA/PSD dropdown */}
+            <div
+              ref={applyRef}
+              className="relative ml-1"
+              onMouseEnter={handleApplyEnter}
+              onMouseLeave={handleApplyLeave}
+            >
+              <button
+                type="button"
+                className="whitespace-nowrap flex items-center gap-1.5 px-5 py-2 bg-orange-500 text-white text-sm font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+              >
+                Apply Now
+                <i className={`ri-arrow-down-s-line text-xs transition-transform duration-200 ${applyOpen ? "rotate-180" : ""}`}></i>
+              </button>
+
+              {applyOpen && (
+                <div
+                  className="absolute top-full right-0 mt-1 bg-white rounded-xl border border-gray-100 py-1.5 min-w-[220px] z-50"
+                  onMouseEnter={handleApplyEnter}
+                  onMouseLeave={handleApplyLeave}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-4 pt-1.5 pb-1">I&apos;m applying for...</p>
+                  <Link
+                    to={withAttribution("/assessment")}
+                    className="flex items-start gap-3 px-4 py-2.5 hover:bg-orange-50 transition-colors cursor-pointer group"
+                    onClick={() => setApplyOpen(false)}
+                  >
+                    <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0 mt-0.5">
+                      <i className="ri-heart-line text-orange-500 text-sm"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 group-hover:text-orange-600">ESA Letter</p>
+                      <p className="text-xs text-gray-400 leading-tight">Emotional Support Animal — housing rights</p>
+                    </div>
+                  </Link>
+                  <Link
+                    to={withAttribution("/psd-assessment")}
+                    className="flex items-start gap-3 px-4 py-2.5 hover:bg-amber-50 transition-colors cursor-pointer group"
+                    onClick={() => setApplyOpen(false)}
+                  >
+                    <div className="w-8 h-8 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0 mt-0.5">
+                      <i className="ri-service-line text-amber-600 text-sm"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 group-hover:text-amber-700">PSD Letter</p>
+                      <p className="text-xs text-gray-400 leading-tight">Psychiatric Service Dog — full ADA access</p>
+                    </div>
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <Link to="/customer-login" className="whitespace-nowrap flex items-center gap-1.5 text-sm text-gray-600 hover:text-orange-500 transition-colors cursor-pointer">
+              <div className="w-5 h-5 flex items-center justify-center">
+                <i className="ri-user-line text-orange-400"></i>
+              </div>
+              My Orders
+            </Link>
+          </div>
+
+          {/* Mobile right side: CTA + hamburger */}
+          <div className="lg:hidden flex items-center gap-2">
             <Link
-              to="/assessment"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-orange-500 text-white text-sm font-semibold rounded-md text-center"
+              to={withAttribution("/assessment")}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition-colors cursor-pointer"
+            >
+              <i className="ri-heart-line text-xs"></i>
+              Apply Now
+            </Link>
+            <button
+              className="w-9 h-9 flex items-center justify-center rounded-lg cursor-pointer transition-colors hover:bg-black/5"
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Toggle menu"
+              aria-expanded={menuOpen}
+            >
+              <i className={`text-xl ${scrolled || !isHome ? "text-gray-800" : "text-white"} ${menuOpen ? "ri-close-line" : "ri-menu-line"}`}></i>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Mobile Menu Backdrop */}
+      {menuOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+          onClick={() => setMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile Menu Panel — slides in from right */}
+      <div
+        className={`fixed top-0 right-0 h-full w-[85vw] max-w-[340px] bg-white z-50 lg:hidden flex flex-col transition-transform duration-300 ease-in-out ${
+          menuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+        style={{ boxShadow: menuOpen ? "-4px 0 24px rgba(0,0,0,0.12)" : "none" }}
+      >
+        {/* Panel header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+          <img
+            src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+            alt="PawTenant"
+            className="h-9 w-auto object-contain"
+          />
+          <button
+            onClick={() => setMenuOpen(false)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors cursor-pointer"
+            aria-label="Close menu"
+          >
+            <i className="ri-close-line text-xl"></i>
+          </button>
+        </div>
+
+        {/* Scrollable nav links */}
+        <div className="flex-1 overflow-y-auto overscroll-contain">
+          {/* Nav groups */}
+          <div className="px-3 py-3 space-y-0.5">
+            {navGroups.map((group) => (
+              <div key={group.label} className="rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-3 py-3 text-sm font-semibold text-gray-800 hover:bg-orange-50 hover:text-orange-600 transition-colors cursor-pointer rounded-xl"
+                  onClick={() => setMobileExpanded(mobileExpanded === group.label ? null : group.label)}
+                >
+                  <span>{group.label}</span>
+                  <i className={`ri-arrow-down-s-line text-gray-400 transition-transform duration-200 ${mobileExpanded === group.label ? "rotate-180 text-orange-500" : ""}`}></i>
+                </button>
+
+                {mobileExpanded === group.label && (
+                  <div className="pb-2 px-2">
+                    {group.megaMenu
+                      ? group.columns?.map((col) => (
+                          <div key={col.title} className="mb-3">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-orange-500 px-2 py-1.5">{col.title}</p>
+                            {col.items.map((item) => (
+                              <Link
+                                key={item.href}
+                                to={item.href}
+                                className="flex flex-col px-3 py-2 rounded-lg hover:bg-orange-50 transition-colors cursor-pointer"
+                                onClick={() => setMenuOpen(false)}
+                              >
+                                <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                                {item.desc && <span className="text-xs text-gray-400 mt-0.5">{item.desc}</span>}
+                              </Link>
+                            ))}
+                          </div>
+                        ))
+                      : group.items?.map((item) => (
+                          <Link
+                            key={item.href}
+                            to={item.href}
+                            className="flex flex-col px-3 py-2 rounded-lg hover:bg-orange-50 transition-colors cursor-pointer"
+                            onClick={() => setMenuOpen(false)}
+                          >
+                            <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                            {item.desc && <span className="text-xs text-gray-400 mt-0.5">{item.desc}</span>}
+                          </Link>
+                        ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="mx-4 border-t border-gray-100 my-2"></div>
+
+          {/* Quick links */}
+          <div className="px-3 pb-3 space-y-0.5">
+            <a
+              href="tel:+14099655885"
+              className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors cursor-pointer"
+            >
+              <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
+                <i className="ri-phone-line text-orange-500 text-sm"></i>
+              </div>
+              <div>
+                <p className="font-semibold text-sm">Call Us</p>
+                <p className="text-xs text-gray-400">(409) 965-5885</p>
+              </div>
+            </a>
+            <Link
+              to="/join-our-network"
+              className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors cursor-pointer"
               onClick={() => setMenuOpen(false)}
             >
-              <i className="ri-heart-line"></i>ESA Letter
+              <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
+                <i className="ri-stethoscope-line text-orange-500 text-sm"></i>
+              </div>
+              <div>
+                <p className="font-semibold text-sm">For Therapists</p>
+                <p className="text-xs text-gray-400">Join our provider network</p>
+              </div>
             </Link>
             <Link
-              to="/psd-assessment"
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-semibold rounded-md text-center"
+              to="/customer-login"
+              className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors cursor-pointer"
               onClick={() => setMenuOpen(false)}
             >
-              <i className="ri-service-line"></i>PSD Letter
+              <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
+                <i className="ri-user-line text-orange-500 text-sm"></i>
+              </div>
+              <div>
+                <p className="font-semibold text-sm">My Orders</p>
+                <p className="text-xs text-gray-400">Track your ESA letter</p>
+              </div>
             </Link>
           </div>
         </div>
-      )}
-    </nav>
+
+        {/* Bottom CTA buttons — always visible */}
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-100 space-y-2.5 bg-white">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-1">Apply For Your Letter</p>
+          <Link
+            to={withAttribution("/assessment")}
+            className="whitespace-nowrap flex items-center justify-center gap-2 w-full px-4 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-600 transition-colors cursor-pointer"
+            onClick={() => setMenuOpen(false)}
+          >
+            <i className="ri-heart-line"></i>
+            ESA Letter — Emotional Support Animal
+          </Link>
+          <Link
+            to={withAttribution("/psd-assessment")}
+            className="whitespace-nowrap flex items-center justify-center gap-2 w-full px-4 py-3 bg-amber-500 text-white text-sm font-bold rounded-xl hover:bg-amber-600 transition-colors cursor-pointer"
+            onClick={() => setMenuOpen(false)}
+          >
+            <i className="ri-service-line"></i>
+            PSD Letter — Psychiatric Service Dog
+          </Link>
+        </div>
+      </div>
+    </>
   );
 }

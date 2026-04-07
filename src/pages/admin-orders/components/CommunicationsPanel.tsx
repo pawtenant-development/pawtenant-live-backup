@@ -64,10 +64,11 @@ const TYPE_CONFIG: Record<string, {
   icon: string; label: string;
   bg: string; dot: string; textColor: string;
 }> = {
-  sms_outbound:  { icon: "ri-message-3-line",       label: "SMS Out",      bg: "bg-[#f0faf7] border-[#b8ddd5]",   dot: "bg-[#1a5c4f]",   textColor: "text-[#1a5c4f]"  },
-  sms_inbound:   { icon: "ri-message-3-fill",        label: "SMS In",       bg: "bg-white border-gray-200",         dot: "bg-gray-400",    textColor: "text-gray-700"    },
-  call_outbound: { icon: "ri-phone-line",             label: "Call Out",     bg: "bg-sky-50 border-sky-200",         dot: "bg-sky-500",     textColor: "text-sky-700"     },
-  call_inbound:  { icon: "ri-phone-incoming-line",   label: "Call In",      bg: "bg-violet-50 border-violet-200",   dot: "bg-violet-500",  textColor: "text-violet-700"  },
+  sms_outbound:      { icon: "ri-message-3-line",    label: "SMS Out",       bg: "bg-[#f0faf7] border-[#b8ddd5]",   dot: "bg-[#1a5c4f]",   textColor: "text-[#1a5c4f]"  },
+  sms_inbound:       { icon: "ri-message-3-fill",    label: "SMS In",        bg: "bg-white border-gray-200",         dot: "bg-gray-400",    textColor: "text-gray-700"    },
+  call_outbound:     { icon: "ri-phone-line",         label: "Call Out",      bg: "bg-sky-50 border-sky-200",         dot: "bg-sky-500",     textColor: "text-sky-700"     },
+  call_inbound:      { icon: "ri-phone-fill",         label: "Call In",       bg: "bg-violet-50 border-violet-200",   dot: "bg-violet-500",  textColor: "text-violet-700"  },
+  email_sequence:    { icon: "ri-mail-send-line",     label: "Auto-Sequence", bg: "bg-violet-50 border-violet-200",   dot: "bg-violet-500",  textColor: "text-violet-700"  },
 };
 
 function fmtTime(ts: string) {
@@ -104,7 +105,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
   const [loadingMore, setLoadingMore]   = useState(false);
   const [hasMore, setHasMore]           = useState(true);
   const [mainTab, setMainTab]           = useState<"sms_calls" | "emails">("sms_calls");
-  const [typeFilter, setTypeFilter]     = useState<"all" | "sms" | "calls">("all");
+  const [typeFilter, setTypeFilter]     = useState<"all" | "sms" | "calls" | "sequence">("all");
   const [dirFilter, setDirFilter]       = useState<"all" | "outbound" | "inbound">("all");
   const [emailTypeFilter, setEmailTypeFilter] = useState<string>("all");
   const [search, setSearch]             = useState("");
@@ -151,12 +152,15 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
     let q = supabase
       .from("communications")
       .select("*", { count: "exact" })
-      .not("type", "eq", "email")
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
 
-    if (typeFilter === "sms")   q = q.in("type", ["sms_outbound", "sms_inbound"]);
-    if (typeFilter === "calls") q = q.in("type", ["call_outbound", "call_inbound"]);
+    if (typeFilter === "sms")      q = q.in("type", ["sms_outbound", "sms_inbound"]);
+    else if (typeFilter === "calls")    q = q.in("type", ["call_outbound", "call_inbound"]);
+    else if (typeFilter === "sequence") q = q.eq("type", "email").ilike("sent_by", "Auto-Sequence%");
+    // default "all": fetch SMS + calls + auto-sequence emails (exclude plain non-sequence emails)
+    else q = q.or("type.in.(sms_outbound,sms_inbound,call_outbound,call_inbound),and(type.eq.email,sent_by.ilike.Auto-Sequence%)");
+
     if (dirFilter !== "all")    q = q.eq("direction", dirFilter);
 
     return q;
@@ -191,15 +195,27 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
       .channel("comms-panel-live")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "communications" }, (payload) => {
         const entry = payload.new as CommEntry;
-        if (entry.type === "email") return;
+        // Include SMS, calls, and auto-sequence emails; exclude plain non-sequence emails
+        const isSeqEmail = entry.type === "email" && (entry.sent_by ?? "").startsWith("Auto-Sequence");
+        if (entry.type === "email" && !isSeqEmail) return;
         setComms((prev) => [entry, ...prev]);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  // Normalise: auto-sequence emails get a special display type
+  const normalisedComms = comms.map((c) => {
+    if (c.type === "email" && (c.sent_by ?? "").startsWith("Auto-Sequence")) {
+      return { ...c, type: "email_sequence" };
+    }
+    return c;
+  });
+
+  const seqCount = normalisedComms.filter((c) => c.type === "email_sequence").length;
+
   // Client-side search filter for SMS/calls
-  const filteredComms = comms.filter((c) => {
+  const filteredComms = normalisedComms.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
     const order = c.order_id ? orderMap.get(c.order_id) : null;
@@ -280,9 +296,10 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                 {/* Type filter */}
                 <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
                   {[
-                    { key: "all",   label: `All (${comms.length})` },
-                    { key: "sms",   label: `SMS (${smsCount})` },
-                    { key: "calls", label: `Calls (${callsCount})` },
+                    { key: "all",      label: `All (${normalisedComms.length})` },
+                    { key: "sms",      label: `SMS (${smsCount})` },
+                    { key: "calls",    label: `Calls (${callsCount})` },
+                    { key: "sequence", label: `Auto-Seq (${seqCount})` },
                   ].map((tab) => (
                     <button key={tab.key} type="button" onClick={() => setTypeFilter(tab.key as typeof typeFilter)}
                       className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${typeFilter === tab.key ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}>

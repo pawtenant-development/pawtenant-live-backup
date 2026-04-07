@@ -20,6 +20,7 @@ export interface ApprovedProviderRow {
   verification_url: string | null;
   is_active: boolean;
   created_at: string;
+  npi_number?: string | null;
 }
 
 export function mapApprovedToDoctor(p: ApprovedProviderRow): Doctor {
@@ -34,6 +35,7 @@ export function mapApprovedToDoctor(p: ApprovedProviderRow): Doctor {
     verificationUrl: p.verification_url ?? "https://pawtenant.com/join-our-network",
     image: p.photo_url ?? DEFAULT_IMAGE,
     email: p.email ?? "",
+    npi_number: p.npi_number ?? null,
   };
 }
 
@@ -46,16 +48,48 @@ export function useDynamicDoctors(): { doctors: Doctor[]; loading: boolean; relo
     let cancelled = false;
     const load = async () => {
       setLoading(true);
-      const { data } = await supabase
+
+      // Fetch approved providers
+      const { data: providers } = await supabase
         .from("approved_providers")
         .select("*")
         .eq("is_active", true)
         .order("created_at");
+
       if (cancelled) return;
-      if (data) {
-        setDoctors((data as ApprovedProviderRow[]).map(mapApprovedToDoctor));
+
+      if (providers && providers.length > 0) {
+        // Fetch NPI numbers from doctor_profiles for these providers
+        const emails = (providers as ApprovedProviderRow[])
+          .map((p) => p.email)
+          .filter(Boolean) as string[];
+
+        let npiMap: Record<string, string> = {};
+        if (emails.length > 0) {
+          const { data: profiles } = await supabase
+            .from("doctor_profiles")
+            .select("email, npi_number")
+            .in("email", emails);
+          if (profiles) {
+            npiMap = Object.fromEntries(
+              (profiles as { email: string; npi_number: string | null }[])
+                .filter((p) => p.npi_number)
+                .map((p) => [p.email.toLowerCase(), p.npi_number as string])
+            );
+          }
+        }
+
+        const mapped = (providers as ApprovedProviderRow[]).map((p) => ({
+          ...p,
+          npi_number: p.email ? (npiMap[p.email.toLowerCase()] ?? null) : null,
+        }));
+
+        if (!cancelled) setDoctors(mapped.map(mapApprovedToDoctor));
+      } else {
+        if (!cancelled) setDoctors([]);
       }
-      setLoading(false);
+
+      if (!cancelled) setLoading(false);
     };
     load();
     return () => { cancelled = true; };

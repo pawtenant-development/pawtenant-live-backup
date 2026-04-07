@@ -1,12 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import PSDAssessmentNavbar from "./components/PSDAssessmentNavbar";
 import PSDStep1, { PSDStep1Data } from "./components/PSDStep1";
 import PSDStep3Checkout from "./components/PSDStep3Checkout";
 import Step2PersonalInfo, { Step2Data } from "../assessment/components/Step2PersonalInfo";
 import StepIndicator from "../assessment/components/StepIndicator";
 import ExitIntentOverlay from "../assessment/components/ExitIntentOverlay";
-import { supabase } from "../../lib/supabaseClient";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
+import { logAudit, loggedFetch } from "@/lib/auditLogger";
+import {
+  buildAttributionJson,
+  getAttribution,
+  setConfirmationId as storeSetConfirmationId,
+  buildFullSource,
+} from "@/lib/attributionStore";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -14,29 +21,9 @@ const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
 const RESUME_ORDER_URL = `${SUPABASE_URL}/functions/v1/get-resume-order`;
 
-function getTrafficSource(): string {
-  const gclid = sessionStorage.getItem("gclid");
-  const fbclid = sessionStorage.getItem("fbclid");
-  const utmSource = sessionStorage.getItem("utm_source") ?? "";
-  const referrer = sessionStorage.getItem("referrer") ?? document.referrer;
-  if (gclid) return "Google Ads";
-  if (fbclid) return "Facebook / Instagram Ads";
-  if (utmSource.toLowerCase().includes("google")) return "Google Ads";
-  if (utmSource.toLowerCase().includes("facebook") || utmSource.toLowerCase().includes("instagram")) return "Facebook / Instagram Ads";
-  if (referrer) {
-    try {
-      const host = new URL(referrer).hostname;
-      if (host.includes("google")) return "Google Organic";
-      if (host.includes("bing")) return "Bing Organic";
-      return `Referral: ${host}`;
-    } catch { return referrer; }
-  }
-  return "Direct";
-}
-
-function getLandingUrl(): string {
-  return sessionStorage.getItem("landing_url") ?? window.location.href;
-}
+// Delegates to attributionStore — single source of truth
+function getTrafficSource(): string { return buildFullSource(); }
+function getLandingUrl(): string { return getAttribution().landing_url ?? window.location.href; }
 
 const DEFAULT_STEP1: PSDStep1Data = {
   dogTasks: [],
@@ -95,10 +82,37 @@ export default function PSDAssessmentPage() {
   const [step, setStep] = useState(1);
   const [step1, setStep1] = useState<PSDStep1Data>(DEFAULT_STEP1);
   const [step2, setStep2] = useState<Step2Data>(DEFAULT_STEP2);
-  const [confirmationId, setConfirmationId] = useState(generateConfirmationId);
+  const [confirmationId, setConfirmationId] = useState(() => {
+    const id = generateConfirmationId();
+    storeSetConfirmationId(id);
+    return id;
+  });
   const [saving, setSaving] = useState(false);
   const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
   const [resumeNotFound, setResumeNotFound] = useState(false);
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const handleResendLink = async () => {
+    const email = resendEmail.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return;
+    setResendState("sending");
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-checkout-recovery`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ email, letterType: "psd" }),
+      });
+      const result = await res.json() as { ok?: boolean; error?: string };
+      setResendState(result.ok ? "sent" : "error");
+    } catch {
+      setResendState("error");
+    }
+  };
   const topRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -134,11 +148,25 @@ export default function PSDAssessmentPage() {
         if (!result.ok || !result.order) {
           setResumeNotFound(true);
           setResumeLoading(false);
+          void logAudit({
+            actor_name: "system",
+            actor_role: "system",
+            object_type: "system",
+            object_id: resumeConfirmationId,
+            action: "resume_order_not_found",
+            description: `PSD resume flow: order not found for confirmation ID ${resumeConfirmationId}`,
+            metadata: {
+              confirmation_id: resumeConfirmationId,
+              letter_type: "psd",
+              error: result.error ?? "not_found",
+              timestamp: new Date().toISOString(),
+            },
+          });
           return;
         }
 
         if (result.order.already_paid) {
-          navigate("/assessment/thank-you");
+          navigate("/psd-assessment/thank-you");
           return;
         }
 
@@ -186,8 +214,22 @@ export default function PSDAssessmentPage() {
         setConfirmationId(resumeConfirmationId);
         setStep(3);
         window.scrollTo({ top: 0, behavior: "smooth" });
-      } catch {
+      } catch (err) {
         setResumeNotFound(true);
+        void logAudit({
+          actor_name: "system",
+          actor_role: "system",
+          object_type: "system",
+          object_id: resumeConfirmationId,
+          action: "resume_order_network_error",
+          description: `PSD resume flow: network/parse error for confirmation ID ${resumeConfirmationId}`,
+          metadata: {
+            confirmation_id: resumeConfirmationId,
+            letter_type: "psd",
+            error: err instanceof Error ? err.message : String(err),
+            timestamp: new Date().toISOString(),
+          },
+        });
       } finally {
         setResumeLoading(false);
       }
@@ -206,30 +248,57 @@ export default function PSDAssessmentPage() {
       letterType: "psd",
     };
 
+    // ── Capture full attribution via centralized store ─────────────────────
+    const attr = getAttribution();
+    const gclidVal       = attr.gclid;
+    const fbclidVal      = attr.fbclid;
+    const utmSourceVal   = attr.utm_source;
+    const utmMediumVal   = attr.utm_medium;
+    const utmCampaignVal = attr.utm_campaign;
+    const utmTermVal     = attr.utm_term;
+    const utmContentVal  = attr.utm_content;
+    const landingUrlVal  = attr.landing_url;
+    const attributionJsonVal = buildAttributionJson("step2_lead_psd");
+
     // Save via service_role edge function — bypasses RLS + CHECK constraints reliably
     try {
-      await fetch(RESUME_ORDER_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
+      await loggedFetch(
+        "get-resume-order/upsert-psd-lead",
+        RESUME_ORDER_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+          },
+          body: JSON.stringify({
+            action: "upsert",
+            confirmationId,
+            email: step2Data.email,
+            firstName: step2Data.firstName,
+            lastName: step2Data.lastName,
+            phone: step2Data.phone,
+            state: step2Data.state,
+            deliverySpeed: "priority",
+            assessmentAnswers: assessmentPayload,
+            letterType: "psd",
+            status: "lead",
+            referredBy: referredBy ?? "",
+            gclid:        gclidVal,
+            fbclid:       fbclidVal,
+            utmSource:    utmSourceVal,
+            utmMedium:    utmMediumVal,
+            utmCampaign:  utmCampaignVal,
+            utmTerm:      utmTermVal,
+            utmContent:   utmContentVal,
+            landingUrl:   landingUrlVal,
+            sessionId:    attr.session_id,
+            attributionJson: attributionJsonVal,
+          }),
         },
-        body: JSON.stringify({
-          action: "upsert",
-          confirmationId,
-          email: step2Data.email,
-          firstName: step2Data.firstName,
-          lastName: step2Data.lastName,
-          phone: step2Data.phone,
-          state: step2Data.state,
-          deliverySpeed: "priority",
-          assessmentAnswers: assessmentPayload,
-          letterType: "psd",
-          status: "lead",
-          referredBy: referredBy ?? "",
-        }),
-      });
+        confirmationId,
+      );
     } catch {
       // silent — GHL webhook + Google Sheets still fire below
     }
@@ -310,21 +379,7 @@ export default function PSDAssessmentPage() {
       <meta name="robots" content="index, follow" />
       <link rel="canonical" href="https://www.pawtenant.com/psd-assessment" />
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
-        <Link to="/" className="cursor-pointer">
-          <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
-            alt="PawTenant" className="h-10 w-auto object-contain" />
-        </Link>
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full text-xs font-bold text-amber-700">
-            <i className="ri-shield-star-line"></i>Psychiatric Service Dog Letter
-          </span>
-          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-            <i className="ri-lock-2-line text-green-500"></i>
-            <span className="hidden sm:inline">HIPAA Secured</span>
-          </div>
-        </div>
-      </nav>
+      <PSDAssessmentNavbar />
 
       {/* PSD Banner */}
       <div className="bg-amber-600 text-white text-center py-2.5 px-4">
@@ -354,12 +409,51 @@ export default function PSDAssessmentPage() {
               <p className="text-sm text-gray-400">This only takes a second.</p>
             </div>
           ) : resumeNotFound ? (
-            <div className="flex flex-col items-center justify-center py-32 text-center">
+            <div className="flex flex-col items-center justify-center py-20 text-center max-w-md mx-auto">
               <div className="w-16 h-16 flex items-center justify-center bg-amber-100 rounded-full mb-4">
                 <i className="ri-error-warning-line text-amber-500 text-2xl"></i>
               </div>
               <h2 className="text-xl font-extrabold text-gray-900 mb-2">Link expired or not found</h2>
-              <p className="text-sm text-gray-500 mb-6 max-w-sm">This resume link may have expired or already been used. Start a fresh PSD assessment below.</p>
+              <p className="text-sm text-gray-500 mb-6 max-w-sm">This resume link may have expired or already been used. Enter your email below to receive a new payment link, or start a fresh assessment.</p>
+
+              {/* Resend payment link form */}
+              <div className="w-full bg-white border border-gray-200 rounded-xl p-5 mb-5 text-left">
+                <p className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wide">Resend my payment link</p>
+                {resendState === "sent" ? (
+                  <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                    <i className="ri-checkbox-circle-fill text-green-500"></i>
+                    <span className="text-sm font-semibold">Check your inbox — we sent a new payment link.</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={resendEmail}
+                        onChange={(e) => setResendEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-amber-400 transition-colors"
+                        onKeyDown={(e) => { if (e.key === "Enter") handleResendLink(); }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleResendLink}
+                        disabled={resendState === "sending"}
+                        className="whitespace-nowrap px-4 py-2.5 bg-amber-600 text-white text-sm font-bold rounded-lg hover:bg-amber-700 disabled:opacity-60 cursor-pointer transition-colors"
+                      >
+                        {resendState === "sending" ? <i className="ri-loader-4-line animate-spin"></i> : "Send Link"}
+                      </button>
+                    </div>
+                    {resendState === "error" && (
+                      <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                        <i className="ri-error-warning-line"></i>
+                        Couldn&apos;t find an order for that email. Try starting a fresh assessment or call us at 409-965-5885.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => { setResumeNotFound(false); setStep(1); }}

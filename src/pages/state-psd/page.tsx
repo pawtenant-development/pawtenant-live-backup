@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { getPSDStateBySlug } from "../../mocks/statesPSD";
+import PrivacySafeVerificationNote from "../../components/feature/PrivacySafeVerificationNote";
 
 const whyPawtenant = [
   { title: "Licensed Psychiatric Specialists", desc: "Our team includes licensed professionals with expertise in psychiatric disabilities — your evaluation is thorough, empathetic, and legally sound.", icon: "ri-mental-health-line" },

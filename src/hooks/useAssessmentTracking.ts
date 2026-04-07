@@ -1,29 +1,26 @@
 /**
  * useAssessmentTracking
  *
- * Captures all traffic attribution data (?ref=, UTMs, gclid, fbclid)
- * and fires "Assessment Started" events to GHL + Google Sheets on mount.
+ * Captures all traffic attribution data and fires "Assessment Started"
+ * events to GHL + GA4 + Meta Pixel on mount.
  *
- * ?ref= accepts ANY value — no whitelist.
- * Examples of valid values:
- *   ?ref=fb-june-promo
- *   ?ref=google-brand-campaign
- *   ?ref=tiktok-influencer-sarah
- *   ?ref=email-blast-july4
- *   ?ref=sms-promo-1
+ * Now delegates all attribution storage to attributionStore — single source
+ * of truth for all attribution data across the entire SPA.
  */
 
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { fireInitiateCheckout } from "@/lib/metaPixel";
+import {
+  getAttribution,
+  buildFullSource,
+  setSelectedState,
+  type AttributionData,
+} from "@/lib/attributionStore";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
-
-// REMOVED: GOOGLE_SHEETS_WEBHOOK_URL and SHEETS_SECRET are no longer called
-// from the browser. All Sheets syncing is handled exclusively by the
-// sync-to-sheets edge function to keep secrets out of the client bundle.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,82 +34,47 @@ export interface TrackingData {
   utmContent: string;
   gclid: string;
   fbclid: string;
+  fbc: string;
+  sessionId: string;
+  firstSeenAt: string;
   /**
    * Human-readable source label for display/storage.
    * Priority: ref > gclid > fbclid > utm_source > referrer > "Direct"
    */
   fullSource: string;
   landingUrl: string;
+  referrer: string;
+  /** Full attribution snapshot — use this for attribution_json DB field */
+  attribution: AttributionData;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function buildFullSource(
-  ref: string,
-  utmSource: string,
-  utmMedium: string,
-  gclid: string,
-  fbclid: string,
-  referrer: string,
-): string {
-  if (ref) return ref; // ?ref= always wins — this is your custom label
-  if (gclid) return "Google Ads";
-  if (fbclid) return "Facebook / Instagram Ads";
-  if (utmSource && utmMedium) return `${utmSource} / ${utmMedium}`;
-  if (utmSource) return utmSource;
-  if (referrer) {
-    try {
-      const host = new URL(referrer).hostname;
-      if (host.includes("google")) return "Google Organic";
-      if (host.includes("bing")) return "Bing Organic";
-      if (host.includes("facebook") || host.includes("instagram")) return "Facebook Organic";
-      if (host.includes("tiktok")) return "TikTok";
-      if (host.includes("twitter") || host.includes("t.co")) return "Twitter / X";
-      if (host.includes("youtube")) return "YouTube";
-      if (host.includes("linkedin")) return "LinkedIn";
-      return `Referral: ${host}`;
-    } catch {
-      return referrer;
-    }
-  }
-  return "Direct";
-}
+// ── captureTrackingData ───────────────────────────────────────────────────────
 
 /**
- * Reads all tracking params from URL + sessionStorage.
+ * Reads all tracking params from the attribution store.
  * Call this anywhere — safe to call outside of hooks.
+ * The store is already populated by UTMCapture in App.tsx.
  */
-export function captureTrackingData(searchParams: URLSearchParams): TrackingData {
-  // ?ref= accepts ANY string — no whitelist restriction
-  const refFromUrl = searchParams.get("ref")?.trim() ?? "";
-  const ref = refFromUrl || sessionStorage.getItem("esa_referred_by") || "";
-
-  const utmSource = searchParams.get("utm_source") || sessionStorage.getItem("utm_source") || "";
-  const utmMedium = searchParams.get("utm_medium") || sessionStorage.getItem("utm_medium") || "";
-  const utmCampaign = searchParams.get("utm_campaign") || sessionStorage.getItem("utm_campaign") || "";
-  const utmTerm = searchParams.get("utm_term") || sessionStorage.getItem("utm_term") || "";
-  const utmContent = searchParams.get("utm_content") || sessionStorage.getItem("utm_content") || "";
-  const gclid = searchParams.get("gclid") || sessionStorage.getItem("gclid") || "";
-  const fbclid = searchParams.get("fbclid") || sessionStorage.getItem("fbclid") || "";
-  const referrer = sessionStorage.getItem("referrer") || document.referrer;
-  const landingUrl = sessionStorage.getItem("landing_url") || window.location.href;
-
-  // Persist ref so it survives navigation within the SPA
-  if (refFromUrl) sessionStorage.setItem("esa_referred_by", refFromUrl);
-
-  const fullSource = buildFullSource(ref, utmSource, utmMedium, gclid, fbclid, referrer);
+export function captureTrackingData(_searchParams?: URLSearchParams): TrackingData {
+  const data = getAttribution();
+  const fullSource = buildFullSource();
 
   return {
-    ref,
-    utmSource,
-    utmMedium,
-    utmCampaign,
-    utmTerm,
-    utmContent,
-    gclid,
-    fbclid,
+    ref:          data.ref ?? "",
+    utmSource:    data.utm_source ?? "",
+    utmMedium:    data.utm_medium ?? "",
+    utmCampaign:  data.utm_campaign ?? "",
+    utmTerm:      data.utm_term ?? "",
+    utmContent:   data.utm_content ?? "",
+    gclid:        data.gclid ?? "",
+    fbclid:       data.fbclid ?? "",
+    fbc:          data.fbc ?? "",
+    sessionId:    data.session_id,
+    firstSeenAt:  data.first_seen_at ?? "",
     fullSource,
-    landingUrl,
+    landingUrl:   data.landing_url ?? "",
+    referrer:     data.referrer ?? "",
+    attribution:  data,
   };
 }
 
@@ -138,6 +100,13 @@ export function useAssessmentTracking({
   isResume = false,
 }: UseAssessmentTrackingOptions): TrackingData {
   const [searchParams] = useSearchParams();
+
+  // Sync ?state= param into the attribution store
+  useEffect(() => {
+    const stateParam = searchParams.get("state");
+    if (stateParam) setSelectedState(stateParam);
+  }, [searchParams]);
+
   const tracking = captureTrackingData(searchParams);
 
   useEffect(() => {
@@ -153,8 +122,6 @@ export function useAssessmentTracking({
 
     const fireStartEvents = async () => {
       // ── 1. GHL: "Assessment Started" event ──────────────────────────────
-      // Creates a GHL contact event so you can see source-level start counts.
-      // No PII — fires before the user fills in any personal info.
       try {
         await fetch(GHL_PROXY_URL, {
           method: "POST",
@@ -174,6 +141,8 @@ export function useAssessmentTracking({
             utmCampaign: tracking.utmCampaign,
             gclid: tracking.gclid,
             fbclid: tracking.fbclid,
+            sessionId: tracking.sessionId,
+            firstSeenAt: tracking.firstSeenAt,
             landingUrl: tracking.landingUrl,
             submittedAt: new Date().toISOString(),
             tags: [
@@ -188,10 +157,6 @@ export function useAssessmentTracking({
         // Silent — never block the user
       }
 
-      // NOTE: Google Sheets assessment_start events removed — they were
-      // creating blank rows (no personal data) polluting the leads sheet.
-      // Full sync fires automatically after each lead is saved instead.
-
       // ── 2. GA4: custom event ─────────────────────────────────────────────
       if (typeof window.gtag === "function") {
         window.gtag("event", "begin_assessment", {
@@ -200,6 +165,7 @@ export function useAssessmentTracking({
           ref_param: tracking.ref || undefined,
           utm_source: tracking.utmSource || undefined,
           utm_campaign: tracking.utmCampaign || undefined,
+          session_id: tracking.sessionId,
         });
       }
 

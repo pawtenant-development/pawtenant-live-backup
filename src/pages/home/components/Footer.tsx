@@ -12,6 +12,7 @@ const siteMap = [
   { label: "How It Works", href: "#how-it-works" },
   { label: "Pricing", href: "#pricing" },
   { label: "What is an ESA?", href: "#states" },
+  { label: "Verifiable ESA Letters", href: "/verifiable-esa-letters" },
   { label: "FAQ", href: "#faq" },
   { label: "Contact Us", href: "#contact" },
   { label: "Privacy Policy", href: "/privacy-policy" },

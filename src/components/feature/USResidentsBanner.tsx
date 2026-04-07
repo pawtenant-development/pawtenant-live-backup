@@ -13,6 +13,8 @@ const PORTAL_ROUTES = [
   "/psd-assessment-thank-you",
 ];
 
+const AUTO_HIDE_DELAY_MS = 5000; // 5 seconds
+
 export default function USResidentsBanner() {
   const { pathname } = useLocation();
   const [visible, setVisible] = useState(false);
@@ -25,6 +27,15 @@ export default function USResidentsBanner() {
       return () => clearTimeout(t);
     }
   }, []);
+
+  // Auto-hide after 5 seconds
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setTimeout(() => {
+      setVisible(false);
+    }, AUTO_HIDE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [visible]);
 
   const isPortal = PORTAL_ROUTES.some((route) => pathname.startsWith(route));
   if (isPortal || !visible) return null;

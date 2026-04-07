@@ -58,6 +58,9 @@ interface Order {
   coupon_discount?: number | null;
   payment_failed_at?: string | null;
   payment_failure_reason?: string | null;
+  letter_id?: string | null;
+  letter_issue_date?: string | null;
+  letter_expiry_date?: string | null;
 }
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
@@ -84,7 +87,7 @@ interface OrderDetailModalProps {
   onOrderDeleted?: (orderId: string) => void;
 }
 
-type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "emails" | "shared_notes";
+type Section = "overview" | "documents" | "assessment" | "notes" | "comms";
 
 // ─── PSD order detection — letter_type field OR confirmation ID prefix ────────
 function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
@@ -118,6 +121,9 @@ function getModalDisplayStatus(order: Order): { label: string; color: string } {
   if (order.status === "refunded" || order.refunded_at) {
     return { label: "Refunded", color: "bg-red-100 text-red-600" };
   }
+  if (order.doctor_status === "provider_rejected") {
+    return { label: "Provider Rejected", color: "bg-red-100 text-red-700" };
+  }
   if (order.doctor_status === "patient_notified") {
     return { label: "Order (Completed)", color: "bg-emerald-100 text-emerald-700" };
   }
@@ -136,6 +142,7 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",
   letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
   patient_notified: "bg-violet-100 text-violet-700",
+  provider_rejected: "bg-red-100 text-red-700",
 };
 
 const EMAIL_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; failColor: string }> = {
@@ -150,6 +157,8 @@ const EMAIL_TYPE_CONFIG: Record<string, { label: string; icon: string; color: st
   provider_assigned_customer: { label: "Provider Assigned (Patient)", icon: "ri-user-star-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   provider_notification:      { label: "Provider Nudge",              icon: "ri-notification-3-line", color: "text-amber-700 bg-amber-50 border-amber-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   thirty_day_reminder:        { label: "30-Day Reissue Reminder",      icon: "ri-time-fill",           color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  status_cancelled:           { label: "Cancellation Notice",          icon: "ri-close-circle-line",   color: "text-red-700 bg-red-50 border-red-200",          failColor: "text-red-600 bg-red-50 border-red-200" },
+  cancelled:                  { label: "Cancellation Notice",          icon: "ri-close-circle-line",   color: "text-red-700 bg-red-50 border-red-200",          failColor: "text-red-600 bg-red-50 border-red-200" },
 };
 
 function fmt(ts: string) {
@@ -175,6 +184,9 @@ interface OrderDocument {
   uploaded_by: string;
   uploaded_at: string;
   sent_to_customer: boolean;
+  footer_injected?: boolean;
+  processed_file_url?: string | null;
+  footer_letter_id?: string | null;
   customer_visible: boolean;
   notes: string | null;
 }
@@ -243,6 +255,349 @@ function resolveRefConfig(referredBy: string | null): { label: string; icon: str
   if (lower.includes("direct")) return REF_CONFIG["Direct"];
   // Unknown but has a value — show it as-is with a generic icon
   return { label: referredBy, icon: "ri-share-circle-line", color: "text-gray-600 bg-gray-50 border-gray-200" };
+}
+
+// ── Verification ID row — fetches status from letter_verifications ────────────
+const VERIF_STATUS_BADGE: Record<string, string> = {
+  valid:   "bg-emerald-100 text-emerald-700",
+  revoked: "bg-red-100 text-red-600",
+  expired: "bg-gray-100 text-gray-500",
+};
+const VERIF_STATUS_ICON: Record<string, string> = {
+  valid:   "ri-shield-check-line",
+  revoked: "ri-shield-cross-line",
+  expired: "ri-time-line",
+};
+
+// ─── RetryPaymentButton ───────────────────────────────────────────────────────
+const SUPABASE_URL_MODAL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+const SUPABASE_KEY_MODAL = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+
+function RetryPaymentButton({ order }: { order: Order }) {
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState("");
+
+  const handleSend = async () => {
+    if (!order.email) return;
+    setSending(true);
+    setErr("");
+    try {
+      const res = await fetch(`${SUPABASE_URL_MODAL}/functions/v1/send-checkout-recovery`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY_MODAL,
+          Authorization: `Bearer ${SUPABASE_KEY_MODAL}`,
+        },
+        body: JSON.stringify({
+          email: order.email,
+          letterType: order.letter_type ?? "esa",
+          confirmationId: order.confirmation_id,
+        }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (data.ok) {
+        setSent(true);
+      } else {
+        setErr(data.error ?? "Failed to send retry link.");
+      }
+    } catch {
+      setErr("Network error — please try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <div className="mt-2 flex items-center gap-1.5 text-emerald-700 text-xs font-semibold">
+        <i className="ri-checkbox-circle-fill text-emerald-500"></i>
+        Retry payment link sent to {order.email}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={handleSend}
+        disabled={sending}
+        className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-60"
+      >
+        {sending
+          ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+          : <><i className="ri-send-plane-line"></i>Send Retry Payment Link</>}
+      </button>
+      {err && <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{err}</p>}
+    </div>
+  );
+}
+
+// ─── NotesTabMerged — Provider Notes + Internal Notes in one tab ─────────────
+function NotesTabMerged({ orderId, confirmationId, adminUserId, adminName }: {
+  orderId: string; confirmationId: string; adminUserId: string; adminName: string;
+}) {
+  const [activeNoteTab, setActiveNoteTab] = useState<"provider" | "internal">("provider");
+  return (
+    <div className="flex flex-col h-full">
+      {/* Sub-tab switcher */}
+      <div className="flex items-center gap-1 px-4 pt-4 pb-0">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+          {([
+            { key: "provider" as const, label: "Provider Notes", icon: "ri-chat-3-line" },
+            { key: "internal" as const, label: "Internal Notes", icon: "ri-sticky-note-line" },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveNoteTab(tab.key)}
+              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeNoteTab === tab.key ? "bg-white text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              <i className={tab.icon}></i>{tab.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 ml-3">
+          {activeNoteTab === "provider" ? "Shared between admin and provider" : "Admin-only internal notes"}
+        </p>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        {activeNoteTab === "provider" ? (
+          <SharedNotesPanel
+            orderId={orderId}
+            confirmationId={confirmationId}
+            currentUserId={adminUserId}
+            currentUserName={adminName}
+            currentUserRole="admin"
+          />
+        ) : (
+          <OrderNotesPanel
+            orderId={orderId}
+            confirmationId={confirmationId}
+            adminUserId={adminUserId}
+            adminName={adminName}
+            onClose={() => {}}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: string }) {
+  const [status, setStatus] = useState<string>("valid");
+  const [copied, setCopied] = useState(false);
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+  const [revokeReason, setRevokeReason] = useState("");
+  const [revoking, setRevoking] = useState(false);
+  const [revokeMsg, setRevokeMsg] = useState("");
+
+  const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+  const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+
+  useEffect(() => {
+    supabase
+      .from("letter_verifications")
+      .select("status")
+      .eq("order_id", orderId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.status) setStatus(data.status as string);
+      });
+  }, [orderId]);
+
+  const handleCopy = () => {
+    const copyFallback = () => {
+      try {
+        const el = document.createElement("textarea");
+        el.value = letterId;
+        el.style.position = "fixed";
+        el.style.opacity = "0";
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // silently fail
+      }
+    };
+
+    if (navigator.clipboard && document.hasFocus()) {
+      navigator.clipboard.writeText(letterId).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(copyFallback);
+    } else {
+      copyFallback();
+    }
+  };
+
+  const handleRevoke = async () => {
+    setRevoking(true);
+    setRevokeMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? anonKey;
+      const res = await fetch(`${supabaseUrl}/functions/v1/revoke-letter-verification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          orderId,
+          letterId,
+          reason: revokeReason.trim() || "Revoked by admin",
+        }),
+      });
+      const result = await res.json() as { ok: boolean; revoked?: boolean; alreadyRevoked?: boolean; error?: string };
+      if (result.ok) {
+        setStatus("revoked");
+        setShowRevokeConfirm(false);
+        setRevokeReason("");
+        setRevokeMsg(result.alreadyRevoked ? "Already revoked." : "Verification ID revoked successfully.");
+      } else {
+        setRevokeMsg(result.error ?? "Revoke failed — check edge function logs");
+      }
+    } catch {
+      setRevokeMsg("Network error — please try again");
+    }
+    setRevoking(false);
+    setTimeout(() => setRevokeMsg(""), 6000);
+  };
+
+  return (
+    <div className="col-span-2 sm:col-span-3 md:col-span-4">
+      <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
+        <i className="ri-shield-check-line text-[#1a5c4f]"></i>
+        Verification ID
+      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`text-sm font-mono font-bold px-3 py-1.5 rounded-lg select-all tracking-wider border ${status === "revoked" ? "text-red-600 bg-red-50 border-red-200 line-through opacity-70" : "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]"}`}>
+          {letterId}
+        </span>
+        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${VERIF_STATUS_BADGE[status] ?? VERIF_STATUS_BADGE.valid}`}>
+          <i className={VERIF_STATUS_ICON[status] ?? VERIF_STATUS_ICON.valid}></i>
+          {status.charAt(0).toUpperCase() + status.slice(1)}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-[#1a5c4f] cursor-pointer transition-colors"
+        >
+          <i className={copied ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
+          {copied ? "Copied!" : "Copy"}
+        </button>
+        {/* Revoke button — only shown when status is valid */}
+        {status !== "revoked" && (
+          <button
+            type="button"
+            onClick={() => setShowRevokeConfirm(true)}
+            className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+          >
+            <i className="ri-shield-cross-line"></i>
+            Revoke
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+        <i className="ri-information-line"></i>
+        Public-safe ID — no PHI.{" "}
+        <a
+          href={`/verify/${letterId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+        >
+          Preview verify page
+        </a>
+      </p>
+      {revokeMsg && (
+        <p className={`text-xs mt-1.5 flex items-center gap-1 font-semibold ${revokeMsg.includes("success") || revokeMsg.includes("Already") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+          <i className={revokeMsg.includes("success") || revokeMsg.includes("Already") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+          {revokeMsg}
+        </p>
+      )}
+
+      {/* ── Revoke Confirm Dialog ── */}
+      {showRevokeConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowRevokeConfirm(false)}></div>
+          <div className="relative bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-shield-cross-fill text-red-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Revoke Verification ID?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  This will immediately invalidate{" "}
+                  <span className="font-mono font-bold text-gray-800">{letterId}</span>.
+                  Anyone scanning or checking this ID will see it as <strong className="text-red-600">Revoked</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 space-y-1.5 text-xs text-red-700">
+              <p className="flex items-center gap-1.5 font-semibold">
+                <i className="ri-error-warning-fill"></i>
+                This action cannot be undone from the admin panel.
+              </p>
+              <p className="flex items-center gap-1.5">
+                <i className="ri-global-line"></i>
+                The public verify page will immediately show this ID as revoked.
+              </p>
+              <p className="flex items-center gap-1.5">
+                <i className="ri-file-damage-line"></i>
+                The PDF footer stamp will still show the ID — only the online check is affected.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                Reason for revocation <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value.slice(0, 300))}
+                rows={2}
+                placeholder="e.g. Order cancelled and refunded, fraudulent order, customer requested..."
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-red-400 resize-none"
+                autoFocus
+              />
+              <p className="text-xs text-gray-400 text-right mt-0.5">{revokeReason.length}/300</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRevoke}
+                disabled={revoking}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {revoking
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Revoking...</>
+                  : <><i className="ri-shield-cross-line"></i>Yes, Revoke ID</>
+                }
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowRevokeConfirm(false); setRevokeReason(""); }}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function OrderDetailModal({
@@ -770,22 +1125,24 @@ export default function OrderDetailModal({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token ?? "";
-      const res = await fetch(`${supabaseUrl}/functions/v1/resend-webhook`, {
+      // Use fix-order-payment to re-sync the Stripe payment intent and backfill checkout_session_id
+      const res = await fetch(`${supabaseUrl}/functions/v1/fix-order-payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           confirmationId: order.confirmation_id,
-          paymentIntentId: order.payment_intent_id,
+          stripePaymentIntentId: order.payment_intent_id,
         }),
       });
-      const result = await res.json() as { ok?: boolean; message?: string; error?: string; checkoutSessionId?: string };
+      const result = await res.json() as { ok?: boolean; message?: string; error?: string; checkoutSessionId?: string; paymentIntentId?: string; priceUpdated?: number; alreadySynced?: boolean; emailsTriggered?: boolean };
       if (result.ok) {
-        setResendWebhookMsg(result.message ?? "Webhook re-processed successfully. checkout_session_id backfilled.");
+        const note = result.alreadySynced ? " (already synced — no changes needed)" : "";
+        setResendWebhookMsg((result.message ?? "Payment re-synced successfully.") + note);
         setResendWebhookOk(true);
         if (result.checkoutSessionId) {
           updateOrderField({ checkout_session_id: result.checkoutSessionId });
         }
-        // Refresh email log
+        // Refresh email log + checkout_session_id from DB
         try {
           const { data: fresh } = await supabase.from("orders").select("email_log, checkout_session_id").eq("id", order.id).maybeSingle();
           if (fresh) {
@@ -796,7 +1153,7 @@ export default function OrderDetailModal({
           }
         } catch { /* non-critical */ }
       } else {
-        setResendWebhookMsg(result.error ?? "Webhook re-send failed — check edge function logs");
+        setResendWebhookMsg(result.error ?? "Re-sync failed — check Stripe ID and try again");
         setResendWebhookOk(false);
       }
     } catch {
@@ -895,6 +1252,20 @@ export default function OrderDetailModal({
         ? refundAmount ? ` — $${refundAmount.toFixed(2)} refunded` : " — full refund issued"
         : "";
       setCancelMsg(`Order cancelled successfully${refundNote}. Customer notified by email.`);
+
+      // ── Refresh email log so the cancellation email entry appears immediately ──
+      try {
+        const { data: fresh } = await supabase
+          .from("orders")
+          .select("email_log")
+          .eq("id", order.id)
+          .maybeSingle();
+        if (fresh?.email_log) {
+          updateOrderField({ email_log: fresh.email_log as EmailLogEntry[] });
+        }
+      } catch {
+        // Non-critical — email log will refresh next time the Emails tab is opened
+      }
     } catch {
       setCancelMsg("Unexpected error — please try again.");
     }
@@ -994,6 +1365,10 @@ export default function OrderDetailModal({
   const [showThirtyDayConfirm, setShowThirtyDayConfirm] = useState(false);
   const [thirtyDayLoading, setThirtyDayLoading] = useState(false);
   const [thirtyDayMsg, setThirtyDayMsg] = useState("");
+
+  // ── Re-inject footer state ──
+  const [reinjectingFooter, setReinjectingFooter] = useState(false);
+  const [reinjectFooterMsg, setReinjectFooterMsg] = useState("");
   const [showDeleteOrderConfirm, setShowDeleteOrderConfirm] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [deleteOrderMsg, setDeleteOrderMsg] = useState("");
@@ -1063,8 +1438,123 @@ export default function OrderDetailModal({
     setTimeout(() => setThirtyDayMsg(""), 8000);
   };
 
+  // ── Re-inject / Generate + inject verification footer ────────────────────
+  // If order has no letter_id: calls repair-order-letter-id which generates ID,
+  // creates letter_verifications row, saves to orders, and stamps all docs.
+  // If order already has letter_id: calls inject-pdf-footer directly on the doc.
+  const handleReinjectFooter = async (doc: OrderDocument) => {
+    setReinjectingFooter(true);
+    setReinjectFooterMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+
+      // ── PATH A: No letter_id yet — generate ID + inject via repair function ──
+      if (!order.letter_id) {
+        const res = await fetch(`${supabaseUrl}/functions/v1/repair-order-letter-id`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ confirmationId: order.confirmation_id }),
+        });
+        const result = await res.json() as {
+          ok?: boolean;
+          error?: string;
+          letterId?: string;
+          documentsProcessed?: number;
+          errors?: string[];
+          message?: string;
+        };
+        if (result.ok && result.letterId) {
+          setReinjectFooterMsg(
+            `Verification ID generated (${result.letterId}) and stamped into ${result.documentsProcessed ?? 0} document(s)`
+          );
+          // Refresh local order state so VerificationIdRow appears immediately
+          updateOrderField({ letter_id: result.letterId });
+          loadOrderDocs();
+        } else {
+          setReinjectFooterMsg(result.error ?? result.message ?? "ID generation failed — check edge function logs");
+        }
+        setReinjectingFooter(false);
+        setTimeout(() => setReinjectFooterMsg(""), 8000);
+        return;
+      }
+
+      // ── PATH B: letter_id already exists — re-inject footer into this doc ──
+      const res = await fetch(`${supabaseUrl}/functions/v1/inject-pdf-footer`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+          confirmationId: order.confirmation_id,
+          documentId: doc.id,
+          fileUrl: doc.file_url,
+          letterId: order.letter_id,
+          forceReInject: true,
+        }),
+      });
+      const result = await res.json() as {
+        ok?: boolean;
+        error?: string;
+        processedUrl?: string;
+        injected?: boolean;
+        reused?: boolean;
+      };
+      if (result.ok) {
+        setReinjectFooterMsg(result.reused ? "Footer already present — no changes needed" : "Footer re-injected successfully!");
+        loadOrderDocs();
+      } else {
+        setReinjectFooterMsg(result.error ?? "Re-injection failed");
+      }
+    } catch {
+      setReinjectFooterMsg("Network error — please try again");
+    }
+    setReinjectingFooter(false);
+    setTimeout(() => setReinjectFooterMsg(""), 8000);
+  };
+
   // Email log state
   const [emailLogLoading, setEmailLogLoading] = useState(false);
+
+  // ── Notify Patient (inline in Documents tab) ──
+  const [notifyingPatient, setNotifyingPatient] = useState(false);
+  const [notifyPatientMsg, setNotifyPatientMsg] = useState("");
+  const [notifyPatientOk, setNotifyPatientOk] = useState<boolean | null>(null);
+
+  const handleNotifyPatientFromDocs = async () => {
+    setNotifyingPatient(true);
+    setNotifyPatientMsg("");
+    setNotifyPatientOk(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-patient-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ confirmationId: order.confirmation_id, doctorMessage: doctorMessage.trim() || null }),
+      });
+      const result = await res.json() as { ok?: boolean; error?: string; docsEmailed?: number };
+      if (result.ok) {
+        setNotifyPatientMsg(`Patient notified! ${result.docsEmailed ?? 0} document(s) sent to ${order.email}`);
+        setNotifyPatientOk(true);
+        updateOrderField({ patient_notification_sent_at: new Date().toISOString() });
+        loadOrderDocs();
+      } else {
+        setNotifyPatientMsg(result.error ?? "Send failed — check edge function logs");
+        setNotifyPatientOk(false);
+      }
+    } catch {
+      setNotifyPatientMsg("Network error — please try again");
+      setNotifyPatientOk(false);
+    }
+    setNotifyingPatient(false);
+    setTimeout(() => { setNotifyPatientMsg(""); setNotifyPatientOk(null); }, 8000);
+  };
 
   const handleResendProviderEmail = async () => {
     if (!order.doctor_email) return;
@@ -1138,7 +1628,7 @@ export default function OrderDetailModal({
   }, [order.id]);
 
   useEffect(() => {
-    if (section === "emails") loadEmailLog();
+    if (section === "emails" || section === "comms") loadEmailLog();
   }, [section, loadEmailLog]);
 
   return (
@@ -1249,13 +1739,11 @@ export default function OrderDetailModal({
         {/* Section navigation — dropdown on mobile, pill tabs on desktop */}
         {(() => {
           const TABS: { key: Section; label: string; icon: string; badge: number | null }[] = [
-            { key: "overview",     label: "Overview",                                     icon: "ri-layout-grid-line",  badge: null },
-            { key: "comms",        label: "Comms",                                        icon: "ri-message-3-line",    badge: null },
-            { key: "documents",    label: "Documents",                                    icon: "ri-file-pdf-line",     badge: docCount > 0 ? docCount : null },
-            { key: "assessment",   label: isPSDOrder(order) ? "PSD Eval" : "Assessment",  icon: "ri-questionnaire-line",badge: assessmentCount > 0 ? assessmentCount : null },
-            { key: "shared_notes", label: "Provider Notes",                               icon: "ri-chat-3-line",       badge: null },
-            { key: "notes",        label: "Internal Notes",                               icon: "ri-sticky-note-line",  badge: null },
-            { key: "emails",       label: "Email Log",                                    icon: "ri-mail-send-line",    badge: order.email_log && order.email_log.length > 0 ? order.email_log.length : null },
+            { key: "overview",   label: "Overview",                                     icon: "ri-layout-grid-line",  badge: null },
+            { key: "comms",      label: "Comms",                                        icon: "ri-message-3-line",    badge: order.email_log && order.email_log.length > 0 ? order.email_log.length : null },
+            { key: "documents",  label: "Documents",                                    icon: "ri-file-pdf-line",     badge: docCount > 0 ? docCount : null },
+            { key: "assessment", label: isPSDOrder(order) ? "PSD Eval" : "Assessment",  icon: "ri-questionnaire-line",badge: assessmentCount > 0 ? assessmentCount : null },
+            { key: "notes",      label: "Notes",                                        icon: "ri-sticky-note-line",  badge: null },
           ];
           const activeTab = TABS.find((t) => t.key === section);
           return (
@@ -1304,18 +1792,7 @@ export default function OrderDetailModal({
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
 
-          {/* ── SHARED NOTES (admin ↔ provider) ── */}
-          {section === "shared_notes" && (
-            <SharedNotesPanel
-              orderId={order.id}
-              confirmationId={order.confirmation_id}
-              currentUserId={adminProfile.user_id}
-              currentUserName={adminProfile.full_name}
-              currentUserRole="admin"
-            />
-          )}
-
-          {/* ── COMMUNICATIONS ── */}
+          {/* ── COMMUNICATIONS (includes email log) ── */}
           {section === "comms" && (
             <CommunicationTab
               orderId={order.id}
@@ -1329,6 +1806,13 @@ export default function OrderDetailModal({
               price={order.price}
               letterType={order.letter_type ?? null}
               state={order.state ?? null}
+              doctorEmail={order.doctor_email ?? null}
+              doctorName={order.doctor_name ?? null}
+              onResendProviderEmail={handleResendProviderEmail}
+              resendingProvider={resendingProvider}
+              resendProviderMsg={resendProviderMsg}
+              onLoadEmailLog={loadEmailLog}
+              emailLogLoading={emailLogLoading}
             />
           )}
 
@@ -1474,7 +1958,11 @@ export default function OrderDetailModal({
                     { label: "State", value: order.state ?? "—" },
                     { label: "Plan", value: order.plan_type ?? "—" },
                     { label: "Delivery Speed", value: order.delivery_speed ?? "—" },
-                    { label: "Selected Provider", value: order.selected_provider ?? "—" },
+                    {
+                      label: "Requested Provider",
+                      value: order.selected_provider ?? "—",
+                      highlight: order.selected_provider ? "text-[#1a5c4f] font-semibold" : "text-gray-400",
+                    },
                     { label: "Price", value: order.price != null ? `$${order.price}` : "—" },
                     ...(order.coupon_code ? [{
                       label: "Coupon Used",
@@ -1542,7 +2030,11 @@ export default function OrderDetailModal({
                           </a>
                           <button
                             type="button"
-                            onClick={() => navigator.clipboard.writeText(order.payment_intent_id ?? "")}
+                            onClick={() => {
+                              const val = order.payment_intent_id ?? "";
+                              const fallback = () => { try { const el = document.createElement("textarea"); el.value = val; el.style.position = "fixed"; el.style.opacity = "0"; document.body.appendChild(el); el.focus(); el.select(); document.execCommand("copy"); document.body.removeChild(el); } catch { /* ignore */ } };
+                              if (navigator.clipboard && document.hasFocus()) { navigator.clipboard.writeText(val).catch(fallback); } else { fallback(); }
+                            }}
                             className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
                           >
                             <i className="ri-file-copy-line text-xs"></i>Copy
@@ -1563,7 +2055,11 @@ export default function OrderDetailModal({
                             </a>
                             <button
                               type="button"
-                              onClick={() => navigator.clipboard.writeText(order.checkout_session_id ?? "")}
+                              onClick={() => {
+                                const val = order.checkout_session_id ?? "";
+                                const fallback = () => { try { const el = document.createElement("textarea"); el.value = val; el.style.position = "fixed"; el.style.opacity = "0"; document.body.appendChild(el); el.focus(); el.select(); document.execCommand("copy"); document.body.removeChild(el); } catch { /* ignore */ } };
+                                if (navigator.clipboard && document.hasFocus()) { navigator.clipboard.writeText(val).catch(fallback); } else { fallback(); }
+                              }}
                               className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
                             >
                               <i className="ri-file-copy-line text-xs"></i>Copy
@@ -1594,6 +2090,49 @@ export default function OrderDetailModal({
                             {resendWebhookMsg}
                           </p>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Verification ID ── shown only when letter has been issued via the live provider-submit flow */}
+                  {order.letter_id && (
+                    <VerificationIdRow orderId={order.id} letterId={order.letter_id} />
+                  )}
+
+                  {/* ── Letter Validity Dates ── */}
+                  {(order.letter_issue_date || order.letter_expiry_date) && (
+                    <div className="col-span-2 sm:col-span-3 md:col-span-4">
+                      <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
+                        <i className="ri-calendar-check-line text-[#1a5c4f]"></i>
+                        Letter Validity Period
+                      </p>
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex items-center gap-2 bg-[#f0faf7] border border-[#b8ddd5] rounded-lg px-3 py-2">
+                          <i className="ri-calendar-line text-[#1a5c4f] text-sm"></i>
+                          <div>
+                            <p className="text-xs text-gray-400 leading-tight">Issue Date</p>
+                            <p className="text-sm font-bold text-gray-900">
+                              {order.letter_issue_date
+                                ? new Date(order.letter_issue_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                : "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <i className="ri-arrow-right-line text-gray-300"></i>
+                        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          <i className="ri-time-line text-amber-600 text-sm"></i>
+                          <div>
+                            <p className="text-xs text-gray-400 leading-tight">Expiry Date</p>
+                            <p className="text-sm font-bold text-gray-900">
+                              {order.letter_expiry_date
+                                ? new Date(order.letter_expiry_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                : "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                          <i className="ri-shield-check-line"></i>Valid 1 Year
+                        </span>
                       </div>
                     </div>
                   )}
@@ -1671,6 +2210,35 @@ export default function OrderDetailModal({
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* Payment failure banner */}
+                {order.payment_failed_at && (
+                  <div className="mt-4 pt-4 border-t border-red-200">
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-7 h-7 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0 mt-0.5">
+                          <i className="ri-error-warning-line text-red-600 text-sm"></i>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-extrabold text-red-800 mb-0.5">Payment Failed</p>
+                          <p className="text-xs text-red-700 leading-relaxed">
+                            {order.payment_failure_reason ?? "Payment was declined or failed."}
+                          </p>
+                          <p className="text-[10px] text-red-500 mt-1">
+                            {new Date(order.payment_failed_at).toLocaleString()}
+                          </p>
+                          <RetryPaymentButton order={order} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Retry payment link for lead orders with no payment failure recorded yet */}
+                {order.status === "lead" && !order.payment_failed_at && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <RetryPaymentButton order={order} />
                   </div>
                 )}
 
@@ -2112,52 +2680,7 @@ export default function OrderDetailModal({
                 />
               )}
 
-              {/* Emails Sent */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Emails Sent</p>
-                {!order.email_log || order.email_log.length === 0 ? (
-                  <div className="flex items-center gap-3 py-2">
-                    <div className="w-7 h-7 flex items-center justify-center bg-gray-50 rounded-full flex-shrink-0">
-                      <i className="ri-mail-line text-gray-300 text-sm"></i>
-                    </div>
-                    <p className="text-xs text-gray-400">No emails logged yet for this order.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {order.email_log.map((entry, idx) => {
-                      const cfg = EMAIL_TYPE_CONFIG[entry.type] ?? {
-                        label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-                        icon: "ri-mail-line",
-                        color: "text-gray-600 bg-gray-50 border-gray-200",
-                        failColor: "text-red-600 bg-red-50 border-red-200",
-                      };
-                      const colorClass = entry.success ? cfg.color : cfg.failColor;
-                      const isConfirmation = entry.type === "order_confirmation" || entry.type === "payment_receipt";
-                      return (
-                        <div
-                          key={idx}
-                          className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${colorClass}`}
-                        >
-                          <div className="w-7 h-7 flex items-center justify-center flex-shrink-0">
-                            <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} text-base`}></i>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold leading-tight">{cfg.label}</p>
-                            <p className="text-xs opacity-70 leading-tight truncate">
-                              To: {entry.to} &middot; {fmtEmailTime(entry.sentAt)}
-                            </p>
-                          </div>
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-white/60`}>
-                            {entry.success
-                              ? <><i className="ri-checkbox-circle-fill"></i>Sent</>
-                              : <><i className="ri-close-circle-fill"></i>Failed</>}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+
             </div>
           )}
 
@@ -2197,6 +2720,53 @@ export default function OrderDetailModal({
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Letters &amp; Documents</p>
                 <div className="flex items-center gap-2">
+                  {/* Re-inject All Footers — only available for orders that already have a verification ID from the live flow */}
+                  {order.letter_id && orderDocs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setReinjectFooterMsg("");
+                        setReinjectingFooter(true);
+                        let injected = 0;
+                        let failed = 0;
+                        try {
+                          const { data: { session } } = await supabase.auth.getSession();
+                          const token = session?.access_token ?? "";
+                          for (const doc of orderDocs) {
+                            const res = await fetch(`${supabaseUrl}/functions/v1/inject-pdf-footer`, {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({
+                                orderId: order.id,
+                                confirmationId: order.confirmation_id,
+                                documentId: doc.id,
+                                fileUrl: doc.file_url,
+                                letterId: order.letter_id,
+                                forceReInject: true,
+                              }),
+                            });
+                            const result = await res.json() as { ok?: boolean };
+                            if (result.ok) injected++; else failed++;
+                          }
+                          setReinjectFooterMsg(`${injected} document(s) updated${failed > 0 ? `, ${failed} failed` : ""}`);
+                          loadOrderDocs();
+                        } catch {
+                          setReinjectFooterMsg("Network error during batch injection");
+                        }
+                        setReinjectingFooter(false);
+                      }}
+                      disabled={reinjectingFooter}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 text-xs font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      {reinjectingFooter
+                        ? <><i className="ri-loader-4-line animate-spin"></i>Injecting...</>
+                        : <><i className="ri-refresh-line"></i>Re-inject All Footers</>
+                      }
+                    </button>
+                  )}
                   <button type="button" onClick={handleSendAllToCustomer} disabled={sendingAll}
                     className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
                     {sendingAll ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send All to Customer</>}
@@ -2316,15 +2886,72 @@ export default function OrderDetailModal({
                                     <i className="ri-mail-check-line" style={{ fontSize: "9px" }}></i>Emailed
                                   </span>
                                 )}
+                                {doc.footer_injected && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs font-semibold" title={`Verification footer injected — ID: ${doc.footer_letter_id ?? ""}`}>
+                                    <i className="ri-shield-check-line" style={{ fontSize: "9px" }}></i>Verified Footer
+                                  </span>
+                                )}
                               </div>
                               {doc.notes && <p className="text-xs text-gray-400 italic mt-0.5 truncate">{doc.notes}</p>}
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                            <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
-                              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-200 cursor-pointer">
-                              <i className="ri-external-link-line"></i>Open
+                            {/* Inject / Generate+Inject footer button — always visible */}
+                            {(() => {
+                              const needsGenerate = !order.letter_id;
+                              const label = reinjectingFooter
+                                ? "Processing..."
+                                : needsGenerate
+                                  ? "Generate ID & Stamp"
+                                  : doc.footer_injected
+                                    ? "Re-inject Footer"
+                                    : "Inject Footer";
+                              const icon = reinjectingFooter
+                                ? "ri-loader-4-line animate-spin"
+                                : needsGenerate
+                                  ? "ri-shield-star-line"
+                                  : doc.footer_injected
+                                    ? "ri-refresh-line"
+                                    : "ri-shield-check-line";
+                              const title = needsGenerate
+                                ? "Generate a new Verification ID and stamp it into all documents for this order"
+                                : doc.footer_injected
+                                  ? "Re-inject verification footer (force update)"
+                                  : "Inject verification footer now";
+                              const colorClass = needsGenerate
+                                ? "border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100"
+                                : "border-teal-200 text-teal-700 bg-teal-50 hover:bg-teal-100";
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReinjectFooter(doc)}
+                                  disabled={reinjectingFooter}
+                                  title={title}
+                                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border text-xs font-semibold rounded-lg cursor-pointer transition-colors disabled:opacity-50 ${colorClass}`}
+                                >
+                                  <i className={icon}></i>{label}
+                                </button>
+                              );
+                            })()}
+                            {/* Open button — always shows verified PDF when available, falls back to original */}
+                            <a
+                              href={doc.footer_injected && doc.processed_file_url ? doc.processed_file_url : doc.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={doc.footer_injected && doc.processed_file_url ? "Opens stamped PDF with verification footer" : "Opens original uploaded PDF (not yet stamped)"}
+                              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-colors ${doc.footer_injected && doc.processed_file_url ? "bg-[#e8f5f1] text-[#1a5c4f] hover:bg-[#d0ede6]" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                            >
+                              <i className={doc.footer_injected && doc.processed_file_url ? "ri-shield-check-line" : "ri-external-link-line"}></i>
+                              {doc.footer_injected && doc.processed_file_url ? "Open Verified PDF" : "Open Original"}
                             </a>
+                            {/* Show link to original if verified version exists */}
+                            {doc.footer_injected && doc.processed_file_url && (
+                              <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                                className="whitespace-nowrap flex items-center gap-1 px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
+                                title="Open original unprocessed PDF">
+                                <i className="ri-file-line text-xs"></i>Original
+                              </a>
+                            )}
                             <button type="button" onClick={() => handleDeleteDoc(doc.id)}
                               className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 cursor-pointer transition-colors">
                               <i className="ri-delete-bin-line text-sm"></i>
@@ -2334,6 +2961,64 @@ export default function OrderDetailModal({
                       </div>
                     );
                   })}
+                  {/* Re-inject footer status message */}
+                  {reinjectFooterMsg && (
+                    <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("already") ? "bg-teal-50 border-teal-200 text-teal-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+                      <i className={reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("already") ? "ri-shield-check-line" : "ri-error-warning-line"}></i>
+                      {reinjectFooterMsg}
+                      {/* One-click Notify Patient after footer injection */}
+                      {(reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("stamped")) && (
+                        <button
+                          type="button"
+                          onClick={handleNotifyPatientFromDocs}
+                          disabled={notifyingPatient}
+                          className="whitespace-nowrap ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
+                        >
+                          {notifyingPatient
+                            ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                            : <><i className="ri-mail-send-line"></i>Notify Patient Now</>
+                          }
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Notify Patient banner — always visible when docs exist and footer injected ── */}
+                  {orderDocs.some((d) => d.footer_injected) && !reinjectFooterMsg && (
+                    <div className="flex items-center gap-3 px-4 py-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
+                      <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
+                        <i className="ri-mail-send-line text-[#1a5c4f] text-sm"></i>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-[#1a5c4f]">Ready to send to patient</p>
+                        <p className="text-xs text-[#1a5c4f]/70">
+                          {order.patient_notification_sent_at
+                            ? `Last sent ${new Date(order.patient_notification_sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} — click to resend`
+                            : "Footer injected — notify the patient to download their verified letter"
+                          }
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleNotifyPatientFromDocs}
+                        disabled={notifyingPatient}
+                        className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
+                      >
+                        {notifyingPatient
+                          ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                          : <><i className="ri-mail-send-line"></i>{order.patient_notification_sent_at ? "Resend" : "Notify Patient"}</>
+                        }
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Notify Patient feedback */}
+                  {notifyPatientMsg && (
+                    <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${notifyPatientOk ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                      <i className={notifyPatientOk ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                      {notifyPatientMsg}
+                    </div>
+                  )}
 
                   {/* Legacy signed_letter_url (from old flow) */}
                   {order.signed_letter_url && (
@@ -2524,19 +3209,18 @@ export default function OrderDetailModal({
             </div>
           )}
 
-          {/* ── NOTES ── */}
+          {/* ── NOTES (Provider Notes + Internal Notes merged) ── */}
           {section === "notes" && (
-            <OrderNotesPanel
+            <NotesTabMerged
               orderId={order.id}
               confirmationId={order.confirmation_id}
               adminUserId={adminProfile.user_id}
               adminName={adminProfile.full_name}
-              onClose={() => {}}
             />
           )}
 
-          {/* ── EMAIL LOG TAB ── */}
-          {section === "emails" && (
+          {/* ── EMAIL LOG TAB (kept for legacy — now merged into Comms) ── */}
+          {section === ("emails" as string) && (
             <div className="p-6 space-y-5">
 
               {/* Header with refresh */}

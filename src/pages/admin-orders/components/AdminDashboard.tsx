@@ -20,6 +20,9 @@ interface Order {
   signed_letter_url: string | null;
   patient_notification_sent_at: string | null;
   email_log?: { type: string; sentAt: string; success: boolean }[] | null;
+  payment_failure_reason?: string | null;
+  payment_failed_at?: string | null;
+  refunded_at?: string | null;
   // Attribution fields
   utm_source?: string | null;
   utm_medium?: string | null;
@@ -183,6 +186,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     const activeOrders = orders.filter(o => o.status !== "cancelled" && o.status !== "refunded" && !(o as Order & { refunded_at?: string | null }).refunded_at);
 
     const leadUnpaid            = activeOrders.filter(o => !o.payment_intent_id).length;
+    const paymentFailed         = activeOrders.filter(o => !!(o.payment_failure_reason) && !o.payment_intent_id).length;
     const abandonedCheckouts    = activeOrders.filter(o => !o.payment_intent_id && (now - new Date(o.created_at).getTime()) > ONE_HOUR).length;
     const leadPaidUnassigned    = activeOrders.filter(o => !!o.payment_intent_id && !o.doctor_email && !(o as Order & { doctor_user_id?: string }).doctor_user_id && o.doctor_status !== "patient_notified").length;
     const leadPaidAssigned      = activeOrders.filter(o => !!o.payment_intent_id && !!(o.doctor_email || (o as Order & { doctor_user_id?: string }).doctor_user_id) && o.doctor_status !== "patient_notified").length;
@@ -207,6 +211,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
 
     return {
       leadUnpaid,
+      paymentFailed,
       abandonedCheckouts,
       leadPaidUnassigned,
       leadPaidAssigned,
@@ -222,7 +227,11 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
   // Recent activity: last 15 orders sorted by created_at desc
   const recentActivity = useMemo(() => {
     return [...orders]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort((a, b) => {
+        const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tB - tA;
+      })
       .slice(0, 15);
   }, [orders]);
 
@@ -286,6 +295,16 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
       borderColor: "border-amber-200",
       tab: "orders",
       note: `${stats.abandonedCheckouts} older than 1 hour — need recovery`,
+    },
+    {
+      label: "Payment Failed",
+      value: stats.paymentFailed,
+      icon: "ri-bank-card-line",
+      bg: "bg-red-50",
+      iconColor: "text-red-500",
+      borderColor: "border-red-200",
+      tab: "orders",
+      note: "Card declined or insufficient funds",
     },
     {
       label: "Paid · Unassigned",
@@ -506,7 +525,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
           <span className="text-xs font-bold text-red-600 uppercase tracking-widest">Needs Attention</span>
           <div className="flex-1 h-px bg-red-100"></div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {urgentCards.map((card) => (
             <button key={card.label} type="button" onClick={() => onTabChange(card.tab)}
               className={`bg-white rounded-xl border ${card.borderColor} p-4 text-left hover:border-gray-300 hover:-translate-y-0.5 transition-all cursor-pointer group`}>

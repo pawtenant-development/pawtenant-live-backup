@@ -1,3 +1,5 @@
+import { useAttributionParams } from "@/hooks/useAttributionParams";
+
 const steps = [
   {
     number: "01",
@@ -20,6 +22,8 @@ const steps = [
 ];
 
 export default function StepsSection() {
+  const { withAttribution } = useAttributionParams();
+
   return (
     <section id="how-it-works" className="py-20 bg-orange-50">
       <div className="max-w-7xl mx-auto px-6">
@@ -56,7 +60,7 @@ export default function StepsSection() {
 
         <div className="text-center mt-12">
           <a
-            href="/assessment"
+            href={withAttribution("/assessment")}
             className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
             Start Your ESA Letter Now

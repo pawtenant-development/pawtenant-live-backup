@@ -38,6 +38,9 @@ interface Order {
   refunded_at?: string | null;
   refund_amount?: number | null;
   addon_services?: string[] | null;
+  letter_id?: string | null;
+  letter_issue_date?: string | null;
+  letter_expiry_date?: string | null;
 }
 
 // ─── PSD order detection helper ───────────────────────────────────────────────
@@ -138,6 +141,12 @@ export default function ProviderOrderDetail({
   const [markingInReview, setMarkingInReview] = useState(false);
   const [inReviewMsg, setInReviewMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // ── Reject order state ────────────────────────────────────────────────────
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectMsg, setRejectMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   // Uploaded docs for this order
   const [uploadedDocs, setUploadedDocs] = useState<OrderDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -194,6 +203,47 @@ export default function ProviderOrderDetail({
       setInReviewMsg({ ok: false, text: "Network error. Please try again." });
     }
     setMarkingInReview(false);
+  };
+
+  const handleRejectOrder = async () => {
+    if (rejectionReason.trim().length < 5) {
+      setRejectMsg({ ok: false, text: "Please provide a reason (at least 5 characters)." });
+      return;
+    }
+    setRejecting(true);
+    setRejectMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? SUPABASE_KEY;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/provider-reject-order`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_KEY,
+        },
+        body: JSON.stringify({
+          confirmationId: order.confirmation_id,
+          rejectionReason: rejectionReason.trim(),
+        }),
+      });
+      const result = await res.json() as { ok: boolean; error?: string; message?: string };
+      if (result.ok) {
+        setRejectMsg({ ok: true, text: result.message ?? "Order rejected. Admin has been notified." });
+        const updated = { ...order, doctor_status: "provider_rejected", status: "processing" };
+        setOrder(updated);
+        onOrderUpdated({ id: order.id, doctor_status: "provider_rejected", status: "processing" });
+        setShowRejectModal(false);
+        setRejectionReason("");
+        // Close the modal after a short delay
+        setTimeout(() => onClose(), 2500);
+      } else {
+        setRejectMsg({ ok: false, text: result.error ?? "Rejection failed. Please try again." });
+      }
+    } catch {
+      setRejectMsg({ ok: false, text: "Network error. Please check your connection." });
+    }
+    setRejecting(false);
   };
 
   const handleSubmitLetter = async () => {
@@ -286,7 +336,7 @@ export default function ProviderOrderDetail({
       file: f,
       url: "",
       label: f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
-      docType: "esa_letter",
+      docType: isPSDOrder(order) ? "psd_letter" : "esa_letter",
       uploading: false,
       error: null,
       done: false,
@@ -411,6 +461,13 @@ export default function ProviderOrderDetail({
   const isLetterSubmitted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
   const isThirtyDayReissue = doctorStatus === "thirty_day_reissue";
   const isRefunded = order.status === "refunded" || !!order.refunded_at;
+  const isRejected = doctorStatus === "provider_rejected";
+
+  // Format date helper
+  const fmtDate = (d: string | null | undefined) => {
+    if (!d) return "—";
+    return new Date(d).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -428,6 +485,11 @@ export default function ProviderOrderDetail({
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${DOCTOR_STATUS_COLOR[doctorStatus] ?? "bg-gray-100 text-gray-500"}`}>
                 {DOCTOR_STATUS_LABEL[doctorStatus] ?? doctorStatus}
               </span>
+              {isRejected && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                  <i className="ri-close-circle-fill" style={{ fontSize: "10px" }}></i>Rejected
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-400">
               <span className="font-mono">{order.confirmation_id}</span>
@@ -465,6 +527,29 @@ export default function ProviderOrderDetail({
           {section === "overview" && (
             <div className="p-6 space-y-5">
 
+              {/* Rejected banner */}
+              {isRejected && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-xl px-5 py-4 flex items-start gap-3">
+                  <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                    <i className="ri-close-circle-fill text-red-600 text-lg"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold text-red-800 mb-1">You Rejected This Order</p>
+                    <p className="text-sm text-red-700 leading-relaxed">
+                      This order has been sent back to admin for reassignment. The patient was not notified.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Reject feedback message */}
+              {rejectMsg && (
+                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${rejectMsg.ok ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                  <i className={rejectMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                  {rejectMsg.text}
+                </div>
+              )}
+
               {/* 30-Day Reissue Banner */}
               {isThirtyDayReissue && (
                 <div className="bg-orange-50 border-2 border-orange-300 rounded-xl px-5 py-4 flex items-start gap-3">
@@ -501,7 +586,7 @@ export default function ProviderOrderDetail({
                 </div>
               </div>
 
-              {/* ── Additional Services Required ── shown when customer purchased extras or requested additional docs */}
+              {/* ── Additional Services Required ── */}
               {(() => {
                 const ADDON_LABELS: Record<string, { label: string; icon: string; note: string }> = {
                   zoom_call: { label: "Private Zoom Call Session", icon: "ri-video-chat-line", note: "Schedule a 30-min consultation with the patient" },
@@ -591,7 +676,7 @@ export default function ProviderOrderDetail({
                   ))}
                 </div>
 
-                {/* In Review action — shown when status is pending_review (hidden in read-only mode) */}
+                {/* In Review action */}
                 {doctorStatus === "pending_review" && !readOnly && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5">
@@ -610,7 +695,6 @@ export default function ProviderOrderDetail({
                     </button>
                   </div>
                 )}
-                {/* Read-only indicator for pending review */}
                 {doctorStatus === "pending_review" && readOnly && (
                   <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-2.5">
                     <i className="ri-time-line text-gray-400 text-sm flex-shrink-0"></i>
@@ -631,11 +715,58 @@ export default function ProviderOrderDetail({
                 )}
 
                 {isLetterSubmitted && (
-                  <div className="mt-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-2">
-                    <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-base"></i>
-                    <p className="text-sm font-semibold text-[#1a5c4f]">
-                      Order completed! Documents submitted and the patient has been notified.
-                    </p>
+                  <div className="mt-3 space-y-2">
+                    <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-2">
+                      <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-base"></i>
+                      <p className="text-sm font-semibold text-[#1a5c4f]">
+                        Order completed! Documents submitted and the patient has been notified.
+                      </p>
+                    </div>
+
+                    {/* ── Letter validity dates ── */}
+                    {(order.letter_issue_date || order.letter_expiry_date) && (
+                      <div className="bg-white border border-[#b8ddd5] rounded-xl px-4 py-3">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1">
+                          <i className="ri-calendar-check-line text-[#1a5c4f]"></i>
+                          Letter Validity Period
+                        </p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">Issue Date</p>
+                            <p className="text-sm font-bold text-gray-900">{fmtDate(order.letter_issue_date)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-400 mb-0.5">Expiry Date</p>
+                            <p className="text-sm font-bold text-gray-900">{fmtDate(order.letter_expiry_date)}</p>
+                            <p className="text-xs text-[#1a5c4f] mt-0.5 flex items-center gap-1">
+                              <i className="ri-time-line"></i>Valid for 1 year
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Verification ID */}
+                    {order.letter_id && (
+                      <div className="bg-white border border-[#b8ddd5] rounded-xl px-4 py-3">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1">
+                          <i className="ri-shield-check-line text-[#1a5c4f]"></i>
+                          Verification ID
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-mono font-bold text-[#1a5c4f] bg-[#f0faf7] border border-[#b8ddd5] px-3 py-1.5 rounded-lg select-all tracking-wider">
+                            {order.letter_id}
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                            <i className="ri-shield-check-line"></i>Valid
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                          <i className="ri-information-line"></i>
+                          This ID is assigned to the letter you submitted. Landlords can use it to verify authenticity.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -700,11 +831,18 @@ export default function ProviderOrderDetail({
                   className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-200 cursor-pointer transition-colors">
                   <i className="ri-questionnaire-line"></i>View Assessment
                 </button>
-                {/* Submit Letter button (hidden in read-only mode) */}
-                {(!isLetterSubmitted || isThirtyDayReissue) && !isRefunded && !readOnly && (
+                {/* Submit Letter button */}
+                {(!isLetterSubmitted || isThirtyDayReissue) && !isRefunded && !readOnly && !isRejected && (
                   <button type="button" onClick={() => setSection("upload")}
                     className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-white text-sm font-bold rounded-xl cursor-pointer transition-colors ${isThirtyDayReissue ? "bg-orange-500 hover:bg-orange-600" : "bg-[#1a5c4f] hover:bg-[#17504a]"}`}>
                     <i className="ri-upload-cloud-line"></i>{isThirtyDayReissue ? "Submit Official Letter" : "Submit Letter"}
+                  </button>
+                )}
+                {/* Reject Order button — only for active, non-completed, non-refunded orders */}
+                {!isLetterSubmitted && !isRefunded && !readOnly && !isRejected && (
+                  <button type="button" onClick={() => setShowRejectModal(true)}
+                    className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 border border-red-200 text-red-600 bg-red-50 text-sm font-bold rounded-xl hover:bg-red-100 cursor-pointer transition-colors">
+                    <i className="ri-close-circle-line"></i>Reject Order
                   </button>
                 )}
                 {!isPSDOrder(order) && assessmentCount > 0 && (
@@ -1198,6 +1336,79 @@ export default function ProviderOrderDetail({
                 type="button"
                 onClick={() => setShowSubmitConfirm(false)}
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reject Order Modal ── */}
+      {showRejectModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/40">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-close-circle-fill text-red-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Reject This Order?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  The order will be sent back to admin for reassignment. <strong>The patient will not be notified.</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+              <p className="text-xs text-amber-800 flex items-start gap-1.5 leading-relaxed">
+                <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
+                Your rejection reason will be visible to admin only. Please be specific so the case can be handled appropriately.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                Reason for Rejection <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value.slice(0, 500))}
+                rows={4}
+                placeholder="e.g. I am not licensed in this state, conflict of interest, insufficient information provided..."
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-red-400 resize-none transition-colors"
+                autoFocus
+              />
+              <div className="flex items-center justify-between mt-1">
+                <p className={`text-xs ${rejectionReason.trim().length < 5 && rejectionReason.length > 0 ? "text-red-500" : "text-gray-400"}`}>
+                  {rejectionReason.trim().length < 5 && rejectionReason.length > 0 ? "Too short — please provide more detail" : "Required"}
+                </p>
+                <p className="text-xs text-gray-400">{rejectionReason.length}/500</p>
+              </div>
+            </div>
+
+            {rejectMsg && !rejectMsg.ok && (
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg mb-3 text-xs font-semibold text-red-700">
+                <i className="ri-error-warning-line"></i>{rejectMsg.text}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRejectOrder}
+                disabled={rejecting || rejectionReason.trim().length < 5}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {rejecting
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Rejecting...</>
+                  : <><i className="ri-close-circle-line"></i>Confirm Rejection</>
+                }
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowRejectModal(false); setRejectionReason(""); setRejectMsg(null); }}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 Cancel
               </button>
