@@ -19,6 +19,16 @@ const GOOGLE_ADS_LOGIN_CUSTOMER_ID = Deno.env.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID"
 
 const GOOGLE_ADS_API_VERSION = "v20";
 
+// Types that support uploadClickConversions
+const CLICK_CONVERSION_COMPATIBLE_TYPES = new Set([
+  "WEBPAGE",
+  "CLICK_TO_CALL",
+  "UPLOAD_CLICKS",
+  "UPLOAD_CALLS",
+  "STORE_SALES_DIRECT_UPLOAD",
+  "STORE_SALES",
+]);
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -188,12 +198,129 @@ async function uploadConversionToGoogleAds(payload: ConversionPayload, accessTok
     }
 
     if (responseData.partialFailureError) {
-      return { success: false, error: `Partial failure: ${JSON.stringify(responseData.partialFailureError).slice(0, 800)}`, rawResponse: responseData, diagnostics };
+      let partialErrMsg = `Partial failure: `;
+      try {
+        const pfe = responseData.partialFailureError as Record<string, unknown>;
+        const details = pfe.details as Array<Record<string, unknown>> | undefined;
+        const errors = details?.[0]?.errors as Array<Record<string, unknown>> | undefined;
+        const firstErr = errors?.[0];
+        const errCode = firstErr?.errorCode as Record<string, unknown> | undefined;
+        const convErrType = errCode?.conversionUploadError as string | undefined;
+        if (convErrType) {
+          partialErrMsg += `conversionUploadError=${convErrType}`;
+          if (convErrType === "INVALID_CONVERSION_ACTION_TYPE") {
+            partialErrMsg += ` — The conversion action ID (${GOOGLE_ADS_CONVERSION_ACTION_ID}) is not compatible with uploadClickConversions. It must be type WEBPAGE. Go to Google Ads UI → Tools → Conversions → find a "Website" conversion action and use its ID.`;
+          }
+        } else {
+          partialErrMsg += JSON.stringify(responseData.partialFailureError).slice(0, 800);
+        }
+      } catch {
+        partialErrMsg += JSON.stringify(responseData.partialFailureError).slice(0, 800);
+      }
+      return { success: false, error: partialErrMsg, rawResponse: responseData, diagnostics };
     }
 
     return { success: true, rawResponse: responseData, diagnostics };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err), diagnostics };
+  }
+}
+
+// ── List all conversion actions in the account ────────────────────────────────
+async function listConversionActions(accessToken: string): Promise<{
+  success: boolean;
+  actions?: Array<{
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    category: string;
+    compatibleWithClickUpload: boolean;
+    resourceName: string;
+  }>;
+  currentActionId: string | null;
+  currentActionValid: boolean | null;
+  error?: string;
+  rawResponse?: unknown;
+}> {
+  if (!GOOGLE_ADS_CUSTOMER_ID || !GOOGLE_ADS_DEVELOPER_TOKEN) {
+    return { success: false, error: "Missing GOOGLE_ADS_CUSTOMER_ID or GOOGLE_ADS_DEVELOPER_TOKEN", currentActionId: null, currentActionValid: null };
+  }
+
+  const customerId = GOOGLE_ADS_CUSTOMER_ID.replace(/[-\s]/g, "");
+  const url = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:searchStream`;
+
+  const query = `
+    SELECT
+      conversion_action.id,
+      conversion_action.name,
+      conversion_action.type,
+      conversion_action.status,
+      conversion_action.category,
+      conversion_action.resource_name
+    FROM conversion_action
+    WHERE conversion_action.status != 'REMOVED'
+    ORDER BY conversion_action.name
+  `;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: buildRequestHeaders(accessToken),
+      body: JSON.stringify({ query }),
+    });
+
+    const rawText = await res.text();
+
+    if (rawText.trim().startsWith("<")) {
+      return { success: false, error: `Google Ads API returned HTML (${res.status})`, currentActionId: null, currentActionValid: null };
+    }
+
+    let responseData: unknown;
+    try { responseData = JSON.parse(rawText); } catch {
+      return { success: false, error: `Non-JSON response (${res.status}): ${rawText.slice(0, 400)}`, currentActionId: null, currentActionValid: null };
+    }
+
+    if (!res.ok) {
+      return { success: false, error: `API ${res.status}: ${JSON.stringify(responseData).slice(0, 600)}`, rawResponse: responseData, currentActionId: null, currentActionValid: null };
+    }
+
+    const batches = responseData as Array<{ results?: Array<{ conversionAction?: Record<string, unknown> }> }>;
+    const actions: Array<{
+      id: string;
+      name: string;
+      type: string;
+      status: string;
+      category: string;
+      compatibleWithClickUpload: boolean;
+      resourceName: string;
+    }> = [];
+
+    for (const batch of batches) {
+      for (const row of batch.results ?? []) {
+        const ca = row.conversionAction;
+        if (!ca) continue;
+        const id = String(ca.id ?? "");
+        const type = String(ca.type ?? "");
+        actions.push({
+          id,
+          name: String(ca.name ?? ""),
+          type,
+          status: String(ca.status ?? ""),
+          category: String(ca.category ?? ""),
+          compatibleWithClickUpload: CLICK_CONVERSION_COMPATIBLE_TYPES.has(type),
+          resourceName: String(ca.resourceName ?? ca.resource_name ?? ""),
+        });
+      }
+    }
+
+    const currentActionId = GOOGLE_ADS_CONVERSION_ACTION_ID ?? null;
+    const currentAction = currentActionId ? actions.find((a) => a.id === currentActionId) : null;
+    const currentActionValid = currentAction ? currentAction.compatibleWithClickUpload : (currentActionId ? false : null);
+
+    return { success: true, actions, currentActionId, currentActionValid };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err), currentActionId: null, currentActionValid: null };
   }
 }
 
@@ -211,6 +338,7 @@ interface OrderRow {
   google_ads_upload_method: string | null;
   source_system?: string | null;
   historical_import?: boolean | null;
+  google_tag_fired?: boolean | null;
 }
 
 async function processOrder(
@@ -219,8 +347,29 @@ async function processOrder(
   accessToken: string | null,
   tokenError: string | undefined,
   dryRun: boolean,
-  isBackfillReplay = false
-): Promise<{ confirmationId: string; method: string; quality: string; success: boolean; skipped: boolean; error?: string; diagnostics?: Record<string, unknown> }> {
+  isBackfillReplay = false,
+  forceUpload = false
+): Promise<{ confirmationId: string; method: string; quality: string; success: boolean; skipped: boolean; skipReason?: string; error?: string; diagnostics?: Record<string, unknown> }> {
+
+  // ── Skip same-session orders: website tag already fired, no backend upload needed ──
+  // forceUpload=true bypasses this guard (used for manual single-order retries from admin panel)
+  if (!forceUpload && order.google_tag_fired === true) {
+    console.info(`[google-ads][${order.confirmation_id}] Skipped — google_tag_fired=true (same-session, website tag handled conversion)`);
+    await supabase.from("orders").update({
+      google_ads_upload_status: "skipped_website_tag",
+      google_ads_upload_method: "website_tag",
+      google_ads_last_attempt_at: new Date().toISOString(),
+    }).eq("id", order.id);
+    return {
+      confirmationId: order.confirmation_id,
+      method: "website_tag",
+      quality: "strong",
+      success: true,
+      skipped: true,
+      skipReason: "google_tag_fired=true — same-session purchase handled by website gtag conversion",
+    };
+  }
+
   const gclid = resolveGclid(order.gclid, order.attribution_json, order.confirmation_id);
   const email = order.email?.trim() || null;
   const uploadMethod = getUploadMethod(gclid, email);
@@ -305,6 +454,7 @@ async function processOrder(
           timestamp_source: tsResult.source, timestamp_warning: timestampWarning ?? null,
           has_gclid: !!gclid, has_email: !!email, uploaded_at: now,
           is_backfill_replay: isBackfillReplay,
+          google_tag_fired: order.google_tag_fired ?? false,
         },
       });
     } catch { /* non-critical */ }
@@ -330,10 +480,10 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const body = await req.json().catch(() => ({})) as {
-      mode?: "backfill" | "single" | "retry_failed" | "test_auth" | "test_upload" | "retry_gclid_upgraded";
+      mode?: "backfill" | "single" | "retry_failed" | "test_auth" | "test_upload" | "retry_gclid_upgraded" | "list_conversion_actions";
       confirmationId?: string;
       dryRun?: boolean;
-      // New backfill filters
+      forceUpload?: boolean;
       sourceSystem?: "wordpress_legacy" | "new_site" | "all";
       dateFrom?: string | null;
       dateTo?: string | null;
@@ -342,6 +492,16 @@ serve(async (req) => {
 
     const mode = body.mode ?? "backfill";
     const dryRun = body.dryRun === true;
+    // forceUpload=true bypasses the google_tag_fired guard — for admin manual retries only
+    const forceUpload = body.forceUpload === true;
+
+    // ── List conversion actions ───────────────────────────────────────────────
+    if (mode === "list_conversion_actions") {
+      const tokenResult = await getAccessToken();
+      if (!tokenResult.token) return json({ ok: false, error: `OAuth failed: ${tokenResult.error}` }, 500);
+      const result = await listConversionActions(tokenResult.token);
+      return json({ ok: result.success, mode: "list_conversion_actions", ...result });
+    }
 
     // ── Test auth ─────────────────────────────────────────────────────────────
     if (mode === "test_auth") {
@@ -361,7 +521,7 @@ serve(async (req) => {
     if (mode === "test_upload") {
       const tokenResult = await getAccessToken();
       if (!tokenResult.token) return json({ ok: false, error: `OAuth failed: ${tokenResult.error}` }, 500);
-      const { data: testOrder } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method").not("payment_intent_id", "is", null).in("status", ["processing", "completed"]).order("paid_at", { ascending: false }).limit(1).maybeSingle();
+      const { data: testOrder } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, google_tag_fired").not("payment_intent_id", "is", null).in("status", ["processing", "completed"]).order("paid_at", { ascending: false }).limit(1).maybeSingle();
       if (!testOrder) return json({ ok: false, error: "No paid orders found to test with" });
       const order = testOrder as OrderRow;
       const gclid = resolveGclid(order.gclid, order.attribution_json, order.confirmation_id);
@@ -377,7 +537,7 @@ serve(async (req) => {
 
     // ── Retry gclid-upgraded ──────────────────────────────────────────────────
     if (mode === "retry_gclid_upgraded") {
-      const { data: emailOnlyOrders } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method").eq("google_ads_upload_method", "hashed_email_only").eq("google_ads_upload_status", "uploaded").not("payment_intent_id", "is", null).in("status", ["processing", "completed"]).limit(100);
+      const { data: emailOnlyOrders } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, google_tag_fired").eq("google_ads_upload_method", "hashed_email_only").eq("google_ads_upload_status", "uploaded").not("payment_intent_id", "is", null).in("status", ["processing", "completed"]).limit(100);
       if (!emailOnlyOrders || emailOnlyOrders.length === 0) return json({ ok: true, mode: "retry_gclid_upgraded", processed: 0, message: "No hashed_email_only orders found to upgrade" });
       const upgradeable = (emailOnlyOrders as OrderRow[]).filter((o) => resolveGclid(o.gclid, o.attribution_json, o.confirmation_id) !== null);
       if (upgradeable.length === 0) return json({ ok: true, mode: "retry_gclid_upgraded", processed: 0, checked: emailOnlyOrders.length, message: "No hashed_email_only orders have a gclid available for upgrade" });
@@ -391,7 +551,7 @@ serve(async (req) => {
         if (!accessToken) return json({ ok: false, error: `OAuth failed: ${tokenError}` }, 500);
       }
       const results = [];
-      for (const order of upgradeable) results.push(await processOrder(order, supabase, accessToken, tokenError, dryRun));
+      for (const order of upgradeable) results.push(await processOrder(order, supabase, accessToken, tokenError, dryRun, false, forceUpload));
       return json({ ok: true, mode: "retry_gclid_upgraded", dryRun, checked: emailOnlyOrders.length, upgradeable: upgradeable.length, upgraded: results.filter(r => r.success && !r.skipped).length, failed: results.filter(r => !r.success && !r.skipped).length, results });
     }
 
@@ -407,22 +567,23 @@ serve(async (req) => {
 
     // ── Single order ──────────────────────────────────────────────────────────
     if (mode === "single" && body.confirmationId) {
-      const { data: order } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, source_system, historical_import").eq("confirmation_id", body.confirmationId).maybeSingle();
+      const { data: order } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, source_system, historical_import, google_tag_fired").eq("confirmation_id", body.confirmationId).maybeSingle();
       if (!order) return json({ ok: false, error: "Order not found" }, 404);
-      const result = await processOrder(order as OrderRow, supabase, accessToken, tokenError, dryRun);
-      return json({ ok: true, mode: "single", dryRun, result });
+      const result = await processOrder(order as OrderRow, supabase, accessToken, tokenError, dryRun, false, forceUpload);
+      return json({ ok: true, mode: "single", dryRun, forceUpload, result });
     }
 
     // ── Retry failed ──────────────────────────────────────────────────────────
     if (mode === "retry_failed") {
-      const { data: failedOrders } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, source_system, historical_import").eq("google_ads_upload_status", "failed").not("payment_intent_id", "is", null).in("status", ["processing", "completed"]).limit(100);
+      const { data: failedOrders } = await supabase.from("orders").select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, source_system, historical_import, google_tag_fired").eq("google_ads_upload_status", "failed").not("payment_intent_id", "is", null).in("status", ["processing", "completed"]).limit(100);
       if (!failedOrders || failedOrders.length === 0) return json({ ok: true, mode: "retry_failed", processed: 0, message: "No failed uploads to retry" });
       const results = [];
-      for (const order of failedOrders) results.push(await processOrder(order as OrderRow, supabase, accessToken, tokenError, dryRun));
+      // retry_failed uses forceUpload=true — admin explicitly wants to retry these
+      for (const order of failedOrders) results.push(await processOrder(order as OrderRow, supabase, accessToken, tokenError, dryRun, false, true));
       return json({ ok: true, mode: "retry_failed", dryRun, processed: results.length, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success && !r.skipped).length, firstError: results.find(r => !r.success && !r.skipped)?.error, results });
     }
 
-    // ── Backfill (default) — now with source/date/historical filters ──────────
+    // ── Backfill (default) ────────────────────────────────────────────────────
     const bfSourceSystem = body.sourceSystem ?? "new_site";
     const bfDateFrom = body.dateFrom ?? null;
     const bfDateTo = body.dateTo ?? null;
@@ -430,12 +591,13 @@ serve(async (req) => {
 
     let pendingQuery = supabase
       .from("orders")
-      .select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, source_system, historical_import")
+      .select("id, confirmation_id, email, price, paid_at, created_at, gclid, attribution_json, email_sha256, google_ads_upload_status, google_ads_upload_method, source_system, historical_import, google_tag_fired")
       .not("payment_intent_id", "is", null)
       .in("status", ["processing", "completed"])
       .is("google_ads_uploaded_at", null)
       .neq("status", "refunded")
       .neq("google_ads_upload_status", "skip_historical")
+      .neq("google_ads_upload_status", "skipped_website_tag")
       .order("paid_at", { ascending: false })
       .limit(100);
 
@@ -457,7 +619,7 @@ serve(async (req) => {
     const results = [];
     for (const order of pendingOrders) {
       const isHistoricalReplay = (order as OrderRow).historical_import === true || (order as OrderRow).source_system === "wordpress_legacy";
-      results.push(await processOrder(order as OrderRow, supabase, accessToken, tokenError, dryRun, isHistoricalReplay));
+      results.push(await processOrder(order as OrderRow, supabase, accessToken, tokenError, dryRun, isHistoricalReplay, forceUpload));
     }
 
     return json({
@@ -466,6 +628,7 @@ serve(async (req) => {
       processed: results.length,
       uploaded: results.filter(r => r.success && !r.skipped).length,
       skipped: results.filter(r => r.skipped).length,
+      skipped_website_tag: results.filter(r => r.skipped && r.skipReason?.includes("google_tag_fired")).length,
       failed: results.filter(r => !r.success && !r.skipped).length,
       firstError: results.find(r => !r.success && !r.skipped)?.error,
       results,

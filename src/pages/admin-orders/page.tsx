@@ -1717,102 +1717,138 @@ export default function AdminOrdersPage() {
                 </div>
 
                 {/* ── DESKTOP: bordered table with header ─────────────────── */}
-                <div className="hidden lg:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-                  {/* Table header */}
-                  <div className="flex items-center gap-0 px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-                    <div className="w-9 flex-shrink-0"></div>
-                    <div className="flex-1 min-w-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Name</div>
-                    <div className="w-[140px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Order ID</div>
-                    <div className="w-[64px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">State</div>
-                    <div className="w-[120px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Activity</div>
-                    <div className="w-[150px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</div>
-                    <div className="w-[100px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sequence</div>
-                    <div className="w-[110px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Provider</div>
-                    <div className="w-[60px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Pets</div>
-                    <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</div>
-                    <div className="w-[110px] flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</div>
-                    <div className="w-8 flex-shrink-0"></div>
-                  </div>
-                  {/* Table rows */}
-                  <div className="divide-y divide-gray-100">
-                    {visibleOrders.map((order) => (
-                      <OrderCard
-                        key={order.id}
-                        order={order}
-                        isExpanded={expandedCardId === order.id}
-                        onToggleExpand={() => setExpandedCardId((prev) => prev === order.id ? null : order.id)}
-                        isSelected={selectedOrders.has(order.confirmation_id)}
-                        onToggleSelect={() => toggleSelectOrder(order.confirmation_id)}
-                        notesOpen={expandedNotes === order.confirmation_id}
-                        onToggleNotes={() => setExpandedNotes(expandedNotes === order.confirmation_id ? null : order.confirmation_id)}
-                        assignableProviders={assignableProviders}
-                        pendingAssign={pendingAssign}
-                        onSetPendingAssign={setPendingAssign}
-                        onCancelPendingAssign={() => setPendingAssign(null)}
-                        onConfirmAssign={handleAssign}
-                        assigning={assigning}
-                        assignMsg={assignMsg}
-                        ghlRefiring={ghlRefiring}
-                        onGhlRefire={handleGhlRefire}
-                        ghlReFireResult={ghlReFireResult}
-                        recoveryMsg={recoveryMsg}
-                        onOpenRecovery={openRecoveryModal}
-                        onSendRecoveryDirect={handleSendRecoveryDirect}
-                        sendingRecoveryDirect={sendingRecoveryDirect}
-                        unreadCommsMap={unreadCommsMap}
-                        noteCount={orderNoteCounts[order.id] ?? 0}
-                        adminProfile={adminProfile}
-                        onOpenDetail={openOrderDetail}
-                        onOpenStatusLog={(o) => setShowStatusLog(o)}
-                        onOpenAssessmentIntake={(o) => setAssessmentIntakeOrder(o)}
-                        onToggleOptOut={handleToggleOptOut}
-                        coveredStates={coveredStates}
-                        duplicateEmailSet={duplicateEmailSet}
-                        US_STATES={US_STATES}
-                      />
-                    ))}
-                  </div>
-                </div>
+                {(() => {
+                  // Group visibleOrders by calendar date for ribbon separators
+                  const getDateKey = (ts: string) => {
+                    const d = new Date(ts);
+                    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                  };
+                  const getDateLabel = (ts: string) => {
+                    const d = new Date(ts);
+                    const today = new Date();
+                    const yesterday = new Date(today);
+                    yesterday.setDate(today.getDate() - 1);
+                    const isToday = d.toDateString() === today.toDateString();
+                    const isYesterday = d.toDateString() === yesterday.toDateString();
+                    if (isToday) return "Today";
+                    if (isYesterday) return "Yesterday";
+                    return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+                  };
 
-                {/* ── MOBILE: card stack ─────────────────────────────────── */}
-                <div className="lg:hidden space-y-3">
-                  {visibleOrders.map((order) => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      isExpanded={expandedCardId === order.id}
-                      onToggleExpand={() => setExpandedCardId((prev) => prev === order.id ? null : order.id)}
-                      isSelected={selectedOrders.has(order.confirmation_id)}
-                      onToggleSelect={() => toggleSelectOrder(order.confirmation_id)}
-                      notesOpen={expandedNotes === order.confirmation_id}
-                      onToggleNotes={() => setExpandedNotes(expandedNotes === order.confirmation_id ? null : order.confirmation_id)}
-                      assignableProviders={assignableProviders}
-                      pendingAssign={pendingAssign}
-                      onSetPendingAssign={setPendingAssign}
-                      onCancelPendingAssign={() => setPendingAssign(null)}
-                      onConfirmAssign={handleAssign}
-                      assigning={assigning}
-                      assignMsg={assignMsg}
-                      ghlRefiring={ghlRefiring}
-                      onGhlRefire={handleGhlRefire}
-                      ghlReFireResult={ghlReFireResult}
-                      recoveryMsg={recoveryMsg}
-                      onOpenRecovery={openRecoveryModal}
-                      onSendRecoveryDirect={handleSendRecoveryDirect}
-                      sendingRecoveryDirect={sendingRecoveryDirect}
-                      unreadCommsMap={unreadCommsMap}
-                      noteCount={orderNoteCounts[order.id] ?? 0}
-                      adminProfile={adminProfile}
-                      onOpenDetail={openOrderDetail}
-                      onOpenStatusLog={(o) => setShowStatusLog(o)}
-                      onOpenAssessmentIntake={(o) => setAssessmentIntakeOrder(o)}
-                      onToggleOptOut={handleToggleOptOut}
-                      coveredStates={coveredStates}
-                      duplicateEmailSet={duplicateEmailSet}
-                      US_STATES={US_STATES}
-                    />
-                  ))}
-                </div>
+                  // Build grouped structure: [{dateKey, dateLabel, orders[]}]
+                  const groups: { dateKey: string; dateLabel: string; orders: Order[] }[] = [];
+                  visibleOrders.forEach((order) => {
+                    const dk = getDateKey(order.created_at);
+                    const last = groups[groups.length - 1];
+                    if (last && last.dateKey === dk) {
+                      last.orders.push(order);
+                    } else {
+                      groups.push({ dateKey: dk, dateLabel: getDateLabel(order.created_at), orders: [order] });
+                    }
+                  });
+
+                  const orderCardProps = (order: Order) => ({
+                    order,
+                    isExpanded: expandedCardId === order.id,
+                    onToggleExpand: () => setExpandedCardId((prev) => prev === order.id ? null : order.id),
+                    isSelected: selectedOrders.has(order.confirmation_id),
+                    onToggleSelect: () => toggleSelectOrder(order.confirmation_id),
+                    notesOpen: expandedNotes === order.confirmation_id,
+                    onToggleNotes: () => setExpandedNotes(expandedNotes === order.confirmation_id ? null : order.confirmation_id),
+                    assignableProviders,
+                    pendingAssign,
+                    onSetPendingAssign: setPendingAssign,
+                    onCancelPendingAssign: () => setPendingAssign(null),
+                    onConfirmAssign: handleAssign,
+                    assigning,
+                    assignMsg,
+                    ghlRefiring,
+                    onGhlRefire: handleGhlRefire,
+                    ghlReFireResult,
+                    recoveryMsg,
+                    onOpenRecovery: openRecoveryModal,
+                    onSendRecoveryDirect: handleSendRecoveryDirect,
+                    sendingRecoveryDirect,
+                    unreadCommsMap,
+                    noteCount: orderNoteCounts[order.id] ?? 0,
+                    adminProfile,
+                    onOpenDetail: openOrderDetail,
+                    onOpenStatusLog: (o: Order) => setShowStatusLog(o),
+                    onOpenAssessmentIntake: (o: Order) => setAssessmentIntakeOrder(o),
+                    onToggleOptOut: handleToggleOptOut,
+                    coveredStates,
+                    duplicateEmailSet,
+                    US_STATES,
+                  });
+
+                  return (
+                    <>
+                      {/* DESKTOP */}
+                      <div className="hidden lg:block space-y-3">
+                        {groups.map((group) => (
+                          <div key={group.dateKey} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                            {/* Date ribbon */}
+                            <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200">
+                              <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                                <i className="ri-calendar-line text-[#1a5c4f] text-xs"></i>
+                              </div>
+                              <span className="text-xs font-extrabold text-[#1a5c4f] tracking-wide">{group.dateLabel}</span>
+                              <div className="flex-1 h-px bg-[#d0ede6]"></div>
+                              <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                                {group.orders.length} order{group.orders.length !== 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            {/* Column header — only on first group or always */}
+                            <div className="flex items-center gap-0 px-4 py-2 bg-gray-50/60 border-b border-gray-100">
+                              <div className="w-9 flex-shrink-0"></div>
+                              <div className="flex-1 min-w-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Name</div>
+                              <div className="w-[140px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Order ID</div>
+                              <div className="w-[64px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">State</div>
+                              <div className="w-[120px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Activity</div>
+                              <div className="w-[150px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</div>
+                              <div className="w-[100px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sequence</div>
+                              <div className="w-[110px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Provider</div>
+                              <div className="w-[60px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Pets</div>
+                              <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</div>
+                              <div className="w-[110px] flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</div>
+                              <div className="w-8 flex-shrink-0"></div>
+                            </div>
+                            {/* Rows */}
+                            <div className="divide-y divide-gray-100">
+                              {group.orders.map((order) => (
+                                <OrderCard key={order.id} {...orderCardProps(order)} />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* MOBILE */}
+                      <div className="lg:hidden space-y-4">
+                        {groups.map((group) => (
+                          <div key={group.dateKey}>
+                            {/* Date ribbon */}
+                            <div className="flex items-center gap-2 mb-2 px-1">
+                              <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                                <i className="ri-calendar-line text-[#1a5c4f] text-xs"></i>
+                              </div>
+                              <span className="text-xs font-extrabold text-[#1a5c4f]">{group.dateLabel}</span>
+                              <div className="flex-1 h-px bg-[#d0ede6]"></div>
+                              <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
+                                {group.orders.length}
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {group.orders.map((order) => (
+                                <OrderCard key={order.id} {...orderCardProps(order)} />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* ── Load More ─────────────────────────────────────────── */}
                 {hasMore && (

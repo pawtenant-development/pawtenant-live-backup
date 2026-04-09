@@ -699,14 +699,36 @@ export default function AssessmentThankYouPage() {
       return true;
     };
 
+    // After gtag fires, mark google_tag_fired=true on the order so the backend
+    // uploadClickConversions skips this order (prevents double-counting).
+    const markGoogleTagFired = (txId: string) => {
+      if (!txId) return;
+      supabase
+        .from("orders")
+        .update({ google_tag_fired: true })
+        .eq("confirmation_id", txId)
+        .then(() => {
+          console.log("[ESA Thank-You] google_tag_fired=true set for", txId);
+        })
+        .catch(() => {
+          // Non-critical — silently ignore
+        });
+    };
+
     // Try immediately — if gtag is already loaded we're done
-    if (fireGtag()) return;
+    if (fireGtag()) {
+      markGoogleTagFired(transactionId);
+      return;
+    }
 
     // Otherwise poll every 100 ms for up to 10 seconds (100 attempts)
     let attempts = 0;
     const interval = setInterval(() => {
       attempts += 1;
-      if (fireGtag() || attempts >= 100) {
+      if (fireGtag()) {
+        markGoogleTagFired(transactionId);
+        clearInterval(interval);
+      } else if (attempts >= 100) {
         clearInterval(interval);
       }
     }, 100);

@@ -40,15 +40,54 @@ Deno.serve(async (req: Request) => {
   if (!isAdmin) return json({ ok: false, error: "Access denied — admin only" }, 403);
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { chargeId?: string; amount?: number; reason?: string; note?: string; confirmationId?: string };
+  let body: {
+    chargeId?: string;
+    paymentIntentId?: string;
+    amount?: number;
+    reason?: string;
+    note?: string;
+    confirmationId?: string;
+  };
   try { body = await req.json(); }
   catch { return json({ ok: false, error: "Invalid JSON body" }, 400); }
 
-  const { chargeId, amount, reason, note, confirmationId } = body;
-  if (!chargeId) return json({ ok: false, error: "chargeId is required" }, 400);
+  const { chargeId: rawChargeId, paymentIntentId, amount, reason, note, confirmationId } = body;
 
   // @ts-ignore
   const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
+
+  // ── Resolve charge ID ─────────────────────────────────────────────────────
+  // Accept either chargeId (ch_...) or paymentIntentId (pi_...).
+  // If paymentIntentId is provided, look up the latest charge from Stripe.
+  let chargeId = rawChargeId;
+
+  if (!chargeId && paymentIntentId) {
+    try {
+      console.info(`[create-refund] Resolving charge from payment intent: ${paymentIntentId}`);
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      // latest_charge is the charge ID string on the PI object
+      const latestCharge = (pi as unknown as { latest_charge?: string }).latest_charge;
+      if (latestCharge) {
+        chargeId = latestCharge;
+        console.info(`[create-refund] Resolved charge: ${chargeId}`);
+      } else {
+        // Fallback: list charges for this PI
+        const charges = await stripe.charges.list({ payment_intent: paymentIntentId, limit: 1 });
+        if (charges.data.length > 0) {
+          chargeId = charges.data[0].id;
+          console.info(`[create-refund] Resolved charge via list: ${chargeId}`);
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[create-refund] Failed to resolve charge from PI ${paymentIntentId}:`, msg);
+      return json({ ok: false, error: `Could not resolve charge from payment intent: ${msg}` }, 400);
+    }
+  }
+
+  if (!chargeId) {
+    return json({ ok: false, error: "Either chargeId or paymentIntentId is required" }, 400);
+  }
 
   // ── Issue refund via Stripe ───────────────────────────────────────────────
   let refund: Stripe.Refund;
@@ -122,7 +161,7 @@ Deno.serve(async (req: Request) => {
       object_id: confirmationId ?? chargeId,
       action: "refund_issued",
       description: `Refund of $${refundAmountDollars.toFixed(2)} issued for charge ${chargeId}${confirmationId ? ` (order ${confirmationId})` : ""}`,
-      new_values: { refundId: refund.id, chargeId, amount: refundAmountDollars, reason, note: note ?? null },
+      new_values: { refundId: refund.id, chargeId, paymentIntentId: paymentIntentId ?? null, amount: refundAmountDollars, reason, note: note ?? null },
     });
   } catch { /* non-critical */ }
 

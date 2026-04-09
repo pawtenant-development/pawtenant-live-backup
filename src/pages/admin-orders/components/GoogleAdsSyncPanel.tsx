@@ -51,6 +51,23 @@ const STATUS_STYLE: Record<string, { label: string; color: string; icon: string 
   pending:                     { label: "Pending",           color: "bg-sky-100 text-sky-600",         icon: "ri-time-line" },
 };
 
+interface ConversionAction {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  category: string;
+  compatibleWithClickUpload: boolean;
+  resourceName: string;
+}
+
+interface DiagnoseResult {
+  actions: ConversionAction[];
+  currentActionId: string | null;
+  currentActionValid: boolean | null;
+  error?: string;
+}
+
 export default function GoogleAdsSyncPanel() {
   const [activeTab, setActiveTab] = useState<"conversions" | "oauth">("conversions");
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -61,6 +78,8 @@ export default function GoogleAdsSyncPanel() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [diagnoseResult, setDiagnoseResult] = useState<DiagnoseResult | null>(null);
+  const [diagnoseLoading, setDiagnoseLoading] = useState(false);
   const PAGE_SIZE = 30;
 
   const showToast = (msg: string, ok: boolean) => {
@@ -304,6 +323,49 @@ export default function GoogleAdsSyncPanel() {
     }
   };
 
+  // ── Diagnose conversion actions ───────────────────────────────────────────
+  const handleDiagnose = async () => {
+    setDiagnoseLoading(true);
+    setDiagnoseResult(null);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ mode: "list_conversion_actions" }),
+      });
+      const data = await res.json() as {
+        ok: boolean;
+        actions?: ConversionAction[];
+        currentActionId?: string | null;
+        currentActionValid?: boolean | null;
+        error?: string;
+      };
+      if (data.ok && data.actions) {
+        setDiagnoseResult({
+          actions: data.actions,
+          currentActionId: data.currentActionId ?? null,
+          currentActionValid: data.currentActionValid ?? null,
+        });
+      } else {
+        setDiagnoseResult({
+          actions: [],
+          currentActionId: data.currentActionId ?? null,
+          currentActionValid: null,
+          error: data.error ?? "Failed to list conversion actions",
+        });
+        showToast(`Diagnose failed: ${data.error ?? "Unknown error"}`, false);
+      }
+    } catch (err) {
+      showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, false);
+    } finally {
+      setDiagnoseLoading(false);
+    }
+  };
+
   // ── Dry run ───────────────────────────────────────────────────────────────
   const handleDryRun = async () => {
     setGlobalActionLoading(true);
@@ -382,6 +444,16 @@ export default function GoogleAdsSyncPanel() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
+              onClick={handleDiagnose}
+              disabled={diagnoseLoading || globalActionLoading}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-red-300 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 cursor-pointer transition-colors disabled:opacity-50"
+              title="List all conversion actions in your Google Ads account and check which ones are compatible with uploadClickConversions"
+            >
+              {diagnoseLoading ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-stethoscope-line"></i>}
+              Diagnose Action ID
+            </button>
+            <button
+              type="button"
               onClick={handleTestAuth}
               disabled={globalActionLoading}
               className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
@@ -435,6 +507,143 @@ export default function GoogleAdsSyncPanel() {
           </div>
         </div>
       </div>
+
+      {/* Diagnose result panel */}
+      {diagnoseResult && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-gray-50">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 flex items-center justify-center bg-red-50 rounded-lg">
+                <i className="ri-stethoscope-line text-red-500 text-sm"></i>
+              </div>
+              <div>
+                <p className="text-xs font-extrabold text-gray-900">Conversion Action Diagnosis</p>
+                <p className="text-[10px] text-gray-400">
+                  Current <code className="bg-gray-100 px-1 rounded">GOOGLE_ADS_CONVERSION_ACTION_ID</code>:{" "}
+                  <span className="font-bold text-gray-700">{diagnoseResult.currentActionId ?? "NOT SET"}</span>
+                  {diagnoseResult.currentActionValid === true && (
+                    <span className="ml-2 text-emerald-600 font-bold">✓ Valid for uploadClickConversions</span>
+                  )}
+                  {diagnoseResult.currentActionValid === false && (
+                    <span className="ml-2 text-red-600 font-bold">✗ INVALID — not compatible with uploadClickConversions</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDiagnoseResult(null)}
+              className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-200 cursor-pointer text-gray-400 transition-colors"
+            >
+              <i className="ri-close-line text-sm"></i>
+            </button>
+          </div>
+
+          {diagnoseResult.error ? (
+            <div className="px-5 py-4">
+              <p className="text-xs text-red-600 font-mono">{diagnoseResult.error}</p>
+            </div>
+          ) : (
+            <>
+              {diagnoseResult.currentActionValid === false && (
+                <div className="mx-5 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <p className="text-xs font-bold text-red-700 mb-1 flex items-center gap-1.5">
+                    <i className="ri-error-warning-fill"></i>
+                    INVALID_CONVERSION_ACTION_TYPE — Action Required
+                  </p>
+                  <p className="text-xs text-red-600 leading-relaxed">
+                    Your current conversion action ID <strong>{diagnoseResult.currentActionId}</strong> is not compatible with <code>uploadClickConversions</code>.
+                    You need to update the <strong>GOOGLE_ADS_CONVERSION_ACTION_ID</strong> secret in Supabase to one of the compatible actions listed below (type = WEBPAGE).
+                  </p>
+                  <div className="mt-3 p-3 bg-white rounded-lg border border-red-100">
+                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-2">How to fix:</p>
+                    <ol className="space-y-1.5 text-xs text-gray-700">
+                      <li className="flex items-start gap-2"><span className="w-4 h-4 flex items-center justify-center bg-red-100 text-red-600 text-[10px] font-black rounded-full flex-shrink-0 mt-0.5">1</span>Find a compatible action below (type = WEBPAGE, marked with ✓)</li>
+                      <li className="flex items-start gap-2"><span className="w-4 h-4 flex items-center justify-center bg-red-100 text-red-600 text-[10px] font-black rounded-full flex-shrink-0 mt-0.5">2</span>Copy its ID</li>
+                      <li className="flex items-start gap-2"><span className="w-4 h-4 flex items-center justify-center bg-red-100 text-red-600 text-[10px] font-black rounded-full flex-shrink-0 mt-0.5">3</span>Go to <strong>Supabase Dashboard → Edge Functions → sync-google-ads-conversions → Secrets</strong></li>
+                      <li className="flex items-start gap-2"><span className="w-4 h-4 flex items-center justify-center bg-red-100 text-red-600 text-[10px] font-black rounded-full flex-shrink-0 mt-0.5">4</span>Update <code className="bg-gray-100 px-1 rounded">GOOGLE_ADS_CONVERSION_ACTION_ID</code> to the new ID</li>
+                      <li className="flex items-start gap-2"><span className="w-4 h-4 flex items-center justify-center bg-red-100 text-red-600 text-[10px] font-black rounded-full flex-shrink-0 mt-0.5">5</span>Come back here and click <strong>Retry Failed</strong> to re-upload PT-MNPEXMUF and any other failed orders</li>
+                    </ol>
+                  </div>
+                </div>
+              )}
+
+              <div className="px-5 py-4">
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">
+                  All Conversion Actions ({diagnoseResult.actions.length}) — Compatible ones are highlighted
+                </p>
+                <div className="space-y-2">
+                  {diagnoseResult.actions.length === 0 ? (
+                    <p className="text-xs text-gray-400">No conversion actions found in this account.</p>
+                  ) : (
+                    diagnoseResult.actions.map((action) => {
+                      const isCurrent = action.id === diagnoseResult.currentActionId;
+                      const isCompatible = action.compatibleWithClickUpload;
+                      return (
+                        <div
+                          key={action.id}
+                          className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
+                            isCurrent
+                              ? isCompatible
+                                ? "border-emerald-300 bg-emerald-50"
+                                : "border-red-300 bg-red-50"
+                              : isCompatible
+                              ? "border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50"
+                              : "border-gray-100 bg-gray-50/50"
+                          }`}
+                        >
+                          <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                            {isCompatible ? (
+                              <i className="ri-checkbox-circle-fill text-emerald-500 text-base"></i>
+                            ) : (
+                              <i className="ri-close-circle-fill text-gray-300 text-base"></i>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-xs font-bold text-gray-900">{action.name}</p>
+                              {isCurrent && (
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isCompatible ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                                  {isCompatible ? "✓ Current — Valid" : "✗ Current — INVALID"}
+                                </span>
+                              )}
+                              {isCompatible && !isCurrent && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                                  ✓ Compatible
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                              <span className="text-[10px] text-gray-500">Type: <strong>{action.type}</strong></span>
+                              <span className="text-[10px] text-gray-400">·</span>
+                              <span className="text-[10px] text-gray-500">Status: {action.status}</span>
+                              <span className="text-[10px] text-gray-400">·</span>
+                              <span className="text-[10px] text-gray-500">Category: {action.category}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <code className="text-[10px] font-mono bg-white border border-gray-200 px-2 py-1 rounded-lg text-gray-700 select-all">
+                              {action.id}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => { navigator.clipboard.writeText(action.id); showToast(`Copied ID: ${action.id}`, true); }}
+                              className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white cursor-pointer text-gray-400 hover:text-gray-700 transition-colors border border-transparent hover:border-gray-200"
+                              title="Copy ID"
+                            >
+                              <i className="ri-file-copy-line text-sm"></i>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

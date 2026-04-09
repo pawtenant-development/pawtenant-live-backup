@@ -188,7 +188,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     const leadUnpaid            = activeOrders.filter(o => !o.payment_intent_id).length;
     const paymentFailed         = activeOrders.filter(o => !!(o.payment_failure_reason) && !o.payment_intent_id).length;
     const abandonedCheckouts    = activeOrders.filter(o => !o.payment_intent_id && (now - new Date(o.created_at).getTime()) > ONE_HOUR).length;
-    const leadPaidUnassigned    = activeOrders.filter(o => !!o.payment_intent_id && !o.doctor_email && !(o as Order & { doctor_user_id?: string }).doctor_user_id && o.doctor_status !== "patient_notified").length;
+    const leadPaidUnassigned    = activeOrders.filter(o => !!o.payment_intent_id && (o.doctor_status === "provider_rejected" || o.doctor_status === "unassigned" || (!o.doctor_email && !(o as Order & { doctor_user_id?: string }).doctor_user_id)) && o.doctor_status !== "patient_notified").length;
     const leadPaidAssigned      = activeOrders.filter(o => !!o.payment_intent_id && !!(o.doctor_email || (o as Order & { doctor_user_id?: string }).doctor_user_id) && o.doctor_status !== "patient_notified").length;
     const completedOrders       = activeOrders.filter(o => o.doctor_status === "patient_notified").length;
     const paidOrders            = activeOrders.filter(o => !!o.payment_intent_id).length;

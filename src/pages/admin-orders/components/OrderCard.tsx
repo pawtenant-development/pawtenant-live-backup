@@ -104,7 +104,14 @@ function getOrderDisplayStatus(o: Order): { label: string; color: string } {
     if (o.payment_failure_reason) return { label: "Payment Failed", color: "bg-red-100 text-red-700" };
     return { label: "Lead (Unpaid)", color: "bg-amber-100 text-amber-700" };
   }
-  if (!o.doctor_email && !o.doctor_user_id) return { label: "Paid · Unassigned", color: "bg-sky-100 text-sky-700" };
+  // Rejected or manually unassigned — show as Paid · Unassigned so it can be reassigned
+  if (
+    o.doctor_status === "provider_rejected" ||
+    o.doctor_status === "unassigned" ||
+    (!o.doctor_email && !o.doctor_user_id)
+  ) {
+    return { label: "Paid · Unassigned", color: "bg-sky-100 text-sky-700" };
+  }
   return { label: "Under Review", color: "bg-violet-100 text-violet-700" };
 }
 

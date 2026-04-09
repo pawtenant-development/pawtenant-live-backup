@@ -7,10 +7,6 @@ const CORS_HEADERS = {
 };
 
 // ── GHL webhook URLs loaded from Supabase secrets — never hardcoded ──────────
-// Required secrets to set in Supabase Edge Function secrets:
-//   GHL_WEBHOOK_URL         → main ESA/PSD order webhook
-//   GHL_NETWORK_WEBHOOK_URL → provider network webhook
-//   GHL_COMMS_WEBHOOK_URL   → comms/broadcast webhook (optional, falls back to GHL_WEBHOOK_URL)
 function getGhlUrl(webhookType: string | undefined): string {
   if (webhookType === "network") {
     return Deno.env.get("GHL_NETWORK_WEBHOOK_URL") ?? "";
@@ -19,6 +15,41 @@ function getGhlUrl(webhookType: string | undefined): string {
     return Deno.env.get("GHL_COMMS_WEBHOOK_URL") ?? Deno.env.get("GHL_WEBHOOK_URL") ?? "";
   }
   return Deno.env.get("GHL_WEBHOOK_URL") ?? "";
+}
+
+// ─── Normalize phone to E.164 format ─────────────────────────────────────────
+// GHL "Create/Update Contact" requires E.164 (e.g. +14155551234).
+// Without the + prefix, GHL rejects the contact with:
+//   "no differentiation field value… Email or Phone"
+// This function handles all common raw formats:
+//   "4155551234"        → "+14155551234"  (10-digit US, add +1)
+//   "14155551234"       → "+14155551234"  (11-digit with country code, add +)
+//   "+14155551234"      → "+14155551234"  (already E.164, passthrough)
+//   "(415) 555-1234"    → "+14155551234"  (formatted US number)
+//   "415-555-1234"      → "+14155551234"  (dashed US number)
+//   ""  / null / undef  → ""              (empty — no phone provided)
+function normalizePhone(raw: unknown): string {
+  if (!raw || typeof raw !== "string") return "";
+
+  // Strip everything except digits and leading +
+  const stripped = raw.trim().replace(/[\s\-().]/g, "");
+
+  // Already valid E.164
+  if (/^\+\d{10,15}$/.test(stripped)) return stripped;
+
+  // Strip any non-digit characters for processing
+  const digitsOnly = stripped.replace(/\D/g, "");
+
+  if (digitsOnly.length === 0) return "";
+
+  // 10-digit US number → add +1 country code
+  if (digitsOnly.length === 10) return `+1${digitsOnly}`;
+
+  // 11-digit starting with 1 → US number with country code, add +
+  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) return `+${digitsOnly}`;
+
+  // For any other length, prepend + and hope for the best (international numbers)
+  return `+${digitsOnly}`;
 }
 
 // ─── Build comprehensive GHL tags from order context ─────────────────────────
@@ -109,10 +140,17 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // ── Normalize contact fields — ensure name/email are never empty ──────────
+  // ── Normalize contact fields ──────────────────────────────────────────────
   const rawFirst = (payload.firstName as string) ?? "";
   const rawLast  = (payload.lastName as string) ?? "";
-  const rawEmail = (payload.email as string) ?? "";
+  const rawEmail = ((payload.email as string) ?? "").trim().toLowerCase();
+
+  // Normalize phone to E.164 — this is the root cause of GHL contact creation failures.
+  // GHL requires E.164 format (+14155551234). Raw user input like "4155551234" is rejected
+  // with "no differentiation field value… Email or Phone" even when email IS present,
+  // because GHL tries to match the phone first and fails on non-E.164 format.
+  const rawPhone = (payload.phone as string) ?? "";
+  const normalizedPhone = normalizePhone(rawPhone);
 
   // Build full name with smart fallback from email prefix
   const fullName =
@@ -125,18 +163,21 @@ Deno.serve(async (req: Request) => {
     confirmationId: payload.confirmationId as string,
     letterType: payload.letterType as string,
     addonServices: payload.addonServices as string[],
-    price: payload.orderTotal as number ?? payload.price as number,
+    price: (payload.orderTotal as number) ?? (payload.price as number),
     explicitTags: payload.tags as string[],
   });
 
-  // ── Build the normalized GHL payload ────────────────────────────────────
-  const normalizedPayload = {
+  // ── Build the normalized GHL payload ─────────────────────────────────────
+  // IMPORTANT: GHL expects a FLAT JSON object — no nesting.
+  // email must be a plain lowercase string.
+  // phone must be E.164 format string.
+  const normalizedPayload: Record<string, unknown> = {
     ...payload,
     firstName: rawFirst || fullName.split(" ")[0] || "",
     lastName: rawLast || fullName.split(" ").slice(1).join(" ") || "",
     name: fullName,
-    email: rawEmail,
-    phone: payload.phone ?? "",
+    email: rawEmail,                // plain lowercase string
+    phone: normalizedPhone,         // E.164 format: +14155551234
     tags: builtTags,
     orderStatus: (payload.event as string) ?? (payload.leadStatus as string) ?? "",
     confirmationId: payload.confirmationId ?? "",
@@ -145,11 +186,23 @@ Deno.serve(async (req: Request) => {
     letterType: (payload.letterType as string) ?? ((payload.confirmationId as string ?? "").toUpperCase().includes("-PSD") ? "psd" : "esa"),
   };
 
-  const email = rawEmail || "(no email)";
+  const emailForLog = rawEmail || "(no email)";
   const confirmationId = (payload.confirmationId as string) || "(no confirmationId)";
+  const phoneForLog = normalizedPhone || "(no phone)";
 
+  // ── Log outgoing payload for debugging ───────────────────────────────────
   console.log(
-    `[GHL-PROXY] Firing → type="${webhookType ?? "main"}" event="${normalizedPayload.eventType}" email="${email}" id="${confirmationId}" tags=${JSON.stringify(builtTags)}`
+    `[GHL-PROXY] ▶ Outgoing payload to GHL` +
+    `\n  type        = "${webhookType ?? "main"}"` +
+    `\n  event       = "${normalizedPayload.eventType}"` +
+    `\n  email       = "${emailForLog}"` +
+    `\n  phone_raw   = "${rawPhone}"` +
+    `\n  phone_e164  = "${phoneForLog}"` +
+    `\n  firstName   = "${normalizedPayload.firstName}"` +
+    `\n  lastName    = "${normalizedPayload.lastName}"` +
+    `\n  confirmId   = "${confirmationId}"` +
+    `\n  tags        = ${JSON.stringify(builtTags)}` +
+    `\n  fullPayload = ${JSON.stringify(normalizedPayload)}`
   );
 
   let ghlStatus = 0;
@@ -158,33 +211,56 @@ Deno.serve(async (req: Request) => {
   try {
     const ghlResponse = await fetch(ghlUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
       body: JSON.stringify(normalizedPayload),
     });
 
     ghlStatus = ghlResponse.status;
     try { ghlBody = await ghlResponse.text(); } catch { ghlBody = "(could not read body)"; }
 
+    // ── Log GHL response ────────────────────────────────────────────────
     if (!ghlResponse.ok) {
-      console.error(`[GHL-PROXY] ❌ GHL returned HTTP ${ghlStatus} for email="${email}" id="${confirmationId}". Body: ${ghlBody}`);
+      console.error(
+        `[GHL-PROXY] ❌ GHL returned HTTP ${ghlStatus}` +
+        `\n  email     = "${emailForLog}"` +
+        `\n  phone     = "${phoneForLog}"` +
+        `\n  confirmId = "${confirmationId}"` +
+        `\n  body      = ${ghlBody}`
+      );
       return new Response(
-        JSON.stringify({ ok: false, ghlStatus, ghlBody, error: `GHL returned HTTP ${ghlStatus}`, email, confirmationId }),
+        JSON.stringify({ ok: false, ghlStatus, ghlBody, error: `GHL returned HTTP ${ghlStatus}`, email: emailForLog, phone: phoneForLog, confirmationId }),
         { status: 502, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[GHL-PROXY] ✅ GHL accepted HTTP ${ghlStatus} for email="${email}" id="${confirmationId}". Tags: ${builtTags.join(", ")}`);
+    console.log(
+      `[GHL-PROXY] ✅ GHL accepted HTTP ${ghlStatus}` +
+      `\n  email     = "${emailForLog}"` +
+      `\n  phone     = "${phoneForLog}"` +
+      `\n  confirmId = "${confirmationId}"` +
+      `\n  tags      = ${builtTags.join(", ")}` +
+      `\n  response  = ${ghlBody}`
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "GHL upstream fetch error";
-    console.error(`[GHL-PROXY] ❌ fetch threw for email="${email}" id="${confirmationId}": ${msg}`);
-    return new Response(JSON.stringify({ ok: false, error: msg, email, confirmationId }), {
+    console.error(
+      `[GHL-PROXY] ❌ fetch threw` +
+      `\n  email     = "${emailForLog}"` +
+      `\n  phone     = "${phoneForLog}"` +
+      `\n  confirmId = "${confirmationId}"` +
+      `\n  error     = ${msg}`
+    );
+    return new Response(JSON.stringify({ ok: false, error: msg, email: emailForLog, phone: phoneForLog, confirmationId }), {
       status: 502,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   }
 
   return new Response(
-    JSON.stringify({ ok: true, ghlStatus, ghlBody, email, confirmationId, tagsSent: builtTags }),
+    JSON.stringify({ ok: true, ghlStatus, ghlBody, email: emailForLog, phone: phoneForLog, confirmationId, tagsSent: builtTags }),
     { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
   );
 });

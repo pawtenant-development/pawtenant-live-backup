@@ -6,6 +6,25 @@ import { supabase } from "@/lib/supabaseClient";
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
+// ── Save refresh token manually via Management API ────────────────────────────
+async function saveRefreshTokenViaApi(token: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/google-oauth-save-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({ refresh_token: token }),
+    });
+    const data = await res.json() as { ok: boolean; error?: string };
+    return data;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 interface OAuthStatus {
   hasRefreshToken: boolean;
   hasClientId: boolean;
@@ -32,6 +51,9 @@ export default function GoogleOAuthPanel({ onAuthSuccess }: GoogleOAuthPanelProp
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [showManualSteps, setShowManualSteps] = useState(false);
   const [callbackUrl, setCallbackUrl] = useState<string>("");
+  const [manualToken, setManualToken] = useState("");
+  const [savingToken, setSavingToken] = useState(false);
+  const [showManualTokenInput, setShowManualTokenInput] = useState(false);
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
@@ -224,6 +246,28 @@ export default function GoogleOAuthPanel({ onAuthSuccess }: GoogleOAuthPanelProp
       showToast(`Error: ${err instanceof Error ? err.message : String(err)}`, false);
     }
     setTestLoading(false);
+  };
+
+  // ── Save refresh token manually ───────────────────────────────────────────
+  const handleSaveManualToken = async () => {
+    const trimmed = manualToken.trim();
+    if (!trimmed) { showToast("Paste the refresh token first", false); return; }
+    if (!trimmed.startsWith("1//")) {
+      showToast("That doesn't look like a Google refresh token (should start with 1//)", false);
+      return;
+    }
+    setSavingToken(true);
+    const result = await saveRefreshTokenViaApi(trimmed);
+    if (result.ok) {
+      showToast("Refresh token saved to Supabase secrets! Click Test Auth to verify.", true);
+      setManualToken("");
+      setShowManualTokenInput(false);
+      await checkStatus();
+      onAuthSuccess?.();
+    } else {
+      showToast(`Save failed: ${result.error ?? "Unknown error"}`, false);
+    }
+    setSavingToken(false);
   };
 
   const isFullyConnected = status?.tokenWorks === true
@@ -466,6 +510,69 @@ export default function GoogleOAuthPanel({ onAuthSuccess }: GoogleOAuthPanelProp
           )}
         </div>
       )}
+
+      {/* Manual refresh token paste — reliable fallback when auto-save fails */}
+      <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowManualTokenInput((v) => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 text-left cursor-pointer hover:bg-amber-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <i className="ri-key-2-line text-amber-500"></i>
+            <span className="text-xs font-bold text-amber-700">Paste Refresh Token Manually</span>
+            <span className="text-[10px] text-amber-500 font-medium">(use this if the OAuth callback didn&apos;t auto-save)</span>
+          </div>
+          <i className={`text-amber-400 transition-transform ${showManualTokenInput ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}`}></i>
+        </button>
+        {showManualTokenInput && (
+          <div className="px-5 pb-5 border-t border-amber-100">
+            <div className="pt-4 space-y-3">
+              <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-800 leading-relaxed">
+                <strong>When to use this:</strong> After completing the OAuth flow, the callback page shows your refresh token.
+                If it wasn&apos;t auto-saved (because <code className="bg-amber-100 px-1 rounded">SUPABASE_ACCESS_TOKEN</code> isn&apos;t set),
+                copy the token from the callback page and paste it here. It starts with <code className="bg-amber-100 px-1 rounded">1//</code>.
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                  Paste GOOGLE_ADS_REFRESH_TOKEN here
+                </label>
+                <textarea
+                  value={manualToken}
+                  onChange={(e) => setManualToken(e.target.value)}
+                  placeholder="1//0g..."
+                  rows={3}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-xs font-mono text-gray-700 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveManualToken}
+                  disabled={savingToken || !manualToken.trim()}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  {savingToken
+                    ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</>
+                    : <><i className="ri-save-line"></i>Save to Supabase Secrets</>
+                  }
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setManualToken(""); setShowManualTokenInput(false); }}
+                  className="whitespace-nowrap px-3 py-2 border border-gray-200 text-gray-500 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400">
+                This calls a secure edge function that saves the token directly to Supabase secrets using the Management API.
+                The token is never stored in the browser or sent to any third party.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Manual setup steps toggle */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

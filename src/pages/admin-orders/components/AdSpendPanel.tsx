@@ -67,8 +67,10 @@ const PLATFORMS = [
     chartColor: "#f97316",
     revenueKey: "Google Ads",
     fields: [
-      { key: "access_token", label: "OAuth Access Token", placeholder: "ya29.xxxxxxxxxxxxxxx...", type: "password", hint: "From Google Ads API OAuth2 flow. Refresh token recommended for long-term use." },
-      { key: "account_id", label: "Customer ID", placeholder: "123-456-7890", type: "text", hint: "Found in Google Ads top-right corner. Format: XXX-XXX-XXXX" },
+      // Google Ads uses shared OAuth secrets (GOOGLE_ADS_OAUTH_CLIENT_ID, GOOGLE_ADS_OAUTH_CLIENT_SECRET,
+      // GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_DEVELOPER_TOKEN) — no separate access token needed here.
+      // Only the Customer ID is stored in the DB for the UI.
+      { key: "account_id", label: "Customer ID", placeholder: "123-456-7890", type: "text", hint: "Found in Google Ads top-right corner. Format: XXX-XXX-XXXX. OAuth credentials are shared with the conversion sync setup." },
     ],
   },
   {
@@ -87,8 +89,18 @@ const PLATFORMS = [
   },
 ];
 
-function fmtCurrency(n: number) {
-  return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+function fmtCurrency(n: number, currency = "USD") {
+  // For PKR and other non-USD currencies, show the currency code explicitly
+  if (currency === "USD") {
+    return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  }
+  // Format with the actual currency symbol/code
+  try {
+    return n.toLocaleString("en-US", { style: "currency", currency, maximumFractionDigits: 0 });
+  } catch {
+    // Fallback if currency code is unrecognized
+    return `${currency} ${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  }
 }
 
 function fmtNum(n: number) {
@@ -120,7 +132,7 @@ function RoiMetric({ label, value, sub, color = "text-gray-900", icon }: {
 }
 
 // ── Campaign Row ──────────────────────────────────────────────────────────────
-function CampaignRow({ campaign, totalSpend }: { campaign: Campaign; totalSpend: number }) {
+function CampaignRow({ campaign, totalSpend, currency = "USD" }: { campaign: Campaign; totalSpend: number; currency?: string }) {
   const pct = totalSpend > 0 ? Math.round((campaign.spend / totalSpend) * 100) : 0;
   const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
   const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
@@ -137,12 +149,12 @@ function CampaignRow({ campaign, totalSpend }: { campaign: Campaign; totalSpend:
         </div>
       </div>
       <div className="text-right flex-shrink-0 space-y-0.5">
-        <p className="text-xs font-bold text-gray-900">{fmtCurrency(campaign.spend)}</p>
+        <p className="text-xs font-bold text-gray-900">{fmtCurrency(campaign.spend, currency)}</p>
         <p className="text-[10px] text-gray-400">
           {fmtNum(campaign.impressions)} imp · {fmtNum(campaign.clicks)} clicks
         </p>
         <p className="text-[10px] text-gray-400">
-          CPC: {fmtCurrency(cpc)} · CTR: {ctr.toFixed(2)}%
+          CPC: {fmtCurrency(cpc, currency)} · CTR: {ctr.toFixed(2)}%
         </p>
       </div>
     </div>
@@ -177,7 +189,12 @@ function PlatformCard({
   const [showToken, setShowToken] = useState(false);
   const [editingToken, setEditingToken] = useState(!settings?.access_token);
 
-  const isConfigured = !!(settings?.access_token && settings?.account_id);
+  // Google Ads uses shared OAuth secrets — only needs account_id in DB
+  const isGooglePlatform = platform.key === "google";
+  const isConfigured = isGooglePlatform
+    ? !!settings?.account_id
+    : !!(settings?.access_token && settings?.account_id);
+  const currency = spendData?.currency ?? "USD";
   const spend = spendData?.spend ?? 0;
   const profit = revenue - spend;
   const roas = spend > 0 ? revenue / spend : 0;
@@ -187,7 +204,8 @@ function PlatformCard({
   const cpa = paidOrders > 0 && spend > 0 ? spend / paidOrders : 0;
 
   const handleSave = async () => {
-    const token = editingToken ? tokenInput : (settings?.access_token ?? "");
+    // Google Ads: no access_token stored in DB (uses shared OAuth secrets)
+    const token = isGooglePlatform ? "" : (editingToken ? tokenInput : (settings?.access_token ?? ""));
     await onSaveSettings(platform.key, token, accountIdInput);
     setEditingToken(false);
     setShowSettings(false);
@@ -244,6 +262,16 @@ function PlatformCard({
           <p className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-1.5">
             <i className="ri-key-2-line"></i>API Credentials
           </p>
+          {/* Google Ads: show OAuth info banner instead of token field */}
+          {isGooglePlatform && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2.5 mb-2">
+              <p className="text-[10px] text-orange-700 flex items-start gap-1 leading-relaxed">
+                <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
+                Google Ads uses the same OAuth credentials configured in <strong>Settings → Google Ads → OAuth Setup</strong>.
+                No separate access token is needed here — just enter your Customer ID below.
+              </p>
+            </div>
+          )}
           {platform.fields.map((field) => (
             <div key={field.key}>
               <label className="block text-xs font-bold text-gray-600 mb-1.5">{field.label}</label>
@@ -300,7 +328,7 @@ function PlatformCard({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || !accountIdInput.trim() || (!editingToken && !settings?.access_token)}
+              disabled={saving || !accountIdInput.trim() || (!isGooglePlatform && !editingToken && !settings?.access_token)}
               className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
             >
               {saving ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-save-line"></i>Save & Connect</>}
@@ -374,7 +402,7 @@ function PlatformCard({
           {spendData && !spendData.error && (
             <>
               {/* Date range badge */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg">
                   <i className="ri-calendar-line"></i>
                   {spendData.dateRange.from} → {spendData.dateRange.to}
@@ -382,16 +410,22 @@ function PlatformCard({
                 {spendData.campaigns.length > 0 && (
                   <span className="text-xs text-gray-400">{spendData.campaigns.length} campaigns</span>
                 )}
+                {currency !== "USD" && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold rounded-lg">
+                    <i className="ri-information-line"></i>
+                    Amounts in {currency} — not USD
+                  </span>
+                )}
               </div>
 
               {/* KPI grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <RoiMetric
-                  label="Ad Spend"
-                  value={fmtCurrency(spend)}
+                  label={`Ad Spend${currency !== "USD" ? ` (${currency})` : ""}`}
+                  value={fmtCurrency(spend, currency)}
                   icon="ri-money-dollar-circle-line"
                   color="text-red-600"
-                  sub="Total spent on ads"
+                  sub={`Total spent on ads${currency !== "USD" ? ` · ${currency}` : ""}`}
                 />
                 <RoiMetric
                   label="Revenue (from orders)"
@@ -401,36 +435,36 @@ function PlatformCard({
                   sub={`From ${platform.revenueKey} channel`}
                 />
                 <RoiMetric
-                  label="Gross Profit"
-                  value={fmtCurrency(profit)}
+                  label={`Gross Profit${currency !== "USD" ? " *" : ""}`}
+                  value={currency !== "USD" ? "N/A" : fmtCurrency(profit)}
                   icon="ri-funds-line"
-                  color={profit >= 0 ? "text-emerald-700" : "text-red-600"}
-                  sub={profit >= 0 ? "Revenue minus ad spend" : "Currently at a loss"}
+                  color={currency !== "USD" ? "text-gray-400" : profit >= 0 ? "text-emerald-700" : "text-red-600"}
+                  sub={currency !== "USD" ? `Can't compare ${currency} spend vs USD revenue` : profit >= 0 ? "Revenue minus ad spend" : "Currently at a loss"}
                 />
                 <RoiMetric
                   label="ROAS"
-                  value={spend > 0 ? `${roas.toFixed(2)}x` : "—"}
+                  value={currency !== "USD" ? "N/A" : spend > 0 ? `${roas.toFixed(2)}x` : "—"}
                   icon="ri-percent-line"
-                  color={roas >= 3 ? "text-emerald-600" : roas >= 1 ? "text-amber-600" : "text-red-600"}
-                  sub={roas >= 3 ? "Excellent" : roas >= 2 ? "Good" : roas >= 1 ? "Break-even zone" : "Below break-even"}
+                  color={currency !== "USD" ? "text-gray-400" : roas >= 3 ? "text-emerald-600" : roas >= 1 ? "text-amber-600" : "text-red-600"}
+                  sub={currency !== "USD" ? `Requires same currency` : roas >= 3 ? "Excellent" : roas >= 2 ? "Good" : roas >= 1 ? "Break-even zone" : "Below break-even"}
                 />
                 <RoiMetric
                   label="ROI"
-                  value={spend > 0 ? `${roi.toFixed(0)}%` : "—"}
+                  value={currency !== "USD" ? "N/A" : spend > 0 ? `${roi.toFixed(0)}%` : "—"}
                   icon="ri-arrow-up-circle-line"
-                  color={roi >= 100 ? "text-emerald-600" : roi >= 0 ? "text-amber-600" : "text-red-600"}
-                  sub="Return on ad investment"
+                  color={currency !== "USD" ? "text-gray-400" : roi >= 100 ? "text-emerald-600" : roi >= 0 ? "text-amber-600" : "text-red-600"}
+                  sub={currency !== "USD" ? "Requires same currency" : "Return on ad investment"}
                 />
                 <RoiMetric
-                  label="Cost Per Acquisition"
-                  value={cpa > 0 ? fmtCurrency(cpa) : "—"}
+                  label={`Cost Per Acquisition${currency !== "USD" ? ` (${currency})` : ""}`}
+                  value={cpa > 0 ? fmtCurrency(cpa, currency) : "—"}
                   icon="ri-user-received-line"
-                  color={cpa > 0 && revenue > 0 && cpa < (revenue / Math.max(paidOrders, 1)) ? "text-emerald-600" : cpa > 0 ? "text-amber-600" : "text-gray-400"}
+                  color={cpa > 0 && currency === "USD" && revenue > 0 && cpa < (revenue / Math.max(paidOrders, 1)) ? "text-emerald-600" : cpa > 0 ? "text-amber-600" : "text-gray-400"}
                   sub={paidOrders > 0 ? `${paidOrders} paid order${paidOrders !== 1 ? "s" : ""} · spend ÷ conversions` : "No paid orders yet"}
                 />
                 <RoiMetric
-                  label="Cost Per Click"
-                  value={cpc > 0 ? fmtCurrency(cpc) : "—"}
+                  label={`Cost Per Click${currency !== "USD" ? ` (${currency})` : ""}`}
+                  value={cpc > 0 ? fmtCurrency(cpc, currency) : "—"}
                   icon="ri-cursor-line"
                   color="text-gray-700"
                   sub={`CTR: ${ctr.toFixed(2)}%`}
@@ -466,7 +500,8 @@ function PlatformCard({
                 </div>
               </div>
 
-              {/* ROAS visual indicator */}
+              {/* ROAS visual indicator — only show for same-currency */}
+              {currency === "USD" && (
               <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-gray-600">ROAS Performance</span>
@@ -495,20 +530,38 @@ function PlatformCard({
                   <span>3x+ (Profitable)</span>
                 </div>
               </div>
+              )}
+
+              {/* Currency mismatch notice for non-USD */}
+              {currency !== "USD" && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-start gap-2">
+                    <i className="ri-exchange-dollar-line text-amber-600 flex-shrink-0 mt-0.5"></i>
+                    <div>
+                      <p className="text-xs font-bold text-amber-800">Currency Mismatch — {currency} vs USD</p>
+                      <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                        Your Google Ads account reports spend in <strong>{currency}</strong>, but your order revenue is tracked in USD.
+                        ROAS, ROI, and Profit calculations are disabled to avoid misleading comparisons.
+                        To enable them, change your Google Ads account currency to USD in Google Ads settings, or convert the spend manually.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Campaign breakdown */}
               {spendData.campaigns.length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
                     <p className="text-xs font-bold text-gray-700">Campaign Breakdown</p>
-                    <span className="text-[10px] text-gray-400">{spendData.campaigns.length} campaigns</span>
+                    <span className="text-[10px] text-gray-400">{spendData.campaigns.length} campaigns{currency !== "USD" ? ` · ${currency}` : ""}</span>
                   </div>
                   <div className="divide-y divide-gray-50">
                     {spendData.campaigns
                       .sort((a, b) => b.spend - a.spend)
                       .slice(0, 8)
                       .map((campaign) => (
-                        <CampaignRow key={campaign.id} campaign={campaign} totalSpend={spend} />
+                        <CampaignRow key={campaign.id} campaign={campaign} totalSpend={spend} currency={currency} />
                       ))}
                     {spendData.campaigns.length > 8 && (
                       <div className="px-4 py-2.5 text-center">
@@ -652,8 +705,19 @@ export default function AdSpendPanel({ revenueByChannel, paidOrdersByChannel, da
     setLoadingPlatform((prev) => ({ ...prev, [platform]: false }));
   }, [supabaseUrl, dateFrom, dateTo]);
 
-  // Total spend across all platforms
-  const totalSpend = PLATFORMS.reduce((s, p) => s + (spendData[p.key]?.spend ?? 0), 0);
+  // Total spend across all platforms — only include USD platforms in combined totals
+  const hasMixedCurrencies = PLATFORMS.some(
+    (p) => spendData[p.key] && !spendData[p.key].error && spendData[p.key].currency !== "USD"
+  );
+  // USD-only spend for accurate combined metrics
+  const totalSpendUSD = PLATFORMS.reduce((s, p) => {
+    const d = spendData[p.key];
+    if (!d || d.error || d.currency !== "USD") return s;
+    return s + d.spend;
+  }, 0);
+  // Raw total spend (all currencies, for display only when mixed)
+  const totalSpendRaw = PLATFORMS.reduce((s, p) => s + (spendData[p.key]?.spend ?? 0), 0);
+  const totalSpend = hasMixedCurrencies ? totalSpendUSD : totalSpendRaw;
   const totalRevenue = PLATFORMS.reduce((s, p) => s + (revenueByChannel[p.revenueKey] ?? 0), 0);
   const totalProfit = totalRevenue - totalSpend;
   const overallRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
@@ -682,10 +746,19 @@ export default function AdSpendPanel({ revenueByChannel, paidOrdersByChannel, da
       </div>
 
       {/* Overall summary strip — only if any platform has data */}
-      {totalSpend > 0 && (
+      {totalSpendRaw > 0 && (
+        <>
+        {hasMixedCurrencies && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+            <i className="ri-information-line text-amber-600 flex-shrink-0"></i>
+            <p className="text-[10px] text-amber-700 font-semibold">
+              Mixed currencies detected — Google Ads spend is in PKR and excluded from combined USD totals below.
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { label: "Total Ad Spend", value: fmtCurrency(totalSpend), icon: "ri-money-dollar-circle-line", color: "text-red-600", bg: "bg-red-50 border-red-100" },
+            { label: hasMixedCurrencies ? "Total Ad Spend (USD only)" : "Total Ad Spend", value: fmtCurrency(totalSpend), icon: "ri-money-dollar-circle-line", color: "text-red-600", bg: "bg-red-50 border-red-100" },
             { label: "Total Revenue", value: fmtCurrency(totalRevenue), icon: "ri-line-chart-line", color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100" },
             { label: "Total Profit", value: fmtCurrency(totalProfit), icon: "ri-funds-line", color: totalProfit >= 0 ? "text-emerald-700" : "text-red-600", bg: totalProfit >= 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100" },
             { label: "Overall ROAS", value: `${overallRoas.toFixed(2)}x`, icon: "ri-percent-line", color: overallRoas >= 3 ? "text-emerald-600" : overallRoas >= 1 ? "text-amber-600" : "text-red-600", bg: "bg-gray-50 border-gray-100" },
@@ -702,6 +775,7 @@ export default function AdSpendPanel({ revenueByChannel, paidOrdersByChannel, da
             </div>
           ))}
         </div>
+        </>
       )}
 
       {/* Platform tabs */}

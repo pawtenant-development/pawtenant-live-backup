@@ -121,16 +121,18 @@ function getModalDisplayStatus(order: Order): { label: string; color: string } {
   if (order.status === "refunded" || order.refunded_at) {
     return { label: "Refunded", color: "bg-red-100 text-red-600" };
   }
-  if (order.doctor_status === "provider_rejected") {
-    return { label: "Provider Rejected", color: "bg-red-100 text-red-700" };
-  }
   if (order.doctor_status === "patient_notified") {
     return { label: "Order (Completed)", color: "bg-emerald-100 text-emerald-700" };
   }
   if (order.status === "lead" || !order.payment_intent_id) {
     return { label: "Lead (Unpaid)", color: "bg-amber-100 text-amber-700" };
   }
-  if (!order.doctor_email && !order.doctor_user_id) {
+  // Rejected or manually unassigned — show as Paid (Unassigned) so it can be reassigned
+  if (
+    order.doctor_status === "provider_rejected" ||
+    order.doctor_status === "unassigned" ||
+    (!order.doctor_email && !order.doctor_user_id)
+  ) {
     return { label: "Paid (Unassigned)", color: "bg-sky-100 text-sky-700" };
   }
   return { label: "Order (Under Review)", color: "bg-sky-100 text-sky-700" };
@@ -143,6 +145,7 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
   letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
   patient_notified: "bg-violet-100 text-violet-700",
   provider_rejected: "bg-red-100 text-red-700",
+  unassigned: "bg-sky-100 text-sky-700",
 };
 
 const EMAIL_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; failColor: string }> = {
@@ -1173,24 +1176,36 @@ export default function OrderDetailModal({
 
       // If refund requested, process it first
       let refundAmount: number | undefined;
+      let refundSkipped = false;
+      let refundSkipReason = "";
       if (cancelWithRefund && order.payment_intent_id) {
         const refundRes = await fetch(`${supabaseUrl}/functions/v1/create-refund`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
+            // Pass paymentIntentId — the edge function resolves the charge automatically
             paymentIntentId: order.payment_intent_id,
             reason: "requested_by_customer",
             note: cancelNote.trim() || "Order cancelled by admin",
             confirmationId: order.confirmation_id,
           }),
         });
-        const refundData = await refundRes.json() as { ok: boolean; error?: string; refund?: { amount: number } };
+        const refundData = await refundRes.json() as { ok: boolean; error?: string; refund?: { amount: number }; refundAmountDollars?: number };
         if (!refundData.ok) {
-          setCancelMsg(`Refund failed: ${refundData.error ?? "Unknown error"}. Order not cancelled.`);
-          setCancellingOrder(false);
-          return;
+          const errMsg = refundData.error ?? "Unknown error";
+          // If it's a test/live mode mismatch, skip the refund but still cancel the order
+          const isModeMismatch = errMsg.toLowerCase().includes("test mode") || errMsg.toLowerCase().includes("live mode");
+          if (isModeMismatch) {
+            refundSkipped = true;
+            refundSkipReason = "Payment was made in test mode — Stripe refund skipped. Order will be cancelled without a refund.";
+          } else {
+            setCancelMsg(`Refund failed: ${errMsg}. Order not cancelled.`);
+            setCancellingOrder(false);
+            return;
+          }
+        } else {
+          refundAmount = refundData.refundAmountDollars ?? (refundData.refund ? refundData.refund.amount / 100 : undefined);
         }
-        refundAmount = refundData.refund ? refundData.refund.amount / 100 : undefined;
       }
 
       // Update order status to cancelled
@@ -1248,9 +1263,12 @@ export default function OrderDetailModal({
       updateOrderField({ status: "cancelled" });
       setShowCancelConfirm(false);
       onOrderUpdated({ id: order.id, status: "cancelled" });
-      const refundNote = cancelWithRefund && order.payment_intent_id
-        ? refundAmount ? ` — $${refundAmount.toFixed(2)} refunded` : " — full refund issued"
-        : "";
+      let refundNote = "";
+      if (refundSkipped) {
+        refundNote = ` — Note: ${refundSkipReason}`;
+      } else if (cancelWithRefund && order.payment_intent_id) {
+        refundNote = refundAmount ? ` — $${refundAmount.toFixed(2)} refunded` : " — full refund issued";
+      }
       setCancelMsg(`Order cancelled successfully${refundNote}. Customer notified by email.`);
 
       // ── Refresh email log so the cancellation email entry appears immediately ──
@@ -1277,12 +1295,25 @@ export default function OrderDetailModal({
     setDeletingOrder(true);
     setDeleteOrderMsg("");
     try {
-      // Clean up related records first (must delete doctor_earnings before orders due to FK NO ACTION)
-      await supabase.from("doctor_earnings").delete().eq("order_id", order.id);
-      await supabase.from("order_documents").delete().eq("order_id", order.id);
-      await supabase.from("doctor_notes").delete().eq("order_id", order.id);
-      await supabase.from("order_status_logs").delete().eq("order_id", order.id);
-      await supabase.from("doctor_notifications").delete().eq("order_id", order.id);
+      // Clean up ALL related records first — must be in dependency order to avoid FK violations.
+      // Each await ensures the previous table is cleared before the next, so the final
+      // `orders` delete never hits a foreign key constraint.
+      const cleanups: Array<() => Promise<unknown>> = [
+        () => supabase.from("communications").delete().eq("order_id", order.id),
+        () => supabase.from("doctor_earnings").delete().eq("order_id", order.id),
+        () => supabase.from("order_documents").delete().eq("order_id", order.id),
+        () => supabase.from("doctor_notes").delete().eq("order_id", order.id),
+        () => supabase.from("order_status_logs").delete().eq("order_id", order.id),
+        () => supabase.from("doctor_notifications").delete().eq("order_id", order.id),
+        () => supabase.from("shared_order_notes").delete().eq("order_id", order.id),
+        () => supabase.from("letter_verifications").delete().eq("order_id", order.id),
+        () => supabase.from("meta_events").delete().eq("order_id", order.id),
+        () => supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id),
+      ];
+
+      for (const cleanup of cleanups) {
+        try { await cleanup(); } catch { /* skip tables that don't exist or aren't accessible */ }
+      }
 
       const { error } = await supabase.from("orders").delete().eq("id", order.id);
       if (error) {
@@ -1354,6 +1385,11 @@ export default function OrderDetailModal({
       d.licensed_states.includes(orderStateCode);      // code match (application approval)
     return isActive && licensedInState;
   });
+
+  // ── Remove Provider / Mark Unassigned state ──
+  const [removingProvider, setRemovingProvider] = useState(false);
+  const [removeProviderMsg, setRemoveProviderMsg] = useState("");
+  const [showRemoveProviderConfirm, setShowRemoveProviderConfirm] = useState(false);
 
   // Resend provider email state
   const [resendingProvider, setResendingProvider] = useState(false);
@@ -1554,6 +1590,68 @@ export default function OrderDetailModal({
     }
     setNotifyingPatient(false);
     setTimeout(() => { setNotifyPatientMsg(""); setNotifyPatientOk(null); }, 8000);
+  };
+
+  const handleRemoveProvider = async () => {
+    setRemovingProvider(true);
+    setRemoveProviderMsg("");
+    const ts = new Date().toISOString();
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        doctor_user_id: null,
+        doctor_email: null,
+        doctor_name: null,
+        doctor_status: "unassigned",
+        status: "processing",
+      })
+      .eq("id", order.id);
+
+    if (!error) {
+      // Log the action
+      try {
+        await supabase.from("order_status_logs").insert({
+          order_id: order.id,
+          confirmation_id: order.confirmation_id,
+          old_doctor_status: order.doctor_status,
+          new_doctor_status: "unassigned",
+          old_status: order.status,
+          new_status: "processing",
+          changed_by: adminProfile.full_name,
+          changed_at: ts,
+        });
+      } catch { /* non-critical */ }
+      try {
+        await supabase.from("audit_logs").insert({
+          actor_name: adminProfile.full_name,
+          actor_role: "admin",
+          object_type: "order",
+          object_id: order.confirmation_id,
+          action: "provider_removed_by_admin",
+          description: `Admin ${adminProfile.full_name} removed provider from order ${order.confirmation_id}. Order marked as Paid (Unassigned).`,
+          metadata: {
+            order_id: order.id,
+            previous_doctor_email: order.doctor_email,
+            previous_doctor_name: order.doctor_name,
+            timestamp: ts,
+          },
+        });
+      } catch { /* non-critical */ }
+
+      updateOrderField({
+        doctor_user_id: null,
+        doctor_email: null,
+        doctor_name: null,
+        doctor_status: "unassigned",
+        status: "processing",
+      });
+      setShowRemoveProviderConfirm(false);
+      setRemoveProviderMsg("Provider removed. Order is now Paid (Unassigned) and ready to reassign.");
+    } else {
+      setRemoveProviderMsg(`Failed: ${error.message}`);
+    }
+    setRemovingProvider(false);
+    setTimeout(() => setRemoveProviderMsg(""), 8000);
   };
 
   const handleResendProviderEmail = async () => {
@@ -2229,14 +2327,15 @@ export default function OrderDetailModal({
                           <p className="text-[10px] text-red-500 mt-1">
                             {new Date(order.payment_failed_at).toLocaleString()}
                           </p>
-                          <RetryPaymentButton order={order} />
+                          {/* Only show retry button if order is still unpaid */}
+                          {!order.payment_intent_id && <RetryPaymentButton order={order} />}
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
-                {/* Retry payment link for lead orders with no payment failure recorded yet */}
-                {order.status === "lead" && !order.payment_failed_at && (
+                {/* Retry payment link for lead orders with no payment failure recorded yet — only when unpaid */}
+                {order.status === "lead" && !order.payment_failed_at && !order.payment_intent_id && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
                     <RetryPaymentButton order={order} />
                   </div>
@@ -2355,7 +2454,22 @@ export default function OrderDetailModal({
                             : <><i className="ri-notification-3-line"></i>Nudge Provider</>
                           }
                         </button>
+                        {/* Remove Provider button */}
+                        <button
+                          type="button"
+                          onClick={() => setShowRemoveProviderConfirm(true)}
+                          title="Remove provider assignment and mark order as Paid (Unassigned)"
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-xs font-bold cursor-pointer transition-colors flex-shrink-0"
+                        >
+                          <i className="ri-user-unfollow-line"></i>Remove
+                        </button>
                       </div>
+                    )}
+                    {removeProviderMsg && (
+                      <p className={`text-xs mb-2 flex items-center gap-1 font-semibold ${removeProviderMsg.includes("Unassigned") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+                        <i className={removeProviderMsg.includes("Unassigned") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                        {removeProviderMsg}
+                      </p>
                     )}
                     {resendProviderMsg && (
                       <p className={`text-xs mb-2 flex items-center gap-1 font-semibold ${resendProviderMsg.includes("resent") ? "text-[#1a5c4f]" : "text-orange-600"}`}>
@@ -2612,8 +2726,8 @@ export default function OrderDetailModal({
                       </div>
                     )}
 
-                    {/* ── Cancel Order — hidden for completed or refunded orders ── */}
-                    {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && (
+                    {/* ── Cancel Order — shown for all paid orders that aren't completed/refunded/already cancelled ── */}
+                    {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
                     <div className="border-t border-dashed border-orange-200 mt-1 pt-3">
                       <p className="text-xs text-orange-500 mb-2 flex items-center gap-1 font-semibold">
                         <i className="ri-close-circle-line"></i>Cancel Order
@@ -2621,22 +2735,30 @@ export default function OrderDetailModal({
                       <button
                         type="button"
                         onClick={() => setShowCancelConfirm(true)}
-                        disabled={order.status === "cancelled"}
-                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
                       >
-                        <i className="ri-close-circle-line"></i>
-                        {order.status === "cancelled" ? "Already Cancelled" : "Cancel This Order"}
+                        <i className="ri-close-circle-line"></i>Cancel This Order
                       </button>
                       <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
                         <i className="ri-information-line"></i>
-                        Marks order as cancelled. Optionally issues a full Stripe refund and notifies the customer.
+                        Marks order as cancelled and notifies the customer.
+                        {order.payment_intent_id ? " Optionally issues a full Stripe refund." : ""}
                       </p>
                       {cancelMsg && (
-                        <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${cancelMsg.includes("success") ? "text-[#1a5c4f]" : cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "text-red-600" : "text-[#1a5c4f]"}`}>
+                        <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${cancelMsg.includes("success") || cancelMsg.includes("cancelled") ? "text-[#1a5c4f]" : cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "text-red-600" : "text-[#1a5c4f]"}`}>
                           <i className={cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
                           {cancelMsg}
                         </p>
                       )}
+                    </div>
+                    )}
+                    {/* Already cancelled badge */}
+                    {order.status === "cancelled" && (
+                    <div className="border-t border-dashed border-gray-200 mt-1 pt-3">
+                      <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                        <i className="ri-close-circle-fill text-gray-400"></i>
+                        <span className="text-sm text-gray-500 font-semibold">Order already cancelled</span>
+                      </div>
                     </div>
                     )}
                   </div>
@@ -3493,8 +3615,8 @@ export default function OrderDetailModal({
               </div>
             </div>
 
-            {/* Refund option — only for paid orders */}
-            {order.payment_intent_id && (
+            {/* Refund option — only for paid orders with a payment intent */}
+            {order.payment_intent_id ? (
               <div
                 className={`flex items-start gap-3 rounded-xl p-3 mb-4 border cursor-pointer transition-colors ${cancelWithRefund ? "bg-emerald-50 border-emerald-300" : "bg-gray-50 border-gray-200 hover:bg-gray-100"}`}
                 onClick={() => setCancelWithRefund((v) => !v)}
@@ -3510,6 +3632,13 @@ export default function OrderDetailModal({
                     {order.price != null ? `$${order.price.toFixed(2)}` : "Full amount"} will be refunded to the customer&apos;s original payment method. Takes 5-10 business days.
                   </p>
                 </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                <i className="ri-information-line text-amber-600 flex-shrink-0 mt-0.5"></i>
+                <p className="text-xs text-amber-800">
+                  No Stripe payment linked to this order — cancellation will update the status only. No refund will be issued.
+                </p>
               </div>
             )}
 
@@ -3530,7 +3659,7 @@ export default function OrderDetailModal({
               <p className="text-xs text-amber-800 flex items-start gap-1 leading-relaxed">
                 <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
                 A cancellation email will be sent to the customer at <strong>{order.email}</strong>.
-                {cancelWithRefund && order.payment_intent_id ? " Refund will also be processed." : ""}
+                {cancelWithRefund && order.payment_intent_id ? " A full Stripe refund will also be processed." : ""}
               </p>
             </div>
 
@@ -3542,8 +3671,8 @@ export default function OrderDetailModal({
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 cursor-pointer transition-colors disabled:opacity-50"
               >
                 {cancellingOrder
-                  ? <><i className="ri-loader-4-line animate-spin"></i>{cancelWithRefund ? "Refunding & Cancelling..." : "Cancelling..."}</>
-                  : <><i className="ri-close-circle-line"></i>{cancelWithRefund ? "Cancel & Refund" : "Cancel Order"}</>
+                  ? <><i className="ri-loader-4-line animate-spin"></i>{cancelWithRefund && order.payment_intent_id ? "Refunding & Cancelling..." : "Cancelling..."}</>
+                  : <><i className="ri-close-circle-line"></i>{cancelWithRefund && order.payment_intent_id ? "Cancel & Refund" : "Cancel Order"}</>
                 }
               </button>
               <button
@@ -3643,6 +3772,61 @@ export default function OrderDetailModal({
               </button>
               <button type="button" onClick={() => setShowThirtyDayConfirm(false)}
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Remove Provider Confirmation ── */}
+      {showRemoveProviderConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/50">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-user-unfollow-fill text-red-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Remove Provider Assignment?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  This will unassign <strong>{order.doctor_name ?? order.doctor_email}</strong> from order{" "}
+                  <span className="font-mono text-gray-700">{order.confirmation_id}</span> and mark it as{" "}
+                  <strong className="text-sky-700">Paid (Unassigned)</strong>.
+                </p>
+              </div>
+            </div>
+            <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 mb-4 space-y-1.5 text-xs text-sky-800">
+              <p className="flex items-center gap-1.5 font-semibold">
+                <i className="ri-information-line"></i>
+                The order will be removed from the provider&apos;s portal immediately.
+              </p>
+              <p className="flex items-center gap-1.5">
+                <i className="ri-user-add-line"></i>
+                You can reassign it to any available provider afterwards.
+              </p>
+              <p className="flex items-center gap-1.5">
+                <i className="ri-mail-close-line"></i>
+                The provider will NOT be notified of this removal.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRemoveProvider}
+                disabled={removingProvider}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {removingProvider
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Removing...</>
+                  : <><i className="ri-user-unfollow-line"></i>Yes, Remove Provider</>
+                }
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRemoveProviderConfirm(false)}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 Cancel
               </button>

@@ -17,6 +17,13 @@
  *   - Checks meta_capi_status = 'sent'
  *   - Checks meta_events table for existing sent record
  *   - Marks replayed orders with meta_backfill_replayed = true
+ *   - Uses event_id = "purchase_{confirmationId}" — same as send-meta-capi-event
+ *     so Meta deduplicates across both functions automatically
+ *
+ * fbc generation:
+ *   Format: fb.1.<ms_timestamp>.<fbclid>
+ *   Timestamp priority: attribution_json.fbclid_ts (stored capture time) → paid_at ms → Date.now() fallback
+ *   fbc is NOT hashed — sent as plain text per Meta spec.
  *
  * Security:
  *   - Requires admin JWT token
@@ -79,8 +86,6 @@ async function verifyAdmin(token: string): Promise<{ isAdmin: boolean; error?: s
 }
 
 // ── FIXED: Check if order already sent — handles null, false, AND true ──────
-// The original bug: .is("sent_to_meta", null) excluded orders where sent_to_meta = false
-// (which is the DB default). This function correctly checks all three states.
 async function isAlreadySent(
   supabase: ReturnType<typeof createClient>,
   orderId: string
@@ -91,11 +96,9 @@ async function isAlreadySent(
     .eq("id", orderId)
     .maybeSingle();
 
-  // Explicitly sent
   if (order?.sent_to_meta === true) return true;
   if (order?.meta_capi_status === "sent") return true;
 
-  // Check meta_events table as secondary source of truth
   const { data: metaEvent } = await supabase
     .from("meta_events")
     .select("sent_to_meta")
@@ -115,6 +118,7 @@ interface OrderRow {
   paid_at: string | null;
   created_at: string | null;
   fbclid: string | null;
+  attribution_json: Record<string, unknown> | null;
   meta_capi_status: string | null;
   meta_capi_event_id: string | null;
   phone_sha256: string | null;
@@ -135,7 +139,6 @@ interface BackfillFilters {
   offset: number;
 }
 
-// ── Build base query with filters ────────────────────────────────────────────
 function buildBaseQuery(
   supabase: ReturnType<typeof createClient>,
   filters: BackfillFilters,
@@ -147,7 +150,7 @@ function buildBaseQuery(
     .from("orders")
     .select(countOnly ? "*" : `
       id, confirmation_id, email, phone, price, paid_at, created_at,
-      fbclid, meta_capi_status, meta_capi_event_id, phone_sha256, email_sha256,
+      fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256, email_sha256,
       sent_to_meta, first_name, last_name, source_system, historical_import
     `, countOnly ? { count: "exact", head: true } : undefined)
     .not("payment_intent_id", "is", null)
@@ -157,29 +160,21 @@ function buildBaseQuery(
     .gt("price", 0)
     .or("email.not.is.null,phone.not.is.null")
     .neq("status", "refunded")
-    // FIXED: use neq instead of is(null) — catches both null AND false
     .neq("sent_to_meta", true)
     .neq("meta_capi_status", "sent");
 
-  // Source system filter
   if (filters.sourceSystem === "wordpress_legacy") {
     query = query.eq("source_system", "wordpress_legacy");
   } else if (filters.sourceSystem === "new_site") {
     query = query.or("source_system.is.null,source_system.neq.wordpress_legacy");
   }
 
-  // Historical filter — by default exclude historical imports unless explicitly requested
   if (!filters.includeHistorical) {
     query = query.neq("historical_import", true);
   }
 
-  // Date range filter
-  if (filters.dateFrom) {
-    query = query.gte("paid_at", filters.dateFrom);
-  }
-  if (filters.dateTo) {
-    query = query.lte("paid_at", filters.dateTo);
-  }
+  if (filters.dateFrom) query = query.gte("paid_at", filters.dateFrom);
+  if (filters.dateTo)   query = query.lte("paid_at", filters.dateTo);
 
   return query;
 }
@@ -223,11 +218,9 @@ async function getSentCount(
   } else if (filters.sourceSystem === "new_site") {
     query = query.or("source_system.is.null,source_system.neq.wordpress_legacy");
   }
-  if (!filters.includeHistorical) {
-    query = query.neq("historical_import", true);
-  }
+  if (!filters.includeHistorical) query = query.neq("historical_import", true);
   if (filters.dateFrom) query = query.gte("paid_at", filters.dateFrom);
-  if (filters.dateTo) query = query.lte("paid_at", filters.dateTo);
+  if (filters.dateTo)   query = query.lte("paid_at", filters.dateTo);
 
   const { count } = await query;
   return count || 0;
@@ -258,23 +251,45 @@ async function getMissingDataIssues(
   } else if (filters.sourceSystem === "new_site") {
     query = query.or("source_system.is.null,source_system.neq.wordpress_legacy");
   }
-  if (!filters.includeHistorical) {
-    query = query.neq("historical_import", true);
-  }
+  if (!filters.includeHistorical) query = query.neq("historical_import", true);
   if (filters.dateFrom) query = query.gte("paid_at", filters.dateFrom);
-  if (filters.dateTo) query = query.lte("paid_at", filters.dateTo);
+  if (filters.dateTo)   query = query.lte("paid_at", filters.dateTo);
 
   const { data: orders } = await query;
 
   const issues = { noFbclid: 0, noPhone: 0, noEmail: 0, invalidPaidAt: 0, futurePaidAt: 0 };
   for (const order of (orders || [])) {
     if (!order.fbclid) issues.noFbclid++;
-    if (!order.phone) issues.noPhone++;
-    if (!order.email) issues.noEmail++;
+    if (!order.phone)  issues.noPhone++;
+    if (!order.email)  issues.noEmail++;
     if (!order.paid_at) issues.invalidPaidAt++;
     else if (order.paid_at > now) issues.futurePaidAt++;
   }
   return issues;
+}
+
+// ── FIXED: fbc generation using stored fbclid_ts from attribution_json ────────
+// Format: fb.1.<ms_timestamp>.<fbclid>
+// Priority: attribution_json.fbclid_ts → paid_at ms → Date.now() fallback
+// fbc is NOT hashed — sent as plain text per Meta spec.
+function generateFbc(
+  fbclid: string,
+  attributionJson: Record<string, unknown> | null,
+  paidAtMs: number | null
+): { fbc: string; timestampSource: "stored_fbclid_ts" | "paid_at" | "fallback" } {
+  const rawFbclidTs = attributionJson?.fbclid_ts;
+  const storedTs: number | null = rawFbclidTs
+    ? (typeof rawFbclidTs === "number" ? rawFbclidTs : parseInt(String(rawFbclidTs), 10) || null)
+    : null;
+
+  if (storedTs && storedTs > 0) {
+    return { fbc: `fb.1.${storedTs}.${fbclid}`, timestampSource: "stored_fbclid_ts" };
+  }
+  if (paidAtMs && paidAtMs > 0) {
+    return { fbc: `fb.1.${paidAtMs}.${fbclid}`, timestampSource: "paid_at" };
+  }
+  const fallbackTs = Date.now();
+  return { fbc: `fb.1.${fallbackTs}.${fbclid}`, timestampSource: "fallback" };
 }
 
 interface CAPIPayload {
@@ -284,6 +299,8 @@ interface CAPIPayload {
   price: number;
   eventTime: number;
   fbclid: string | null;
+  attributionJson: Record<string, unknown> | null;
+  paidAtMs: number | null;
   eventId: string;
   emailSha256?: string | null;
   phoneSha256?: string | null;
@@ -313,6 +330,8 @@ async function buildCAPIPayload(order: OrderRow): Promise<CAPIPayload | null> {
     price,
     eventTime,
     fbclid: order.fbclid,
+    attributionJson: order.attribution_json,
+    paidAtMs,
     eventId,
     emailSha256,
     phoneSha256,
@@ -322,7 +341,7 @@ async function buildCAPIPayload(order: OrderRow): Promise<CAPIPayload | null> {
 async function sendToMetaCAPI(
   payload: CAPIPayload,
   testEventCode?: string
-): Promise<{ success: boolean; error?: string; rawResponse?: unknown }> {
+): Promise<{ success: boolean; error?: string; rawResponse?: unknown; fbcTimestampSource?: string }> {
   if (!META_PIXEL_ID || !META_CAPI_ACCESS_TOKEN) {
     return { success: false, error: "Missing META_PIXEL_ID or META_CAPI_ACCESS_TOKEN secrets" };
   }
@@ -330,7 +349,17 @@ async function sendToMetaCAPI(
   const userData: Record<string, unknown> = {};
   if (payload.emailSha256) userData.em = [payload.emailSha256];
   if (payload.phoneSha256) userData.ph = [payload.phoneSha256];
-  if (payload.fbclid) userData.fbc = `fb.1.${payload.eventTime * 1000}.${payload.fbclid}`;
+
+  // ── FIXED fbc generation ──────────────────────────────────────────────────
+  // Previously used event_time * 1000 (wrong — that's paid_at ms, not fbclid capture time)
+  // Now correctly uses stored fbclid_ts from attribution_json, with paid_at as fallback
+  let fbcTimestampSource: string | undefined;
+  if (payload.fbclid) {
+    const { fbc, timestampSource } = generateFbc(payload.fbclid, payload.attributionJson, payload.paidAtMs);
+    userData.fbc = fbc;
+    fbcTimestampSource = timestampSource;
+    console.info(`[send-meta-events][${payload.confirmationId}] fbc: ${fbc} (ts_source: ${timestampSource})`);
+  }
 
   const eventData: Record<string, unknown> = {
     event_name: "Purchase",
@@ -365,7 +394,7 @@ async function sendToMetaCAPI(
     try {
       responseData = JSON.parse(rawText);
     } catch {
-      return { success: false, error: `Non-JSON response (${res.status}): ${rawText.slice(0, 400)}` };
+      return { success: false, error: `Non-JSON response (${res.status}): ${rawText.slice(0, 400)}`, fbcTimestampSource };
     }
 
     if (!res.ok) {
@@ -373,17 +402,17 @@ async function sendToMetaCAPI(
       const errMsg = errDetail
         ? `Meta API ${res.status}: ${errDetail.message ?? JSON.stringify(errDetail)}`
         : `Meta API ${res.status}: ${rawText.slice(0, 400)}`;
-      return { success: false, error: errMsg, rawResponse: responseData };
+      return { success: false, error: errMsg, rawResponse: responseData, fbcTimestampSource };
     }
 
     const eventsReceived = responseData.events_received as number | undefined;
     if (eventsReceived === 0) {
-      return { success: false, error: "Meta received 0 events", rawResponse: responseData };
+      return { success: false, error: "Meta received 0 events", rawResponse: responseData, fbcTimestampSource };
     }
 
-    return { success: true, rawResponse: responseData };
+    return { success: true, rawResponse: responseData, fbcTimestampSource };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { success: false, error: err instanceof Error ? err.message : String(err), fbcTimestampSource };
   }
 }
 
@@ -430,7 +459,6 @@ async function storeMetaEvent(
     phone_sha256: payload.phoneSha256,
   };
 
-  // Mark as backfill replay so it's distinguishable from live webhook sends
   if (isBackfillReplay && sent) {
     updatePayload.meta_backfill_replayed = true;
     updatePayload.meta_backfill_replayed_at = now;
@@ -458,7 +486,6 @@ Deno.serve(async (req: Request) => {
       limit?: number;
       offset?: number;
       testEventCode?: string;
-      // New filter params
       sourceSystem?: "wordpress_legacy" | "new_site" | "all";
       dateFrom?: string | null;
       dateTo?: string | null;
@@ -529,6 +556,16 @@ Deno.serve(async (req: Request) => {
 
         const alreadySent = await isAlreadySent(supabase, order.id);
 
+        // Compute fbc for dry-run reporting
+        let dryRunFbc: string | null = null;
+        let dryRunFbcTsSource: string | null = null;
+        if (order.fbclid) {
+          const paidAtMs = order.paid_at ? new Date(order.paid_at).getTime() : null;
+          const { fbc, timestampSource } = generateFbc(order.fbclid, order.attribution_json, paidAtMs);
+          dryRunFbc = fbc;
+          dryRunFbcTsSource = timestampSource;
+        }
+
         previewItems.push({
           orderId: order.id,
           confirmationId: order.confirmation_id,
@@ -542,6 +579,9 @@ Deno.serve(async (req: Request) => {
           hasEmail: !!order.email,
           hasPhone: !!order.phone,
           hasFbclid: !!order.fbclid,
+          fbcGenerated: !!order.fbclid,
+          fbcTimestampSource: dryRunFbcTsSource,
+          sampleFbc: dryRunFbc,
           wouldSend: !alreadySent,
           alreadySent,
           requiredFieldsPresent: !!(order.email || order.phone) && payload.price > 0 && !!order.paid_at,
@@ -625,6 +665,7 @@ Deno.serve(async (req: Request) => {
             status: "sent",
             value: payload.price,
             isBackfillReplay: isHistoricalReplay,
+            fbcTimestampSource: metaResult.fbcTimestampSource,
           });
         } else {
           failed++;

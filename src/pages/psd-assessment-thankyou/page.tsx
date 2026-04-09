@@ -326,16 +326,35 @@ export default function PSDAssessmentThankYouPage() {
       return true;
     };
 
-    if (!fireGtag()) {
+    // After gtag fires, mark google_tag_fired=true on the order so the backend
+    // uploadClickConversions skips this order (prevents double-counting).
+    const markGoogleTagFired = (txId: string) => {
+      if (!txId) return;
+      supabase
+        .from("orders")
+        .update({ google_tag_fired: true })
+        .eq("confirmation_id", txId)
+        .then(() => {
+          console.log("[PSD Thank-You] google_tag_fired=true set for", txId);
+        })
+        .catch(() => {
+          // Non-critical — silently ignore
+        });
+    };
+
+    if (fireGtag()) {
+      markGoogleTagFired(transactionId);
+    } else {
       let attempts = 0;
       const maxAttempts = 100; // 10 seconds at 100 ms intervals
       const interval = setInterval(() => {
         attempts += 1;
-        if (fireGtag() || attempts >= maxAttempts) {
+        if (fireGtag()) {
+          markGoogleTagFired(transactionId);
           clearInterval(interval);
-          if (attempts >= maxAttempts && !gtagConversionFired.current) {
-            console.warn("[PSD Thank-You] gtag not available after 10 s — conversion skipped");
-          }
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          console.warn("[PSD Thank-You] gtag not available after 10 s — conversion skipped");
         }
       }, 100);
       return () => clearInterval(interval);

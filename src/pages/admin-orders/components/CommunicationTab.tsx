@@ -305,7 +305,31 @@ const EMAIL_TYPE_CONFIG_LOCAL: Record<string, { label: string; icon: string; col
   provider_assigned_customer: { label: "Provider Assigned (Patient)", icon: "ri-user-star-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   thirty_day_reminder: { label: "30-Day Reissue Reminder", icon: "ri-time-fill", color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   cancelled: { label: "Cancellation Notice", icon: "ri-close-circle-line", color: "text-red-700 bg-red-50 border-red-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  // ── Pre-payment / lead recovery emails ──────────────────────────────────
+  checkout_recovery: { label: "Abandoned Checkout Recovery", icon: "ri-shopping-cart-line", color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  followup_lead: { label: "Lead Follow-up Email", icon: "ri-user-follow-line", color: "text-amber-700 bg-amber-50 border-amber-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  // ── Auto-sequence emails (written to communications table) ───────────────
+  seq_30min: { label: "Auto-Sequence: 30-Min Follow-up", icon: "ri-timer-line", color: "text-amber-700 bg-amber-50 border-amber-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  seq_24h: { label: "Auto-Sequence: 24-Hour Follow-up", icon: "ri-time-line", color: "text-amber-700 bg-amber-50 border-amber-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  seq_3day: { label: "Auto-Sequence: 3-Day Follow-up", icon: "ri-calendar-line", color: "text-amber-700 bg-amber-50 border-amber-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  // ── SMS / call comms (from communications table) ─────────────────────────
+  sms: { label: "SMS Sent", icon: "ri-message-3-line", color: "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
+  sms_inbound: { label: "SMS Received", icon: "ri-message-2-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  call: { label: "Outbound Call", icon: "ri-phone-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
+  call_inbound: { label: "Inbound Call", icon: "ri-phone-fill", color: "text-violet-700 bg-violet-50 border-violet-200", failColor: "text-red-600 bg-red-50 border-red-200" },
 };
+
+// ── Unified log entry type ─────────────────────────────────────────────────
+interface UnifiedLogEntry {
+  type: string;
+  sentAt: string;
+  to: string;
+  success: boolean;
+  source: "email_log" | "communications";
+  body?: string | null;
+  direction?: string | null;
+  duration?: number | null;
+}
 
 export default function CommunicationTab({
   orderId,
@@ -340,12 +364,61 @@ export default function CommunicationTab({
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailMsg, setEmailMsg]         = useState("");
 
+  // ── Pre-payment comms from communications table ────────────────────────
+  const [commLogs, setCommLogs] = useState<UnifiedLogEntry[]>([]);
+  const [loadingComms, setLoadingComms] = useState(false);
+
   const firstName = patientName.split(" ")[0] || "there";
   const isPsd = letterType === "psd" || confirmationId.includes("-PSD");
   const resumeUrl = `https://www.pawtenant.com/${isPsd ? "psd-assessment" : "assessment"}?resume=${encodeURIComponent(confirmationId)}`;
 
   const selectedEmailOption = ALL_EMAIL_OPTIONS.find((o) => o.value === emailType);
   const isRecoveryType = ["checkout_recovery", "followup_lead", "consultation_booking"].includes(emailType);
+
+  // ── Fetch communications table entries for this order ─────────────────
+  const loadCommLogs = useCallback(async () => {
+    if (!orderId) return;
+    setLoadingComms(true);
+    try {
+      const { data } = await supabase
+        .from("communications")
+        .select("type, direction, body, phone_to, phone_from, status, created_at, duration_seconds")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: false });
+
+      const entries: UnifiedLogEntry[] = (data ?? []).map((row) => ({
+        type: row.type as string,
+        sentAt: row.created_at as string,
+        to: (row.phone_to as string) ?? email,
+        success: (row.status as string) !== "failed",
+        source: "communications" as const,
+        body: row.body as string | null,
+        direction: row.direction as string | null,
+        duration: row.duration_seconds as number | null,
+      }));
+      setCommLogs(entries);
+    } catch {
+      // Non-critical — silently fail
+    }
+    setLoadingComms(false);
+  }, [orderId, email]);
+
+  useEffect(() => {
+    loadCommLogs();
+  }, [loadCommLogs]);
+
+  // ── Build unified timeline: email_log + communications, sorted newest first ──
+  const emailLogEntries: UnifiedLogEntry[] = (emailLog ?? []).map((e) => ({
+    type: e.type,
+    sentAt: e.sentAt,
+    to: e.to,
+    success: e.success,
+    source: "email_log" as const,
+  }));
+
+  const allLogs: UnifiedLogEntry[] = [...emailLogEntries, ...commLogs].sort(
+    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()
+  );
 
   // ── Send SMS ───────────────────────────────────────────────────────────
   const handleSendSMS = async () => {
@@ -658,21 +731,25 @@ export default function CommunicationTab({
         </div>
       </div>
 
-      {/* ── Email Delivery Log ── */}
+      {/* ── Unified Communication Log ── */}
       <div className="flex-1 overflow-y-auto">
-        {(emailLog ?? []).length > 0 ? (
+        {loadingComms && allLogs.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+          </div>
+        ) : allLogs.length > 0 ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
-                <i className="ri-mail-line text-sm"></i>
-                Email Delivery Log ({(emailLog ?? []).length} emails)
+                <i className="ri-history-line text-sm"></i>
+                Full Communication History ({allLogs.length} entries)
               </p>
-              <p className="text-[10px] text-gray-400">Click any email to preview its content</p>
+              <p className="text-[10px] text-gray-400">Includes pre-payment emails, SMS, calls &amp; sequence emails</p>
             </div>
-            {(emailLog ?? []).map((entry, idx) => {
+            {allLogs.map((entry, idx) => {
               const cfg = EMAIL_TYPE_CONFIG_LOCAL[entry.type] ?? {
                 label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-                icon: "ri-mail-line",
+                icon: entry.source === "communications" ? "ri-message-3-line" : "ri-mail-line",
                 color: "text-gray-600 bg-gray-50 border-gray-200",
                 failColor: "text-red-600 bg-red-50 border-red-200",
               };
@@ -680,6 +757,7 @@ export default function CommunicationTab({
               const isExpanded = expandedEmailIdx === idx;
               const contentTemplate = EMAIL_CONTENT_MAP[entry.type];
               const fName = patientName.split(" ")[0] || "there";
+              const isCommsEntry = entry.source === "communications";
 
               return (
                 <div key={idx} className="rounded-xl border overflow-hidden">
@@ -692,9 +770,23 @@ export default function CommunicationTab({
                       <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} text-base`}></i>
                     </div>
                     <div className="flex-1 min-w-0 text-left">
-                      <p className="text-xs font-bold leading-tight">{cfg.label}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs font-bold leading-tight">{cfg.label}</p>
+                        {/* Pre-payment badge */}
+                        {(entry.type === "checkout_recovery" || entry.type.startsWith("seq_") || entry.type === "followup_lead") && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-white/60 text-current">
+                            Pre-payment
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs opacity-70 leading-tight truncate">
-                        To: {entry.to} &middot; {new Date(entry.sentAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                        {isCommsEntry
+                          ? `${entry.direction === "inbound" ? "From" : "To"}: ${entry.to}`
+                          : `To: ${entry.to}`
+                        }
+                        {" "}&middot;{" "}
+                        {new Date(entry.sentAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                        {entry.duration != null && entry.duration > 0 && ` · ${Math.floor(entry.duration / 60)}m ${entry.duration % 60}s`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -703,12 +795,22 @@ export default function CommunicationTab({
                           ? <><i className="ri-checkbox-circle-fill"></i>Sent</>
                           : <><i className="ri-close-circle-fill"></i>Failed</>}
                       </span>
-                      <i className={isExpanded ? "ri-arrow-up-s-line text-sm opacity-60" : "ri-arrow-down-s-line text-sm opacity-60"}></i>
+                      {(contentTemplate || isCommsEntry) && (
+                        <i className={isExpanded ? "ri-arrow-up-s-line text-sm opacity-60" : "ri-arrow-down-s-line text-sm opacity-60"}></i>
+                      )}
                     </div>
                   </button>
                   {isExpanded && (
                     <div className="border-t border-current/10 bg-white">
-                      {contentTemplate ? (
+                      {/* SMS / call body preview */}
+                      {isCommsEntry && entry.body ? (
+                        <div className="px-4 py-4">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Message Body</p>
+                          <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
+                            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{entry.body}</p>
+                          </div>
+                        </div>
+                      ) : contentTemplate ? (
                         <div>
                           <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
                             <i className="ri-mail-line text-gray-400 text-sm flex-shrink-0"></i>
@@ -755,8 +857,8 @@ export default function CommunicationTab({
             <div className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full mb-2">
               <i className="ri-mail-line text-gray-300 text-lg"></i>
             </div>
-            <p className="text-sm font-bold text-gray-500">No emails logged yet</p>
-            <p className="text-xs text-gray-400 mt-1">Email activity will appear here once emails are sent for this order</p>
+            <p className="text-sm font-bold text-gray-500">No communications logged yet</p>
+            <p className="text-xs text-gray-400 mt-1">All emails, SMS, calls and sequence messages will appear here</p>
           </div>
         )}
       </div>
