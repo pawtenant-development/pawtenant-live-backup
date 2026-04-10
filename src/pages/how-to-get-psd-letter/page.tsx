@@ -34,7 +34,7 @@ const qualifyingConditions = [
   { icon: "ri-alarm-warning-line", label: "Panic Disorder" },
   { icon: "ri-group-line", label: "Social Anxiety" },
   { icon: "ri-contrast-drop-line", label: "OCD" },
-  { icon: "ri-psychology-line", label: "Phobias" },
+  { icon: "ri-emotion-unhappy-line", label: "Phobias" },
 ];
 
 const comparisonRows = [
@@ -96,13 +96,13 @@ export default function HowToGetPSDLetterPage() {
 
   return (
     <main>
-      <title>How to Get a Psychiatric Service Dog Letter (PSD Letter) 2026 | PawTenant</title>
-      <meta name="description" content="Learn how to get a psychiatric service dog letter online from a licensed mental health professional. Find out if you qualify, what tasks a PSD must perform, and how a PSD letter differs from an ESA letter. Fast, legal, HIPAA compliant." />
-      <meta name="keywords" content="psychiatric service dog letter, PSD letter, how to get PSD letter, psychiatric service dog, mental health service dog" />
-      <link rel="canonical" href="https://www.pawtenant.com/how-to-get-psd-letter" />
-      <meta property="og:title" content="How to Get a Psychiatric Service Dog Letter (PSD Letter) 2026 | PawTenant" />
-      <meta property="og:description" content="Step-by-step guide to getting a psychiatric service dog letter from a licensed professional. Learn who qualifies, what tasks PSDs perform, and how to get your PSD letter online." />
-      <meta property="og:url" content="https://www.pawtenant.com/how-to-get-psd-letter" />
+      <title>Get a PSD Letter | Psychiatric Service Dog Documentation</title>
+      <meta name="description" content="Qualify for a Psychiatric Service Dog (PSD) letter through a professional clinical evaluation. Licensed US providers and HIPAA-compliant process." />
+      <meta name="keywords" content="get psd letter, psychiatric service dog letter, psd documentation, service dog evaluation" />
+      <link rel="canonical" href="https://www.pawtenant.com/how-to-get-psd-letter/" />
+      <meta property="og:title" content="Get a PSD Letter | Psychiatric Service Dog Documentation" />
+      <meta property="og:description" content="Qualify for a Psychiatric Service Dog (PSD) letter through a professional clinical evaluation. Licensed US providers and HIPAA-compliant process." />
+      <meta property="og:url" content="https://www.pawtenant.com/how-to-get-psd-letter/" />
       <meta property="og:type" content="article" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="How to Get a PSD Letter (Psychiatric Service Dog) 2026 | PawTenant" />

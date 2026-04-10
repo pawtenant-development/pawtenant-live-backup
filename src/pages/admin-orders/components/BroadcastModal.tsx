@@ -1,6 +1,7 @@
 // BroadcastModal — Send bulk SMS or Email to targeted customer segments
 import { useState, useMemo, useEffect } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { getAdminToken } from "../../../lib/supabaseClient";
 import BroadcastHistoryModal from "./BroadcastHistoryModal";
 
 interface Order {
@@ -17,6 +18,9 @@ interface Order {
   doctor_status: string | null;
   status: string;
   created_at: string;
+  letter_type?: string | null;
+  broadcast_opt_out?: boolean | null;
+  last_broadcast_sent_at?: string | null;
 }
 
 interface BroadcastModalProps {
@@ -90,6 +94,22 @@ const AUDIENCE_OPTIONS: AudienceOption[] = [
 ];
 
 const EMAIL_TEMPLATES = [
+  // ── Review Requests ────────────────────────────────────────────────────────
+  {
+    id: "trustpilot_review",
+    label: "Trustpilot Review Request",
+    group: "Review Requests",
+    subject: "{name}, share your PawTenant experience ⭐",
+    body: `Hi {name},
+
+We hope your ESA letter is everything you needed. It was a pleasure supporting you and your pet through this process.
+
+If you had a positive experience, we'd love to hear about it! Your review helps other pet owners find the support they need — and it means the world to our small team.
+
+Leaving a review takes less than 60 seconds and makes a huge difference for us.`,
+    ctaLabel: "⭐ Write My Review on Trustpilot",
+    ctaUrl: "https://www.trustpilot.com/review/pawtenant.com",
+  },
   // ── Lead Recovery ──────────────────────────────────────────────────────────
   {
     id: "finish_esa",
@@ -282,6 +302,12 @@ Thank you for being a PawTenant customer.`,
 
 const SMS_TEMPLATES = [
   {
+    id: "trustpilot_review",
+    label: "Trustpilot Review Request",
+    group: "Review Requests",
+    text: "Hi {name}! Your ESA letter from PawTenant is complete. If you had a great experience, we'd love a quick Trustpilot review! ⭐ https://www.trustpilot.com/review/pawtenant.com — Reply STOP to opt out.",
+  },
+  {
     id: "finish_esa",
     label: "Finish Your ESA Letter",
     group: "Lead Recovery",
@@ -365,6 +391,9 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
   const [testSendResult, setTestSendResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [exclude24hRecent, setExclude24hRecent] = useState(false);
+  const [neverContacted, setNeverContacted] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   // Reset exclusions whenever the audience changes
   useEffect(() => {
@@ -372,7 +401,7 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
     setRecipientSearch("");
   }, [audience]);
 
-  // Filter orders by audience
+  // Filter orders by audience — also exclude opted-out customers
   const audienceOrders = useMemo(() => {
     let filtered: Order[] = [];
     switch (audience) {
@@ -402,17 +431,57 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
         filtered = [...orders];
         break;
     }
+    // Always exclude opted-out customers from broadcast sends
+    filtered = filtered.filter((o) => !o.broadcast_opt_out);
     return dedupeByEmail(filtered);
+  }, [orders, audience]);
+
+  // Count opted-out customers in the current audience (before filtering)
+  const optOutCount = useMemo(() => {
+    let base: Order[] = [];
+    switch (audience) {
+      case "all_paid": base = orders.filter((o) => !!o.payment_intent_id && o.status !== "cancelled"); break;
+      case "completed": base = orders.filter((o) => o.doctor_status === "patient_notified"); break;
+      case "unassigned": base = orders.filter((o) => !!o.payment_intent_id && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified"); break;
+      case "under_review": base = orders.filter((o) => !!o.payment_intent_id && !!(o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified"); break;
+      case "all_leads": base = orders.filter((o) => !o.payment_intent_id); break;
+      case "all_everyone": base = [...orders]; break;
+    }
+    return dedupeByEmail(base).filter((o) => !!o.broadcast_opt_out).length;
   }, [orders, audience]);
 
   const withPhone = useMemo(() => audienceOrders.filter((o) => !!o.phone), [audienceOrders]);
   const withoutPhone = useMemo(() => audienceOrders.filter((o) => !o.phone), [audienceOrders]);
 
-  // Apply exclusions
-  const recipients = useMemo(() => {
+  // Count how many in the current audience received a broadcast in the past 24h
+  const recent24hCount = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     const base = channel === "sms" ? withPhone : audienceOrders;
-    return base.filter((o) => !excludedEmails.has(o.email.toLowerCase()));
-  }, [channel, withPhone, audienceOrders, excludedEmails]);
+    return base.filter((o) => {
+      if (!o.last_broadcast_sent_at) return false;
+      return new Date(o.last_broadcast_sent_at).getTime() > cutoff;
+    }).length;
+  }, [audienceOrders, withPhone, channel]);
+
+  // Count how many in the current audience have NEVER received a broadcast
+  const neverContactedCount = useMemo(() => {
+    const base = channel === "sms" ? withPhone : audienceOrders;
+    return base.filter((o) => !o.last_broadcast_sent_at).length;
+  }, [audienceOrders, withPhone, channel]);
+
+  // Apply exclusions + optional 24h cooldown filter + never contacted filter
+  const recipients = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const base = channel === "sms" ? withPhone : audienceOrders;
+    return base.filter((o) => {
+      if (excludedEmails.has(o.email.toLowerCase())) return false;
+      if (exclude24hRecent && o.last_broadcast_sent_at) {
+        if (new Date(o.last_broadcast_sent_at).getTime() > cutoff) return false;
+      }
+      if (neverContacted && o.last_broadcast_sent_at) return false;
+      return true;
+    });
+  }, [channel, withPhone, audienceOrders, excludedEmails, exclude24hRecent, neverContacted]);
 
   const toggleExclude = (email: string) => {
     const key = email.toLowerCase();
@@ -494,7 +563,7 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
 </html>`;
   };
 
-  // Filtered list for the recipient panel
+  // Filtered list for the recipient panel (shows ALL audience members including auto-excluded)
   const displayedRecipients = useMemo(() => {
     const base = channel === "sms" ? withPhone : audienceOrders;
     const q = recipientSearch.toLowerCase();
@@ -505,6 +574,18 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
       (o.phone ?? "").includes(q)
     );
   }, [channel, withPhone, audienceOrders, recipientSearch]);
+
+  // Returns the reason a recipient is auto-excluded (24h cooldown or never-contacted filter)
+  const getAutoExcludeReason = (o: Order): string | null => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    if (exclude24hRecent && o.last_broadcast_sent_at && new Date(o.last_broadcast_sent_at).getTime() > cutoff) {
+      return "24h cooldown";
+    }
+    if (neverContacted && o.last_broadcast_sent_at) {
+      return "has prior contact";
+    }
+    return null;
+  };
 
   // Audience counts for all options
   const audienceCounts = useMemo(() => {
@@ -565,14 +646,7 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
     setTestSendResult(null);
 
     try {
-      // Always refresh session before API calls to avoid expired JWT
-      const { data: refreshData } = await supabase.auth.refreshSession();
-      const token = refreshData.session?.access_token;
-      if (!token) {
-        setTestSendResult({ ok: false, message: "Session expired — please refresh the page and log in again." });
-        setTestSending(false);
-        return;
-      }
+      const token = await getAdminToken();
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/broadcast-email`, {
         method: "POST",
@@ -619,27 +693,14 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
     setResult(null);
 
     try {
-      // Always refresh session to avoid stale/expired JWT
-      const { data: refreshData } = await supabase.auth.refreshSession();
-      let token = refreshData.session?.access_token;
-
-      // Fallback: try getSession if refresh fails
-      if (!token) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        token = sessionData.session?.access_token;
-      }
-
-      if (!token) {
-        setResult({ successCount: 0, failCount: recipients.length, errors: ["Session expired — please refresh the page and log in again."] });
-        setSending(false);
-        return;
-      }
+      const token = await getAdminToken();
 
       if (channel === "email") {
         const emailRecipients = recipients.map((o) => ({
           email: o.email,
           name: [o.first_name, o.last_name].filter(Boolean).join(" ") || o.email,
           confirmation_id: o.confirmation_id,
+          letter_type: o.letter_type ?? "esa",
         }));
         const res = await fetch(`${SUPABASE_URL}/functions/v1/broadcast-email`, {
           method: "POST",
@@ -864,6 +925,61 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
                 </div>
               </div>
 
+              {/* ── Smart Filters row ── */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Smart Filters</p>
+
+                {/* 24h Cooldown */}
+                <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-colors cursor-pointer ${exclude24hRecent ? "bg-sky-50 border-sky-300" : "bg-gray-50 border-gray-200 hover:border-gray-300"}`}
+                  onClick={() => { setExclude24hRecent((v) => !v); if (neverContacted) setNeverContacted(false); }}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${exclude24hRecent ? "bg-sky-100" : "bg-gray-100"}`}>
+                      <i className={`ri-time-line text-sm ${exclude24hRecent ? "text-sky-600" : "text-gray-400"}`}></i>
+                    </div>
+                    <div>
+                      <p className={`text-xs font-bold ${exclude24hRecent ? "text-sky-800" : "text-gray-700"}`}>
+                        Skip recently contacted (24h cooldown)
+                      </p>
+                      <p className={`text-xs mt-0.5 ${exclude24hRecent ? "text-sky-600" : "text-gray-400"}`}>
+                        {exclude24hRecent
+                          ? recent24hCount > 0
+                            ? `${recent24hCount} customer${recent24hCount !== 1 ? "s" : ""} will be skipped — received a broadcast via this system in the last 24 hours`
+                            : "No customers received a broadcast via this system in the last 24 hours"
+                          : `Exclude contacts broadcast-emailed/texted in the past 24h via this system — ${recent24hCount} in this audience`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`w-10 h-5 rounded-full relative transition-colors flex-shrink-0 ${exclude24hRecent ? "bg-sky-500" : "bg-gray-300"}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${exclude24hRecent ? "translate-x-5" : "translate-x-0.5"}`}></div>
+                  </div>
+                </div>
+
+                {/* Never Contacted */}
+                <div className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-colors cursor-pointer ${neverContacted ? "bg-violet-50 border-violet-300" : "bg-gray-50 border-gray-200 hover:border-gray-300"}`}
+                  onClick={() => { setNeverContacted((v) => !v); if (exclude24hRecent) setExclude24hRecent(false); }}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${neverContacted ? "bg-violet-100" : "bg-gray-100"}`}>
+                      <i className={`ri-user-star-line text-sm ${neverContacted ? "text-violet-600" : "text-gray-400"}`}></i>
+                    </div>
+                    <div>
+                      <p className={`text-xs font-bold ${neverContacted ? "text-violet-800" : "text-gray-700"}`}>
+                        Target only never-contacted customers
+                      </p>
+                      <p className={`text-xs mt-0.5 ${neverContacted ? "text-violet-600" : "text-gray-400"}`}>
+                        {neverContacted
+                          ? neverContactedCount > 0
+                            ? `${neverContactedCount} customer${neverContactedCount !== 1 ? "s" : ""} have never received a broadcast`
+                            : "Everyone in this audience has been contacted before"
+                          : `Send only to fresh contacts — ${neverContactedCount} in this audience have never been broadcast-emailed`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`w-10 h-5 rounded-full relative transition-colors flex-shrink-0 ${neverContacted ? "bg-violet-500" : "bg-gray-300"}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${neverContacted ? "translate-x-5" : "translate-x-0.5"}`}></div>
+                  </div>
+                </div>
+              </div>
+
               {/* ── Recipients Panel (always visible, with exclusion) ── */}
               <div className="rounded-xl border border-gray-200 overflow-hidden">
                 <div
@@ -931,12 +1047,14 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
                       ) : (
                         displayedRecipients.map((o) => {
                           const name = [o.first_name, o.last_name].filter(Boolean).join(" ") || o.email;
-                          const isExcluded = excludedEmails.has(o.email.toLowerCase());
+                          const isManualExcluded = excludedEmails.has(o.email.toLowerCase());
+                          const autoExcludeReason = getAutoExcludeReason(o);
+                          const isExcluded = isManualExcluded || !!autoExcludeReason;
                           return (
                             <div
                               key={o.id}
                               className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${isExcluded ? "bg-red-50/60 opacity-60" : "bg-white hover:bg-gray-50"}`}
-                              onClick={(e) => { e.stopPropagation(); toggleExclude(o.email); }}
+                              onClick={(e) => { e.stopPropagation(); if (!autoExcludeReason) toggleExclude(o.email); }}
                             >
                               {/* Custom checkbox */}
                               <div
@@ -961,9 +1079,14 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
                                 </p>
                               </div>
                               <span className="text-xs text-gray-300 flex-shrink-0">{o.state ?? ""}</span>
-                              {isExcluded && (
+                              {isManualExcluded && (
                                 <span className="flex-shrink-0 px-1.5 py-0.5 bg-red-100 text-red-500 text-[10px] font-bold rounded-full">
                                   excluded
+                                </span>
+                              )}
+                              {!isManualExcluded && autoExcludeReason && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 bg-sky-100 text-sky-600 text-[10px] font-bold rounded-full whitespace-nowrap">
+                                  {autoExcludeReason}
                                 </span>
                               )}
                             </div>
@@ -1086,6 +1209,24 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
                             placeholder="https://pawtenant.com/..."
                             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
                           />
+                        </div>
+                      </div>
+                    )}
+                    {/* ── Personalized resume link badge — shown when lead recovery audience + assessment URL ── */}
+                    {includePortalCta && (audience === "all_leads" || audience === "all_everyone") && (ctaUrl.includes("assessment") || ctaUrl.includes("resume=")) && (
+                      <div className="flex items-start gap-2.5 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <div className="w-5 h-5 flex items-center justify-center bg-emerald-100 rounded-full flex-shrink-0 mt-0.5">
+                          <i className="ri-magic-line text-emerald-600" style={{ fontSize: "11px" }}></i>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-emerald-800">CTA button will be personalized per customer</p>
+                          <p className="text-xs text-emerald-700 mt-0.5 leading-relaxed">
+                            Each lead will receive their own unique resume link:{" "}
+                            <span className="font-mono text-[10px] bg-emerald-100 px-1.5 py-0.5 rounded">
+                              pawtenant.com/assessment?resume=ORDER_ID
+                            </span>
+                            {" "}— clicking it takes them directly to their saved checkout, not the first step.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -1230,22 +1371,62 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
               )}
 
               {/* ── Stats bar ── */}
-              <div className="grid grid-cols-3 gap-3 bg-gray-50 rounded-xl border border-gray-200 p-4">
-                <div className="text-center">
-                  <p className="text-2xl font-extrabold text-[#1a5c4f]">{recipients.length}</p>
-                  <p className="text-xs text-gray-500">Will receive</p>
-                </div>
-                <div className="text-center border-x border-gray-200">
-                  <p className="text-2xl font-extrabold text-red-500">{excludedEmails.size}</p>
-                  <p className="text-xs text-gray-500">Manually excluded</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-extrabold text-gray-500 capitalize">{channel}</p>
-                  <p className="text-xs text-gray-500">
-                    {channel === "sms" ? `${smsCredits} credit${smsCredits > 1 ? "s" : ""} each` : "via Resend"}
+              {(() => {
+                const show24h = exclude24hRecent && recent24hCount > 0;
+                const showNever = neverContacted;
+                const neverSkipped = showNever ? (channel === "sms" ? withPhone : audienceOrders).filter((o) => !!o.last_broadcast_sent_at).length : 0;
+                const extraCols = (optOutCount > 0 ? 1 : 0) + (show24h ? 1 : 0) + (showNever ? 1 : 0);
+                const totalCols = 3 + extraCols;
+                return (
+                  <div className="grid gap-3 bg-gray-50 rounded-xl border border-gray-200 p-4"
+                    style={{ gridTemplateColumns: `repeat(${totalCols}, minmax(0, 1fr))` }}>
+                    <div className="text-center">
+                      <p className="text-2xl font-extrabold text-[#1a5c4f]">{recipients.length}</p>
+                      <p className="text-xs text-gray-500">Will receive</p>
+                    </div>
+                    <div className="text-center border-x border-gray-200">
+                      <p className="text-2xl font-extrabold text-red-500">{excludedEmails.size}</p>
+                      <p className="text-xs text-gray-500">Manually excluded</p>
+                    </div>
+                    {optOutCount > 0 && (
+                      <div className="text-center border-r border-gray-200">
+                        <p className="text-2xl font-extrabold text-orange-500">{optOutCount}</p>
+                        <p className="text-xs text-gray-500">Opted out</p>
+                      </div>
+                    )}
+                    {show24h && (
+                      <div className="text-center border-r border-gray-200">
+                        <p className="text-2xl font-extrabold text-sky-500">{recent24hCount}</p>
+                        <p className="text-xs text-gray-500">24h cooldown</p>
+                      </div>
+                    )}
+                    {showNever && (
+                      <div className="text-center border-r border-gray-200">
+                        <p className="text-2xl font-extrabold text-violet-500">{neverSkipped}</p>
+                        <p className="text-xs text-gray-500">Prior contact skipped</p>
+                      </div>
+                    )}
+                    <div className="text-center">
+                      <p className="text-sm font-extrabold text-gray-500 capitalize">{channel}</p>
+                      <p className="text-xs text-gray-500">
+                        {channel === "sms" ? `${smsCredits} credit${smsCredits > 1 ? "s" : ""} each` : "via Resend"}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── Opt-out notice ── */}
+              {optOutCount > 0 && (
+                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-orange-50 border border-orange-200 rounded-xl">
+                  <div className="w-5 h-5 flex items-center justify-center bg-orange-100 rounded-full flex-shrink-0 mt-0.5">
+                    <i className="ri-mail-forbid-line text-orange-600" style={{ fontSize: "11px" }}></i>
+                  </div>
+                  <p className="text-xs text-orange-800 leading-relaxed">
+                    <strong>{optOutCount} customer{optOutCount > 1 ? "s" : ""}</strong> in this audience have unsubscribed from marketing emails and will be automatically excluded from this broadcast.
                   </p>
                 </div>
-              </div>
+              )}
 
               {/* Audience summary */}
               <div className={`flex items-center gap-3 p-3 rounded-xl border ${audience === "all_everyone" ? "bg-violet-50 border-violet-200" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
@@ -1276,7 +1457,7 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
             </button>
             <button
               type="button"
-              onClick={handleSend}
+              onClick={() => setShowConfirmDialog(true)}
               disabled={sending || !isReadyToSend}
               className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
             >
@@ -1296,6 +1477,142 @@ export default function BroadcastModal({ orders, adminName, adminEmail, onClose 
 
       {/* Broadcast History Modal */}
       {showHistory && <BroadcastHistoryModal onClose={() => setShowHistory(false)} />}
+
+      {/* ── Send Confirmation Dialog ── */}
+      {showConfirmDialog && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowConfirmDialog(false)}></div>
+          <div className="relative bg-white rounded-2xl w-full max-w-md overflow-hidden">
+
+            {/* Dialog header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+              <div className="w-10 h-10 flex items-center justify-center bg-amber-100 rounded-xl flex-shrink-0">
+                <i className="ri-send-plane-2-line text-amber-600 text-lg"></i>
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-gray-900">Confirm Broadcast Send</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Review before sending — this cannot be undone</p>
+              </div>
+              <button type="button" onClick={() => setShowConfirmDialog(false)}
+                className="whitespace-nowrap ml-auto w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 cursor-pointer">
+                <i className="ri-close-line text-base"></i>
+              </button>
+            </div>
+
+            {/* Summary rows */}
+            <div className="px-5 py-4 space-y-3">
+
+              {/* Channel */}
+              <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Channel</span>
+                <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold ${channel === "email" ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-amber-50 text-amber-700"}`}>
+                  <i className={channel === "email" ? "ri-mail-send-line" : "ri-chat-1-line"}></i>
+                  {channel === "email" ? "Email" : "SMS"}
+                </span>
+              </div>
+
+              {/* Audience */}
+              <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Audience</span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                  <i className={`${selectedAudienceOption.icon} ${selectedAudienceOption.color} text-sm`}></i>
+                  {selectedAudienceOption.label}
+                </span>
+              </div>
+
+              {/* Subject / Message */}
+              {channel === "email" ? (
+                <div className="py-2 border-b border-gray-100">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1">Subject</span>
+                  <p className="text-sm font-semibold text-gray-800 leading-snug">{subject.trim() || <span className="text-gray-400 italic">No subject</span>}</p>
+                </div>
+              ) : (
+                <div className="py-2 border-b border-gray-100">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1">Message Preview</span>
+                  <p className="text-xs text-gray-700 leading-relaxed line-clamp-3">{smsText.trim() || <span className="text-gray-400 italic">No message</span>}</p>
+                </div>
+              )}
+
+              {/* Active filters */}
+              {(exclude24hRecent || neverContacted || excludedEmails.size > 0 || optOutCount > 0) && (
+                <div className="py-2 border-b border-gray-100">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-2">Active Filters</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {optOutCount > 0 && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded-full">
+                        <i className="ri-mail-forbid-line"></i>
+                        {optOutCount} opt-out excluded
+                      </span>
+                    )}
+                    {exclude24hRecent && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-sky-100 text-sky-700 text-[10px] font-bold rounded-full">
+                        <i className="ri-time-line"></i>
+                        24h cooldown ({recent24hCount} skipped)
+                      </span>
+                    )}
+                    {neverContacted && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-violet-100 text-violet-700 text-[10px] font-bold rounded-full">
+                        <i className="ri-user-star-line"></i>
+                        Never-contacted only
+                      </span>
+                    )}
+                    {excludedEmails.size > 0 && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-bold rounded-full">
+                        <i className="ri-user-unfollow-line"></i>
+                        {excludedEmails.size} manually excluded
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Recipient count — big highlight */}
+              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-[#1a5c4f]">Final recipient count</p>
+                  <p className="text-xs text-[#2d7a6a] mt-0.5">
+                    {channel === "email" ? "Each will receive a personalized email" : "Each will receive an SMS via Twilio"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-extrabold text-[#1a5c4f]">{recipients.length}</p>
+                  <p className="text-xs text-[#2d7a6a] font-semibold">{channel === "email" ? "emails" : "texts"}</p>
+                </div>
+              </div>
+
+              {/* Warning for large sends */}
+              {recipients.length > 100 && (
+                <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                  <i className="ri-alert-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    <strong>Large send detected.</strong> You&apos;re about to message {recipients.length} customers. Double-check your audience and filters before confirming.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Dialog actions */}
+            <div className="flex items-center gap-3 px-5 py-4 bg-gray-50 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowConfirmDialog(false)}
+                className="whitespace-nowrap flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl cursor-pointer hover:bg-white transition-colors"
+              >
+                Go Back &amp; Review
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowConfirmDialog(false); handleSend(); }}
+                disabled={sending}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+              >
+                <i className={channel === "email" ? "ri-mail-send-line" : "ri-chat-1-line"}></i>
+                Confirm &amp; Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

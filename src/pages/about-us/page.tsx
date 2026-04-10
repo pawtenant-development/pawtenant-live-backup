@@ -65,12 +65,12 @@ const trustSignals = [
 export default function AboutUsPage() {
   return (
     <main>
-      <title>About PawTenant | Licensed ESA & PSD Letter Provider — Our Story, Team & Credentials</title>
-      <meta name="description" content="PawTenant connects people with licensed mental health professionals to get legitimate ESA and PSD letters online. Learn about our mission, licensed providers, credentials, and 12,000+ patients helped across all 50 states." />
-      <meta name="keywords" content="about PawTenant, ESA letter provider, licensed mental health professionals, emotional support animal letter, PSD letter provider, PawTenant credentials, LMHP ESA letters" />
+      <title>About PawTenant | Our Network of Licensed Professionals</title>
+      <meta name="description" content="Meet the network of licensed therapists and doctors at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
+      <meta name="keywords" content="about pawtenant, licensed ESA doctors, clinical integrity, ESA letter providers" />
       <link rel="canonical" href="https://www.pawtenant.com/about-us" />
-      <meta property="og:title" content="About PawTenant | Licensed ESA & PSD Letter Provider — Credentials & Team" />
-      <meta property="og:description" content="PawTenant helps over 12,000 patients get legitimate ESA and PSD letters from licensed mental health professionals across all 50 states. Learn our story, credentials, and methodology." />
+      <meta property="og:title" content="About PawTenant | Our Network of Licensed Professionals" />
+      <meta property="og:description" content="Meet the network of licensed therapists and doctors at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
       <meta property="og:url" content="https://www.pawtenant.com/about-us" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />

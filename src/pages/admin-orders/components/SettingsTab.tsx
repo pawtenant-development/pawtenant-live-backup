@@ -1,8 +1,9 @@
 // SettingsTab — GHL, Stripe, and Email integration health
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import CouponManagementPanel from "./CouponManagementPanel";
 import UTMLinkGenerator from "./UTMLinkGenerator";
+import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
 
 interface GhlStats {
   total: number;
@@ -264,7 +265,7 @@ function BaaPanel() {
                   <p className="text-xs text-gray-500 truncate">{v.description}</p>
                 </div>
                 <BaaStatusBadge status={status} />
-                <i className={`ri-arrow-${isOpen ? "up" : "down"}-s-line text-gray-400 text-sm flex-shrink-0`}></i>
+                <i className={`${isOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-gray-400 text-sm flex-shrink-0`}></i>
               </div>
 
               {/* Expanded */}
@@ -507,8 +508,7 @@ function GoogleSheetsSyncPanel({ supabaseUrl }: { supabaseUrl: string }) {
     setSyncError("");
     setSyncResult(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/sync-to-sheets`, {
         method: "POST",
         headers: {
@@ -917,6 +917,144 @@ function EmailTemplatesPreview() {
   );
 }
 
+// ── Notification Routing Test Panel ─────────────────────────────────────────
+const NOTIF_DEFS_PREVIEW = [
+  { key: "new_paid_order", label: "New Paid Order", icon: "ri-shopping-cart-2-line", color: "text-green-600" },
+  { key: "unpaid_lead", label: "Unpaid Lead", icon: "ri-user-search-line", color: "text-amber-600" },
+  { key: "order_under_review", label: "Order Under Review", icon: "ri-eye-line", color: "text-orange-500" },
+  { key: "order_completed", label: "Order Completed", icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]" },
+  { key: "order_cancelled", label: "Order Cancelled", icon: "ri-close-circle-line", color: "text-red-500" },
+  { key: "refund_issued", label: "Refund Issued", icon: "ri-refund-2-line", color: "text-rose-500" },
+  { key: "provider_application", label: "Provider Application", icon: "ri-user-add-line", color: "text-indigo-600" },
+  { key: "provider_license_change", label: "License Change", icon: "ri-shield-check-line", color: "text-[#1a5c4f]" },
+  { key: "provider_letter_submitted", label: "Letter Submitted", icon: "ri-file-text-line", color: "text-orange-500" },
+  { key: "provider_rejected_order", label: "Provider Rejected", icon: "ri-user-unfollow-line", color: "text-red-500" },
+  { key: "payout_reminder", label: "Payout Reminder", icon: "ri-money-dollar-circle-line", color: "text-green-600" },
+  { key: "system_health_alert", label: "System Health Alert", icon: "ri-heart-pulse-line", color: "text-red-500" },
+];
+
+interface RoutingResult {
+  enabled: boolean;
+  recipients: string[];
+  source: "specific" | "group" | "global" | "env_fallback";
+}
+
+function NotificationRoutingTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
+  const [results, setResults] = useState<Record<string, RoutingResult>>({});
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const loadRouting = async () => {
+    setLoading(true);
+    try {
+      const token = await getAdminToken();
+      const fetches = NOTIF_DEFS_PREVIEW.map(async (def) => {
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/get-admin-notif-recipients`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ notificationKey: def.key }),
+          });
+          const data = await res.json() as RoutingResult;
+          return [def.key, data] as [string, RoutingResult];
+        } catch {
+          return [def.key, { enabled: true, recipients: ["(error loading)"], source: "global" as const }] as [string, RoutingResult];
+        }
+      });
+      const pairs = await Promise.all(fetches);
+      setResults(Object.fromEntries(pairs));
+      setLoaded(true);
+    } catch { /* ignore */ }
+    setLoading(false);
+  };
+
+  const sourceLabel = (s: string) => s === "specific" ? "Specific" : s === "group" ? "Group" : "Default";
+  const sourceBg = (s: string) => s === "specific" ? "bg-[#e8f5f1] text-[#1a5c4f]" : s === "group" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700";
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 flex items-center justify-center bg-violet-50 rounded-xl flex-shrink-0">
+            <i className="ri-route-line text-violet-600 text-lg"></i>
+          </div>
+          <div>
+            <h3 className="text-sm font-extrabold text-gray-900">Notification Routing Test</h3>
+            <p className="text-xs text-gray-400">Live preview of who receives each notification — no emails sent</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={loadRouting}
+          disabled={loading}
+          className="whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60 cursor-pointer transition-colors"
+        >
+          {loading ? <><i className="ri-loader-4-line animate-spin"></i>Checking...</> : <><i className="ri-refresh-line"></i>{loaded ? "Refresh" : "Check Routing"}</>}
+        </button>
+      </div>
+
+      <div className="px-5 py-5">
+        {!loaded && !loading && (
+          <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 flex items-start gap-3">
+            <i className="ri-information-line text-violet-500 text-sm mt-0.5 flex-shrink-0"></i>
+            <p className="text-xs text-violet-700 leading-relaxed">
+              Click <strong>Check Routing</strong> to see exactly which email addresses would receive each notification type based on your current configuration — without sending any emails.
+            </p>
+          </div>
+        )}
+        {loading && (
+          <div className="flex items-center gap-2 py-6 justify-center text-gray-400">
+            <i className="ri-loader-4-line animate-spin text-violet-500"></i>
+            <span className="text-sm">Resolving recipients for all notification types...</span>
+          </div>
+        )}
+        {loaded && !loading && (
+          <div className="space-y-2">
+            {NOTIF_DEFS_PREVIEW.map((def) => {
+              const r = results[def.key];
+              if (!r) return null;
+              return (
+                <div key={def.key} className={`flex items-start gap-3 px-4 py-3 rounded-xl border transition-colors ${r.enabled ? "bg-gray-50 border-gray-100" : "bg-red-50/40 border-red-100"}`}>
+                  <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <i className={`${def.icon} ${def.color} text-sm`}></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className={`text-xs font-bold ${r.enabled ? "text-gray-800" : "text-gray-400"}`}>{def.label}</p>
+                      {!r.enabled && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-[10px] font-bold">
+                          <i className="ri-close-circle-line" style={{ fontSize: "9px" }}></i>Disabled
+                        </span>
+                      )}
+                    </div>
+                    {r.enabled ? (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${sourceBg(r.source)}`}>
+                          {sourceLabel(r.source)}
+                        </span>
+                        {r.recipients.map((email) => (
+                          <span key={email} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded-full text-[10px] text-gray-700 font-mono">
+                            <i className="ri-mail-line text-gray-400" style={{ fontSize: "9px" }}></i>{email}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-gray-400 mt-0.5 italic">No alert will be sent when this event triggers</p>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    <span className="text-[10px] text-gray-400">{r.enabled ? `${r.recipients.length} recipient${r.recipients.length !== 1 ? "s" : ""}` : "—"}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsTab() {
   const [ghl, setGhl] = useState<GhlStats | null>(null);
   const [stripe, setStripe] = useState<StripeStats | null>(null);
@@ -964,8 +1102,7 @@ export default function SettingsTab() {
     const loadStripe = async () => {
       setLoadingStripe(true);
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token ?? "";
+        const token = await getAdminToken();
         const res = await fetch(`${supabaseUrl}/functions/v1/stripe-payment-history?period=30d`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -1003,8 +1140,7 @@ export default function SettingsTab() {
 
     setBulkRetry({ running: true, total: targets.length, done: 0, successCount: 0, failCount: 0, finished: false });
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token ?? "";
+    const token = await getAdminToken();
 
     let successCount = 0;
     let failCount = 0;
@@ -1354,6 +1490,12 @@ export default function SettingsTab() {
 
       {/* ── Data Retention Policy ── */}
       <DataRetentionPanel />
+
+      {/* ── Notification Routing Test Panel ── */}
+      <NotificationRoutingTestPanel supabaseUrl={supabaseUrl} />
+
+      {/* ── Admin Notification Preferences ── */}
+      <AdminNotificationPrefsPanel />
 
       {/* ── Email Templates Preview ── */}
       <EmailTemplatesPreview />

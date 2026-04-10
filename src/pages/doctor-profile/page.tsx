@@ -26,12 +26,30 @@ export default function DoctorProfilePage() {
   const [npiNumber, setNpiNumber] = useState<string | null>(null);
   const [npiVerify, setNpiVerify] = useState<NpiVerifyResult>({ status: "idle" });
   const [showVerifyPanel, setShowVerifyPanel] = useState(false);
+  const [stateLicenseNumbers, setStateLicenseNumbers] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
     if (staticDoctor) {
       setDoctor(staticDoctor);
       if (staticDoctor.npi_number) setNpiNumber(staticDoctor.npi_number);
+      // Use stateLicenses from mock data if available
+      if (staticDoctor.stateLicenses && Object.keys(staticDoctor.stateLicenses).length > 0) {
+        setStateLicenseNumbers(staticDoctor.stateLicenses);
+      }
       setLoading(false);
+      // Also try to fetch from DB to get latest license numbers
+      const fetchDbLicenses = async () => {
+        const { data: profileData } = await supabase
+          .from("doctor_profiles")
+          .select("npi_number, state_license_numbers")
+          .ilike("email", staticDoctor.email)
+          .maybeSingle();
+        if (profileData?.npi_number) setNpiNumber(profileData.npi_number as string);
+        if (profileData?.state_license_numbers && Object.keys(profileData.state_license_numbers as Record<string, string>).length > 0) {
+          setStateLicenseNumbers(profileData.state_license_numbers as Record<string, string>);
+        }
+      };
+      fetchDbLicenses();
       return;
     }
     let cancelled = false;
@@ -47,14 +65,17 @@ export default function DoctorProfilePage() {
       if (data) {
         const mapped = mapApprovedToDoctor(data);
         setDoctor(mapped);
-        // Fetch NPI from doctor_profiles using email
+        // Fetch NPI and state licenses from doctor_profiles using email
         if (data.email) {
           const { data: profileData } = await supabase
             .from("doctor_profiles")
             .select("npi_number, state_license_numbers")
-            .eq("email", data.email)
+            .ilike("email", data.email)
             .maybeSingle();
           if (profileData?.npi_number) setNpiNumber(profileData.npi_number as string);
+          if (profileData?.state_license_numbers) {
+            setStateLicenseNumbers(profileData.state_license_numbers as Record<string, string>);
+          }
         }
       } else {
         setNotFound(true);
@@ -105,8 +126,6 @@ export default function DoctorProfilePage() {
     }
   };
 
-  // ... existing code ...
-
   if (loading) {
     return (
       <>
@@ -135,6 +154,11 @@ export default function DoctorProfilePage() {
   }
 
   const stateNames = doctor.states.map((code) => stateMap[code] || code);
+
+  // Build license entries: only states that have a license number
+  const licenseEntries = stateLicenseNumbers
+    ? Object.entries(stateLicenseNumbers).filter(([, v]) => v && v.trim() !== "")
+    : [];
 
   return (
     <>
@@ -196,6 +220,12 @@ export default function DoctorProfilePage() {
                         )}
                       </button>
                     </>
+                  )}
+                  {licenseEntries.length > 0 && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold">
+                      <i className="ri-file-list-3-line text-orange-500"></i>
+                      {licenseEntries.length} State License{licenseEntries.length !== 1 ? "s" : ""}
+                    </span>
                   )}
                 </div>
                 <h1 className="text-2xl font-extrabold text-gray-900 leading-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
@@ -329,17 +359,41 @@ export default function DoctorProfilePage() {
             </p>
             {stateNames.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {stateNames.map((name) => (
-                  <div key={name} className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#f8f7f4] border border-gray-100">
-                    <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                      <i className="ri-map-pin-2-line text-orange-400 text-sm"></i>
+                {stateNames.map((name) => {
+                  const code = doctor.states[stateNames.indexOf(name)];
+                  const licenseNum = stateLicenseNumbers?.[code] ?? null;
+                  return (
+                    <div key={name} className={`flex flex-col gap-1 px-4 py-3 rounded-xl border ${licenseNum ? "bg-[#f8fffe] border-[#d0ede7]" : "bg-[#f8f7f4] border-gray-100"}`}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                          <i className="ri-map-pin-2-line text-orange-400 text-sm"></i>
+                        </div>
+                        <span className="text-gray-700 text-sm font-medium">{name}</span>
+                      </div>
+                      {licenseNum && (
+                        <div className="flex items-center gap-1.5 pl-6">
+                          <i className="ri-file-list-3-line text-[#1a5c4f] text-xs flex-shrink-0"></i>
+                          <span className="text-xs font-mono text-[#1a5c4f] font-semibold">{licenseNum}</span>
+                        </div>
+                      )}
                     </div>
-                    <span className="text-gray-700 text-sm font-medium">{name}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-gray-400 text-sm">State availability will be updated shortly.</p>
+            )}
+
+            {/* License verification note */}
+            {licenseEntries.length > 0 && (
+              <div className="mt-6 flex items-start gap-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3">
+                <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className="ri-shield-check-line text-[#1a5c4f] text-sm"></i>
+                </div>
+                <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+                  License numbers are provided for verification purposes. Landlords and housing providers can use these numbers to independently verify licensure through each state&apos;s licensing board.
+                </p>
+              </div>
             )}
           </div>
 

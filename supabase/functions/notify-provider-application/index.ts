@@ -12,6 +12,7 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const ADMIN_PORTAL_URL = `https://${COMPANY_DOMAIN}/admin-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
+const FALLBACK_ADMIN_EMAIL = "eservices.dm@gmail.com";
 
 const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
@@ -19,6 +20,26 @@ const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#1a5c4f";
 const ORANGE = "#f97316";
+
+// ── Resolve admin notification recipients ─────────────────────────────────────
+async function getAdminNotifRecipients(notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const res = await fetch(`${supabaseUrl}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+      body: JSON.stringify({ notificationKey }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { enabled: boolean; recipients: string[]; source: string };
+    console.info(`[notify-provider-application] recipients for "${notificationKey}": ${data.recipients.join(", ")} (source: ${data.source})`);
+    return { enabled: data.enabled, recipients: data.recipients };
+  } catch (err) {
+    console.warn(`[notify-provider-application] getAdminNotifRecipients failed:`, err instanceof Error ? err.message : String(err));
+    return { enabled: true, recipients: [FALLBACK_ADMIN_EMAIL] };
+  }
+}
 
 async function sendViaResend(opts: {
   to: string; subject: string; html: string;
@@ -211,25 +232,43 @@ Deno.serve(async (req: Request) => {
 
   if (!body.firstName || !body.email) return json({ error: "firstName and email are required" }, 400);
 
-  const adminEmail = Deno.env.get("ADMIN_EMAIL") ?? SUPPORT_EMAIL;
+  // ── Resolve admin recipients for "provider_application" notification ───────
+  const { enabled: notifEnabled, recipients: adminRecipients } = await getAdminNotifRecipients("provider_application");
 
-  const [providerResult, adminResult] = await Promise.allSettled([
-    sendViaResend({
-      to: body.email,
-      subject: `Application Received — Welcome to ${COMPANY_NAME}, ${body.firstName}!`,
-      html: buildProviderConfirmationEmail(body),
-      tags: [{ name: "email_type", value: "provider_application_confirmation" }],
-    }),
-    sendViaResend({
-      to: adminEmail,
-      subject: `New Provider Application — ${body.firstName} ${body.lastName} (${body.licenseState ?? "Unknown State"})`,
-      html: buildAdminNotificationEmail(body),
-      tags: [{ name: "email_type", value: "provider_application_admin_notification" }],
-    }),
-  ]);
+  // Always send confirmation to the provider applicant
+  const providerResult = await sendViaResend({
+    to: body.email,
+    subject: `Application Received — Welcome to ${COMPANY_NAME}, ${body.firstName}!`,
+    html: buildProviderConfirmationEmail(body),
+    tags: [{ name: "email_type", value: "provider_application_confirmation" }],
+  });
 
-  const providerSent = providerResult.status === "fulfilled" && providerResult.value;
-  const adminSent = adminResult.status === "fulfilled" && adminResult.value;
+  // Send admin notification to all configured recipients (if enabled)
+  let adminSentCount = 0;
+  if (notifEnabled && adminRecipients.length > 0) {
+    const adminHtml = buildAdminNotificationEmail(body);
+    const adminSubject = `New Provider Application — ${body.firstName} ${body.lastName} (${body.licenseState ?? "Unknown State"})`;
+    const adminResults = await Promise.allSettled(
+      adminRecipients.map((recipient) =>
+        sendViaResend({
+          to: recipient,
+          subject: adminSubject,
+          html: adminHtml,
+          tags: [{ name: "email_type", value: "provider_application_admin_notification" }],
+        })
+      )
+    );
+    adminSentCount = adminResults.filter((r) => r.status === "fulfilled" && r.value).length;
+    console.info(`[notify-provider-application] Admin notifications sent: ${adminSentCount}/${adminRecipients.length} to [${adminRecipients.join(", ")}]`);
+  } else if (!notifEnabled) {
+    console.info(`[notify-provider-application] provider_application notification is disabled — skipping admin emails`);
+  }
 
-  return json({ ok: true, providerEmailSent: providerSent, adminEmailSent: adminSent });
+  return json({
+    ok: true,
+    providerEmailSent: providerResult,
+    adminEmailSent: adminSentCount > 0,
+    adminSentCount,
+    adminRecipients: notifEnabled ? adminRecipients : [],
+  });
 });

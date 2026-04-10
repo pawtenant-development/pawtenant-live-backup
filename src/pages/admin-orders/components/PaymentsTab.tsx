@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { getAdminToken } from "../../../lib/supabaseClient";
 import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 
@@ -186,8 +187,7 @@ export default function PaymentsTab() {
     setLoading(true);
     setError("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(
         `${supabaseUrl}/functions/v1/stripe-payment-history?period=${p}`,
         { headers: { Authorization: `Bearer ${token}` } }

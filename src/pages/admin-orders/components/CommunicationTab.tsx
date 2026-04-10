@@ -1,6 +1,7 @@
 // CommunicationTab — SMS compose, email compose, call initiation, email delivery log per order
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { getAdminToken } from "../../../lib/supabaseClient";
 
 interface CommunicationTabProps {
   orderId: string;
@@ -427,8 +428,7 @@ export default function CommunicationTab({
     setSending(true);
     setSendMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ghl-send-sms`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -448,8 +448,7 @@ export default function CommunicationTab({
     setCalling(true);
     setCallMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/make-outbound-call`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -468,8 +467,7 @@ export default function CommunicationTab({
     setSendingEmail(true);
     setEmailMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       let endpoint = "";
       let payload: Record<string, unknown> = { confirmationId };
       if (emailType === "order_confirmation") {
@@ -481,7 +479,9 @@ export default function CommunicationTab({
         endpoint = "send-checkout-recovery";
         payload = { confirmationId };
       } else if (emailType === "followup_lead") {
-        endpoint = "send-followup-email";
+        // "Still thinking?" nudge — uses the same checkout recovery email
+        // but without a discount code, so the customer gets a plain resume link
+        endpoint = "send-checkout-recovery";
         payload = { confirmationId };
       } else if (emailType === "consultation_booking") {
         endpoint = "send-checkout-recovery";

@@ -74,8 +74,7 @@ export default function BulkSMSModal({ orders, adminName, onClose }: BulkSMSModa
     setSending(true);
     setResult(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
       const targets = withPhone.map((o) => ({
         orderId: o.id,
         confirmationId: o.confirmation_id,

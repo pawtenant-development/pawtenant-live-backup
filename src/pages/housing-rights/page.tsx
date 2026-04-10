@@ -56,12 +56,12 @@ export default function HousingRightsPage() {
 
   return (
     <main>
-      <title>ESA Housing Rights 2026: Fair Housing Act Protections & ESA Housing Protections | PawTenant</title>
-      <meta name="description" content="Understand your ESA housing rights under the Fair Housing Act. Landlords cannot charge pet fees, deny breed types, or refuse a valid ESA letter. Learn about esa housing protections and get your legitimate emotional support animal letter today." />
-      <meta name="keywords" content="ESA housing rights, Fair Housing Act ESA, emotional support animal housing, ESA landlord rights, ESA pet deposit waiver" />
+      <title>ESA Housing Rights | Fair Housing Act & Legal Protections</title>
+      <meta name="description" content="Understand your rights under the Fair Housing Act. Learn how a legitimate ESA letter protects you from pet fees and breed restrictions in rental housing." />
+      <meta name="keywords" content="ESA housing rights, Fair Housing Act, ESA landlord laws, pet fee exemption" />
       <link rel="canonical" href="https://www.pawtenant.com/housing-rights-esa" />
-      <meta property="og:title" content="ESA Housing Rights & Fair Housing Act ESA Protections 2026 | PawTenant" />
-      <meta property="og:description" content="Know your ESA housing rights and housing protections under the Fair Housing Act. PawTenant issues legitimate emotional support animal letters for housing from licensed professionals." />
+      <meta property="og:title" content="ESA Housing Rights | Fair Housing Act & Legal Protections" />
+      <meta property="og:description" content="Understand your rights under the Fair Housing Act. Learn how a legitimate ESA letter protects you from pet fees and breed restrictions in rental housing." />
       <meta property="og:url" content="https://www.pawtenant.com/housing-rights-esa" />
       <meta property="og:type" content="article" />
       <meta property="og:image" content="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0" />

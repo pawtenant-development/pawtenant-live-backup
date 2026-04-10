@@ -1,5 +1,5 @@
 // OrderCard — Mobile card + Desktop table row (expandable)
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import OrderNotesPanel from "./OrderNotesPanel";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -204,6 +204,26 @@ export default function OrderCard({
     ? "border-l-4 border-l-amber-400"
     : "";
 
+  // ── Copy Order ID ─────────────────────────────────────────────────────────
+  const [copied, setCopied] = useState(false);
+  const handleCopyOrderId = useCallback((e: React.MouseEvent) => {
+    stop(e);
+    navigator.clipboard.writeText(order.confirmation_id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      // Fallback for older browsers
+      const el = document.createElement("textarea");
+      el.value = order.confirmation_id;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [order.confirmation_id]);
+
   // ── GHL Call handler ──────────────────────────────────────────────────────
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
   const [calling, setCalling] = useState(false);
@@ -402,6 +422,22 @@ export default function OrderCard({
           className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-[#17504a] transition-colors">
           <i className="ri-eye-line"></i>View Details
           {unreadComms > 0 && <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 bg-orange-500 text-white text-[9px] font-extrabold rounded-full">{unreadComms}</span>}
+        </button>
+        {/* Copy Order ID — mobile */}
+        <button
+          type="button"
+          onClick={handleCopyOrderId}
+          className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border rounded-lg cursor-pointer transition-colors ${
+            copied
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+          }`}
+          title={`Copy Order ID: ${order.confirmation_id}`}
+        >
+          {copied
+            ? <><i className="ri-checkbox-circle-fill"></i>Copied!</>
+            : <><i className="ri-file-copy-line"></i>{order.confirmation_id}</>
+          }
         </button>
         {isAssigned && (
           <a href={`/provider-portal?order=${order.confirmation_id}`} target="_blank" rel="noopener noreferrer" onClick={stop}
@@ -681,11 +717,24 @@ export default function OrderCard({
             }
           </div>
 
-          {/* Quick actions — w-[110px] */}
-          <div className="w-[110px] flex-shrink-0 flex items-center gap-1 flex-wrap" onClick={stop}>
+          {/* Quick actions — w-[130px] */}
+          <div className="w-[130px] flex-shrink-0 flex items-center gap-1 flex-wrap" onClick={stop}>
             <button type="button" title="View Details" onClick={(e) => { stop(e); onOpenDetail(order); }}
               className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer text-sm">
               <i className="ri-eye-line"></i>
+            </button>
+            {/* Copy Order ID */}
+            <button
+              type="button"
+              title={copied ? "Copied!" : `Copy Order ID: ${order.confirmation_id}`}
+              onClick={handleCopyOrderId}
+              className={`whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer text-sm ${
+                copied
+                  ? "text-emerald-600 bg-emerald-50"
+                  : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+              }`}
+            >
+              {copied ? <i className="ri-checkbox-circle-fill"></i> : <i className="ri-file-copy-line"></i>}
             </button>
             {/* GHL Call button */}
             {order.phone && (

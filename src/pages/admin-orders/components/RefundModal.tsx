@@ -1,6 +1,7 @@
 // RefundModal — Full or partial Stripe refund workflow
 import { useState } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase as _supabase } from "../../../lib/supabaseClient";
+import { getAdminToken } from "../../../lib/supabaseClient";
 
 interface RefundCharge {
   id: string;
@@ -46,8 +47,7 @@ export default function RefundModal({ charge, confirmationId, onClose, onRefunde
     setSubmitting(true);
     setResult(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/create-refund`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

@@ -12,12 +12,31 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
+const FALLBACK_ADMIN_EMAIL = "eservices.dm@gmail.com";
 
 const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
 const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#1a5c4f";
+
+// ── Resolve admin notification recipients ─────────────────────────────────────
+async function getAdminNotifRecipients(supabaseUrl: string, serviceKey: string, notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+      body: JSON.stringify({ notificationKey }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { enabled: boolean; recipients: string[]; source: string };
+    console.info(`[notify-customer-refund] recipients for "${notificationKey}": ${data.recipients.join(", ")} (source: ${data.source})`);
+    return { enabled: data.enabled, recipients: data.recipients };
+  } catch (err) {
+    console.warn(`[notify-customer-refund] getAdminNotifRecipients failed:`, err instanceof Error ? err.message : String(err));
+    return { enabled: true, recipients: [FALLBACK_ADMIN_EMAIL] };
+  }
+}
 
 async function sendViaResend(opts: {
   to: string; subject: string; html: string;
@@ -93,12 +112,12 @@ function detailCard(title: string, rows: Array<[string, string, string?]>): stri
 }
 
 function stepsCard(title: string, steps: string[]): string {
-  const stepsHtml = steps.map((step, i) => `
+  const stepsHtml = steps.map((s, i) => `
     <tr>
       <td style="padding:7px 0;vertical-align:top;width:30px;">
         <div style="width:22px;height:22px;background:${ACCENT};border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">${i + 1}</div>
       </td>
-      <td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">${step}</td>
+      <td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">${s}</td>
     </tr>`).join("");
   return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:24px;">
     <tr><td style="padding:20px 24px;">
@@ -146,6 +165,23 @@ function buildRefundEmail(opts: {
     </p>`;
 
   return baseLayout("Refund Issued", "Your refund has been processed", "The funds are on their way back to you", body);
+}
+
+function buildAdminRefundNotificationHtml(opts: {
+  confirmationId: string; customerName: string; customerEmail: string;
+  formattedAmount: string; reasonLabel: string; note?: string; issuedAt: string;
+}): string {
+  const rows = [
+    ["Order ID", opts.confirmationId],
+    ["Customer", opts.customerName],
+    ["Email", opts.customerEmail],
+    ["Refund Amount", opts.formattedAmount],
+    ["Reason", opts.reasonLabel],
+    ...(opts.note ? [["Note", opts.note]] : []),
+    ["Issued At", new Date(opts.issuedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET"],
+  ];
+  const rowsHtml = rows.map(([label, value]) => `<tr><td style="padding:8px 12px;font-size:13px;color:#6b7280;width:160px;border-bottom:1px solid #f3f4f6;font-weight:600;">${label}</td><td style="padding:8px 12px;font-size:13px;color:#111827;border-bottom:1px solid #f3f4f6;">${value}</td></tr>`).join("");
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;"><tr><td style="background:#dc2626;padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" width="160" alt="PawTenant" style="display:block;margin:0 auto 14px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.2);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">REFUND ISSUED</div><h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;">Refund Processed</h1></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 20px;font-size:14px;color:#374151;">A refund has been issued for the following order. Review in the admin portal if needed.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:24px;">${rowsHtml}</table><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><a href="https://pawtenant.com/admin-orders" style="display:inline-block;background:#f97316;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 32px;border-radius:8px;">Open Admin Portal &rarr;</a></td></tr></table></td></tr><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant Internal Notification</p></td></tr></table></td></tr></table></body></html>`;
 }
 
 function json(body: unknown, status = 200) {
@@ -221,6 +257,7 @@ Deno.serve(async (req: Request) => {
     note,
   });
 
+  // Send customer refund email
   const emailSent = await sendViaResend({
     to: order.email,
     subject: `Refund Confirmation — Order ${confirmationId}`,
@@ -230,6 +267,34 @@ Deno.serve(async (req: Request) => {
 
   await appendEmailLog(adminClient, confirmationId, { type: "refund", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
 
+  // ── Send admin notification for refund_issued ─────────────────────────────
+  const { enabled: refundNotifEnabled, recipients: adminRecipients } = await getAdminNotifRecipients(supabaseUrl, serviceKey, "refund_issued");
+  let adminNotifSentCount = 0;
+  if (refundNotifEnabled && adminRecipients.length > 0) {
+    const adminHtml = buildAdminRefundNotificationHtml({
+      confirmationId,
+      customerName: patientName,
+      customerEmail: order.email,
+      formattedAmount,
+      reasonLabel,
+      note,
+      issuedAt,
+    });
+    const adminResults = await Promise.allSettled(
+      adminRecipients.map((recipient) =>
+        sendViaResend({
+          to: recipient,
+          subject: `[PawTenant] Refund Issued — ${confirmationId} — ${formattedAmount}`,
+          html: adminHtml,
+          tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "refund_admin_notification" }],
+        })
+      )
+    );
+    adminNotifSentCount = adminResults.filter((r) => r.status === "fulfilled" && r.value).length;
+    console.info(`[notify-customer-refund] Admin refund notifications sent: ${adminNotifSentCount}/${adminRecipients.length} to [${adminRecipients.join(", ")}]`);
+  }
+
+  // GHL webhook
   let ghlOk = false;
   let ghlStatus = 0;
   try {
@@ -258,9 +323,20 @@ Deno.serve(async (req: Request) => {
     object_type: "refund", object_id: confirmationId,
     action: "refund_customer_notified",
     description: `Refund notification sent to ${order.email} for ${formattedAmount} — order ${confirmationId}`,
-    new_values: { refundAmount, refundId, reason: reasonLabel, ghlOk, emailSent },
+    new_values: { refundAmount, refundId, reason: reasonLabel, ghlOk, emailSent, adminNotifSentCount, adminRecipients },
     metadata: { confirmationId, note, ghlStatus, isInternal: isInternalCall },
   });
 
-  return json({ ok: true, message: `Refund notification sent to ${order.email} (${formattedAmount})`, confirmationId, patientEmail: order.email, refundAmount, ghlOk, ghlStatus, emailSent });
+  return json({
+    ok: true,
+    message: `Refund notification sent to ${order.email} (${formattedAmount})`,
+    confirmationId,
+    patientEmail: order.email,
+    refundAmount,
+    ghlOk,
+    ghlStatus,
+    emailSent,
+    adminNotifSentCount,
+    adminRecipients: refundNotifEnabled ? adminRecipients : [],
+  });
 });

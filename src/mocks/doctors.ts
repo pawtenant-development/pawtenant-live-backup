@@ -12,6 +12,8 @@ export interface Doctor {
   email: string;
   /** NPI number — if present, shows NPI Verified badge on listing and profile pages */
   npi_number?: string | null;
+  /** State-specific license numbers keyed by state code */
+  stateLicenses?: Record<string, string>;
 }
 
 export interface StateOption {
@@ -32,6 +34,31 @@ export const DOCTORS: Doctor[] = [
     image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/cfe1efe9-7c1d-4acc-9798-42a4c9aad039_Stephanie-White-Headshot.jpg?v=d523cbd49203a682a9cc6fa99e562b5c",
     email: "swmagnet@gmail.com",
     npi_number: "1528423795",
+    stateLicenses: {
+      AL: "4870C",
+      AK: "CSWS1004",
+      CA: "24894",
+      CO: "CSW.00000334",
+      DE: "Q1-0012516",
+      FL: "SW6787",
+      HI: "4416",
+      IA: "092478",
+      ID: "29960",
+      KS: "5133",
+      KY: "254822",
+      LA: "15605",
+      MT: "BBH-LCSW-LIC-36995",
+      NE: "IMHP 2057",
+      NJ: "44SC05863400",
+      ND: "5630",
+      NV: "7193-C",
+      OR: "L15518",
+      TX: "60051",
+      VT: "089.0134183",
+      WV: "DP00945408",
+      WI: "8957-123",
+      WY: "1141",
+    },
   },
   {
     id: "robert-staaf",

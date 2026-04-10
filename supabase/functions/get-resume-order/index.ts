@@ -13,6 +13,81 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Normalize phone to E.164 ──────────────────────────────────────────────────
+function normalizePhone(raw: unknown): string {
+  if (!raw || typeof raw !== "string") return "";
+  const stripped = raw.trim().replace(/[\s\-().]/g, "");
+  if (/^\+\d{10,15}$/.test(stripped)) return stripped;
+  const digitsOnly = stripped.replace(/\D/g, "");
+  if (digitsOnly.length === 0) return "";
+  if (digitsOnly.length === 10) return `+1${digitsOnly}`;
+  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) return `+${digitsOnly}`;
+  return `+${digitsOnly}`;
+}
+
+// ── Fire GHL webhook server-side after upsert ─────────────────────────────────
+async function fireGHLServerSide(opts: {
+  supabase: ReturnType<typeof createClient>;
+  confirmationId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  state: string;
+  letterType: string;
+  status: string;
+  event: string;
+  serviceKey: string;
+}): Promise<void> {
+  try {
+    const ghlPayload = {
+      webhookType: "assessment",
+      event: opts.event,
+      firstName: opts.firstName,
+      lastName: opts.lastName,
+      email: opts.email,
+      phone: opts.phone, // raw — proxy will normalize to E.164
+      state: opts.state,
+      confirmationId: opts.confirmationId,
+      letterType: opts.letterType,
+      leadSource: "ESA Assessment Form",
+      submittedAt: new Date().toISOString(),
+    };
+
+    const ghlRes = await fetch(`${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${opts.serviceKey}`,
+      },
+      body: JSON.stringify(ghlPayload),
+    });
+
+    const ghlBody = await ghlRes.text();
+    const ghlOk = ghlRes.ok;
+
+    // Stamp ghl_synced_at / ghl_sync_error on the order row
+    await opts.supabase.from("orders").update({
+      ghl_synced_at: ghlOk ? new Date().toISOString() : null,
+      ghl_sync_error: ghlOk ? null : `HTTP ${ghlRes.status}: ${ghlBody.slice(0, 400)}`,
+    }).eq("confirmation_id", opts.confirmationId);
+
+    if (!ghlOk) {
+      console.warn(`[get-resume-order] GHL sync failed for ${opts.confirmationId}: HTTP ${ghlRes.status} — ${ghlBody.slice(0, 200)}`);
+    } else {
+      console.info(`[get-resume-order] GHL sync OK for ${opts.confirmationId} (event=${opts.event})`);
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[get-resume-order] GHL sync threw for ${opts.confirmationId}: ${msg}`);
+    try {
+      await opts.supabase.from("orders").update({
+        ghl_sync_error: `GHL proxy error: ${msg.slice(0, 400)}`,
+      }).eq("confirmation_id", opts.confirmationId);
+    } catch { /* best-effort */ }
+  }
+}
+
 function buildUnpaidLeadHtml(opts: {
   confirmationId: string;
   firstName: string;
@@ -116,8 +191,9 @@ serve(async (req) => {
       utmContent?: string;
       landingUrl?: string;
       attributionJson?: Record<string, unknown>;
-      // Flag to suppress lead notification (e.g. when just updating payment info)
       suppressLeadNotification?: boolean;
+      // New: skip GHL sync (e.g. for payment upserts where GHL already fired)
+      skipGhlSync?: boolean;
     };
 
     const { confirmationId, action } = body;
@@ -186,12 +262,40 @@ serve(async (req) => {
         );
       }
 
+      // ── Fire GHL webhook server-side (non-blocking) ───────────────────────
+      // Only fire for lead saves (not payment upserts — those are handled by assign-doctor/notify-patient-letter)
+      const isLeadSave = !body.paymentIntentId && !body.skipGhlSync;
+      const phoneForGhl = body.phone ?? existingOrder?.phone ?? "";
+      const emailForGhl = body.email ?? existingOrder?.email ?? "";
+      const firstNameForGhl = body.firstName ?? existingOrder?.first_name ?? "";
+      const lastNameForGhl = body.lastName ?? existingOrder?.last_name ?? "";
+      const stateForGhl = body.state ?? existingOrder?.state ?? "";
+      const letterTypeForGhl = body.letterType ?? existingOrder?.letter_type ?? "esa";
+
+      if (isLeadSave && emailForGhl) {
+        // Fire GHL in background — don't await so it doesn't slow down the response
+        fireGHLServerSide({
+          supabase,
+          confirmationId,
+          firstName: firstNameForGhl,
+          lastName: lastNameForGhl,
+          email: emailForGhl,
+          phone: phoneForGhl,
+          state: stateForGhl,
+          letterType: letterTypeForGhl,
+          status: body.status ?? "lead",
+          event: "assessment_started",
+          serviceKey: SUPABASE_SERVICE_ROLE_KEY,
+        }).catch((err) => {
+          console.warn("[get-resume-order] GHL fire error:", err);
+        });
+      }
+
       // ── Send unpaid lead notification for NEW orders only ─────────────────
-      // Only fire when: new order AND has email AND not suppressed AND not already paid
       const shouldNotify =
         isNewOrder &&
         !body.suppressLeadNotification &&
-        !body.paymentIntentId && // not already paying
+        !body.paymentIntentId &&
         (body.email || "").trim() !== "" &&
         RESEND_API_KEY;
 
@@ -243,7 +347,6 @@ serve(async (req) => {
             console.warn(`[get-resume-order] Lead notification failed: ${errText}`);
           }
         } catch (notifyErr) {
-          // Non-critical — don't fail the upsert
           console.warn("[get-resume-order] Lead notification error:", notifyErr);
         }
       }

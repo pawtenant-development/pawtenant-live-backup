@@ -11,15 +11,15 @@ const COMPANY_NAME = "PawTenant";
 const COMPANY_DOMAIN = "pawtenant.com";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
-const PAYOUT_RECIPIENT = Deno.env.get("ADMIN_EMAIL") ?? "hello@pawtenant.com";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
 // ── Resend helper ──────────────────────────────────────────────────────────
 
 async function sendViaResend(opts: {
-  to: string;
+  to: string[];
   subject: string;
   html: string;
+  attachments?: Array<{ filename: string; content: string; content_type: string }>;
   tags?: Array<{ name: string; value: string }>;
 }): Promise<boolean> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
@@ -28,16 +28,19 @@ async function sendViaResend(opts: {
     return false;
   }
   try {
+    const body: Record<string, unknown> = {
+      from: FROM_ADDRESS,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    };
+    if (opts.attachments?.length) body.attachments = opts.attachments;
+    if (opts.tags?.length) body.tags = opts.tags;
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [opts.to],
-        subject: opts.subject,
-        html: opts.html,
-        ...(opts.tags ? { tags: opts.tags } : {}),
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errBody = await res.text();
@@ -57,8 +60,23 @@ function escapeHtml(value = "") {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+function escapeCsv(value: string | number | null | undefined): string {
+  const str = String(value ?? "");
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+  });
+}
+
+function formatCurrency(n: number): string {
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 interface EarningRow {
@@ -79,12 +97,48 @@ interface DoctorSummary {
   doctorEmail: string;
   pendingOrders: EarningRow[];
   totalUnpaid: number;
-  perOrderRate: number | null;
 }
 
-function formatCurrency(n: number): string {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// ── Build CSV ──────────────────────────────────────────────────────────────
+
+function buildCsv(summaries: DoctorSummary[], triggerDate: string): string {
+  const lines: string[] = [];
+  lines.push(`Provider Payout Report — ${triggerDate}`);
+  lines.push("");
+  lines.push(["Provider Name", "Provider Email", "Order ID", "Patient Name", "State", "Order Date", "Amount Due"].join(","));
+
+  for (const s of summaries) {
+    for (const o of s.pendingOrders) {
+      lines.push([
+        escapeCsv(s.doctorName),
+        escapeCsv(s.doctorEmail),
+        escapeCsv(o.confirmation_id),
+        escapeCsv(o.patient_name),
+        escapeCsv(o.patient_state),
+        escapeCsv(new Date(o.created_at).toLocaleDateString("en-US")),
+        escapeCsv(o.doctor_amount != null ? formatCurrency(o.doctor_amount) : "Not set"),
+      ].join(","));
+    }
+    // Subtotal row
+    lines.push([
+      escapeCsv(`SUBTOTAL — ${s.doctorName}`),
+      "",
+      "",
+      "",
+      "",
+      "",
+      escapeCsv(formatCurrency(s.totalUnpaid)),
+    ].join(","));
+    lines.push("");
+  }
+
+  const grandTotal = summaries.reduce((a, s) => a + s.totalUnpaid, 0);
+  lines.push(["GRAND TOTAL", "", "", "", "", "", escapeCsv(formatCurrency(grandTotal))].join(","));
+
+  return lines.join("\n");
 }
+
+// ── Build HTML email ───────────────────────────────────────────────────────
 
 function buildPayoutReminderEmail(summaries: DoctorSummary[], totalUnpaid: number, triggerDate: string): string {
   const doctorRows = summaries.map((s) => `
@@ -97,7 +151,7 @@ function buildPayoutReminderEmail(summaries: DoctorSummary[], totalUnpaid: numbe
     ${s.pendingOrders.map((o) => `
       <tr style="background:#FAFAFA;">
         <td colspan="2" style="padding:7px 16px 7px 30px;font-size:12px;color:#9CA3AF;">
-          <span style="color:#6B7280;">↳</span> ${escapeHtml(o.confirmation_id ?? "—")} — ${escapeHtml(o.patient_name ?? "Unknown")} (${escapeHtml(o.patient_state ?? "—")})
+          <span style="color:#6B7280;">&#8627;</span> ${escapeHtml(o.confirmation_id ?? "—")} — ${escapeHtml(o.patient_name ?? "Unknown")} (${escapeHtml(o.patient_state ?? "—")})
         </td>
         <td style="padding:7px 16px;text-align:center;font-size:12px;color:#9CA3AF;">${new Date(o.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td>
         <td style="padding:7px 16px;text-align:right;font-size:12px;color:#1a5c4f;font-weight:600;">${o.doctor_amount != null ? formatCurrency(o.doctor_amount) : "<span style='color:#f59e0b;'>Not set</span>"}</td>
@@ -113,25 +167,30 @@ function buildPayoutReminderEmail(summaries: DoctorSummary[], totalUnpaid: numbe
 <td style="padding:30px;background:#F7F7F8;text-align:center;border-bottom:1px solid #E5E7EB;">
   <img src="${LOGO_URL}" width="200" style="margin-bottom:16px;" alt="${COMPANY_NAME}" />
   <div style="background:#FFF3CD;color:#92400E;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:bold;display:inline-block;margin-bottom:12px;">
-    Provider Payout Reminder
+    ACTION REQUIRED — Provider Payout Due
   </div>
   <h2 style="margin:10px 0 6px;font-size:22px;color:#111827;">Provider Payout Summary</h2>
-  <p style="color:#6B7280;margin:0;font-size:14px;">Generated on ${escapeHtml(triggerDate)}</p>
+  <p style="color:#6B7280;margin:0;font-size:14px;">Generated on ${escapeHtml(triggerDate)} &nbsp;|&nbsp; Please process payments at your earliest convenience.</p>
 </td>
 </tr>
 <tr>
 <td style="padding:24px 30px 0;">
+  <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:14px 18px;margin-bottom:20px;">
+    <p style="margin:0;font-size:13px;color:#991B1B;font-weight:600;">
+      &#9888; This is your bi-monthly payout reminder. The providers listed below have completed orders with unpaid earnings. Please log in to the admin panel and process their payments.
+    </p>
+  </div>
   <div style="display:flex;gap:16px;flex-wrap:wrap;">
     <div style="flex:1;min-width:160px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:16px 20px;">
       <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#92400E;">Providers Owed</p>
       <p style="margin:0;font-size:26px;font-weight:900;color:#92400E;">${summaries.length}</p>
     </div>
     <div style="flex:1;min-width:160px;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:12px;padding:16px 20px;">
-      <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#065F46;">Total Unpaid</p>
+      <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#065F46;">Total to Pay Out</p>
       <p style="margin:0;font-size:26px;font-weight:900;color:#065F46;">${formatCurrency(totalUnpaid)}</p>
     </div>
     <div style="flex:1;min-width:160px;background:#F3F4F6;border:1px solid #E5E7EB;border-radius:12px;padding:16px 20px;">
-      <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#374151;">Pending Orders</p>
+      <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#374151;">Completed Orders</p>
       <p style="margin:0;font-size:26px;font-weight:900;color:#374151;">${summaries.reduce((a, s) => a + s.pendingOrders.length, 0)}</p>
     </div>
   </div>
@@ -157,20 +216,21 @@ function buildPayoutReminderEmail(summaries: DoctorSummary[], totalUnpaid: numbe
       </tr>
     </tfoot>
   </table>
+  <p style="margin:12px 0 0;font-size:12px;color:#9CA3AF;">A detailed CSV breakdown is attached to this email for your records.</p>
 </td>
 </tr>
 <tr>
 <td style="padding:0 30px 24px;">
   <div style="text-align:center;">
     <a href="https://${COMPANY_DOMAIN}/admin-orders" style="display:inline-block;background:#1a5c4f;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
-      Open Admin Earnings Panel →
+      Open Admin Earnings Panel &#8594;
     </a>
   </div>
 </td>
 </tr>
 <tr>
 <td style="padding:20px;background:#F9FAFB;text-align:center;border-top:1px solid #E5E7EB;">
-  <p style="font-size:12px;color:#9CA3AF;margin:0;">${COMPANY_NAME} • Automated Payout Reminder • ${triggerDate}</p>
+  <p style="font-size:12px;color:#9CA3AF;margin:0;">${COMPANY_NAME} &bull; Automated Payout Reminder (12th &amp; 27th of each month) &bull; ${triggerDate}</p>
   <p style="font-size:12px;color:#9CA3AF;margin:4px 0 0;">${SUPPORT_EMAIL}</p>
 </td>
 </tr>
@@ -181,11 +241,17 @@ function buildPayoutReminderEmail(summaries: DoctorSummary[], totalUnpaid: numbe
 </html>`;
 }
 
+// ── Main handler ───────────────────────────────────────────────────────────
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
 
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
 
+  // ── Auth check ──────────────────────────────────────────────────────────
   let isAuthorized = false;
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace("Bearer ", "");
@@ -193,17 +259,42 @@ Deno.serve(async (req: Request) => {
   if (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
     isAuthorized = true;
   } else if (token) {
-    const { data: { user } } = await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!).auth.getUser(token);
+    const { data: { user } } = await createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+    ).auth.getUser(token);
     if (user) {
-      const { data: profile } = await supabase.from("doctor_profiles").select("is_admin").eq("user_id", user.id).maybeSingle();
+      const { data: profile } = await supabase
+        .from("doctor_profiles")
+        .select("is_admin")
+        .eq("user_id", user.id)
+        .maybeSingle();
       isAuthorized = profile?.is_admin === true;
     }
   }
 
   if (!isAuthorized) return json({ error: "Unauthorized" }, 401);
 
+  // ── Date gate: only run on 12th or 27th (unless forced) ─────────────────
+  const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+  const force = body?.force === true;
+  const today = new Date();
+  const dayOfMonth = today.getDate();
+
+  if (!force && dayOfMonth !== 12 && dayOfMonth !== 27) {
+    return json({
+      ok: false,
+      skipped: true,
+      message: `Payout reminders only send on the 12th and 27th. Today is the ${dayOfMonth}th. Pass { force: true } to override.`,
+    });
+  }
+
+  // ── Fetch pending earnings ───────────────────────────────────────────────
   const { data: pendingEarnings, error: earningsErr } = await supabase
-    .from("doctor_earnings").select("*").eq("status", "pending").order("created_at", { ascending: true });
+    .from("doctor_earnings")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
 
   if (earningsErr) return json({ error: `Failed to fetch earnings: ${earningsErr.message}` }, 500);
 
@@ -213,48 +304,119 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, message: "No pending payouts — nothing to remind about", count: 0 });
   }
 
+  // ── Build per-doctor summaries ───────────────────────────────────────────
   const doctorMap = new Map<string, DoctorSummary>();
-  for (const rowItem of earnings) {
-    const key = rowItem.doctor_user_id;
+  for (const row of earnings) {
+    const key = row.doctor_user_id;
     if (!doctorMap.has(key)) {
-      doctorMap.set(key, { doctorName: rowItem.doctor_name ?? "Unknown", doctorEmail: rowItem.doctor_email ?? "", pendingOrders: [], totalUnpaid: 0, perOrderRate: null });
+      doctorMap.set(key, {
+        doctorName: row.doctor_name ?? "Unknown",
+        doctorEmail: row.doctor_email ?? "",
+        pendingOrders: [],
+        totalUnpaid: 0,
+      });
     }
     const entry = doctorMap.get(key)!;
-    entry.pendingOrders.push(rowItem);
-    entry.totalUnpaid += rowItem.doctor_amount ?? 0;
+    entry.pendingOrders.push(row);
+    entry.totalUnpaid += row.doctor_amount ?? 0;
   }
 
   const summaries = Array.from(doctorMap.values()).sort((a, b) => b.totalUnpaid - a.totalUnpaid);
   const grandTotal = summaries.reduce((sum, s) => sum + s.totalUnpaid, 0);
 
-  const triggerDate = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const triggerDate = today.toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+
+  // ── Determine recipient emails ───────────────────────────────────────────
+  // Check admin_notification_prefs for payout_reminder email overrides
+  const { data: prefsRows } = await supabase
+    .from("admin_notification_prefs")
+    .select("user_id, enabled, email_override, group_emails")
+    .eq("notification_key", "payout_reminder");
+
+  // Collect all admin emails that have this notification enabled
+  const recipientEmails: Set<string> = new Set();
+
+  // Fallback: ADMIN_EMAIL env var or support email
+  const fallbackEmail = Deno.env.get("ADMIN_EMAIL") ?? SUPPORT_EMAIL;
+
+  if (prefsRows && prefsRows.length > 0) {
+    for (const pref of prefsRows) {
+      if (!pref.enabled) continue;
+
+      // group_emails is an array of emails stored per group
+      if (pref.group_emails && Array.isArray(pref.group_emails)) {
+        for (const em of pref.group_emails) {
+          if (em && typeof em === "string") recipientEmails.add(em.trim());
+        }
+      }
+      // individual email override
+      if (pref.email_override) {
+        recipientEmails.add(pref.email_override.trim());
+      }
+    }
+  }
+
+  if (recipientEmails.size === 0) {
+    recipientEmails.add(fallbackEmail);
+  }
+
+  const toList = Array.from(recipientEmails);
+
+  // ── Build email + CSV ────────────────────────────────────────────────────
   const htmlEmail = buildPayoutReminderEmail(summaries, grandTotal, triggerDate);
+  const csvContent = buildCsv(summaries, triggerDate);
+
+  // Base64-encode CSV for Resend attachment
+  const csvBase64 = btoa(unescape(encodeURIComponent(csvContent)));
+  const csvFilename = `payout-report-${today.toISOString().slice(0, 10)}.csv`;
 
   const emailSent = await sendViaResend({
-    to: PAYOUT_RECIPIENT,
-    subject: `[Action Required] Provider Payout Reminder — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} — ${formatCurrency(grandTotal)} Due`,
+    to: toList,
+    subject: `[Action Required] Provider Payout Due — ${today.toLocaleDateString("en-US", { month: "long", year: "numeric" })} — ${formatCurrency(grandTotal)} Owed`,
     html: htmlEmail,
+    attachments: [
+      {
+        filename: csvFilename,
+        content: csvBase64,
+        content_type: "text/csv",
+      },
+    ],
     tags: [{ name: "email_type", value: "payout_reminder" }],
   });
 
+  // ── GHL webhook (fire-and-forget) ────────────────────────────────────────
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
     body: JSON.stringify({
-      webhookType: "main", event: "provider_payout_reminder",
-      triggerDate, totalUnpaid: grandTotal, providersCount: summaries.length,
+      webhookType: "main",
+      event: "admin_payout_reminder",
+      triggerDate,
+      totalUnpaid: grandTotal,
+      providersCount: summaries.length,
       pendingOrdersCount: earnings.length,
-      providers: summaries.map((s) => ({ name: s.doctorName, email: s.doctorEmail, ordersCount: s.pendingOrders.length, amountDue: s.totalUnpaid })),
-      tags: ["Payout Reminder", "Provider Payments"],
+      providers: summaries.map((s) => ({
+        name: s.doctorName,
+        email: s.doctorEmail,
+        ordersCount: s.pendingOrders.length,
+        amountDue: s.totalUnpaid,
+      })),
+      tags: ["Payout Reminder", "Admin Action Required"],
     }),
   }).catch(() => {});
 
   return json({
     ok: true,
-    message: `Payout reminder sent for ${summaries.length} provider${summaries.length !== 1 ? "s" : ""}`,
-    totalUnpaid: grandTotal, providersCount: summaries.length,
-    pendingOrdersCount: earnings.length, emailSent, sentTo: PAYOUT_RECIPIENT,
+    message: `Payout reminder sent to ${toList.length} recipient${toList.length !== 1 ? "s" : ""} for ${summaries.length} provider${summaries.length !== 1 ? "s" : ""}`,
+    totalUnpaid: grandTotal,
+    providersCount: summaries.length,
+    pendingOrdersCount: earnings.length,
+    emailSent,
+    sentTo: toList,
+    csvAttached: true,
   });
 });

@@ -1,7 +1,33 @@
 // TeamTab — Staff management with proper role system
-import { useState, useEffect } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { useState, useEffect, useRef } from "react";
+import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import { logAudit } from "../../../lib/auditLogger";
+
+// All admin portal tabs that can be toggled per member
+const ALL_TABS = [
+  { key: "orders",      label: "Orders",       icon: "ri-shopping-bag-line" },
+  { key: "customers",   label: "Customers",    icon: "ri-user-3-line" },
+  { key: "doctors",     label: "Providers",    icon: "ri-stethoscope-line" },
+  { key: "payments",    label: "Payments",     icon: "ri-bank-card-line" },
+  { key: "analytics",   label: "Analytics",    icon: "ri-bar-chart-2-line" },
+  { key: "communication", label: "Communication", icon: "ri-message-3-line" },
+  { key: "team",        label: "Team",         icon: "ri-team-line" },
+  { key: "settings",    label: "Settings",     icon: "ri-settings-3-line" },
+  { key: "audit",       label: "Audit Log",    icon: "ri-file-list-3-line" },
+  { key: "system",      label: "System Health",icon: "ri-heart-pulse-line" },
+] as const;
+
+type TabKey = typeof ALL_TABS[number]["key"];
+
+// Default tab access per role
+const ROLE_DEFAULT_TABS: Record<string, TabKey[]> = {
+  owner:         ["orders","customers","doctors","payments","analytics","communication","team","settings","audit","system"],
+  admin_manager: ["orders","customers","doctors","payments","analytics","communication","team","settings","audit","system"],
+  support:       ["orders","customers","communication","audit"],
+  finance:       ["payments","analytics","audit"],
+  read_only:     ["orders","customers","analytics","audit"],
+  provider:      [],
+};
 
 interface TeamMember {
   id: string;
@@ -13,6 +39,7 @@ interface TeamMember {
   is_admin: boolean;
   is_active: boolean;
   role: string | null;
+  custom_tab_access: TabKey[] | null;
 }
 
 interface AddMemberForm {
@@ -33,9 +60,10 @@ const ROLE_CONFIG: Record<string, { label: string; color: string; icon: string; 
   provider:      { label: "Provider",  color: "bg-amber-100 text-amber-700",           icon: "ri-stethoscope-line",         desc: "Doctor portal only",             isAdmin: false },
 };
 
-// Roles available when inviting an internal team member.
-// "provider" is intentionally excluded — use the Providers tab to add providers.
-const TEAM_INVITE_ROLES = ["owner", "admin_manager", "support", "finance", "read_only"] as const;
+// Roles available when inviting — owner sees all including "owner" role
+// Admin sees all except "owner"
+const TEAM_INVITE_ROLES_OWNER = ["owner", "admin_manager", "support", "finance", "read_only"] as const;
+const TEAM_INVITE_ROLES_ADMIN = ["admin_manager", "support", "finance", "read_only"] as const;
 
 const PERMISSIONS: { module: string; owner: string; admin_manager: string; support: string; finance: string; read_only: string; provider: string }[] = [
   { module: "Orders",    owner: "Full", admin_manager: "Full",  support: "Edit",  finance: "View",  read_only: "View",  provider: "—" },
@@ -55,6 +83,178 @@ function PermValue({ v }: { v: string }) {
   return <span className="text-xs text-gray-300">—</span>;
 }
 
+// ── Tab Access Editor Modal ──────────────────────────────────────────────────
+function TabAccessEditor({
+  member,
+  onClose,
+  onSaved,
+}: {
+  member: TeamMember;
+  onClose: () => void;
+  onSaved: (updated: TeamMember) => void;
+}) {
+  const roleDefaults = ROLE_DEFAULT_TABS[member.role ?? "read_only"] ?? [];
+  const initialTabs: TabKey[] = member.custom_tab_access ?? roleDefaults;
+  const [selected, setSelected] = useState<Set<TabKey>>(new Set(initialTabs));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  const toggle = (key: TabKey) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setSaved(false);
+  };
+
+  const resetToRoleDefaults = () => {
+    setSelected(new Set(roleDefaults));
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const tabs = Array.from(selected) as TabKey[];
+    const { error } = await supabase
+      .from("doctor_profiles")
+      .update({ custom_tab_access: tabs })
+      .eq("id", member.id);
+    setSaving(false);
+    if (!error) {
+      setSaved(true);
+      onSaved({ ...member, custom_tab_access: tabs });
+      setTimeout(() => { setSaved(false); onClose(); }, 1200);
+    }
+  };
+
+  return (
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 bg-black/40 z-[120] flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
+          <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
+            <i className="ri-layout-grid-line text-[#1a5c4f] text-lg"></i>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Tab Access</p>
+            <h2 className="text-base font-extrabold text-gray-900 truncate">{member.full_name}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer flex-shrink-0"
+          >
+            <i className="ri-close-line text-gray-500 text-lg"></i>
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
+          {/* Info */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+            <i className="ri-information-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Choose exactly which tabs <strong>{member.full_name}</strong> can see in the admin portal. This overrides their role defaults.
+            </p>
+          </div>
+
+          {/* Role badge + reset */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${ROLE_CONFIG[member.role ?? "read_only"]?.color ?? "bg-gray-100 text-gray-600"}`}>
+                <i className={`${ROLE_CONFIG[member.role ?? "read_only"]?.icon ?? "ri-user-line"} text-xs`}></i>
+                {ROLE_CONFIG[member.role ?? "read_only"]?.label ?? member.role}
+              </span>
+              <span className="text-xs text-gray-400">role defaults: {roleDefaults.length} tabs</span>
+            </div>
+            <button
+              type="button"
+              onClick={resetToRoleDefaults}
+              className="whitespace-nowrap text-xs font-semibold text-[#1a5c4f] hover:underline cursor-pointer"
+            >
+              Reset to role defaults
+            </button>
+          </div>
+
+          {/* Tab toggles */}
+          <div className="grid grid-cols-2 gap-2">
+            {ALL_TABS.map((tab) => {
+              const isOn = selected.has(tab.key);
+              const isDefault = roleDefaults.includes(tab.key);
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => toggle(tab.key)}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-all cursor-pointer text-left ${
+                    isOn
+                      ? "border-[#1a5c4f] bg-[#f0faf7]"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${isOn ? "bg-[#1a5c4f]/10" : "bg-gray-100"}`}>
+                    <i className={`${tab.icon} text-sm ${isOn ? "text-[#1a5c4f]" : "text-gray-400"}`}></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-bold leading-tight ${isOn ? "text-[#1a5c4f]" : "text-gray-600"}`}>{tab.label}</p>
+                    {!isDefault && isOn && (
+                      <p className="text-xs text-amber-600 leading-tight mt-0.5">Custom</p>
+                    )}
+                    {isDefault && !isOn && (
+                      <p className="text-xs text-gray-400 leading-tight mt-0.5">Removed</p>
+                    )}
+                  </div>
+                  <div className={`w-4 h-4 flex items-center justify-center rounded-full flex-shrink-0 ${isOn ? "bg-[#1a5c4f]" : "bg-gray-200"}`}>
+                    {isOn && <i className="ri-check-line text-white" style={{ fontSize: "9px" }}></i>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Summary */}
+          <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-gray-500">
+              <strong className="text-gray-700">{selected.size}</strong> of {ALL_TABS.length} tabs enabled
+              {selected.size === 0 && <span className="text-red-500 ml-2">— this member won&apos;t see any tabs!</span>}
+            </p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="whitespace-nowrap px-4 py-2.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || saved}
+            className={`whitespace-nowrap flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-60 ${
+              saved ? "bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5]" : "bg-[#1a5c4f] text-white hover:bg-[#17504a]"
+            }`}
+          >
+            {saving
+              ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</>
+              : saved
+              ? <><i className="ri-checkbox-circle-fill"></i>Saved!</>
+              : <><i className="ri-save-line"></i>Save Access</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TeamTab() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,9 +267,14 @@ export default function TeamTab() {
   const [resetSendingId, setResetSendingId] = useState<string | null>(null);
   const [resetMsgMap, setResetMsgMap] = useState<Record<string, { text: string; link?: string }>>({});
   const [successMsg, setSuccessMsg] = useState("");
-  const [currentUser, setCurrentUser] = useState<{ id: string; full_name: string; role: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; full_name: string; role: string; user_id: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [tabAccessMember, setTabAccessMember] = useState<TeamMember | null>(null);
+  const [changeEmailMemberId, setChangeEmailMemberId] = useState<string | null>(null);
+  const [changeEmailValue, setChangeEmailValue] = useState("");
+  const [changeEmailSaving, setChangeEmailSaving] = useState(false);
+  const [changeEmailMsg, setChangeEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
@@ -89,9 +294,12 @@ export default function TeamTab() {
     loadMembers();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
-        supabase.from("doctor_profiles").select("full_name, role").eq("user_id", user.id).maybeSingle()
+        supabase.from("doctor_profiles").select("id, full_name, role").eq("user_id", user.id).maybeSingle()
           .then(({ data }) => {
-            if (data) setCurrentUser({ id: user.id, full_name: (data as { full_name: string; role: string }).full_name, role: (data as { full_name: string; role: string }).role ?? "admin_manager" });
+            if (data) {
+              const d = data as { id: string; full_name: string; role: string };
+              setCurrentUser({ id: d.id, user_id: user.id, full_name: d.full_name, role: d.role ?? "admin_manager" });
+            }
           });
       }
     });
@@ -154,17 +362,7 @@ export default function TeamTab() {
     if (!member.email) return;
     setResetSendingId(member.id);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        const refreshed = await supabase.auth.refreshSession();
-        session = refreshed.data.session;
-      }
-      const token = session?.access_token ?? "";
-      if (!token) {
-        setResetMsgMap((prev) => ({ ...prev, [member.id]: { text: "Session expired. Please refresh the page and try again." } }));
-        setResetSendingId(null);
-        return;
-      }
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/admin-send-password-reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -183,7 +381,54 @@ export default function TeamTab() {
     }
   };
 
+  // ── Change email for owner (self only) ──────────────────────────────────
+  const handleChangeEmail = async (member: TeamMember) => {
+    if (!changeEmailValue.trim() || !changeEmailValue.includes("@")) {
+      setChangeEmailMsg({ ok: false, text: "Please enter a valid email address." });
+      return;
+    }
+    setChangeEmailSaving(true);
+    setChangeEmailMsg(null);
+    try {
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/admin-update-auth-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId: member.user_id, newEmail: changeEmailValue.trim() }),
+      });
+      const result = await res.json() as { ok?: boolean; error?: string };
+      if (result.ok) {
+        // Also update doctor_profiles email
+        await supabase.from("doctor_profiles").update({ email: changeEmailValue.trim() }).eq("id", member.id);
+        setMembers((prev) => prev.map((m) => m.id === member.id ? { ...m, email: changeEmailValue.trim() } : m));
+        setChangeEmailMsg({ ok: true, text: "Email updated successfully. A verification email may be sent." });
+        setTimeout(() => { setChangeEmailMemberId(null); setChangeEmailMsg(null); setChangeEmailValue(""); }, 3000);
+      } else {
+        setChangeEmailMsg({ ok: false, text: result.error ?? "Failed to update email." });
+      }
+    } catch {
+      setChangeEmailMsg({ ok: false, text: "Network error. Please try again." });
+    }
+    setChangeEmailSaving(false);
+  };
+
   const handleDeleteMember = async (member: TeamMember) => {
+    // Owner account can NEVER be deleted — not even by admins
+    if (member.role === "owner") {
+      setSuccessMsg("The owner account cannot be deleted.");
+      setTimeout(() => setSuccessMsg(""), 4000);
+      setDeleteConfirmId(null);
+      return;
+    }
+    // Only owner can delete other owners/admins; admins can delete non-owner members
+    const currentIsOwner = currentUser?.role === "owner";
+    const currentIsAdmin = currentUser?.role === "admin_manager";
+    if (!currentIsOwner && !currentIsAdmin) {
+      setSuccessMsg("You don't have permission to delete team members.");
+      setTimeout(() => setSuccessMsg(""), 4000);
+      setDeleteConfirmId(null);
+      return;
+    }
     setDeletingId(member.id);
     const { error } = await supabase
       .from("doctor_profiles")
@@ -197,8 +442,7 @@ export default function TeamTab() {
       // Delete the Supabase auth user + write HIPAA audit log via edge function
       if (member.user_id) {
         try {
-          const { data: { session: freshSession } } = await supabase.auth.getSession();
-          const token = freshSession?.access_token ?? "";
+          const token = await getAdminToken();
           const delRes = await fetch(`${supabaseUrl}/functions/v1/delete-auth-user`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -206,7 +450,7 @@ export default function TeamTab() {
               userId: member.user_id,
               entityType: "team_member",
               entityName: `${member.full_name} (${member.email ?? "no email"})`,
-              reason: `Team member deleted by admin. Role: ${member.role ?? "unknown"}`,
+              reason: `Team member deleted by ${currentUser?.role ?? "admin"}. Role: ${member.role ?? "unknown"}`,
             }),
           });
           const delResult = await delRes.json() as { ok?: boolean; error?: string; message?: string };
@@ -238,11 +482,15 @@ export default function TeamTab() {
       setFormError("Name and email are required.");
       return;
     }
+    // Admins cannot promote to owner
+    if (currentUser?.role !== "owner" && form.role === "owner") {
+      setFormError("Only the owner can assign the Owner role.");
+      return;
+    }
     setFormError("");
     setSubmitting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const cfg = ROLE_CONFIG[form.role] ?? ROLE_CONFIG.admin_manager;
       const res = await fetch(`${supabaseUrl}/functions/v1/create-team-member`, {
         method: "POST",
@@ -335,6 +583,19 @@ export default function TeamTab() {
         </div>
       )}
 
+      {/* Security roadmap notice */}
+      <div className="mb-5 bg-[#f3e8ff] border border-[#d8b4fe] rounded-xl px-4 py-3 flex items-start gap-3">
+        <div className="w-8 h-8 flex items-center justify-center bg-[#ede9fe] rounded-lg flex-shrink-0 mt-0.5">
+          <i className="ri-shield-keyhole-line text-[#7c3aed] text-base"></i>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-extrabold text-[#6d28d9] mb-0.5">Enhanced Security — Coming Soon</p>
+          <p className="text-xs text-[#7c3aed] leading-relaxed">
+            <strong>Email OTP verification</strong> and <strong>Google Authenticator (TOTP)</strong> will be added as login methods for all team members and admins. Owner account is fully protected — it cannot be deleted by anyone.
+          </p>
+        </div>
+      </div>
+
       {/* Header row */}
       <div className="flex items-start justify-between mb-5 gap-4 flex-wrap">
         <div>
@@ -346,10 +607,13 @@ export default function TeamTab() {
             className={`whitespace-nowrap flex items-center gap-2 px-3 py-2.5 border text-sm font-bold rounded-xl cursor-pointer transition-colors ${showMatrix ? "bg-gray-100 border-gray-300 text-gray-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
             <i className="ri-grid-line"></i><span className="hidden sm:inline">Permissions</span>
           </button>
-          <button type="button" onClick={() => setShowModal(true)}
-            className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
-            <i className="ri-user-add-line"></i><span>Invite Member</span>
-          </button>
+          {/* Owner AND admins can invite new team members */}
+          {(currentUser?.role === "owner" || currentUser?.role === "admin_manager") && (
+            <button type="button" onClick={() => setShowModal(true)}
+              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
+              <i className="ri-user-add-line"></i><span>Invite Member</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -413,7 +677,7 @@ export default function TeamTab() {
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Table header — desktop only */}
-          <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_160px_160px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+          <div className="hidden lg:grid grid-cols-[2fr_1.8fr_0.8fr_180px_auto] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
             <span>Name</span><span>Email</span><span>Title</span><span>Role</span><span>Status &amp; Actions</span>
           </div>
           <div className="divide-y divide-gray-100">
@@ -423,45 +687,41 @@ export default function TeamTab() {
 
               return (
                 <div key={member.id}
-                  className={`px-5 py-4 transition-colors ${!member.is_active ? "opacity-60 bg-gray-50/50" : "hover:bg-gray-50/30"}`}>
-                  {/* Desktop grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_1fr_160px_160px] gap-3 md:gap-4 items-center">
+                  className={`px-4 py-4 transition-colors ${!member.is_active ? "opacity-60 bg-gray-50/50" : "hover:bg-gray-50/30"}`}>
+                  {/* Desktop layout */}
+                  <div className="hidden lg:grid grid-cols-[2fr_1.8fr_0.8fr_180px_auto] gap-4 items-center">
                     {/* Name */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className={`w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 text-sm font-extrabold ${member.is_active ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-gray-100 text-gray-400"}`}>
                         {member.full_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 truncate">{member.full_name}</p>
-                        {/* Email shown under name on mobile */}
-                        <p className="text-xs text-gray-400 truncate md:hidden">{member.email ?? "—"}</p>
-                        {/* Role badge shown on mobile */}
-                        <div className="md:hidden mt-1">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${roleCfg.color}`}>
-                            <i className={`${roleCfg.icon} text-xs`}></i>{roleCfg.label}
-                          </span>
-                        </div>
+                        {member.custom_tab_access && (
+                          <p className="text-xs text-[#1a5c4f] mt-0.5 flex items-center gap-1">
+                            <i className="ri-layout-grid-line" style={{ fontSize: "10px" }}></i>
+                            <span>{member.custom_tab_access.length} custom tabs</span>
+                          </p>
+                        )}
                       </div>
                     </div>
-
-                    {/* Email — desktop */}
-                    <div className="hidden md:block text-xs text-gray-500 truncate">{member.email ?? "—"}</div>
-                    {/* Title — desktop */}
-                    <div className="hidden md:block text-xs text-gray-500">{member.title ?? <span className="text-gray-300">—</span>}</div>
-
+                    {/* Email */}
+                    <div className="text-xs text-gray-500 truncate">{member.email ?? "—"}</div>
+                    {/* Title */}
+                    <div className="text-xs text-gray-500 truncate">{member.title ?? <span className="text-gray-300">—</span>}</div>
                     {/* Role selector */}
                     <div>
-                      <div className="relative">
+                      <div className="relative inline-block">
                         <select value={currentRole}
                           onChange={(e) => handleRoleChange(member, e.target.value)}
                           disabled={togglingId === member.id}
                           className={`appearance-none pl-3 pr-7 py-1.5 rounded-full text-xs font-bold cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 disabled:opacity-50 ${roleCfg.color}`}>
-                          {TEAM_INVITE_ROLES.map((key) => {
+                          {(currentUser?.role === "owner" ? TEAM_INVITE_ROLES_OWNER : TEAM_INVITE_ROLES_ADMIN).map((key) => {
                             const cfg = ROLE_CONFIG[key];
                             return <option key={key} value={key} className="bg-white text-gray-800 font-normal">{cfg.label} — {cfg.desc}</option>;
                           })}
                         </select>
-                        <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 flex items-center justify-center">
+                        <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
                           {togglingId === member.id
                             ? <i className="ri-loader-4-line animate-spin text-current" style={{ fontSize: "10px" }}></i>
                             : <i className="ri-arrow-down-s-line text-current" style={{ fontSize: "10px" }}></i>
@@ -469,39 +729,121 @@ export default function TeamTab() {
                         </div>
                       </div>
                     </div>
-
-                    {/* Status + actions */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-semibold ${member.is_active ? "text-emerald-600" : "text-gray-400"}`}>
+                    {/* Status + actions — all in one row, no wrapping */}
+                    <div className="flex items-center gap-1.5 flex-nowrap">
+                      <span className={`text-xs font-semibold whitespace-nowrap ${member.is_active ? "text-emerald-600" : "text-gray-400"}`}>
                         {member.is_active ? "Active" : "Inactive"}
                       </span>
-                      {/* Toggle */}
-                      <button type="button" onClick={() => handleToggleActive(member)} disabled={togglingId === member.id}
-                        className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#1a5c4f]" : "bg-gray-300"}`}>
-                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${member.is_active ? "translate-x-4" : "translate-x-0.5"}`}></div>
+                      {/* Owner cannot be deactivated */}
+                      {member.role !== "owner" && (
+                        <button type="button" onClick={() => handleToggleActive(member)} disabled={togglingId === member.id}
+                          className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#1a5c4f]" : "bg-gray-300"}`}>
+                          <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${member.is_active ? "translate-x-4" : "translate-x-0.5"}`}></div>
+                        </button>
+                      )}
+                      <div className="w-px h-4 bg-gray-200 mx-0.5 flex-shrink-0"></div>
+                      <button type="button" onClick={() => setTabAccessMember(member)} title="Edit tab access"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ee] cursor-pointer transition-colors flex-shrink-0">
+                        <i className="ri-layout-grid-line text-xs"></i>
                       </button>
-                      {/* Password reset */}
-                      <div className="relative group">
-                        <button type="button" onClick={() => handleSendPasswordReset(member)} disabled={resetSendingId === member.id}
-                          title={`Send password reset email to ${member.email ?? "this user"}`}
-                          className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg border border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 cursor-pointer transition-colors disabled:opacity-50">
-                          {resetSendingId === member.id
-                            ? <i className="ri-loader-4-line animate-spin text-xs"></i>
-                            : <i className="ri-key-2-line text-xs"></i>
-                          }
+                      {/* Owner row: only show Change Email (no password reset, no delete) */}
+                      {member.role === "owner" ? (
+                        <button type="button"
+                          onClick={() => { setChangeEmailMemberId(member.id); setChangeEmailValue(member.email ?? ""); setChangeEmailMsg(null); }}
+                          title="Change owner email"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ee] cursor-pointer transition-colors flex-shrink-0">
+                          <i className="ri-mail-settings-line text-xs"></i>
                         </button>
-                        <div className="absolute bottom-full right-0 mb-1.5 w-40 bg-gray-900 text-white text-xs rounded-lg px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                          Send password reset email
-                        </div>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => handleSendPasswordReset(member)} disabled={resetSendingId === member.id}
+                            title="Send password reset"
+                            className="w-7 h-7 flex items-center justify-center rounded-lg border border-amber-200 text-amber-600 bg-amber-50 hover:bg-amber-100 cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0">
+                            {resetSendingId === member.id
+                              ? <i className="ri-loader-4-line animate-spin text-xs"></i>
+                              : <i className="ri-key-2-line text-xs"></i>
+                            }
+                          </button>
+                          {/* Owner can delete anyone; admins can delete non-owner members */}
+                          {(currentUser?.role === "owner" || currentUser?.role === "admin_manager") && (
+                            <button type="button" onClick={() => setDeleteConfirmId(member.id)} title="Remove member"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 cursor-pointer transition-colors flex-shrink-0">
+                              <i className="ri-delete-bin-line text-xs"></i>
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mobile layout — card style */}
+                  <div className="lg:hidden">
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 text-sm font-extrabold ${member.is_active ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-gray-100 text-gray-400"}`}>
+                        {member.full_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
                       </div>
-                      {/* Delete */}
-                      <div className="relative group">
-                        <button type="button" onClick={() => setDeleteConfirmId(member.id)} title={`Remove ${member.full_name}`}
-                          className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 cursor-pointer transition-colors">
-                          <i className="ri-delete-bin-line text-xs"></i>
-                        </button>
-                        <div className="absolute bottom-full right-0 mb-1.5 w-32 bg-gray-900 text-white text-xs rounded-lg px-2.5 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                          Remove from team
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="text-sm font-bold text-gray-900">{member.full_name}</p>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-semibold ${member.is_active ? "text-emerald-600" : "text-gray-400"}`}>
+                              {member.is_active ? "Active" : "Inactive"}
+                            </span>
+                            <button type="button" onClick={() => handleToggleActive(member)} disabled={togglingId === member.id}
+                              className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#1a5c4f]" : "bg-gray-300"}`}>
+                              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${member.is_active ? "translate-x-4" : "translate-x-0.5"}`}></div>
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5 truncate">{member.email ?? "—"}</p>
+                        {member.title && <p className="text-xs text-gray-400">{member.title}</p>}
+                        {/* Role selector */}
+                        <div className="mt-2">
+                          <div className="relative inline-block">
+                            <select value={currentRole}
+                              onChange={(e) => handleRoleChange(member, e.target.value)}
+                              disabled={togglingId === member.id}
+                              className={`appearance-none pl-3 pr-7 py-1.5 rounded-full text-xs font-bold cursor-pointer border-0 focus:outline-none disabled:opacity-50 ${roleCfg.color}`}>
+                              {(currentUser?.role === "owner" ? TEAM_INVITE_ROLES_OWNER : TEAM_INVITE_ROLES_ADMIN).map((key) => {
+                                const cfg = ROLE_CONFIG[key];
+                                return <option key={key} value={key} className="bg-white text-gray-800 font-normal">{cfg.label} — {cfg.desc}</option>;
+                              })}
+                            </select>
+                            <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                              <i className="ri-arrow-down-s-line text-current" style={{ fontSize: "10px" }}></i>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Mobile action buttons */}
+                        <div className="flex items-center gap-2 mt-3 flex-wrap">
+                          <button type="button" onClick={() => setTabAccessMember(member)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] text-xs font-semibold cursor-pointer">
+                            <i className="ri-layout-grid-line text-xs"></i>Tabs
+                          </button>
+                          {member.role === "owner" ? (
+                            <button type="button"
+                              onClick={() => { setChangeEmailMemberId(member.id); setChangeEmailValue(member.email ?? ""); setChangeEmailMsg(null); }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] text-xs font-semibold cursor-pointer">
+                              <i className="ri-mail-settings-line text-xs"></i>Change Email
+                            </button>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => handleSendPasswordReset(member)} disabled={resetSendingId === member.id}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-200 text-amber-600 bg-amber-50 text-xs font-semibold cursor-pointer disabled:opacity-50">
+                                {resetSendingId === member.id
+                                  ? <i className="ri-loader-4-line animate-spin text-xs"></i>
+                                  : <i className="ri-key-2-line text-xs"></i>
+                                }
+                                Reset
+                              </button>
+                              {(currentUser?.role === "owner" || currentUser?.role === "admin_manager") && (
+                                <button type="button" onClick={() => setDeleteConfirmId(member.id)}
+                                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200 text-red-500 bg-red-50 text-xs font-semibold cursor-pointer">
+                                  <i className="ri-delete-bin-line text-xs"></i>Remove
+                                </button>
+                              )}
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -540,45 +882,134 @@ export default function TeamTab() {
         </div>
       </div>
 
+      {/* Tab Access Editor Modal */}
+      {tabAccessMember && (
+        <TabAccessEditor
+          member={tabAccessMember}
+          onClose={() => setTabAccessMember(null)}
+          onSaved={(updated) => {
+            setMembers((prev) => prev.map((m) => m.id === updated.id ? updated : m));
+            setTabAccessMember(null);
+            setSuccessMsg(`Tab access updated for ${updated.full_name}.`);
+            setTimeout(() => setSuccessMsg(""), 4000);
+          }}
+        />
+      )}
+
+      {/* Change Email Modal (owner only) */}
+      {changeEmailMemberId && (() => {
+        const member = members.find((m) => m.id === changeEmailMemberId);
+        if (!member) return null;
+        return (
+          <div className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
+                <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
+                  <i className="ri-mail-settings-line text-[#1a5c4f] text-lg"></i>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Owner Account</p>
+                  <h2 className="text-base font-extrabold text-gray-900">Change Email Address</h2>
+                </div>
+                <button type="button" onClick={() => { setChangeEmailMemberId(null); setChangeEmailMsg(null); setChangeEmailValue(""); }}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer flex-shrink-0">
+                  <i className="ri-close-line text-gray-500 text-lg"></i>
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                  <i className="ri-information-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    Changing the owner email will update both the login credentials and the profile. A verification email may be sent to the new address.
+                    <br /><strong className="mt-1 block">Email OTP verification will be enforced once that feature is live.</strong>
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5">Current Email</label>
+                  <p className="text-sm text-gray-500 font-mono bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">{member.email ?? "—"}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1.5">New Email Address <span className="text-red-400">*</span></label>
+                  <input
+                    type="email"
+                    value={changeEmailValue}
+                    onChange={(e) => setChangeEmailValue(e.target.value)}
+                    placeholder="new@email.com"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                  />
+                </div>
+                {changeEmailMsg && (
+                  <div className={`flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold border ${changeEmailMsg.ok ? "bg-[#f0faf7] text-[#1a5c4f] border-[#b8ddd5]" : "bg-red-50 text-red-700 border-red-200"}`}>
+                    <i className={`mt-0.5 flex-shrink-0 ${changeEmailMsg.ok ? "ri-checkbox-circle-line" : "ri-error-warning-line"}`}></i>
+                    {changeEmailMsg.text}
+                  </div>
+                )}
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-2">
+                <button type="button" onClick={() => handleChangeEmail(member)} disabled={changeEmailSaving || !changeEmailValue.trim()}
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                  {changeEmailSaving ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-save-line"></i>Update Email</>}
+                </button>
+                <button type="button" onClick={() => { setChangeEmailMemberId(null); setChangeEmailMsg(null); setChangeEmailValue(""); }}
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (() => {
         const member = members.find((m) => m.id === deleteConfirmId);
         if (!member) return null;
+        // Safety net: block owner deletion at UI level too
+        const isOwner = member.role === "owner";
         return (
           <div className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden">
               <div className="px-6 py-5 border-b border-gray-100">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
-                    <i className="ri-delete-bin-fill text-red-600 text-lg"></i>
+                  <div className={`w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 ${isOwner ? "bg-[#f3e8ff]" : "bg-red-100"}`}>
+                    <i className={`text-lg ${isOwner ? "ri-vip-crown-fill text-[#7c3aed]" : "ri-delete-bin-fill text-red-600"}`}></i>
                   </div>
                   <div>
-                    <h2 className="text-base font-extrabold text-gray-900">Remove Team Member?</h2>
+                    <h2 className="text-base font-extrabold text-gray-900">
+                      {isOwner ? "Cannot Remove Owner" : "Remove Team Member?"}
+                    </h2>
                     <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                      This will remove <strong>{member.full_name}</strong> from the team. Their login access will be revoked immediately.
+                      {isOwner
+                        ? "The owner account is protected and cannot be deleted by anyone — including admins."
+                        : <>This will remove <strong>{member.full_name}</strong> from the team. Their login access will be revoked immediately.</>
+                      }
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="px-6 py-4 bg-red-50 border-b border-red-100">
-                <div className="space-y-1 text-xs text-red-700">
-                  <p className="flex items-center gap-1.5"><i className="ri-user-line"></i><strong>{member.full_name}</strong></p>
-                  {member.email && <p className="flex items-center gap-1.5"><i className="ri-mail-line"></i>{member.email}</p>}
-                  <p className="flex items-center gap-1.5"><i className="ri-shield-line"></i>Role: {ROLE_CONFIG[member.role ?? "provider"]?.label ?? member.role}</p>
-                  <p className="flex items-center gap-1.5 font-semibold mt-1"><i className="ri-logout-box-r-line"></i>Supabase login account will also be deleted</p>
+              {!isOwner && (
+                <div className="px-6 py-4 bg-red-50 border-b border-red-100">
+                  <div className="space-y-1 text-xs text-red-700">
+                    <p className="flex items-center gap-1.5"><i className="ri-user-line"></i><strong>{member.full_name}</strong></p>
+                    {member.email && <p className="flex items-center gap-1.5"><i className="ri-mail-line"></i>{member.email}</p>}
+                    <p className="flex items-center gap-1.5"><i className="ri-shield-line"></i>Role: {ROLE_CONFIG[member.role ?? "provider"]?.label ?? member.role}</p>
+                    <p className="flex items-center gap-1.5 font-semibold mt-1"><i className="ri-logout-box-r-line"></i>Supabase login account will also be deleted</p>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="px-6 py-4 flex items-center gap-2">
-                <button type="button" onClick={() => handleDeleteMember(member)} disabled={deletingId === member.id}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors">
-                  {deletingId === member.id
-                    ? <><i className="ri-loader-4-line animate-spin"></i>Removing...</>
-                    : <><i className="ri-delete-bin-line"></i>Yes, Remove</>
-                  }
-                </button>
+                {!isOwner && (
+                  <button type="button" onClick={() => handleDeleteMember(member)} disabled={deletingId === member.id}
+                    className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors">
+                    {deletingId === member.id
+                      ? <><i className="ri-loader-4-line animate-spin"></i>Removing...</>
+                      : <><i className="ri-delete-bin-line"></i>Yes, Remove</>
+                    }
+                  </button>
+                )}
                 <button type="button" onClick={() => setDeleteConfirmId(null)}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
-                  Cancel
+                  className={`whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors ${isOwner ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f] font-bold" : ""}`}>
+                  {isOwner ? "Got it" : "Cancel"}
                 </button>
               </div>
             </div>
@@ -642,11 +1073,11 @@ export default function TeamTab() {
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
               </div>
 
-              {/* Role selection */}
+              {/* Role selection — owner sees all roles, admin sees all except owner */}
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-2">Role <span className="text-red-400">*</span></label>
                 <div className="grid grid-cols-2 gap-2">
-                  {TEAM_INVITE_ROLES.map((key) => {
+                  {(currentUser?.role === "owner" ? TEAM_INVITE_ROLES_OWNER : TEAM_INVITE_ROLES_ADMIN).map((key) => {
                     const cfg = ROLE_CONFIG[key];
                     const isSelected = form.role === key;
                     return (
@@ -663,9 +1094,15 @@ export default function TeamTab() {
                     );
                   })}
                 </div>
-                <div className="mt-2.5 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                  <i className="ri-information-line text-amber-600 flex-shrink-0 mt-0.5 text-xs"></i>
-                  <p className="text-xs text-amber-700">
+                {currentUser?.role !== "owner" && (
+                  <div className="mt-2.5 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <i className="ri-information-line text-amber-600 flex-shrink-0 mt-0.5 text-xs"></i>
+                    <p className="text-xs text-amber-700">Only the <strong>Owner</strong> can assign the Owner role.</p>
+                  </div>
+                )}
+                <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                  <i className="ri-information-line text-gray-400 flex-shrink-0 mt-0.5 text-xs"></i>
+                  <p className="text-xs text-gray-500">
                     To add a licensed provider, use the <strong>Providers tab</strong> instead.
                   </p>
                 </div>

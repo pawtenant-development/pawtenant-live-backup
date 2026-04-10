@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import ContactSupportWidget from "./components/ContactSupportWidget";
 
@@ -26,6 +26,7 @@ interface Order {
   plan_type: string | null;
   delivery_speed: string | null;
   price: number | null;
+  payment_intent_id: string | null;
   status: string;
   doctor_status: string | null;
   letter_url: string | null;
@@ -46,18 +47,25 @@ function getDisplayStatus(order: Order): {
 } {
   const s = order.status;
   const ds = order.doctor_status;
+  const isPaid = !!(order as Order & { payment_intent_id?: string | null }).payment_intent_id;
 
   if (s === "cancelled") return { label: "Cancelled", color: "bg-red-100 text-red-700", icon: "ri-close-circle-line", bgGradient: "from-red-50 to-rose-50", step: -1 };
   if (s === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) return { label: "Refunded", color: "bg-red-100 text-red-600", icon: "ri-refund-line", bgGradient: "from-red-50 to-rose-50", step: -1 };
-  // Completed ONLY when provider has notified patient — payment alone is NOT completion
+
+  // CRITICAL: check payment FIRST — unpaid leads must never show provider statuses
+  if (!isPaid || s === "lead") return { label: "Pending Payment", color: "bg-amber-100 text-amber-700", icon: "ri-time-line", bgGradient: "from-amber-50 to-yellow-50", step: -1 };
+
+  // Completed ONLY when provider has notified patient
   if (ds === "patient_notified") return { label: "Completed", color: "bg-green-100 text-green-700", icon: "ri-checkbox-circle-fill", bgGradient: "from-green-50 to-emerald-50", step: 3 };
-  // letter_sent is an INTERNAL status (provider uploaded, admin not yet sent) — customer sees "Under Review" still
-  if (ds === "letter_sent") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 1 };
-  if (ds === "in_review" || ds === "approved") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 1 };
+  // 30-day reissue — customer sees "Under Review"
+  if (ds === "thirty_day_reissue") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 2 };
+  // letter_sent is INTERNAL — customer sees "Under Review"
+  if (ds === "letter_sent") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 2 };
+  if (ds === "in_review" || ds === "approved") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 2 };
   if (ds === "pending_review" || s === "under-review") return { label: "Assigned to Provider", color: "bg-violet-100 text-violet-700", icon: "ri-user-received-line", bgGradient: "from-violet-50 to-purple-50", step: 1 };
-  // Payment received but provider work not started yet
+  // Paid but no provider yet
   if (s === "completed" || s === "paid" || s === "processing") return { label: "Payment Confirmed", color: "bg-amber-100 text-amber-700", icon: "ri-loader-4-line", bgGradient: "from-amber-50 to-orange-50", step: 0 };
-  return { label: "In Progress", color: "bg-amber-100 text-amber-700", icon: "ri-loader-4-line", bgGradient: "from-amber-50 to-orange-50", step: 0 };
+  return { label: "Payment Confirmed", color: "bg-amber-100 text-amber-700", icon: "ri-loader-4-line", bgGradient: "from-amber-50 to-orange-50", step: 0 };
 }
 
 const DOC_TYPE_LABEL: Record<string, string> = {
@@ -99,6 +107,7 @@ function OrderStatusTimeline({ order }: { order: Order }) {
     if (order.status === "cancelled") return "inactive";
     if (order.status === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) return "inactive";
     if (order.doctor_status === "patient_notified") return "done";
+    if (stepIndex === 3) return "done";
     if (idx < stepIndex) return "done";
     if (idx === stepIndex) return "active";
     return "inactive";
@@ -561,6 +570,50 @@ export default function MyOrdersPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName] = useState("");
   const [supportOpen, setSupportOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [isAdminPreview, setIsAdminPreview] = useState(false);
+  const [searchEmail, setSearchEmail] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [allAdminOrders, setAllAdminOrders] = useState<Order[]>([]);
+  const [adminStatusFilter, setAdminStatusFilter] = useState<string>("all");
+
+  const loadOrdersForEmail = async (email: string) => {
+    setSearchLoading(true);
+    const { data: ordersData } = await supabase
+      .from("orders")
+      .select("*")
+      .ilike("email", email)
+      .order("created_at", { ascending: false });
+
+    const loadedOrders = (ordersData as Order[]) ?? [];
+
+    if (loadedOrders.length > 0) {
+      const orderIds = loadedOrders.map((o) => o.id);
+      const { data: docsData } = await supabase
+        .from("order_documents")
+        .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+        .in("order_id", orderIds)
+        .eq("customer_visible", true)
+        .order("uploaded_at", { ascending: true });
+
+      const docsByOrderId = new Map<string, OrderDocument[]>();
+      ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
+        const key = (doc as OrderDocument & { order_id: string }).order_id;
+        if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
+        docsByOrderId.get(key)!.push(doc);
+      });
+
+      const ordersWithDocs = loadedOrders.map((o) => ({
+        ...o,
+        documents: docsByOrderId.get(o.id) ?? [],
+      }));
+      setOrders(ordersWithDocs);
+    } else {
+      setOrders([]);
+    }
+    setSearchLoading(false);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -569,10 +622,68 @@ export default function MyOrdersPage() {
       setUserEmail(user.email ?? "");
       setUserName(user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "");
 
-      // Fetch orders
+      // Check if admin
+      const { data: profile } = await supabase
+        .from("doctor_profiles")
+        .select("is_admin, full_name")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profile?.is_admin) {
+        setIsAdminPreview(true);
+        setUserName(profile.full_name ?? user.email?.split("@")[0] ?? "Admin");
+        // Auto-load preview_email from URL param (e.g. from "Customer View" button in order detail)
+        const urlPreviewEmail = searchParams.get("preview_email");
+        if (urlPreviewEmail) {
+          setSearchEmail(urlPreviewEmail);
+          setSearchInput(urlPreviewEmail);
+          loadOrdersForEmail(urlPreviewEmail);
+          return;
+        }
+        // Admin: load all orders by default (no email filter)
+        const { data: ordersData } = await supabase
+          .from("orders")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        const loadedOrders = (ordersData as Order[]) ?? [];
+
+        if (loadedOrders.length > 0) {
+          const orderIds = loadedOrders.map((o) => o.id);
+          const { data: docsData } = await supabase
+            .from("order_documents")
+            .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+            .in("order_id", orderIds)
+            .eq("customer_visible", true)
+            .order("uploaded_at", { ascending: true });
+
+          const docsByOrderId = new Map<string, OrderDocument[]>();
+          ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
+            const key = (doc as OrderDocument & { order_id: string }).order_id;
+            if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
+            docsByOrderId.get(key)!.push(doc);
+          });
+
+          const ordersWithDocs = loadedOrders.map((o) => ({
+            ...o,
+            documents: docsByOrderId.get(o.id) ?? [],
+          }));
+          setOrders(ordersWithDocs);
+          setAllAdminOrders(ordersWithDocs);
+        } else {
+          setOrders([]);
+          setAllAdminOrders([]);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Regular customer: fetch their own orders
       const { data: ordersData } = await supabase
         .from("orders")
         .select("*")
+        .ilike("email", user.email ?? "")
         .order("created_at", { ascending: false });
 
       const loadedOrders = (ordersData as Order[]) ?? [];
@@ -630,6 +741,88 @@ export default function MyOrdersPage() {
     return () => { supabase.removeChannel(channel); };
   }, [userEmail]);
 
+  const handleAdminSearch = async () => {
+    const q = searchInput.trim();
+    if (!q) return;
+
+    // Detect search type: order ID (starts with PT-), email (has @), or name
+    const isOrderId = q.toUpperCase().startsWith("PT-") || /^[A-Z]{2}-[A-Z0-9]+$/i.test(q);
+    const isEmail = q.includes("@");
+
+    if (isEmail) {
+      setSearchEmail(q);
+      await loadOrdersForEmail(q);
+      return;
+    }
+
+    // Search by order ID or name in the already-loaded allAdminOrders first
+    if (allAdminOrders.length > 0) {
+      const lower = q.toLowerCase();
+      const filtered = allAdminOrders.filter((o) => {
+        const fullName = `${o.first_name ?? ""} ${o.last_name ?? ""}`.toLowerCase();
+        return (
+          o.confirmation_id.toLowerCase().includes(lower) ||
+          fullName.includes(lower) ||
+          o.email.toLowerCase().includes(lower)
+        );
+      });
+      if (filtered.length > 0) {
+        setSearchEmail(q);
+        setOrders(filtered);
+        return;
+      }
+    }
+
+    // Fallback: DB search by confirmation_id or name
+    setSearchLoading(true);
+    setSearchEmail(q);
+    try {
+      let query = supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(50);
+      if (isOrderId) {
+        query = query.ilike("confirmation_id", `%${q}%`);
+      } else {
+        // Search by first_name or last_name
+        query = query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`);
+      }
+      const { data: ordersData } = await query;
+      const loadedOrders = (ordersData as Order[]) ?? [];
+      if (loadedOrders.length > 0) {
+        const orderIds = loadedOrders.map((o) => o.id);
+        const { data: docsData } = await supabase
+          .from("order_documents")
+          .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+          .in("order_id", orderIds)
+          .eq("customer_visible", true);
+        const docsByOrderId = new Map<string, OrderDocument[]>();
+        ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
+          const key = (doc as OrderDocument & { order_id: string }).order_id;
+          if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
+          docsByOrderId.get(key)!.push(doc);
+        });
+        setOrders(loadedOrders.map((o) => ({ ...o, documents: docsByOrderId.get(o.id) ?? [] })));
+      } else {
+        setOrders([]);
+      }
+    } catch { /* ignore */ }
+    setSearchLoading(false);
+  };
+
+  // Admin status filter — applied on top of current orders list
+  const filteredOrders = isAdminPreview && adminStatusFilter !== "all"
+    ? orders.filter((o) => {
+        const ds = getDisplayStatus(o).label.toLowerCase();
+        const filter = adminStatusFilter.toLowerCase();
+        if (filter === "pending payment") return ds === "pending payment";
+        if (filter === "payment confirmed") return ds === "payment confirmed";
+        if (filter === "assigned to provider") return ds === "assigned to provider";
+        if (filter === "under review") return ds === "under review";
+        if (filter === "completed") return ds === "completed";
+        if (filter === "cancelled") return ds === "cancelled";
+        if (filter === "refunded") return ds === "refunded";
+        return true;
+      })
+    : orders;
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/customer-login");
@@ -677,6 +870,150 @@ export default function MyOrdersPage() {
           <p className="text-sm text-gray-500 mt-1">View your orders, download documents, and manage your ESA coverage.</p>
         </div>
 
+        {/* ── Admin Preview Banner ── */}
+        {isAdminPreview && (
+          <div className="mb-6 bg-amber-50 border border-amber-300 rounded-2xl overflow-hidden">
+            <div className="bg-amber-500 px-5 py-3 flex items-center gap-2">
+              <div className="w-6 h-6 flex items-center justify-center bg-white/20 rounded-lg flex-shrink-0">
+                <i className="ri-eye-line text-white text-sm"></i>
+              </div>
+              <p className="text-sm font-extrabold text-white">Admin Preview Mode — Customer Portal View</p>
+              <a
+                href="/admin-orders"
+                className="whitespace-nowrap ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              >
+                <i className="ri-arrow-left-line"></i>Back to Admin Portal
+              </a>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <p className="text-sm text-amber-800 leading-relaxed">
+                You are viewing the <strong>customer portal</strong> as an admin. This shows exactly what customers see — their order statuses, documents, and notifications. Use the search below to preview any customer&apos;s portal by their email.
+              </p>
+
+              {/* Search + Status Filter */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[200px]">
+                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAdminSearch(); }}
+                    placeholder="Search by email, order ID (PT-...), or name"
+                    className="w-full pl-9 pr-4 py-2.5 border border-amber-300 rounded-xl text-sm bg-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                {/* Status filter */}
+                <div className="relative">
+                  <select
+                    value={adminStatusFilter}
+                    onChange={(e) => setAdminStatusFilter(e.target.value)}
+                    className="appearance-none pl-3 pr-8 py-2.5 border border-amber-300 rounded-xl text-sm bg-white focus:outline-none focus:border-amber-500 cursor-pointer font-semibold text-amber-800"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="pending payment">Pending Payment</option>
+                    <option value="payment confirmed">Payment Confirmed</option>
+                    <option value="assigned to provider">Assigned to Provider</option>
+                    <option value="under review">Under Review</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="refunded">Refunded</option>
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-600 pointer-events-none text-sm"></i>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAdminSearch}
+                  disabled={searchLoading || !searchInput.trim()}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-amber-500 text-white text-sm font-bold rounded-xl hover:bg-amber-600 disabled:opacity-50 cursor-pointer transition-colors"
+                >
+                  {searchLoading ? <><i className="ri-loader-4-line animate-spin"></i>Loading...</> : <><i className="ri-search-line"></i>Search</>}
+                </button>
+                {searchEmail && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSearchEmail("");
+                      setSearchInput("");
+                      setSearchLoading(true);
+                      const { data: ordersData } = await supabase
+                        .from("orders")
+                        .select("*")
+                        .order("created_at", { ascending: false })
+                        .limit(50);
+                      const loadedOrders = (ordersData as Order[]) ?? [];
+                      if (loadedOrders.length > 0) {
+                        const orderIds = loadedOrders.map((o) => o.id);
+                        const { data: docsData } = await supabase
+                          .from("order_documents")
+                          .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+                          .in("order_id", orderIds)
+                          .eq("customer_visible", true)
+                          .order("uploaded_at", { ascending: true });
+                        const docsByOrderId = new Map<string, OrderDocument[]>();
+                        ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
+                          const key = (doc as OrderDocument & { order_id: string }).order_id;
+                          if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
+                          docsByOrderId.get(key)!.push(doc);
+                        });
+                        setOrders(loadedOrders.map((o) => ({ ...o, documents: docsByOrderId.get(o.id) ?? [] })));
+                      } else {
+                        setOrders([]);
+                      }
+                      setSearchLoading(false);
+                    }}
+                    className="whitespace-nowrap flex items-center gap-1 px-3 py-2.5 border border-amber-300 text-amber-700 text-sm font-semibold rounded-xl hover:bg-amber-100 cursor-pointer transition-colors"
+                  >
+                    <i className="ri-close-line"></i>Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Status legend */}
+              <div className="bg-white/70 rounded-xl border border-amber-200 p-3">
+                <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1">
+                  <i className="ri-information-line"></i>Customer-visible status mapping
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { admin: "processing / paid", customer: "Payment Confirmed", color: "bg-amber-100 text-amber-700" },
+                    { admin: "pending_review / under-review", customer: "Assigned to Provider", color: "bg-violet-100 text-violet-700" },
+                    { admin: "in_review / approved / letter_sent", customer: "Under Review", color: "bg-sky-100 text-sky-700" },
+                    { admin: "patient_notified", customer: "Completed", color: "bg-green-100 text-green-700" },
+                  ].map((item) => (
+                    <div key={item.admin} className="space-y-1">
+                      <p className="text-[10px] text-gray-400 font-semibold">Admin sees:</p>
+                      <p className="text-[10px] text-gray-600 font-mono leading-tight">{item.admin}</p>
+                      <p className="text-[10px] text-gray-400 font-semibold mt-1">Customer sees:</p>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${item.color}`}>{item.customer}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {searchEmail && (
+                <div className="flex items-center gap-2 text-sm text-amber-800 font-semibold flex-wrap">
+                  <i className="ri-user-search-line"></i>
+                  Results for: <span className="font-mono bg-amber-100 px-2 py-0.5 rounded">{searchEmail}</span>
+                  <span className="text-amber-600 font-normal">
+                    ({filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}
+                    {adminStatusFilter !== "all" ? ` · filtered: ${adminStatusFilter}` : ""})
+                  </span>
+                </div>
+              )}
+              {!searchEmail && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <i className="ri-list-check-2"></i>
+                  Showing latest 50 orders. Search by email, order ID, or name. Use status filter to narrow down.
+                  {adminStatusFilter !== "all" && (
+                    <span className="ml-1 font-bold">· Filtered: {adminStatusFilter} ({filteredOrders.length} shown)</span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="text-center">
@@ -684,7 +1021,7 @@ export default function MyOrdersPage() {
               <p className="text-sm text-gray-500">Loading your orders...</p>
             </div>
           </div>
-        ) : orders.length === 0 ? (
+        ) : filteredOrders.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
             <div className="w-16 h-16 flex items-center justify-center bg-orange-50 rounded-full mx-auto mb-4">
               <i className="ri-file-list-3-line text-orange-400 text-3xl"></i>
@@ -701,7 +1038,7 @@ export default function MyOrdersPage() {
         ) : (
           <>
             <div className="space-y-5">
-              {orders.map((order) => (
+              {filteredOrders.map((order) => (
                 <OrderCard key={order.id} order={order} userEmail={userEmail} onContactSupport={() => setSupportOpen(true)} />
               ))}
             </div>

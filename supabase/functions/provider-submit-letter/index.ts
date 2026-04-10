@@ -21,7 +21,6 @@ function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Resolve doctor_profiles.id (row PK) from auth user_id. Returns null if not found. */
 async function resolveProfileId(
   supabase: ReturnType<typeof createClient>,
   authUserId: string | null
@@ -35,18 +34,15 @@ async function resolveProfileId(
   return (data?.id as string) ?? null;
 }
 
-// ── Generate a unique verification ID inline ─────────────────────────────────
-// provider_id must be doctor_profiles.id (row PK), NOT the auth user_id
 async function generateVerificationId(
   supabase: ReturnType<typeof createClient>,
   orderId: string,
   confirmationId: string,
   state: string,
   letterType: "esa" | "psd",
-  authUserId: string | null   // auth UUID — we resolve to profile row id internally
+  authUserId: string | null
 ): Promise<string | null> {
   try {
-    // Idempotency: check if already exists
     const { data: existing } = await supabase
       .from("letter_verifications")
       .select("letter_id")
@@ -70,7 +66,6 @@ async function generateVerificationId(
       return orderCheck.letter_id as string;
     }
 
-    // Generate via RPC — parameter is named p_state in the DB function
     const { data: genResult, error: genErr } = await supabase
       .rpc("generate_letter_verification_id", { p_state: state.toUpperCase().trim().slice(0, 2) });
 
@@ -80,9 +75,6 @@ async function generateVerificationId(
     }
 
     const letterId = genResult as string;
-    console.log(`[generateVerificationId] Generated: ${letterId}`);
-
-    // Resolve doctor_profiles.id — FK requires row PK, not auth UUID
     const profileId = await resolveProfileId(supabase, authUserId);
 
     const { error: insertErr } = await supabase
@@ -90,7 +82,7 @@ async function generateVerificationId(
       .insert({
         letter_id: letterId,
         order_id: orderId,
-        provider_id: profileId,   // doctor_profiles.id row PK (nullable)
+        provider_id: profileId,
         state: state.toUpperCase().trim().slice(0, 2),
         letter_type: letterType,
         issued_at: new Date().toISOString(),
@@ -133,7 +125,6 @@ async function generateVerificationId(
       metadata: { order_id: orderId, confirmation_id: confirmationId, letter_id: letterId, provider_id: profileId, issued: true, timestamp: new Date().toISOString() },
     });
 
-    console.log(`[generateVerificationId] ✓ Issued ${letterId} for ${confirmationId}`);
     return letterId;
   } catch (err) {
     console.error("[generateVerificationId] Unexpected error:", err);
@@ -141,7 +132,6 @@ async function generateVerificationId(
   }
 }
 
-// ── Inject verification ID into PDF ─────────────────────────────────────────
 async function injectPdfVerification(
   supabase: ReturnType<typeof createClient>,
   opts: {
@@ -164,7 +154,6 @@ async function injectPdfVerification(
         .maybeSingle();
 
       if (docRecord?.footer_injected && docRecord?.footer_letter_id === letterId && docRecord?.processed_file_url) {
-        console.log(`[injectPdf] Already injected for doc ${documentId}`);
         return { ok: true, processedUrl: docRecord.processed_file_url as string };
       }
     }
@@ -245,7 +234,6 @@ async function injectPdfVerification(
       metadata: { order_id: orderId, confirmation_id: confirmationId, document_id: documentId, letter_id: letterId, success: true, timestamp: new Date().toISOString() },
     });
 
-    console.log(`[injectPdf] ✓ Injected for doc ${documentId} — ${letterId}`);
     return { ok: true, processedUrl };
 
   } catch (err) {
@@ -259,6 +247,66 @@ async function injectPdfVerification(
       metadata: { order_id: orderId, confirmation_id: confirmationId, document_id: documentId, letter_id: letterId, success: false, error: msg, timestamp: new Date().toISOString() },
     });
     return { ok: false, error: msg };
+  }
+}
+
+// ── Admin notification for provider_letter_submitted ─────────────────────────
+async function notifyAdminLetterSubmitted(opts: {
+  confirmationId: string; providerName: string; documentLabel: string;
+  providerNote?: string | null; customerEmail: string; customerFirstName: string; customerLastName: string;
+}): Promise<void> {
+  try {
+    const recipRes = await fetch(`${SUPABASE_URL}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+      body: JSON.stringify({ notificationKey: "provider_letter_submitted" }),
+    });
+    if (!recipRes.ok) return;
+    const { enabled, recipients } = await recipRes.json() as { enabled: boolean; recipients: string[] };
+    if (!enabled || !recipients?.length) return;
+
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) return;
+
+    const subject = `[Letter Submitted] ${opts.providerName} — Order ${opts.confirmationId}`;
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f3f4f6;padding:32px 16px;margin:0;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;">
+<tr><td style="background:#1a5c4f;padding:24px 32px;text-align:center;">
+<img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="140" alt="PawTenant" style="display:block;margin:0 auto 12px;height:auto;" />
+<div style="display:inline-block;background:rgba(255,255,255,0.2);color:#fff;padding:4px 14px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Admin Notification</div>
+<h1 style="margin:0;font-size:20px;font-weight:800;color:#fff;">Provider Submitted a Letter</h1>
+</td></tr>
+<tr><td style="padding:24px 32px;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:20px;">
+<tr><td style="padding:16px 20px;">
+<p style="margin:0 0 12px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;">Submission Details</p>
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;width:140px;">Order ID</td><td style="font-size:13px;font-weight:700;color:#111827;font-family:monospace;">${opts.confirmationId}</td></tr>
+<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Provider</td><td style="font-size:13px;font-weight:600;color:#1a5c4f;">${opts.providerName}</td></tr>
+<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Document</td><td style="font-size:13px;font-weight:600;color:#111827;">${opts.documentLabel}</td></tr>
+<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Customer</td><td style="font-size:13px;color:#111827;">${opts.customerFirstName} ${opts.customerLastName} &lt;${opts.customerEmail}&gt;</td></tr>
+${opts.providerNote ? `<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;vertical-align:top;">Provider Note</td><td style="font-size:13px;color:#374151;font-style:italic;">"${opts.providerNote}"</td></tr>` : ""}
+</table>
+</td></tr>
+</table>
+<div style="text-align:center;">
+<a href="https://pawtenant.com/admin-orders" style="background:#1a5c4f;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block;">View in Admin Portal &rarr;</a>
+</div>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+
+    await Promise.all(recipients.map((email: string) =>
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: "PawTenant <hello@pawtenant.com>", to: [email], subject, html }),
+      }).catch(() => {})
+    ));
+  } catch (err) {
+    console.warn("[provider-submit-letter] admin notif failed:", err);
   }
 }
 
@@ -293,17 +341,12 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: "confirmationId, documentUrl, and documentLabel are required" }, 400);
     }
 
-    console.log(`[provider-submit-letter] Processing submission for ${confirmationId} by ${profile.full_name}`);
-
     const { data: order, error: orderFetchErr } = await supabase
       .from("orders")
       .select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_email, doctor_status, status, letter_type, addon_services, price, letter_id, letter_issue_date")
       .eq("confirmation_id", confirmationId).maybeSingle();
 
-    if (orderFetchErr) {
-      console.error("[provider-submit-letter] Order fetch error:", orderFetchErr.message);
-      return json({ ok: false, error: `Order fetch failed: ${orderFetchErr.message}` }, 500);
-    }
+    if (orderFetchErr) return json({ ok: false, error: `Order fetch failed: ${orderFetchErr.message}` }, 500);
     if (!order) return json({ ok: false, error: "Order not found" }, 404);
 
     const matchesById = order.doctor_user_id === user.id;
@@ -339,10 +382,7 @@ Deno.serve(async (req: Request) => {
       .select("id")
       .maybeSingle();
 
-    if (docError) {
-      console.error("[provider-submit-letter] Doc insert error:", docError.message);
-      return json({ ok: false, error: `Failed to save document: ${docError.message}` }, 500);
-    }
+    if (docError) return json({ ok: false, error: `Failed to save document: ${docError.message}` }, 500);
 
     const documentId = insertedDoc?.id ?? null;
 
@@ -365,16 +405,10 @@ Deno.serve(async (req: Request) => {
     let resolvedLetterId: string | null = (order.letter_id as string | null) ?? null;
 
     if (state && state.length === 2) {
-      // Pass auth user.id — generateVerificationId resolves to profile row id internally
       const generatedId = await generateVerificationId(
         supabase, order.id, confirmationId, state, letterType, user.id
       );
-      if (generatedId) {
-        resolvedLetterId = generatedId;
-        console.log(`[provider-submit-letter] ✓ Verification ID: ${resolvedLetterId}`);
-      } else {
-        console.error(`[provider-submit-letter] ✗ Failed to generate verification ID for ${confirmationId}`);
-      }
+      if (generatedId) resolvedLetterId = generatedId;
     }
 
     let pdfInjectionResult: { ok: boolean; processedUrl?: string; error?: string } = { ok: false };
@@ -420,6 +454,17 @@ Deno.serve(async (req: Request) => {
     } catch (commErr) {
       console.error("[provider-submit-letter] comm log error:", commErr);
     }
+
+    // ── Notify admin recipients for provider_letter_submitted (fire-and-forget) ──
+    notifyAdminLetterSubmitted({
+      confirmationId,
+      providerName: profile.full_name,
+      documentLabel,
+      providerNote: providerNote?.trim() || null,
+      customerEmail: order.email as string,
+      customerFirstName: order.first_name ?? "",
+      customerLastName: order.last_name ?? "",
+    }).catch(() => {});
 
     const addonServices = Array.isArray(order.addon_services) ? (order.addon_services as string[]) : [];
     fetch(`${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`, {

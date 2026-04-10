@@ -1,6 +1,6 @@
 // SystemHealthTab — Automated health monitoring + Auth Cleanup tool
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import LegacyImportPanel from "./LegacyImportPanel";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
@@ -189,8 +189,7 @@ export default function SystemHealthTab() {
     setSyncingSheets(true);
     setSheetsSyncMsg(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-to-sheets`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -301,8 +300,7 @@ export default function SystemHealthTab() {
     setRunning(true);
     setRunMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/health-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -330,8 +328,7 @@ export default function SystemHealthTab() {
     setAuthScanError("");
     setAuthDeleteResults({});
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/list-auth-users`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -359,8 +356,7 @@ export default function SystemHealthTab() {
   const deleteOrphanedUser = async (user: OrphanedUser) => {
     setDeletingAuthId(user.id);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-auth-user`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

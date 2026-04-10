@@ -29,6 +29,22 @@ async function fetchWithRetry(
   throw lastErr;
 }
 
+/**
+ * Returns a valid bearer token for Supabase Edge Function calls.
+ * Since the admin portal uses Email OTP login (not Supabase Auth sessions),
+ * the Supabase Auth session is often absent. Edge functions use the service
+ * role key internally, so the anon key is a valid fallback for authorization.
+ */
+export async function getAdminToken(): Promise<string> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+  } catch {
+    // ignore
+  }
+  return supabaseAnonKey;
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase as _supabase } from "../../../lib/supabaseClient";
+import { getAdminToken } from "../../../lib/supabaseClient";
 
 interface LeadOrder {
   confirmation_id: string;
@@ -133,12 +134,12 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
   const sendPaymentLink = async (lead: LeadOrder) => {
     setSendingSingle(lead.confirmation_id);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-checkout-recovery`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           confirmationId: lead.confirmation_id,
@@ -168,7 +169,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
   const sendAllPaymentLinks = async () => {
     setSendingAll(true);
     setBulkSendMsg("");
-    const { data: { session } } = await supabase.auth.getSession();
+    const token = await getAdminToken();
     let successCount = 0;
     let failCount = 0;
     for (const lead of leads) {
@@ -177,7 +178,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token ?? ""}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             confirmationId: lead.confirmation_id,
@@ -211,12 +212,12 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
   const sendFollowupEmail = async (lead: LeadOrder) => {
     setFollowupSendingSingle(lead.confirmation_id);
     try {
-      const { data: { session } } = await supabase.auth.refreshSession();
+      const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-followup-email`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           email: lead.email,
@@ -245,7 +246,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
   const sendAllFollowupEmails = async () => {
     setFollowupSendingAll(true);
     setFollowupBulkMsg("");
-    const { data: { session } } = await supabase.auth.refreshSession();
+    const token = await getAdminToken();
     let successCount = 0;
     let failCount = 0;
     for (const lead of leads) {
@@ -254,7 +255,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token ?? ""}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             email: lead.email,

@@ -153,11 +153,12 @@ const faqs = [
 export default function HowToGetESAPage() {
   return (
     <main>
-      <title>How to Get an ESA Letter Online 2026 — Emotional Support Dog & Animal Letter | PawTenant</title>
-      <meta name="description" content="Learn how to get a legitimate ESA letter in 2026 for your emotional support dog or emotional support animal. Licensed mental health professionals complete your evaluation and deliver your housing-compliant ESA letter same-day. Fast, legal, stress-free." />
+      <title>How to Get an ESA Letter | Fast 3-Step Online Process</title>
+      <meta name="description" content="Start your ESA evaluation today. Complete our quick assessment, consult with a licensed professional, and receive your legal housing letter. HIPAA-compliant." />
+      <meta name="keywords" content="how to get an ESA letter, ESA assessment, online ESA evaluation, get ESA letter fast" />
       <link rel="canonical" href="https://www.pawtenant.com/how-to-get-esa-letter" />
-      <meta property="og:title" content="How to Get an ESA Letter Online 2026 — Emotional Support Dog & Animal | PawTenant" />
-      <meta property="og:description" content="Get a legitimate ESA letter in 2026 for your emotional support dog or animal from a licensed mental health professional. Fast, HIPAA compliant, Fair Housing Act approved." />
+      <meta property="og:title" content="How to Get an ESA Letter | Fast 3-Step Online Process" />
+      <meta property="og:description" content="Start your ESA evaluation today. Complete our quick assessment, consult with a licensed professional, and receive your legal housing letter. HIPAA-compliant." />
       <meta property="og:url" content="https://www.pawtenant.com/how-to-get-esa-letter" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",

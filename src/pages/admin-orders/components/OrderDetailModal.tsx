@@ -1,6 +1,6 @@
 // OrderDetailModal — Full case management view for admins
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import OrderNotesPanel from "./OrderNotesPanel";
 import CommunicationTab from "./CommunicationTab";
 import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
@@ -61,6 +61,8 @@ interface Order {
   letter_id?: string | null;
   letter_issue_date?: string | null;
   letter_expiry_date?: string | null;
+  broadcast_opt_out?: boolean | null;
+  last_broadcast_sent_at?: string | null;
 }
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
@@ -444,8 +446,7 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
     setRevoking(true);
     setRevokeMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? anonKey;
+      const token = await import("../../../lib/supabaseClient").then(m => m.getAdminToken());
       const res = await fetch(`${supabaseUrl}/functions/v1/revoke-letter-verification`, {
         method: "POST",
         headers: {
@@ -747,8 +748,7 @@ export default function OrderDetailModal({
       const statusForEmail = newStatus || order.status;
       if (statusForEmail === "under-review" || statusForEmail === "completed") {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const token = session?.access_token ?? "";
+          const token = await getAdminToken();
           fetch(`${supabaseUrl}/functions/v1/notify-order-status`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -769,8 +769,7 @@ export default function OrderDetailModal({
     setGhlFiring(true);
     setGhlMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/backfill-order-ghl`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -801,8 +800,7 @@ export default function OrderDetailModal({
     setEmailSending(true);
     setEmailMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/notify-patient-letter`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -858,8 +856,7 @@ export default function OrderDetailModal({
     setConfirmResending(true);
     setConfirmResendMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/resend-confirmation-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -938,8 +935,7 @@ export default function OrderDetailModal({
     setSendingAll(true);
     setSendAllMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/notify-patient-letter`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -970,8 +966,7 @@ export default function OrderDetailModal({
     setPaymentSyncing(true);
     setPaymentSyncMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const isCharge = stripeIdInput.trim().startsWith("ch_");
       const res = await fetch(`${supabaseUrl}/functions/v1/fix-order-payment`, {
         method: "POST",
@@ -1126,8 +1121,7 @@ export default function OrderDetailModal({
     setResendWebhookMsg("");
     setResendWebhookOk(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       // Use fix-order-payment to re-sync the Stripe payment intent and backfill checkout_session_id
       const res = await fetch(`${supabaseUrl}/functions/v1/fix-order-payment`, {
         method: "POST",
@@ -1171,8 +1165,7 @@ export default function OrderDetailModal({
     setCancellingOrder(true);
     setCancelMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
 
       // If refund requested, process it first
       let refundAmount: number | undefined;
@@ -1331,14 +1324,7 @@ export default function OrderDetailModal({
       if ((remainingOrders ?? 0) === 0) {
         // No more orders for this email — delete auth account + write HIPAA audit log
         try {
-          // Prefer getSession (already refreshes automatically); only force-refresh as fallback
-          let token = "";
-          const { data: { session: currentSession } } = await supabase.auth.getSession();
-          token = currentSession?.access_token ?? "";
-          if (!token) {
-            const { data: { session: refreshed } } = await supabase.auth.refreshSession();
-            token = refreshed?.access_token ?? "";
-          }
+          const token = await getAdminToken();
           const customerName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
           const delRes = await fetch(`${supabaseUrl}/functions/v1/delete-auth-user`, {
             method: "POST",
@@ -1449,8 +1435,7 @@ export default function OrderDetailModal({
       // 2 — Email notification via edge function
       let emailSent = false;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token ?? "";
+        const token = await getAdminToken();
         const res = await fetch(`${supabaseUrl}/functions/v1/notify-thirty-day-reissue`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1482,8 +1467,7 @@ export default function OrderDetailModal({
     setReinjectingFooter(true);
     setReinjectFooterMsg("");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
 
       // ── PATH A: No letter_id yet — generate ID + inject via repair function ──
       if (!order.letter_id) {
@@ -1557,18 +1541,73 @@ export default function OrderDetailModal({
   // Email log state
   const [emailLogLoading, setEmailLogLoading] = useState(false);
 
+  // ── Document visibility toggle ──
+  const [togglingVisibility, setTogglingVisibility] = useState<string | null>(null);
+
+  const handleToggleVisibility = async (doc: OrderDocument) => {
+    setTogglingVisibility(doc.id);
+    const newVisibility = !doc.customer_visible;
+    const { error } = await supabase
+      .from("order_documents")
+      .update({ customer_visible: newVisibility })
+      .eq("id", doc.id);
+    if (!error) {
+      setOrderDocs((prev) => prev.map((d) => d.id === doc.id ? { ...d, customer_visible: newVisibility } : d));
+    }
+    setTogglingVisibility(null);
+  };
+
   // ── Notify Patient (inline in Documents tab) ──
   const [notifyingPatient, setNotifyingPatient] = useState(false);
   const [notifyPatientMsg, setNotifyPatientMsg] = useState("");
   const [notifyPatientOk, setNotifyPatientOk] = useState<boolean | null>(null);
+
+  // ── Test Email (Documents tab) ──
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailMsg, setTestEmailMsg] = useState("");
+  const [testEmailOk, setTestEmailOk] = useState<boolean | null>(null);
+  const [testEmailResendId, setTestEmailResendId] = useState<string | null>(null);
+
+  const handleSendTestEmail = async () => {
+    setSendingTestEmail(true);
+    setTestEmailMsg("");
+    setTestEmailOk(null);
+    setTestEmailResendId(null);
+    try {
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-patient-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          confirmationId: order.confirmation_id,
+          doctorMessage: doctorMessage.trim() || null,
+          testMode: true,
+        }),
+      });
+      const result = await res.json() as { ok?: boolean; error?: string; docsEmailed?: number; resendId?: string; messageId?: string };
+      if (result.ok) {
+        setTestEmailMsg(`Test email sent to ${order.email} — ${result.docsEmailed ?? 0} doc(s) included`);
+        setTestEmailOk(true);
+        const rid = result.resendId ?? result.messageId ?? null;
+        setTestEmailResendId(rid);
+      } else {
+        setTestEmailMsg(result.error ?? "Test send failed — check edge function logs");
+        setTestEmailOk(false);
+      }
+    } catch {
+      setTestEmailMsg("Network error — please try again");
+      setTestEmailOk(false);
+    }
+    setSendingTestEmail(false);
+    setTimeout(() => { setTestEmailMsg(""); setTestEmailOk(null); setTestEmailResendId(null); }, 15000);
+  };
 
   const handleNotifyPatientFromDocs = async () => {
     setNotifyingPatient(true);
     setNotifyPatientMsg("");
     setNotifyPatientOk(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/notify-patient-letter`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1780,6 +1819,19 @@ export default function OrderDetailModal({
             </div>
             {/* Action buttons */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              {/* Preview as Customer */}
+              <button
+                type="button"
+                onClick={() => {
+                  const url = `/my-orders?preview_email=${encodeURIComponent(order.email)}`;
+                  window.open(url, "_blank");
+                }}
+                title={`Preview ${order.email}'s customer portal`}
+                className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors cursor-pointer"
+              >
+                <i className="ri-eye-line text-sm"></i>
+                <span className="hidden sm:inline">Customer View</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setSection("comms")}
@@ -1829,6 +1881,13 @@ export default function OrderDetailModal({
               <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
                 <i className="ri-phone-line text-gray-400" style={{ fontSize: "11px" }}></i>
                 {order.phone}
+              </span>
+            )}
+            {/* Broadcast Opt-Out badge — shown when customer has unsubscribed from marketing emails */}
+            {order.broadcast_opt_out && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 bg-orange-50 border border-orange-300 rounded-lg px-2.5 py-1" title="This customer unsubscribed from broadcast marketing emails via the unsubscribe link">
+                <i className="ri-mail-forbid-line" style={{ fontSize: "11px" }}></i>
+                Broadcast Opt-Out
               </span>
             )}
           </div>
@@ -2249,6 +2308,37 @@ export default function OrderDetailModal({
                         <p className="text-sm font-semibold text-gray-400">Direct / Unknown</p>
                       );
                     })()}
+                  </div>
+
+                  {/* Broadcast Opt-Out status */}
+                  <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Broadcast Emails</p>
+                    {order.broadcast_opt_out ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border border-orange-300 bg-orange-50 text-orange-700">
+                        <i className="ri-mail-forbid-line"></i>
+                        Opted Out
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <i className="ri-mail-check-line"></i>
+                        Subscribed
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Last broadcast sent */}
+                  <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Last Broadcast Sent</p>
+                    {order.last_broadcast_sent_at ? (
+                      <p className="text-sm font-semibold text-gray-700" title={new Date(order.last_broadcast_sent_at).toLocaleString()}>
+                        {new Date(order.last_broadcast_sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        <span className="text-xs text-gray-400 ml-1">
+                          {new Date(order.last_broadcast_sent_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-sm font-semibold text-gray-400">Never contacted</p>
+                    )}
                   </div>
                 </div>
 
@@ -2726,6 +2816,60 @@ export default function OrderDetailModal({
                       </div>
                     )}
 
+                    {/* ── Mark as Unpaid / Revert to Lead — for chargebacks, accidental payments, etc. ── */}
+                    {order.payment_intent_id && order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
+                    <div className="border-t border-dashed border-amber-200 mt-1 pt-3">
+                      <p className="text-xs text-amber-600 mb-2 flex items-center gap-1 font-semibold">
+                        <i className="ri-arrow-go-back-line"></i>Revert to Lead
+                      </p>
+                      {!showMarkUnpaidConfirm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowMarkUnpaidConfirm(true)}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-amber-200 text-amber-700 hover:bg-amber-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
+                        >
+                          <i className="ri-arrow-go-back-line"></i>Mark as Unpaid / Revert to Lead
+                        </button>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2">
+                          <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                            <i className="ri-error-warning-fill"></i>Confirm Revert to Lead
+                          </p>
+                          <p className="text-xs text-amber-700 leading-relaxed">
+                            This will clear the Stripe payment intent, set status back to <strong>Lead (Unpaid)</strong>, and remove the order from the provider queue. Use for chargebacks or accidental payments. <strong>No Stripe refund is issued</strong> — handle that separately in Stripe.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleMarkAsUnpaid}
+                              disabled={markingUnpaid}
+                              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 disabled:opacity-50 cursor-pointer transition-colors"
+                            >
+                              {markingUnpaid ? <><i className="ri-loader-4-line animate-spin"></i>Reverting...</> : <><i className="ri-arrow-go-back-line"></i>Yes, Revert to Lead</>}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowMarkUnpaidConfirm(false)}
+                              className="whitespace-nowrap px-3 py-1.5 text-xs text-amber-700 hover:text-amber-900 font-semibold cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
+                        <i className="ri-information-line"></i>
+                        Clears payment intent and reverts to unpaid lead. Useful for chargebacks or accidental payments.
+                      </p>
+                      {markUnpaidMsg && (
+                        <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${markUnpaidMsg.includes("reverted") || markUnpaidMsg.includes("unpaid") ? "text-amber-700" : "text-red-600"}`}>
+                          <i className={markUnpaidMsg.includes("Failed") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
+                          {markUnpaidMsg}
+                        </p>
+                      )}
+                    </div>
+                    )}
+
                     {/* ── Cancel Order — shown for all paid orders that aren't completed/refunded/already cancelled ── */}
                     {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
                     <div className="border-t border-dashed border-orange-200 mt-1 pt-3">
@@ -2841,7 +2985,20 @@ export default function OrderDetailModal({
               {/* Action bar */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Letters &amp; Documents</p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* ── Test Email button — fires notify-patient-letter and links to Resend ── */}
+                  <button
+                    type="button"
+                    onClick={handleSendTestEmail}
+                    disabled={sendingTestEmail || orderDocs.length === 0}
+                    title="Send a test version of the documents email to verify CSV and formatting in Resend"
+                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 text-xs font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    {sendingTestEmail
+                      ? <><i className="ri-loader-4-line animate-spin"></i>Sending Test...</>
+                      : <><i className="ri-test-tube-line"></i>Send Test Email</>
+                    }
+                  </button>
                   {/* Re-inject All Footers — only available for orders that already have a verification ID from the live flow */}
                   {order.letter_id && orderDocs.length > 0 && (
                     <button
@@ -2852,8 +3009,7 @@ export default function OrderDetailModal({
                         let injected = 0;
                         let failed = 0;
                         try {
-                          const { data: { session } } = await supabase.auth.getSession();
-                          const token = session?.access_token ?? "";
+                          const token = await getAdminToken();
                           for (const doc of orderDocs) {
                             const res = await fetch(`${supabaseUrl}/functions/v1/inject-pdf-footer`, {
                               method: "POST",
@@ -2925,6 +3081,33 @@ export default function OrderDetailModal({
                 </div>
               )}
 
+              {/* Test email feedback */}
+              {testEmailMsg && (
+                <div className={`flex items-start gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${testEmailOk ? "bg-violet-50 border-violet-200 text-violet-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+                  <i className={testEmailOk ? "ri-test-tube-line" : "ri-error-warning-line"}></i>
+                  <div className="flex-1">
+                    <p>{testEmailMsg}</p>
+                    {testEmailOk && (
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                        <a
+                          href="https://resend.com/emails"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-violet-600 font-bold hover:underline cursor-pointer"
+                        >
+                          <i className="ri-external-link-line"></i>View in Resend Dashboard
+                        </a>
+                        {testEmailResendId && (
+                          <span className="text-violet-500 font-mono text-[10px] bg-violet-100 px-2 py-0.5 rounded">
+                            ID: {testEmailResendId}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Add document form */}
               {showAddDocForm && (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
@@ -2983,14 +3166,21 @@ export default function OrderDetailModal({
                   {orderDocs.map((doc) => {
                     const typeOpt = DOC_TYPE_OPTIONS.find((o) => o.value === doc.doc_type);
                     return (
-                      <div key={doc.id} className={`bg-white rounded-xl border overflow-hidden ${doc.sent_to_customer ? "border-[#b8ddd5]" : "border-gray-200"}`}>
+                      <div key={doc.id} className={`bg-white rounded-xl border overflow-hidden ${!doc.customer_visible ? "opacity-70 border-dashed border-gray-300" : doc.sent_to_customer ? "border-[#b8ddd5]" : "border-gray-200"}`}>
                         <div className="flex items-center justify-between px-4 py-3">
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className={`w-9 h-9 flex items-center justify-center rounded-lg flex-shrink-0 ${doc.sent_to_customer ? "bg-[#e8f5f1]" : "bg-violet-50"}`}>
-                              <i className={`ri-file-check-line text-base ${doc.sent_to_customer ? "text-[#1a5c4f]" : "text-violet-500"}`}></i>
+                            <div className={`w-9 h-9 flex items-center justify-center rounded-lg flex-shrink-0 ${!doc.customer_visible ? "bg-gray-100" : doc.sent_to_customer ? "bg-[#e8f5f1]" : "bg-violet-50"}`}>
+                              <i className={`ri-file-check-line text-base ${!doc.customer_visible ? "text-gray-400" : doc.sent_to_customer ? "text-[#1a5c4f]" : "text-violet-500"}`}></i>
                             </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-bold text-gray-900 truncate">{doc.label}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-gray-900 truncate">{doc.label}</p>
+                                {!doc.customer_visible && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs font-semibold flex-shrink-0">
+                                    <i className="ri-eye-off-line" style={{ fontSize: "9px" }}></i>Hidden
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs text-gray-400">{typeOpt?.label ?? doc.doc_type}</span>
                                 <span className="text-gray-300">·</span>
@@ -3018,6 +3208,24 @@ export default function OrderDetailModal({
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                            {/* Visibility toggle */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleVisibility(doc)}
+                              disabled={togglingVisibility === doc.id}
+                              title={doc.customer_visible ? "Hide from customer portal (doc stays, customer can't see it)" : "Show in customer portal"}
+                              className={`whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 border text-xs font-semibold rounded-lg cursor-pointer transition-colors disabled:opacity-50 ${
+                                doc.customer_visible
+                                  ? "border-gray-200 text-gray-500 hover:border-orange-200 hover:text-orange-600 hover:bg-orange-50"
+                                  : "border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100"
+                              }`}
+                            >
+                              {togglingVisibility === doc.id
+                                ? <i className="ri-loader-4-line animate-spin"></i>
+                                : <i className={doc.customer_visible ? "ri-eye-line" : "ri-eye-off-line"}></i>
+                              }
+                              {doc.customer_visible ? "Visible" : "Hidden"}
+                            </button>
                             {/* Inject / Generate+Inject footer button — always visible */}
                             {(() => {
                               const needsGenerate = !order.letter_id;
@@ -3143,7 +3351,7 @@ export default function OrderDetailModal({
                   )}
 
                   {/* Legacy signed_letter_url (from old flow) */}
-                  {order.signed_letter_url && (
+                  {order.signed_letter_url && orderDocs.length === 0 && (
                     <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-10 text-center">
                       <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mx-auto mb-3">
                         <i className="ri-file-paper-line text-gray-300 text-xl"></i>
@@ -3152,6 +3360,90 @@ export default function OrderDetailModal({
                       <p className="text-xs text-gray-400">The provider will upload the signed ESA letter here. You can also add documents manually above.</p>
                     </div>
                   )}
+
+                  {/* ── Email Notification History ── */}
+                  {(() => {
+                    const emailLog = order.email_log ?? [];
+                    const docRelatedEmails = emailLog.filter((e) =>
+                      e.type === "letter_ready" ||
+                      e.type === "order_confirmation" ||
+                      e.type === "status_completed" ||
+                      e.type === "payment_receipt"
+                    );
+                    return (
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-lg">
+                              <i className="ri-mail-check-line text-[#1a5c4f] text-sm"></i>
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-gray-700">Email Notification History</p>
+                              <p className="text-xs text-gray-400">Emails sent to this customer for this order</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={loadEmailLog}
+                            disabled={emailLogLoading}
+                            className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-gray-500 text-xs font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
+                          >
+                            <i className={emailLogLoading ? "ri-loader-4-line animate-spin" : "ri-refresh-line"}></i>
+                            {emailLogLoading ? "..." : "Refresh"}
+                          </button>
+                        </div>
+
+                        {emailLog.length === 0 ? (
+                          <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl px-4 py-5 text-center">
+                            <p className="text-xs text-gray-400">No emails logged yet for this order.</p>
+                          </div>
+                        ) : (
+                          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                            {emailLog.map((entry, idx) => {
+                              const cfg = EMAIL_TYPE_CONFIG[entry.type] ?? {
+                                label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                                icon: "ri-mail-line",
+                                color: "text-gray-600 bg-gray-50 border-gray-200",
+                                failColor: "text-red-600 bg-red-50 border-red-200",
+                              };
+                              const isDocEmail = docRelatedEmails.some((e) => e.sentAt === entry.sentAt && e.type === entry.type);
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 ${!entry.success ? "bg-red-50/30" : isDocEmail ? "bg-[#f8fffe]" : ""}`}
+                                >
+                                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? (isDocEmail ? "bg-[#e8f5f1]" : "bg-gray-100") : "bg-red-100"}`}>
+                                    <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? (isDocEmail ? "text-[#1a5c4f]" : "text-gray-500") : "text-red-500"} text-xs`}></i>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-gray-800 truncate">{cfg.label}</p>
+                                    <p className="text-xs text-gray-400">{fmtEmailTime(entry.sentAt)} → {entry.to}</p>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${entry.success ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                                      {entry.success
+                                        ? <><i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>Delivered</>
+                                        : <><i className="ri-close-circle-fill" style={{ fontSize: "9px" }}></i>Failed</>
+                                      }
+                                    </span>
+                                    <a
+                                      href="https://resend.com/emails"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="View in Resend dashboard"
+                                      className="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-violet-500 transition-colors cursor-pointer"
+                                    >
+                                      <i className="ri-external-link-line text-xs"></i>
+                                    </a>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

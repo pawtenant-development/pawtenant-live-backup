@@ -20,6 +20,26 @@ const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#1a5c4f";
 
+// ── Recipient routing ────────────────────────────────────────────────────────
+async function getAdminRecipients(notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ notificationKey }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { enabled: boolean; recipients: string[] };
+    return data;
+  } catch (err) {
+    console.warn("[notify-order-status] Could not resolve admin recipients:", err);
+    const fallback = Deno.env.get("ADMIN_EMAIL") ?? "eservices.dm@gmail.com";
+    return { enabled: true, recipients: [fallback] };
+  }
+}
+
 async function sendViaResend(opts: {
   to: string; subject: string; html: string;
   tags?: Array<{ name: string; value: string }>;
@@ -109,6 +129,49 @@ function ctaButton(url: string, text: string): string {
   </table>`;
 }
 
+function buildAdminNotifEmail(opts: { confirmationId: string; customerEmail: string; customerName: string; newStatus: string; doctorName?: string | null }): string {
+  const statusLabel = opts.newStatus === "completed" ? "Order Completed" : opts.newStatus === "cancelled" ? "Order Cancelled" : opts.newStatus;
+  const statusColor = opts.newStatus === "completed" ? "#059669" : opts.newStatus === "cancelled" ? "#dc2626" : "#d97706";
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
+      <tr>
+        <td style="background:#1a5c4f;padding:24px 32px;text-align:center;">
+          <img src="${LOGO_URL}" width="140" alt="PawTenant" style="display:block;margin:0 auto 12px;height:auto;" />
+          <div style="display:inline-block;background:rgba(255,255,255,0.2);color:#fff;padding:4px 14px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Admin Notification</div>
+          <h1 style="margin:12px 0 0;font-size:20px;font-weight:800;color:#ffffff;">Order Status Changed</h1>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:24px 32px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:20px;">
+            <tr><td style="padding:18px 20px;">
+              <p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;">Order Details</p>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;width:140px;">Order ID</td><td style="font-size:13px;font-weight:700;color:#111827;font-family:monospace;">${escapeHtml(opts.confirmationId)}</td></tr>
+                <tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Customer</td><td style="font-size:13px;font-weight:600;color:#111827;">${escapeHtml(opts.customerName)} &lt;${escapeHtml(opts.customerEmail)}&gt;</td></tr>
+                <tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">New Status</td><td style="font-size:13px;font-weight:700;color:${statusColor};">${statusLabel}</td></tr>
+                ${opts.doctorName ? `<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Provider</td><td style="font-size:13px;font-weight:600;color:#1a5c4f;">${escapeHtml(opts.doctorName)}</td></tr>` : ""}
+              </table>
+            </td></tr>
+          </table>
+          <div style="text-align:center;">
+            <a href="https://${COMPANY_DOMAIN}/admin-orders" style="background:#1a5c4f;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block;">View in Admin Portal &rarr;</a>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+}
+
 function buildUnderReviewEmail(opts: { firstName: string; confirmationId: string; doctorName: string | null }): string {
   const name = escapeHtml(opts.firstName || "there");
   const providerName = escapeHtml(opts.doctorName ?? "A licensed provider");
@@ -190,7 +253,7 @@ function buildCancelledEmail(opts: { firstName: string; confirmationId: string; 
   return baseLayout("Order Cancelled", "Your order has been cancelled", "Cancellation confirmation for your records", body);
 }
 
-function json(body: unknown, status = 200): Response {
+function jsonResp(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
 }
 
@@ -206,66 +269,89 @@ async function appendEmailLog(supabase: ReturnType<typeof createClient>, confirm
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (req.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace("Bearer ", "");
   const { data: { user }, error: authErr } = await createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!).auth.getUser(token);
-  if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+  if (authErr || !user) return jsonResp({ error: "Unauthorized" }, 401);
 
   const { data: callerProfile } = await supabase.from("doctor_profiles").select("is_admin").eq("user_id", user.id).maybeSingle();
-  if (!callerProfile?.is_admin) return json({ error: "Admin access required" }, 403);
+  if (!callerProfile?.is_admin) return jsonResp({ error: "Admin access required" }, 403);
 
   let body: Record<string, unknown>;
   try { body = (await req.json()) as Record<string, unknown>; }
-  catch { return json({ error: "Invalid JSON body" }, 400); }
+  catch { return jsonResp({ error: "Invalid JSON body" }, 400); }
 
   const confirmationId = body.confirmationId as string | undefined;
   const newStatus = body.newStatus as string | undefined;
-  if (!confirmationId || !newStatus) return json({ error: "confirmationId and newStatus are required" }, 400);
+  if (!confirmationId || !newStatus) return jsonResp({ error: "confirmationId and newStatus are required" }, 400);
 
   if (!["under-review", "completed", "cancelled"].includes(newStatus)) {
-    return json({ ok: true, skipped: true, reason: "No email needed for this status" });
+    return jsonResp({ ok: true, skipped: true, reason: "No email needed for this status" });
   }
 
   const { data: order, error: orderErr } = await supabase
     .from("orders").select("id, confirmation_id, email, first_name, last_name, doctor_name, patient_notification_sent_at")
     .eq("confirmation_id", confirmationId).maybeSingle();
-  if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);
+  if (orderErr || !order) return jsonResp({ error: `Order not found: ${confirmationId}` }, 404);
 
   if (newStatus === "completed" && order.patient_notification_sent_at) {
-    return json({ ok: true, skipped: true, reason: "Docs already sent — no duplicate completion email" });
+    return jsonResp({ ok: true, skipped: true, reason: "Docs already sent — no duplicate completion email" });
   }
 
   let subject = "";
-  let html = "";
+  let customerHtml = "";
   let emailType = "";
+  let adminNotifKey = "";
 
   if (newStatus === "under-review") {
     subject = `Your ESA Case Is Being Reviewed — Order ${confirmationId}`;
-    html = buildUnderReviewEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name });
+    customerHtml = buildUnderReviewEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name });
     emailType = "status_under_review";
+    adminNotifKey = "order_under_review";
   } else if (newStatus === "completed") {
     subject = `Your ESA Order Is Complete — Order ${confirmationId}`;
-    html = buildCompletedEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name });
+    customerHtml = buildCompletedEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name });
     emailType = "status_completed";
+    adminNotifKey = "order_completed";
   } else if (newStatus === "cancelled") {
     const refunded = body.refunded as boolean ?? false;
     const refundAmount = body.refundAmount as number | undefined;
     const cancelNote = body.cancelNote as string | undefined;
     subject = `Your PawTenant Order Has Been Cancelled — Order ${confirmationId}`;
-    html = buildCancelledEmail({ firstName: order.first_name ?? "there", confirmationId, refunded, refundAmount, cancelNote });
+    customerHtml = buildCancelledEmail({ firstName: order.first_name ?? "there", confirmationId, refunded, refundAmount, cancelNote });
     emailType = "order_cancelled";
+    adminNotifKey = "order_cancelled";
   }
 
-  const emailSent = await sendViaResend({
-    to: order.email, subject, html,
+  // Send customer email
+  const customerEmailSent = await sendViaResend({
+    to: order.email, subject, html: customerHtml,
     tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: emailType }],
   });
 
-  await appendEmailLog(supabase, confirmationId, { type: emailType, sentAt: new Date().toISOString(), to: order.email, success: emailSent });
+  await appendEmailLog(supabase, confirmationId, { type: emailType, sentAt: new Date().toISOString(), to: order.email, success: customerEmailSent });
 
-  return json({ ok: true, emailSent, status: newStatus, confirmationId });
+  // Send admin notification emails (order_completed / order_cancelled / order_under_review)
+  if (adminNotifKey) {
+    const { enabled: adminEnabled, recipients: adminRecipients } = await getAdminRecipients(adminNotifKey);
+    if (adminEnabled && adminRecipients.length > 0) {
+      const adminHtml = buildAdminNotifEmail({
+        confirmationId,
+        customerEmail: order.email,
+        customerName: `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || order.email,
+        newStatus,
+        doctorName: order.doctor_name,
+      });
+      const adminSubject = `[Admin] Order ${newStatus === "completed" ? "Completed" : newStatus === "cancelled" ? "Cancelled" : "Under Review"} — ${confirmationId}`;
+      await Promise.all(
+        adminRecipients.map((email) => sendViaResend({ to: email, subject: adminSubject, html: adminHtml }))
+      );
+    }
+  }
+
+  return jsonResp({ ok: true, emailSent: customerEmailSent, status: newStatus, confirmationId });
 });

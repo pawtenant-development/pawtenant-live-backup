@@ -40,6 +40,7 @@ interface DoctorProfile {
   is_active: boolean;
   licensed_states: string[] | null;
   role: string | null;
+  custom_tab_access: string[] | null;
 }
 
 interface DoctorContact {
@@ -99,6 +100,8 @@ interface Order {
   seq_3day_sent_at?: string | null;
   followup_opt_out?: boolean | null;
   seq_opted_out_at?: string | null;
+  broadcast_opt_out?: boolean | null;
+  last_broadcast_sent_at?: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -198,19 +201,20 @@ type TabKey = "dashboard" | "orders" | "analytics" | "comms" | "customers" | "do
 
 const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
 
-function getVisibleTabs(role: string | null): TabKey[] {
+function getVisibleTabs(role: string | null, customTabAccess?: string[] | null): TabKey[] {
+  // Custom tab access overrides role defaults — use it if set
+  if (customTabAccess && customTabAccess.length > 0) {
+    return ALL_TABS.filter((t) => customTabAccess.includes(t));
+  }
   switch (role) {
     case "owner":
     case "admin_manager":
       return ALL_TABS;
     case "support":
-      // Support: orders, customers, doctors, audit — no payments, earnings, team, settings
       return ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "audit", "health"];
     case "finance":
-      // Finance: orders, customers, payments, earnings, audit — no team, settings, doctors
       return ["dashboard", "orders", "analytics", "comms", "customers", "payments", "earnings", "audit", "health"];
     case "read_only":
-      // Read-only: orders, customers, doctors, payments, audit — no team, settings, earnings
       return ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "payments", "audit", "health"];
     default:
       return ALL_TABS;
@@ -495,7 +499,7 @@ export default function AdminOrdersPage() {
 
   const loadOrderData = useCallback(async () => {
     const [ordersRes, contactsRes, profilesRes] = await Promise.all([
-      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id").order("created_at", { ascending: false }),
+      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at").order("created_at", { ascending: false }),
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
       supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role").order("full_name"),
     ]);
@@ -1113,7 +1117,7 @@ export default function AdminOrdersPage() {
         if (!adminCheck.ok || !adminCheck.is_admin) { navigate("/admin-login?reason=unauthorized"); return; }
 
         const { data: prof } = await supabase.from("doctor_profiles")
-          .select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role")
+          .select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role, custom_tab_access")
           .eq("user_id", session.user.id).maybeSingle();
 
         const adminProfileData: DoctorProfile = prof as DoctorProfile ?? {
@@ -1231,7 +1235,7 @@ export default function AdminOrdersPage() {
       <AdminSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        visibleTabs={getVisibleTabs(adminProfile?.role ?? null)}
+        visibleTabs={getVisibleTabs(adminProfile?.role ?? null, adminProfile?.custom_tab_access)}
         totalUnassigned={totalUnassigned}
         unreadCommsCount={unreadCommsCount}
         collapsed={sidebarCollapsed}

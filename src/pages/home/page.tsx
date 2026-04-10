@@ -19,6 +19,8 @@ import ContactSection from "./components/ContactSection";
 import TopStatesSection from "./components/TopStatesSection";
 import MediaGallery from "./components/MediaGallery";
 import VerificationTrustCard from "../../components/feature/VerificationTrustCard";
+import LetterPreviewSection from "./components/LetterPreviewSection";
+import LandlordSupportSection from "./components/LandlordSupportSection";
 import { Link } from "react-router-dom";
 
 const ORGANIZATION_SCHEMA = {
@@ -122,6 +124,17 @@ const ORGANIZATION_SCHEMA = {
 
 export default function Home() {
   useEffect(() => {
+    document.title = "Legitimate ESA Letter for Housing | Licensed LMHP Evaluations";
+    let metaDesc = document.querySelector('meta[name="description"]');
+    if (!metaDesc) { metaDesc = document.createElement("meta"); (metaDesc as HTMLMetaElement).name = "description"; document.head.appendChild(metaDesc); }
+    (metaDesc as HTMLMetaElement).content = "Get a legally compliant ESA letter for housing from licensed mental health professionals. 100% Fair Housing Act compliant with same-day delivery.";
+    let metaKw = document.querySelector('meta[name="keywords"]');
+    if (!metaKw) { metaKw = document.createElement("meta"); (metaKw as HTMLMetaElement).name = "keywords"; document.head.appendChild(metaKw); }
+    (metaKw as HTMLMetaElement).content = "legitimate ESA letter, ESA letter for housing, emotional support animal letter USA, licensed LMHP";
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) { canonical = document.createElement("link"); (canonical as HTMLLinkElement).rel = "canonical"; document.head.appendChild(canonical); }
+    (canonical as HTMLLinkElement).href = "https://www.pawtenant.com/";
+
     const existingScript = document.getElementById("org-schema");
     if (!existingScript) {
       const script = document.createElement("script");
@@ -147,6 +160,8 @@ export default function Home() {
       <WhatIsESA />
       <TrustedLetters />
       <ESALetterSection />
+      <LetterPreviewSection />
+      <LandlordSupportSection />
       <PricingSection />
       <WhyChooseSection />
       <VerificationTrustCard variant="section" />

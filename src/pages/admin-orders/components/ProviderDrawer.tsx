@@ -1,7 +1,7 @@
 // ProviderDrawer — Right-side sliding panel for full provider management.
 // NEVER calls create-team-member or any team-member endpoint.
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import ImpersonateProviderView from "./ImpersonateProviderView";
 
 type AvailabilityStatus = "active" | "at_capacity" | "inactive";
@@ -119,6 +119,10 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     return Object.entries(obj).map(([state, license_number]) => ({ state, license_number }));
   };
 
+  // Create portal for contact-only providers
+  const [creatingPortal, setCreatingPortal] = useState(false);
+  const [createPortalMsg, setCreatePortalMsg] = useState<{ text: string; success: boolean } | null>(null);
+
   useEffect(() => {
     if (doc) {
       setForm({
@@ -141,6 +145,8 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
       setActiveTab("overview");
       setProviderNotes([]);
       setNoteInput("");
+      setCreatingPortal(false);
+      setCreatePortalMsg(null);
     }
   }, [doc?.email]);
 
@@ -271,17 +277,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     setResetSending(true);
     setResetMsg(null);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        const refreshed = await supabase.auth.refreshSession();
-        session = refreshed.data.session;
-      }
-      const token = session?.access_token ?? "";
-      if (!token) {
-        setResetMsg({ text: "Session expired. Please refresh the page and try again.", success: false });
-        setResetSending(false);
-        return;
-      }
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/admin-send-password-reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -313,8 +309,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     if (!newEmail || !newEmail.includes("@")) return;
     setAuthEmailSaving(true); setAuthEmailMsg(null);
     try {
-      const { data: { session } } = await supabase.auth.refreshSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/admin-update-auth-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -331,8 +326,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     if (!doc) return;
     setResending(true);
     try {
-      const { data: { session } } = await supabase.auth.refreshSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -355,8 +349,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     setCopyingLink(true);
     setCopyLinkMsg(null);
     try {
-      const { data: { session } } = await supabase.auth.refreshSession();
-      const token = session?.access_token ?? "";
+      const token = await getAdminToken();
       await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -399,6 +392,43 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     setSavingRate(false); setRateOpen(false);
     showToast(rate != null ? `Rate set to $${rate}/order for ${doc.name}.` : `Rate cleared for ${doc.name}.`);
     onRefresh();
+  };
+
+  const handleCreatePortal = async () => {
+    if (!doc) return;
+    setCreatingPortal(true);
+    setCreatePortalMsg(null);
+    try {
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          email: doc.email,
+          full_name: doc.name,
+          phone: doc.contact?.phone ?? null,
+          licensed_states: doc.contact?.licensed_states ?? [],
+          per_order_rate: doc.contact?.per_order_rate ?? null,
+          bio: doc.contact?.notes ?? null,
+        }),
+      });
+      const result = await res.json() as { ok: boolean; error?: string; welcome_email_sent?: boolean };
+      if (result.ok) {
+        setCreatePortalMsg({
+          text: result.welcome_email_sent
+            ? `Portal created! Invite email sent to ${doc.email}. They can now log in at /provider-portal.`
+            : `Portal account created for ${doc.email}. Email delivery unavailable — use "Copy Invite Link" to share manually.`,
+          success: true,
+        });
+        onRefresh();
+      } else {
+        setCreatePortalMsg({ text: result.error ?? "Failed to create portal account.", success: false });
+      }
+    } catch (err) {
+      setCreatePortalMsg({ text: `Network error: ${err instanceof Error ? err.message : "Unknown"}`, success: false });
+    } finally {
+      setCreatingPortal(false);
+    }
   };
 
   const isOpen = !!doc;
@@ -726,7 +756,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   )}
                 </div>
 
-                {/* Account Actions */}
+                {/* Account Actions — for providers WITH a portal */}
                 {doc.profile && (
                   <div className="border-t border-gray-100 pt-4">
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Account Actions</p>
@@ -816,6 +846,46 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           {authEmailMsg && (
                             <p className={`mt-2 text-xs font-semibold ${authEmailMsg.ok ? "text-emerald-700" : "text-red-600"}`}>{authEmailMsg.text}</p>
                           )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Account Actions — for contact-only providers (No Portal) */}
+                {!doc.profile && doc.contact && (
+                  <div className="border-t border-gray-100 pt-4">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Portal Access</p>
+                    <p className="text-xs text-gray-400 mb-3">
+                      This provider doesn&apos;t have a portal account yet. Create one to give them access to the provider portal.
+                    </p>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleCreatePortal}
+                        disabled={creatingPortal}
+                        className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#b8ddd5] bg-[#f0faf7] text-left hover:bg-[#e0f2ec] cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                          <i className="ri-user-add-line text-white text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#1a5c4f]">
+                            {creatingPortal ? "Creating portal account..." : "Create Portal Account"}
+                          </p>
+                          <p className="text-xs text-gray-400">Sends invite email &amp; activates provider login</p>
+                        </div>
+                        {creatingPortal
+                          ? <i className="ri-loader-4-line animate-spin text-[#1a5c4f] flex-shrink-0"></i>
+                          : <i className="ri-arrow-right-line text-[#1a5c4f] text-sm flex-shrink-0"></i>
+                        }
+                      </button>
+                      {createPortalMsg && (
+                        <div className={`px-4 py-3 rounded-xl border text-xs font-semibold ${createPortalMsg.success ? "bg-[#f0faf7] text-[#1a5c4f] border-[#b8ddd5]" : "bg-red-50 text-red-700 border-red-200"}`}>
+                          <div className="flex items-start gap-2">
+                            <i className={`mt-0.5 flex-shrink-0 text-sm ${createPortalMsg.success ? "ri-checkbox-circle-fill text-[#1a5c4f]" : "ri-error-warning-line text-red-500"}`}></i>
+                            <p className="leading-relaxed">{createPortalMsg.text}</p>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -914,7 +984,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         <div key={note.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 flex items-center justify-center bg-[#e8f5f1] rounded-full flex-shrink-0">
+                              <div className="w-6 h-6 flex items-center justify-center bg-[#e8f5f1] rounded-full">
                                 <i className="ri-admin-line text-[#1a5c4f] text-xs"></i>
                               </div>
                               <span className="text-xs font-semibold text-gray-700">{note.admin_name ?? "Admin"}</span>

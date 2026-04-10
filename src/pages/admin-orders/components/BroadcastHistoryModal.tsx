@@ -33,11 +33,34 @@ const AUDIENCE_LABELS: Record<string, string> = {
   unknown: "Unknown",
 };
 
+const AUDIENCE_ICONS: Record<string, string> = {
+  all_paid: "ri-money-dollar-circle-line",
+  completed: "ri-checkbox-circle-line",
+  unassigned: "ri-user-unfollow-line",
+  under_review: "ri-time-line",
+  all_leads: "ri-user-follow-line",
+  all_everyone: "ri-group-line",
+  test: "ri-test-tube-line",
+  unknown: "ri-question-line",
+};
+
 function fmt(ts: string) {
   return new Date(ts).toLocaleString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit",
   });
+}
+
+function fmtRelative(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return fmt(ts);
 }
 
 export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModalProps) {
@@ -68,9 +91,13 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
     return true;
   });
 
-  const totalSent = filteredLogs.filter((l) => !l.is_test).reduce((sum, l) => sum + l.success_count, 0);
-  const totalFailed = filteredLogs.filter((l) => !l.is_test).reduce((sum, l) => sum + l.fail_count, 0);
-  const totalBroadcasts = filteredLogs.filter((l) => !l.is_test).length;
+  const realBroadcasts = filteredLogs.filter((l) => !l.is_test);
+  const totalSent = realBroadcasts.reduce((sum, l) => sum + l.success_count, 0);
+  const totalFailed = realBroadcasts.reduce((sum, l) => sum + l.fail_count, 0);
+  const totalBroadcasts = realBroadcasts.length;
+  const overallDeliveryRate = (totalSent + totalFailed) > 0
+    ? Math.round((totalSent / (totalSent + totalFailed)) * 100)
+    : 0;
 
   return (
     <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
@@ -93,20 +120,45 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
         </div>
 
         {/* Stats bar */}
-        {!loading && filteredLogs.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+        {!loading && realBroadcasts.length > 0 && (
+          <div className="grid grid-cols-4 gap-0 border-b border-gray-100 flex-shrink-0 divide-x divide-gray-100">
             {[
-              { label: "Total Broadcasts", value: totalBroadcasts, icon: "ri-broadcast-line", color: "text-[#1a5c4f]" },
-              { label: "Emails Delivered", value: totalSent.toLocaleString(), icon: "ri-checkbox-circle-line", color: "text-emerald-600" },
-              { label: "Failed", value: totalFailed.toLocaleString(), icon: "ri-close-circle-line", color: totalFailed > 0 ? "text-red-500" : "text-gray-400" },
+              {
+                label: "Total Broadcasts",
+                value: totalBroadcasts,
+                icon: "ri-broadcast-line",
+                color: "text-[#1a5c4f]",
+                bg: "bg-[#f0faf7]",
+              },
+              {
+                label: "Emails Delivered",
+                value: totalSent.toLocaleString(),
+                icon: "ri-checkbox-circle-line",
+                color: "text-emerald-600",
+                bg: "bg-emerald-50",
+              },
+              {
+                label: "Failed",
+                value: totalFailed.toLocaleString(),
+                icon: "ri-close-circle-line",
+                color: totalFailed > 0 ? "text-red-500" : "text-gray-400",
+                bg: totalFailed > 0 ? "bg-red-50" : "bg-gray-50",
+              },
+              {
+                label: "Delivery Rate",
+                value: `${overallDeliveryRate}%`,
+                icon: "ri-bar-chart-line",
+                color: overallDeliveryRate >= 90 ? "text-emerald-600" : overallDeliveryRate >= 70 ? "text-amber-600" : "text-red-500",
+                bg: overallDeliveryRate >= 90 ? "bg-emerald-50" : overallDeliveryRate >= 70 ? "bg-amber-50" : "bg-red-50",
+              },
             ].map((s) => (
-              <div key={s.label} className="flex items-center gap-2">
-                <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg border border-gray-200 flex-shrink-0">
+              <div key={s.label} className={`flex items-center gap-3 px-5 py-3.5 ${s.bg}`}>
+                <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg border border-white/60 flex-shrink-0">
                   <i className={`${s.icon} ${s.color} text-sm`}></i>
                 </div>
                 <div>
-                  <p className={`text-lg font-extrabold ${s.color}`}>{s.value}</p>
-                  <p className="text-xs text-gray-400">{s.label}</p>
+                  <p className={`text-xl font-extrabold ${s.color}`}>{s.value}</p>
+                  <p className="text-xs text-gray-500">{s.label}</p>
                 </div>
               </div>
             ))}
@@ -114,7 +166,7 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
         )}
 
         {/* Filters */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 flex-shrink-0 flex-wrap">
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 flex-shrink-0 flex-wrap bg-gray-50/50">
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             {(["all", "email", "sms"] as const).map((f) => (
               <button
@@ -135,15 +187,18 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
             <i className="ri-test-tube-line"></i>
             {showTests ? "Hiding Test Sends" : "Show Test Sends"}
           </button>
-          <button
-            type="button"
-            onClick={loadLogs}
-            disabled={loading}
-            className="whitespace-nowrap ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-500 text-xs font-semibold rounded-lg hover:bg-gray-50 cursor-pointer disabled:opacity-50"
-          >
-            <i className={loading ? "ri-loader-4-line animate-spin" : "ri-refresh-line"}></i>
-            Refresh
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-gray-400">{filteredLogs.length} record{filteredLogs.length !== 1 ? "s" : ""}</span>
+            <button
+              type="button"
+              onClick={loadLogs}
+              disabled={loading}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-500 text-xs font-semibold rounded-lg hover:bg-gray-50 cursor-pointer disabled:opacity-50"
+            >
+              <i className={loading ? "ri-loader-4-line animate-spin" : "ri-refresh-line"}></i>
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -167,11 +222,18 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
                 const deliveryRate = log.recipients_count > 0
                   ? Math.round((log.success_count / log.recipients_count) * 100)
                   : 0;
+                const audienceIcon = AUDIENCE_ICONS[log.audience_key ?? "unknown"] ?? "ri-question-line";
 
                 return (
                   <div
                     key={log.id}
-                    className={`rounded-xl border overflow-hidden transition-all ${log.is_test ? "border-amber-200 bg-amber-50/30" : log.fail_count > 0 ? "border-red-100" : "border-gray-200"}`}
+                    className={`rounded-xl border overflow-hidden transition-all ${
+                      log.is_test
+                        ? "border-amber-200 bg-amber-50/30"
+                        : log.fail_count > 0
+                          ? "border-red-100"
+                          : "border-gray-200"
+                    }`}
                   >
                     {/* Row */}
                     <div
@@ -193,24 +255,38 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
                             <span className="flex-shrink-0 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full">TEST</span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          By <strong className="text-gray-600">{log.sent_by}</strong>
-                          {" · "}
-                          {AUDIENCE_LABELS[log.audience_key ?? "unknown"] ?? log.audience_key ?? "Unknown segment"}
-                          {" · "}
-                          {fmt(log.created_at)}
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-xs text-gray-500 font-semibold">{log.sent_by}</span>
+                          <span className="text-gray-300">·</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                            <i className={`${audienceIcon} text-xs`}></i>
+                            {AUDIENCE_LABELS[log.audience_key ?? "unknown"] ?? log.audience_key ?? "Unknown"}
+                          </span>
+                          <span className="text-gray-300">·</span>
+                          <span className="text-xs text-gray-400" title={fmt(log.created_at)}>{fmtRelative(log.created_at)}</span>
+                        </div>
                       </div>
 
                       {/* Stats */}
-                      <div className="flex items-center gap-4 flex-shrink-0">
+                      <div className="flex items-center gap-3 flex-shrink-0">
                         {log.is_test ? (
                           <div className="text-right">
                             <p className="text-sm font-extrabold text-amber-600">Test</p>
-                            <p className="text-xs text-gray-400">{log.test_email}</p>
+                            <p className="text-xs text-gray-400 truncate max-w-[120px]">{log.test_email}</p>
                           </div>
                         ) : (
                           <>
+                            {/* Delivery rate pill */}
+                            <div className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold ${
+                              deliveryRate >= 90
+                                ? "bg-emerald-100 text-emerald-700"
+                                : deliveryRate >= 70
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-red-100 text-red-600"
+                            }`}>
+                              <i className="ri-bar-chart-line" style={{ fontSize: "10px" }}></i>
+                              {deliveryRate}%
+                            </div>
                             <div className="text-right">
                               <p className="text-sm font-extrabold text-[#1a5c4f]">{log.success_count.toLocaleString()}</p>
                               <p className="text-xs text-gray-400">delivered</p>
@@ -222,7 +298,7 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
                               </div>
                             )}
                             <div className="text-right">
-                              <p className="text-sm font-extrabold text-gray-700">{log.recipients_count.toLocaleString()}</p>
+                              <p className="text-sm font-extrabold text-gray-600">{log.recipients_count.toLocaleString()}</p>
                               <p className="text-xs text-gray-400">total</p>
                             </div>
                           </>
@@ -237,15 +313,18 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
                         {/* Delivery rate bar */}
                         {!log.is_test && log.recipients_count > 0 && (
                           <div>
-                            <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center justify-between mb-1.5">
                               <span className="text-xs font-bold text-gray-600">Delivery Rate</span>
-                              <span className={`text-xs font-extrabold ${deliveryRate >= 90 ? "text-emerald-600" : deliveryRate >= 70 ? "text-amber-600" : "text-red-500"}`}>
-                                {deliveryRate}%
-                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-gray-400">{log.success_count} delivered · {log.fail_count} failed · {log.recipients_count} total</span>
+                                <span className={`text-xs font-extrabold ${deliveryRate >= 90 ? "text-emerald-600" : deliveryRate >= 70 ? "text-amber-600" : "text-red-500"}`}>
+                                  {deliveryRate}%
+                                </span>
+                              </div>
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-1.5">
+                            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                               <div
-                                className={`h-1.5 rounded-full transition-all ${deliveryRate >= 90 ? "bg-emerald-500" : deliveryRate >= 70 ? "bg-amber-500" : "bg-red-500"}`}
+                                className={`h-2 rounded-full transition-all ${deliveryRate >= 90 ? "bg-emerald-500" : deliveryRate >= 70 ? "bg-amber-500" : "bg-red-500"}`}
                                 style={{ width: `${deliveryRate}%` }}
                               ></div>
                             </div>
@@ -255,22 +334,33 @@ export default function BroadcastHistoryModal({ onClose }: BroadcastHistoryModal
                         {/* Details grid */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           {[
-                            { label: "Sent By", value: log.sent_by },
-                            { label: "Channel", value: log.channel === "email" ? "Email (Resend)" : "SMS (Twilio)" },
-                            { label: "Audience", value: AUDIENCE_LABELS[log.audience_key ?? "unknown"] ?? log.audience_key ?? "—" },
-                            { label: "Excluded", value: log.excluded_count > 0 ? `${log.excluded_count} manually excluded` : "None excluded" },
+                            { label: "Sent By", value: log.sent_by, icon: "ri-user-line" },
+                            { label: "Channel", value: log.channel === "email" ? "Email (Resend)" : "SMS (Twilio)", icon: log.channel === "email" ? "ri-mail-line" : "ri-chat-1-line" },
+                            { label: "Audience", value: AUDIENCE_LABELS[log.audience_key ?? "unknown"] ?? log.audience_key ?? "—", icon: audienceIcon },
+                            { label: "Excluded", value: log.excluded_count > 0 ? `${log.excluded_count} excluded` : "None excluded", icon: "ri-user-forbid-line" },
                           ].map((item) => (
-                            <div key={item.label}>
-                              <p className="text-xs text-gray-400 mb-0.5">{item.label}</p>
+                            <div key={item.label} className="bg-white rounded-lg border border-gray-100 px-3 py-2.5">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <i className={`${item.icon} text-gray-400 text-xs`}></i>
+                                <p className="text-xs text-gray-400">{item.label}</p>
+                              </div>
                               <p className="text-xs font-semibold text-gray-700">{item.value}</p>
                             </div>
                           ))}
                         </div>
 
+                        {/* Sent at */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                          <i className="ri-time-line"></i>
+                          <span>Sent {fmt(log.created_at)}</span>
+                        </div>
+
                         {/* Message preview */}
                         {log.message_preview && (
                           <div className="bg-white rounded-lg border border-gray-200 px-3 py-2.5">
-                            <p className="text-xs font-bold text-gray-500 mb-1">Message Preview</p>
+                            <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
+                              <i className="ri-file-text-line"></i>Message Preview
+                            </p>
                             <p className="text-xs text-gray-600 leading-relaxed italic">
                               &ldquo;{log.message_preview}{log.message_preview.length >= 200 ? "..." : ""}&rdquo;
                             </p>

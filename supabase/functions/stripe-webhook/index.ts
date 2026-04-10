@@ -8,7 +8,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const INTERNAL_NOTIFICATION_EMAIL = "eservices.dm@gmail.com";
+const FALLBACK_INTERNAL_EMAIL = "eservices.dm@gmail.com";
 const COMPANY_NAME = "PawTenant";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
@@ -25,6 +25,26 @@ function json(body: unknown, status = 200): Response {
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean; error?: string };
 
+// ── Resolve admin notification recipients via the helper function ─────────────
+async function getAdminNotifRecipients(notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const res = await fetch(`${supabaseUrl}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+      body: JSON.stringify({ notificationKey }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { enabled: boolean; recipients: string[]; source: string };
+    console.info(`[stripe-webhook] notif recipients for "${notificationKey}": ${data.recipients.join(", ")} (source: ${data.source})`);
+    return { enabled: data.enabled, recipients: data.recipients };
+  } catch (err) {
+    console.warn(`[stripe-webhook] getAdminNotifRecipients failed for "${notificationKey}":`, err instanceof Error ? err.message : String(err));
+    return { enabled: true, recipients: [FALLBACK_INTERNAL_EMAIL] };
+  }
+}
+
 async function sendViaResend(opts: { to: string; subject: string; html: string; tags?: Array<{ name: string; value: string }>; }): Promise<{ sent: boolean; error?: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) return { sent: false, error: "RESEND_API_KEY not set" };
@@ -37,6 +57,16 @@ async function sendViaResend(opts: { to: string; subject: string; html: string; 
     if (!res.ok) { const errBody = await res.text(); return { sent: false, error: `Resend ${res.status}: ${errBody}` }; }
     return { sent: true };
   } catch (err) { return { sent: false, error: err instanceof Error ? err.message : String(err) }; }
+}
+
+// Send to multiple recipients — returns true if at least one succeeded
+async function sendViaResendMulti(opts: { to: string[]; subject: string; html: string; tags?: Array<{ name: string; value: string }>; }): Promise<{ sent: boolean; sentCount: number; error?: string }> {
+  if (opts.to.length === 0) return { sent: false, sentCount: 0, error: "No recipients" };
+  const results = await Promise.allSettled(
+    opts.to.map((recipient) => sendViaResend({ ...opts, to: recipient }))
+  );
+  const sentCount = results.filter((r) => r.status === "fulfilled" && r.value.sent).length;
+  return { sent: sentCount > 0, sentCount };
 }
 
 function buildPaymentReceiptHtml(opts: { firstName: string; confirmationId: string; amountFormatted: string; paymentIntentId: string; paymentMethod: string; receiptUrl: string; paidAt: string; }): string {
@@ -52,52 +82,33 @@ function buildInternalNotificationHtml(opts: { confirmationId: string; firstName
 }
 
 // ── Fire Google Ads conversion upload ─────────────────────────────────────────
-// Returns a Promise so it can be awaited inside waitUntil()
 function triggerGoogleAdsSync(confirmationId: string): Promise<void> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   console.info(`[stripe-webhook] >>> triggerGoogleAdsSync ENTERING for ${confirmationId}`);
   return fetch(`${supabaseUrl}/functions/v1/sync-google-ads-conversions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${serviceKey}`,
-    },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
     body: JSON.stringify({ mode: "single", confirmationId }),
   })
-    .then((res) => {
-      console.info(`[stripe-webhook] >>> triggerGoogleAdsSync DONE for ${confirmationId} — HTTP ${res.status}`);
-    })
-    .catch((err) => {
-      console.warn(`[stripe-webhook] >>> triggerGoogleAdsSync FAILED for ${confirmationId}:`, err instanceof Error ? err.message : String(err));
-    });
+    .then((res) => { console.info(`[stripe-webhook] >>> triggerGoogleAdsSync DONE for ${confirmationId} — HTTP ${res.status}`); })
+    .catch((err) => { console.warn(`[stripe-webhook] >>> triggerGoogleAdsSync FAILED for ${confirmationId}:`, err instanceof Error ? err.message : String(err)); });
 }
 
 // ── Fire Meta CAPI Purchase event ─────────────────────────────────────────────
-// Returns a Promise so it can be awaited inside waitUntil()
 function triggerMetaCAPIEvent(confirmationId: string): Promise<void> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   console.info(`[stripe-webhook] >>> triggerMetaCAPIEvent ENTERING for ${confirmationId}`);
   return fetch(`${supabaseUrl}/functions/v1/send-meta-capi-event`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${serviceKey}`,
-    },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
     body: JSON.stringify({ mode: "single", confirmationId }),
   })
-    .then((res) => {
-      console.info(`[stripe-webhook] >>> triggerMetaCAPIEvent DONE for ${confirmationId} — HTTP ${res.status}`);
-    })
-    .catch((err) => {
-      console.warn(`[stripe-webhook] >>> triggerMetaCAPIEvent FAILED for ${confirmationId}:`, err instanceof Error ? err.message : String(err));
-    });
+    .then((res) => { console.info(`[stripe-webhook] >>> triggerMetaCAPIEvent DONE for ${confirmationId} — HTTP ${res.status}`); })
+    .catch((err) => { console.warn(`[stripe-webhook] >>> triggerMetaCAPIEvent FAILED for ${confirmationId}:`, err instanceof Error ? err.message : String(err)); });
 }
 
-// ── Schedule post-payment background triggers via EdgeRuntime.waitUntil ───────
-// This is the CORRECT way to run async work after returning a response in Deno
-// edge functions. setTimeout is killed when the response is returned.
 function schedulePostPaymentTriggers(confirmationId: string): void {
   console.info(`[stripe-webhook] schedulePostPaymentTriggers: queuing Google Ads + Meta CAPI for ${confirmationId}`);
   // @ts-ignore — EdgeRuntime is injected by Supabase edge runtime
@@ -112,7 +123,6 @@ function schedulePostPaymentTriggers(confirmationId: string): void {
       })()
     );
   } else {
-    // Fallback: fire without waitUntil (best-effort, may be cut short)
     console.warn(`[stripe-webhook] EdgeRuntime.waitUntil not available — firing triggers best-effort for ${confirmationId}`);
     triggerGoogleAdsSync(confirmationId).catch(() => {});
     triggerMetaCAPIEvent(confirmationId).catch(() => {});
@@ -183,13 +193,7 @@ Deno.serve(async (req: Request) => {
 
   async function logStatus(orderId: string, confirmationId: string, newStatus: string, note: string) {
     try {
-      await supabase.from("order_status_logs").insert({
-        order_id: orderId,
-        confirmation_id: confirmationId,
-        new_status: newStatus,
-        changed_by: "stripe_webhook",
-        changed_at: new Date().toISOString(),
-      });
+      await supabase.from("order_status_logs").insert({ order_id: orderId, confirmation_id: confirmationId, new_status: newStatus, changed_by: "stripe_webhook", changed_at: new Date().toISOString() });
       console.info(`[stripe-webhook] status_log: ${confirmationId} -> ${newStatus} | ${note}`);
     } catch { /* non-critical */ }
   }
@@ -249,11 +253,20 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!alreadySentInternal) {
-      const internalHtml = buildInternalNotificationHtml({ confirmationId, firstName: (order.first_name as string) ?? "", lastName: (order.last_name as string) ?? "", email, phone: (order.phone as string) ?? "", state: (order.state as string) ?? "", letterType: (order.letter_type as string) ?? "esa", planType: (order.plan_type as string) ?? "One-Time Purchase", deliverySpeed: (order.delivery_speed as string) ?? "2-3days", amount: amountDollars, paymentIntentId, checkoutSessionId: checkoutSessionId ?? (order.checkout_session_id as string | undefined), paymentMethod: (order.payment_method as string) ?? "card", doctorName: (order.doctor_name as string | null) ?? null, timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET", matchedBy });
-      const internalResult = await sendViaResend({ to: INTERNAL_NOTIFICATION_EMAIL, subject: `[PawTenant] New Paid Order — ${confirmationId}${matchedBy !== "confirmation_id" ? " [FALLBACK MATCH]" : ""}`, html: internalHtml, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "internal_notification" }] });
-      newLogEntries.push({ type: "internal_notification", sentAt: now, to: INTERNAL_NOTIFICATION_EMAIL, success: internalResult.sent, ...(internalResult.error ? { error: internalResult.error } : {}) });
-      if (internalResult.sent) { console.info(`[stripe-webhook] ✓ Internal notification sent for ${confirmationId}`); }
-      else { console.warn(`[stripe-webhook] Internal notification failed for ${confirmationId}: ${internalResult.error}`); }
+      // ── Resolve per-notification recipients for "new_paid_order" ──────────
+      const { enabled: notifEnabled, recipients: internalRecipients } = await getAdminNotifRecipients("new_paid_order");
+      if (notifEnabled && internalRecipients.length > 0) {
+        const internalHtml = buildInternalNotificationHtml({ confirmationId, firstName: (order.first_name as string) ?? "", lastName: (order.last_name as string) ?? "", email, phone: (order.phone as string) ?? "", state: (order.state as string) ?? "", letterType: (order.letter_type as string) ?? "esa", planType: (order.plan_type as string) ?? "One-Time Purchase", deliverySpeed: (order.delivery_speed as string) ?? "2-3days", amount: amountDollars, paymentIntentId, checkoutSessionId: checkoutSessionId ?? (order.checkout_session_id as string | undefined), paymentMethod: (order.payment_method as string) ?? "card", doctorName: (order.doctor_name as string | null) ?? null, timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET", matchedBy });
+        const internalResult = await sendViaResendMulti({ to: internalRecipients, subject: `[PawTenant] New Paid Order — ${confirmationId}${matchedBy !== "confirmation_id" ? " [FALLBACK MATCH]" : ""}`, html: internalHtml, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "internal_notification" }] });
+        // Log one entry per recipient
+        internalRecipients.forEach((recipient) => {
+          newLogEntries.push({ type: "internal_notification", sentAt: now, to: recipient, success: internalResult.sent });
+        });
+        if (internalResult.sent) { console.info(`[stripe-webhook] ✓ Internal notification sent to ${internalRecipients.join(", ")} for ${confirmationId}`); }
+        else { console.warn(`[stripe-webhook] Internal notification failed for ${confirmationId}`); }
+      } else if (!notifEnabled) {
+        console.info(`[stripe-webhook] new_paid_order notification is disabled — skipping internal email for ${confirmationId}`);
+      }
     }
 
     if (newLogEntries.length > 0) await appendEmailLog(confirmationId, newLogEntries);
@@ -277,14 +290,10 @@ Deno.serve(async (req: Request) => {
     const confirmationId = order.confirmation_id as string;
     const amt = Math.round((pi.amount_received ?? 0) / 100);
 
-    // ── Idempotency guard ─────────────────────────────────────────────────
-    // If already processing with same PI, skip re-processing but still fire
-    // triggers in case they were missed on the first run.
     if ((order.status as string) === "processing" && (order.payment_intent_id as string) === pi.id) {
       console.info(`[stripe-webhook] ${confirmationId} already processing — idempotent. Firing triggers anyway.`);
       if (sessionIdFromMeta && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: sessionIdFromMeta }).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, pi.id, amt, matchedBy, sessionIdFromMeta);
-      // Still fire triggers — they may have been missed on first run
       schedulePostPaymentTriggers(confirmationId);
       return json({ ok: true, idempotent: true, matchedBy });
     }
@@ -295,7 +304,6 @@ Deno.serve(async (req: Request) => {
       if (freshOrder?.id) {
         await logStatus(freshOrder.id, confirmationId, "processing", `Payment confirmed via Stripe. PI: ${pi.id}. Amount: $${amt}. Matched by: ${matchedBy}`);
         await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, pi.id, amt, matchedBy, sessionIdFromMeta);
-        // ── Trigger Google Ads + Meta CAPI via EdgeRuntime.waitUntil ──────
         console.info(`[stripe-webhook] Scheduling post-payment triggers for ${confirmationId}`);
         schedulePostPaymentTriggers(confirmationId);
       }

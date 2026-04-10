@@ -13,11 +13,20 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
+const SITE_URL = `https://www.${COMPANY_DOMAIN}`;
+const ACCENT = "#1a5c4f";
+
+const LEAD_RECOVERY_AUDIENCES = new Set(["all_leads", "all_everyone"]);
+
+function isAssessmentUrl(url: string): boolean {
+  return url.includes("assessment") || url.includes("resume=");
+}
 
 interface Recipient {
   email: string;
   name: string;
   confirmation_id?: string;
+  letter_type?: string;
 }
 
 function escapeHtml(v = "") {
@@ -35,6 +44,17 @@ function sanitizeTagValue(v: string): string {
     || "unknown";
 }
 
+function buildResumeUrl(confirmationId: string, letterType?: string): string {
+  const isPsd = letterType === "psd" || (confirmationId ?? "").includes("-PSD");
+  const path = isPsd ? "psd-assessment" : "assessment";
+  return `${SITE_URL}/${path}?resume=${encodeURIComponent(confirmationId)}`;
+}
+
+function buildUnsubscribeUrl(supabaseUrl: string, email: string): string {
+  const token = btoa(encodeURIComponent(email));
+  return `${supabaseUrl}/functions/v1/broadcast-unsubscribe?token=${token}`;
+}
+
 function buildBroadcastHtml(opts: {
   recipientName: string;
   subject: string;
@@ -43,6 +63,8 @@ function buildBroadcastHtml(opts: {
   ctaLabel: string;
   ctaUrl: string;
   isTest?: boolean;
+  unsubscribeUrl?: string;
+  sentBy?: string;
 }): string {
   const name = escapeHtml(opts.recipientName || "there");
   const bodyHtml = escapeHtml(opts.bodyText)
@@ -69,6 +91,34 @@ function buildBroadcastHtml(opts: {
       </p>
     </div>` : "";
 
+  const unsubscribeBlock = opts.unsubscribeUrl ? `
+    <tr>
+      <td style="padding:16px 32px 24px;text-align:center;border-top:1px solid #e5e7eb;background:#f9fafb;">
+        <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">
+          You received this message because you have an active order with PawTenant.
+        </p>
+        <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;">
+          ${COMPANY_NAME} &mdash; ESA &amp; PSD Consultation &nbsp;&middot;&nbsp;
+          <a href="https://${COMPANY_DOMAIN}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a>
+        </p>
+        <p style="margin:0;font-size:11px;color:#d1d5db;">
+          Don&rsquo;t want to receive marketing emails from us?
+          <a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:#9ca3af;text-decoration:underline;">Unsubscribe</a>
+        </p>
+      </td>
+    </tr>` : `
+    <tr>
+      <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;background:#f9fafb;">
+        <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;">
+          You received this message because you have an active order with PawTenant.
+        </p>
+        <p style="margin:0;font-size:12px;color:#9ca3af;">
+          ${COMPANY_NAME} &mdash; ESA &amp; PSD Consultation &nbsp;&middot;&nbsp;
+          <a href="https://${COMPANY_DOMAIN}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a>
+        </p>
+      </td>
+    </tr>`;
+
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -77,16 +127,14 @@ function buildBroadcastHtml(opts: {
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0"
       style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
-      <!-- Header -->
       <tr>
-        <td style="background:#1a5c4f;padding:32px;text-align:center;">
+        <td style="background:${ACCENT};padding:32px;text-align:center;">
           <img src="${LOGO_URL}" width="160" alt="PawTenant" style="display:block;margin:0 auto 20px;height:auto;" />
           <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;line-height:1.3;">
             ${escapeHtml(opts.subject)}
           </h1>
         </td>
       </tr>
-      <!-- Body -->
       <tr>
         <td style="padding:32px;">
           ${testBanner}
@@ -95,22 +143,11 @@ function buildBroadcastHtml(opts: {
           ${ctaBlock}
           <p style="margin:24px 0 0;font-size:13px;color:#6b7280;line-height:1.6;">
             If you have any questions, reply to this email or contact us at
-            <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a>.
+            <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a>.
           </p>
         </td>
       </tr>
-      <!-- Footer -->
-      <tr>
-        <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;background:#f9fafb;">
-          <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;">
-            You received this message because you have an active order with PawTenant.
-          </p>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">
-            ${COMPANY_NAME} &mdash; ESA &amp; PSD Consultation &nbsp;&middot;&nbsp;
-            <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a>
-          </p>
-        </td>
-      </tr>
+      ${unsubscribeBlock}
     </table>
   </td></tr>
 </table>
@@ -137,7 +174,6 @@ serve(async (req) => {
       );
     }
 
-    // Auth check — support both Authorization header and apikey header
     const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization") ?? "";
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
@@ -154,7 +190,6 @@ serve(async (req) => {
 
     if (authErr || !caller) {
       const errMsg = authErr?.message ?? "Token invalid or session expired";
-      console.error("[broadcast-email] Auth error:", errMsg, "| Token prefix:", token.slice(0, 20));
       return new Response(JSON.stringify({ ok: false, error: `Authentication failed: ${errMsg}. Please refresh the page and log in again.` }), {
         status: 401, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
@@ -185,7 +220,6 @@ serve(async (req) => {
       sentBy?: string;
       audienceKey?: string;
       excludedCount?: number;
-      // Test mode
       isTest?: boolean;
       testEmail?: string;
     };
@@ -196,8 +230,11 @@ serve(async (req) => {
     const ctaUrl = body.ctaUrl ?? PORTAL_URL;
     const isTest = body.isTest ?? false;
     const testEmail = body.testEmail ?? "";
+    const audienceKey = body.audienceKey ?? "";
 
-    // Test mode — send single email to admin's own address
+    const isLeadRecovery = LEAD_RECOVERY_AUDIENCES.has(audienceKey) && isAssessmentUrl(ctaUrl);
+
+    // ── Test mode ──────────────────────────────────────────────────────────
     if (isTest) {
       if (!testEmail) {
         return new Response(
@@ -212,14 +249,19 @@ serve(async (req) => {
         );
       }
 
+      const testCtaUrl = isLeadRecovery
+        ? `${SITE_URL}/assessment?resume=SAMPLE-ORDER-ID`
+        : ctaUrl;
+
       const html = buildBroadcastHtml({
         recipientName: callerProfile?.full_name ?? "Admin",
         subject: `[TEST] ${subject.trim()}`,
         bodyText: bodyText.trim(),
         includePortalCta,
         ctaLabel,
-        ctaUrl,
+        ctaUrl: testCtaUrl,
         isTest: true,
+        sentBy: body.sentBy,
       });
 
       const res = await fetch("https://api.resend.com/emails", {
@@ -238,13 +280,12 @@ serve(async (req) => {
       });
 
       if (res.ok) {
-        // Log test send
         try {
           await adminClient.from("broadcast_logs").insert({
             sent_by: body.sentBy ?? callerProfile?.full_name ?? "Admin",
             sent_by_user_id: caller.id,
             channel: "email",
-            audience_key: body.audienceKey ?? "test",
+            audience_key: audienceKey || "test",
             subject: subject.trim(),
             message_preview: bodyText.trim().slice(0, 200),
             recipients_count: 1,
@@ -263,7 +304,6 @@ serve(async (req) => {
         );
       } else {
         const errBody = await res.text();
-        console.error("[broadcast-email] Test send failed:", errBody);
         return new Response(
           JSON.stringify({ ok: false, error: `Test send failed: ${errBody.slice(0, 120)}` }),
           { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
@@ -271,7 +311,7 @@ serve(async (req) => {
       }
     }
 
-    // Normal bulk send
+    // ── Bulk send ──────────────────────────────────────────────────────────
     const recipients = body.recipients;
     if (!recipients?.length || !subject?.trim() || !bodyText?.trim()) {
       return new Response(
@@ -283,10 +323,12 @@ serve(async (req) => {
     let successCount = 0;
     let failCount = 0;
     const errors: string[] = [];
+    // Track which confirmation_ids were successfully sent — for stamping last_broadcast_sent_at
+    const successfulConfirmationIds: string[] = [];
 
     const sentByTag = sanitizeTagValue(body.sentBy ?? "admin");
+    const nowIso = new Date().toISOString();
 
-    // Send in batches of 5 with a 250ms delay between batches
     const BATCH_SIZE = 5;
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
@@ -295,14 +337,24 @@ serve(async (req) => {
         batch.map(async (recipient) => {
           const firstName = recipient.name?.split(" ")[0] || "there";
           const personalizedBody = bodyText.replace(/\{name\}/gi, firstName);
+
+          let recipientCtaUrl = ctaUrl;
+          if (isLeadRecovery && recipient.confirmation_id) {
+            recipientCtaUrl = buildResumeUrl(recipient.confirmation_id, recipient.letter_type);
+          }
+
+          const unsubscribeUrl = buildUnsubscribeUrl(supabaseUrl, recipient.email);
+
           const html = buildBroadcastHtml({
             recipientName: firstName,
             subject,
             bodyText: personalizedBody,
             includePortalCta,
             ctaLabel,
-            ctaUrl,
+            ctaUrl: recipientCtaUrl,
             isTest: false,
+            unsubscribeUrl,
+            sentBy: body.sentBy,
           });
 
           try {
@@ -326,14 +378,16 @@ serve(async (req) => {
 
             if (res.ok) {
               successCount++;
+              // Track for last_broadcast_sent_at stamping
+              if (recipient.confirmation_id) {
+                successfulConfirmationIds.push(recipient.confirmation_id);
+              }
             } else {
               const errBody = await res.text();
-              console.error(`Failed to send to ${recipient.email}: ${errBody}`);
               errors.push(`${recipient.email}: ${errBody.slice(0, 80)}`);
               failCount++;
             }
           } catch (err) {
-            console.error(`Exception sending to ${recipient.email}:`, err);
             errors.push(`${recipient.email}: network error`);
             failCount++;
           }
@@ -345,13 +399,30 @@ serve(async (req) => {
       }
     }
 
-    // Log the broadcast
+    // ── Stamp last_broadcast_sent_at on all successfully sent orders ───────
+    // Do this in batches of 50 to avoid query size limits
+    if (successfulConfirmationIds.length > 0) {
+      const STAMP_BATCH = 50;
+      for (let i = 0; i < successfulConfirmationIds.length; i += STAMP_BATCH) {
+        const chunk = successfulConfirmationIds.slice(i, i + STAMP_BATCH);
+        try {
+          await adminClient
+            .from("orders")
+            .update({ last_broadcast_sent_at: nowIso })
+            .in("confirmation_id", chunk);
+        } catch (stampErr) {
+          console.warn("[broadcast-email] Failed to stamp last_broadcast_sent_at:", stampErr);
+        }
+      }
+    }
+
+    // ── Log the broadcast ──────────────────────────────────────────────────
     try {
       await adminClient.from("broadcast_logs").insert({
         sent_by: body.sentBy ?? callerProfile?.full_name ?? "Admin",
         sent_by_user_id: caller.id,
         channel: "email",
-        audience_key: body.audienceKey ?? "unknown",
+        audience_key: audienceKey || "unknown",
         subject: subject.trim(),
         message_preview: bodyText.trim().slice(0, 200),
         recipients_count: recipients.length,

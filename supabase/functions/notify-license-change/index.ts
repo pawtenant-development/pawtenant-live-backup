@@ -15,6 +15,25 @@ const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 const HEADER_BG = "#1a5c4f";
 const ACCENT = "#1a5c4f";
 
+async function getAdminRecipients(notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({ notificationKey }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { enabled: boolean; recipients: string[] };
+    return data;
+  } catch (err) {
+    console.warn("[notify-license-change] Could not resolve recipients:", err);
+    const fallback = Deno.env.get("ADMIN_EMAIL") ?? "eservices.dm@gmail.com";
+    return { enabled: true, recipients: [fallback] };
+  }
+}
+
 async function sendViaResend(opts: { to: string; subject: string; html: string }): Promise<boolean> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) { console.error("[notify-license-change] RESEND_API_KEY not set"); return false; }
@@ -36,7 +55,6 @@ function escapeHtml(v = "") {
 function buildEmail(opts: { providerName: string; providerEmail: string; changeType: string; details: string; timestamp: string }): string {
   const changeColor = opts.changeType.toLowerCase().includes("removed") ? "#dc2626" :
     opts.changeType.toLowerCase().includes("added") ? "#059669" : "#d97706";
-
   const changeBg = opts.changeType.toLowerCase().includes("removed") ? "#fef2f2" :
     opts.changeType.toLowerCase().includes("added") ? "#f0fdf4" : "#fffbeb";
 
@@ -57,45 +75,23 @@ function buildEmail(opts: { providerName: string; providerEmail: string; changeT
       </tr>
       <tr>
         <td style="padding:28px 32px;">
-          <p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.7;">
-            A provider has made changes to their license information in the provider portal. Please review the details below.
-          </p>
-
-          <!-- Provider Info -->
+          <p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.7;">A provider has made changes to their license information in the provider portal. Please review the details below.</p>
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:18px;margin-bottom:18px;">
             <p style="margin:0 0 12px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;">Provider</p>
             <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="padding:6px 0;font-size:13px;color:#9ca3af;width:40%;">Name</td>
-                <td style="padding:6px 0;font-size:13px;font-weight:600;color:#111827;text-align:right;">${escapeHtml(opts.providerName)}</td>
-              </tr>
-              <tr>
-                <td style="padding:6px 0;font-size:13px;color:#9ca3af;">Email</td>
-                <td style="padding:6px 0;font-size:13px;font-weight:600;color:#111827;text-align:right;">${escapeHtml(opts.providerEmail)}</td>
-              </tr>
-              <tr>
-                <td style="padding:6px 0;font-size:13px;color:#9ca3af;">Timestamp</td>
-                <td style="padding:6px 0;font-size:13px;font-weight:600;color:#111827;text-align:right;">${escapeHtml(opts.timestamp)}</td>
-              </tr>
+              <tr><td style="padding:6px 0;font-size:13px;color:#9ca3af;width:40%;">Name</td><td style="padding:6px 0;font-size:13px;font-weight:600;color:#111827;text-align:right;">${escapeHtml(opts.providerName)}</td></tr>
+              <tr><td style="padding:6px 0;font-size:13px;color:#9ca3af;">Email</td><td style="padding:6px 0;font-size:13px;font-weight:600;color:#111827;text-align:right;">${escapeHtml(opts.providerEmail)}</td></tr>
+              <tr><td style="padding:6px 0;font-size:13px;color:#9ca3af;">Timestamp</td><td style="padding:6px 0;font-size:13px;font-weight:600;color:#111827;text-align:right;">${escapeHtml(opts.timestamp)}</td></tr>
             </table>
           </div>
-
-          <!-- Change Details -->
           <div style="background:${changeBg};border:1px solid ${changeColor}33;border-radius:12px;padding:18px;margin-bottom:24px;">
             <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:${changeColor};text-transform:uppercase;letter-spacing:0.08em;">${escapeHtml(opts.changeType)}</p>
             <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${escapeHtml(opts.details)}</p>
           </div>
-
-          <!-- CTA -->
           <div style="text-align:center;margin:24px 0;">
-            <a href="${ADMIN_PORTAL_URL}" style="background:${ACCENT};color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block;">
-              Review in Admin Portal →
-            </a>
+            <a href="${ADMIN_PORTAL_URL}" style="background:${ACCENT};color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block;">Review in Admin Portal &rarr;</a>
           </div>
-
-          <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
-            This is an automated notification. No action is required unless the change needs to be reviewed or reversed.
-          </p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">This is an automated notification. No action is required unless the change needs to be reviewed or reversed.</p>
         </td>
       </tr>
       <tr>
@@ -132,20 +128,27 @@ Deno.serve(async (req: Request) => {
 
   if (!body.providerName || !body.changeType) return json({ error: "providerName and changeType are required" }, 400);
 
-  const adminEmail = Deno.env.get("ADMIN_EMAIL") ?? SUPPORT_EMAIL;
   const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET";
-
-  const sent = await sendViaResend({
-    to: adminEmail,
-    subject: `[License Change] ${body.providerName} — ${body.changeType}`,
-    html: buildEmail({
-      providerName: body.providerName,
-      providerEmail: body.providerEmail ?? "",
-      changeType: body.changeType,
-      details: body.details ?? "",
-      timestamp,
-    }),
+  const emailHtml = buildEmail({
+    providerName: body.providerName,
+    providerEmail: body.providerEmail ?? "",
+    changeType: body.changeType,
+    details: body.details ?? "",
+    timestamp,
   });
+  const subject = `[License Change] ${body.providerName} — ${body.changeType}`;
 
-  return json({ ok: true, emailSent: sent });
+  // Resolve recipients via routing system
+  const { enabled, recipients } = await getAdminRecipients("provider_license_change");
+  if (!enabled) {
+    return json({ ok: true, skipped: true, reason: "provider_license_change notifications are disabled" });
+  }
+
+  // Send to all recipients
+  const results = await Promise.all(
+    recipients.map((email) => sendViaResend({ to: email, subject, html: emailHtml }))
+  );
+  const sent = results.filter(Boolean).length;
+
+  return json({ ok: true, emailSent: sent > 0, recipientCount: recipients.length, sentCount: sent });
 });

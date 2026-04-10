@@ -36,7 +36,7 @@ function Stars({ count }: { count: number }) {
   return (
     <div className="flex gap-0.5">
       {Array.from({ length: 5 }, (_, i) => (
-        <i key={i} className={`ri-star-${i < count ? "fill" : "line"} text-amber-400 text-sm`} />
+        <i key={i} className={`${i < count ? "ri-star-fill" : "ri-star-line"} text-amber-400 text-sm`} />
       ))}
     </div>
   );
@@ -49,32 +49,61 @@ const STATS = [
   { value: "100%", label: "Money-Back Guarantee", icon: "ri-shield-check-line" },
 ];
 
-const TOTAL = testimonials.length;
+// Desktop shows 6 cards (2 rows × 3 cols), paginated in groups of 6
+const DESKTOP_PAGE_SIZE = 6;
+const MOBILE_TOTAL = testimonials.length;
+
+function TestimonialCard({ t, idx }: { t: typeof testimonials[0]; idx: number }) {
+  return (
+    <div className="bg-[#fdf8f3] rounded-2xl border border-orange-100/70 p-5 flex flex-col gap-3 h-full">
+      <Stars count={t.rating} />
+      <p className="text-gray-700 text-sm leading-relaxed flex-1">
+        &ldquo;{t.text}&rdquo;
+      </p>
+      <div className="flex items-center gap-3 pt-3 border-t border-orange-100">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${ACCENT_COLORS[idx % ACCENT_COLORS.length]}`}>
+          {initials(t.name)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-gray-900 leading-tight">{t.name}</p>
+          <p className="text-xs text-gray-400">{t.location}</p>
+        </div>
+        <span className="flex-shrink-0 inline-flex items-center gap-1 bg-orange-50 text-orange-600 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap">
+          <i className="ri-footprint-fill text-xs" />{t.petName}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function TestimonialsSection() {
-  const [index, setIndex] = useState(0);
+  // Desktop pagination
+  const totalDesktopPages = Math.ceil(testimonials.length / DESKTOP_PAGE_SIZE);
+  const [desktopPage, setDesktopPage] = useState(0);
+
+  // Mobile slider
+  const [mobileIndex, setMobileIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const autoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const goTo = useCallback((next: number) => {
+  const goMobile = useCallback((next: number) => {
     if (isAnimating) return;
     setIsAnimating(true);
-    setIndex(next);
+    setMobileIndex(next);
     setTimeout(() => setIsAnimating(false), 400);
   }, [isAnimating]);
 
-  const prev = () => goTo((index - 1 + TOTAL) % TOTAL);
-  const next = () => goTo((index + 1) % TOTAL);
-
-  // Auto-advance every 6 seconds
   useEffect(() => {
     autoRef.current = setTimeout(() => {
-      goTo((index + 1) % TOTAL);
+      goMobile((mobileIndex + 1) % MOBILE_TOTAL);
     }, 6000);
     return () => { if (autoRef.current) clearTimeout(autoRef.current); };
-  }, [index, goTo]);
+  }, [mobileIndex, goMobile]);
 
-  const t = testimonials[index];
+  const desktopSlice = testimonials.slice(
+    desktopPage * DESKTOP_PAGE_SIZE,
+    desktopPage * DESKTOP_PAGE_SIZE + DESKTOP_PAGE_SIZE,
+  );
 
   return (
     <section className="py-16 md:py-20 bg-white">
@@ -106,65 +135,76 @@ export default function TestimonialsSection() {
           ))}
         </div>
 
-        {/* Single-card slider */}
-        <div className="max-w-2xl mx-auto">
-          {/* Card */}
-          <div
-            key={t.id}
-            className="bg-[#fdf8f3] rounded-2xl border border-orange-100/70 p-6 md:p-8 flex flex-col gap-4"
-            style={{ minHeight: "220px" }}
-          >
-            <Stars count={t.rating} />
-            <p className="text-gray-700 text-base md:text-lg leading-relaxed flex-1">
-              &ldquo;{t.text}&rdquo;
-            </p>
-            <div className="flex items-center gap-4 pt-4 border-t border-orange-100">
-              <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${ACCENT_COLORS[index % ACCENT_COLORS.length]}`}>
-                {initials(t.name)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-gray-900 leading-tight">{t.name}</p>
-                <p className="text-xs text-gray-400">{t.location}</p>
-              </div>
-              <span className="flex-shrink-0 inline-flex items-center gap-1 bg-orange-50 text-orange-600 text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap">
-                <i className="ri-paw-print-fill text-xs" />{t.petName}
-              </span>
-            </div>
+        {/* ── DESKTOP: 3-column grid ── */}
+        <div className="hidden md:block">
+          <div className="grid grid-cols-3 gap-5 mb-6">
+            {desktopSlice.map((t, i) => (
+              <TestimonialCard key={t.id} t={t} idx={desktopPage * DESKTOP_PAGE_SIZE + i} />
+            ))}
           </div>
+          {/* Desktop pagination dots */}
+          {totalDesktopPages > 1 && (
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <button
+                onClick={() => setDesktopPage((p) => (p - 1 + totalDesktopPages) % totalDesktopPages)}
+                className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-orange-400 hover:text-orange-500 transition-all cursor-pointer"
+                aria-label="Previous page"
+              >
+                <i className="ri-arrow-left-s-line text-lg" />
+              </button>
+              <div className="flex items-center gap-2">
+                {Array.from({ length: totalDesktopPages }, (_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setDesktopPage(i)}
+                    aria-label={`Page ${i + 1}`}
+                    className={`h-2 rounded-full transition-all cursor-pointer ${i === desktopPage ? "bg-orange-500 w-6" : "bg-gray-200 w-2 hover:bg-gray-300"}`}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={() => setDesktopPage((p) => (p + 1) % totalDesktopPages)}
+                className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-orange-400 hover:text-orange-500 transition-all cursor-pointer"
+                aria-label="Next page"
+              >
+                <i className="ri-arrow-right-s-line text-lg" />
+              </button>
+            </div>
+          )}
+        </div>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-center gap-3 mt-6">
+        {/* ── MOBILE: single-card slider ── */}
+        <div className="md:hidden">
+          <div className="mb-4">
+            <TestimonialCard t={testimonials[mobileIndex]} idx={mobileIndex} />
+          </div>
+          <div className="flex items-center justify-center gap-3">
             <button
-              onClick={prev}
+              onClick={() => goMobile((mobileIndex - 1 + MOBILE_TOTAL) % MOBILE_TOTAL)}
               className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-orange-400 hover:text-orange-500 transition-all cursor-pointer"
               aria-label="Previous review"
             >
               <i className="ri-arrow-left-s-line text-lg" />
             </button>
-
-            {/* Dots — show up to 11 dots, active dot is wider */}
             <div className="flex items-center gap-1.5 flex-wrap justify-center max-w-xs">
-              {Array.from({ length: TOTAL }, (_, i) => (
+              {Array.from({ length: MOBILE_TOTAL }, (_, i) => (
                 <button
                   key={i}
-                  onClick={() => goTo(i)}
+                  onClick={() => goMobile(i)}
                   aria-label={`Go to review ${i + 1}`}
-                  className={`h-2 rounded-full transition-all cursor-pointer ${i === index ? "bg-orange-500 w-6" : "bg-gray-200 w-2 hover:bg-gray-300"}`}
+                  className={`h-2 rounded-full transition-all cursor-pointer ${i === mobileIndex ? "bg-orange-500 w-6" : "bg-gray-200 w-2 hover:bg-gray-300"}`}
                 />
               ))}
             </div>
-
             <button
-              onClick={next}
+              onClick={() => goMobile((mobileIndex + 1) % MOBILE_TOTAL)}
               className="w-10 h-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-orange-400 hover:text-orange-500 transition-all cursor-pointer"
               aria-label="Next review"
             >
               <i className="ri-arrow-right-s-line text-lg" />
             </button>
           </div>
-
-          {/* Counter */}
-          <p className="text-center text-xs text-gray-400 mt-3">{index + 1} of {TOTAL} reviews</p>
+          <p className="text-center text-xs text-gray-400 mt-3">{mobileIndex + 1} of {MOBILE_TOTAL} reviews</p>
         </div>
 
         {/* Trust Badges */}
