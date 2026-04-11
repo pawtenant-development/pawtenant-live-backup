@@ -14,7 +14,15 @@ function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-function buildOTPEmail(name: string, otp: string, expiresMinutes: number): string {
+function buildOTPEmail(name: string, otp: string, expiresMinutes: number, isChallenge: boolean): string {
+  const subject = isChallenge ? "New Device Verification" : "Your Sign-In Code";
+  const subtitle = isChallenge
+    ? `Hi ${name}, a new browser or device is trying to access the admin portal. Enter this code to verify and trust it.`
+    : `Hi ${name}, use the code below to sign in`;
+  const note = isChallenge
+    ? "If you didn't just sign in from a new device, your account may be compromised — change your password immediately."
+    : "If you didn't request this, you can safely ignore this email.";
+
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -25,19 +33,19 @@ function buildOTPEmail(name: string, otp: string, expiresMinutes: number): strin
         <tr>
           <td style="background:#0f1e1a;padding:28px 32px;text-align:center;">
             <img src="${LOGO_URL}" alt="${COMPANY_NAME}" width="160" style="display:block;margin:0 auto 16px;max-width:160px;" />
-            <div style="display:inline-block;background:rgba(255,255,255,0.12);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:5px 16px;border-radius:999px;margin-bottom:12px;">Admin Portal</div>
-            <h1 style="margin:0;font-size:20px;font-weight:800;color:#ffffff;line-height:1.3;">Your Sign-In Code</h1>
-            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.55);">Hi ${name}, use the code below to sign in</p>
+            <div style="display:inline-block;background:rgba(255,255,255,0.12);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:5px 16px;border-radius:999px;margin-bottom:12px;">Admin Portal${isChallenge ? " — Security Alert" : ""}</div>
+            <h1 style="margin:0;font-size:20px;font-weight:800;color:#ffffff;line-height:1.3;">${subject}</h1>
+            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.55);">${subtitle}</p>
           </td>
         </tr>
         <tr>
           <td style="padding:36px 32px;text-align:center;">
-            <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Enter this one-time code in the admin portal to complete your sign-in:</p>
+            <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Enter this one-time code in the admin portal to complete verification:</p>
             <div style="display:inline-block;background:#f0faf7;border:2px solid #1a5c4f;border-radius:16px;padding:20px 40px;margin-bottom:24px;">
               <span style="font-size:42px;font-weight:900;letter-spacing:0.18em;color:#1a5c4f;font-family:monospace;">${otp}</span>
             </div>
             <p style="margin:0 0 8px;font-size:13px;color:#9ca3af;">This code expires in <strong style="color:#374151;">${expiresMinutes} minutes</strong>.</p>
-            <p style="margin:0;font-size:12px;color:#d1d5db;">If you didn't request this, you can safely ignore this email.</p>
+            <p style="margin:0;font-size:12px;color:#d1d5db;">${note}</p>
           </td>
         </tr>
         <tr>
@@ -59,7 +67,8 @@ Deno.serve(async (req) => {
     new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
-    const { email } = await req.json() as { email: string };
+    const body = await req.json() as { email: string; challenge?: boolean };
+    const { email, challenge = false } = body;
     if (!email) return json({ ok: false, error: "Email is required" }, 400);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -81,22 +90,11 @@ Deno.serve(async (req) => {
     }
 
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     const expiresMinutes = 10;
 
-    // Store OTP in admin_notification_prefs table using a special key pattern
-    // We'll use a dedicated approach: store in a temp table or use existing infrastructure
-    // Using admin_notification_prefs with key = "otp_<email_hash>" is not ideal
-    // Better: store in a JSON column or use Supabase's built-in OTP
-    // We'll store in doctor_profiles as a temp field using a JSON metadata approach
-    // Actually, let's use a simple approach: store OTP hash in doctor_profiles.custom_tab_access
-    // No — let's use a proper approach with a dedicated storage
-
-    // Store OTP as a special record in admin_notification_prefs
-    // key = "otp_session", user_id = profile.id (using profile id as user_id for this purpose)
-    // We'll use email_override to store the OTP and per_notif_emails to store expiry
     const otpKey = `otp_${profile.id}`;
-    
+
     // Upsert OTP record
     await adminClient
       .from("admin_notification_prefs")
@@ -108,14 +106,13 @@ Deno.serve(async (req) => {
         is_enabled: true,
       }, { onConflict: "user_id,notification_key" });
 
-    // Send OTP email via Resend
     if (!resendKey) {
       console.warn("[send-admin-otp] RESEND_API_KEY not set");
       return json({ ok: false, error: "Email service not configured" }, 500);
     }
 
     const firstName = (profile.full_name ?? "Admin").split(" ")[0];
-    const html = buildOTPEmail(firstName, otp, expiresMinutes);
+    const html = buildOTPEmail(firstName, otp, expiresMinutes, challenge);
 
     const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -123,7 +120,9 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: FROM_ADDRESS,
         to: [email.trim()],
-        subject: `${otp} — Your ${COMPANY_NAME} Admin Sign-In Code`,
+        subject: challenge
+          ? `${otp} — New Device Verification — ${COMPANY_NAME} Admin`
+          : `${otp} — Your ${COMPANY_NAME} Admin Sign-In Code`,
         html,
         reply_to: SUPPORT_EMAIL,
       }),

@@ -194,6 +194,28 @@ function triggerSheetsFullSync(): void {
 /** Fires the early lead to GHL after Step 2 (for abandonment capture) */
 async function fireGHLEarlyLead(step1: Step1Data, step2: Step2Data, confirmationId: string) {
   try {
+    // ── 1. Fire the EXACT 8-field assessment_started event (required by GHL workflow) ──
+    await fetch(GHL_PROXY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({
+        webhookType: "main",
+        eventType: "assessment_started",
+        firstName: step2.firstName,
+        lastName: step2.lastName,
+        email: step2.email,
+        phone: step2.phone,
+        state: step2.state,
+        confirmationId,
+        amount: 0,
+      }),
+    });
+
+    // ── 2. Also fire the extended abandonment lead (for GHL custom fields / tags) ──
     await fetch(GHL_PROXY_URL, {
       method: "POST",
       headers: {

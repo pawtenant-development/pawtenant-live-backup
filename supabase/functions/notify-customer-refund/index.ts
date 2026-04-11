@@ -20,7 +20,6 @@ const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#1a5c4f";
 
-// ── Resolve admin notification recipients ─────────────────────────────────────
 async function getAdminNotifRecipients(supabaseUrl: string, serviceKey: string, notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/get-admin-notif-recipients`, {
@@ -233,8 +232,9 @@ Deno.serve(async (req: Request) => {
   if (!confirmationId) return json({ error: "confirmationId is required" }, 400);
   if (!refundAmount || refundAmount <= 0) return json({ error: "refundAmount is required" }, 400);
 
+  // ── Fetch order — now includes phone ─────────────────────────────────────
   const { data: order, error: orderErr } = await adminClient
-    .from("orders").select("id, confirmation_id, email, first_name, last_name, state, price, plan_type, doctor_name, status")
+    .from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, price, plan_type, doctor_name, status")
     .eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);
 
@@ -257,7 +257,6 @@ Deno.serve(async (req: Request) => {
     note,
   });
 
-  // Send customer refund email
   const emailSent = await sendViaResend({
     to: order.email,
     subject: `Refund Confirmation — Order ${confirmationId}`,
@@ -267,7 +266,6 @@ Deno.serve(async (req: Request) => {
 
   await appendEmailLog(adminClient, confirmationId, { type: "refund", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
 
-  // ── Send admin notification for refund_issued ─────────────────────────────
   const { enabled: refundNotifEnabled, recipients: adminRecipients } = await getAdminNotifRecipients(supabaseUrl, serviceKey, "refund_issued");
   let adminNotifSentCount = 0;
   if (refundNotifEnabled && adminRecipients.length > 0) {
@@ -294,7 +292,7 @@ Deno.serve(async (req: Request) => {
     console.info(`[notify-customer-refund] Admin refund notifications sent: ${adminNotifSentCount}/${adminRecipients.length} to [${adminRecipients.join(", ")}]`);
   }
 
-  // GHL webhook
+  // ── GHL webhook — now includes phone ─────────────────────────────────────
   let ghlOk = false;
   let ghlStatus = 0;
   try {
@@ -303,12 +301,23 @@ Deno.serve(async (req: Request) => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
       body: JSON.stringify({
         webhookType: "main", event: "refund_issued",
-        email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "",
-        fullName: patientName, confirmationId, refundId: refundId ?? "",
-        refundAmount, refundAmountFormatted: formattedAmount, refundReason: reasonLabel,
-        refundNote: note ?? "", refundIssuedAt: issuedAt, orderTotal: order.price ?? 0,
-        planType: order.plan_type ?? "", patientState: order.state ?? "",
-        doctorName: order.doctor_name ?? "", leadStatus: `Refund Issued — ${formattedAmount}`,
+        email: order.email,
+        firstName: order.first_name ?? "",
+        lastName: order.last_name ?? "",
+        phone: (order.phone as string) ?? "",
+        fullName: patientName,
+        confirmationId,
+        refundId: refundId ?? "",
+        refundAmount,
+        refundAmountFormatted: formattedAmount,
+        refundReason: reasonLabel,
+        refundNote: note ?? "",
+        refundIssuedAt: issuedAt,
+        orderTotal: order.price ?? 0,
+        planType: order.plan_type ?? "",
+        patientState: order.state ?? "",
+        doctorName: order.doctor_name ?? "",
+        leadStatus: `Refund Issued — ${formattedAmount}`,
         tags: ["Refund Issued"],
       }),
     });

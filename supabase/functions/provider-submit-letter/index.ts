@@ -466,16 +466,24 @@ Deno.serve(async (req: Request) => {
       customerLastName: order.last_name ?? "",
     }).catch(() => {});
 
+    // ── Fire GHL order_completed event with exact 8-field payload ────────────
     const addonServices = Array.isArray(order.addon_services) ? (order.addon_services as string[]) : [];
     fetch(`${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
       body: JSON.stringify({
-        webhookType: "main", event: "order_completed",
-        email: order.email, firstName: order.first_name ?? "",
-        lastName: order.last_name ?? "", phone: order.phone ?? "",
-        confirmationId, patientState: order.state ?? "",
-        letterType: isPSD ? "psd" : "esa", addonServices, price: order.price,
+        webhookType: "main",
+        eventType: "order_completed",
+        firstName: order.first_name ?? "",
+        lastName: order.last_name ?? "",
+        email: order.email,
+        phone: order.phone ?? "",
+        state: order.state ?? "",
+        confirmationId,
+        amount: (order.price as number) ?? 0,
+        // Additional context fields
+        letterType: isPSD ? "psd" : "esa",
+        addonServices,
         assignedDoctor: profile.full_name,
         leadStatus: isPSD ? "PSD — Letter Sent — Completed" : "ESA — Letter Sent — Completed",
         tags: ["Letter Sent", "Completed", isPSD ? "PSD Order" : "ESA Order"],

@@ -12,7 +12,8 @@ Deno.serve(async (req) => {
     new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
-    const { email, otp } = await req.json() as { email: string; otp: string };
+    const body = await req.json() as { email: string; otp: string; challenge?: boolean };
+    const { email, otp, challenge = false } = body;
     if (!email || !otp) return json({ ok: false, error: "Email and OTP are required" }, 400);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -48,7 +49,6 @@ Deno.serve(async (req) => {
     // Check expiry
     const expiresAt = otpRecord.per_notif_emails?.[0];
     if (expiresAt && new Date(expiresAt) < new Date()) {
-      // Clean up expired OTP
       await adminClient
         .from("admin_notification_prefs")
         .delete()
@@ -69,13 +69,26 @@ Deno.serve(async (req) => {
       .eq("user_id", profile.id)
       .eq("notification_key", otpKey);
 
-    // Generate a magic link / sign-in token for the user
-    // We use generateLink to get a session for this user
+    // For device challenge mode: the user is already signed in via password.
+    // Just confirm the OTP is valid — the frontend handles session + device trust.
+    if (challenge) {
+      return json({
+        ok: true,
+        verified: true,
+        profile: {
+          id: profile.id,
+          full_name: profile.full_name,
+          role: profile.role,
+          email: profile.email,
+        },
+      });
+    }
+
+    // Legacy path (non-challenge): generate magic link for session
     if (!profile.user_id) {
       return json({ ok: false, error: "No auth account linked to this profile." }, 401);
     }
 
-    // Generate a short-lived magic link for the user to sign in
     const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
       type: "magiclink",
       email: email.trim(),
@@ -89,13 +102,10 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Failed to create session. Please try again." }, 500);
     }
 
-    // Extract the token from the magic link
     const raw = linkData as unknown as Record<string, unknown>;
     const props = raw["properties"] as Record<string, string> | undefined;
     const actionLink = props?.["action_link"] ?? "";
-    
-    // Parse the token from the action link
-    // The link format is: https://xxx.supabase.co/auth/v1/verify?token=xxx&type=magiclink&redirect_to=xxx
+
     let token = "";
     try {
       const url = new URL(actionLink);

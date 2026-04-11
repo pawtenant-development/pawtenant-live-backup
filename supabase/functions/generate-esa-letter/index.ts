@@ -5,7 +5,6 @@ import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// GHL proxy lives at the same Supabase project
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
 
 const CORS_HEADERS = {
@@ -29,6 +28,7 @@ type OrderRow = {
   first_name: string | null;
   last_name: string | null;
   email: string;
+  phone: string | null;
   state: string | null;
   selected_provider: string | null;
   plan_type: string | null;
@@ -38,8 +38,6 @@ type OrderRow = {
   letter_url: string | null;
   assessment_answers: AssessmentAnswers | null;
 };
-
-// ── PDF helpers ────────────────────────────────────────────────────────────────
 
 function drawWrappedText(
   page: ReturnType<PDFDocument["addPage"]>,
@@ -107,31 +105,12 @@ async function buildEsaLetterPdf(order: OrderRow): Promise<Uint8Array> {
       ? answers.conditions.join(", ")
       : null;
 
-  // Header bar
   page.drawRectangle({ x: 0, y: height - 75, width, height: 75, color: brandGreen });
-  page.drawText("PawTenant", {
-    x: M,
-    y: height - 45,
-    size: 26,
-    font: bold,
-    color: rgb(1, 1, 1),
-  });
-  page.drawText("EMOTIONAL SUPPORT ANIMAL LETTER", {
-    x: M,
-    y: height - 63,
-    size: 9,
-    font: regular,
-    color: rgb(0.8, 0.95, 0.9),
-  });
+  page.drawText("PawTenant", { x: M, y: height - 45, size: 26, font: bold, color: rgb(1, 1, 1) });
+  page.drawText("EMOTIONAL SUPPORT ANIMAL LETTER", { x: M, y: height - 63, size: 9, font: regular, color: rgb(0.8, 0.95, 0.9) });
   const siteText = "pawtenant.com";
   const siteW = regular.widthOfTextAtSize(siteText, 9);
-  page.drawText(siteText, {
-    x: width - M - siteW,
-    y: height - 55,
-    size: 9,
-    font: italic,
-    color: rgb(0.8, 0.95, 0.9),
-  });
+  page.drawText(siteText, { x: width - M - siteW, y: height - 55, size: 9, font: italic, color: rgb(0.8, 0.95, 0.9) });
 
   let curY = height - 105;
 
@@ -150,9 +129,7 @@ async function buildEsaLetterPdf(order: OrderRow): Promise<Uint8Array> {
   const p1 = `I, ${provider}, am a licensed mental health professional currently providing therapeutic care to ${fullName}, a resident of the state of ${state}. This letter is issued to confirm that ${fullName} is currently under my professional care and has been evaluated in accordance with the Diagnostic and Statistical Manual of Mental Disorders (DSM-5). Based on my clinical assessment, ${fullName} has been diagnosed with a recognized mental or emotional disability.`;
   curY = drawWrappedText(page, p1, M, curY, maxW, 11, regular, lh) - 8;
 
-  const conditionClause = conditions
-    ? ` including, but not limited to, ${conditions},`
-    : "";
+  const conditionClause = conditions ? ` including, but not limited to, ${conditions},` : "";
   const p2 = `${fullName} experiences symptoms${conditionClause} which substantially limit one or more major life activities. It is my professional opinion that an Emotional Support Animal (ESA) is a necessary component of ${fullName}'s ongoing treatment plan. The companionship and emotional support provided by their ESA measurably alleviates the severity of their symptoms and is integral to their mental and emotional wellbeing.`;
   curY = drawWrappedText(page, p2, M, curY, maxW, 11, regular, lh) - 8;
 
@@ -182,13 +159,7 @@ async function buildEsaLetterPdf(order: OrderRow): Promise<Uint8Array> {
   drawWrappedText(page, disclaimer, M + 8, boxY + 18, maxW - 16, 8, regular, 11, rgb(0.4, 0.4, 0.4));
 
   page.drawLine({ start: { x: M, y: 70 }, end: { x: width - M, y: 70 }, thickness: 0.5, color: lightGray });
-  page.drawText("PawTenant  ·  hello@pawtenant.com  ·  (409) 965-5885  ·  pawtenant.com", {
-    x: M,
-    y: 55,
-    size: 8,
-    font: regular,
-    color: mutedText,
-  });
+  page.drawText("PawTenant  ·  hello@pawtenant.com  ·  (409) 965-5885  ·  pawtenant.com", { x: M, y: 55, size: 8, font: regular, color: mutedText });
   const pageLabel = "Page 1 of 1";
   const pageLabelW = regular.widthOfTextAtSize(pageLabel, 8);
   page.drawText(pageLabel, { x: width - M - pageLabelW, y: 55, size: 8, font: regular, color: mutedText });
@@ -196,18 +167,18 @@ async function buildEsaLetterPdf(order: OrderRow): Promise<Uint8Array> {
   return pdfDoc.save();
 }
 
-// ── Notify GHL that the PDF is ready ──────────────────────────────────────────
+// ── Notify GHL that the PDF is ready — now includes phone ────────────────────
 async function notifyGhlLetterReady(order: OrderRow, letterUrl: string): Promise<void> {
   try {
     await fetch(GHL_PROXY_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
       body: JSON.stringify({
         webhookType: "assessment",
-        // Identify the existing contact by email
         email: order.email,
         firstName: order.first_name ?? "",
         lastName: order.last_name ?? "",
+        phone: order.phone ?? "",
         confirmationId: order.confirmation_id,
         leadStatus: "ESA Letter Generated – Ready for Download",
         letterUrl,
@@ -219,8 +190,6 @@ async function notifyGhlLetterReady(order: OrderRow, letterUrl: string): Promise
     // Silently fail — PDF is already saved, GHL notification is best-effort
   }
 }
-
-// ── Main handler ───────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -254,7 +223,6 @@ Deno.serve(async (req: Request) => {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  // Fetch order
   const { data: order, error: fetchError } = await supabase
     .from("orders")
     .select("*")
@@ -268,7 +236,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Return cached URL if already generated (idempotent)
   if ((order as OrderRow).letter_url) {
     return new Response(
       JSON.stringify({ ok: true, letterUrl: (order as OrderRow).letter_url }),
@@ -276,7 +243,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Generate PDF
   let pdfBytes: Uint8Array;
   try {
     pdfBytes = await buildEsaLetterPdf(order as OrderRow);
@@ -288,7 +254,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Upload to Storage
   const fileName = `${confirmationId}-esa-letter.pdf`;
   const { error: uploadError } = await supabase.storage
     .from("letters")
@@ -307,13 +272,11 @@ Deno.serve(async (req: Request) => {
   const { data: publicUrlData } = supabase.storage.from("letters").getPublicUrl(fileName);
   const letterUrl = publicUrlData.publicUrl;
 
-  // Write URL back to orders and mark completed
   await supabase
     .from("orders")
     .update({ letter_url: letterUrl, status: "completed" })
     .eq("confirmation_id", confirmationId);
 
-  // ── Notify GHL that the letter is ready ──────────────────────────────────
   await notifyGhlLetterReady(order as OrderRow, letterUrl);
 
   return new Response(

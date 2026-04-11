@@ -308,41 +308,8 @@ export default function OrderCard({
           </div>
         </div>
       )}
-      {/* Contact */}
-      <div className="flex flex-wrap gap-3">
-        <a href={`mailto:${order.email}`} onClick={stop}
-          className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-[#1a5c4f] transition-colors">
-          <i className="ri-mail-line text-gray-400 text-xs"></i>{order.email}
-        </a>
-        {order.phone
-          ? <a href={`tel:${order.phone}`} onClick={stop} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-[#1a5c4f] transition-colors">
-              <i className="ri-phone-line text-gray-400 text-xs"></i>{order.phone}
-            </a>
-          : <span className="flex items-center gap-1.5 text-xs text-orange-400"><i className="ri-phone-line text-xs"></i>No phone</span>
-        }
-      </div>
-      {/* Meta chips */}
+      {/* Meta chips — only show actionable / non-redundant info */}
       <div className="flex flex-wrap gap-1.5">
-        {order.ghl_synced_at
-          ? <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-semibold"><i className="ri-checkbox-circle-fill text-xs"></i>GHL {fmtGhlSync(order.ghl_synced_at)}</span>
-          : order.ghl_sync_error
-          ? <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-semibold"><i className="ri-error-warning-line text-xs"></i>GHL fail</span>
-          : <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-400 rounded-lg text-[10px] font-semibold"><i className="ri-time-line text-xs"></i>GHL pending</span>
-        }
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border ${lastActivity.bgColor} ${lastActivity.color}`}>
-          <i className={`${lastActivity.icon} text-xs`}></i>
-          {lastActivity.hasActivity ? `Last: ${lastActivity.fullLabel}` : "No contact yet"}
-        </span>
-        {isAssigned && order.doctor_status && (
-          <span className={`inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-semibold ${DOCTOR_STATUS_COLOR[order.doctor_status] ?? "bg-gray-100 text-gray-500"}`}>
-            <i className="ri-stethoscope-line text-xs mr-1"></i>{doctorStatusLabel(order.doctor_status, isAssigned)}
-          </span>
-        )}
-        {order.doctor_name && (
-          <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#f0faf7] text-[#1a5c4f] rounded-lg text-[10px] font-semibold">
-            <i className="ri-user-heart-line text-xs"></i>{order.doctor_name}
-          </span>
-        )}
         {order.state && !coveredStates.has(order.state) && !isLead && (
           <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-bold">
             <i className="ri-error-warning-fill text-xs"></i>No Coverage
@@ -352,12 +319,6 @@ export default function OrderCard({
           <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-extrabold">
             <i className="ri-vip-crown-fill text-xs"></i>VIP · {order.addon_services.length} add-on
           </span>
-        )}
-        {order.assessment_answers && (
-          <button type="button" onClick={(e) => { stop(e); onOpenAssessmentIntake(order); }}
-            className="inline-flex items-center gap-1 px-2 py-1 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-semibold cursor-pointer hover:bg-orange-100 transition-colors">
-            <i className="ri-file-list-3-line text-xs"></i>Intake
-          </button>
         )}
         {/* Sequence status chip */}
         {seqStatus && (
@@ -439,12 +400,6 @@ export default function OrderCard({
             : <><i className="ri-file-copy-line"></i>{order.confirmation_id}</>
           }
         </button>
-        {isAssigned && (
-          <a href={`/provider-portal?order=${order.confirmation_id}`} target="_blank" rel="noopener noreferrer" onClick={stop}
-            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f] hover:bg-[#e0f2ec] rounded-lg cursor-pointer transition-colors">
-            <i className="ri-external-link-line"></i>Provider View
-          </a>
-        )}
         {/* GHL Call button */}
         {order.phone && (
           <button
@@ -748,19 +703,7 @@ export default function OrderCard({
                 {calling ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-phone-line"></i>}
               </button>
             )}
-            {/* Preview Provider Portal - Admin Preview Mode */}
-            {isAssigned && (
-              <a 
-                href={`/admin/provider-preview?order=${order.confirmation_id}`} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                onClick={stop}
-                title="Preview Provider Portal (Admin View)"
-                className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer text-sm"
-              >
-                <i className="ri-external-link-line"></i>
-              </a>
-            )}
+
           </div>
 
           {/* Expand arrow — w-8 */}

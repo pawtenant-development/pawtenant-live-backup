@@ -1,5 +1,5 @@
 // SettingsTab — GHL, Stripe, and Email integration health
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import CouponManagementPanel from "./CouponManagementPanel";
 import UTMLinkGenerator from "./UTMLinkGenerator";
@@ -31,6 +31,7 @@ interface BulkRetryState {
   successCount: number;
   failCount: number;
   finished: boolean;
+  mode?: "unsynced" | "all";
 }
 
 const INIT_BULK: BulkRetryState = { running: false, total: 0, done: 0, successCount: 0, failCount: 0, finished: false };
@@ -72,7 +73,11 @@ function formatCurrency(v: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(v);
 }
 
-const GHL_WEBHOOK_MAIN = "https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/d1962d95-66b5-4622-a16d-6d711c0bdd9b";
+// ── GHL Webhook URLs ──────────────────────────────────────────────────────────
+// IMPORTANT: These URLs are displayed for reference only.
+// The edge functions use the GHL_WEBHOOK_URL Supabase secret — NOT these constants.
+// Make sure GHL_WEBHOOK_URL in Supabase secrets matches the Main Webhook URL below.
+const GHL_WEBHOOK_MAIN = "https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/6feb660d-6ee0-4a71-a2c0-732264440592";
 const GHL_WEBHOOK_NETWORK = "https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/cfdc1278-5813-46c9-901e-39165cf0f1f3";
 
 // ── BAA & Retention types ──────────────────────────────────────────────────
@@ -1055,6 +1060,493 @@ function NotificationRoutingTestPanel({ supabaseUrl }: { supabaseUrl: string }) 
   );
 }
 
+// ── Pipeline Stage Map (static reference — matches edge function) ─────────────
+const PIPELINE_STAGE_MAP = [
+  { event: "assessment_started", stageName: "Assessment Started", secretKey: "GHL_STAGE_ASSESSMENT_STARTED", icon: "ri-file-edit-line", color: "text-gray-500", description: "Customer completes Step 2 personal info" },
+  { event: "payment_confirmed / payment_confirmed_backfill", stageName: "Payment Confirmed", secretKey: "GHL_STAGE_PAYMENT_CONFIRMED", icon: "ri-bank-card-line", color: "text-[#1a5c4f]", description: "Stripe payment succeeds" },
+  { event: "doctor_assigned", stageName: "Under Review", secretKey: "GHL_STAGE_DOCTOR_ASSIGNED", icon: "ri-stethoscope-line", color: "text-amber-600", description: "Admin assigns a provider to the order" },
+  { event: "documents_ready_for_patient", stageName: "Documents Ready", secretKey: "GHL_STAGE_DOCUMENTS_READY", icon: "ri-file-check-line", color: "text-sky-600", description: "Provider submits letter, patient notified" },
+  { event: "letter_generated", stageName: "Letter Generated", secretKey: "GHL_STAGE_LETTER_GENERATED", icon: "ri-file-pdf-line", color: "text-orange-500", description: "ESA PDF auto-generated (generate-esa-letter)" },
+  { event: "order_completed", stageName: "Completed", secretKey: "GHL_STAGE_ORDER_COMPLETED", icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]", description: "Provider submits final letter" },
+  { event: "refund_issued", stageName: "Refunded", secretKey: "GHL_STAGE_REFUND_ISSUED", icon: "ri-refund-2-line", color: "text-rose-500", description: "Admin issues a refund" },
+  { event: "order_cancelled", stageName: "Cancelled", secretKey: "GHL_STAGE_ORDER_CANCELLED", icon: "ri-close-circle-line", color: "text-red-500", description: "Admin cancels the order" },
+];
+
+// ── GHL Pipeline Config Panel ─────────────────────────────────────────────────
+function GhlPipelineConfigPanel() {
+  const STORAGE_KEY = "ghl_pipeline_config";
+
+  interface PipelineConfig {
+    pipelineId: string;
+    stageIds: Record<string, string>;
+  }
+
+  const loadConfig = (): PipelineConfig => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw) as PipelineConfig;
+    } catch { /* ignore */ }
+    return { pipelineId: "", stageIds: {} };
+  };
+
+  const [config, setConfig] = useState<PipelineConfig>(loadConfig);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const updatePipelineId = (val: string) => {
+    setConfig((prev) => ({ ...prev, pipelineId: val }));
+    setSaved(false);
+  };
+
+  const updateStageId = (secretKey: string, val: string) => {
+    setConfig((prev) => ({ ...prev, stageIds: { ...prev.stageIds, [secretKey]: val } }));
+    setSaved(false);
+  };
+
+  const handleSave = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  const copySecret = (name: string) => {
+    navigator.clipboard.writeText(name).then(() => {
+      setCopied(name);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
+
+  const configuredCount = PIPELINE_STAGE_MAP.filter((s) => !!config.stageIds[s.secretKey]).length;
+  const allConfigured = !!config.pipelineId && configuredCount === PIPELINE_STAGE_MAP.length;
+
+  return (
+    <div className="mt-6 border-t border-gray-100 pt-5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-lg flex-shrink-0">
+            <i className="ri-git-branch-line text-[#1a5c4f] text-sm"></i>
+          </div>
+          <div>
+            <p className="text-xs font-extrabold text-gray-800">Pipeline Stage Auto-Mover</p>
+            <p className="text-xs text-gray-400">Contacts move to the correct pipeline stage automatically on every event</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${allConfigured ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-amber-50 text-amber-700"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allConfigured ? "bg-[#1a5c4f]" : "bg-amber-500"}`}></span>
+            {allConfigured ? "Fully Configured" : `${configuredCount}/${PIPELINE_STAGE_MAP.length} stages set`}
+          </span>
+          <button
+            type="button"
+            onClick={handleSave}
+            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${saved ? "bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5]" : "bg-[#1a5c4f] text-white hover:bg-[#17504a]"}`}
+          >
+            <i className={saved ? "ri-checkbox-circle-fill" : "ri-save-line"}></i>
+            {saved ? "Saved!" : "Save IDs"}
+          </button>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4 mb-4">
+        <div className="flex items-start gap-3">
+          <i className="ri-information-line text-[#1a5c4f] text-sm mt-0.5 flex-shrink-0"></i>
+          <div className="text-xs text-[#2d7a6a] leading-relaxed space-y-1.5">
+            <p><strong>How it works:</strong> Every GHL webhook payload now includes <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineId</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineStageId</code>, and <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineStage</code> fields — automatically set based on the event type.</p>
+            <p><strong>GHL Workflow setup:</strong> In your GHL Workflow&apos;s &ldquo;Create/Update Contact&rdquo; action, map <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineId</code> → Pipeline and <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineStageId</code> → Stage. That&apos;s it — no If/Else branches needed.</p>
+            <p><strong>Where to find IDs:</strong> GHL → Settings → Pipelines → click your pipeline → the URL contains the Pipeline ID. Stage IDs are in the pipeline settings page or via GHL API.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Supabase secrets instruction */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <div className="flex items-start gap-3">
+          <i className="ri-key-2-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+          <div>
+            <p className="text-xs font-bold text-amber-800 mb-1">Set these in Supabase Secrets (not here)</p>
+            <p className="text-xs text-amber-700 leading-relaxed mb-2">
+              The IDs below are stored locally for your reference only. The edge function reads them from <strong>Supabase Dashboard → Edge Functions → Secrets</strong>. Copy each secret name and paste it in Supabase with the corresponding ID as the value.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {["GHL_PIPELINE_ID", ...PIPELINE_STAGE_MAP.map((s) => s.secretKey)].map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => copySecret(name)}
+                  className="whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 border border-amber-300 rounded text-[10px] font-mono text-amber-800 hover:bg-amber-200 cursor-pointer transition-colors"
+                >
+                  <i className={copied === name ? "ri-checkbox-circle-line text-[#1a5c4f]" : "ri-file-copy-line"} style={{ fontSize: "9px" }}></i>
+                  {copied === name ? "Copied!" : name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pipeline ID */}
+      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <i className="ri-git-branch-line text-gray-500 text-sm"></i>
+          <p className="text-xs font-extrabold text-gray-700">Pipeline ID</p>
+          <span className="ml-auto text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">GHL_PIPELINE_ID</span>
+        </div>
+        <input
+          type="text"
+          value={config.pipelineId}
+          onChange={(e) => updatePipelineId(e.target.value)}
+          placeholder="e.g. abc123def456..."
+          className={`w-full text-xs border rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 ${config.pipelineId ? "border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f]" : "border-gray-200 bg-white text-gray-700"}`}
+        />
+        <p className="text-[10px] text-gray-400 mt-1">Found in GHL → Settings → Pipelines → URL bar when viewing your pipeline</p>
+      </div>
+
+      {/* Stage map table */}
+      <div>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Event → Pipeline Stage Mapping</p>
+        <div className="space-y-2">
+          {PIPELINE_STAGE_MAP.map((stage) => {
+            const stageId = config.stageIds[stage.secretKey] ?? "";
+            const isSet = !!stageId;
+            return (
+              <div key={stage.secretKey} className={`rounded-xl border overflow-hidden ${isSet ? "border-[#b8ddd5]" : "border-gray-200"}`}>
+                {/* Stage header row */}
+                <div className={`flex items-center gap-3 px-4 py-2.5 ${isSet ? "bg-[#f0faf7]" : "bg-gray-50"}`}>
+                  <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                    <i className={`${stage.icon} ${stage.color} text-sm`}></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs font-extrabold text-gray-800">{stage.stageName}</p>
+                      <span className="text-[10px] text-gray-400">←</span>
+                      <code className="text-[10px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{stage.event}</code>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{stage.description}</p>
+                  </div>
+                  {isSet ? (
+                    <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#1a5c4f] text-white rounded text-[10px] font-bold">
+                      <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>Set
+                    </span>
+                  ) : (
+                    <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold">
+                      <i className="ri-time-line" style={{ fontSize: "9px" }}></i>Pending
+                    </span>
+                  )}
+                </div>
+                {/* Stage ID input */}
+                <div className="px-4 py-2.5 bg-white border-t border-gray-100 flex items-center gap-3">
+                  <div className="flex-shrink-0 text-[10px] font-mono text-gray-400 w-52 truncate hidden sm:block">{stage.secretKey}</div>
+                  <input
+                    type="text"
+                    value={stageId}
+                    onChange={(e) => updateStageId(stage.secretKey, e.target.value)}
+                    placeholder="Paste GHL Stage ID here..."
+                    className={`flex-1 text-xs border rounded-lg px-3 py-1.5 font-mono focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 ${isSet ? "border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f]" : "border-gray-200 bg-gray-50 text-gray-700"}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* GHL Workflow instruction */}
+      <div className="mt-4 bg-gray-900 rounded-xl p-4">
+        <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-3">GHL Workflow — Single Action Setup</p>
+        <div className="space-y-2">
+          {[
+            { step: "1", label: "Trigger", desc: "Custom Webhook → paste GHL_WEBHOOK_URL", icon: "ri-webhook-line" },
+            { step: "2", label: "Create/Update Contact", desc: "Map: email, phone, firstName, lastName, confirmationId, pipelineId, pipelineStageId", icon: "ri-user-settings-line" },
+            { step: "3", label: "Add Tags", desc: "Map: tags (array) → GHL will apply all tags automatically", icon: "ri-price-tag-3-line" },
+            { step: "4", label: "Done", desc: "No If/Else branches needed — pipelineStageId already encodes the correct stage per event", icon: "ri-checkbox-circle-line" },
+          ].map((s) => (
+            <div key={s.step} className="flex items-start gap-3">
+              <div className="w-5 h-5 flex items-center justify-center bg-white/10 rounded-full flex-shrink-0 mt-0.5">
+                <span className="text-[10px] font-bold text-white/70">{s.step}</span>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-white">{s.label}</p>
+                <p className="text-[10px] text-white/50 leading-relaxed">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── GHL Connection Test Panel ─────────────────────────────────────────────────
+interface GhlTestResult {
+  ok: boolean;
+  ghlStatus: number;
+  ghlBody: string;
+  phone: string;
+  email: string;
+  tagsSent: string[];
+  pipelineStage?: string;
+  pipelineStageId?: string;
+  pipelineConfigured?: boolean;
+  error?: string;
+  durationMs: number;
+}
+
+function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
+  const [state, setState] = useState<"idle" | "running" | "done">("idle");
+  const [result, setResult] = useState<GhlTestResult | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const [testPhone, setTestPhone] = useState("+14099655885");
+  const [testEmail, setTestEmail] = useState("ghl-test@pawtenant.com");
+  const rawRef = useRef<HTMLPreElement>(null);
+
+  const runTest = async () => {
+    setState("running");
+    setResult(null);
+    setShowRaw(false);
+    const start = Date.now();
+    try {
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          webhookType: "assessment",
+          event: "assessment_started",
+          firstName: "GHL",
+          lastName: "ConnectionTest",
+          email: testEmail.trim() || "ghl-test@pawtenant.com",
+          phone: testPhone.trim() || "+14099655885",
+          state: "TX",
+          confirmationId: `TEST-${Date.now()}`,
+          letterType: "esa",
+          leadSource: "Admin GHL Connection Test",
+          submittedAt: new Date().toISOString(),
+          tags: ["GHL Test", "Admin Connection Test"],
+        }),
+      });
+      const durationMs = Date.now() - start;
+      const json = await res.json() as {
+        ok: boolean; ghlStatus?: number; ghlBody?: string;
+        phone?: string; email?: string; tagsSent?: string[];
+        pipelineStage?: string; pipelineStageId?: string; pipelineConfigured?: boolean;
+        error?: string;
+      };
+      setResult({
+        ok: json.ok ?? res.ok,
+        ghlStatus: json.ghlStatus ?? res.status,
+        ghlBody: json.ghlBody ?? JSON.stringify(json),
+        phone: json.phone ?? testPhone,
+        email: json.email ?? testEmail,
+        tagsSent: json.tagsSent ?? [],
+        pipelineStage: json.pipelineStage,
+        pipelineStageId: json.pipelineStageId,
+        pipelineConfigured: json.pipelineConfigured,
+        error: json.error,
+        durationMs,
+      });
+    } catch (err) {
+      setResult({
+        ok: false,
+        ghlStatus: 0,
+        ghlBody: "",
+        phone: testPhone,
+        email: testEmail,
+        tagsSent: [],
+        error: err instanceof Error ? err.message : "Network error",
+        durationMs: Date.now() - start,
+      });
+    }
+    setState("done");
+  };
+
+  const reset = () => { setState("idle"); setResult(null); setShowRaw(false); };
+
+  return (
+    <div className="mt-6 border-t border-gray-100 pt-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
+            <i className="ri-plug-line text-amber-600 text-sm"></i>
+          </div>
+          <div>
+            <p className="text-xs font-extrabold text-gray-800">GHL Connection Test</p>
+            <p className="text-xs text-gray-400">Fires a real test payload and shows the raw GHL response</p>
+          </div>
+        </div>
+        {state === "done" && (
+          <button type="button" onClick={reset}
+            className="whitespace-nowrap text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 cursor-pointer transition-colors">
+            <i className="ri-refresh-line"></i>Reset
+          </button>
+        )}
+      </div>
+
+      {/* Test inputs */}
+      {state === "idle" && (
+        <div className="space-y-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Test Phone (E.164 or raw)</label>
+              <input
+                type="text"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+                placeholder="+14099655885"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-300 font-mono"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">Proxy normalizes to E.164 before sending to GHL</p>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Test Email</label>
+              <input
+                type="email"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                placeholder="ghl-test@pawtenant.com"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">GHL will create/update a contact with this email</p>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5 flex items-start gap-2">
+            <i className="ri-information-line text-amber-500 text-xs mt-0.5 flex-shrink-0"></i>
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              This fires a <strong>real</strong> webhook to GHL — a test contact will be created/updated in your GHL account.
+              Use a test email to avoid polluting real contacts. The test event is tagged <code className="bg-amber-100 px-1 rounded font-mono text-[10px]">GHL Test</code> so you can filter it in GHL.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Run button */}
+      {state !== "done" && (
+        <button
+          type="button"
+          onClick={runTest}
+          disabled={state === "running"}
+          className={`whitespace-nowrap flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-extrabold transition-colors cursor-pointer disabled:opacity-60 ${
+            state === "running" ? "bg-amber-400 text-white" : "bg-amber-500 text-white hover:bg-amber-600"
+          }`}
+        >
+          {state === "running"
+            ? <><i className="ri-loader-4-line animate-spin"></i>Firing test payload to GHL...</>
+            : <><i className="ri-send-plane-line"></i>Fire GHL Connection Test</>}
+        </button>
+      )}
+
+      {/* Result */}
+      {state === "done" && result && (
+        <div className={`rounded-xl border overflow-hidden ${result.ok ? "border-[#b8ddd5]" : "border-red-200"}`}>
+          {/* Status bar */}
+          <div className={`px-4 py-3 flex items-center justify-between flex-wrap gap-2 ${result.ok ? "bg-[#f0faf7]" : "bg-red-50"}`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-7 h-7 flex items-center justify-center rounded-full flex-shrink-0 ${result.ok ? "bg-[#1a5c4f]" : "bg-red-500"}`}>
+                <i className={`${result.ok ? "ri-checkbox-circle-fill" : "ri-close-circle-fill"} text-white text-sm`}></i>
+              </div>
+              <div>
+                <p className={`text-sm font-extrabold ${result.ok ? "text-[#1a5c4f]" : "text-red-700"}`}>
+                  {result.ok ? "GHL accepted the payload" : "GHL rejected the payload"}
+                </p>
+                <p className={`text-xs ${result.ok ? "text-[#2d7a6a]" : "text-red-500"}`}>
+                  HTTP {result.ghlStatus} · {result.durationMs}ms
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowRaw(!showRaw)}
+              className="whitespace-nowrap text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors flex items-center gap-1"
+            >
+              <i className={showRaw ? "ri-eye-off-line" : "ri-code-line"}></i>
+              {showRaw ? "Hide Raw" : "Show Raw Response"}
+            </button>
+          </div>
+
+          {/* Field check grid */}
+          <div className="px-4 py-4 bg-white">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Payload Fields Verified</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+              {[
+                { label: "Phone sent", value: result.phone, ok: !!result.phone },
+                { label: "Email sent", value: result.email, ok: !!result.email },
+                { label: "GHL HTTP status", value: `HTTP ${result.ghlStatus}`, ok: result.ghlStatus >= 200 && result.ghlStatus < 300 },
+                { label: "Tags sent", value: result.tagsSent.length > 0 ? `${result.tagsSent.length} tags` : "None", ok: result.tagsSent.length > 0 },
+                { label: "Phone format", value: result.phone?.startsWith("+") ? "E.164 ✓" : "Raw (proxy normalizes)", ok: true },
+                { label: "Pipeline stage", value: result.pipelineStage || "No stage for event", ok: !!result.pipelineStage },
+                { label: "Pipeline configured", value: result.pipelineConfigured ? "IDs set in secrets" : "Secrets not set yet", ok: !!result.pipelineConfigured },
+                { label: "Proxy response", value: result.ok ? "OK" : result.error ?? "Error", ok: result.ok },
+              ].map((f) => (
+                <div key={f.label} className={`rounded-lg px-3 py-2.5 border ${f.ok ? "bg-[#f0faf7] border-[#b8ddd5]" : "bg-red-50 border-red-200"}`}>
+                  <p className="text-[10px] text-gray-400 mb-0.5">{f.label}</p>
+                  <p className={`text-xs font-bold truncate ${f.ok ? "text-[#1a5c4f]" : "text-red-600"}`}>{f.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Tags list */}
+            {result.tagsSent.length > 0 && (
+              <div className="mb-4">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tags Sent to GHL</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {result.tagsSent.map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-full text-xs text-amber-700 font-semibold">
+                      <i className="ri-price-tag-3-line" style={{ fontSize: "9px" }}></i>{tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Error message */}
+            {!result.ok && result.error && (
+              <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 flex items-start gap-2">
+                <i className="ri-error-warning-line text-red-500 text-sm flex-shrink-0 mt-0.5"></i>
+                <div>
+                  <p className="text-xs font-bold text-red-700 mb-0.5">Error Details</p>
+                  <p className="text-xs text-red-600 font-mono break-all">{result.error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Diagnosis */}
+            <div className={`rounded-lg px-3 py-2.5 flex items-start gap-2 ${result.ok ? "bg-[#f0faf7] border border-[#b8ddd5]" : "bg-red-50 border border-red-200"}`}>
+              <i className={`${result.ok ? "ri-lightbulb-line text-[#1a5c4f]" : "ri-alert-line text-red-500"} text-sm flex-shrink-0 mt-0.5`}></i>
+              <p className={`text-xs leading-relaxed ${result.ok ? "text-[#2d7a6a]" : "text-red-600"}`}>
+                {result.ok
+                  ? "GHL webhook URL is reachable and accepted the payload. Now verify in GHL that the contact was created with the phone number — if phone is missing, the GHL Workflow's \"Create/Update Contact\" action is not mapping the phone field."
+                  : result.ghlStatus === 500 && !result.ghlBody
+                    ? "The GHL_WEBHOOK_URL Supabase secret is likely missing or empty. Go to Supabase Dashboard → Edge Functions → Secrets and set GHL_WEBHOOK_URL."
+                    : result.ghlStatus === 0
+                      ? "Could not reach the GHL proxy at all. Check that the edge function is deployed and the Supabase URL is correct."
+                      : `GHL returned HTTP ${result.ghlStatus}. This usually means the webhook URL is wrong or the GHL workflow is paused/deleted. Check the raw response for details.`}
+              </p>
+            </div>
+
+            {/* Raw response */}
+            {showRaw && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Raw GHL Response</p>
+                  <CopyButton text={result.ghlBody} />
+                </div>
+                <pre
+                  ref={rawRef}
+                  className="bg-gray-900 text-green-400 text-[10px] font-mono p-4 rounded-lg overflow-auto max-h-48 whitespace-pre-wrap break-all leading-relaxed"
+                >
+                  {result.ghlBody || "(empty response body)"}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsTab() {
   const [ghl, setGhl] = useState<GhlStats | null>(null);
   const [stripe, setStripe] = useState<StripeStats | null>(null);
@@ -1122,23 +1614,29 @@ export default function SettingsTab() {
     loadStripe();
   }, [supabaseUrl]);
 
-  const handleBulkGhlRetry = async () => {
-    // Fetch all paid orders (not just unsynced), so re-fire works even when all are synced
-    const { data } = await supabase
+  const handleBulkGhlRetry = async (mode: "unsynced" | "all" = "unsynced") => {
+    // "unsynced" = only orders where ghl_synced_at IS NULL (never synced)
+    // "all" = re-fire every paid order regardless of sync status
+    let query = supabase
       .from("orders")
       .select("confirmation_id, ghl_synced_at, ghl_sync_error, payment_intent_id")
       .not("payment_intent_id", "is", null)
       .limit(500);
 
+    if (mode === "unsynced") {
+      query = query.is("ghl_synced_at", null);
+    }
+
+    const { data } = await query;
     const targets = (data ?? []) as { confirmation_id: string; ghl_synced_at: string | null; ghl_sync_error: string | null }[];
 
     if (targets.length === 0) {
-      setBulkRetry({ running: false, total: 0, done: 0, successCount: 0, failCount: 0, finished: true });
+      setBulkRetry({ running: false, total: 0, done: 0, successCount: 0, failCount: 0, finished: true, mode });
       setTimeout(() => setBulkRetry(INIT_BULK), 5000);
       return;
     }
 
-    setBulkRetry({ running: true, total: targets.length, done: 0, successCount: 0, failCount: 0, finished: false });
+    setBulkRetry({ running: true, total: targets.length, done: 0, successCount: 0, failCount: 0, finished: false, mode });
 
     const token = await getAdminToken();
 
@@ -1160,7 +1658,7 @@ export default function SettingsTab() {
       setBulkRetry((prev) => ({ ...prev, done: prev.done + 1, successCount, failCount }));
     }
 
-    setBulkRetry({ running: false, total: targets.length, done: targets.length, successCount, failCount, finished: true });
+    setBulkRetry({ running: false, total: targets.length, done: targets.length, successCount, failCount, finished: true, mode });
     // Refresh GHL stats after retry
     await loadGhl();
     setTimeout(() => setBulkRetry(INIT_BULK), 10000);
@@ -1229,73 +1727,126 @@ export default function SettingsTab() {
                 </div>
               </div>
 
-              {/* ── BULK RETRY SECTION ── */}
-              <div className="mb-5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <p className="text-sm font-extrabold text-[#1a5c4f] mb-0.5 flex items-center gap-2">
-                      <i className="ri-refresh-line"></i> Bulk Re-sync All Orders to GHL
-                    </p>
-                    <p className="text-xs text-[#2d7a6a] leading-relaxed">
-                      {unsyncedCount > 0
-                        ? `${unsyncedCount} order${unsyncedCount !== 1 ? "s" : ""} not yet synced to GHL. Click to retry all at once.`
-                        : "All orders are synced. Use this to re-fire all orders to GHL (e.g. after updating the webhook URL)."}
-                    </p>
-                  </div>
-
-                  {!bulkRetry.finished && (
-                    <button
-                      type="button"
-                      onClick={handleBulkGhlRetry}
-                      disabled={bulkRetry.running}
-                      className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-lg hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors flex-shrink-0"
-                    >
-                      {bulkRetry.running
-                        ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
-                        : unsyncedCount > 0
-                          ? <><i className="ri-refresh-line"></i>Retry All ({unsyncedCount})</>
-                          : <><i className="ri-refresh-line"></i>Re-fire All to GHL</>}
-                    </button>
+              {/* ── BULK SYNC SECTION ── */}
+              <div className="mb-5 rounded-xl border border-gray-200 overflow-hidden">
+                {/* Header */}
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                  <i className="ri-cloud-line text-gray-500 text-sm"></i>
+                  <p className="text-xs font-extrabold text-gray-700">Bulk GHL Sync</p>
+                  {unsyncedCount > 0 && (
+                    <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"></span>
+                      {unsyncedCount} unsynced
+                    </span>
+                  )}
+                  {unsyncedCount === 0 && ghl && (
+                    <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-[#f0faf7] text-[#1a5c4f] rounded-full text-[10px] font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#1a5c4f] flex-shrink-0"></span>
+                      All synced
+                    </span>
                   )}
                 </div>
 
-                {/* Live progress bar */}
-                {bulkRetry.running && (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between text-xs text-[#1a5c4f] mb-1.5">
-                      <span className="font-semibold">Syncing orders to GHL...</span>
-                      <span className="font-extrabold">{bulkRetry.done} / {bulkRetry.total}</span>
+                <div className="px-4 py-4 space-y-3 bg-white">
+                  {/* Primary: Sync unsynced only */}
+                  <div className="flex items-start gap-3 p-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
+                    <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0 mt-0.5">
+                      <i className="ri-upload-cloud-2-line text-white text-sm"></i>
                     </div>
-                    <div className="w-full bg-[#b8ddd5] rounded-full h-2 overflow-hidden">
-                      <div
-                        className="h-2 rounded-full bg-[#1a5c4f] transition-all duration-300"
-                        style={{ width: bulkRetry.total > 0 ? `${Math.round((bulkRetry.done / bulkRetry.total) * 100)}%` : "0%" }}
-                      ></div>
-                    </div>
-                    <div className="flex items-center gap-4 mt-2 text-xs">
-                      <span className="text-[#1a5c4f] font-semibold flex items-center gap-1">
-                        <i className="ri-checkbox-circle-fill"></i>{bulkRetry.successCount} synced
-                      </span>
-                      {bulkRetry.failCount > 0 && (
-                        <span className="text-red-500 font-semibold flex items-center gap-1">
-                          <i className="ri-error-warning-line"></i>{bulkRetry.failCount} failed
-                        </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-extrabold text-[#1a5c4f] mb-0.5">
+                        Sync Unsynced Orders Only
+                        {unsyncedCount > 0 && <span className="ml-1.5 font-normal text-[#2d7a6a]">({unsyncedCount} orders)</span>}
+                      </p>
+                      <p className="text-xs text-[#2d7a6a] leading-relaxed mb-2">
+                        {unsyncedCount > 0
+                          ? `Pushes all ${unsyncedCount} paid order${unsyncedCount !== 1 ? "s" : ""} where ghl_synced_at IS NULL to GHL. This is the safe one-click catch-up for orders that were never synced.`
+                          : "No unsynced paid orders found — all orders have been pushed to GHL at least once."}
+                      </p>
+                      {!bulkRetry.finished && (
+                        <button
+                          type="button"
+                          onClick={() => handleBulkGhlRetry("unsynced")}
+                          disabled={bulkRetry.running || unsyncedCount === 0}
+                          className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-extrabold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+                        >
+                          {bulkRetry.running && bulkRetry.mode === "unsynced"
+                            ? <><i className="ri-loader-4-line animate-spin"></i>Syncing {bulkRetry.done}/{bulkRetry.total}...</>
+                            : unsyncedCount > 0
+                              ? <><i className="ri-upload-cloud-2-line"></i>Sync {unsyncedCount} Unsynced Orders</>
+                              : <><i className="ri-checkbox-circle-line"></i>Nothing to Sync</>}
+                        </button>
                       )}
                     </div>
                   </div>
-                )}
 
-                {/* Finished result */}
-                {bulkRetry.finished && (
-                  <div className={`mt-3 px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${bulkRetry.failCount === 0 ? "bg-[#1a5c4f] text-white" : "bg-amber-100 text-amber-800"}`}>
-                    <i className={bulkRetry.failCount === 0 ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
-                    {bulkRetry.total === 0
-                      ? "Nothing to sync — all orders already in GHL."
-                      : bulkRetry.failCount === 0
-                        ? `All ${bulkRetry.successCount} order${bulkRetry.successCount !== 1 ? "s" : ""} synced to GHL successfully.`
-                        : `${bulkRetry.successCount} synced, ${bulkRetry.failCount} still failed (check GHL API key in Supabase Secrets).`}
+                  {/* Secondary: Re-fire all */}
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                    <div className="w-8 h-8 flex items-center justify-center bg-gray-200 rounded-lg flex-shrink-0 mt-0.5">
+                      <i className="ri-refresh-line text-gray-600 text-sm"></i>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-extrabold text-gray-700 mb-0.5">Re-fire All Paid Orders</p>
+                      <p className="text-xs text-gray-500 leading-relaxed mb-2">
+                        Re-sends every paid order to GHL regardless of sync status. Use this after changing the GHL webhook URL or updating field mappings in GHL workflows.
+                      </p>
+                      {!bulkRetry.finished && (
+                        <button
+                          type="button"
+                          onClick={() => handleBulkGhlRetry("all")}
+                          disabled={bulkRetry.running}
+                          className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-gray-700 text-white text-xs font-extrabold rounded-lg hover:bg-gray-800 disabled:opacity-50 cursor-pointer transition-colors"
+                        >
+                          {bulkRetry.running && bulkRetry.mode === "all"
+                            ? <><i className="ri-loader-4-line animate-spin"></i>Re-firing {bulkRetry.done}/{bulkRetry.total}...</>
+                            : <><i className="ri-refresh-line"></i>Re-fire All to GHL</>}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
+
+                  {/* Live progress bar (shared) */}
+                  {bulkRetry.running && (
+                    <div className="px-1">
+                      <div className="flex items-center justify-between text-xs text-gray-600 mb-1.5">
+                        <span className="font-semibold">
+                          {bulkRetry.mode === "unsynced" ? "Syncing unsynced orders..." : "Re-firing all orders..."}
+                        </span>
+                        <span className="font-extrabold">{bulkRetry.done} / {bulkRetry.total}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-2 rounded-full bg-[#1a5c4f] transition-all duration-300"
+                          style={{ width: bulkRetry.total > 0 ? `${Math.round((bulkRetry.done / bulkRetry.total) * 100)}%` : "0%" }}
+                        ></div>
+                      </div>
+                      <div className="flex items-center gap-4 mt-2 text-xs">
+                        <span className="text-[#1a5c4f] font-semibold flex items-center gap-1">
+                          <i className="ri-checkbox-circle-fill"></i>{bulkRetry.successCount} synced
+                        </span>
+                        {bulkRetry.failCount > 0 && (
+                          <span className="text-red-500 font-semibold flex items-center gap-1">
+                            <i className="ri-error-warning-line"></i>{bulkRetry.failCount} failed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Finished result */}
+                  {bulkRetry.finished && (
+                    <div className={`px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${bulkRetry.failCount === 0 ? "bg-[#1a5c4f] text-white" : "bg-amber-100 text-amber-800"}`}>
+                      <i className={bulkRetry.failCount === 0 ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                      {bulkRetry.total === 0
+                        ? bulkRetry.mode === "unsynced"
+                          ? "No unsynced orders found — all paid orders are already in GHL."
+                          : "No paid orders found to re-fire."
+                        : bulkRetry.failCount === 0
+                          ? `All ${bulkRetry.successCount} order${bulkRetry.successCount !== 1 ? "s" : ""} synced to GHL successfully.`
+                          : `${bulkRetry.successCount} synced, ${bulkRetry.failCount} still failed — check GHL_WEBHOOK_URL in Supabase Secrets.`}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Timestamps */}
@@ -1346,15 +1897,45 @@ export default function SettingsTab() {
 
           {/* Webhook URLs */}
           <div>
-            <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3">Webhook Configuration</p>
+            <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3">GHL Webhook URLs</p>
+
+            {/* Critical warning */}
+            <div className="mb-3 flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+              <i className="ri-alert-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
+              <div>
+                <p className="text-xs font-bold text-amber-800">Supabase Secret Must Match</p>
+                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                  Edge functions use the <code className="bg-amber-100 px-1 rounded font-mono">GHL_WEBHOOK_URL</code> Supabase secret — not these URLs directly.
+                  Go to <strong>Supabase Dashboard → Edge Functions → Secrets</strong> and set <code className="bg-amber-100 px-1 rounded font-mono">GHL_WEBHOOK_URL</code> to the Main Webhook URL below.
+                  If this secret is missing or wrong, all GHL contact syncs silently fail.
+                </p>
+              </div>
+            </div>
+
+            {/* How it works */}
+            <div className="mb-3 flex items-start gap-2.5 px-3 py-2.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
+              <i className="ri-information-line text-[#1a5c4f] text-sm flex-shrink-0 mt-0.5"></i>
+              <div>
+                <p className="text-xs font-bold text-[#1a5c4f]">How GHL Webhooks Work</p>
+                <p className="text-xs text-[#2d7a6a] mt-0.5 leading-relaxed">
+                  These are <strong>GHL Workflow Trigger URLs</strong>. When an order event fires, we POST a JSON payload (including phone in E.164 format) to this URL.
+                  GHL runs a Workflow that must have a <strong>"Create/Update Contact"</strong> action with field mappings for <code className="bg-[#e0f5ef] px-1 rounded font-mono">phone</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono">email</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono">firstName</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono">lastName</code>.
+                  If the GHL Workflow doesn&apos;t map the <code className="bg-[#e0f5ef] px-1 rounded font-mono">phone</code> field, contacts are created without a phone number.
+                </p>
+              </div>
+            </div>
+
             <div className="space-y-3">
               {[
-                { label: "Main Webhook — Paid Orders", url: GHL_WEBHOOK_MAIN },
-                { label: "Network Webhook — Join Our Network", url: GHL_WEBHOOK_NETWORK },
+                { label: "Main Webhook — Paid Orders & Leads", url: GHL_WEBHOOK_MAIN, badge: "GHL_WEBHOOK_URL secret", badgeColor: "bg-[#1a5c4f] text-white" },
+                { label: "Network Webhook — Join Our Network", url: GHL_WEBHOOK_NETWORK, badge: "GHL_NETWORK_WEBHOOK_URL secret", badgeColor: "bg-gray-200 text-gray-600" },
               ].map((w) => (
                 <div key={w.label} className="bg-gray-50 border border-gray-200 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-gray-600">{w.label}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-gray-600">{w.label}</p>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${w.badgeColor}`}>{w.badge}</span>
+                    </div>
                     <CopyButton text={w.url} />
                   </div>
                   <p className="font-mono text-xs text-gray-600 break-all">{w.url}</p>
@@ -1363,6 +1944,12 @@ export default function SettingsTab() {
             </div>
             <p className="text-xs text-gray-400 mt-2">In GHL: Automation → ensure workflow is Published and set to &ldquo;Create/Update Contact&rdquo; as first action.</p>
           </div>
+
+          {/* ── Pipeline Stage Auto-Mover ── */}
+          <GhlPipelineConfigPanel />
+
+          {/* ── GHL Connection Test ── */}
+          <GhlConnectionTestPanel supabaseUrl={supabaseUrl} />
         </div>
       </div>
 

@@ -2,7 +2,38 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 
-type LoginStep = "email" | "otp" | "reset_password";
+type LoginStep = "email_password" | "otp_challenge" | "reset_password";
+
+// Simple device fingerprint — browser + OS combo stored in localStorage
+function getDeviceId(): string {
+  const key = "admin_device_id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function getTrustedDevices(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem("admin_trusted_devices") ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function trustDevice(deviceId: string) {
+  const trusted = getTrustedDevices();
+  if (!trusted.includes(deviceId)) {
+    trusted.push(deviceId);
+    localStorage.setItem("admin_trusted_devices", JSON.stringify(trusted));
+  }
+}
+
+function isDeviceTrusted(deviceId: string): boolean {
+  return getTrustedDevices().includes(deviceId);
+}
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
@@ -12,8 +43,10 @@ export default function AdminLoginPage() {
   const redirectReason = searchParams.get("reason");
   const nextPath = searchParams.get("next") ?? "/admin-orders";
 
-  const [step, setStep] = useState<LoginStep>(isResetMode ? "reset_password" : "email");
+  const [step, setStep] = useState<LoginStep>(isResetMode ? "reset_password" : "email_password");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -25,13 +58,15 @@ export default function AdminLoginPage() {
   const [success, setSuccess] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendLoading, setResendLoading] = useState(false);
+  // Holds the Supabase session after password auth, before OTP challenge completes
+  const pendingSessionRef = useRef<string | null>(null);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
-  // When in reset mode, wait for Supabase to finish processing the token
+  // Reset mode: wait for Supabase to process the token
   useEffect(() => {
     if (!isResetMode) return;
     const checkSession = async () => {
@@ -67,27 +102,102 @@ export default function AdminLoginPage() {
     return () => { if (cooldownRef.current) clearInterval(cooldownRef.current); };
   }, [resendCooldown]);
 
-  const handleSendOTP = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!email.trim()) { setError("Please enter your email address."); return; }
+  // ── STEP 1: Email + Password sign-in ──
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) { setError("Please enter your email and password."); return; }
     setError("");
     setLoading(true);
+
     try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/send-admin-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      // Sign in with password
+      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
       });
-      const result = await res.json() as { ok: boolean; error?: string };
-      if (!result.ok) {
-        setError(result.error ?? "Failed to send code. Please try again.");
+
+      if (authErr || !authData.session) {
+        setError("Incorrect email or password. Please try again.");
         setLoading(false);
         return;
       }
-      setStep("otp");
+
+      // Verify admin status
+      const checkRes = await fetch(`${supabaseUrl}/functions/v1/check-admin-status`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${authData.session.access_token}` },
+      });
+      const checkResult = await checkRes.json() as { ok: boolean; is_admin: boolean };
+
+      if (!checkResult.ok || !checkResult.is_admin) {
+        await supabase.auth.signOut();
+        setError("Access denied. This portal is for authorized administrators only.");
+        setLoading(false);
+        return;
+      }
+
+      // Check if this device is trusted
+      const deviceId = getDeviceId();
+      if (isDeviceTrusted(deviceId)) {
+        // Known device — go straight in
+        navigate(nextPath);
+        return;
+      }
+
+      // Unknown device — trigger OTP challenge
+      // Keep the session alive but require OTP confirmation
+      pendingSessionRef.current = authData.session.access_token;
+
+      // Send OTP challenge email
+      const otpRes = await fetch(`${supabaseUrl}/functions/v1/send-admin-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), challenge: true }),
+      });
+      const otpResult = await otpRes.json() as { ok: boolean; error?: string };
+
+      if (!otpResult.ok) {
+        // If OTP send fails, still let them in (don't block on email failure)
+        console.warn("[admin-login] OTP send failed, skipping challenge:", otpResult.error);
+        trustDevice(deviceId);
+        navigate(nextPath);
+        return;
+      }
+
+      setStep("otp_challenge");
       setOtp(["", "", "", "", "", ""]);
       setResendCooldown(60);
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    }
+    setLoading(false);
+  };
+
+  // ── OTP Challenge: verify the device confirmation code ──
+  const handleOTPChallenge = async () => {
+    const code = otp.join("");
+    if (code.length !== 6) { setError("Please enter the complete 6-digit code."); return; }
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/verify-admin-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: code, challenge: true }),
+      });
+      const result = await res.json() as { ok: boolean; error?: string };
+
+      if (!result.ok) {
+        setError(result.error ?? "Invalid code. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // OTP confirmed — trust this device and proceed
+      trustDevice(getDeviceId());
+      navigate(nextPath);
     } catch {
       setError("Network error. Please check your connection and try again.");
     }
@@ -102,7 +212,7 @@ export default function AdminLoginPage() {
       const res = await fetch(`${supabaseUrl}/functions/v1/send-admin-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), challenge: true }),
       });
       const result = await res.json() as { ok: boolean; error?: string };
       if (result.ok) {
@@ -121,7 +231,6 @@ export default function AdminLoginPage() {
   };
 
   const handleOTPInput = (index: number, value: string) => {
-    // Handle paste
     if (value.length > 1) {
       const digits = value.replace(/\D/g, "").slice(0, 6).split("");
       const newOtp = [...otp];
@@ -146,76 +255,8 @@ export default function AdminLoginPage() {
     }
     if (e.key === "Enter") {
       const code = otp.join("");
-      if (code.length === 6) handleVerifyOTP();
+      if (code.length === 6) handleOTPChallenge();
     }
-  };
-
-  const handleVerifyOTP = async () => {
-    const code = otp.join("");
-    if (code.length !== 6) { setError("Please enter the complete 6-digit code."); return; }
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/verify-admin-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: code }),
-      });
-      const result = await res.json() as { ok: boolean; error?: string; token?: string; action_link?: string };
-      if (!result.ok) {
-        setError(result.error ?? "Invalid code. Please try again.");
-        setLoading(false);
-        return;
-      }
-
-      // Use the magic link token to sign in
-      if (result.action_link) {
-        // Navigate to the magic link to complete sign-in
-        const { error: verifyErr } = await supabase.auth.verifyOtp({
-          token_hash: result.token ?? "",
-          type: "magiclink",
-        });
-
-        if (verifyErr) {
-          // Fallback: try signing in via the action link redirect approach
-          // Use signInWithOtp flow via the token
-          console.warn("[admin-login] verifyOtp error:", verifyErr.message);
-          // Try alternative: use the action link directly
-          window.location.href = result.action_link;
-          return;
-        }
-      }
-
-      // Verify admin status
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        // If no session yet, redirect via action link
-        if (result.action_link) {
-          window.location.href = result.action_link;
-          return;
-        }
-        setError("Sign-in failed. Please try again.");
-        setLoading(false);
-        return;
-      }
-
-      const checkRes = await fetch(`${supabaseUrl}/functions/v1/check-admin-status`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      const checkResult = await checkRes.json() as { ok: boolean; is_admin: boolean };
-      if (!checkResult.ok || !checkResult.is_admin) {
-        await supabase.auth.signOut();
-        setError("Access denied. This portal is for authorized administrators only.");
-        setLoading(false);
-        return;
-      }
-
-      navigate(nextPath);
-    } catch {
-      setError("Network error. Please check your connection and try again.");
-    }
-    setLoading(false);
   };
 
   const handleSetNewPassword = async (e: React.FormEvent) => {
@@ -233,7 +274,7 @@ export default function AdminLoginPage() {
     }
     await supabase.auth.signOut();
     setLoading(false);
-    setSuccess("Password set! Redirecting to sign in...");
+    setSuccess("Password updated! Redirecting to sign in...");
     setTimeout(() => navigate("/admin-login", { replace: true }), 2000);
   };
 
@@ -356,22 +397,22 @@ export default function AdminLoginPage() {
             </>
           )}
 
-          {/* ── STEP 1: EMAIL ENTRY ── */}
-          {step === "email" && (
+          {/* ── STEP 1: Email + Password ── */}
+          {step === "email_password" && (
             <>
               <div className="text-center mb-8">
                 <div className="w-14 h-14 flex items-center justify-center bg-[#1a5c4f] rounded-2xl mx-auto mb-5">
                   <i className="ri-shield-keyhole-line text-white text-2xl"></i>
                 </div>
                 <h1 className="text-2xl font-extrabold text-white mb-1.5">Admin Portal</h1>
-                <p className="text-sm text-white/40">Enter your email to receive a sign-in code</p>
+                <p className="text-sm text-white/40">Sign in with your admin credentials</p>
               </div>
 
               <div className="bg-white/5 border border-white/10 rounded-2xl p-7">
                 {passwordResetSuccess && (
                   <div className="mb-5 bg-green-500/10 border border-green-500/20 rounded-xl px-4 py-3 flex items-start gap-2.5">
                     <i className="ri-checkbox-circle-fill text-green-400 text-sm flex-shrink-0 mt-0.5"></i>
-                    <p className="text-xs text-green-300 leading-relaxed">Password updated! Sign in with your email below.</p>
+                    <p className="text-xs text-green-300 leading-relaxed">Password updated! Sign in with your new credentials.</p>
                   </div>
                 )}
 
@@ -382,7 +423,7 @@ export default function AdminLoginPage() {
                   </div>
                 )}
 
-                <form onSubmit={handleSendOTP} className="space-y-4">
+                <form onSubmit={handlePasswordLogin} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-white/60 mb-2 uppercase tracking-wider">Email Address</label>
                     <input
@@ -396,14 +437,24 @@ export default function AdminLoginPage() {
                     />
                   </div>
 
-                  {/* OTP method badge */}
-                  <div className="flex items-center gap-2.5 bg-[#1a5c4f]/20 border border-[#1a5c4f]/30 rounded-xl px-4 py-3">
-                    <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f]/40 rounded-lg flex-shrink-0">
-                      <i className="ri-mail-check-line text-[#4ecdc4] text-sm"></i>
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-white/80">Email OTP Verification</p>
-                      <p className="text-xs text-white/40 mt-0.5">A 6-digit code will be sent to your email</p>
+                  <div>
+                    <label className="block text-xs font-bold text-white/60 mb-2 uppercase tracking-wider">Password</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Your admin password"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder-white/20 focus:outline-none focus:border-[#1a5c4f] transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="whitespace-nowrap absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-white/30 hover:text-white/60 transition-colors cursor-pointer"
+                      >
+                        <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
+                      </button>
                     </div>
                   </div>
 
@@ -413,11 +464,20 @@ export default function AdminLoginPage() {
                     className="whitespace-nowrap w-full py-3.5 bg-[#1a5c4f] text-white font-extrabold text-sm rounded-xl hover:bg-[#17504a] transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
                   >
                     {loading
-                      ? <><i className="ri-loader-4-line animate-spin"></i>Sending Code...</>
-                      : <><i className="ri-mail-send-line"></i>Send Sign-In Code</>
+                      ? <><i className="ri-loader-4-line animate-spin"></i>Signing In...</>
+                      : <><i className="ri-login-box-line"></i>Sign In</>
                     }
                   </button>
                 </form>
+
+                <div className="mt-4 text-center">
+                  <Link
+                    to="/reset-password"
+                    className="whitespace-nowrap text-xs text-white/30 hover:text-white/60 transition-colors cursor-pointer"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               <div className="mt-6 flex items-center justify-center gap-2 text-xs text-white/25">
@@ -427,19 +487,27 @@ export default function AdminLoginPage() {
             </>
           )}
 
-          {/* ── STEP 2: OTP ENTRY ── */}
-          {step === "otp" && (
+          {/* ── STEP 2: OTP Device Challenge (unknown browser/device only) ── */}
+          {step === "otp_challenge" && (
             <>
               <div className="text-center mb-8">
-                <div className="w-14 h-14 flex items-center justify-center bg-[#1a5c4f] rounded-2xl mx-auto mb-5">
-                  <i className="ri-mail-check-line text-white text-2xl"></i>
+                <div className="w-14 h-14 flex items-center justify-center bg-amber-600/30 rounded-2xl mx-auto mb-5">
+                  <i className="ri-shield-check-line text-amber-400 text-2xl"></i>
                 </div>
-                <h1 className="text-2xl font-extrabold text-white mb-1.5">Check Your Email</h1>
-                <p className="text-sm text-white/40">We sent a 6-digit code to</p>
+                <h1 className="text-2xl font-extrabold text-white mb-1.5">New Device Detected</h1>
+                <p className="text-sm text-white/40">We sent a verification code to</p>
                 <p className="text-sm font-bold text-[#4ecdc4] mt-1 break-all">{email}</p>
               </div>
 
               <div className="bg-white/5 border border-white/10 rounded-2xl p-7">
+                {/* Info banner */}
+                <div className="mb-5 flex items-start gap-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+                  <i className="ri-information-line text-amber-400 text-sm flex-shrink-0 mt-0.5"></i>
+                  <p className="text-xs text-amber-300 leading-relaxed">
+                    This browser hasn&apos;t been used to access the admin portal before. Enter the code to verify and trust this device.
+                  </p>
+                </div>
+
                 {error && (
                   <div className="mb-5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-start gap-2.5">
                     <i className="ri-error-warning-fill text-red-400 text-sm flex-shrink-0 mt-0.5"></i>
@@ -456,7 +524,6 @@ export default function AdminLoginPage() {
                 <div className="space-y-5">
                   <div>
                     <label className="block text-xs font-bold text-white/60 mb-3 uppercase tracking-wider text-center">Enter 6-Digit Code</label>
-                    {/* OTP input boxes */}
                     <div className="flex items-center justify-center gap-2">
                       {otp.map((digit, index) => (
                         <input
@@ -481,24 +548,29 @@ export default function AdminLoginPage() {
 
                   <button
                     type="button"
-                    onClick={handleVerifyOTP}
+                    onClick={handleOTPChallenge}
                     disabled={loading || !otpComplete}
                     className="whitespace-nowrap w-full py-3.5 bg-[#1a5c4f] text-white font-extrabold text-sm rounded-xl hover:bg-[#17504a] transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {loading
                       ? <><i className="ri-loader-4-line animate-spin"></i>Verifying...</>
-                      : <><i className="ri-login-box-line"></i>Sign In to Admin Portal</>
+                      : <><i className="ri-shield-check-line"></i>Verify &amp; Trust This Device</>
                     }
                   </button>
 
-                  {/* Resend + back */}
                   <div className="flex items-center justify-between pt-1">
                     <button
                       type="button"
-                      onClick={() => { setStep("email"); setError(""); setOtp(["", "", "", "", "", ""]); }}
+                      onClick={() => {
+                        supabase.auth.signOut();
+                        setStep("email_password");
+                        setError("");
+                        setOtp(["", "", "", "", "", ""]);
+                        pendingSessionRef.current = null;
+                      }}
                       className="whitespace-nowrap text-xs text-white/30 hover:text-white/60 cursor-pointer transition-colors flex items-center gap-1"
                     >
-                      <i className="ri-arrow-left-line"></i>Change email
+                      <i className="ri-arrow-left-line"></i>Back to sign in
                     </button>
                     <button
                       type="button"

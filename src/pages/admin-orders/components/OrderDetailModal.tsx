@@ -87,6 +87,10 @@ interface OrderDetailModalProps {
   onClose: () => void;
   onOrderUpdated: (updatedOrder: Partial<Order> & { id: string }) => void;
   onOrderDeleted?: (orderId: string) => void;
+  /** Full filtered/sorted order list for arrow-key navigation */
+  allOrders?: Order[];
+  /** Called when user navigates to a different order via arrow keys */
+  onNavigate?: (order: Order) => void;
 }
 
 type Section = "overview" | "documents" | "assessment" | "notes" | "comms";
@@ -604,6 +608,191 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
   );
 }
 
+// ─── GHL Sync Log entry type ──────────────────────────────────────────────────
+interface GhlSyncLogEntry {
+  id: string;
+  confirmation_id: string;
+  event_type: string;
+  status: "success" | "failed";
+  ghl_status_code: number | null;
+  error_message: string | null;
+  attempts: number;
+  triggered_by: string;
+  payload_summary: Record<string, unknown> | null;
+  created_at: string;
+}
+
+const GHL_EVENT_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+  assessment_started:        { label: "Assessment Started",    color: "text-amber-700 bg-amber-50 border-amber-200",    icon: "ri-file-list-3-line" },
+  payment_confirmed:         { label: "Payment Confirmed",     color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: "ri-bank-card-line" },
+  payment_confirmed_backfill:{ label: "Payment (Backfill)",    color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: "ri-refresh-line" },
+  doctor_assigned:           { label: "Doctor Assigned",       color: "text-sky-700 bg-sky-50 border-sky-200",          icon: "ri-user-received-line" },
+  order_completed:           { label: "Order Completed",       color: "text-violet-700 bg-violet-50 border-violet-200", icon: "ri-checkbox-circle-line" },
+  order_cancelled:           { label: "Order Cancelled",       color: "text-red-700 bg-red-50 border-red-200",          icon: "ri-close-circle-line" },
+  refund_issued:             { label: "Refund Issued",         color: "text-orange-700 bg-orange-50 border-orange-200", icon: "ri-refund-line" },
+  letter_sent:               { label: "Letter Sent",           color: "text-violet-700 bg-violet-50 border-violet-200", icon: "ri-mail-check-line" },
+};
+
+function GhlSyncHistory({ confirmationId }: { confirmationId: string }) {
+  const [logs, setLogs] = useState<GhlSyncLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  const loadLogs = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("ghl_sync_logs")
+      .select("*")
+      .eq("confirmation_id", confirmationId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    setLogs((data as GhlSyncLogEntry[]) ?? []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadLogs();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmationId]);
+
+  const successCount = logs.filter((l) => l.status === "success").length;
+  const failedCount = logs.filter((l) => l.status === "failed").length;
+
+  return (
+    <div className="col-span-2 sm:col-span-3 md:col-span-4 mt-1">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-2 cursor-pointer group"
+        >
+          <div className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded-lg group-hover:bg-gray-200 transition-colors">
+            <i className={`${expanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-gray-500 text-sm`}></i>
+          </div>
+          <p className="text-xs font-bold text-gray-600 flex items-center gap-1.5">
+            <i className="ri-history-line text-gray-400"></i>
+            GHL Sync History
+            {logs.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 font-semibold">
+                {logs.length}
+              </span>
+            )}
+          </p>
+        </button>
+        <div className="flex items-center gap-2">
+          {logs.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              {successCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                  <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>{successCount} ok
+                </span>
+              )}
+              {failedCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">
+                  <i className="ri-close-circle-fill" style={{ fontSize: "9px" }}></i>{failedCount} failed
+                </span>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={loadLogs}
+            disabled={loading}
+            className="whitespace-nowrap flex items-center gap-1 px-2 py-1 border border-gray-200 text-gray-400 text-[10px] font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
+          >
+            <i className={loading ? "ri-loader-4-line animate-spin" : "ri-refresh-line"}></i>
+            {loading ? "..." : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {/* Log entries */}
+      {expanded && (
+        <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center py-6">
+              <i className="ri-loader-4-line animate-spin text-gray-300 text-lg"></i>
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="px-4 py-5 text-center">
+              <p className="text-xs text-gray-400">No GHL sync history yet for this order.</p>
+              <p className="text-[10px] text-gray-300 mt-1">Sync events will appear here after the first sync attempt.</p>
+            </div>
+          ) : (
+            logs.map((log, idx) => {
+              const evtCfg = GHL_EVENT_LABELS[log.event_type] ?? {
+                label: log.event_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                color: "text-gray-600 bg-gray-50 border-gray-200",
+                icon: "ri-refresh-line",
+              };
+              const isSuccess = log.status === "success";
+              return (
+                <div
+                  key={log.id}
+                  className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 last:border-0 ${!isSuccess ? "bg-red-50/30" : idx === 0 ? "bg-[#f8fffe]" : ""}`}
+                >
+                  {/* Status icon */}
+                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 mt-0.5 ${isSuccess ? "bg-emerald-100" : "bg-red-100"}`}>
+                    <i className={`${isSuccess ? evtCfg.icon : "ri-error-warning-line"} ${isSuccess ? "text-emerald-600" : "text-red-500"} text-xs`}></i>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${evtCfg.color}`}>
+                        {evtCfg.label}
+                      </span>
+                      {log.attempts > 1 && (
+                        <span className="text-[10px] text-amber-600 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                          {log.attempts} attempts
+                        </span>
+                      )}
+                      <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isSuccess ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                        {isSuccess
+                          ? <><i className="ri-checkbox-circle-fill" style={{ fontSize: "8px" }}></i>Success</>
+                          : <><i className="ri-close-circle-fill" style={{ fontSize: "8px" }}></i>Failed</>
+                        }
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-[10px] text-gray-400">
+                        {new Date(log.created_at).toLocaleString("en-US", {
+                          month: "short", day: "numeric", year: "numeric",
+                          hour: "numeric", minute: "2-digit",
+                        })}
+                      </p>
+                      {log.triggered_by && (
+                        <>
+                          <span className="text-gray-200">·</span>
+                          <span className="text-[10px] text-gray-400 capitalize">by {log.triggered_by}</span>
+                        </>
+                      )}
+                      {log.ghl_status_code && (
+                        <>
+                          <span className="text-gray-200">·</span>
+                          <span className={`text-[10px] font-mono font-semibold ${isSuccess ? "text-emerald-600" : "text-red-500"}`}>
+                            HTTP {log.ghl_status_code}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    {!isSuccess && log.error_message && (
+                      <p className="text-[10px] text-red-500 mt-1 leading-relaxed italic truncate max-w-[320px]" title={log.error_message}>
+                        {log.error_message.slice(0, 120)}{log.error_message.length > 120 ? "..." : ""}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrderDetailModal({
   order: initialOrder,
   doctorContacts,
@@ -611,6 +800,8 @@ export default function OrderDetailModal({
   onClose,
   onOrderUpdated,
   onOrderDeleted,
+  allOrders = [],
+  onNavigate,
 }: OrderDetailModalProps) {
   const [order, setOrder] = useState<Order>(initialOrder);
   const [section, setSection] = useState<Section>("overview");
@@ -657,6 +848,39 @@ export default function OrderDetailModal({
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, []);
+
+  // ── Keyboard shortcuts: Escape = close, ArrowLeft/ArrowRight = navigate ──
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when user is typing in an input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (!onNavigate || allOrders.length === 0) return;
+
+      const currentIdx = allOrders.findIndex((o) => o.id === order.id);
+      if (currentIdx === -1) return;
+
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const prevIdx = currentIdx - 1;
+        if (prevIdx >= 0) onNavigate(allOrders[prevIdx]);
+      } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const nextIdx = currentIdx + 1;
+        if (nextIdx < allOrders.length) onNavigate(allOrders[nextIdx]);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, onNavigate, allOrders, order.id]);
 
   // Load provider doc count on mount so "Mark Letter Sent" gate is accurate
   useEffect(() => {
@@ -772,9 +996,21 @@ export default function OrderDetailModal({
       const token = await getAdminToken();
       const res = await fetch(`${supabaseUrl}/functions/v1/backfill-order-ghl`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          // apikey header is required by Supabase gateway even when verify_jwt=false
+          "apikey": anonKey,
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({ confirmationId: order.confirmation_id }),
       });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => `HTTP ${res.status}`);
+        setGhlMsg(`Request failed (HTTP ${res.status}): ${errText.slice(0, 200)}`);
+        setGhlFiring(false);
+        setTimeout(() => setGhlMsg(""), 8000);
+        return;
+      }
       const result = await res.json() as { ok: boolean; message: string; phonePersisted?: string | null };
       setGhlMsg(result.message ?? (result.ok ? "GHL synced!" : "Sync failed"));
       if (result.ok) {
@@ -785,10 +1021,10 @@ export default function OrderDetailModal({
         });
       }
     } catch {
-      setGhlMsg("Network error");
+      setGhlMsg("Network error — check console");
     }
     setGhlFiring(false);
-    setTimeout(() => setGhlMsg(""), 5000);
+    setTimeout(() => setGhlMsg(""), 8000);
   };
 
   const handleResendEmail = async () => {
@@ -1832,6 +2068,19 @@ export default function OrderDetailModal({
                 <i className="ri-eye-line text-sm"></i>
                 <span className="hidden sm:inline">Customer View</span>
               </button>
+              {/* Provider View — only when a provider is assigned */}
+              {(order.doctor_email || order.doctor_user_id) && (
+                <a
+                  href={`/provider-portal?order=${order.confirmation_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Preview provider portal for ${order.doctor_name ?? order.doctor_email ?? "assigned provider"}`}
+                  className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ec] transition-colors cursor-pointer"
+                >
+                  <i className="ri-user-heart-line text-sm"></i>
+                  <span className="hidden sm:inline">Provider View</span>
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => setSection("comms")}
@@ -1848,7 +2097,39 @@ export default function OrderDetailModal({
               >
                 <i className="ri-phone-line"></i>
               </button>
+              {/* Arrow navigation — only shown when there are multiple orders */}
+              {allOrders.length > 1 && (() => {
+                const currentIdx = allOrders.findIndex((o) => o.id === order.id);
+                const hasPrev = currentIdx > 0;
+                const hasNext = currentIdx < allOrders.length - 1;
+                return (
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => hasPrev && onNavigate?.(allOrders[currentIdx - 1])}
+                      disabled={!hasPrev}
+                      title="Previous order (← arrow key)"
+                      className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <i className="ri-arrow-left-s-line text-base"></i>
+                    </button>
+                    <span className="text-[10px] text-gray-300 font-mono px-0.5 select-none">
+                      {currentIdx + 1}/{allOrders.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => hasNext && onNavigate?.(allOrders[currentIdx + 1])}
+                      disabled={!hasNext}
+                      title="Next order (→ arrow key)"
+                      className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <i className="ri-arrow-right-s-line text-base"></i>
+                    </button>
+                  </div>
+                );
+              })()}
               <button type="button" onClick={onClose}
+                title="Close (Esc)"
                 className="whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
                 <i className="ri-close-line text-lg"></i>
               </button>
@@ -2052,7 +2333,7 @@ export default function OrderDetailModal({
                     </button>
                   </div>
                   {paymentSyncMsg && (
-                    <p className={`text-xs mt-2 flex items-center gap-1 ${(statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-600" : "text-[#1a5c4f]"}`}>
+                    <p className={`text-xs mt-2 flex items-center gap-1 ${paymentSyncMsg.toLowerCase().includes("fail") || paymentSyncMsg.toLowerCase().includes("error") ? "text-red-600" : "text-[#1a5c4f]"}`}>
                       <i className="ri-information-line"></i>{paymentSyncMsg}
                     </p>
                   )}
@@ -2152,21 +2433,96 @@ export default function OrderDetailModal({
                     },
                     { label: "Phone", value: order.phone ?? "—" },
                     {
-                      label: "GHL Sync",
-                      value: order.ghl_synced_at ? `Synced ${fmt(order.ghl_synced_at)}` : (order.ghl_sync_error ? "Failed" : "Pending"),
-                      highlight: order.ghl_synced_at ? "text-emerald-600" : order.ghl_sync_error ? "text-red-500" : "text-amber-500",
+                      label: "__GHL_SKIP__",
+                      value: "",
                     },
                     {
                       label: "Patient Notified",
                       value: order.patient_notification_sent_at ? fmt(order.patient_notification_sent_at) : "Not sent",
                       highlight: order.patient_notification_sent_at ? "text-emerald-600" : "text-gray-400",
                     },
-                  ].map((item) => (
-                    <div key={item.label}>
-                      <p className="text-xs text-gray-400 mb-0.5">{item.label}</p>
-                      <p className={`text-sm font-semibold truncate ${item.mono ? "font-mono text-gray-700" : item.highlight ?? "text-gray-800"}`}>{item.value}</p>
+                  ].map((item) => {
+                    if (item.label === "__GHL_SKIP__") return null;
+                    return (
+                      <div key={item.label}>
+                        <p className="text-xs text-gray-400 mb-0.5">{item.label}</p>
+                        <p className={`text-sm font-semibold truncate ${item.mono ? "font-mono text-gray-700" : item.highlight ?? "text-gray-800"}`}>{item.value}</p>
+                      </div>
+                    );
+                  })}
+
+                  {/* ── GHL Sync row — inline sync/resync button ── */}
+                  <div className="col-span-2 sm:col-span-3 md:col-span-4">
+                    <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
+                      <i className="ri-refresh-line text-gray-400"></i>
+                      GHL Sync
+                    </p>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {/* Status badge */}
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
+                        order.ghl_synced_at
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                          : order.ghl_sync_error
+                            ? "bg-red-50 border-red-200 text-red-600"
+                            : "bg-amber-50 border-amber-200 text-amber-700"
+                      }`}>
+                        <i className={
+                          order.ghl_synced_at
+                            ? "ri-checkbox-circle-fill"
+                            : order.ghl_sync_error
+                              ? "ri-error-warning-fill"
+                              : "ri-time-line"
+                        }></i>
+                        {order.ghl_synced_at
+                          ? `Synced ${fmt(order.ghl_synced_at)}`
+                          : order.ghl_sync_error
+                            ? "Sync Failed"
+                            : "Not synced yet"
+                        }
+                      </span>
+
+                      {/* Sync / Re-sync button */}
+                      <button
+                        type="button"
+                        onClick={handleGhlRefire}
+                        disabled={ghlFiring}
+                        className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer disabled:opacity-50 ${
+                          order.ghl_synced_at
+                            ? "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                            : order.ghl_sync_error
+                              ? "border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
+                              : "border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"
+                        }`}
+                      >
+                        {ghlFiring
+                          ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
+                          : order.ghl_synced_at
+                            ? <><i className="ri-refresh-line"></i>Re-sync to GHL</>
+                            : order.ghl_sync_error
+                              ? <><i className="ri-refresh-line"></i>Retry GHL Sync</>
+                              : <><i className="ri-refresh-line"></i>Sync to GHL</>
+                        }
+                      </button>
+
+                      {/* Error detail */}
+                      {order.ghl_sync_error && !order.ghl_synced_at && (
+                        <span className="text-xs text-red-500 italic truncate max-w-[240px]" title={order.ghl_sync_error}>
+                          {order.ghl_sync_error.slice(0, 100)}
+                        </span>
+                      )}
                     </div>
-                  ))}
+
+                    {/* Inline feedback */}
+                    {ghlMsg && (
+                      <p className={`text-xs mt-1.5 flex items-center gap-1 font-semibold ${ghlMsg.toLowerCase().includes("fail") || ghlMsg.toLowerCase().includes("error") ? "text-red-600" : "text-emerald-700"}`}>
+                        <i className={ghlMsg.toLowerCase().includes("fail") || ghlMsg.toLowerCase().includes("error") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
+                        {ghlMsg}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── GHL Sync History ── */}
+                  <GhlSyncHistory confirmationId={order.confirmation_id} />
 
                   {/* Stripe Payment Intent ID + Checkout Session ID — direct links to Stripe dashboard */}
                   {order.payment_intent_id && (
@@ -2677,12 +3033,7 @@ export default function OrderDetailModal({
                           <i className="ri-eye-line"></i>Mark Under Review
                         </button>
 
-                        {!order.ghl_synced_at && (
-                          <button type="button" onClick={handleGhlRefire} disabled={ghlFiring}
-                            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-amber-200 text-amber-700 bg-amber-50/40 hover:bg-amber-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50">
-                            {ghlFiring ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</> : <><i className="ri-refresh-line"></i>Retry GHL Sync</>}
-                          </button>
-                        )}
+
                       </div>
                     </div>
                     )}
@@ -2762,9 +3113,9 @@ export default function OrderDetailModal({
                       </div>
                     </div>
 
-                    {(statusMsg || emailMsg || ghlMsg || confirmResendMsg || resetMsg) && (
-                      <p className={`text-xs flex items-center gap-1 ${(statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + ghlMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-500" : "text-[#1a5c4f]"}`}>
-                        <i className="ri-information-line"></i>{statusMsg || emailMsg || ghlMsg || confirmResendMsg || resetMsg}
+                    {(statusMsg || emailMsg || confirmResendMsg || resetMsg) && (
+                      <p className={`text-xs flex items-center gap-1 ${(statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-500" : "text-[#1a5c4f]"}`}>
+                        <i className="ri-information-line"></i>{statusMsg || emailMsg || confirmResendMsg || resetMsg}
                       </p>
                     )}
 

@@ -208,15 +208,26 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+  // ── Fire GHL doctor_assigned event with exact 8-field payload ────────────
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
     body: JSON.stringify({
-      webhookType: "main", event: "doctor_assigned",
-      email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "",
-      phone: order.phone ?? "", confirmationId, patientState: order.state ?? "",
-      letterType: isPSD ? "psd" : "esa", addonServices, price: order.price,
-      assignedDoctor: doctorName, doctorTitle, additionalDocsRequested: additionalDocs?.types ?? [],
+      webhookType: "main",
+      eventType: "doctor_assigned",
+      firstName: order.first_name ?? "",
+      lastName: order.last_name ?? "",
+      email: order.email,
+      phone: order.phone ?? "",
+      state: order.state ?? "",
+      confirmationId,
+      amount: (order.price as number) ?? 0,
+      // Additional context fields
+      letterType: isPSD ? "psd" : "esa",
+      addonServices,
+      assignedDoctor: doctorName,
+      doctorTitle,
+      additionalDocsRequested: additionalDocs?.types ?? [],
       leadStatus: isPSD ? "PSD — Doctor Assigned — Pending Review" : "ESA — Doctor Assigned — Pending Review",
       tags: ["Doctor Assigned", "Pending Review"],
     }),

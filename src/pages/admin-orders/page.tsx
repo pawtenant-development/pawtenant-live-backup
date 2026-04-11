@@ -1884,6 +1884,7 @@ export default function AdminOrdersPage() {
                 <div className="bg-gray-50 rounded-lg border border-gray-200 p-3">
                   <p className="text-xs font-bold text-gray-600 mb-1">Main Webhook (Paid Orders)</p>
                   <p className="font-mono text-xs text-gray-700 break-all select-all">https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/6feb660d-6ee0-4a71-a2c0-732264440592</p>
+                  <p className="text-[10px] text-amber-600 mt-1 font-semibold">⚠ Set this as GHL_WEBHOOK_URL in Supabase Edge Function Secrets</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg border border-gray-200 p-3">
                   <p className="text-xs font-bold text-gray-600 mb-1">Network Webhook (Join Our Network)</p>
@@ -2202,7 +2203,10 @@ export default function AdminOrdersPage() {
       )}
       {orderDetail && adminProfile && (
         <OrderDetailModal order={orderDetail} doctorContacts={assignableProviders} adminProfile={adminProfile}
-          onClose={() => setOrderDetail(null)} onOrderUpdated={handleOrderUpdated} onOrderDeleted={handleOrderDeleted} />
+          onClose={() => setOrderDetail(null)} onOrderUpdated={handleOrderUpdated} onOrderDeleted={handleOrderDeleted}
+          allOrders={filtered}
+          onNavigate={(order) => openOrderDetail(order)}
+        />
       )}
       {assessmentIntakeOrder && (
         <AssessmentIntakeModal

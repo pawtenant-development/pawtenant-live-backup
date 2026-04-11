@@ -246,7 +246,6 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-  // Use service-role client for all DB operations
   const supabase = createClient(supabaseUrl, serviceKey);
 
   // ── Auth ─────────────────────────────────────────────────────────────────
@@ -255,14 +254,12 @@ Deno.serve(async (req: Request) => {
 
   if (!token) return jsonResp({ error: "Unauthorized — missing token" }, 401);
 
-  // Accept both service-role key (cron/internal) and user JWT
   let userId: string | null = null;
   let isAdmin = false;
 
   if (token === serviceKey) {
-    // Called internally (e.g. from provider-submit-letter) — always authorized
     isAdmin = true;
-    userId = null; // no specific user
+    userId = null;
   } else {
     const { data: { user }, error: authErr } = await createClient(supabaseUrl, anonKey).auth.getUser(token);
     if (authErr || !user) {
@@ -271,7 +268,6 @@ Deno.serve(async (req: Request) => {
     }
     userId = user.id;
 
-    // Check if admin
     const { data: callerProfile } = await supabase
       .from("doctor_profiles")
       .select("is_admin")
@@ -294,10 +290,10 @@ Deno.serve(async (req: Request) => {
 
   console.log(`[notify-patient-letter] Processing ${confirmationId} — isAdmin:${isAdmin} userId:${userId ?? "internal"}`);
 
-  // ── Fetch order ───────────────────────────────────────────────────────────
+  // ── Fetch order — now includes phone ─────────────────────────────────────
   const { data: order, error: orderErr } = await supabase
     .from("orders")
-    .select("id, confirmation_id, email, first_name, last_name, state, doctor_user_id, doctor_email, doctor_name, signed_letter_url, price, doctor_status, patient_notification_sent_at, letter_id")
+    .select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_email, doctor_name, signed_letter_url, price, doctor_status, patient_notification_sent_at, letter_id")
     .eq("confirmation_id", confirmationId)
     .maybeSingle();
 
@@ -331,7 +327,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── Fetch documents (with processed/injected versions) ────────────────────
+  // ── Fetch documents ───────────────────────────────────────────────────────
   let docs: OrderDoc[] = [];
   try {
     const { data: orderDocs, error: docsErr } = await supabase
@@ -343,7 +339,6 @@ Deno.serve(async (req: Request) => {
 
     if (docsErr) {
       console.warn("[notify-patient-letter] order_documents fetch error:", docsErr.message);
-      // Non-fatal — fall back to signed_letter_url only
     } else {
       docs = (orderDocs as OrderDoc[]) ?? [];
     }
@@ -410,7 +405,7 @@ Deno.serve(async (req: Request) => {
     console.warn("[notify-patient-letter] earnings insert error:", err);
   }
 
-  // ── Resolve best URL for each doc (prefer processed/stamped version) ──────
+  // ── Resolve best URL for each doc ─────────────────────────────────────────
   const resolveUrl = (doc: OrderDoc): string => {
     if (doc.footer_injected && doc.processed_file_url) return doc.processed_file_url;
     return doc.file_url;
@@ -430,7 +425,6 @@ Deno.serve(async (req: Request) => {
     .filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url)
     .forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc) }));
 
-  // ── letter_id ─────────────────────────────────────────────────────────────
   const letterId = (order.letter_id as string | null) ?? null;
 
   // ── Build + send email ────────────────────────────────────────────────────
@@ -470,7 +464,7 @@ Deno.serve(async (req: Request) => {
       .in("id", docs.filter((d) => d.file_url !== order.signed_letter_url).map((d) => d.id));
   }
 
-  // ── GHL webhook ───────────────────────────────────────────────────────────
+  // ── GHL webhook — now includes phone ─────────────────────────────────────
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
@@ -480,6 +474,7 @@ Deno.serve(async (req: Request) => {
       email: order.email,
       firstName: order.first_name ?? "",
       lastName: order.last_name ?? "",
+      phone: (order.phone as string) ?? "",
       confirmationId,
       patientName,
       patientState: order.state ?? "",

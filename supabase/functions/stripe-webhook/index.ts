@@ -81,6 +81,35 @@ function buildInternalNotificationHtml(opts: { confirmationId: string; firstName
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;"><tr><td style="background:#1a5c4f;padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" width="160" alt="PawTenant" style="display:block;margin:0 auto 14px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.2);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">NEW PAID ORDER</div><h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;">Order Received &amp; Paid</h1></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 20px;font-size:14px;color:#374151;">A new paid order has been received. Review and assign a provider from the admin portal.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:24px;">${rowsHtml}</table><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><a href="https://pawtenant.com/admin-orders" style="display:inline-block;background:#f97316;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 32px;border-radius:8px;">Open Admin Portal &rarr;</a></td></tr></table></td></tr><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant Internal Notification &mdash; <a href="https://pawtenant.com" style="color:#1a5c4f;text-decoration:none;">pawtenant.com</a></p></td></tr></table></td></tr></table></body></html>`;
 }
 
+// ── Fire GHL payment_confirmed event ─────────────────────────────────────────
+// Sends the exact 8-field payload required by the GHL workflow.
+async function triggerGhlPaymentConfirmed(order: Record<string, unknown>, amountDollars: number): Promise<void> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const confirmationId = order.confirmation_id as string;
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+      body: JSON.stringify({
+        webhookType: "main",
+        eventType: "payment_confirmed",
+        firstName: (order.first_name as string) ?? "",
+        lastName: (order.last_name as string) ?? "",
+        email: (order.email as string) ?? "",
+        phone: (order.phone as string) ?? "",
+        state: (order.state as string) ?? "",
+        confirmationId,
+        amount: amountDollars,
+        letterType: (order.letter_type as string) ?? "esa",
+      }),
+    });
+    console.info(`[stripe-webhook] >>> triggerGhlPaymentConfirmed DONE for ${confirmationId} — HTTP ${res.status}`);
+  } catch (err) {
+    console.warn(`[stripe-webhook] >>> triggerGhlPaymentConfirmed FAILED for ${confirmationId}:`, err instanceof Error ? err.message : String(err));
+  }
+}
+
 // ── Fire Google Ads conversion upload ─────────────────────────────────────────
 function triggerGoogleAdsSync(confirmationId: string): Promise<void> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -109,8 +138,8 @@ function triggerMetaCAPIEvent(confirmationId: string): Promise<void> {
     .catch((err) => { console.warn(`[stripe-webhook] >>> triggerMetaCAPIEvent FAILED for ${confirmationId}:`, err instanceof Error ? err.message : String(err)); });
 }
 
-function schedulePostPaymentTriggers(confirmationId: string): void {
-  console.info(`[stripe-webhook] schedulePostPaymentTriggers: queuing Google Ads + Meta CAPI for ${confirmationId}`);
+function schedulePostPaymentTriggers(confirmationId: string, order?: Record<string, unknown>, amountDollars?: number): void {
+  console.info(`[stripe-webhook] schedulePostPaymentTriggers: queuing Google Ads + Meta CAPI + GHL for ${confirmationId}`);
   // @ts-ignore — EdgeRuntime is injected by Supabase edge runtime
   if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
     // @ts-ignore
@@ -119,6 +148,10 @@ function schedulePostPaymentTriggers(confirmationId: string): void {
         console.info(`[stripe-webhook] waitUntil: starting triggers for ${confirmationId}`);
         await triggerGoogleAdsSync(confirmationId);
         await triggerMetaCAPIEvent(confirmationId);
+        // Fire GHL payment_confirmed if order data is available
+        if (order && typeof amountDollars === "number") {
+          await triggerGhlPaymentConfirmed(order, amountDollars);
+        }
         console.info(`[stripe-webhook] waitUntil: all triggers complete for ${confirmationId}`);
       })()
     );
@@ -126,6 +159,9 @@ function schedulePostPaymentTriggers(confirmationId: string): void {
     console.warn(`[stripe-webhook] EdgeRuntime.waitUntil not available — firing triggers best-effort for ${confirmationId}`);
     triggerGoogleAdsSync(confirmationId).catch(() => {});
     triggerMetaCAPIEvent(confirmationId).catch(() => {});
+    if (order && typeof amountDollars === "number") {
+      triggerGhlPaymentConfirmed(order, amountDollars).catch(() => {});
+    }
   }
 }
 
@@ -253,12 +289,10 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!alreadySentInternal) {
-      // ── Resolve per-notification recipients for "new_paid_order" ──────────
       const { enabled: notifEnabled, recipients: internalRecipients } = await getAdminNotifRecipients("new_paid_order");
       if (notifEnabled && internalRecipients.length > 0) {
         const internalHtml = buildInternalNotificationHtml({ confirmationId, firstName: (order.first_name as string) ?? "", lastName: (order.last_name as string) ?? "", email, phone: (order.phone as string) ?? "", state: (order.state as string) ?? "", letterType: (order.letter_type as string) ?? "esa", planType: (order.plan_type as string) ?? "One-Time Purchase", deliverySpeed: (order.delivery_speed as string) ?? "2-3days", amount: amountDollars, paymentIntentId, checkoutSessionId: checkoutSessionId ?? (order.checkout_session_id as string | undefined), paymentMethod: (order.payment_method as string) ?? "card", doctorName: (order.doctor_name as string | null) ?? null, timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET", matchedBy });
         const internalResult = await sendViaResendMulti({ to: internalRecipients, subject: `[PawTenant] New Paid Order — ${confirmationId}${matchedBy !== "confirmation_id" ? " [FALLBACK MATCH]" : ""}`, html: internalHtml, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "internal_notification" }] });
-        // Log one entry per recipient
         internalRecipients.forEach((recipient) => {
           newLogEntries.push({ type: "internal_notification", sentAt: now, to: recipient, success: internalResult.sent });
         });
@@ -294,7 +328,7 @@ Deno.serve(async (req: Request) => {
       console.info(`[stripe-webhook] ${confirmationId} already processing — idempotent. Firing triggers anyway.`);
       if (sessionIdFromMeta && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: sessionIdFromMeta }).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, pi.id, amt, matchedBy, sessionIdFromMeta);
-      schedulePostPaymentTriggers(confirmationId);
+      schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true, matchedBy });
     }
 
@@ -305,7 +339,7 @@ Deno.serve(async (req: Request) => {
         await logStatus(freshOrder.id, confirmationId, "processing", `Payment confirmed via Stripe. PI: ${pi.id}. Amount: $${amt}. Matched by: ${matchedBy}`);
         await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, pi.id, amt, matchedBy, sessionIdFromMeta);
         console.info(`[stripe-webhook] Scheduling post-payment triggers for ${confirmationId}`);
-        schedulePostPaymentTriggers(confirmationId);
+        schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
       }
     }
     return json({ ok: true, type: t, confirmationId, amount: amt, matchedBy });
@@ -387,7 +421,7 @@ Deno.serve(async (req: Request) => {
       console.info(`[stripe-webhook] ${confirmationId} already processing (checkout.session) — idempotent. Firing triggers anyway.`);
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
-      schedulePostPaymentTriggers(confirmationId);
+      schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true, matchedBy });
     }
     await markOrderProcessing(confirmationId, piId, amt, mode, session.id);
@@ -396,7 +430,7 @@ Deno.serve(async (req: Request) => {
       await logStatus(freshOrder.id, confirmationId, "processing", `Checkout session ${session.id} completed. PI: ${piId}. Amount: $${amt}. Matched by: ${matchedBy}`);
       await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);
       console.info(`[stripe-webhook] Scheduling post-payment triggers for ${confirmationId}`);
-      schedulePostPaymentTriggers(confirmationId);
+      schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
     }
     return json({ ok: true, type: t, confirmationId, amount: amt, isSubscription, matchedBy, checkoutSessionId: session.id });
   }
@@ -417,7 +451,7 @@ Deno.serve(async (req: Request) => {
       console.info(`[stripe-webhook] ${confirmationId} already processing (async_payment) — idempotent. Firing triggers anyway.`);
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
-      schedulePostPaymentTriggers(confirmationId);
+      schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true });
     }
     await markOrderProcessing(confirmationId, piId, amt, session.metadata?.payment_mode ?? "klarna", session.id);
@@ -425,7 +459,7 @@ Deno.serve(async (req: Request) => {
     if (freshOrder) {
       await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);
       console.info(`[stripe-webhook] Scheduling post-payment triggers for ${confirmationId}`);
-      schedulePostPaymentTriggers(confirmationId);
+      schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
     }
     return json({ ok: true, type: t, confirmationId, amount: amt });
   }
