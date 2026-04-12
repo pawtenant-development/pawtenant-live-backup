@@ -130,6 +130,35 @@ async function sendViaResend(to: string, subject: string, html: string): Promise
   } catch (e) { return { sent: false, error: String(e) }; }
 }
 
+// ── Auth helper: works for both Supabase Auth sessions AND OTP-based admin logins ──
+async function resolveAdminAccess(
+  req: Request,
+  adminClient: ReturnType<typeof createClient>,
+  serviceRoleKey: string,
+): Promise<boolean> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace("Bearer ", "").trim();
+
+  if (!token) return false;
+
+  // Service role key = full trust (internal calls)
+  if (token === serviceRoleKey) return true;
+
+  // Try Supabase Auth session
+  const { data: { user } } = await adminClient.auth.getUser(token);
+  if (user) {
+    const { data: profile } = await adminClient
+      .from("doctor_profiles")
+      .select("is_admin, role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    return profile?.is_admin === true ||
+      ["owner", "admin_manager", "support"].includes(profile?.role ?? "");
+  }
+
+  return false;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -141,20 +170,7 @@ Deno.serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace("Bearer ", "").trim();
-
-    let isAuthorized = false;
-    if (token === serviceRoleKey) {
-      isAuthorized = true;
-    } else if (token) {
-      const { data: { user } } = await adminClient.auth.getUser(token);
-      if (user) {
-        const { data: profile } = await adminClient.from("doctor_profiles").select("is_admin, role").eq("user_id", user.id).maybeSingle();
-        isAuthorized = profile?.is_admin === true || ["owner", "admin_manager", "support"].includes(profile?.role ?? "");
-      }
-    }
-
+    const isAuthorized = await resolveAdminAccess(req, adminClient, serviceRoleKey);
     if (!isAuthorized) return json({ ok: false, error: "Unauthorized" }, 401);
 
     const body = await req.json() as { email?: string; first_name?: string; bulk?: boolean; };

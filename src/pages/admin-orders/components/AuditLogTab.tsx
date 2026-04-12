@@ -72,6 +72,13 @@ const ACTION_FRIENDLY: Record<string, string> = {
   seq_3day_sent:         "3-day follow-up + $20 discount sent",
   seq_run_complete:      "Sequence run completed",
   seq_unsubscribed:      "Lead unsubscribed from sequence",
+  approval_granted:      "Approval request approved",
+  approval_rejected:     "Approval request rejected",
+};
+
+const ACTION_DECISION_STYLE: Record<string, { dot: string; label: string }> = {
+  approval_granted:  { dot: "bg-emerald-500", label: "Approved" },
+  approval_rejected: { dot: "bg-red-500",     label: "Rejected" },
 };
 
 function fmt(ts: string) {
@@ -199,6 +206,7 @@ export default function AuditLogTab() {
   const todayCount = entries.filter((e) => new Date(e.timestamp).toDateString() === new Date().toDateString()).length;
   const ghlErrors = entries.filter((e) => e.action === "ghl_sync_failed").length;
   const refunds = entries.filter((e) => e.action === "refund_created").length;
+  const approvalDecisions = entries.filter((e) => e.action === "approval_granted" || e.action === "approval_rejected").length;
 
   return (
     <div>
@@ -210,6 +218,7 @@ export default function AuditLogTab() {
             { label: "Total Logged", value: entries.length, icon: "ri-list-check-2", color: "text-[#1a5c4f]" },
             { label: "GHL Sync Errors", value: ghlErrors, icon: "ri-radar-line", color: "text-amber-600" },
             { label: "Refunds Issued", value: refunds, icon: "ri-refund-2-line", color: "text-orange-500" },
+            { label: "Approval Decisions", value: approvalDecisions, icon: "ri-shield-check-line", color: "text-slate-600" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center gap-2 mb-1">
@@ -296,7 +305,19 @@ export default function AuditLogTab() {
 
                     {/* Action */}
                     <div>
-                      <p className="text-sm font-semibold text-gray-900 capitalize">{friendlyAction}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-gray-900 capitalize">{friendlyAction}</p>
+                        {ACTION_DECISION_STYLE[entry.action] && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
+                            entry.action === "approval_granted"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-red-50 text-red-600 border border-red-200"
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${ACTION_DECISION_STYLE[entry.action].dot}`}></span>
+                            {ACTION_DECISION_STYLE[entry.action].label}
+                          </span>
+                        )}
+                      </div>
                       {entry.description && (
                         <p className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">{entry.description}</p>
                       )}
@@ -332,7 +353,10 @@ export default function AuditLogTab() {
                       {hasDetail && (
                         <button type="button" onClick={() => toggleExpand(entry.id)}
                           className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 cursor-pointer transition-colors text-gray-400">
-                          <i className={`ri-arrow-${isOpen ? "up" : "down"}-s-line text-sm`}></i>
+                          {isOpen
+                            ? <i className="ri-arrow-up-s-line text-sm"></i>
+                            : <i className="ri-arrow-down-s-line text-sm"></i>
+                          }
                         </button>
                       )}
                     </div>

@@ -13,8 +13,6 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
-// ── Resend helper ──────────────────────────────────────────────────────────
-
 async function sendViaResend(opts: {
   to: string[];
   subject: string;
@@ -99,8 +97,6 @@ interface DoctorSummary {
   totalUnpaid: number;
 }
 
-// ── Build CSV ──────────────────────────────────────────────────────────────
-
 function buildCsv(summaries: DoctorSummary[], triggerDate: string): string {
   const lines: string[] = [];
   lines.push(`Provider Payout Report — ${triggerDate}`);
@@ -119,14 +115,9 @@ function buildCsv(summaries: DoctorSummary[], triggerDate: string): string {
         escapeCsv(o.doctor_amount != null ? formatCurrency(o.doctor_amount) : "Not set"),
       ].join(","));
     }
-    // Subtotal row
     lines.push([
       escapeCsv(`SUBTOTAL — ${s.doctorName}`),
-      "",
-      "",
-      "",
-      "",
-      "",
+      "", "", "", "", "",
       escapeCsv(formatCurrency(s.totalUnpaid)),
     ].join(","));
     lines.push("");
@@ -137,8 +128,6 @@ function buildCsv(summaries: DoctorSummary[], triggerDate: string): string {
 
   return lines.join("\n");
 }
-
-// ── Build HTML email ───────────────────────────────────────────────────────
 
 function buildPayoutReminderEmail(summaries: DoctorSummary[], totalUnpaid: number, triggerDate: string): string {
   const doctorRows = summaries.map((s) => `
@@ -241,35 +230,33 @@ function buildPayoutReminderEmail(summaries: DoctorSummary[], totalUnpaid: numbe
 </html>`;
 }
 
-// ── Main handler ───────────────────────────────────────────────────────────
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  // ── Auth check ──────────────────────────────────────────────────────────
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  // ── Auth check — supports service key AND OTP-based admin logins ──────────
   let isAuthorized = false;
   const authHeader = req.headers.get("Authorization") ?? "";
-  const token = authHeader.replace("Bearer ", "");
+  const token = authHeader.replace("Bearer ", "").trim();
 
-  if (token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+  if (token === serviceKey) {
     isAuthorized = true;
   } else if (token) {
-    const { data: { user } } = await createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-    ).auth.getUser(token);
+    // Try Supabase Auth session (works for both Supabase Auth and OTP logins
+    // as long as the token is a valid user JWT)
+    const { data: { user } } = await supabase.auth.getUser(token);
     if (user) {
       const { data: profile } = await supabase
         .from("doctor_profiles")
-        .select("is_admin")
+        .select("is_admin, role")
         .eq("user_id", user.id)
         .maybeSingle();
-      isAuthorized = profile?.is_admin === true;
+      isAuthorized = profile?.is_admin === true ||
+        ["owner", "admin_manager"].includes(profile?.role ?? "");
     }
   }
 
@@ -329,29 +316,22 @@ Deno.serve(async (req: Request) => {
   });
 
   // ── Determine recipient emails ───────────────────────────────────────────
-  // Check admin_notification_prefs for payout_reminder email overrides
   const { data: prefsRows } = await supabase
     .from("admin_notification_prefs")
     .select("user_id, enabled, email_override, group_emails")
     .eq("notification_key", "payout_reminder");
 
-  // Collect all admin emails that have this notification enabled
   const recipientEmails: Set<string> = new Set();
-
-  // Fallback: ADMIN_EMAIL env var or support email
   const fallbackEmail = Deno.env.get("ADMIN_EMAIL") ?? SUPPORT_EMAIL;
 
   if (prefsRows && prefsRows.length > 0) {
     for (const pref of prefsRows) {
       if (!pref.enabled) continue;
-
-      // group_emails is an array of emails stored per group
       if (pref.group_emails && Array.isArray(pref.group_emails)) {
         for (const em of pref.group_emails) {
           if (em && typeof em === "string") recipientEmails.add(em.trim());
         }
       }
-      // individual email override
       if (pref.email_override) {
         recipientEmails.add(pref.email_override.trim());
       }
@@ -367,8 +347,6 @@ Deno.serve(async (req: Request) => {
   // ── Build email + CSV ────────────────────────────────────────────────────
   const htmlEmail = buildPayoutReminderEmail(summaries, grandTotal, triggerDate);
   const csvContent = buildCsv(summaries, triggerDate);
-
-  // Base64-encode CSV for Resend attachment
   const csvBase64 = btoa(unescape(encodeURIComponent(csvContent)));
   const csvFilename = `payout-report-${today.toISOString().slice(0, 10)}.csv`;
 
@@ -376,19 +354,11 @@ Deno.serve(async (req: Request) => {
     to: toList,
     subject: `[Action Required] Provider Payout Due — ${today.toLocaleDateString("en-US", { month: "long", year: "numeric" })} — ${formatCurrency(grandTotal)} Owed`,
     html: htmlEmail,
-    attachments: [
-      {
-        filename: csvFilename,
-        content: csvBase64,
-        content_type: "text/csv",
-      },
-    ],
+    attachments: [{ filename: csvFilename, content: csvBase64, content_type: "text/csv" }],
     tags: [{ name: "email_type", value: "payout_reminder" }],
   });
 
   // ── GHL webhook (fire-and-forget) ────────────────────────────────────────
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },

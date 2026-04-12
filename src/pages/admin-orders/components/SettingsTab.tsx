@@ -1,5 +1,5 @@
 // SettingsTab — GHL, Stripe, and Email integration health
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import CouponManagementPanel from "./CouponManagementPanel";
 import UTMLinkGenerator from "./UTMLinkGenerator";
@@ -1066,7 +1066,6 @@ const PIPELINE_STAGE_MAP = [
   { event: "payment_confirmed / payment_confirmed_backfill", stageName: "Payment Confirmed", secretKey: "GHL_STAGE_PAYMENT_CONFIRMED", icon: "ri-bank-card-line", color: "text-[#1a5c4f]", description: "Stripe payment succeeds" },
   { event: "doctor_assigned", stageName: "Under Review", secretKey: "GHL_STAGE_DOCTOR_ASSIGNED", icon: "ri-stethoscope-line", color: "text-amber-600", description: "Admin assigns a provider to the order" },
   { event: "documents_ready_for_patient", stageName: "Documents Ready", secretKey: "GHL_STAGE_DOCUMENTS_READY", icon: "ri-file-check-line", color: "text-sky-600", description: "Provider submits letter, patient notified" },
-  { event: "letter_generated", stageName: "Letter Generated", secretKey: "GHL_STAGE_LETTER_GENERATED", icon: "ri-file-pdf-line", color: "text-orange-500", description: "ESA PDF auto-generated (generate-esa-letter)" },
   { event: "order_completed", stageName: "Completed", secretKey: "GHL_STAGE_ORDER_COMPLETED", icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]", description: "Provider submits final letter" },
   { event: "refund_issued", stageName: "Refunded", secretKey: "GHL_STAGE_REFUND_ISSUED", icon: "ri-refund-2-line", color: "text-rose-500", description: "Admin issues a refund" },
   { event: "order_cancelled", stageName: "Cancelled", secretKey: "GHL_STAGE_ORDER_CANCELLED", icon: "ri-close-circle-line", color: "text-red-500", description: "Admin cancels the order" },
@@ -1170,7 +1169,7 @@ function GhlPipelineConfigPanel() {
               The IDs below are stored locally for your reference only. The edge function reads them from <strong>Supabase Dashboard → Edge Functions → Secrets</strong>. Copy each secret name and paste it in Supabase with the corresponding ID as the value.
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {["GHL_PIPELINE_ID", ...PIPELINE_STAGE_MAP.map((s) => s.secretKey)].map((name) => (
+              {["GHL_PIPELINE_ID", ...PIPELINE_STAGE_MAP.map((s) => s.secretKey)].filter((n) => n !== "GHL_STAGE_LETTER_GENERATED").map((name) => (
                 <button
                   key={name}
                   type="button"
@@ -1286,12 +1285,26 @@ interface GhlTestResult {
   phone: string;
   email: string;
   tagsSent: string[];
-  pipelineStage?: string;
-  pipelineStageId?: string;
-  pipelineConfigured?: boolean;
   error?: string;
   durationMs: number;
 }
+
+// Event options for the test panel
+const GHL_TEST_EVENTS = [
+  { value: "assessment_started",           label: "Assessment Started (Lead/Unpaid)" },
+  { value: "payment_confirmed",            label: "Payment Confirmed (Paid — Live)" },
+  { value: "doctor_assigned",              label: "Doctor Assigned / Under Review (Live)" },
+  { value: "documents_ready_for_patient",  label: "Documents Ready (Live)" },
+  { value: "order_completed",              label: "Order Completed (Live)" },
+  { value: "refund_issued",                label: "Refund Issued (Live)" },
+  { value: "order_cancelled",              label: "Order Cancelled (Live)" },
+  // ── Backfill variants ──────────────────────────────────────────────────────
+  { value: "payment_confirmed_backfill",   label: "Payment Confirmed — Backfill" },
+  { value: "doctor_assigned_backfill",     label: "Doctor Assigned — Backfill" },
+  { value: "order_completed_backfill",     label: "Order Completed — Backfill" },
+  { value: "refund_issued_backfill",       label: "Refund Issued — Backfill" },
+  { value: "order_cancelled_backfill",     label: "Order Cancelled — Backfill" },
+];
 
 function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
   const [state, setState] = useState<"idle" | "running" | "done">("idle");
@@ -1299,7 +1312,11 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
   const [showRaw, setShowRaw] = useState(false);
   const [testPhone, setTestPhone] = useState("+14099655885");
   const [testEmail, setTestEmail] = useState("ghl-test@pawtenant.com");
+  const [testEvent, setTestEvent] = useState("assessment_started");
+  const [testTagsRaw, setTestTagsRaw] = useState("GHL Test, Admin Connection Test");
   const rawRef = useRef<HTMLPreElement>(null);
+
+  const parsedTags = testTagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
 
   const runTest = async () => {
     setState("running");
@@ -1312,8 +1329,9 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          webhookType: "assessment",
-          event: "assessment_started",
+          webhookType: "main",
+          eventType: testEvent,
+          event: testEvent,
           firstName: "GHL",
           lastName: "ConnectionTest",
           email: testEmail.trim() || "ghl-test@pawtenant.com",
@@ -1323,14 +1341,13 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
           letterType: "esa",
           leadSource: "Admin GHL Connection Test",
           submittedAt: new Date().toISOString(),
-          tags: ["GHL Test", "Admin Connection Test"],
+          tags: parsedTags,
         }),
       });
       const durationMs = Date.now() - start;
       const json = await res.json() as {
         ok: boolean; ghlStatus?: number; ghlBody?: string;
         phone?: string; email?: string; tagsSent?: string[];
-        pipelineStage?: string; pipelineStageId?: string; pipelineConfigured?: boolean;
         error?: string;
       };
       setResult({
@@ -1340,9 +1357,6 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
         phone: json.phone ?? testPhone,
         email: json.email ?? testEmail,
         tagsSent: json.tagsSent ?? [],
-        pipelineStage: json.pipelineStage,
-        pipelineStageId: json.pipelineStageId,
-        pipelineConfigured: json.pipelineConfigured,
         error: json.error,
         durationMs,
       });
@@ -1386,6 +1400,21 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
       {/* Test inputs */}
       {state === "idle" && (
         <div className="space-y-3 mb-4">
+          {/* Event type selector */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Event Type (Pipeline Stage)</label>
+            <select
+              value={testEvent}
+              onChange={(e) => setTestEvent(e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-300 cursor-pointer"
+            >
+              {GHL_TEST_EVENTS.map((ev) => (
+                <option key={ev.value} value={ev.value}>{ev.label}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-gray-400 mt-1">Controls which pipeline stage and tags are sent to GHL</p>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Test Phone (E.164 or raw)</label>
@@ -1408,6 +1437,50 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-300"
               />
               <p className="text-[10px] text-gray-400 mt-1">GHL will create/update a contact with this email</p>
+            </div>
+          </div>
+
+          {/* Tags editor */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Extra Tags (comma-separated)</label>
+            <input
+              type="text"
+              value={testTagsRaw}
+              onChange={(e) => setTestTagsRaw(e.target.value)}
+              placeholder="GHL Test, Admin Connection Test"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-300"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">These are appended to the auto-generated event tags. Separate with commas.</p>
+          </div>
+
+          {/* Preview of tags that will be sent */}
+          <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Tags Preview (auto + extra)</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(() => {
+                const autoTags: string[] = [];
+                const isPSD = false;
+                autoTags.push(isPSD ? "PSD Order" : "ESA Order");
+                if (["payment_confirmed", "payment_confirmed_backfill"].includes(testEvent)) {
+                  autoTags.push("Lead (Paid)", "Payment Confirmed");
+                } else if (testEvent === "assessment_started") {
+                  autoTags.push("Lead (Unpaid)", "Assessment Started");
+                } else if (["doctor_assigned", "doctor_assigned_backfill"].includes(testEvent)) {
+                  autoTags.push("Paid (Assigned)", "Doctor Assigned");
+                } else if (["documents_ready_for_patient", "order_completed", "order_completed_backfill"].includes(testEvent)) {
+                  autoTags.push("Letter Sent", "Completed");
+                } else if (["refund_issued", "refund_issued_backfill"].includes(testEvent)) {
+                  autoTags.push("Refunded");
+                } else if (["order_cancelled", "order_cancelled_backfill"].includes(testEvent)) {
+                  autoTags.push("Cancelled");
+                }
+                const allTags = [...autoTags, ...parsedTags.filter((t) => !autoTags.includes(t))];
+                return allTags.map((tag) => (
+                  <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${parsedTags.includes(tag) && !autoTags.includes(tag) ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]"}`}>
+                    <i className="ri-price-tag-3-line" style={{ fontSize: "9px" }}></i>{tag}
+                  </span>
+                ));
+              })()}
             </div>
           </div>
 
@@ -1451,7 +1524,7 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
                   {result.ok ? "GHL accepted the payload" : "GHL rejected the payload"}
                 </p>
                 <p className={`text-xs ${result.ok ? "text-[#2d7a6a]" : "text-red-500"}`}>
-                  HTTP {result.ghlStatus} · {result.durationMs}ms
+                  HTTP {result.ghlStatus} · {result.durationMs}ms · Event: {testEvent}
                 </p>
               </div>
             </div>
@@ -1475,8 +1548,7 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
                 { label: "GHL HTTP status", value: `HTTP ${result.ghlStatus}`, ok: result.ghlStatus >= 200 && result.ghlStatus < 300 },
                 { label: "Tags sent", value: result.tagsSent.length > 0 ? `${result.tagsSent.length} tags` : "None", ok: result.tagsSent.length > 0 },
                 { label: "Phone format", value: result.phone?.startsWith("+") ? "E.164 ✓" : "Raw (proxy normalizes)", ok: true },
-                { label: "Pipeline stage", value: result.pipelineStage || "No stage for event", ok: !!result.pipelineStage },
-                { label: "Pipeline configured", value: result.pipelineConfigured ? "IDs set in secrets" : "Secrets not set yet", ok: !!result.pipelineConfigured },
+                { label: "Event type", value: testEvent, ok: true },
                 { label: "Proxy response", value: result.ok ? "OK" : result.error ?? "Error", ok: result.ok },
               ].map((f) => (
                 <div key={f.label} className={`rounded-lg px-3 py-2.5 border ${f.ok ? "bg-[#f0faf7] border-[#b8ddd5]" : "bg-red-50 border-red-200"}`}>
@@ -1547,7 +1619,413 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
   );
 }
 
-export default function SettingsTab() {
+// ── Sequence Management Panel ─────────────────────────────────────────────────
+interface SeqOrderInfo {
+  confirmation_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  status: string;
+  payment_intent_id: string | null;
+  seq_30min_sent_at: string | null;
+  seq_24h_sent_at: string | null;
+  seq_3day_sent_at: string | null;
+  followup_opt_out: boolean | null;
+  seq_opted_out_at: string | null;
+}
+
+function SequenceManagementPanel() {
+  const [searchId, setSearchId] = useState("");
+  const [lookupResult, setLookupResult] = useState<SeqOrderInfo | null>(null);
+  const [lookupError, setLookupError] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // List of orders currently in sequence (not opted out, has at least one seq step)
+  const [seqOrders, setSeqOrders] = useState<SeqOrderInfo[]>([]);
+  const [seqLoading, setSeqLoading] = useState(true);
+
+  const loadSeqOrders = async () => {
+    setSeqLoading(true);
+    const { data } = await supabase
+      .from("orders")
+      .select("confirmation_id, email, first_name, last_name, status, payment_intent_id, seq_30min_sent_at, seq_24h_sent_at, seq_3day_sent_at, followup_opt_out, seq_opted_out_at")
+      .or("seq_30min_sent_at.not.is.null,seq_24h_sent_at.not.is.null,seq_3day_sent_at.not.is.null")
+      .order("seq_30min_sent_at", { ascending: false })
+      .limit(200);
+    setSeqOrders((data ?? []) as SeqOrderInfo[]);
+    setSeqLoading(false);
+  };
+
+  useEffect(() => { loadSeqOrders(); }, []);
+
+  const handleLookup = async () => {
+    const id = searchId.trim().toUpperCase();
+    if (!id) return;
+    setLookupLoading(true);
+    setLookupError("");
+    setLookupResult(null);
+    setActionMsg(null);
+    const { data, error } = await supabase
+      .from("orders")
+      .select("confirmation_id, email, first_name, last_name, status, payment_intent_id, seq_30min_sent_at, seq_24h_sent_at, seq_3day_sent_at, followup_opt_out, seq_opted_out_at")
+      .eq("confirmation_id", id)
+      .maybeSingle();
+    if (error || !data) {
+      setLookupError(`Order "${id}" not found. Check the order ID and try again.`);
+    } else {
+      setLookupResult(data as SeqOrderInfo);
+    }
+    setLookupLoading(false);
+  };
+
+  const handleAddToSequence = async (order: SeqOrderInfo) => {
+    setActionLoading(true);
+    setActionMsg(null);
+    // Re-enable sequence: clear opt-out flags, set seq_30min_sent_at to trigger re-entry
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        followup_opt_out: false,
+        seq_opted_out_at: null,
+        // Reset sequence steps so the sequence restarts
+        seq_30min_sent_at: null,
+        seq_24h_sent_at: null,
+        seq_3day_sent_at: null,
+      })
+      .eq("confirmation_id", order.confirmation_id);
+    if (error) {
+      setActionMsg({ ok: false, msg: `Failed to add to sequence: ${error.message}` });
+    } else {
+      setActionMsg({ ok: true, msg: `${order.confirmation_id} added to sequence — follow-up emails will fire on next scheduler run.` });
+      setLookupResult((prev) => prev ? { ...prev, followup_opt_out: false, seq_opted_out_at: null, seq_30min_sent_at: null, seq_24h_sent_at: null, seq_3day_sent_at: null } : prev);
+      await loadSeqOrders();
+    }
+    setActionLoading(false);
+  };
+
+  const handleRemoveFromSequence = async (order: SeqOrderInfo) => {
+    setActionLoading(true);
+    setActionMsg(null);
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        followup_opt_out: true,
+        seq_opted_out_at: new Date().toISOString(),
+      })
+      .eq("confirmation_id", order.confirmation_id);
+    if (error) {
+      setActionMsg({ ok: false, msg: `Failed to remove from sequence: ${error.message}` });
+    } else {
+      setActionMsg({ ok: true, msg: `${order.confirmation_id} removed from sequence — no further follow-up emails will be sent.` });
+      setLookupResult((prev) => prev ? { ...prev, followup_opt_out: true, seq_opted_out_at: new Date().toISOString() } : prev);
+      await loadSeqOrders();
+    }
+    setActionLoading(false);
+  };
+
+  const getSeqStepLabel = (o: SeqOrderInfo) => {
+    if (o.seq_3day_sent_at) return "3-day sent";
+    if (o.seq_24h_sent_at) return "24h sent";
+    if (o.seq_30min_sent_at) return "30min sent";
+    return "Not started";
+  };
+
+  const getSeqStepColor = (o: SeqOrderInfo) => {
+    if (o.seq_3day_sent_at) return "bg-violet-100 text-violet-700";
+    if (o.seq_24h_sent_at) return "bg-amber-100 text-amber-700";
+    if (o.seq_30min_sent_at) return "bg-sky-100 text-sky-700";
+    return "bg-gray-100 text-gray-500";
+  };
+
+  const activeInSeq = seqOrders.filter((o) => !o.followup_opt_out);
+  const optedOut = seqOrders.filter((o) => o.followup_opt_out);
+
+  return (
+    <div className="space-y-5">
+      {/* Info banner */}
+      <div className="bg-sky-50 border border-sky-100 rounded-xl p-4 flex items-start gap-3">
+        <i className="ri-information-line text-sky-500 text-sm mt-0.5 flex-shrink-0"></i>
+        <div className="text-xs text-sky-700 leading-relaxed space-y-1">
+          <p><strong>Automated Sequence:</strong> Lead orders automatically receive 3 follow-up emails — 30 minutes, 24 hours, and 3 days after assessment submission.</p>
+          <p><strong>Add to sequence:</strong> Resets all sequence steps so the order re-enters from the beginning on the next scheduler run.</p>
+          <p><strong>Remove from sequence:</strong> Sets opt-out flag — no further follow-up emails will be sent for that order.</p>
+        </div>
+      </div>
+
+      {/* Lookup by Order ID */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+          <i className="ri-search-line text-gray-500 text-sm"></i>
+          <p className="text-xs font-extrabold text-gray-700">Look Up Order by ID</p>
+        </div>
+        <div className="px-4 py-4 bg-white space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={searchId}
+              onChange={(e) => setSearchId(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
+              placeholder="e.g. PT-MNUCBDWO"
+              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-sky-300 bg-gray-50"
+            />
+            <button
+              type="button"
+              onClick={handleLookup}
+              disabled={lookupLoading || !searchId.trim()}
+              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 disabled:opacity-50 cursor-pointer transition-colors"
+            >
+              {lookupLoading ? <><i className="ri-loader-4-line animate-spin"></i>Looking up...</> : <><i className="ri-search-line"></i>Look Up</>}
+            </button>
+          </div>
+
+          {lookupError && (
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              <i className="ri-error-warning-line flex-shrink-0"></i>{lookupError}
+            </div>
+          )}
+
+          {lookupResult && (
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              {/* Order info row */}
+              <div className="px-4 py-3 bg-gray-50 flex items-center gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-extrabold text-gray-900 font-mono">{lookupResult.confirmation_id}</p>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${getSeqStepColor(lookupResult)}`}>
+                      <i className="ri-mail-send-line" style={{ fontSize: "9px" }}></i>
+                      {getSeqStepLabel(lookupResult)}
+                    </span>
+                    {lookupResult.followup_opt_out && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[10px] font-bold">
+                        <i className="ri-mail-forbid-line" style={{ fontSize: "9px" }}></i>Opted Out
+                      </span>
+                    )}
+                    {!lookupResult.followup_opt_out && (lookupResult.seq_30min_sent_at || lookupResult.seq_24h_sent_at || lookupResult.seq_3day_sent_at) && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">
+                        <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>In Sequence
+                      </span>
+                    )}
+                    {!lookupResult.seq_30min_sent_at && !lookupResult.seq_24h_sent_at && !lookupResult.seq_3day_sent_at && !lookupResult.followup_opt_out && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold">
+                        Not in sequence
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">{lookupResult.email} · {[lookupResult.first_name, lookupResult.last_name].filter(Boolean).join(" ") || "—"}</p>
+                </div>
+              </div>
+
+              {/* Sequence steps */}
+              <div className="px-4 py-3 bg-white border-t border-gray-100">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Sequence Steps</p>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { label: "30min", sent: lookupResult.seq_30min_sent_at },
+                    { label: "24h", sent: lookupResult.seq_24h_sent_at },
+                    { label: "3-day", sent: lookupResult.seq_3day_sent_at },
+                  ].map((step) => (
+                    <div key={step.label} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${step.sent ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-gray-50 border-gray-200 text-gray-400"}`}>
+                      <i className={step.sent ? "ri-checkbox-circle-fill" : "ri-time-line"} style={{ fontSize: "10px" }}></i>
+                      {step.label}
+                      {step.sent && <span className="text-[10px] text-emerald-500 font-normal">sent</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+                {lookupResult.followup_opt_out ? (
+                  <button
+                    type="button"
+                    onClick={() => handleAddToSequence(lookupResult)}
+                    disabled={actionLoading}
+                    className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-colors"
+                  >
+                    {actionLoading ? <><i className="ri-loader-4-line animate-spin"></i>Adding...</> : <><i className="ri-mail-add-line"></i>Add to Sequence</>}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleAddToSequence(lookupResult)}
+                      disabled={actionLoading}
+                      className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      {actionLoading ? <><i className="ri-loader-4-line animate-spin"></i>Resetting...</> : <><i className="ri-restart-line"></i>Reset &amp; Re-add to Sequence</>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFromSequence(lookupResult)}
+                      disabled={actionLoading}
+                      className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 text-xs font-bold rounded-lg hover:bg-red-100 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      {actionLoading ? <><i className="ri-loader-4-line animate-spin"></i>Removing...</> : <><i className="ri-mail-forbid-line"></i>Remove from Sequence</>}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Action result */}
+              {actionMsg && (
+                <div className={`px-4 py-2.5 border-t text-xs font-semibold flex items-center gap-2 ${actionMsg.ok ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-red-50 border-red-100 text-red-700"}`}>
+                  <i className={actionMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                  {actionMsg.msg}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Active in sequence list */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+          <i className="ri-mail-send-line text-sky-500 text-sm"></i>
+          <p className="text-xs font-extrabold text-gray-700">Active in Sequence</p>
+          <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-sky-100 text-sky-700 rounded-full text-[10px] font-bold">{activeInSeq.length} orders</span>
+          <button type="button" onClick={loadSeqOrders} disabled={seqLoading} className="whitespace-nowrap w-6 h-6 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 cursor-pointer transition-colors">
+            <i className={`ri-refresh-line text-sm ${seqLoading ? "animate-spin" : ""}`}></i>
+          </button>
+        </div>
+        <div className="bg-white divide-y divide-gray-50 max-h-64 overflow-y-auto">
+          {seqLoading ? (
+            <div className="flex items-center gap-2 px-4 py-4 text-gray-400 text-xs">
+              <i className="ri-loader-4-line animate-spin"></i>Loading...
+            </div>
+          ) : activeInSeq.length === 0 ? (
+            <div className="px-4 py-4 text-xs text-gray-400 italic">No orders currently active in sequence.</div>
+          ) : (
+            activeInSeq.map((o) => (
+              <div key={o.confirmation_id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-xs font-bold text-gray-800 font-mono">{o.confirmation_id}</p>
+                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${getSeqStepColor(o)}`}>
+                      {getSeqStepLabel(o)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 truncate">{o.email}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setLookupResult(o);
+                    setSearchId(o.confirmation_id);
+                    setActionMsg(null);
+                    await handleRemoveFromSequence(o);
+                  }}
+                  className="whitespace-nowrap flex-shrink-0 flex items-center gap-1 px-2 py-1 bg-red-50 text-red-500 border border-red-100 rounded-lg text-[10px] font-bold hover:bg-red-100 cursor-pointer transition-colors"
+                >
+                  <i className="ri-mail-forbid-line" style={{ fontSize: "10px" }}></i>Remove
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Opted-out list */}
+      {optedOut.length > 0 && (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+            <i className="ri-mail-forbid-line text-gray-400 text-sm"></i>
+            <p className="text-xs font-extrabold text-gray-600">Opted Out of Sequence</p>
+            <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold">{optedOut.length} orders</span>
+          </div>
+          <div className="bg-white divide-y divide-gray-50 max-h-48 overflow-y-auto">
+            {optedOut.map((o) => (
+              <div key={o.confirmation_id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-500 font-mono">{o.confirmation_id}</p>
+                  <p className="text-[10px] text-gray-400 truncate">{o.email}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setLookupResult(o);
+                    setSearchId(o.confirmation_id);
+                    setActionMsg(null);
+                    await handleAddToSequence(o);
+                  }}
+                  className="whitespace-nowrap flex-shrink-0 flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[10px] font-bold hover:bg-emerald-100 cursor-pointer transition-colors"
+                >
+                  <i className="ri-mail-add-line" style={{ fontSize: "10px" }}></i>Re-add
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Accordion Section wrapper ─────────────────────────────────────────────────
+function AccordionSection({
+  title,
+  subtitle,
+  icon,
+  iconBg,
+  iconColor,
+  badge,
+  badgeColor,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: string;
+  iconBg: string;
+  iconColor: string;
+  badge?: string;
+  badgeColor?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer text-left"
+      >
+        <div className={`w-10 h-10 flex items-center justify-center ${iconBg} rounded-xl flex-shrink-0`}>
+          <i className={`${icon} ${iconColor} text-lg`}></i>
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-extrabold text-gray-900">{title}</h3>
+          {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+        </div>
+        {badge && (
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold flex-shrink-0 ${badgeColor ?? "bg-gray-100 text-gray-600"}`}>
+            {badge}
+          </span>
+        )}
+        <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 transition-colors ${open ? "bg-gray-100" : "bg-gray-50"}`}>
+          <i className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-gray-500 text-sm`}></i>
+        </div>
+      </button>
+      {open && (
+        <div className="border-t border-gray-100 px-5 py-5">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface SettingsTabProps {
+  adminRole?: string | null;
+}
+
+// Roles that are NOT allowed to access Settings
+const SETTINGS_BLOCKED_ROLES = new Set(["support", "finance", "read_only"]);
+
+export default function SettingsTab({ adminRole }: SettingsTabProps) {
   const [ghl, setGhl] = useState<GhlStats | null>(null);
   const [stripe, setStripe] = useState<StripeStats | null>(null);
   const [loadingGhl, setLoadingGhl] = useState(true);
@@ -1615,13 +2093,12 @@ export default function SettingsTab() {
   }, [supabaseUrl]);
 
   const handleBulkGhlRetry = async (mode: "unsynced" | "all" = "unsynced") => {
-    // "unsynced" = only orders where ghl_synced_at IS NULL (never synced)
-    // "all" = re-fire every paid order regardless of sync status
+    // "unsynced" = only orders where ghl_synced_at IS NULL (never synced) — includes ALL orders (paid + unpaid)
+    // "all" = re-fire every order regardless of sync status — includes ALL orders (paid + unpaid)
     let query = supabase
       .from("orders")
       .select("confirmation_id, ghl_synced_at, ghl_sync_error, payment_intent_id")
-      .not("payment_intent_id", "is", null)
-      .limit(500);
+      .limit(1000);
 
     if (mode === "unsynced") {
       query = query.is("ghl_synced_at", null);
@@ -1639,6 +2116,7 @@ export default function SettingsTab() {
     setBulkRetry({ running: true, total: targets.length, done: 0, successCount: 0, failCount: 0, finished: false, mode });
 
     const token = await getAdminToken();
+    const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
     let successCount = 0;
     let failCount = 0;
@@ -1647,7 +2125,11 @@ export default function SettingsTab() {
       try {
         const res = await fetch(`${supabaseUrl}/functions/v1/backfill-order-ghl`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            apikey: token === anonKey ? anonKey : token,
+          },
           body: JSON.stringify({ confirmationId: order.confirmation_id }),
         });
         const result = await res.json() as { ok: boolean };
@@ -1667,31 +2149,49 @@ export default function SettingsTab() {
   const ghlHealthPct = ghl && ghl.total > 0 ? Math.round((ghl.synced / ghl.total) * 100) : 0;
   const unsyncedCount = ghl ? ghl.failed + ghl.pending : 0;
 
+  // ── Role gate — block non-admin roles from Settings (after all hooks) ──────
+  if (adminRole && SETTINGS_BLOCKED_ROLES.has(adminRole)) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 px-6">
+        <div className="bg-white rounded-2xl border border-gray-200 p-10 max-w-md w-full text-center">
+          <div className="w-16 h-16 flex items-center justify-center bg-gray-100 rounded-2xl mx-auto mb-5">
+            <i className="ri-lock-2-line text-gray-400 text-3xl"></i>
+          </div>
+          <h2 className="text-base font-extrabold text-gray-900 mb-2">Settings Access Restricted</h2>
+          <p className="text-sm text-gray-500 leading-relaxed mb-5">
+            The Settings tab is only accessible to <strong className="text-gray-700">Owners</strong> and <strong className="text-gray-700">Admins</strong>.
+            Your current role (<span className="font-semibold text-gray-700 capitalize">{adminRole.replace(/_/g, " ")}</span>) does not have permission to view or modify integration settings.
+          </p>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5 text-left">
+            <i className="ri-information-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              If you need access to a specific setting, contact your Owner or Admin to make the change on your behalf.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div>
         <h2 className="text-base font-extrabold text-gray-900 mb-1">Settings &amp; Integrations</h2>
-        <p className="text-xs text-gray-500">Monitor integration health and view configuration references.</p>
+        <p className="text-xs text-gray-500">Click any section to expand it.</p>
       </div>
 
       {/* ── GHL Integration ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 flex items-center justify-center bg-amber-50 rounded-xl flex-shrink-0">
-              <i className="ri-radar-line text-amber-600 text-lg"></i>
-            </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-gray-900">GoHighLevel (GHL)</h3>
-              <p className="text-xs text-gray-400">CRM for email, SMS, calling, and automation</p>
-            </div>
-          </div>
-          {!loadingGhl && ghl && (
-            <StatusBadge ok={ghl.failed === 0 || ghlHealthPct >= 90} label={ghl.failed === 0 ? "All Synced" : `${ghlHealthPct}% Healthy`} />
-          )}
-        </div>
-
-        <div className="px-5 py-5">
+      <AccordionSection
+        title="GoHighLevel (GHL)"
+        subtitle="CRM for email, SMS, calling, and automation"
+        icon="ri-radar-line"
+        iconBg="bg-amber-50"
+        iconColor="text-amber-600"
+        badge={!loadingGhl && ghl ? (ghl.failed === 0 ? "All Synced" : `${ghlHealthPct}% Healthy`) : undefined}
+        badgeColor={!loadingGhl && ghl ? (ghl.failed === 0 || ghlHealthPct >= 90 ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-100 text-red-600") : undefined}
+        defaultOpen={true}
+      >
+        <div>
           {loadingGhl ? (
             <div className="flex items-center gap-2 py-4 text-gray-500">
               <i className="ri-loader-4-line animate-spin"></i>
@@ -1760,8 +2260,8 @@ export default function SettingsTab() {
                       </p>
                       <p className="text-xs text-[#2d7a6a] leading-relaxed mb-2">
                         {unsyncedCount > 0
-                          ? `Pushes all ${unsyncedCount} paid order${unsyncedCount !== 1 ? "s" : ""} where ghl_synced_at IS NULL to GHL. This is the safe one-click catch-up for orders that were never synced.`
-                          : "No unsynced paid orders found — all orders have been pushed to GHL at least once."}
+                          ? `Pushes all ${unsyncedCount} order${unsyncedCount !== 1 ? "s" : ""} (paid + unpaid leads) where ghl_synced_at IS NULL to GHL. Safe one-click catch-up for orders never synced.`
+                          : "No unsynced orders found — all orders (paid + unpaid) have been pushed to GHL at least once."}
                       </p>
                       {!bulkRetry.finished && (
                         <button
@@ -1786,9 +2286,9 @@ export default function SettingsTab() {
                       <i className="ri-refresh-line text-gray-600 text-sm"></i>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-extrabold text-gray-700 mb-0.5">Re-fire All Paid Orders</p>
+                      <p className="text-xs font-extrabold text-gray-700 mb-0.5">Re-fire All Orders (Paid + Unpaid)</p>
                       <p className="text-xs text-gray-500 leading-relaxed mb-2">
-                        Re-sends every paid order to GHL regardless of sync status. Use this after changing the GHL webhook URL or updating field mappings in GHL workflows.
+                        Re-sends every order (paid and unpaid leads) to GHL regardless of sync status. GHL will create or update contacts accordingly. Use after changing webhook URL or field mappings.
                       </p>
                       {!bulkRetry.finished && (
                         <button
@@ -1839,8 +2339,8 @@ export default function SettingsTab() {
                       <i className={bulkRetry.failCount === 0 ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                       {bulkRetry.total === 0
                         ? bulkRetry.mode === "unsynced"
-                          ? "No unsynced orders found — all paid orders are already in GHL."
-                          : "No paid orders found to re-fire."
+                          ? "No unsynced orders found — all orders are already in GHL."
+                          : "No orders found to re-fire."
                         : bulkRetry.failCount === 0
                           ? `All ${bulkRetry.successCount} order${bulkRetry.successCount !== 1 ? "s" : ""} synced to GHL successfully.`
                           : `${bulkRetry.successCount} synced, ${bulkRetry.failCount} still failed — check GHL_WEBHOOK_URL in Supabase Secrets.`}
@@ -1951,167 +2451,179 @@ export default function SettingsTab() {
           {/* ── GHL Connection Test ── */}
           <GhlConnectionTestPanel supabaseUrl={supabaseUrl} />
         </div>
-      </div>
+      </AccordionSection>
+
+      {/* ── Sequence Management ── */}
+      <AccordionSection
+        title="Sequence Management"
+        subtitle="Add or remove orders from the automated follow-up sequence"
+        icon="ri-mail-send-line"
+        iconBg="bg-sky-50"
+        iconColor="text-sky-600"
+      >
+        <SequenceManagementPanel />
+      </AccordionSection>
 
       {/* ── Stripe Integration ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
-              <i className="ri-bank-card-line text-[#1a5c4f] text-lg"></i>
-            </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-gray-900">Stripe</h3>
-              <p className="text-xs text-gray-400">Payment processing and refunds</p>
-            </div>
+      <AccordionSection
+        title="Stripe"
+        subtitle="Payment processing and refunds"
+        icon="ri-bank-card-line"
+        iconBg="bg-[#f0faf7]"
+        iconColor="text-[#1a5c4f]"
+        badge={!loadingStripe && stripe ? (stripe.ok ? "Connected" : "Error") : undefined}
+        badgeColor={!loadingStripe && stripe ? (stripe.ok ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-100 text-red-600") : undefined}
+      >
+        {loadingStripe ? (
+          <div className="flex items-center gap-2 py-4 text-gray-500">
+            <i className="ri-loader-4-line animate-spin"></i>
+            <span className="text-sm">Loading Stripe data...</span>
           </div>
-          {!loadingStripe && stripe && <StatusBadge ok={stripe.ok} label={stripe.ok ? "Connected" : "Error"} />}
-        </div>
-
-        <div className="px-5 py-5">
-          {loadingStripe ? (
-            <div className="flex items-center gap-2 py-4 text-gray-500">
-              <i className="ri-loader-4-line animate-spin"></i>
-              <span className="text-sm">Loading Stripe data...</span>
-            </div>
-          ) : stripe ? (
-            stripe.ok ? (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                  {[
-                    { label: "Revenue (30d)", value: formatCurrency(stripe.total_revenue), color: "text-emerald-600" },
-                    { label: "Available Balance", value: formatCurrency(stripe.available_balance), color: "text-[#1a5c4f]" },
-                    { label: "Charges (30d)", value: stripe.charge_count, color: "text-gray-700" },
-                    { label: "Refunds (30d)", value: stripe.refund_count, color: "text-orange-500" },
-                  ].map((s) => (
-                    <div key={s.label} className="bg-gray-50 rounded-xl border border-gray-100 p-3">
-                      <p className="text-xs text-gray-400 mb-1">{s.label}</p>
-                      <p className={`text-lg font-extrabold ${s.color}`}>{s.value}</p>
+        ) : stripe ? (
+          stripe.ok ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                {[
+                  { label: "Revenue (30d)", value: formatCurrency(stripe.total_revenue), color: "text-emerald-600" },
+                  { label: "Available Balance", value: formatCurrency(stripe.available_balance), color: "text-[#1a5c4f]" },
+                  { label: "Charges (30d)", value: stripe.charge_count, color: "text-gray-700" },
+                  { label: "Refunds (30d)", value: stripe.refund_count, color: "text-orange-500" },
+                ].map((s) => (
+                  <div key={s.label} className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                    <p className="text-xs text-gray-400 mb-1">{s.label}</p>
+                    <p className={`text-lg font-extrabold ${s.color}`}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+                <div className="grid grid-cols-2 gap-2">
+                  {["Payment intents", "Refund creation", "Balance retrieval", "Webhook handler", "Checkout sessions", "CSV export"].map((cap) => (
+                    <div key={cap} className="flex items-center gap-1.5 text-xs text-[#1a5c4f]">
+                      <i className="ri-checkbox-circle-fill" style={{ fontSize: "10px" }}></i>{cap}
                     </div>
                   ))}
                 </div>
-                <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    {["Payment intents", "Refund creation", "Balance retrieval", "Webhook handler", "Checkout sessions", "CSV export"].map((cap) => (
-                      <div key={cap} className="flex items-center gap-1.5 text-xs text-[#1a5c4f]">
-                        <i className="ri-checkbox-circle-fill" style={{ fontSize: "10px" }}></i>{cap}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-                <i className="ri-error-warning-line text-red-500 text-base mt-0.5 flex-shrink-0"></i>
-                <div>
-                  <p className="text-sm font-bold text-red-700 mb-0.5">Stripe Connection Error</p>
-                  <p className="text-xs text-red-600">{stripe.error}</p>
-                  <p className="text-xs text-red-500 mt-1">Check that STRIPE_SECRET_KEY is set in Supabase Edge Function secrets.</p>
-                </div>
               </div>
-            )
-          ) : null}
-        </div>
-      </div>
+            </>
+          ) : (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+              <i className="ri-error-warning-line text-red-500 text-base mt-0.5 flex-shrink-0"></i>
+              <div>
+                <p className="text-sm font-bold text-red-700 mb-0.5">Stripe Connection Error</p>
+                <p className="text-xs text-red-600">{stripe.error}</p>
+                <p className="text-xs text-red-500 mt-1">Check that STRIPE_SECRET_KEY is set in Supabase Edge Function secrets.</p>
+              </div>
+            </div>
+          )
+        ) : null}
+      </AccordionSection>
 
       {/* ── Email / Documents ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 flex items-center justify-center bg-gray-50 rounded-xl flex-shrink-0">
-              <i className="ri-mail-settings-line text-gray-600 text-lg"></i>
-            </div>
-            <div>
-              <h3 className="text-sm font-extrabold text-gray-900">Email &amp; Documents</h3>
-              <p className="text-xs text-gray-400">Supabase Auth emails and ESA letter delivery</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-5 py-5">
-          <div className="space-y-3 mb-5">
-            {[
-              { label: "Team Invite Email", desc: "Sent when adding new staff via Team tab. Uses Supabase Auth invite flow.", ok: true },
-              { label: "Password Reset Email", desc: "Sent when staff request a password reset.", ok: true },
-              { label: "ESA Letter Email", desc: "Sent to patients when their ESA letter is ready (notify-patient-letter function).", ok: true },
-              { label: "Patient Portal Invite", desc: "Customer login invite via customer-login page.", ok: true },
-            ].map((t) => (
-              <div key={t.label} className="flex items-start gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
-                <div className={`w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0 ${t.ok ? "bg-[#f0faf7]" : "bg-red-50"}`}>
-                  <i className={`${t.ok ? "ri-mail-check-line text-[#1a5c4f]" : "ri-mail-close-line text-red-500"} text-sm`}></i>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="text-sm font-bold text-gray-900">{t.label}</p>
-                    <StatusBadge ok={t.ok} label={t.ok ? "Active" : "Issue"} />
-                  </div>
-                  <p className="text-xs text-gray-500">{t.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <div className="flex items-start gap-2">
-              <i className="ri-information-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
-              <div>
-                <p className="text-xs font-bold text-amber-800 mb-0.5">Custom Email Branding</p>
-                <p className="text-xs text-amber-700 leading-relaxed">
-                  To brand emails with PawTenant name/logo: Supabase Dashboard → Authentication → Email Templates (customize subjects + HTML).
-                  For custom sender domain: Authentication → Email → SMTP Settings (add SendGrid, Postmark, etc.).
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── BAA Compliance Tracker ── */}
-      <BaaPanel />
-
-      {/* ── Google Sheets Sync ── */}
-      <GoogleSheetsSyncPanel supabaseUrl={supabaseUrl} />
-
-      {/* ── Coupon Code Management ── */}
-      <CouponManagementPanel />
-
-      {/* ── Data Retention Policy ── */}
-      <DataRetentionPanel />
-
-      {/* ── Notification Routing Test Panel ── */}
-      <NotificationRoutingTestPanel supabaseUrl={supabaseUrl} />
-
-      {/* ── Admin Notification Preferences ── */}
-      <AdminNotificationPrefsPanel />
-
-      {/* ── Email Templates Preview ── */}
-      <EmailTemplatesPreview />
-
-      {/* ── UTM Campaign Link Generator ── */}
-      <UTMLinkGenerator />
-
-      {/* ── Admin Dashboard Source of Truth ── */}
-      <div className="bg-[#0f1e1a] rounded-xl p-5">
-        <p className="text-sm font-bold text-white mb-1">Architecture: Admin Dashboard is Source of Truth</p>
-        <p className="text-xs text-white/60 leading-relaxed mb-4">
-          All case data lives in Supabase. GHL receives synced contact/communication data only and is used exclusively for email, SMS, calling, and automation campaigns. Never rely on GHL for case status or billing data.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <AccordionSection
+        title="Email & Documents"
+        subtitle="Supabase Auth emails and ESA letter delivery"
+        icon="ri-mail-settings-line"
+        iconBg="bg-gray-50"
+        iconColor="text-gray-600"
+      >
+        <div className="space-y-3 mb-5">
           {[
-            { source: "Supabase (orders)", owns: "Orders, case status, letters" },
-            { source: "Stripe", owns: "Payments, refunds, balances" },
-            { source: "GHL", owns: "Email, SMS, calls, campaigns" },
-            { source: "Doctor Portal", owns: "Case reviews, notes" },
-            { source: "Customer Portal", owns: "Order tracking, downloads" },
-            { source: "Admin Dashboard", owns: "Oversight of all above" },
-          ].map((r) => (
-            <div key={r.source} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5">
-              <p className="text-xs font-bold text-white/90">{r.source}</p>
-              <p className="text-xs text-white/50 mt-0.5">{r.owns}</p>
+            { label: "Team Invite Email", desc: "Sent when adding new staff via Team tab. Uses Supabase Auth invite flow.", ok: true },
+            { label: "Password Reset Email", desc: "Sent when staff request a password reset.", ok: true },
+            { label: "ESA Letter Email", desc: "Sent to patients when their ESA letter is ready (notify-patient-letter function).", ok: true },
+            { label: "Patient Portal Invite", desc: "Customer login invite via customer-login page.", ok: true },
+          ].map((t) => (
+            <div key={t.label} className="flex items-start gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+              <div className={`w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0 ${t.ok ? "bg-[#f0faf7]" : "bg-red-50"}`}>
+                <i className={`${t.ok ? "ri-mail-check-line text-[#1a5c4f]" : "ri-mail-close-line text-red-500"} text-sm`}></i>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="text-sm font-bold text-gray-900">{t.label}</p>
+                  <StatusBadge ok={t.ok} label={t.ok ? "Active" : "Issue"} />
+                </div>
+                <p className="text-xs text-gray-500">{t.desc}</p>
+              </div>
             </div>
           ))}
         </div>
-      </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-2">
+            <i className="ri-information-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+            <div>
+              <p className="text-xs font-bold text-amber-800 mb-0.5">Custom Email Branding</p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                To brand emails with PawTenant name/logo: Supabase Dashboard → Authentication → Email Templates.
+                For custom sender domain: Authentication → Email → SMTP Settings.
+              </p>
+            </div>
+          </div>
+        </div>
+      </AccordionSection>
+
+      {/* ── BAA Compliance Tracker ── */}
+      <AccordionSection title="HIPAA BAA Compliance Tracker" subtitle="Track Business Associate Agreements with PHI vendors" icon="ri-shield-keyhole-line" iconBg="bg-indigo-50" iconColor="text-indigo-600">
+        <BaaPanel />
+      </AccordionSection>
+
+      {/* ── Google Sheets Sync ── */}
+      <AccordionSection title="Google Sheets — Order Records" subtitle="Manual backup of all orders & leads to your Google Sheet" icon="ri-file-excel-2-line" iconBg="bg-green-50" iconColor="text-green-600">
+        <GoogleSheetsSyncPanel supabaseUrl={supabaseUrl} />
+      </AccordionSection>
+
+      {/* ── Coupon Code Management ── */}
+      <AccordionSection title="Coupon Code Management" subtitle="Create and manage discount codes" icon="ri-coupon-3-line" iconBg="bg-orange-50" iconColor="text-orange-600">
+        <CouponManagementPanel />
+      </AccordionSection>
+
+      {/* ── Data Retention Policy ── */}
+      <AccordionSection title="Data Retention Policy" subtitle="Configure how long each data type is kept before archival" icon="ri-archive-line" iconBg="bg-orange-50" iconColor="text-orange-600">
+        <DataRetentionPanel />
+      </AccordionSection>
+
+      {/* ── Notification Routing Test Panel ── */}
+      <AccordionSection title="Notification Routing Test" subtitle="Live preview of who receives each notification — no emails sent" icon="ri-route-line" iconBg="bg-violet-50" iconColor="text-violet-600">
+        <NotificationRoutingTestPanel supabaseUrl={supabaseUrl} />
+      </AccordionSection>
+
+      {/* ── Admin Notification Preferences ── */}
+      <AccordionSection title="Admin Notification Preferences" subtitle="Configure which events trigger admin alerts" icon="ri-notification-3-line" iconBg="bg-sky-50" iconColor="text-sky-600">
+        <AdminNotificationPrefsPanel />
+      </AccordionSection>
+
+      {/* ── Email Templates Preview ── */}
+      <AccordionSection title="Email Templates Preview" subtitle="Visually QA every email template — no send required" icon="ri-eye-line" iconBg="bg-[#f0faf7]" iconColor="text-[#1a5c4f]">
+        <EmailTemplatesPreview />
+      </AccordionSection>
+
+      {/* ── UTM Campaign Link Generator ── */}
+      <AccordionSection title="UTM Campaign Link Generator" subtitle="Build trackable URLs for marketing campaigns" icon="ri-links-line" iconBg="bg-gray-50" iconColor="text-gray-600">
+        <UTMLinkGenerator />
+      </AccordionSection>
+
+      {/* ── Admin Dashboard Source of Truth ── */}
+      <AccordionSection title="Architecture Reference" subtitle="Admin Dashboard is Source of Truth" icon="ri-server-line" iconBg="bg-gray-900" iconColor="text-white">
+        <div className="bg-[#0f1e1a] rounded-xl p-5 -mx-5 -mb-5">
+          <p className="text-xs text-white/60 leading-relaxed mb-4">
+            All case data lives in Supabase. GHL receives synced contact/communication data only and is used exclusively for email, SMS, calling, and automation campaigns. Never rely on GHL for case status or billing data.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {[
+              { source: "Supabase (orders)", owns: "Orders, case status, letters" },
+              { source: "Stripe", owns: "Payments, refunds, balances" },
+              { source: "GHL", owns: "Email, SMS, calls, campaigns" },
+              { source: "Doctor Portal", owns: "Case reviews, notes" },
+              { source: "Customer Portal", owns: "Order tracking, downloads" },
+              { source: "Admin Dashboard", owns: "Oversight of all above" },
+            ].map((r) => (
+              <div key={r.source} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5">
+                <p className="text-xs font-bold text-white/90">{r.source}</p>
+                <p className="text-xs text-white/50 mt-0.5">{r.owns}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </AccordionSection>
     </div>
   );
 }

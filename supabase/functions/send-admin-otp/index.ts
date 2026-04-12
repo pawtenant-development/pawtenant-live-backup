@@ -78,11 +78,13 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     // Check if this email belongs to an active admin/team member
-    const { data: profile } = await adminClient
+    const { data: profile, error: profileErr } = await adminClient
       .from("doctor_profiles")
       .select("id, full_name, is_admin, is_active, role")
       .ilike("email", email.trim())
       .maybeSingle();
+
+    console.log("[send-admin-otp] Profile lookup:", { email: email.trim(), found: !!profile, profileErr });
 
     if (!profile || !profile.is_admin || !profile.is_active) {
       // Return generic message to prevent email enumeration
@@ -95,16 +97,23 @@ Deno.serve(async (req) => {
 
     const otpKey = `otp_${profile.id}`;
 
-    // Upsert OTP record
-    await adminClient
+    // Upsert OTP record — use correct column name "enabled" (not "is_enabled")
+    const { error: upsertErr } = await adminClient
       .from("admin_notification_prefs")
       .upsert({
         user_id: profile.id,
         notification_key: otpKey,
         email_override: otp,
         per_notif_emails: [expiresAt],
-        is_enabled: true,
+        enabled: true,
       }, { onConflict: "user_id,notification_key" });
+
+    if (upsertErr) {
+      console.error("[send-admin-otp] OTP upsert failed:", upsertErr);
+      return json({ ok: false, error: "Failed to store OTP. Please try again." }, 500);
+    }
+
+    console.log("[send-admin-otp] OTP stored successfully for profile.id:", profile.id, "key:", otpKey);
 
     if (!resendKey) {
       console.warn("[send-admin-otp] RESEND_API_KEY not set");
@@ -134,9 +143,11 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Failed to send OTP email" }, 500);
     }
 
+    console.log("[send-admin-otp] OTP email sent successfully to:", email.trim());
     return json({ ok: true, message: "OTP sent successfully", expires_minutes: expiresMinutes });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error("[send-admin-otp] Unexpected error:", msg);
     return json({ ok: false, error: `Server error: ${msg}` }, 500);
   }
 });

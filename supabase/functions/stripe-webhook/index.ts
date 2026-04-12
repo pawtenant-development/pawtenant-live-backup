@@ -82,7 +82,6 @@ function buildInternalNotificationHtml(opts: { confirmationId: string; firstName
 }
 
 // ── Fire GHL payment_confirmed event ─────────────────────────────────────────
-// Sends the exact 8-field payload required by the GHL workflow.
 async function triggerGhlPaymentConfirmed(order: Record<string, unknown>, amountDollars: number): Promise<void> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -114,7 +113,6 @@ async function triggerGhlPaymentConfirmed(order: Record<string, unknown>, amount
 function triggerGoogleAdsSync(confirmationId: string): Promise<void> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  console.info(`[stripe-webhook] >>> triggerGoogleAdsSync ENTERING for ${confirmationId}`);
   return fetch(`${supabaseUrl}/functions/v1/sync-google-ads-conversions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
@@ -128,7 +126,6 @@ function triggerGoogleAdsSync(confirmationId: string): Promise<void> {
 function triggerMetaCAPIEvent(confirmationId: string): Promise<void> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  console.info(`[stripe-webhook] >>> triggerMetaCAPIEvent ENTERING for ${confirmationId}`);
   return fetch(`${supabaseUrl}/functions/v1/send-meta-capi-event`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
@@ -139,24 +136,19 @@ function triggerMetaCAPIEvent(confirmationId: string): Promise<void> {
 }
 
 function schedulePostPaymentTriggers(confirmationId: string, order?: Record<string, unknown>, amountDollars?: number): void {
-  console.info(`[stripe-webhook] schedulePostPaymentTriggers: queuing Google Ads + Meta CAPI + GHL for ${confirmationId}`);
   // @ts-ignore — EdgeRuntime is injected by Supabase edge runtime
   if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
     // @ts-ignore
     EdgeRuntime.waitUntil(
       (async () => {
-        console.info(`[stripe-webhook] waitUntil: starting triggers for ${confirmationId}`);
         await triggerGoogleAdsSync(confirmationId);
         await triggerMetaCAPIEvent(confirmationId);
-        // Fire GHL payment_confirmed if order data is available
         if (order && typeof amountDollars === "number") {
           await triggerGhlPaymentConfirmed(order, amountDollars);
         }
-        console.info(`[stripe-webhook] waitUntil: all triggers complete for ${confirmationId}`);
       })()
     );
   } else {
-    console.warn(`[stripe-webhook] EdgeRuntime.waitUntil not available — firing triggers best-effort for ${confirmationId}`);
     triggerGoogleAdsSync(confirmationId).catch(() => {});
     triggerMetaCAPIEvent(confirmationId).catch(() => {});
     if (order && typeof amountDollars === "number") {
@@ -188,6 +180,43 @@ Deno.serve(async (req: Request) => {
   }
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+  // ── Helper: log a payment attempt to payment_attempts table ──────────────
+  async function logPaymentAttempt(opts: {
+    confirmationId: string;
+    orderId?: string | null;
+    eventType: string;
+    status: "succeeded" | "failed" | "pending" | "cancelled" | "async_failed" | "async_succeeded";
+    amount?: number | null;
+    paymentMethod?: string | null;
+    paymentIntentId?: string | null;
+    checkoutSessionId?: string | null;
+    failureCode?: string | null;
+    failureMessage?: string | null;
+    declineCode?: string | null;
+    stripeEventId?: string | null;
+    rawError?: Record<string, unknown> | null;
+  }) {
+    try {
+      await supabase.from("payment_attempts").insert({
+        confirmation_id: opts.confirmationId,
+        order_id: opts.orderId ?? null,
+        event_type: opts.eventType,
+        status: opts.status,
+        amount: opts.amount ?? null,
+        payment_method: opts.paymentMethod ?? null,
+        payment_intent_id: opts.paymentIntentId ?? null,
+        checkout_session_id: opts.checkoutSessionId ?? null,
+        failure_code: opts.failureCode ?? null,
+        failure_message: opts.failureMessage ?? null,
+        decline_code: opts.declineCode ?? null,
+        stripe_event_id: opts.stripeEventId ?? null,
+        raw_error: opts.rawError ?? null,
+      });
+    } catch (err) {
+      console.warn("[stripe-webhook] logPaymentAttempt failed:", err instanceof Error ? err.message : String(err));
+    }
+  }
 
   async function findOrderByConfId(confirmationId: string) {
     const { data } = await supabase.from("orders").select("id, status, payment_intent_id, checkout_session_id, email, confirmation_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status").eq("confirmation_id", confirmationId).maybeSingle();
@@ -296,8 +325,6 @@ Deno.serve(async (req: Request) => {
         internalRecipients.forEach((recipient) => {
           newLogEntries.push({ type: "internal_notification", sentAt: now, to: recipient, success: internalResult.sent });
         });
-        if (internalResult.sent) { console.info(`[stripe-webhook] ✓ Internal notification sent to ${internalRecipients.join(", ")} for ${confirmationId}`); }
-        else { console.warn(`[stripe-webhook] Internal notification failed for ${confirmationId}`); }
       } else if (!notifEnabled) {
         console.info(`[stripe-webhook] new_paid_order notification is disabled — skipping internal email for ${confirmationId}`);
       }
@@ -324,6 +351,19 @@ Deno.serve(async (req: Request) => {
     const confirmationId = order.confirmation_id as string;
     const amt = Math.round((pi.amount_received ?? 0) / 100);
 
+    // Log successful payment attempt
+    await logPaymentAttempt({
+      confirmationId,
+      orderId: order.id as string,
+      eventType: "payment_intent.succeeded",
+      status: "succeeded",
+      amount: amt,
+      paymentMethod: (order.payment_method as string) ?? "card",
+      paymentIntentId: pi.id,
+      checkoutSessionId: sessionIdFromMeta ?? null,
+      stripeEventId: event.id,
+    });
+
     if ((order.status as string) === "processing" && (order.payment_intent_id as string) === pi.id) {
       console.info(`[stripe-webhook] ${confirmationId} already processing — idempotent. Firing triggers anyway.`);
       if (sessionIdFromMeta && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: sessionIdFromMeta }).eq("confirmation_id", confirmationId); }
@@ -338,7 +378,6 @@ Deno.serve(async (req: Request) => {
       if (freshOrder?.id) {
         await logStatus(freshOrder.id, confirmationId, "processing", `Payment confirmed via Stripe. PI: ${pi.id}. Amount: $${amt}. Matched by: ${matchedBy}`);
         await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, pi.id, amt, matchedBy, sessionIdFromMeta);
-        console.info(`[stripe-webhook] Scheduling post-payment triggers for ${confirmationId}`);
         schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
       }
     }
@@ -349,13 +388,70 @@ Deno.serve(async (req: Request) => {
   if (t === "payment_intent.payment_failed") {
     const pi = event.data.object;
     const cid = pi.metadata?.confirmation_id;
+    const lastErr = pi.last_payment_error;
+    const failureCode = lastErr?.code ?? null;
+    const failureMessage = lastErr?.message ?? lastErr?.code ?? "Payment declined";
+    const declineCode = lastErr?.decline_code ?? null;
+    const paymentMethod = lastErr?.payment_method?.type ?? pi.payment_method_types?.[0] ?? null;
+    const amt = pi.amount ? Math.round(pi.amount / 100) : null;
+
     if (!cid) return json({ ok: true, skipped: true });
-    const reason = pi.last_payment_error?.message ?? pi.last_payment_error?.code ?? "Payment declined";
-    await supabase.from("orders").update({ payment_failed_at: new Date().toISOString(), payment_failure_reason: reason }).eq("confirmation_id", cid);
-    return json({ ok: true, type: t, confirmationId: cid, reason });
+
+    // Update order with failure info
+    await supabase.from("orders").update({
+      payment_failed_at: new Date().toISOString(),
+      payment_failure_reason: failureMessage,
+    }).eq("confirmation_id", cid);
+
+    // Look up order for orderId
+    const order = await findOrderByConfId(cid);
+
+    // Log the failed attempt with full detail
+    await logPaymentAttempt({
+      confirmationId: cid,
+      orderId: order?.id ?? null,
+      eventType: "payment_intent.payment_failed",
+      status: "failed",
+      amount: amt,
+      paymentMethod,
+      paymentIntentId: pi.id,
+      failureCode,
+      failureMessage,
+      declineCode,
+      stripeEventId: event.id,
+      rawError: lastErr ? {
+        code: lastErr.code,
+        decline_code: lastErr.decline_code,
+        message: lastErr.message,
+        type: lastErr.type,
+        param: lastErr.param,
+        payment_method_type: lastErr.payment_method?.type,
+      } : null,
+    });
+
+    return json({ ok: true, type: t, confirmationId: cid, reason: failureMessage });
   }
 
-  if (t === "payment_intent.canceled" || t === "payment_intent.created") { return json({ ok: true, type: t }); }
+  if (t === "payment_intent.canceled") {
+    const pi = event.data.object;
+    const cid = pi.metadata?.confirmation_id;
+    if (cid) {
+      const order = await findOrderByConfId(cid);
+      await logPaymentAttempt({
+        confirmationId: cid,
+        orderId: order?.id ?? null,
+        eventType: "payment_intent.canceled",
+        status: "cancelled",
+        amount: pi.amount ? Math.round(pi.amount / 100) : null,
+        paymentIntentId: pi.id,
+        stripeEventId: event.id,
+        failureMessage: pi.cancellation_reason ?? "Payment intent cancelled",
+      });
+    }
+    return json({ ok: true, type: t });
+  }
+
+  if (t === "payment_intent.created") { return json({ ok: true, type: t }); }
 
   // ── charge.refunded ───────────────────────────────────────────────────────
   if (t === "charge.refunded") {
@@ -417,8 +513,21 @@ Deno.serve(async (req: Request) => {
     }
     const { order, matchedBy } = resolved;
     const confirmationId = order.confirmation_id as string;
+
+    // Log successful checkout attempt
+    await logPaymentAttempt({
+      confirmationId,
+      orderId: order.id as string,
+      eventType: "checkout.session.completed",
+      status: "succeeded",
+      amount: amt,
+      paymentMethod: mode,
+      paymentIntentId: piId,
+      checkoutSessionId: session.id,
+      stripeEventId: event.id,
+    });
+
     if ((order.status as string) === "processing") {
-      console.info(`[stripe-webhook] ${confirmationId} already processing (checkout.session) — idempotent. Firing triggers anyway.`);
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, order, amt);
@@ -429,7 +538,6 @@ Deno.serve(async (req: Request) => {
     if (freshOrder?.id) {
       await logStatus(freshOrder.id, confirmationId, "processing", `Checkout session ${session.id} completed. PI: ${piId}. Amount: $${amt}. Matched by: ${matchedBy}`);
       await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);
-      console.info(`[stripe-webhook] Scheduling post-payment triggers for ${confirmationId}`);
       schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
     }
     return json({ ok: true, type: t, confirmationId, amount: amt, isSubscription, matchedBy, checkoutSessionId: session.id });
@@ -447,8 +555,20 @@ Deno.serve(async (req: Request) => {
     if (!resolved) return json({ ok: true, skipped: true, reason: "no_matching_order" });
     const { order, matchedBy } = resolved;
     const confirmationId = order.confirmation_id as string;
+
+    await logPaymentAttempt({
+      confirmationId,
+      orderId: order.id as string,
+      eventType: "checkout.session.async_payment_succeeded",
+      status: "async_succeeded",
+      amount: amt,
+      paymentMethod: session.metadata?.payment_mode ?? "klarna",
+      paymentIntentId: piId,
+      checkoutSessionId: session.id,
+      stripeEventId: event.id,
+    });
+
     if ((order.status as string) === "processing") {
-      console.info(`[stripe-webhook] ${confirmationId} already processing (async_payment) — idempotent. Firing triggers anyway.`);
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, order, amt);
@@ -458,20 +578,55 @@ Deno.serve(async (req: Request) => {
     const freshOrder = await findOrderByConfId(confirmationId);
     if (freshOrder) {
       await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);
-      console.info(`[stripe-webhook] Scheduling post-payment triggers for ${confirmationId}`);
       schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
     }
     return json({ ok: true, type: t, confirmationId, amount: amt });
   }
 
   if (t === "checkout.session.async_payment_failed") {
-    const cid = event.data.object?.metadata?.confirmation_id;
+    const session = event.data.object;
+    const cid = session.metadata?.confirmation_id;
     if (!cid) return json({ ok: true, skipped: true });
-    await supabase.from("orders").update({ payment_failed_at: new Date().toISOString(), payment_failure_reason: "Async payment failed" }).eq("confirmation_id", cid);
+
+    const order = await findOrderByConfId(cid);
+    await supabase.from("orders").update({
+      payment_failed_at: new Date().toISOString(),
+      payment_failure_reason: "Async payment failed (Klarna/QR)",
+    }).eq("confirmation_id", cid);
+
+    await logPaymentAttempt({
+      confirmationId: cid,
+      orderId: order?.id ?? null,
+      eventType: "checkout.session.async_payment_failed",
+      status: "async_failed",
+      amount: session.amount_total ? Math.round(session.amount_total / 100) : null,
+      paymentMethod: session.metadata?.payment_mode ?? "klarna",
+      checkoutSessionId: session.id,
+      stripeEventId: event.id,
+      failureMessage: "Async payment failed (Klarna/QR)",
+    });
+
     return json({ ok: true, type: t, confirmationId: cid });
   }
 
-  if (t === "checkout.session.expired") { const cid = event.data.object?.metadata?.confirmation_id; if (cid) console.info(`[stripe-webhook] checkout.session.expired — ${cid}`); return json({ ok: true, type: t }); }
+  if (t === "checkout.session.expired") {
+    const session = event.data.object;
+    const cid = session.metadata?.confirmation_id;
+    if (cid) {
+      const order = await findOrderByConfId(cid);
+      await logPaymentAttempt({
+        confirmationId: cid,
+        orderId: order?.id ?? null,
+        eventType: "checkout.session.expired",
+        status: "cancelled",
+        amount: session.amount_total ? Math.round(session.amount_total / 100) : null,
+        checkoutSessionId: session.id,
+        stripeEventId: event.id,
+        failureMessage: "Checkout session expired without payment",
+      });
+    }
+    return json({ ok: true, type: t });
+  }
 
   if (t === "customer.subscription.created") {
     const sub = event.data.object; const cid = sub.metadata?.confirmation_id;
@@ -504,7 +659,19 @@ Deno.serve(async (req: Request) => {
     const invoice = event.data.object; const cid = invoice.subscription_details?.metadata?.confirmation_id;
     let order = cid ? await findOrderByConfId(cid) : null;
     if (!order && invoice.subscription) order = await findOrderBySubId(invoice.subscription);
-    if (order?.id) { await supabase.from("orders").update({ payment_failed_at: new Date().toISOString(), payment_failure_reason: `Invoice payment failed (attempt ${invoice.attempt_count})` }).eq("id", order.id); }
+    if (order?.id) {
+      const failMsg = `Invoice payment failed (attempt ${invoice.attempt_count})`;
+      await supabase.from("orders").update({ payment_failed_at: new Date().toISOString(), payment_failure_reason: failMsg }).eq("id", order.id);
+      await logPaymentAttempt({
+        confirmationId: order.confirmation_id as string,
+        orderId: order.id,
+        eventType: "invoice.payment_failed",
+        status: "failed",
+        amount: invoice.amount_due ? Math.round(invoice.amount_due / 100) : null,
+        stripeEventId: event.id,
+        failureMessage: failMsg,
+      });
+    }
     return json({ ok: true, type: t });
   }
   if (t === "invoice.payment_action_required") { return json({ ok: true, type: t }); }

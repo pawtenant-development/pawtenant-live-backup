@@ -2,10 +2,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import OrderNotesPanel from "./OrderNotesPanel";
+import ApprovalRequestModal from "./ApprovalRequestModal";
 import CommunicationTab from "./CommunicationTab";
 import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
 import PSDAssessmentView from "./PSDAssessmentView";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
+import PaymentHistoryTab from "./PaymentHistoryTab";
 import {
   LOGO_URL as ASSESSMENT_LOGO,
   STATE_NAMES,
@@ -45,6 +47,7 @@ interface Order {
   created_at: string;
   ghl_synced_at: string | null;
   ghl_sync_error: string | null;
+  ghl_contact_id?: string | null;
   email_log?: EmailLogEntry[] | null;
   referred_by: string | null;
   addon_services?: string[] | null;
@@ -78,6 +81,7 @@ interface DoctorContact {
 interface AdminProfile {
   user_id: string;
   full_name: string;
+  role?: string | null;
 }
 
 interface OrderDetailModalProps {
@@ -91,9 +95,11 @@ interface OrderDetailModalProps {
   allOrders?: Order[];
   /** Called when user navigates to a different order via arrow keys */
   onNavigate?: (order: Order) => void;
+  /** Called when comms or notes tab is opened — clears the unread badge */
+  onClearUnread?: (confirmationId: string) => void;
 }
 
-type Section = "overview" | "documents" | "assessment" | "notes" | "comms";
+type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "payments";
 
 // ─── PSD order detection — letter_type field OR confirmation ID prefix ────────
 function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
@@ -277,6 +283,46 @@ const VERIF_STATUS_ICON: Record<string, string> = {
   revoked: "ri-shield-cross-line",
   expired: "ri-time-line",
 };
+
+// ─── CopyFieldButton — small inline copy icon ────────────────────────────────
+function CopyFieldButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const handle = () => {
+    const fallback = () => {
+      try {
+        const el = document.createElement("textarea");
+        el.value = value;
+        el.style.position = "fixed";
+        el.style.opacity = "0";
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch { /* ignore */ }
+    };
+    if (navigator.clipboard && document.hasFocus()) {
+      navigator.clipboard.writeText(value).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(fallback);
+    } else {
+      fallback();
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      title="Copy"
+      className="whitespace-nowrap flex-shrink-0 w-5 h-5 flex items-center justify-center text-gray-300 hover:text-[#1a5c4f] cursor-pointer transition-colors"
+    >
+      <i className={copied ? "ri-checkbox-circle-line text-emerald-500" : "ri-file-copy-line"} style={{ fontSize: "12px" }}></i>
+    </button>
+  );
+}
 
 // ─── RetryPaymentButton ───────────────────────────────────────────────────────
 const SUPABASE_URL_MODAL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
@@ -800,6 +846,7 @@ export default function OrderDetailModal({
   onClose,
   onOrderUpdated,
   onOrderDeleted,
+  onClearUnread,
   allOrders = [],
   onNavigate,
 }: OrderDetailModalProps) {
@@ -1011,13 +1058,19 @@ export default function OrderDetailModal({
         setTimeout(() => setGhlMsg(""), 8000);
         return;
       }
-      const result = await res.json() as { ok: boolean; message: string; phonePersisted?: string | null };
+      const result = await res.json() as {
+        ok: boolean;
+        message: string;
+        phonePersisted?: string | null;
+        contactUpsert?: { success: boolean; contactId: string | null; action: string };
+      };
       setGhlMsg(result.message ?? (result.ok ? "GHL synced!" : "Sync failed"));
       if (result.ok) {
         updateOrderField({
           ghl_synced_at: new Date().toISOString(),
           ghl_sync_error: null,
           phone: result.phonePersisted ?? order.phone ?? null,
+          ...(result.contactUpsert?.contactId ? { ghl_contact_id: result.contactUpsert.contactId } : {}),
         });
       }
     } catch {
@@ -1639,6 +1692,12 @@ export default function OrderDetailModal({
   const [cancelWithRefund, setCancelWithRefund] = useState(false);
   const [cancelMsg, setCancelMsg] = useState("");
 
+  // ── Role restriction state ──
+  const isFinanceRole = adminProfile.role === "finance";
+  const isSupportRole = adminProfile.role === "support";
+  const [showRefundApproval, setShowRefundApproval] = useState(false);
+  const [showDeleteApproval, setShowDeleteApproval] = useState(false);
+
   // States requiring 30-day official letter reissue
   const THIRTY_DAY_STATES = ["CA", "AR", "IA", "LA", "MT"];
   const isThirtyDayState = THIRTY_DAY_STATES.includes(order.state ?? "");
@@ -2002,6 +2061,7 @@ export default function OrderDetailModal({
 
   useEffect(() => {
     if (section === "emails" || section === "comms") loadEmailLog();
+    if (section === "comms" || section === "notes") onClearUnread?.(order.confirmation_id);
   }, [section, loadEmailLog]);
 
   return (
@@ -2136,48 +2196,22 @@ export default function OrderDetailModal({
             </div>
           </div>
 
-          {/* Second row: meta info chips */}
-          <div className="flex items-center gap-2 px-4 sm:px-6 pb-3 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
-              <i className="ri-mail-line text-gray-400" style={{ fontSize: "11px" }}></i>
-              <span className="truncate max-w-[160px]">{order.email}</span>
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 font-mono">
-              <i className="ri-hashtag text-gray-400" style={{ fontSize: "11px" }}></i>
-              {order.confirmation_id}
-            </span>
-            {order.state && (
-              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
-                <i className="ri-map-pin-line text-gray-400" style={{ fontSize: "11px" }}></i>
-                {order.state}
-              </span>
-            )}
-            {order.price != null && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1">
-                <i className="ri-money-dollar-circle-line" style={{ fontSize: "11px" }}></i>
-                ${order.price}
-              </span>
-            )}
-            {order.phone && (
-              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
-                <i className="ri-phone-line text-gray-400" style={{ fontSize: "11px" }}></i>
-                {order.phone}
-              </span>
-            )}
-            {/* Broadcast Opt-Out badge — shown when customer has unsubscribed from marketing emails */}
-            {order.broadcast_opt_out && (
+          {/* Broadcast Opt-Out badge — only shown when opted out, compact inline */}
+          {order.broadcast_opt_out && (
+            <div className="px-4 sm:px-6 pb-2">
               <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 bg-orange-50 border border-orange-300 rounded-lg px-2.5 py-1" title="This customer unsubscribed from broadcast marketing emails via the unsubscribe link">
                 <i className="ri-mail-forbid-line" style={{ fontSize: "11px" }}></i>
                 Broadcast Opt-Out
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Section navigation — dropdown on mobile, pill tabs on desktop */}
         {(() => {
-          const TABS: { key: Section; label: string; icon: string; badge: number | null }[] = [
+          const TABS: { key: Section; label: string; icon: string; badge: number | null; alert?: boolean }[] = [
             { key: "overview",   label: "Overview",                                     icon: "ri-layout-grid-line",  badge: null },
+            { key: "payments",   label: "Payments",                                     icon: "ri-bank-card-line",    badge: null, alert: !order.payment_intent_id && !!order.payment_failure_reason },
             { key: "comms",      label: "Comms",                                        icon: "ri-message-3-line",    badge: order.email_log && order.email_log.length > 0 ? order.email_log.length : null },
             { key: "documents",  label: "Documents",                                    icon: "ri-file-pdf-line",     badge: docCount > 0 ? docCount : null },
             { key: "assessment", label: isPSDOrder(order) ? "PSD Eval" : "Assessment",  icon: "ri-questionnaire-line",badge: assessmentCount > 0 ? assessmentCount : null },
@@ -2212,13 +2246,16 @@ export default function OrderDetailModal({
               <div className="hidden sm:flex items-center gap-1 px-4 py-2 flex-wrap">
                 {TABS.map((tab) => (
                   <button key={tab.key} type="button" onClick={() => setSection(tab.key)}
-                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-white hover:text-gray-800"}`}>
+                    className={`whitespace-nowrap relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-white hover:text-gray-800"}`}>
                     <i className={tab.icon}></i>
                     {tab.label}
                     {tab.badge !== null && (
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${section === tab.key ? "bg-white/20 text-white" : "bg-[#e8f5f1] text-[#1a5c4f]"}`}>
                         {tab.badge}
                       </span>
+                    )}
+                    {tab.alert && section !== tab.key && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full"></span>
                     )}
                   </button>
                 ))}
@@ -2229,6 +2266,16 @@ export default function OrderDetailModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
+
+          {/* ── PAYMENTS ── */}
+          {section === "payments" && (
+            <PaymentHistoryTab
+              order={order}
+              supabaseUrl={supabaseUrl}
+              anonKey={anonKey}
+              onOrderUpdated={onOrderUpdated}
+            />
+          )}
 
           {/* ── COMMUNICATIONS (includes email log) ── */}
           {section === "comms" && (
@@ -2389,67 +2436,121 @@ export default function OrderDetailModal({
               {/* Order info grid */}
               <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Order Details</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {[
-                    { label: "Order ID", value: order.confirmation_id, mono: true },
-                    { label: "Date Created", value: fmt(order.created_at) },
-                    { label: "State", value: order.state ?? "—" },
-                    { label: "Plan", value: order.plan_type ?? "—" },
-                    { label: "Delivery Speed", value: order.delivery_speed ?? "—" },
-                    {
-                      label: "Requested Provider",
-                      value: order.selected_provider ?? "—",
-                      highlight: order.selected_provider ? "text-[#1a5c4f] font-semibold" : "text-gray-400",
-                    },
-                    { label: "Price", value: order.price != null ? `$${order.price}` : "—" },
-                    ...(order.coupon_code ? [{
-                      label: "Coupon Used",
-                      value: order.coupon_code,
-                      highlight: "text-green-700 font-mono",
-                    }] : []),
-                    ...(order.coupon_discount != null && order.coupon_discount > 0 ? [{
-                      label: "Coupon Discount",
-                      value: `-$${order.coupon_discount}.00`,
-                      highlight: "text-green-600 font-bold",
-                    }] : []),
-                    {
-                      label: "Payment",
-                      value: order.payment_intent_id ? "Paid" : "No payment",
-                      highlight: order.payment_intent_id ? "text-emerald-600" : "text-orange-500",
-                    },
-                    {
-                      label: "Payment Method",
-                      value: order.payment_method
-                        ? (PAYMENT_METHOD_LABEL[order.payment_method] ?? order.payment_method)
-                        : "—",
-                      highlight: order.payment_method ? "text-gray-800" : "text-gray-400",
-                    },
-                    {
-                      label: "Paid At",
-                      value: (order as Order & { paid_at?: string | null }).paid_at
-                        ? fmt((order as Order & { paid_at?: string | null }).paid_at!)
-                        : "—",
-                      highlight: (order as Order & { paid_at?: string | null }).paid_at ? "text-emerald-600" : "text-gray-400",
-                    },
-                    { label: "Phone", value: order.phone ?? "—" },
-                    {
-                      label: "__GHL_SKIP__",
-                      value: "",
-                    },
-                    {
-                      label: "Patient Notified",
-                      value: order.patient_notification_sent_at ? fmt(order.patient_notification_sent_at) : "Not sent",
-                      highlight: order.patient_notification_sent_at ? "text-emerald-600" : "text-gray-400",
-                    },
-                  ].map((item) => {
-                    if (item.label === "__GHL_SKIP__") return null;
-                    return (
-                      <div key={item.label}>
-                        <p className="text-xs text-gray-400 mb-0.5">{item.label}</p>
-                        <p className={`text-sm font-semibold truncate ${item.mono ? "font-mono text-gray-700" : item.highlight ?? "text-gray-800"}`}>{item.value}</p>
+                {/* 3-column layout */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+                  {/* ── Column 1: Identity ── */}
+                  <div className="space-y-3">
+                    {/* Order ID */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Order ID</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-mono font-semibold text-gray-700 truncate">{order.confirmation_id}</p>
+                        <CopyFieldButton value={order.confirmation_id} />
                       </div>
-                    );
-                  })}
+                    </div>
+                    {/* Email */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Email</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{order.email}</p>
+                        <CopyFieldButton value={order.email} />
+                      </div>
+                    </div>
+                    {/* Phone */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Phone</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className={`text-sm font-semibold ${order.phone ? "text-gray-800" : "text-gray-400"}`}>{order.phone ?? "—"}</p>
+                        {order.phone && <CopyFieldButton value={order.phone} />}
+                      </div>
+                    </div>
+                    {/* State */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">State</p>
+                      <p className="text-sm font-semibold text-gray-800">{order.state ?? "—"}</p>
+                    </div>
+                  </div>
+
+                  {/* ── Column 2: Payment ── */}
+                  <div className="space-y-3">
+                    {/* Price */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Payment Amount</p>
+                      <p className={`text-sm font-semibold ${order.price != null ? "text-gray-800" : "text-gray-400"}`}>
+                        {order.price != null ? `$${order.price}` : "—"}
+                      </p>
+                    </div>
+                    {/* Plan */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Plan</p>
+                      <p className={`text-sm font-semibold ${order.plan_type ? "text-gray-800" : "text-gray-400"}`}>{order.plan_type ?? "—"}</p>
+                    </div>
+                    {/* Payment Method */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Method</p>
+                      <p className={`text-sm font-semibold ${order.payment_method ? "text-gray-800" : "text-gray-400"}`}>
+                        {order.payment_method ? (PAYMENT_METHOD_LABEL[order.payment_method] ?? order.payment_method) : "—"}
+                      </p>
+                    </div>
+                    {/* Paid At */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Paid At</p>
+                      <p className={`text-sm font-semibold ${(order as Order & { paid_at?: string | null }).paid_at ? "text-emerald-600" : "text-gray-400"}`}>
+                        {(order as Order & { paid_at?: string | null }).paid_at ? fmt((order as Order & { paid_at?: string | null }).paid_at!) : "—"}
+                      </p>
+                    </div>
+                    {/* Delivery Speed */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Delivery Speed</p>
+                      <p className={`text-sm font-semibold ${order.delivery_speed ? "text-gray-800" : "text-gray-400"}`}>{order.delivery_speed ?? "—"}</p>
+                    </div>
+                  </div>
+
+                  {/* ── Column 3: Other ── */}
+                  <div className="space-y-3">
+                    {/* Date Created */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Date Created</p>
+                      <p className="text-sm font-semibold text-gray-800">{fmt(order.created_at)}</p>
+                    </div>
+                    {/* Requested Provider */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Requested Provider</p>
+                      <p className={`text-sm font-semibold ${order.selected_provider ? "text-[#1a5c4f]" : "text-gray-400"}`}>{order.selected_provider ?? "—"}</p>
+                    </div>
+                    {/* Payment status */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Payment Status</p>
+                      <p className={`text-sm font-semibold ${order.payment_intent_id ? "text-emerald-600" : "text-orange-500"}`}>
+                        {order.payment_intent_id ? "Paid" : "No payment"}
+                      </p>
+                    </div>
+                    {/* Patient Notified */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Patient Notified</p>
+                      <p className={`text-sm font-semibold ${order.patient_notification_sent_at ? "text-emerald-600" : "text-gray-400"}`}>
+                        {order.patient_notification_sent_at ? fmt(order.patient_notification_sent_at) : "Not sent"}
+                      </p>
+                    </div>
+                    {/* Coupon */}
+                    {order.coupon_code && (
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">Coupon Used</p>
+                        <p className="text-sm font-mono font-semibold text-green-700">{order.coupon_code}</p>
+                      </div>
+                    )}
+                    {order.coupon_discount != null && order.coupon_discount > 0 && (
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">Coupon Discount</p>
+                        <p className="text-sm font-bold text-green-600">-${order.coupon_discount}.00</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Remaining full-width items below the 3-col grid */}
+                <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
 
                   {/* ── GHL Sync row — inline sync/resync button ── */}
                   <div className="col-span-2 sm:col-span-3 md:col-span-4">
@@ -2518,6 +2619,42 @@ export default function OrderDetailModal({
                         <i className={ghlMsg.toLowerCase().includes("fail") || ghlMsg.toLowerCase().includes("error") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
                         {ghlMsg}
                       </p>
+                    )}
+                  </div>
+
+                  {/* ── GHL Contact ID ── */}
+                  <div className="col-span-2 sm:col-span-3 md:col-span-4">
+                    <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
+                      <i className="ri-contacts-line text-gray-400"></i>
+                      GHL Contact ID
+                    </p>
+                    {order.ghl_contact_id ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-mono font-semibold text-[#1a5c4f] bg-[#f0faf7] border border-[#b8ddd5] px-3 py-1.5 rounded-lg select-all tracking-wide">
+                          {order.ghl_contact_id}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                          <i className="ri-checkbox-circle-fill" style={{ fontSize: "10px" }}></i>Linked
+                        </span>
+                        <CopyFieldButton value={order.ghl_contact_id} />
+                        <a
+                          href={`https://app.gohighlevel.com/contacts/${order.ghl_contact_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+                        >
+                          <i className="ri-external-link-line text-xs"></i>Open in GHL
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-700">
+                          <i className="ri-link-unlink-m" style={{ fontSize: "10px" }}></i>Not linked yet
+                        </span>
+                        <p className="text-xs text-gray-400">
+                          Sync to GHL to capture the contact ID automatically
+                        </p>
+                      </div>
                     )}
                   </div>
 
@@ -2651,7 +2788,7 @@ export default function OrderDetailModal({
                   )}
 
                   {/* Referred By badge */}
-                  <div>
+                  <div className="col-span-2 sm:col-span-1">
                     <p className="text-xs text-gray-400 mb-0.5">Referred By</p>
                     {(() => {
                       const cfg = resolveRefConfig(order.referred_by);
@@ -2697,6 +2834,7 @@ export default function OrderDetailModal({
                     )}
                   </div>
                 </div>
+                {/* end full-width items grid */}
 
                 {/* Add-on Services — shown when customer purchased extras */}
                 {Array.isArray(order.addon_services) && order.addon_services.length > 0 && (
@@ -2757,7 +2895,7 @@ export default function OrderDetailModal({
                   </div>
                 )}
 
-                {/* Payment failure banner */}
+                {/* Payment failure banner — links to Payments tab */}
                 {order.payment_failed_at && (
                   <div className="mt-4 pt-4 border-t border-red-200">
                     <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -2773,17 +2911,28 @@ export default function OrderDetailModal({
                           <p className="text-[10px] text-red-500 mt-1">
                             {new Date(order.payment_failed_at).toLocaleString()}
                           </p>
-                          {/* Only show retry button if order is still unpaid */}
-                          {!order.payment_intent_id && <RetryPaymentButton order={order} />}
+                          <button
+                            type="button"
+                            onClick={() => setSection("payments")}
+                            className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 cursor-pointer transition-colors"
+                          >
+                            <i className="ri-bank-card-line"></i>View Payment Log &amp; Send Recovery
+                          </button>
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
-                {/* Retry payment link for lead orders with no payment failure recorded yet — only when unpaid */}
+                {/* Unpaid lead with no failure recorded — link to Payments tab */}
                 {order.status === "lead" && !order.payment_failed_at && !order.payment_intent_id && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
-                    <RetryPaymentButton order={order} />
+                    <button
+                      type="button"
+                      onClick={() => setSection("payments")}
+                      className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
+                    >
+                      <i className="ri-bank-card-line"></i>View Payments &amp; Send Recovery Email
+                    </button>
                   </div>
                 )}
 
@@ -2964,41 +3113,26 @@ export default function OrderDetailModal({
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Admin Actions</p>
 
-                {/* ── UNPAID LEAD — only discount email ── */}
+                {/* ── UNPAID LEAD — redirect to Payments tab ── */}
                 {!order.payment_intent_id ? (
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+                    <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
                       <div className="w-8 h-8 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
                         <i className="ri-lock-2-line text-amber-600 text-sm"></i>
                       </div>
-                      <p className="text-xs text-amber-800 leading-relaxed">
-                        <strong>Unpaid lead</strong> — all case management actions are locked until payment is confirmed.
-                        You can send a discount/recovery email to nudge the customer to complete checkout.
-                      </p>
+                      <div className="flex-1">
+                        <p className="text-xs text-amber-800 leading-relaxed">
+                          <strong>Unpaid lead</strong> — all case management actions are locked until payment is confirmed.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setSection("payments")}
+                          className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
+                        >
+                          <i className="ri-bank-card-line"></i>Go to Payments Tab — Send Recovery / Retry Link
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <button
-                        type="button"
-                        onClick={handleSendDiscountEmail}
-                        disabled={discountSending}
-                        className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 cursor-pointer transition-colors"
-                      >
-                        {discountSending
-                          ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
-                          : <><i className="ri-coupon-3-line"></i>Send Discount Email</>
-                        }
-                      </button>
-                      <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
-                        <i className="ri-information-line"></i>
-                        Sends a recovery email with a direct payment link (pre-fills their saved assessment)
-                      </p>
-                    </div>
-                    {discountMsg && (
-                      <p className={`text-xs flex items-center gap-1 font-semibold ${discountMsg.includes("sent") ? "text-[#1a5c4f]" : "text-red-600"}`}>
-                        <i className={discountMsg.includes("sent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
-                        {discountMsg}
-                      </p>
-                    )}
                   </div>
                 ) : (
                   /* ── PAID ORDER — full actions ── */
@@ -3260,26 +3394,56 @@ export default function OrderDetailModal({
                 )}
               </div>
 
-              {/* ── Permanent Delete (always visible) ── */}
+              {/* ── Permanent Delete ── */}
               <div className="bg-white rounded-xl border border-red-100 p-4">
                 <p className="text-xs font-bold text-red-400 uppercase tracking-widest mb-3 flex items-center gap-1">
                   <i className="ri-skull-line"></i>Danger Zone
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteOrderConfirm(true)}
-                  className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
-                >
-                  <i className="ri-delete-bin-2-line"></i>Delete This Order Permanently
-                </button>
-                <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                  <i className="ri-information-line"></i>
-                  Removes this order and all documents from the database. Use for test/duplicate orders. Cannot be undone.
-                </p>
-                {deleteOrderMsg && (
-                  <p className="text-xs mt-2 text-red-600 font-semibold flex items-center gap-1">
-                    <i className="ri-error-warning-line"></i>{deleteOrderMsg}
-                  </p>
+                {(isFinanceRole || isSupportRole) ? (
+                  /* Finance / Support role — locked delete with approval request */
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-xl p-3">
+                      <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
+                        <i className="ri-lock-2-line text-orange-600 text-sm"></i>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-orange-800">
+                          Delete Restricted — {isFinanceRole ? "Finance" : "Support"} Role
+                        </p>
+                        <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
+                          {isFinanceRole
+                            ? "Finance users cannot permanently delete orders. You can request approval from an Owner or Admin Manager."
+                            : "Support users cannot permanently delete individual orders. You can request approval from an Owner or Admin Manager."}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowDeleteApproval(true)}
+                          className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
+                        >
+                          <i className="ri-send-plane-line"></i>Request Delete Approval
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteOrderConfirm(true)}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
+                    >
+                      <i className="ri-delete-bin-2-line"></i>Delete This Order Permanently
+                    </button>
+                    <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                      <i className="ri-information-line"></i>
+                      Removes this order and all documents from the database. Use for test/duplicate orders. Cannot be undone.
+                    </p>
+                    {deleteOrderMsg && (
+                      <p className="text-xs mt-2 text-red-600 font-semibold flex items-center gap-1">
+                        <i className="ri-error-warning-line"></i>{deleteOrderMsg}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -4260,6 +4424,27 @@ export default function OrderDetailModal({
 
             {/* Refund option — only for paid orders with a payment intent */}
             {order.payment_intent_id ? (
+              isFinanceRole ? (
+                /* Finance role — show locked refund option with approval request */
+                <div className="flex items-start gap-3 rounded-xl p-3 mb-4 border border-orange-200 bg-orange-50">
+                  <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
+                    <i className="ri-lock-2-line text-orange-600 text-sm"></i>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-bold text-orange-800">Refund Restricted — Finance Role</p>
+                    <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
+                      Finance users cannot issue refunds directly. You can request approval from an Owner or Admin Manager.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { setShowCancelConfirm(false); setShowRefundApproval(true); }}
+                      className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
+                    >
+                      <i className="ri-send-plane-line"></i>Request Refund Approval
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div
                 className={`flex items-start gap-3 rounded-xl p-3 mb-4 border cursor-pointer transition-colors ${cancelWithRefund ? "bg-emerald-50 border-emerald-300" : "bg-gray-50 border-gray-200 hover:bg-gray-100"}`}
                 onClick={() => setCancelWithRefund((v) => !v)}
@@ -4276,6 +4461,7 @@ export default function OrderDetailModal({
                   </p>
                 </div>
               </div>
+              )
             ) : (
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
                 <i className="ri-information-line text-amber-600 flex-shrink-0 mt-0.5"></i>
@@ -4476,6 +4662,42 @@ export default function OrderDetailModal({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Finance Refund Approval Request ── */}
+      {showRefundApproval && (
+        <ApprovalRequestModal
+          actionType="refund"
+          actionLabel="Issue Refund"
+          actionDescription={`Request to issue a refund for order ${order.confirmation_id} (${[order.first_name, order.last_name].filter(Boolean).join(" ") || order.email}). As a Finance user, refunds require Owner or Admin Manager approval.`}
+          payload={{
+            confirmationId: order.confirmation_id,
+            amount: order.price ?? undefined,
+            refundType: "full",
+          }}
+          requesterName={adminProfile.full_name}
+          requesterRole={adminProfile.role ?? "finance"}
+          requesterUserId={adminProfile.user_id}
+          onClose={() => setShowRefundApproval(false)}
+        />
+      )}
+
+      {/* ── Finance Delete Approval Request ── */}
+      {showDeleteApproval && (
+        <ApprovalRequestModal
+          actionType="bulk_delete"
+          actionLabel="Delete Order"
+          actionDescription={`Request to permanently delete order ${order.confirmation_id} for ${[order.first_name, order.last_name].filter(Boolean).join(" ") || order.email}. As a Finance user, order deletion requires Owner or Admin Manager approval.`}
+          payload={{
+            confirmationId: order.confirmation_id,
+            orderIds: [order.id],
+            orderCount: 1,
+          }}
+          requesterName={adminProfile.full_name}
+          requesterRole={adminProfile.role ?? "finance"}
+          requesterUserId={adminProfile.user_id}
+          onClose={() => setShowDeleteApproval(false)}
+        />
       )}
 
       {/* ── Reopen Confirmation Dialog ── */}

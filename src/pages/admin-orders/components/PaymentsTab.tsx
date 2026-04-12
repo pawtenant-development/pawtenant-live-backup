@@ -3,6 +3,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken } from "../../../lib/supabaseClient";
 import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
+import ApprovalRequestModal from "./ApprovalRequestModal";
 
 interface ChargeSummary {
   id: string;
@@ -136,6 +137,11 @@ export default function PaymentsTab() {
   const [bulkDeletingPay, setBulkDeletingPay] = useState(false);
   const [bulkDeletePayMsg, setBulkDeletePayMsg] = useState("");
   const [adminRole, setAdminRole] = useState<string | null>(null);
+  const [adminName, setAdminName] = useState<string>("Team Member");
+  const [adminUserId, setAdminUserId] = useState<string>("");
+
+  // Approval request state for finance role refund restriction
+  const [refundApprovalCharge, setRefundApprovalCharge] = useState<ChargeSummary | null>(null);
 
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
@@ -143,14 +149,21 @@ export default function PaymentsTab() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) return;
-      supabase.from("doctor_profiles").select("role, is_admin").eq("user_id", session.user.id).maybeSingle()
+      supabase.from("doctor_profiles").select("role, is_admin, full_name, user_id").eq("user_id", session.user.id).maybeSingle()
         .then(({ data: prof }) => {
-          if (prof) setAdminRole((prof as { role: string | null; is_admin: boolean }).role ?? (prof as { role: string | null; is_admin: boolean }).is_admin ? "owner" : null);
+          if (prof) {
+            const p = prof as { role: string | null; is_admin: boolean; full_name: string; user_id: string };
+            setAdminRole(p.role ?? (p.is_admin ? "owner" : null));
+            setAdminName(p.full_name ?? "Team Member");
+            setAdminUserId(p.user_id ?? "");
+          }
         });
     });
   }, []);
 
   const canBulkDelete = adminRole === "owner" || adminRole === "admin_manager";
+  // Finance role cannot issue refunds directly — must request approval
+  const isFinanceRole = adminRole === "finance";
 
   const handleBulkDeletePayments = async () => {
     if (selectedChargeIds.size === 0) return;
@@ -460,10 +473,18 @@ export default function PaymentsTab() {
                               </a>
                             ) : null}
                             {canRefund ? (
-                              <button type="button" onClick={() => setSelectedCharge(charge)}
-                                className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 border border-orange-200 bg-orange-50 rounded-lg text-xs font-bold text-orange-600 hover:bg-orange-100 cursor-pointer transition-colors">
-                                <i className="ri-refund-2-line"></i>Refund
-                              </button>
+                              isFinanceRole ? (
+                                <button type="button" onClick={() => setRefundApprovalCharge(charge)}
+                                  title="Finance role — refunds require Owner or Admin Manager approval"
+                                  className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 bg-gray-50 rounded-lg text-xs font-bold text-gray-400 hover:bg-gray-100 cursor-pointer transition-colors">
+                                  <i className="ri-lock-line"></i>Refund
+                                </button>
+                              ) : (
+                                <button type="button" onClick={() => setSelectedCharge(charge)}
+                                  className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 border border-orange-200 bg-orange-50 rounded-lg text-xs font-bold text-orange-600 hover:bg-orange-100 cursor-pointer transition-colors">
+                                  <i className="ri-refund-2-line"></i>Refund
+                                </button>
+                              )
                             ) : fullyRefunded ? (
                               <span className="text-xs text-gray-300 font-medium">Refunded</span>
                             ) : null}
@@ -544,13 +565,32 @@ export default function PaymentsTab() {
         </div>
       )}
 
-      {/* Refund Modal */}
-      {selectedCharge && (
+      {/* Refund Modal — only for non-finance roles */}
+      {selectedCharge && !isFinanceRole && (
         <RefundModal
           charge={selectedCharge}
           confirmationId={selectedCharge.payment_intent ? orderMap[selectedCharge.payment_intent] : undefined}
           onClose={() => setSelectedCharge(null)}
           onRefunded={handleRefunded}
+        />
+      )}
+
+      {/* Approval Request Modal — for finance role trying to refund */}
+      {refundApprovalCharge && (
+        <ApprovalRequestModal
+          actionType="refund"
+          actionLabel="Issue Refund"
+          actionDescription={`Request to issue a refund for charge ${refundApprovalCharge.id}. As a Finance user, refunds require Owner or Admin Manager approval.`}
+          payload={{
+            confirmationId: refundApprovalCharge.payment_intent ? orderMap[refundApprovalCharge.payment_intent] : undefined,
+            chargeId: refundApprovalCharge.id,
+            amount: refundApprovalCharge.amount - refundApprovalCharge.amount_refunded,
+            refundType: "full",
+          }}
+          requesterName={adminName}
+          requesterRole={adminRole ?? "finance"}
+          requesterUserId={adminUserId}
+          onClose={() => setRefundApprovalCharge(null)}
         />
       )}
 

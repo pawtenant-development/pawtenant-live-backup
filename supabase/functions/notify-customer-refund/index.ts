@@ -205,7 +205,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const adminClient = createClient(supabaseUrl, serviceKey);
 
-  const authHeader = req.headers.get("authorization") ?? "";
+  const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization") ?? "";
   const token = authHeader.replace("Bearer ", "").trim();
   const isInternalCall = token === serviceKey;
 
@@ -214,14 +214,25 @@ Deno.serve(async (req: Request) => {
   let actorRole = "service";
 
   if (!isInternalCall) {
-    const callerClient = createClient(supabaseUrl, token);
-    const { data: { user }, error: authErr } = await callerClient.auth.getUser();
+    if (!token) return json({ error: "Unauthorized" }, 401);
+
+    // Try Supabase Auth session JWT
+    const { data: { user }, error: authErr } = await adminClient.auth.getUser(token);
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
-    const { data: callerProfile } = await adminClient.from("doctor_profiles").select("is_admin, full_name, role").eq("user_id", user.id).maybeSingle();
-    if (!callerProfile?.is_admin) return json({ error: "Forbidden — admin only" }, 403);
-    actorName = callerProfile.full_name ?? "Admin";
+
+    const { data: callerProfile } = await adminClient
+      .from("doctor_profiles")
+      .select("is_admin, full_name, role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const isAdmin = callerProfile?.is_admin === true ||
+      ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
+    if (!isAdmin) return json({ error: "Forbidden — admin only" }, 403);
+
+    actorName = callerProfile?.full_name ?? "Admin";
     actorId = user.id;
-    actorRole = callerProfile.role ?? "admin_manager";
+    actorRole = callerProfile?.role ?? "admin_manager";
   }
 
   let body: { confirmationId?: string; refundAmount?: number; refundId?: string; reason?: string; note?: string; };
@@ -232,7 +243,6 @@ Deno.serve(async (req: Request) => {
   if (!confirmationId) return json({ error: "confirmationId is required" }, 400);
   if (!refundAmount || refundAmount <= 0) return json({ error: "refundAmount is required" }, 400);
 
-  // ── Fetch order — now includes phone ─────────────────────────────────────
   const { data: order, error: orderErr } = await adminClient
     .from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, price, plan_type, doctor_name, status")
     .eq("confirmation_id", confirmationId).maybeSingle();
@@ -292,7 +302,6 @@ Deno.serve(async (req: Request) => {
     console.info(`[notify-customer-refund] Admin refund notifications sent: ${adminNotifSentCount}/${adminRecipients.length} to [${adminRecipients.join(", ")}]`);
   }
 
-  // ── GHL webhook — now includes phone ─────────────────────────────────────
   let ghlOk = false;
   let ghlStatus = 0;
   try {

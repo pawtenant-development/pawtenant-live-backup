@@ -320,26 +320,20 @@ export default function OrderCard({
             <i className="ri-vip-crown-fill text-xs"></i>VIP · {order.addon_services.length} add-on
           </span>
         )}
-        {/* Sequence status chip */}
-        {seqStatus && (
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold ${seqStatus.color}`}>
-            <i className={`${seqStatus.icon} text-xs`}></i>{seqStatus.label}
-          </span>
-        )}
-        {/* Opt-out toggle — only for leads */}
-        {isLead && (order.seq_30min_sent_at || order.seq_24h_sent_at || order.seq_3day_sent_at) && onToggleOptOut && (
+
+        {/* GHL Sync — only show when not yet synced */}
+        {showGhlRefire && (
           <button
             type="button"
-            onClick={(e) => { stop(e); onToggleOptOut(order); }}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
-              order.followup_opt_out
-                ? "bg-gray-100 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"
-                : "bg-red-50 text-red-600 hover:bg-red-100"
-            }`}
-            title={order.followup_opt_out ? "Re-enable automated follow-ups" : "Stop automated follow-ups for this lead"}
+            onClick={(e) => { stop(e); onGhlRefire(order.confirmation_id); }}
+            disabled={ghlRefiring === order.confirmation_id}
+            className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-bold cursor-pointer hover:bg-amber-100 transition-colors disabled:opacity-60"
+            title="Push this order to GHL CRM"
           >
-            <i className={`text-xs ${order.followup_opt_out ? "ri-mail-check-line" : "ri-mail-forbid-line"}`}></i>
-            {order.followup_opt_out ? "Re-enable Sequence" : "Stop Sequence"}
+            {ghlRefiring === order.confirmation_id
+              ? <><i className="ri-loader-4-line animate-spin text-xs"></i>Syncing…</>
+              : <><i className="ri-radar-line text-xs"></i>Sync GHL</>
+            }
           </button>
         )}
       </div>
@@ -377,51 +371,7 @@ export default function OrderCard({
           )}
         </div>
       )}
-      {/* Actions */}
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={(e) => { stop(e); onOpenDetail(order); }}
-          className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-[#17504a] transition-colors">
-          <i className="ri-eye-line"></i>View Details
-          {unreadComms > 0 && <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 bg-orange-500 text-white text-[9px] font-extrabold rounded-full">{unreadComms}</span>}
-        </button>
-        {/* Copy Order ID — mobile */}
-        <button
-          type="button"
-          onClick={handleCopyOrderId}
-          className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border rounded-lg cursor-pointer transition-colors ${
-            copied
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
-          }`}
-          title={`Copy Order ID: ${order.confirmation_id}`}
-        >
-          {copied
-            ? <><i className="ri-checkbox-circle-fill"></i>Copied!</>
-            : <><i className="ri-file-copy-line"></i>{order.confirmation_id}</>
-          }
-        </button>
-        {/* GHL Call button */}
-        {order.phone && (
-          <button
-            type="button"
-            onClick={handleGhlCall}
-            disabled={calling}
-            title={`Call ${order.phone} via GHL`}
-            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg cursor-pointer disabled:opacity-50 transition-colors"
-          >
-            {calling
-              ? <><i className="ri-loader-4-line animate-spin"></i>Calling…</>
-              : <><i className="ri-phone-line"></i>Call via GHL</>
-            }
-          </button>
-        )}
-      </div>
-      {callMsg && (
-        <p className={`text-xs flex items-center gap-1 ${callMsg.ok ? "text-emerald-600" : "text-red-500"}`}>
-          <i className={callMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
-          {callMsg.msg}
-        </p>
-      )}
+
       {ghlReFireResult[order.confirmation_id] && (
         <p className={`text-xs flex items-center gap-1 ${ghlReFireResult[order.confirmation_id].ok ? "text-emerald-600" : "text-red-500"}`}>
           <i className={ghlReFireResult[order.confirmation_id].ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
@@ -526,7 +476,7 @@ export default function OrderCard({
       {/* ══════════════════════════════════════════════════════════════════════
           DESKTOP TABLE ROW LAYOUT  (lg+ only)
           ══════════════════════════════════════════════════════════════════════ */}
-      <div className={`hidden lg:flex flex-col ${isExpanded ? "bg-gray-50/40" : "bg-white hover:bg-gray-50/60"} transition-colors cursor-pointer ${borderAccent}`} onClick={onToggleExpand}>
+      <div className={`hidden lg:flex flex-col bg-white transition-colors ${borderAccent}`}>
         {/* Main row */}
         <div className="flex items-center gap-0 px-4 py-3 min-h-[56px]">
           {/* Checkbox — w-9 */}
@@ -573,12 +523,23 @@ export default function OrderCard({
             <p className="text-[10px] text-gray-400 mt-0.5">{fmtDate(order.created_at)}</p>
           </div>
 
-          {/* State — w-[64px] */}
-          <div className="w-[64px] flex-shrink-0 pr-4">
-            <span className="text-xs font-semibold text-gray-700">{order.state ?? "—"}</span>
-            {order.state && !coveredStates.has(order.state) && !isLead && (
-              <i className="ri-error-warning-fill text-red-400 text-xs ml-1" title="No provider coverage"></i>
-            )}
+          {/* State — w-[80px] (includes pet count) */}
+          <div className="w-[80px] flex-shrink-0 pr-4">
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-xs font-semibold text-gray-700">{order.state ?? "—"}</span>
+              {(() => {
+                const pets = (order.assessment_answers as Record<string, unknown> | null)?.pets;
+                const count = Array.isArray(pets) ? pets.length : null;
+                return count != null && count > 0 ? (
+                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold ${count > 1 ? "text-amber-600" : "text-gray-400"}`}>
+                    (<i className="ri-heart-line" style={{ fontSize: "8px" }}></i>{count})
+                  </span>
+                ) : null;
+              })()}
+              {order.state && !coveredStates.has(order.state) && !isLead && (
+                <i className="ri-error-warning-fill text-red-400 text-xs" title="No provider coverage"></i>
+              )}
+            </div>
           </div>
 
           {/* Last Activity — w-[120px] */}
@@ -634,34 +595,21 @@ export default function OrderCard({
           {/* Provider — w-[110px] */}
           <div className="w-[110px] flex-shrink-0 pr-4">
             {order.doctor_name
-              ? <span className="inline-flex items-center gap-1 text-[10px] text-[#1a5c4f] font-semibold truncate max-w-full" title={order.doctor_name}>
+              ? (
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold truncate max-w-full px-1.5 py-0.5 rounded-md ${
+                  isCompleted
+                    ? "bg-emerald-100 text-emerald-700"
+                    : isAssigned
+                    ? "bg-violet-100 text-violet-700"
+                    : "text-[#1a5c4f]"
+                }`} title={order.doctor_name}>
                   <i className="ri-user-heart-line flex-shrink-0"></i>
                   <span className="truncate">{order.doctor_name.split(" ")[0]}</span>
                 </span>
+              )
               : <span className="text-[10px] text-gray-300 italic">—</span>
             }
-            <div className="mt-0.5">
-              {order.ghl_synced_at
-                ? <span className="inline-flex items-center gap-0.5 text-[9px] text-emerald-600"><i className="ri-checkbox-circle-fill"></i>GHL</span>
-                : <span className="inline-flex items-center gap-0.5 text-[9px] text-gray-300"><i className="ri-time-line"></i>GHL pending</span>
-              }
-            </div>
-          </div>
 
-          {/* Pets — w-[60px] */}
-          <div className="w-[60px] flex-shrink-0 pr-4">
-            {(() => {
-              const pets = (order.assessment_answers as Record<string, unknown> | null)?.pets;
-              const count = Array.isArray(pets) ? pets.length : null;
-              return count != null && count > 0 ? (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${count > 1 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
-                  <i className="ri-heart-line" style={{ fontSize: "9px" }}></i>
-                  {count}
-                </span>
-              ) : (
-                <span className="text-[10px] text-gray-300 italic">—</span>
-              );
-            })()}
           </div>
 
           {/* Time (Delivery Speed) — w-[80px] */}
@@ -672,8 +620,8 @@ export default function OrderCard({
             }
           </div>
 
-          {/* Quick actions — w-[130px] */}
-          <div className="w-[130px] flex-shrink-0 flex items-center gap-1 flex-wrap" onClick={stop}>
+          {/* Quick actions — w-[80px] */}
+          <div className="w-[80px] flex-shrink-0 flex items-center gap-1 flex-wrap" onClick={stop}>
             <button type="button" title="View Details" onClick={(e) => { stop(e); onOpenDetail(order); }}
               className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer text-sm">
               <i className="ri-eye-line"></i>
@@ -691,35 +639,12 @@ export default function OrderCard({
             >
               {copied ? <i className="ri-checkbox-circle-fill"></i> : <i className="ri-file-copy-line"></i>}
             </button>
-            {/* GHL Call button */}
-            {order.phone && (
-              <button
-                type="button"
-                title={`Call ${order.phone} via GHL`}
-                onClick={handleGhlCall}
-                disabled={calling}
-                className={`whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer text-sm ${callMsg?.ok ? "text-emerald-600 bg-emerald-50" : "text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50"} disabled:opacity-50`}
-              >
-                {calling ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-phone-line"></i>}
-              </button>
-            )}
-
           </div>
 
-          {/* Expand arrow — w-8 */}
-          <div className="w-8 flex-shrink-0 flex items-center justify-center text-gray-300">
-            <i className="ri-arrow-down-s-line text-base transition-transform duration-200" style={{ display: "inline-block", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}></i>
-          </div>
+
         </div>
 
-        {/* Desktop expanded panel */}
-        <div style={expandStyle}>
-          <div className="overflow-hidden">
-            <div className="mx-4 mb-3 bg-white border border-gray-100 rounded-xl px-5 py-4" onClick={stop}>
-              <ExpandedDetails />
-            </div>
-          </div>
-        </div>
+
       </div>
     </>
   );

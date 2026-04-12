@@ -158,13 +158,53 @@ async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ── Auth helper: resolves admin identity from service key OR Supabase Auth JWT ──
+async function resolveAdminCaller(
+  req: Request,
+  adminClient: ReturnType<typeof createClient>,
+  serviceKey: string,
+): Promise<{ authorized: boolean; userId: string | null; callerName: string; callerId: string }> {
+  const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  if (!token) {
+    return { authorized: false, userId: null, callerName: "Unknown", callerId: "unknown" };
+  }
+
+  // Service role key = internal/trusted call
+  if (token === serviceKey) {
+    return { authorized: true, userId: null, callerName: "Internal Service", callerId: "service" };
+  }
+
+  // Try Supabase Auth session JWT
+  const { data: { user }, error: authErr } = await adminClient.auth.getUser(token);
+  if (authErr || !user) {
+    return { authorized: false, userId: null, callerName: "Unknown", callerId: "unknown" };
+  }
+
+  const { data: profile } = await adminClient
+    .from("doctor_profiles")
+    .select("is_admin, role, full_name")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const isAdmin = profile?.is_admin === true ||
+    ["owner", "admin_manager", "support"].includes(profile?.role ?? "");
+
+  return {
+    authorized: isAdmin,
+    userId: user.id,
+    callerName: profile?.full_name ?? user.email ?? "Admin",
+    callerId: user.id,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
     if (!resendApiKey) {
@@ -174,40 +214,16 @@ serve(async (req) => {
       );
     }
 
-    const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization") ?? "";
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-
-    if (!token) {
-      return new Response(JSON.stringify({ ok: false, error: "Missing Authorization header — please log in again." }), {
-        status: 401, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
-    }
-
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
-    const { data: { user: caller }, error: authErr } = await callerClient.auth.getUser();
-
-    if (authErr || !caller) {
-      const errMsg = authErr?.message ?? "Token invalid or session expired";
-      return new Response(JSON.stringify({ ok: false, error: `Authentication failed: ${errMsg}. Please refresh the page and log in again.` }), {
-        status: 401, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
-    }
-
     const adminClient = createClient(supabaseUrl, serviceKey);
-    const { data: callerProfile } = await adminClient
-      .from("doctor_profiles")
-      .select("is_admin, role, full_name")
-      .eq("user_id", caller.id)
-      .maybeSingle();
 
-    const isAdmin = callerProfile?.is_admin === true ||
-      ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
-    if (!isAdmin) {
-      return new Response(JSON.stringify({ ok: false, error: "Admin access required" }), {
-        status: 403, headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
+    // ── Auth ──────────────────────────────────────────────────────────────
+    const { authorized, userId, callerName } = await resolveAdminCaller(req, adminClient, serviceKey);
+
+    if (!authorized) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Authentication failed or insufficient permissions. Please refresh the page and log in again." }),
+        { status: 401, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
     }
 
     const body = await req.json() as {
@@ -254,7 +270,7 @@ serve(async (req) => {
         : ctaUrl;
 
       const html = buildBroadcastHtml({
-        recipientName: callerProfile?.full_name ?? "Admin",
+        recipientName: callerName,
         subject: `[TEST] ${subject.trim()}`,
         bodyText: bodyText.trim(),
         includePortalCta,
@@ -282,8 +298,8 @@ serve(async (req) => {
       if (res.ok) {
         try {
           await adminClient.from("broadcast_logs").insert({
-            sent_by: body.sentBy ?? callerProfile?.full_name ?? "Admin",
-            sent_by_user_id: caller.id,
+            sent_by: body.sentBy ?? callerName,
+            sent_by_user_id: userId,
             channel: "email",
             audience_key: audienceKey || "test",
             subject: subject.trim(),
@@ -323,7 +339,6 @@ serve(async (req) => {
     let successCount = 0;
     let failCount = 0;
     const errors: string[] = [];
-    // Track which confirmation_ids were successfully sent — for stamping last_broadcast_sent_at
     const successfulConfirmationIds: string[] = [];
 
     const sentByTag = sanitizeTagValue(body.sentBy ?? "admin");
@@ -378,7 +393,6 @@ serve(async (req) => {
 
             if (res.ok) {
               successCount++;
-              // Track for last_broadcast_sent_at stamping
               if (recipient.confirmation_id) {
                 successfulConfirmationIds.push(recipient.confirmation_id);
               }
@@ -399,8 +413,7 @@ serve(async (req) => {
       }
     }
 
-    // ── Stamp last_broadcast_sent_at on all successfully sent orders ───────
-    // Do this in batches of 50 to avoid query size limits
+    // ── Stamp last_broadcast_sent_at ───────────────────────────────────────
     if (successfulConfirmationIds.length > 0) {
       const STAMP_BATCH = 50;
       for (let i = 0; i < successfulConfirmationIds.length; i += STAMP_BATCH) {
@@ -419,8 +432,8 @@ serve(async (req) => {
     // ── Log the broadcast ──────────────────────────────────────────────────
     try {
       await adminClient.from("broadcast_logs").insert({
-        sent_by: body.sentBy ?? callerProfile?.full_name ?? "Admin",
-        sent_by_user_id: caller.id,
+        sent_by: body.sentBy ?? callerName,
+        sent_by_user_id: userId,
         channel: "email",
         audience_key: audienceKey || "unknown",
         subject: subject.trim(),

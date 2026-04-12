@@ -26,6 +26,10 @@ import SystemHealthTab from "./components/SystemHealthTab";
 import OrderCard from "./components/OrderCard";
 import AdminSidebar from "./components/AdminSidebar";
 import NotificationsBell from "./components/NotificationsBell";
+import ApprovalRequestModal from "./components/ApprovalRequestModal";
+import ApprovalsInbox from "./components/ApprovalsInbox";
+import ApprovalNotificationBell from "./components/ApprovalNotificationBell";
+import FinanceOrdersGate from "./components/FinanceOrdersGate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +82,7 @@ interface Order {
   created_at: string;
   ghl_synced_at: string | null;
   ghl_sync_error: string | null;
+  ghl_contact_id?: string | null;
   last_contacted_at: string | null;
   email_log?: { type: string; sentAt: string; to: string; success: boolean }[] | null;
   referred_by: string | null;
@@ -102,6 +107,8 @@ interface Order {
   seq_opted_out_at?: string | null;
   broadcast_opt_out?: boolean | null;
   last_broadcast_sent_at?: string | null;
+  source_system?: string | null;
+  historical_import?: boolean | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -142,6 +149,29 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
   lead: "Lead (Unpaid)",
 };
+
+// ─── Traffic source derivation (mirrors AdminDashboard logic) ─────────────────
+function deriveTrafficSource(order: Pick<Order, "utm_source" | "utm_medium" | "gclid" | "fbclid" | "referred_by"> & { utm_source?: string | null; utm_medium?: string | null; gclid?: string | null; fbclid?: string | null }): string {
+  const utmSrc = ((order as Order & { utm_source?: string | null }).utm_source ?? "").toLowerCase();
+  const utmMed = ((order as Order & { utm_medium?: string | null }).utm_medium ?? "").toLowerCase();
+  const gclid = (order as Order & { gclid?: string | null }).gclid ?? "";
+  const fbclid = (order as Order & { fbclid?: string | null }).fbclid ?? "";
+  const referred = (order.referred_by ?? "").toLowerCase();
+
+  if (gclid) return "Google Ads";
+  if (utmSrc === "google" && ["cpc", "paid", "ppc", "paidsearch"].includes(utmMed)) return "Google Ads";
+  if (fbclid) return "Facebook / Instagram";
+  if (utmSrc === "facebook") return "Facebook";
+  if (utmSrc === "instagram") return "Instagram";
+  if (utmSrc === "tiktok") return "TikTok";
+  if (utmSrc === "google" || utmMed === "organic") return "Google Organic";
+  if (referred.includes("google")) return "Google";
+  if (referred.includes("tiktok")) return "TikTok";
+  if (referred.includes("facebook") || referred.includes("instagram")) return "Facebook";
+  if (referred.includes("seo") || referred.includes("organic")) return "Google Organic";
+  if (referred && referred !== "direct" && referred !== "unknown") return referred;
+  return "Direct / Unknown";
+}
 
 // ─── PSD order detection helper — checks letter_type OR confirmation ID prefix ──
 function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
@@ -305,6 +335,8 @@ export default function AdminOrdersPage() {
   const [refreshSyncMsg, setRefreshSyncMsg] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  // Hidden source filter — only settable from dashboard, not shown in filter UI
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(50);
 
   // ── Advanced filters ──
@@ -319,6 +351,7 @@ export default function AdminOrdersPage() {
   const [dateTo, setDateTo] = useState("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
+  const [showNonGhlOnly, setShowNonGhlOnly] = useState(false);
 
   const [assigning, setAssigning] = useState<string | null>(null);
   const [assignMsg, setAssignMsg] = useState<Record<string, string>>({});
@@ -364,6 +397,11 @@ export default function AdminOrdersPage() {
 
   // ── Bulk stop sequence state ──
   const [bulkStoppingSequence, setBulkStoppingSequence] = useState(false);
+
+  // ── Bulk GHL sync state ──
+  const [bulkGhlSyncing, setBulkGhlSyncing] = useState(false);
+  const [bulkGhlSyncProgress, setBulkGhlSyncProgress] = useState({ done: 0, total: 0, success: 0, fail: 0 });
+  const [bulkGhlSyncDone, setBulkGhlSyncDone] = useState(false);
 
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
   const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -499,7 +537,7 @@ export default function AdminOrdersPage() {
 
   const loadOrderData = useCallback(async () => {
     const [ordersRes, contactsRes, profilesRes] = await Promise.all([
-      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at").order("created_at", { ascending: false }),
+      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import").order("created_at", { ascending: false }),
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
       supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role").order("full_name"),
     ]);
@@ -683,6 +721,28 @@ export default function AdminOrdersPage() {
     }
   }, [activeTab]);
 
+  // ── Audit log: record every Settings tab access ───────────────────────────
+  useEffect(() => {
+    if (activeTab !== "settings" || !adminProfile) return;
+    supabase.from("audit_logs").insert({
+      actor_id: adminProfile.user_id,
+      actor_name: adminProfile.full_name,
+      object_type: "settings_tab",
+      object_id: "settings",
+      action: "settings_tab_viewed",
+      description: `Settings tab accessed by ${adminProfile.full_name} (${adminProfile.role ?? "admin"})`,
+      new_values: {
+        role: adminProfile.role,
+        email: adminProfile.email,
+        timestamp: new Date().toISOString(),
+      },
+      metadata: { tab: "settings", accessedAt: new Date().toISOString() },
+    }).then(({ error }) => {
+      if (error) console.warn("[AUDIT] Failed to log Settings tab access:", error.message);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   // ── Silently refresh provider lists whenever user lands on Orders tab ───────
   // This ensures state edits made in the Providers tab are immediately reflected
   // in the assignment dropdowns without requiring a full page reload.
@@ -838,6 +898,61 @@ export default function AdminOrdersPage() {
     setBulkMsg(`Sequence stopped for ${eligibleOrders.length} lead${eligibleOrders.length !== 1 ? "s" : ""}`);
     setTimeout(() => setBulkMsg(""), 5000);
   }, [orders, selectedOrders, supabaseUrl]);
+
+  // ── Bulk GHL sync for selected orders ───────────────────────────────────
+  const handleBulkGhlSync = useCallback(async () => {
+    const targets = orders.filter((o) => selectedOrders.has(o.confirmation_id));
+    if (targets.length === 0) return;
+    setBulkGhlSyncing(true);
+    setBulkGhlSyncDone(false);
+    setBulkGhlSyncProgress({ done: 0, total: targets.length, success: 0, fail: 0 });
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? anonKey;
+
+    let success = 0;
+    let fail = 0;
+
+    for (const order of targets) {
+      try {
+        const res = await fetch(`${supabaseUrl}/functions/v1/backfill-order-ghl`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            apikey: anonKey,
+          },
+          body: JSON.stringify({ confirmationId: order.confirmation_id }),
+        });
+        const result = await res.json() as { ok: boolean };
+        if (result.ok) {
+          success++;
+          setOrders((prev) => prev.map((o) =>
+            o.confirmation_id === order.confirmation_id
+              ? { ...o, ghl_synced_at: new Date().toISOString(), ghl_sync_error: null }
+              : o
+          ));
+        } else {
+          fail++;
+        }
+      } catch {
+        fail++;
+      }
+      setBulkGhlSyncProgress((prev) => ({ ...prev, done: prev.done + 1, success, fail }));
+    }
+
+    setBulkGhlSyncing(false);
+    setBulkGhlSyncDone(true);
+    setBulkMsg(fail === 0
+      ? `GHL sync complete — ${success} order${success !== 1 ? "s" : ""} synced successfully`
+      : `GHL sync: ${success} synced, ${fail} failed — check GHL_WEBHOOK_URL in Supabase Secrets`
+    );
+    setTimeout(() => {
+      setBulkGhlSyncDone(false);
+      setBulkGhlSyncProgress({ done: 0, total: 0, success: 0, fail: 0 });
+      setBulkMsg("");
+    }, 8000);
+  }, [orders, selectedOrders, supabaseUrl, anonKey]);
 
   // ── One-click recovery for payment-failed cards ──────────────────────────
   const handleSendRecoveryDirect = useCallback(async (order: Order) => {
@@ -1001,6 +1116,17 @@ export default function AdminOrdersPage() {
     const matchDateFrom = !dateFrom || new Date(o.created_at) >= new Date(dateFrom);
     const matchDateTo = !dateTo || new Date(o.created_at) <= new Date(dateTo + "T23:59:59");
     const matchDuplicates = !showDuplicatesOnly || duplicateContactSet.has(o.email.toLowerCase()) || (!!o.phone && duplicateContactSet.has(o.phone.replace(/\D/g, "")));
+    const matchNonGhl = !showNonGhlOnly || !o.ghl_synced_at;
+    let matchSource = true;
+    if (sourceFilter) {
+      const derivedSrc = deriveTrafficSource(o);
+      if (sourceFilter === "Direct / Unknown") matchSource = derivedSrc === "Direct / Unknown";
+      else if (sourceFilter === "Facebook") matchSource = derivedSrc === "Facebook / Instagram" || derivedSrc === "Facebook" || derivedSrc === "Instagram";
+      else if (sourceFilter === "Google Ads") matchSource = derivedSrc === "Google Ads";
+      else if (sourceFilter === "Google Organic") matchSource = derivedSrc === "Google Organic" || derivedSrc === "Google";
+      else if (sourceFilter === "TikTok") matchSource = derivedSrc === "TikTok";
+      else matchSource = derivedSrc === sourceFilter;
+    }
     const q = search.toLowerCase();
     const matchSearch = !q ||
       o.confirmation_id.toLowerCase().includes(q) ||
@@ -1008,8 +1134,9 @@ export default function AdminOrdersPage() {
       `${o.first_name ?? ""} ${o.last_name ?? ""}`.toLowerCase().includes(q) ||
       (o.state ?? "").toLowerCase().includes(q) ||
       (o.doctor_name ?? "").toLowerCase().includes(q) ||
-      (o.phone ?? "").includes(q);
-    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateFrom && matchDateTo && matchSearch && matchDuplicates;
+      (o.phone ?? "").includes(q) ||
+      (o.ghl_contact_id ?? "").toLowerCase().includes(q);
+    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateFrom && matchDateTo && matchSearch && matchDuplicates && matchNonGhl && matchSource;
   }).filter((o) => {
     if (!hideRecentFollowup) return true;
     if (!o.sent_followup_at) return true;
@@ -1043,7 +1170,7 @@ export default function AdminOrdersPage() {
   ].filter(Boolean).length;
 
   // Reset pagination when filters/search change
-  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateFrom, dateTo, showDuplicatesOnly, hideRecentFollowup, sortOrder]);
+  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateFrom, dateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter]);
 
   const clearAdvancedFilters = () => {
     setStateFilterAdv("all");
@@ -1055,6 +1182,7 @@ export default function AdminOrdersPage() {
     setDateFrom("");
     setDateTo("");
     setShowDuplicatesOnly(false);
+    setSourceFilter(null);
   };
 
   const totalUnassigned = orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length;
@@ -1144,6 +1272,123 @@ export default function AdminOrdersPage() {
     load();
   }, [navigate, supabaseUrl, loadOrderData]);
 
+  // ── Finance Orders tab access state ──
+  // Finance users must request approval before seeing the full orders list
+  const [financeOrdersAccessGranted, setFinanceOrdersAccessGranted] = useState(false);
+
+  // ── Approval request state ──
+  const [showApprovalRequest, setShowApprovalRequest] = useState<{
+    actionType: "bulk_delete" | "bulk_assign" | "bulk_sms" | "broadcast";
+    actionLabel: string;
+    actionDescription: string;
+    payload: Record<string, unknown>;
+  } | null>(null);
+  const [showApprovalsInbox, setShowApprovalsInbox] = useState(false);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+
+  // ── Load pending approval count for owners/admins ──
+  useEffect(() => {
+    if (!adminProfile) return;
+    const isReviewer = adminProfile.role === "owner" || adminProfile.role === "admin_manager" || adminProfile.is_admin;
+    if (!isReviewer) return;
+
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from("approval_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending");
+      setPendingApprovalCount(count ?? 0);
+    };
+    fetchCount();
+
+    // Real-time subscription for new approval requests
+    const channel = supabase
+      .channel("approval-count-live")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "approval_requests" }, () => {
+        fetchCount();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "approval_requests" }, () => {
+        fetchCount();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [adminProfile]);
+
+  // ── Handle approved action execution ──
+  const handleApproveAction = useCallback(async (request: { action_type: string; action_payload: Record<string, unknown>; requester_id?: string }) => {
+    const payload = request.action_payload;
+
+    // ── orders_tab_access: grant Finance user session access ──
+    if (request.action_type === "orders_tab_access") {
+      // If the requester is the currently logged-in Finance user, grant access immediately
+      if (adminProfile && request.requester_id === adminProfile.user_id) {
+        setFinanceOrdersAccessGranted(true);
+      }
+      // The ApprovalsInbox already handles the bell notification to the requester
+      return;
+    }
+
+    if (request.action_type === "bulk_delete") {
+      const orderIds = (payload.orderIds as string[]) ?? [];
+      let successCount = 0;
+      let failCount = 0;
+      for (const confirmationId of orderIds) {
+        const o = orders.find((x) => x.confirmation_id === confirmationId);
+        if (!o) continue;
+        try {
+          await supabase.from("doctor_earnings").delete().eq("order_id", o.id);
+          await supabase.from("order_documents").delete().eq("order_id", o.id);
+          await supabase.from("doctor_notes").delete().eq("order_id", o.id);
+          await supabase.from("order_status_logs").delete().eq("order_id", o.id);
+          await supabase.from("doctor_notifications").delete().eq("order_id", o.id);
+          const { error } = await supabase.from("orders").delete().eq("id", o.id);
+          if (error) { failCount++; } else { successCount++; }
+        } catch { failCount++; }
+      }
+      setOrders((prev) => prev.filter((o) => !orderIds.includes(o.confirmation_id)));
+      setSelectedOrders(new Set());
+      setBulkDeleteMsg(failCount === 0
+        ? `${successCount} order${successCount !== 1 ? "s" : ""} permanently deleted (approved by admin).`
+        : `${successCount} deleted, ${failCount} failed.`
+      );
+      setTimeout(() => setBulkDeleteMsg(""), 8000);
+    }
+
+    if (request.action_type === "bulk_assign") {
+      const doctorEmail = payload.doctorEmail as string;
+      const orderIds = (payload.orderIds as string[]) ?? [];
+      let successCount = 0;
+      let failCount = 0;
+      await Promise.all(
+        orderIds.map(async (confirmationId) => {
+          try {
+            const res = await fetch(`${supabaseUrl}/functions/v1/assign-doctor`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+              body: JSON.stringify({ confirmationId, doctorEmail }),
+            });
+            const result = await res.json() as { ok?: boolean; doctorName?: string };
+            if (result.ok) {
+              successCount++;
+              const dc = doctorContacts.find((d) => d.email.toLowerCase() === doctorEmail.toLowerCase());
+              setOrders((prev) => prev.map((o) =>
+                o.confirmation_id === confirmationId
+                  ? { ...o, doctor_name: result.doctorName ?? dc?.full_name ?? null, doctor_email: doctorEmail, doctor_status: "pending_review" }
+                  : o
+              ));
+            } else { failCount++; }
+          } catch { failCount++; }
+        })
+      );
+      setSelectedOrders(new Set());
+      setBulkMsg(failCount === 0
+        ? `${successCount} order${successCount !== 1 ? "s" : ""} assigned (approved by admin).`
+        : `${successCount} assigned, ${failCount} failed.`
+      );
+      setTimeout(() => setBulkMsg(""), 6000);
+    }
+  }, [orders, supabaseUrl, anonKey, doctorContacts]);
+
   return (
     <div className="min-h-screen bg-[#f8f7f4]">
       {/* Incoming Call Banner — always rendered, listens for real-time inbound calls */}
@@ -1189,6 +1434,24 @@ export default function AdminOrdersPage() {
             </div>
           )}
 
+          {/* Approvals inbox button — only for owner/admin_manager */}
+          {adminProfile && (adminProfile.role === "owner" || adminProfile.role === "admin_manager" || adminProfile.is_admin) && (
+            <button
+              type="button"
+              onClick={() => setShowApprovalsInbox(true)}
+              title="Approvals Inbox"
+              className="relative whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:text-[#1a5c4f] hover:border-[#1a5c4f] hover:bg-[#f0faf7]"
+            >
+              <i className="ri-shield-check-line text-sm"></i>
+              <span className="hidden sm:inline text-xs font-bold">Approvals</span>
+              {pendingApprovalCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-extrabold rounded-full">
+                  {pendingApprovalCount > 9 ? "9+" : pendingApprovalCount}
+                </span>
+              )}
+            </button>
+          )}
+
           <NotificationsBell
             onViewOrder={(confirmationId) => {
               const order = orders.find((o) => o.confirmation_id === confirmationId);
@@ -1196,11 +1459,27 @@ export default function AdminOrdersPage() {
             }}
           />
 
-          <button type="button" onClick={() => setShowBroadcast(true)} title="Broadcast Message"
-            className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 text-white bg-[#1a5c4f] hover:bg-[#17504a] transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm">
-            <i className="ri-broadcast-line text-sm"></i>
-            <span className="hidden sm:inline text-xs font-bold">Broadcast</span>
-          </button>
+          {/* Approval notification bell — only for restricted roles */}
+          {adminProfile && (
+            adminProfile.role === "support" ||
+            adminProfile.role === "finance" ||
+            adminProfile.role === "read_only"
+          ) && (
+            <ApprovalNotificationBell
+              userId={adminProfile.user_id}
+              userName={adminProfile.full_name}
+            />
+          )}
+
+          {/* Broadcast button — hidden for Finance role entirely */}
+          {adminProfile?.role !== "finance" && (
+            <button type="button" onClick={() => setShowBroadcast(true)}
+              title={adminProfile?.role === "support" ? "Broadcast (requires approval)" : "Broadcast Message"}
+              className={`whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm ${adminProfile?.role === "support" ? "text-gray-500 bg-gray-100 hover:bg-gray-200" : "text-white bg-[#1a5c4f] hover:bg-[#17504a]"}`}>
+              <i className={`text-sm ${adminProfile?.role === "support" ? "ri-lock-line" : "ri-broadcast-line"}`}></i>
+              <span className="hidden sm:inline text-xs font-bold">Broadcast</span>
+            </button>
+          )}
 
           <button type="button" onClick={() => setShowChangePassword(true)} title="Change Password"
             className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1a5c4f] transition-colors cursor-pointer px-2 py-1.5 rounded-lg hover:bg-gray-50">
@@ -1286,7 +1565,11 @@ export default function AdminOrdersPage() {
             orders={orders}
             doctorContacts={doctorContacts}
             loading={loading}
-            onTabChange={(tab) => setActiveTab(tab as TabKey)}
+            onTabChange={(tab, filters) => {
+              setActiveTab(tab as TabKey);
+              if (filters?.statusFilter) setStatusFilter(filters.statusFilter);
+              if (filters?.sourceFilter !== undefined) setSourceFilter(filters.sourceFilter);
+            }}
           />
         )}
 
@@ -1319,10 +1602,16 @@ export default function AdminOrdersPage() {
         )}
 
         {/* ── ORDERS TAB ── */}
-        {activeTab === "orders" && (
+        {activeTab === "orders" && adminProfile?.role === "finance" && !financeOrdersAccessGranted ? (
+          <FinanceOrdersGate
+            adminName={adminProfile.full_name}
+            adminUserId={adminProfile.user_id}
+            onAccessGranted={() => setFinanceOrdersAccessGranted(true)}
+          />
+        ) : activeTab === "orders" && (
           <>
             {!loading && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+              <div className="bg-white rounded-xl border border-gray-200 mb-4 divide-y divide-gray-100 sm:divide-y-0 sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:divide-x sm:divide-gray-100 overflow-hidden">
                 {[
                   {
                     label: "Lead (Unpaid)",
@@ -1339,14 +1628,14 @@ export default function AdminOrdersPage() {
                     filter: "paid_unassigned",
                   },
                   {
-                    label: "Order (Under Review)",
+                    label: "Under Review",
                     value: orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && o.status !== "lead" && (o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified").length,
                     icon: "ri-time-line",
                     color: "text-violet-600",
                     filter: "under_review",
                   },
                   {
-                    label: "Order (Completed)",
+                    label: "Completed",
                     value: orders.filter((o) => o.doctor_status === "patient_notified").length,
                     icon: "ri-checkbox-circle-line",
                     color: "text-emerald-600",
@@ -1364,21 +1653,43 @@ export default function AdminOrdersPage() {
                     key={s.label}
                     type="button"
                     onClick={() => setStatusFilter(s.filter)}
-                    className={`bg-white rounded-xl border p-4 text-left cursor-pointer transition-colors ${statusFilter === s.filter ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 hover:border-gray-300"}`}
+                    className={`flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors w-full ${statusFilter === s.filter ? "bg-[#f0faf7]" : "hover:bg-gray-50"}`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-full flex-shrink-0">
-                        <i className={`${s.icon} ${s.color} text-base`}></i>
-                      </div>
-                      <span className="text-xs text-gray-500 font-medium leading-tight">{s.label}</span>
+                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${statusFilter === s.filter ? "bg-[#1a5c4f]/10" : "bg-gray-100"}`}>
+                      <i className={`${s.icon} ${s.color} text-sm`}></i>
                     </div>
-                    <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-gray-500 font-medium leading-none truncate">{s.label}</p>
+                      <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value}</p>
+                    </div>
                   </button>
                 ))}
               </div>
             )}
 
-            {!loading && totalUnassigned > 0 && (
+            {/* Source filter banner — only visible when redirected from dashboard */}
+            {sourceFilter && (
+              <div className="mb-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f]/10 rounded-lg flex-shrink-0">
+                  <i className="ri-filter-line text-[#1a5c4f] text-sm"></i>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#1a5c4f]">
+                    Filtered by Lead Source: <span className="font-extrabold">{sourceFilter}</span>
+                  </p>
+                  <p className="text-[10px] text-[#1a5c4f]/60 mt-0.5">Showing orders from this traffic channel only</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSourceFilter(null)}
+                  className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors flex-shrink-0"
+                >
+                  <i className="ri-close-line"></i>Clear Filter
+                </button>
+              </div>
+            )}
+
+            {!loading && totalUnassigned > 0 && !sourceFilter && (
               <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
                 <i className="ri-time-line text-amber-600 text-base mt-0.5 flex-shrink-0"></i>
                 <div>
@@ -1395,60 +1706,84 @@ export default function AdminOrdersPage() {
             )}
 
             {/* ── Primary filter bar ── */}
-            <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 mb-2 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-              <div className="flex items-center gap-2 flex-wrap">
+            <div className="bg-white rounded-xl border border-gray-200 mb-2 overflow-hidden">
+              {/* Top row: status tabs — scrollable on mobile */}
+              <div className="flex items-center gap-1 px-3 pt-2.5 pb-2 border-b border-gray-100 overflow-x-auto scrollbar-none" style={{ scrollbarWidth: "none" }}>
                 {[
                   { value: "all", label: "All" },
                   { value: "lead_unpaid", label: "Lead (Unpaid)" },
                   { value: "paid_unassigned", label: "Paid (Unassigned)" },
                   { value: "under_review", label: "Under Review" },
-                  { value: "completed", label: "Order Completed" },
+                  { value: "completed", label: "Completed" },
                   { value: "refunded", label: "Refunded" },
                   { value: "disputed", label: "Disputed" },
                   { value: "cancelled", label: "Cancelled" },
                   { value: "payment_failed", label: "Payment Failed" },
                 ].map((opt) => (
                   <button key={opt.value} type="button" onClick={() => setStatusFilter(opt.value)}
-                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f]"}`}
+                    className={`whitespace-nowrap flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f] hover:bg-gray-50"}`}
                   >
                     {opt.label}
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto sm:ml-3">
-                {selectedOrders.size > 0 && (
-                  <button type="button" onClick={() => setSelectedOrders(new Set())}
-                    className="whitespace-nowrap flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer">
-                    <i className="ri-close-line"></i>Clear ({selectedOrders.size})
-                  </button>
-                )}
-                <div className="relative w-full sm:min-w-[200px] sm:w-auto">
-                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
-                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Name, email, phone, ID..."
-                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+              {/* Bottom row: search + tools — stacks on mobile */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5">
+                {/* Search row */}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {selectedOrders.size > 0 && (
+                    <button type="button" onClick={() => setSelectedOrders(new Set())}
+                      className="whitespace-nowrap flex items-center gap-1 px-2 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer flex-shrink-0">
+                      <i className="ri-close-line"></i>{selectedOrders.size}
+                    </button>
+                  )}
+                  <div className="relative flex-1 min-w-0">
+                    <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Name, email, phone, order ID, GHL contact ID..."
+                      className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                  </div>
                 </div>
-                <button type="button" onClick={() => setSortOrder((v) => v === "desc" ? "asc" : "desc")}
-                  title={sortOrder === "desc" ? "Showing newest first — click for oldest first" : "Showing oldest first — click for newest first"}
-                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border border-gray-200 text-gray-500 hover:bg-gray-50 cursor-pointer transition-colors">
-                  <i className={sortOrder === "desc" ? "ri-sort-desc" : "ri-sort-asc"}></i>
-                  {sortOrder === "desc" ? "Newest" : "Oldest"}
-                </button>
-                <button type="button" onClick={() => setShowAdvancedFilters((v) => !v)}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border cursor-pointer transition-colors ${showAdvancedFilters || activeFilterCount > 0 ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
-                >
-                  <i className="ri-filter-3-line"></i>
-                  Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDuplicatesOnly((v) => !v)}
-                  title={`${duplicateCount} orders share an email or phone with another order`}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border cursor-pointer transition-colors ${showDuplicatesOnly ? "bg-amber-500 text-white border-amber-500" : "border-amber-300 text-amber-700 hover:bg-amber-50"}`}
-                >
-                  <i className="ri-error-warning-line"></i>
-                  Duplicates{duplicateCount > 0 ? ` (${duplicateCount})` : ""}
-                </button>
+                {/* Tool buttons row */}
+                <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+                  <button type="button" onClick={() => setSortOrder((v) => v === "desc" ? "asc" : "desc")}
+                    title={sortOrder === "desc" ? "Newest first" : "Oldest first"}
+                    className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-gray-200 text-gray-500 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <i className={sortOrder === "desc" ? "ri-sort-desc" : "ri-sort-asc"}></i>
+                    <span className="hidden sm:inline">{sortOrder === "desc" ? "Newest" : "Oldest"}</span>
+                  </button>
+                  <div className="w-px h-4 bg-gray-200 flex-shrink-0"></div>
+                  <button type="button" onClick={() => setShowAdvancedFilters((v) => !v)}
+                    className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showAdvancedFilters || activeFilterCount > 0 ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                  >
+                    <i className="ri-filter-3-line"></i>
+                    <span className="hidden sm:inline">Filters</span>{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDuplicatesOnly((v) => !v)}
+                    title={`${duplicateCount} orders share an email or phone`}
+                    className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showDuplicatesOnly ? "bg-amber-500 text-white border-amber-500" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
+                  >
+                    <i className="ri-error-warning-line"></i>
+                    <span className="hidden sm:inline">Dupes</span>{duplicateCount > 0 ? ` (${duplicateCount})` : ""}
+                  </button>
+                  {(() => {
+                    const nonGhlCount = orders.filter((o) => !o.ghl_synced_at).length;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setShowNonGhlOnly((v) => !v)}
+                        title={`${nonGhlCount} orders not synced to GHL`}
+                        className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showNonGhlOnly ? "bg-amber-600 text-white border-amber-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                      >
+                        <i className="ri-radar-line"></i>
+                        <span className="hidden sm:inline">No GHL</span>{nonGhlCount > 0 ? ` (${nonGhlCount})` : ""}
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
 
@@ -1807,15 +2142,13 @@ export default function AdminOrdersPage() {
                               <div className="w-9 flex-shrink-0"></div>
                               <div className="flex-1 min-w-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Name</div>
                               <div className="w-[140px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Order ID</div>
-                              <div className="w-[64px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">State</div>
+                              <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">State</div>
                               <div className="w-[120px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Activity</div>
                               <div className="w-[150px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</div>
                               <div className="w-[100px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sequence</div>
                               <div className="w-[110px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Provider</div>
-                              <div className="w-[60px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Pets</div>
                               <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</div>
-                              <div className="w-[110px] flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</div>
-                              <div className="w-8 flex-shrink-0"></div>
+                              <div className="w-[80px] flex-shrink-0 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</div>
                             </div>
                             {/* Rows */}
                             <div className="divide-y divide-gray-100">
@@ -1930,7 +2263,7 @@ export default function AdminOrdersPage() {
         )}
 
         {/* ── SETTINGS TAB ── */}
-        {activeTab === "settings" && <SettingsTab />}
+        {activeTab === "settings" && <SettingsTab adminRole={adminProfile?.role ?? null} />}
 
         {/* ── SYSTEM HEALTH TAB ── */}
         {activeTab === "health" && <SystemHealthTab />}
@@ -1938,7 +2271,7 @@ export default function AdminOrdersPage() {
 
       {/* ── BULK ASSIGN BAR ── */}
       {selectedOrders.size > 0 && activeTab === "orders" && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#1a5c4f] border-t border-[#17504a] px-6 py-4 pb-[calc(1rem+56px)] lg:pb-4">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#1a5c4f] border-t border-[#17504a] px-3 sm:px-6 py-3 sm:py-4 pb-[calc(0.75rem+56px)] lg:pb-4">
           <div className={`${sidebarCollapsed ? "lg:ml-14" : "lg:ml-[220px]"} space-y-2 transition-[margin] duration-200`}>
             {/* Lead warning strip */}
             {(() => {
@@ -1980,7 +2313,7 @@ export default function AdminOrdersPage() {
               <div className="flex items-center gap-3 flex-1 flex-wrap">
                 {!showBulkConfirm ? (
                   <>
-                    {/* Only show assign dropdown when there are assignable orders selected */}
+                    {/* Assign dropdown — blocked for read_only */}
                     {(() => {
                       const assignableCount = orders.filter((o) =>
                         selectedOrders.has(o.confirmation_id) &&
@@ -1990,33 +2323,58 @@ export default function AdminOrdersPage() {
                         !o.refunded_at &&
                         o.doctor_status !== "patient_notified"
                       ).length;
+                      const isReadOnly = adminProfile?.role === "read_only";
                       return assignableCount > 0 ? (
                         <>
-                          <div className="relative min-w-[200px]">
-                            <select
-                              value={bulkDoctorEmail}
-                              onChange={(e) => setBulkDoctorEmail(e.target.value)}
-                              className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg text-sm font-semibold bg-white/10 text-white border border-white/20 focus:outline-none focus:border-white/60 cursor-pointer"
+                          {isReadOnly ? (
+                            /* read_only: show locked assign button that triggers approval request */
+                            <button
+                              type="button"
+                              onClick={() => setShowApprovalRequest({
+                                actionType: "bulk_assign",
+                                actionLabel: "Bulk Provider Assignment",
+                                actionDescription: `Request to assign ${assignableCount} eligible order${assignableCount !== 1 ? "s" : ""} to a provider. As a Read Only user, this requires Owner or Admin Manager approval.`,
+                                payload: {
+                                  orderIds: Array.from(selectedOrders),
+                                  orderCount: selectedOrders.size,
+                                  assignableCount,
+                                },
+                              })}
+                              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white/10 border border-white/30 text-white/60 text-sm font-bold rounded-lg cursor-pointer hover:bg-white/20 transition-colors"
                             >
-                              <option value="" className="text-gray-800">— Assign Provider to All —</option>
-                              {assignableProviders
-                                .filter((d) => d.is_active !== false)
-                                .map((doc) => (
-                                  <option key={doc.id} value={doc.email} className="text-gray-800">{doc.full_name}</option>
-                                ))}
-                            </select>
-                            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
-                              <i className="ri-arrow-down-s-line text-white text-sm"></i>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => { if (bulkDoctorEmail) setShowBulkConfirm(true); }}
-                            disabled={!bulkDoctorEmail || bulkAssigning}
-                            className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white text-[#1a5c4f] text-sm font-extrabold rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer transition-colors"
-                          >
-                            <i className="ri-user-received-line"></i>Assign {assignableCount} Order{assignableCount !== 1 ? "s" : ""}
-                          </button>
+                              <i className="ri-lock-line"></i>
+                              Assign (Restricted)
+                              <span className="text-xs bg-white/20 text-white/70 px-1.5 py-0.5 rounded-full">{assignableCount}</span>
+                            </button>
+                          ) : (
+                            <>
+                              <div className="relative min-w-[200px]">
+                                <select
+                                  value={bulkDoctorEmail}
+                                  onChange={(e) => setBulkDoctorEmail(e.target.value)}
+                                  className="w-full appearance-none pl-3 pr-8 py-2.5 rounded-lg text-sm font-semibold bg-white/10 text-white border border-white/20 focus:outline-none focus:border-white/60 cursor-pointer"
+                                >
+                                  <option value="" className="text-gray-800">— Assign Provider to All —</option>
+                                  {assignableProviders
+                                    .filter((d) => d.is_active !== false)
+                                    .map((doc) => (
+                                      <option key={doc.id} value={doc.email} className="text-gray-800">{doc.full_name}</option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
+                                  <i className="ri-arrow-down-s-line text-white text-sm"></i>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => { if (bulkDoctorEmail) setShowBulkConfirm(true); }}
+                                disabled={!bulkDoctorEmail || bulkAssigning}
+                                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white text-[#1a5c4f] text-sm font-extrabold rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer transition-colors"
+                              >
+                                <i className="ri-user-received-line"></i>Assign {assignableCount} Order{assignableCount !== 1 ? "s" : ""}
+                              </button>
+                            </>
+                          )}
                         </>
                       ) : null;
                     })()}
@@ -2032,11 +2390,12 @@ export default function AdminOrdersPage() {
                         <button
                           type="button"
                           onClick={() => setShowBulkSMS(true)}
-                          className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#f0faf7] text-[#1a5c4f] text-sm font-extrabold rounded-lg hover:bg-white cursor-pointer transition-colors"
+                          title={adminProfile?.role === "support" ? "Bulk SMS (view restrictions)" : "Send bulk SMS to unassigned paid orders"}
+                          className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold rounded-lg cursor-pointer transition-colors ${adminProfile?.role === "support" ? "bg-white/10 text-white/50 border border-white/20 hover:bg-white/20" : "bg-[#f0faf7] text-[#1a5c4f] hover:bg-white"}`}
                         >
-                          <i className="ri-message-3-line"></i>
+                          <i className={adminProfile?.role === "support" ? "ri-lock-line" : "ri-message-3-line"}></i>
                           Bulk SMS
-                          <span className="bg-[#1a5c4f] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${adminProfile?.role === "support" ? "bg-white/20 text-white/60" : "bg-[#1a5c4f] text-white"}`}>
                             {paidUnassigned.length}
                           </span>
                         </button>
@@ -2137,19 +2496,82 @@ export default function AdminOrdersPage() {
                     </button>
                   ) : null;
                 })()}
+                {/* ── Bulk GHL Sync — beside Stop Sequence ── */}
+                {!bulkGhlSyncDone ? (
+                  <button
+                    type="button"
+                    onClick={handleBulkGhlSync}
+                    disabled={bulkGhlSyncing}
+                    title="Push all selected orders to GHL CRM"
+                    className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-amber-400/20 border border-amber-400/40 text-amber-200 hover:bg-amber-400/30 text-sm font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-60"
+                  >
+                    {bulkGhlSyncing ? (
+                      <>
+                        <i className="ri-loader-4-line animate-spin"></i>
+                        GHL {bulkGhlSyncProgress.done}/{bulkGhlSyncProgress.total}
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-radar-line"></i>
+                        Sync GHL
+                        <span className="bg-amber-400/30 text-amber-100 text-xs font-bold px-1.5 py-0.5 rounded-full">
+                          {selectedOrders.size}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-xs font-bold text-white">
+                    <i className={bulkGhlSyncProgress.fail === 0 ? "ri-checkbox-circle-fill text-emerald-300" : "ri-error-warning-line text-amber-300"}></i>
+                    {bulkGhlSyncProgress.fail === 0
+                      ? `${bulkGhlSyncProgress.success} synced to GHL`
+                      : `${bulkGhlSyncProgress.success} ok · ${bulkGhlSyncProgress.fail} failed`}
+                  </div>
+                )}
               </div>
 
-              {/* Bulk Delete — owner/admin_manager only */}
-              {(adminProfile?.role === "owner" || adminProfile?.role === "admin_manager" || adminProfile?.is_admin) && (
-                <button
-                  type="button"
-                  onClick={() => setShowBulkDeleteConfirm(true)}
-                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 bg-red-500/20 border border-red-400/40 text-red-200 hover:bg-red-500/30 text-sm font-bold rounded-lg cursor-pointer transition-colors"
-                >
-                  <i className="ri-delete-bin-2-line"></i>
-                  Delete ({selectedOrders.size})
-                </button>
-              )}
+              {/* Bulk Delete — role-gated */}
+              {(() => {
+                const canDelete = adminProfile?.role === "owner" || adminProfile?.role === "admin_manager" || adminProfile?.is_admin;
+                const isRestrictedDelete = adminProfile?.role === "support" || adminProfile?.role === "finance";
+
+                if (canDelete) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkDeleteConfirm(true)}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 bg-red-500/20 border border-red-400/40 text-red-200 hover:bg-red-500/30 text-sm font-bold rounded-lg cursor-pointer transition-colors"
+                    >
+                      <i className="ri-delete-bin-2-line"></i>
+                      Delete ({selectedOrders.size})
+                    </button>
+                  );
+                }
+
+                if (isRestrictedDelete) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setShowApprovalRequest({
+                        actionType: "bulk_delete",
+                        actionLabel: "Bulk Order Deletion",
+                        actionDescription: `Request to permanently delete ${selectedOrders.size} selected order${selectedOrders.size !== 1 ? "s" : ""}. As a ${adminProfile?.role === "support" ? "Support" : "Finance"} user, this requires Owner or Admin Manager approval.`,
+                        payload: {
+                          orderIds: Array.from(selectedOrders),
+                          orderCount: selectedOrders.size,
+                        },
+                      })}
+                      title="Request approval to delete orders"
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 bg-white/10 border border-white/30 text-white/60 text-sm font-bold rounded-lg cursor-pointer hover:bg-white/20 transition-colors"
+                    >
+                      <i className="ri-lock-line"></i>
+                      Delete (Restricted)
+                    </button>
+                  );
+                }
+
+                return null;
+              })()}
 
               <button
                 type="button"
@@ -2170,7 +2592,8 @@ export default function AdminOrdersPage() {
           onClose={() => setShowLeadActionsModal(false)}
         />
       )}
-      {showBulkSMS && adminProfile && (        <BulkSMSModal
+      {showBulkSMS && adminProfile && (
+        <BulkSMSModal
           orders={orders.filter((o) =>
             selectedOrders.has(o.confirmation_id) &&
             !!o.payment_intent_id &&
@@ -2179,6 +2602,7 @@ export default function AdminOrdersPage() {
             o.doctor_status !== "patient_notified",
           )}
           adminName={adminProfile.full_name}
+          adminRole={adminProfile.role ?? null}
           onClose={() => setShowBulkSMS(false)}
         />
       )}
@@ -2193,6 +2617,7 @@ export default function AdminOrdersPage() {
           orders={orders}
           adminName={adminProfile.full_name}
           adminEmail={adminProfile.email ?? ""}
+          adminRole={adminProfile.role ?? null}
           onClose={() => setShowBroadcast(false)}
         />
       )}
@@ -2206,6 +2631,13 @@ export default function AdminOrdersPage() {
           onClose={() => setOrderDetail(null)} onOrderUpdated={handleOrderUpdated} onOrderDeleted={handleOrderDeleted}
           allOrders={filtered}
           onNavigate={(order) => openOrderDetail(order)}
+          onClearUnread={(cid) => {
+            const now = Date.now();
+            const updated = { ...lastViewedMap, [cid]: now };
+            setLastViewedMap(updated);
+            try { localStorage.setItem("pw_order_last_viewed", JSON.stringify(updated)); } catch { /* ignore */ }
+            setUnreadCommsMap((prev) => ({ ...prev, [cid]: 0 }));
+          }}
         />
       )}
       {assessmentIntakeOrder && (
@@ -2433,6 +2865,31 @@ export default function AdminOrdersPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Approval Request Modal ── */}
+      {showApprovalRequest && adminProfile && (
+        <ApprovalRequestModal
+          actionType={showApprovalRequest.actionType}
+          actionLabel={showApprovalRequest.actionLabel}
+          actionDescription={showApprovalRequest.actionDescription}
+          payload={showApprovalRequest.payload}
+          requesterName={adminProfile.full_name}
+          requesterRole={adminProfile.role ?? "support"}
+          requesterUserId={adminProfile.user_id}
+          onClose={() => setShowApprovalRequest(null)}
+        />
+      )}
+
+      {/* ── Approvals Inbox (owner/admin only) ── */}
+      {showApprovalsInbox && adminProfile && (
+        <ApprovalsInbox
+          reviewerName={adminProfile.full_name}
+          reviewerRole={adminProfile.role ?? "admin_manager"}
+          reviewerId={adminProfile.user_id}
+          onApproveAction={handleApproveAction}
+          onClose={() => { setShowApprovalsInbox(false); setPendingApprovalCount(0); }}
+        />
       )}
     </div>
   );

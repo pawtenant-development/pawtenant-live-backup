@@ -244,7 +244,6 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
@@ -258,22 +257,29 @@ Deno.serve(async (req: Request) => {
   let isAdmin = false;
 
   if (token === serviceKey) {
+    // Internal service call — full trust
     isAdmin = true;
     userId = null;
   } else {
-    const { data: { user }, error: authErr } = await createClient(supabaseUrl, anonKey).auth.getUser(token);
+    // Try to resolve as a Supabase Auth user
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !user) {
-      console.error("[notify-patient-letter] Auth failed:", authErr?.message);
+      // Not a valid Supabase Auth session — check if it's the anon key (OTP admin login)
+      // For OTP-based admin logins, the token may be the anon key; treat as unauthorized
+      // unless we can verify via doctor_profiles by another means.
+      // Since we can't identify the user without a valid JWT, reject.
+      console.error("[notify-patient-letter] Auth failed:", authErr?.message ?? "no user");
       return jsonResp({ error: "Unauthorized" }, 401);
     }
     userId = user.id;
 
     const { data: callerProfile } = await supabase
       .from("doctor_profiles")
-      .select("is_admin")
+      .select("is_admin, role")
       .eq("user_id", userId)
       .maybeSingle();
-    isAdmin = callerProfile?.is_admin === true;
+    isAdmin = callerProfile?.is_admin === true ||
+      ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
@@ -290,7 +296,7 @@ Deno.serve(async (req: Request) => {
 
   console.log(`[notify-patient-letter] Processing ${confirmationId} — isAdmin:${isAdmin} userId:${userId ?? "internal"}`);
 
-  // ── Fetch order — now includes phone ─────────────────────────────────────
+  // ── Fetch order ───────────────────────────────────────────────────────────
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_email, doctor_name, signed_letter_url, price, doctor_status, patient_notification_sent_at, letter_id")
@@ -464,7 +470,7 @@ Deno.serve(async (req: Request) => {
       .in("id", docs.filter((d) => d.file_url !== order.signed_letter_url).map((d) => d.id));
   }
 
-  // ── GHL webhook — now includes phone ─────────────────────────────────────
+  // ── GHL webhook ───────────────────────────────────────────────────────────
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },

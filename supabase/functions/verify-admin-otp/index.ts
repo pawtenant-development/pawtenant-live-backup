@@ -22,11 +22,13 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
     // Find the profile
-    const { data: profile } = await adminClient
+    const { data: profile, error: profileErr } = await adminClient
       .from("doctor_profiles")
       .select("id, full_name, user_id, is_admin, is_active, role, email")
       .ilike("email", email.trim())
       .maybeSingle();
+
+    console.log("[verify-admin-otp] Profile lookup:", { email: email.trim(), found: !!profile, profileErr });
 
     if (!profile || !profile.is_admin || !profile.is_active) {
       return json({ ok: false, error: "Invalid credentials" }, 401);
@@ -35,12 +37,20 @@ Deno.serve(async (req) => {
     const otpKey = `otp_${profile.id}`;
 
     // Retrieve stored OTP
-    const { data: otpRecord } = await adminClient
+    const { data: otpRecord, error: otpErr } = await adminClient
       .from("admin_notification_prefs")
       .select("email_override, per_notif_emails")
       .eq("user_id", profile.id)
       .eq("notification_key", otpKey)
       .maybeSingle();
+
+    console.log("[verify-admin-otp] OTP record lookup:", {
+      user_id: profile.id,
+      notification_key: otpKey,
+      found: !!otpRecord,
+      has_code: !!otpRecord?.email_override,
+      otpErr,
+    });
 
     if (!otpRecord || !otpRecord.email_override) {
       return json({ ok: false, error: "No OTP found. Please request a new code." }, 401);
@@ -54,11 +64,21 @@ Deno.serve(async (req) => {
         .delete()
         .eq("user_id", profile.id)
         .eq("notification_key", otpKey);
+      console.log("[verify-admin-otp] OTP expired for:", email.trim());
       return json({ ok: false, error: "OTP has expired. Please request a new code." }, 401);
     }
 
     // Verify OTP
-    if (otpRecord.email_override !== otp.trim()) {
+    const submittedCode = otp.trim();
+    const storedCode = otpRecord.email_override.trim();
+
+    console.log("[verify-admin-otp] Code comparison:", {
+      submitted_length: submittedCode.length,
+      stored_length: storedCode.length,
+      match: submittedCode === storedCode,
+    });
+
+    if (storedCode !== submittedCode) {
       return json({ ok: false, error: "Invalid code. Please check and try again." }, 401);
     }
 
@@ -68,6 +88,8 @@ Deno.serve(async (req) => {
       .delete()
       .eq("user_id", profile.id)
       .eq("notification_key", otpKey);
+
+    console.log("[verify-admin-otp] OTP verified and consumed for:", email.trim());
 
     // For device challenge mode: the user is already signed in via password.
     // Just confirm the OTP is valid — the frontend handles session + device trust.
@@ -131,6 +153,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error("[verify-admin-otp] Unexpected error:", msg);
     return json({ ok: false, error: `Server error: ${msg}` }, 500);
   }
 });
