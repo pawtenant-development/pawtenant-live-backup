@@ -159,7 +159,7 @@ function doctorStatusLabel(s: string | null, assigned: boolean) {
 }
 const DOCTOR_STATUS_COLOR: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700", in_review: "bg-sky-100 text-sky-700",
-  approved: "bg-emerald-100 text-emerald-700", letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
+  approved: "bg-emerald-100 text-emerald-700", letter_sent: "bg-[#e8f0f9] text-[#3b6ea5]",
   patient_notified: "bg-violet-100 text-violet-700", unassigned: "bg-gray-100 text-gray-500",
   thirty_day_reissue: "bg-orange-100 text-orange-700",
 };
@@ -345,7 +345,7 @@ export default function OrderCard({
               value={isPendingThisAssign ? pendingAssign!.doctorEmail : (order.doctor_email ?? "")}
               onChange={(e) => { if (e.target.value) { const doc = assignableProviders.find((d) => d.email === e.target.value); onSetPendingAssign({ confirmationId: order.confirmation_id, doctorEmail: e.target.value, doctorName: doc?.full_name ?? e.target.value }); } }}
               disabled={isAssigningThis} onClick={stop}
-              className="w-full sm:w-64 appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer disabled:opacity-60">
+              className="w-full sm:w-64 appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer disabled:opacity-60">
               <option value="">— {order.doctor_name ? "Reassign" : "Assign"} Provider —</option>
               {assignableProviders.filter((d) => { if (d.is_active === false) return false; const sName = US_STATES.find((s) => s.abbr === order.state)?.name ?? ""; const sAbbr = order.state ?? ""; const states = d.licensed_states ?? []; return !sAbbr || states.includes(sAbbr) || states.includes(sName) || states.some((st) => US_STATES.find((u) => u.name === st)?.abbr === sAbbr); }).map((doc) => (
                 <option key={doc.id} value={doc.email}>{doc.full_name}</option>
@@ -358,14 +358,14 @@ export default function OrderCard({
           {isPendingThisAssign && (
             <div className="flex items-center gap-2">
               <button type="button" onClick={(e) => { stop(e); onConfirmAssign(pendingAssign!.confirmationId, pendingAssign!.doctorEmail); onCancelPendingAssign(); }} disabled={isAssigningThis}
-                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg cursor-pointer disabled:opacity-60 transition-colors">
+                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg cursor-pointer disabled:opacity-60 transition-colors">
                 {isAssigningThis ? <><i className="ri-loader-4-line animate-spin"></i>Assigning…</> : <><i className="ri-check-line"></i>Confirm · {pendingAssign!.doctorName}</>}
               </button>
               <button type="button" onClick={(e) => { stop(e); onCancelPendingAssign(); }} className="whitespace-nowrap px-3 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">Cancel</button>
             </div>
           )}
           {msg && !isPendingThisAssign && (
-            <p className={`text-xs flex items-center gap-1 ${msg === "Assigned & notified" ? "text-[#1a5c4f]" : "text-red-500"}`}>
+            <p className={`text-xs flex items-center gap-1 ${msg === "Assigned & notified" ? "text-[#3b6ea5]" : "text-red-500"}`}>
               <i className={msg === "Assigned & notified" ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{msg}
             </p>
           )}
@@ -410,20 +410,20 @@ export default function OrderCard({
           <div className="hidden sm:flex items-center flex-shrink-0" onClick={stop}>
             <button type="button" onClick={onToggleSelect}
               className="w-4 h-4 flex items-center justify-center rounded border-2 transition-colors cursor-pointer flex-shrink-0"
-              style={{ borderColor: isSelected ? "#1a5c4f" : "#d1d5db", backgroundColor: isSelected ? "#1a5c4f" : "white" }}>
+              style={{ borderColor: isSelected ? "#3b6ea5" : "#d1d5db", backgroundColor: isSelected ? "#3b6ea5" : "white" }}>
               {isSelected && <i className="ri-check-line text-white" style={{ fontSize: "8px" }}></i>}
             </button>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <p className="text-sm font-bold text-gray-900 truncate group-hover:text-[#1a5c4f] transition-colors">{fullName}</p>
+              <p className="text-sm font-bold text-gray-900 truncate group-hover:text-[#3b6ea5] transition-colors">{fullName}</p>
               {unreadComms > 0 && <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[16px] h-4 px-1 bg-orange-500 text-white text-[9px] font-extrabold rounded-full">{unreadComms}</span>}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-gray-400">{stateName}</span>
               {isPSD ? <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-extrabold">PSD</span>
-                     : <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded text-[10px] font-extrabold">ESA</span>}
-              {isPriority && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#1a5c4f] text-white rounded text-[10px] font-extrabold"><i className="ri-vip-crown-2-line" style={{ fontSize: "8px" }}></i>P</span>}
+                     : <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded text-[10px] font-extrabold">ESA</span>}
+              {isPriority && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#3b6ea5] text-white rounded text-[10px] font-extrabold"><i className="ri-vip-crown-2-line" style={{ fontSize: "8px" }}></i>P</span>}
               {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold">DUP</span>}
               {(() => {
                 const ref = resolveRefBadge(order.referred_by);
@@ -483,14 +483,14 @@ export default function OrderCard({
           <div className="w-9 flex-shrink-0 flex items-center" onClick={stop}>
             <button type="button" onClick={onToggleSelect}
               className="w-4 h-4 flex items-center justify-center rounded border-2 transition-colors cursor-pointer"
-              style={{ borderColor: isSelected ? "#1a5c4f" : "#d1d5db", backgroundColor: isSelected ? "#1a5c4f" : "white" }}>
+              style={{ borderColor: isSelected ? "#3b6ea5" : "#d1d5db", backgroundColor: isSelected ? "#3b6ea5" : "white" }}>
               {isSelected && <i className="ri-check-line text-white" style={{ fontSize: "8px" }}></i>}
             </button>
           </div>
 
           {/* Customer — flex-1 */}
           <div className="flex-1 min-w-0 flex items-center gap-2.5 pr-4">
-            <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-[#f0faf7] rounded-full text-[#1a5c4f] text-[10px] font-extrabold border border-[#d0ede6]">
+            <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-[#e8f0f9] rounded-full text-[#3b6ea5] text-[10px] font-extrabold border border-[#b8cce4]">
               {initials}
             </div>
             <div className="min-w-0">
@@ -501,8 +501,8 @@ export default function OrderCard({
               <p className="text-[10px] text-gray-400 truncate mt-0.5 max-w-[180px]">{order.email}</p>
               <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                 {isPSD ? <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">PSD</span>
-                       : <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded">ESA</span>}
-                {isPriority && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#1a5c4f] text-white rounded">VIP</span>}
+                       : <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded">ESA</span>}
+                {isPriority && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#3b6ea5] text-white rounded">VIP</span>}
                 {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">DUP</span>}
                 {(() => {
                   const ref = resolveRefBadge(order.referred_by);
@@ -601,7 +601,7 @@ export default function OrderCard({
                     ? "bg-emerald-100 text-emerald-700"
                     : isAssigned
                     ? "bg-violet-100 text-violet-700"
-                    : "text-[#1a5c4f]"
+                    : "text-[#3b6ea5]"
                 }`} title={order.doctor_name}>
                   <i className="ri-user-heart-line flex-shrink-0"></i>
                   <span className="truncate">{order.doctor_name.split(" ")[0]}</span>
@@ -623,7 +623,7 @@ export default function OrderCard({
           {/* Quick actions — w-[80px] */}
           <div className="w-[80px] flex-shrink-0 flex items-center gap-1 flex-wrap" onClick={stop}>
             <button type="button" title="View Details" onClick={(e) => { stop(e); onOpenDetail(order); }}
-              className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer text-sm">
+              className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#3b6ea5] hover:bg-[#e8f0f9] transition-colors cursor-pointer text-sm">
               <i className="ri-eye-line"></i>
             </button>
             {/* Copy Order ID */}

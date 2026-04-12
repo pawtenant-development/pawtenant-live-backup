@@ -75,8 +75,8 @@ function formatCurrency(v: number) {
 
 // ── GHL Webhook URLs ──────────────────────────────────────────────────────────
 // IMPORTANT: These URLs are displayed for reference only.
-// The edge functions use the GHL_WEBHOOK_URL Supabase secret — NOT these constants.
-// Make sure GHL_WEBHOOK_URL in Supabase secrets matches the Main Webhook URL below.
+// The edge functions use Supabase secrets — NOT these constants directly.
+// Set GHL_WEBHOOK_URL and GHL_COMMS_WEBHOOK_URL in Supabase Edge Function Secrets.
 const GHL_WEBHOOK_MAIN = "https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/6feb660d-6ee0-4a71-a2c0-732264440592";
 const GHL_WEBHOOK_NETWORK = "https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/cfdc1278-5813-46c9-901e-39165cf0f1f3";
 
@@ -2395,58 +2395,152 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
             </>
           ) : null}
 
-          {/* Webhook URLs */}
+          {/* ── Dual Webhook Architecture ── */}
           <div>
-            <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3">GHL Webhook URLs</p>
+            <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3">GHL Webhook Configuration</p>
 
-            {/* Critical warning */}
-            <div className="mb-3 flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-              <i className="ri-alert-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
+            {/* Architecture overview */}
+            <div className="mb-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <i className="ri-information-line text-[#1a5c4f] text-sm flex-shrink-0 mt-0.5"></i>
+                <div>
+                  <p className="text-xs font-bold text-[#1a5c4f] mb-1.5">Dual Webhook Architecture</p>
+                  <p className="text-xs text-[#2d7a6a] leading-relaxed mb-2">
+                    The admin portal routes payloads to <strong>two separate GHL workflows</strong> based on event type. Set both secrets in <strong>Supabase Dashboard → Edge Functions → Secrets</strong>.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    <div className="bg-white border border-[#b8ddd5] rounded-lg px-3 py-2.5">
+                      <p className="text-[10px] font-bold text-[#1a5c4f] uppercase tracking-widest mb-1">Workflow 1 — Order / Contact Sync</p>
+                      <code className="text-[10px] font-mono bg-[#e0f5ef] px-1.5 py-0.5 rounded text-[#1a5c4f]">GHL_WEBHOOK_URL</code>
+                      <p className="text-[10px] text-[#2d7a6a] mt-1.5 leading-relaxed">Receives order events. Updates GHL contact custom fields: orderStatus, orderAmount, assignedDoctor, orderSource, etc.</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {["assessment_started", "payment_confirmed", "doctor_assigned", "order_completed", "refund_issued", "order_cancelled"].map((e) => (
+                          <span key={e} className="text-[9px] font-mono bg-[#e0f5ef] text-[#1a5c4f] px-1.5 py-0.5 rounded">{e}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-white border border-amber-200 rounded-lg px-3 py-2.5">
+                      <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-1">Workflow 2 — Comms / Call-SMS Sync</p>
+                      <code className="text-[10px] font-mono bg-amber-50 px-1.5 py-0.5 rounded text-amber-700">GHL_COMMS_WEBHOOK_URL</code>
+                      <p className="text-[10px] text-amber-700 mt-1.5 leading-relaxed">Receives communication events. Logs SMS and call activity to GHL contact timeline.</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {["sms_inbound", "sms_outbound", "call_inbound", "call_outbound", "call_completed", "call_missed"].map((e) => (
+                          <span key={e} className="text-[9px] font-mono bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">{e}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Secrets reminder */}
+            <div className="mb-4 flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+              <i className="ri-key-2-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
               <div>
-                <p className="text-xs font-bold text-amber-800">Supabase Secret Must Match</p>
+                <p className="text-xs font-bold text-amber-800">Set These Secrets in Supabase</p>
                 <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                  Edge functions use the <code className="bg-amber-100 px-1 rounded font-mono">GHL_WEBHOOK_URL</code> Supabase secret — not these URLs directly.
-                  Go to <strong>Supabase Dashboard → Edge Functions → Secrets</strong> and set <code className="bg-amber-100 px-1 rounded font-mono">GHL_WEBHOOK_URL</code> to the Main Webhook URL below.
-                  If this secret is missing or wrong, all GHL contact syncs silently fail.
+                  Go to <strong>Supabase Dashboard → Edge Functions → Secrets</strong> and set:
+                </p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {[
+                    { name: "GHL_WEBHOOK_URL", desc: "Order/contact workflow trigger URL" },
+                    { name: "GHL_COMMS_WEBHOOK_URL", desc: "Comms/call-SMS workflow trigger URL" },
+                    { name: "GHL_API_KEY", desc: "GHL Private Integration API key" },
+                    { name: "GHL_LOCATION_ID", desc: "GHL sub-account Location ID" },
+                    { name: "GHL_PHONE_NUMBER", desc: "GHL-owned phone number (E.164)" },
+                  ].map((s) => (
+                    <div key={s.name} className="flex items-center gap-1.5 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1">
+                      <code className="text-[10px] font-mono font-bold text-amber-800">{s.name}</code>
+                      <span className="text-[10px] text-amber-600">— {s.desc}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-amber-600 mt-2 italic">
+                  Note: GHL_PIPELINE_ID and GHL_STAGE_* secrets are no longer used in code but can remain in Supabase until confirmed safe to delete.
                 </p>
               </div>
             </div>
 
-            {/* How it works */}
-            <div className="mb-3 flex items-start gap-2.5 px-3 py-2.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
-              <i className="ri-information-line text-[#1a5c4f] text-sm flex-shrink-0 mt-0.5"></i>
-              <div>
-                <p className="text-xs font-bold text-[#1a5c4f]">How GHL Webhooks Work</p>
-                <p className="text-xs text-[#2d7a6a] mt-0.5 leading-relaxed">
-                  These are <strong>GHL Workflow Trigger URLs</strong>. When an order event fires, we POST a JSON payload (including phone in E.164 format) to this URL.
-                  GHL runs a Workflow that must have a <strong>"Create/Update Contact"</strong> action with field mappings for <code className="bg-[#e0f5ef] px-1 rounded font-mono">phone</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono">email</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono">firstName</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono">lastName</code>.
-                  If the GHL Workflow doesn&apos;t map the <code className="bg-[#e0f5ef] px-1 rounded font-mono">phone</code> field, contacts are created without a phone number.
-                </p>
-              </div>
-            </div>
-
+            {/* Reference webhook URLs */}
             <div className="space-y-3">
               {[
-                { label: "Main Webhook — Paid Orders & Leads", url: GHL_WEBHOOK_MAIN, badge: "GHL_WEBHOOK_URL secret", badgeColor: "bg-[#1a5c4f] text-white" },
-                { label: "Network Webhook — Join Our Network", url: GHL_WEBHOOK_NETWORK, badge: "GHL_NETWORK_WEBHOOK_URL secret", badgeColor: "bg-gray-200 text-gray-600" },
+                { label: "Workflow 1 — Order/Contact Sync", url: GHL_WEBHOOK_MAIN, badge: "GHL_WEBHOOK_URL", badgeColor: "bg-[#1a5c4f] text-white", desc: "Paste this URL as the trigger in your GHL Order/Contact Sync workflow" },
+                { label: "Network Webhook — Join Our Network", url: GHL_WEBHOOK_NETWORK, badge: "GHL_NETWORK_WEBHOOK_URL", badgeColor: "bg-gray-200 text-gray-600", desc: "Used when providers apply via the Join Our Network page" },
               ].map((w) => (
                 <div key={w.label} className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-xs font-bold text-gray-600">{w.label}</p>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${w.badgeColor}`}>{w.badge}</span>
                     </div>
                     <CopyButton text={w.url} />
                   </div>
-                  <p className="font-mono text-xs text-gray-600 break-all">{w.url}</p>
+                  <p className="font-mono text-xs text-gray-600 break-all mb-1">{w.url}</p>
+                  <p className="text-[10px] text-gray-400">{w.desc}</p>
                 </div>
               ))}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <p className="text-xs font-bold text-amber-700">Workflow 2 — Comms/Call-SMS Sync</p>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-600 text-white">GHL_COMMS_WEBHOOK_URL</span>
+                </div>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  Create a new GHL Workflow with a <strong>Custom Webhook</strong> trigger and paste your comms workflow URL into the <code className="bg-amber-100 px-1 rounded font-mono text-[10px]">GHL_COMMS_WEBHOOK_URL</code> Supabase secret.
+                  This workflow receives SMS and call events — map <code className="bg-amber-100 px-1 rounded font-mono text-[10px]">messageBody</code>, <code className="bg-amber-100 px-1 rounded font-mono text-[10px]">direction</code>, <code className="bg-amber-100 px-1 rounded font-mono text-[10px]">callStatus</code> to log communication activity on the contact timeline.
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-gray-400 mt-2">In GHL: Automation → ensure workflow is Published and set to &ldquo;Create/Update Contact&rdquo; as first action.</p>
-          </div>
 
-          {/* ── Pipeline Stage Auto-Mover ── */}
-          <GhlPipelineConfigPanel />
+            {/* GHL Workflow setup guide */}
+            <div className="mt-4 bg-gray-900 rounded-xl p-4">
+              <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-3">GHL Workflow Setup — Both Workflows</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold text-[#4ade80] uppercase tracking-widest mb-2">Workflow 1 — Order/Contact</p>
+                  <div className="space-y-2">
+                    {[
+                      { step: "1", label: "Trigger", desc: "Custom Webhook → paste GHL_WEBHOOK_URL value" },
+                      { step: "2", label: "Create/Update Contact", desc: "Map: email, phone, firstName, lastName, confirmationId" },
+                      { step: "3", label: "Update Custom Fields", desc: "Map: orderStatus, orderAmount, assignedDoctor, orderSource, refundAmount, state" },
+                      { step: "4", label: "Add Tags", desc: "Map: tags field → GHL applies all tags automatically" },
+                    ].map((s) => (
+                      <div key={s.step} className="flex items-start gap-2">
+                        <div className="w-4 h-4 flex items-center justify-center bg-white/10 rounded-full flex-shrink-0 mt-0.5">
+                          <span className="text-[9px] font-bold text-white/70">{s.step}</span>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-white">{s.label}</p>
+                          <p className="text-[9px] text-white/50 leading-relaxed">{s.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2">Workflow 2 — Comms/Call-SMS</p>
+                  <div className="space-y-2">
+                    {[
+                      { step: "1", label: "Trigger", desc: "Custom Webhook → paste GHL_COMMS_WEBHOOK_URL value" },
+                      { step: "2", label: "Find Contact", desc: "Look up by email or phone from payload" },
+                      { step: "3", label: "Add Note / Activity", desc: "Map: messageBody, direction, callStatus, timestamp" },
+                      { step: "4", label: "Done", desc: "No contact creation needed — comms link to existing contacts" },
+                    ].map((s) => (
+                      <div key={s.step} className="flex items-start gap-2">
+                        <div className="w-4 h-4 flex items-center justify-center bg-white/10 rounded-full flex-shrink-0 mt-0.5">
+                          <span className="text-[9px] font-bold text-white/70">{s.step}</span>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-white">{s.label}</p>
+                          <p className="text-[9px] text-white/50 leading-relaxed">{s.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* ── GHL Connection Test ── */}
           <GhlConnectionTestPanel supabaseUrl={supabaseUrl} />

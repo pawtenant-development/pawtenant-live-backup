@@ -59,17 +59,17 @@ export default function AdminSidebar({
     <>
       {/* ── DESKTOP SIDEBAR ─────────────────────────────────────────────── */}
       <aside
-        className="hidden lg:flex flex-col fixed left-0 top-14 bottom-0 bg-white border-r border-gray-100 z-40 overflow-hidden"
+        className="hidden lg:flex flex-col fixed left-0 top-14 bottom-0 bg-[#1e3a5f] z-40 overflow-hidden"
         style={{ width: collapsed ? 56 : 220, transition: "width 200ms ease" }}
       >
         {/* Header row: label + toggle button */}
         <div
-          className={`flex items-center border-b border-gray-100 h-11 flex-shrink-0 ${
+          className={`flex items-center border-b border-white/10 h-11 flex-shrink-0 ${
             collapsed ? "justify-center" : "justify-between px-4"
           }`}
         >
           {!collapsed && (
-            <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold select-none">
+            <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold select-none">
               Navigation
             </p>
           )}
@@ -77,7 +77,7 @@ export default function AdminSidebar({
             type="button"
             onClick={onToggleCollapse}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer flex-shrink-0"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex-shrink-0"
           >
             <i
               className={`text-base ${
@@ -90,7 +90,7 @@ export default function AdminSidebar({
         {/* Nav items */}
         <nav
           className="flex-1 overflow-y-auto overflow-x-hidden py-2.5 space-y-0.5"
-          style={{ padding: collapsed ? "10px 6px" : "10px 12px" }}
+          style={{ padding: collapsed ? "10px 6px" : "10px 10px" }}
         >
           {visibleItems.map((tab) => {
             const badge = getBadge(tab.key);
@@ -104,8 +104,8 @@ export default function AdminSidebar({
                 title={collapsed ? tab.label : undefined}
                 className={`whitespace-nowrap w-full flex items-center rounded-lg transition-colors cursor-pointer relative overflow-hidden ${
                   isActive
-                    ? "bg-[#1a5c4f] text-white font-semibold"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-900 font-medium"
+                    ? "bg-[#3b6ea5] text-white font-semibold"
+                    : "text-white/50 hover:bg-white/10 hover:text-white font-medium"
                 }`}
                 style={{
                   padding: collapsed ? "9px 0" : "9px 12px",
@@ -130,7 +130,7 @@ export default function AdminSidebar({
                     {badge > 0 && (
                       <span
                         className={`flex-shrink-0 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-extrabold ${
-                          isActive ? "bg-white/20 text-white" : "bg-amber-100 text-amber-700"
+                          isActive ? "bg-white/20 text-white" : "bg-amber-400 text-white"
                         }`}
                       >
                         {badge}
@@ -141,7 +141,7 @@ export default function AdminSidebar({
 
                 {/* Collapsed badge dot */}
                 {collapsed && badge > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full border-2 border-white flex-shrink-0"></span>
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full border-2 border-[#1e3a5f] flex-shrink-0"></span>
                 )}
               </button>
             );
@@ -150,7 +150,7 @@ export default function AdminSidebar({
 
         {/* Footer */}
         <div
-          className="border-t border-gray-100 flex items-center flex-shrink-0"
+          className="border-t border-white/10 flex items-center flex-shrink-0"
           style={{
             height: 44,
             padding: collapsed ? "0 0" : "0 16px",
@@ -160,10 +160,10 @@ export default function AdminSidebar({
         >
           {collapsed ? (
             <div className="w-5 h-5 flex items-center justify-center">
-              <i className="ri-shield-check-line text-gray-200 text-base"></i>
+              <i className="ri-shield-check-line text-white/20 text-base"></i>
             </div>
           ) : (
-            <p className="text-[10px] text-gray-300 uppercase tracking-widest font-bold select-none truncate">
+            <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold select-none truncate">
               PawTenant Admin
             </p>
           )}
@@ -171,7 +171,7 @@ export default function AdminSidebar({
       </aside>
 
       {/* ── MOBILE BOTTOM NAV ───────────────────────────────────────────── */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 safe-area-pb">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 safe-area-pb">
         <div className="flex items-stretch">
           {mobilePrimaryItems.map((tab) => {
             const badge = getBadge(tab.key);
@@ -182,7 +182,7 @@ export default function AdminSidebar({
                 type="button"
                 onClick={() => onTabChange(tab.key)}
                 className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 cursor-pointer transition-colors relative ${
-                  isActive ? "text-[#1a5c4f]" : "text-gray-400"
+                  isActive ? "text-[#3b6ea5]" : "text-slate-400"
                 }`}
               >
                 <div className="relative w-6 h-6 flex items-center justify-center">
@@ -195,7 +195,7 @@ export default function AdminSidebar({
                 </div>
                 <span className="text-[9px] font-bold leading-none">{tab.label}</span>
                 {isActive && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#1a5c4f] rounded-full"></span>
+                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#3b6ea5] rounded-full"></span>
                 )}
               </button>
             );
@@ -239,7 +239,7 @@ function MobileMoreMenu({
         type="button"
         onClick={() => setOpen(true)}
         className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 cursor-pointer transition-colors relative ${
-          isMoreActive ? "text-[#1a5c4f]" : "text-gray-400"
+          isMoreActive ? "text-[#3b6ea5]" : "text-slate-400"
         }`}
       >
         <div className="w-6 h-6 flex items-center justify-center">
@@ -247,7 +247,7 @@ function MobileMoreMenu({
         </div>
         <span className="text-[9px] font-bold leading-none">More</span>
         {isMoreActive && (
-          <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#1a5c4f] rounded-full"></span>
+          <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#3b6ea5] rounded-full"></span>
         )}
       </button>
 
@@ -258,17 +258,17 @@ function MobileMoreMenu({
             onClick={() => setOpen(false)}
           ></div>
           <div className="relative bg-white rounded-t-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <p className="text-sm font-extrabold text-gray-900">More Options</p>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <p className="text-sm font-extrabold text-slate-900">More Options</p>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 cursor-pointer"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 cursor-pointer"
               >
                 <i className="ri-close-line text-base"></i>
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-0 divide-x divide-y divide-gray-100">
+            <div className="grid grid-cols-3 gap-0 divide-x divide-y divide-slate-100">
               {items.map((tab) => {
                 const badge = getBadge(tab.key);
                 const isActive = activeTab === tab.key;
@@ -278,11 +278,11 @@ function MobileMoreMenu({
                     type="button"
                     onClick={() => { onTabChange(tab.key); setOpen(false); }}
                     className={`flex flex-col items-center justify-center gap-2 py-5 cursor-pointer transition-colors ${
-                      isActive ? "bg-[#f0faf7] text-[#1a5c4f]" : "text-gray-600 hover:bg-gray-50"
+                      isActive ? "bg-[#e8f0f9] text-[#3b6ea5]" : "text-slate-600 hover:bg-slate-50"
                     }`}
                   >
-                    <div className="relative w-8 h-8 flex items-center justify-center bg-gray-100 rounded-xl">
-                      <i className={`${tab.icon} text-lg ${isActive ? "text-[#1a5c4f]" : "text-gray-500"}`}></i>
+                    <div className="relative w-8 h-8 flex items-center justify-center bg-slate-100 rounded-xl">
+                      <i className={`${tab.icon} text-lg ${isActive ? "text-[#3b6ea5]" : "text-slate-500"}`}></i>
                       {badge > 0 && (
                         <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-amber-400 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center">
                           {badge}

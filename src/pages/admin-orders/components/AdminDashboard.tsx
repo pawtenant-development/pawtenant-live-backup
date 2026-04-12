@@ -129,7 +129,7 @@ function deriveTrafficSource(order: Order): string {
 }
 
 const SOURCE_COLORS: Record<string, { bar: string; badge: string; icon: string; hex: string }> = {
-  "Google Ads":           { bar: "bg-[#1a5c4f]",  badge: "bg-[#f0faf7] text-[#1a5c4f]",   icon: "ri-google-line",           hex: "#1a5c4f" },
+  "Google Ads":           { bar: "bg-[#3b6ea5]",  badge: "bg-[#e8f0f9] text-[#3b6ea5]",   icon: "ri-google-line",           hex: "#3b6ea5" },
   "Facebook / Instagram": { bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",         icon: "ri-facebook-circle-line",  hex: "#0ea5e9" },
   "Facebook":             { bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",         icon: "ri-facebook-circle-line",  hex: "#0ea5e9" },
   "Instagram":            { bar: "bg-pink-500",    badge: "bg-pink-50 text-pink-700",       icon: "ri-instagram-line",        hex: "#ec4899" },
@@ -375,14 +375,14 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     { label: "Lead (Unpaid)",     value: stats.leadUnpaid,         color: "#f59e0b", lightBg: "bg-amber-50",   textColor: "text-amber-700" },
     { label: "Paid · Unassigned", value: stats.leadPaidUnassigned, color: "#f97316", lightBg: "bg-orange-50",  textColor: "text-orange-700" },
     { label: "Paid · Assigned",   value: stats.leadPaidAssigned,   color: "#38bdf8", lightBg: "bg-sky-50",     textColor: "text-sky-700" },
-    { label: "Completed",         value: stats.completedOrders,    color: "#1a5c4f", lightBg: "bg-[#f0faf7]",  textColor: "text-[#1a5c4f]" },
+    { label: "Completed",         value: stats.completedOrders,    color: "#3b6ea5", lightBg: "bg-[#e8f0f9]",  textColor: "text-[#3b6ea5]" },
   ];
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
         <div className="text-center">
-          <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f] block mb-3"></i>
+          <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
           <p className="text-sm text-gray-500">Loading dashboard...</p>
         </div>
       </div>
@@ -477,15 +477,15 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Revenue */}
         <div
-          className="bg-[#0f1e1a] rounded-2xl p-4 flex flex-col justify-between min-h-[110px] col-span-2 lg:col-span-1 cursor-pointer hover:opacity-90 transition-opacity"
+          className="bg-[#1e3a5f] rounded-2xl p-4 flex flex-col justify-between min-h-[110px] col-span-2 lg:col-span-1 cursor-pointer hover:opacity-90 transition-opacity"
           onClick={() => onTabChange("payments")}
           title="View Payments"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="w-8 h-8 flex items-center justify-center bg-white/10 rounded-xl">
-              <i className="ri-money-dollar-circle-line text-[#5ecfb1] text-base"></i>
+              <i className="ri-money-dollar-circle-line text-[#93c5fd] text-base"></i>
             </div>
-            <MiniBarChart data={last7DaysRevenue} color="bg-[#5ecfb1]" />
+            <MiniBarChart data={last7DaysRevenue} color="bg-[#93c5fd]" />
           </div>
           <div>
             <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">Total Revenue</p>
@@ -501,8 +501,8 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
           title="View Analytics"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="w-8 h-8 flex items-center justify-center bg-[#f0faf7] rounded-xl">
-              <i className="ri-percent-line text-[#1a5c4f] text-base"></i>
+            <div className="w-8 h-8 flex items-center justify-center bg-[#e8f0f9] rounded-xl">
+              <i className="ri-percent-line text-[#3b6ea5] text-base"></i>
             </div>
             <div className="text-right">
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
@@ -519,20 +519,20 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
 
         {/* Completed */}
         <div
-          className="bg-[#f0faf7] border border-[#b8ddd5] rounded-2xl p-4 flex flex-col justify-between min-h-[110px] cursor-pointer hover:bg-[#e8f5f1] transition-colors"
+          className="bg-[#e8f0f9] border border-[#b8cce4] rounded-2xl p-4 flex flex-col justify-between min-h-[110px] cursor-pointer hover:bg-[#dbeafe] transition-colors"
           onClick={() => onTabChange("orders", { statusFilter: "completed" })}
           title="View Completed Orders"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f]/10 rounded-xl">
-              <i className="ri-checkbox-circle-line text-[#1a5c4f] text-base"></i>
+            <div className="w-8 h-8 flex items-center justify-center bg-[#3b6ea5]/10 rounded-xl">
+              <i className="ri-checkbox-circle-line text-[#3b6ea5] text-base"></i>
             </div>
-            <MiniBarChart data={last7DaysCounts} color="bg-[#1a5c4f]" />
+            <MiniBarChart data={last7DaysCounts} color="bg-[#3b6ea5]" />
           </div>
           <div>
-            <p className="text-[10px] text-[#1a5c4f]/60 font-semibold uppercase tracking-wider">Completed</p>
-            <p className="text-2xl font-extrabold text-[#1a5c4f] leading-tight">{stats.completedOrders}</p>
-            <p className="text-[10px] text-[#1a5c4f]/50 mt-0.5 flex items-center gap-1">Letters delivered <i className="ri-arrow-right-line text-[#1a5c4f]/30"></i></p>
+            <p className="text-[10px] text-[#3b6ea5]/60 font-semibold uppercase tracking-wider">Completed</p>
+            <p className="text-2xl font-extrabold text-[#3b6ea5] leading-tight">{stats.completedOrders}</p>
+            <p className="text-[10px] text-[#3b6ea5]/50 mt-0.5 flex items-center gap-1">Letters delivered <i className="ri-arrow-right-line text-[#3b6ea5]/30"></i></p>
           </div>
         </div>
 
@@ -570,7 +570,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
               <p className="text-[10px] text-gray-400 mt-0.5">{activeTotal} active orders</p>
             </div>
             <button type="button" onClick={() => onTabChange("orders", { statusFilter: "all" })}
-              className="whitespace-nowrap text-[10px] font-bold text-[#1a5c4f] hover:underline cursor-pointer flex items-center gap-1">
+              className="whitespace-nowrap text-[10px] font-bold text-[#3b6ea5] hover:underline cursor-pointer flex items-center gap-1">
               View all <i className="ri-arrow-right-line"></i>
             </button>
           </div>
@@ -599,19 +599,19 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
 
           {/* Pending review — paid + assigned, awaiting provider submission */}
           <div
-            className="bg-[#f0faf7] border border-[#b8ddd5] rounded-2xl p-4 flex items-center gap-4 cursor-pointer hover:bg-[#e8f5f1] transition-colors"
+            className="bg-[#e8f0f9] border border-[#b8cce4] rounded-2xl p-4 flex items-center gap-4 cursor-pointer hover:bg-[#dbeafe] transition-colors"
             onClick={() => onTabChange("orders", { statusFilter: "under_review" })}
           >
-            <div className="w-12 h-12 flex items-center justify-center bg-[#e8f5f1] rounded-xl flex-shrink-0">
-              <i className="ri-time-line text-[#1a5c4f] text-xl"></i>
+            <div className="w-12 h-12 flex items-center justify-center bg-[#dbeafe] rounded-xl flex-shrink-0">
+              <i className="ri-time-line text-[#3b6ea5] text-xl"></i>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-[#1a5c4f]">Pending Provider Review</p>
-              <p className="text-[10px] text-[#1a5c4f]/60 mt-0.5">Assigned, awaiting submission</p>
+              <p className="text-xs font-bold text-[#3b6ea5]">Pending Provider Review</p>
+              <p className="text-[10px] text-[#3b6ea5]/60 mt-0.5">Assigned, awaiting submission</p>
             </div>
             <div className="text-right flex-shrink-0 flex items-center gap-2">
-              <p className="text-3xl font-extrabold text-[#1a5c4f]">{stats.pendingProviderReview}</p>
-              <i className="ri-arrow-right-s-line text-[#1a5c4f]/40 text-lg"></i>
+              <p className="text-3xl font-extrabold text-[#3b6ea5]">{stats.pendingProviderReview}</p>
+              <i className="ri-arrow-right-s-line text-[#3b6ea5]/40 text-lg"></i>
             </div>
           </div>
 
@@ -646,7 +646,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
                 <p className="text-[10px] text-gray-400 mt-0.5">Click any row to filter orders by channel</p>
               </div>
               <div className="flex items-center gap-3 text-[10px] text-gray-400 font-semibold">
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#1a5c4f] inline-block"></span>Paid</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#3b6ea5] inline-block"></span>Paid</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-gray-200 inline-block"></span>Total</span>
               </div>
             </div>
@@ -672,7 +672,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
                       <div className="flex items-center gap-3 flex-shrink-0 ml-3">
                         <span className="text-[10px] text-gray-400">{total} leads</span>
                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${cfg.badge}`}>{paid} paid</span>
-                        <span className={`text-xs font-extrabold w-9 text-right ${convRate >= 50 ? "text-[#1a5c4f]" : convRate >= 25 ? "text-amber-600" : "text-gray-400"}`}>{convRate}%</span>
+                        <span className={`text-xs font-extrabold w-9 text-right ${convRate >= 50 ? "text-[#3b6ea5]" : convRate >= 25 ? "text-amber-600" : "text-gray-400"}`}>{convRate}%</span>
                         <i className="ri-arrow-right-s-line text-gray-300 group-hover:text-gray-500 transition-colors text-sm"></i>
                       </div>
                     </div>
@@ -699,16 +699,16 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
               <p className="text-[10px] text-gray-400 mt-0.5">{doctorContacts.length} total</p>
             </div>
             <button type="button" onClick={() => onTabChange("doctors")}
-              className="whitespace-nowrap text-[10px] font-bold text-[#1a5c4f] hover:underline cursor-pointer flex items-center gap-1">
+              className="whitespace-nowrap text-[10px] font-bold text-[#3b6ea5] hover:underline cursor-pointer flex items-center gap-1">
               Manage <i className="ri-arrow-right-line"></i>
             </button>
           </div>
 
           {/* Active vs Inactive visual */}
           <div className="flex gap-2 mb-4">
-            <div className="flex-1 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-3 text-center">
-              <p className="text-2xl font-extrabold text-[#1a5c4f]">{stats.activeProviders}</p>
-              <p className="text-[10px] text-[#1a5c4f]/60 font-semibold mt-0.5">Active</p>
+            <div className="flex-1 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-3 text-center">
+              <p className="text-2xl font-extrabold text-[#3b6ea5]">{stats.activeProviders}</p>
+              <p className="text-[10px] text-[#3b6ea5]/60 font-semibold mt-0.5">Active</p>
             </div>
             <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-3 text-center">
               <p className="text-2xl font-extrabold text-red-500">{stats.inactiveProviders}</p>

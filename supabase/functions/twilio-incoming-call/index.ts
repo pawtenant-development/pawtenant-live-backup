@@ -23,14 +23,15 @@ Deno.serve(async (req) => {
     // Look up matching order by phone
     const { data: orderRows } = await supabase
       .from("orders")
-      .select("id, confirmation_id, first_name, last_name, email, phone, state, status, payment_intent_id")
+      .select("id, confirmation_id, first_name, last_name, email, phone, state, status, payment_intent_id, ghl_contact_id")
       .or(`phone.eq.${callerRaw},phone.eq.+${callerDigits},phone.eq.${callerDigits}`)
       .order("created_at", { ascending: false })
       .limit(1);
 
     const matchedOrder = orderRows && orderRows.length > 0 ? orderRows[0] as {
       id: string; confirmation_id: string; first_name: string | null; last_name: string | null;
-      email: string; phone: string | null; state: string | null; status: string; payment_intent_id: string | null;
+      email: string; phone: string | null; state: string | null; status: string;
+      payment_intent_id: string | null; ghl_contact_id: string | null;
     } : null;
 
     // Log inbound call
@@ -48,30 +49,30 @@ Deno.serve(async (req) => {
         : `Inbound call from unknown caller`,
     });
 
-    // ── Push to GHL so call appears on contact timeline ───────────────────
+    // ── Push to GHL comms webhook so call appears on contact timeline ─────
+    // eventType "call_inbound" auto-routes to GHL_COMMS_WEBHOOK_URL in the proxy
     if (matchedOrder) {
       try {
-        const ghlPayload = {
-          webhookType: "comms",
-          eventType: "call_inbound",
+        const ghlCommsPayload = {
+          eventType:   "call_inbound",
+          email:       matchedOrder.email,
+          phone:       callerRaw,
+          firstName:   matchedOrder.first_name ?? "",
+          lastName:    matchedOrder.last_name ?? "",
+          messageBody: `Inbound call from ${matchedOrder.first_name ?? ""} ${matchedOrder.last_name ?? ""} (${callerRaw})`,
+          direction:   "inbound",
+          callStatus:  "in_progress",
+          timestamp:   new Date().toISOString(),
           confirmationId: matchedOrder.confirmation_id,
-          email: matchedOrder.email,
-          phone: callerRaw,
-          firstName: matchedOrder.first_name ?? "",
-          lastName: matchedOrder.last_name ?? "",
-          callSid,
-          callFrom: callerRaw,
-          callTo: toNumber,
-          timestamp: new Date().toISOString(),
-          note: `📞 Inbound call from ${matchedOrder.first_name ?? ""} ${matchedOrder.last_name ?? ""} (${callerRaw})`,
+          ...(matchedOrder.ghl_contact_id ? { contactId: matchedOrder.ghl_contact_id } : {}),
         };
         fetch(`${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(ghlPayload),
-        }).catch((e) => console.error("[twilio-incoming-call] GHL push failed:", e));
+          body: JSON.stringify(ghlCommsPayload),
+        }).catch((e) => console.error("[twilio-incoming-call] GHL comms push failed:", e));
       } catch (e) {
-        console.error("[twilio-incoming-call] GHL push error:", e);
+        console.error("[twilio-incoming-call] GHL comms push error:", e);
       }
     }
 

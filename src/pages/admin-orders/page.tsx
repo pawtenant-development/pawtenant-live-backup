@@ -1390,7 +1390,7 @@ export default function AdminOrdersPage() {
   }, [orders, supabaseUrl, anonKey, doctorContacts]);
 
   return (
-    <div className="min-h-screen bg-[#f8f7f4]">
+    <div className="min-h-screen bg-[#f0f4f8]">
       {/* Incoming Call Banner — always rendered, listens for real-time inbound calls */}
       <IncomingCallBanner
         orders={orders}
@@ -1401,7 +1401,7 @@ export default function AdminOrdersPage() {
       />
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-100 px-3 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-50">
+      <nav className="bg-white border-b border-slate-200 px-3 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-50">
         <Link to="/" className="cursor-pointer flex-shrink-0">
           <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
             alt="PawTenant" className="h-8 sm:h-10 w-auto object-contain" />
@@ -1416,12 +1416,12 @@ export default function AdminOrdersPage() {
           </Link>
 
           {/* Sync indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-[#f0faf7] border border-[#b8ddd5] rounded-lg" title={lastSyncedAt ? `Last synced: ${lastSyncedAt.toLocaleTimeString()}` : "Connecting…"}>
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-[#e8f0f9] border border-[#b8cce4] rounded-lg" title={lastSyncedAt ? `Last synced: ${lastSyncedAt.toLocaleTimeString()}` : "Connecting…"}>
             <span className="relative flex h-2 w-2 flex-shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#1a5c4f] opacity-50"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#1a5c4f]"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3b6ea5] opacity-50"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3b6ea5]"></span>
             </span>
-            <span className="text-xs font-semibold text-[#1a5c4f] whitespace-nowrap">
+            <span className="text-xs font-semibold text-[#3b6ea5] whitespace-nowrap">
               {syncTick >= 0 && lastSyncedAt ? `Synced ${fmtSyncAge(lastSyncedAt)}` : "Live"}
             </span>
           </div>
@@ -1440,7 +1440,7 @@ export default function AdminOrdersPage() {
               type="button"
               onClick={() => setShowApprovalsInbox(true)}
               title="Approvals Inbox"
-              className="relative whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:text-[#1a5c4f] hover:border-[#1a5c4f] hover:bg-[#f0faf7]"
+              className="relative whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm border border-slate-200 text-slate-600 hover:text-[#3b6ea5] hover:border-[#3b6ea5] hover:bg-[#e8f0f9]"
             >
               <i className="ri-shield-check-line text-sm"></i>
               <span className="hidden sm:inline text-xs font-bold">Approvals</span>
@@ -1475,14 +1475,14 @@ export default function AdminOrdersPage() {
           {adminProfile?.role !== "finance" && (
             <button type="button" onClick={() => setShowBroadcast(true)}
               title={adminProfile?.role === "support" ? "Broadcast (requires approval)" : "Broadcast Message"}
-              className={`whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm ${adminProfile?.role === "support" ? "text-gray-500 bg-gray-100 hover:bg-gray-200" : "text-white bg-[#1a5c4f] hover:bg-[#17504a]"}`}>
+              className={`whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm ${adminProfile?.role === "support" ? "text-slate-500 bg-slate-100 hover:bg-slate-200" : "text-white bg-[#3b6ea5] hover:bg-[#2d5a8e]"}`}>
               <i className={`text-sm ${adminProfile?.role === "support" ? "ri-lock-line" : "ri-broadcast-line"}`}></i>
               <span className="hidden sm:inline text-xs font-bold">Broadcast</span>
             </button>
           )}
 
           <button type="button" onClick={() => setShowChangePassword(true)} title="Change Password"
-            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1a5c4f] transition-colors cursor-pointer px-2 py-1.5 rounded-lg hover:bg-gray-50">
+            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#3b6ea5] transition-colors cursor-pointer px-2 py-1.5 rounded-lg hover:bg-slate-50">
             <i className="ri-lock-password-line"></i>
             <span className="hidden md:inline text-xs font-semibold">Password</span>
           </button>
@@ -1498,13 +1498,13 @@ export default function AdminOrdersPage() {
             onClick={handleRefresh}
             disabled={refreshing}
             title="Sync with Stripe + refresh all orders"
-            className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:text-[#1a5c4f] hover:border-[#1a5c4f] transition-colors cursor-pointer disabled:opacity-50"
+            className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:text-[#3b6ea5] hover:border-[#3b6ea5] transition-colors cursor-pointer disabled:opacity-50"
           >
             <i className={`ri-refresh-line ${refreshing ? "animate-spin" : ""}`}></i>
             <span className="hidden sm:inline">{refreshing ? "Syncing..." : "Refresh"}</span>
           </button>
           {refreshSyncMsg && (
-            <span className="hidden md:flex text-xs font-semibold text-emerald-600 items-center gap-1">
+            <span className="hidden md:flex text-xs font-semibold text-[#3b6ea5] items-center gap-1">
               <i className="ri-checkbox-circle-fill"></i>{refreshSyncMsg}
             </span>
           )}
@@ -1523,8 +1523,8 @@ export default function AdminOrdersPage() {
       <div className={`${sidebarCollapsed ? "lg:ml-14" : "lg:ml-[220px]"} px-3 sm:px-4 md:px-6 py-5 sm:py-8 pb-24 lg:pb-8 transition-[margin] duration-200`}>
         {/* Header */}
         <div className="mb-5">
-          <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-1">Admin Portal</p>
-          <h1 className="text-xl font-extrabold text-gray-900 capitalize">
+          <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-1">Admin Portal</p>
+          <h1 className="text-xl font-extrabold text-slate-900 capitalize">
             {activeTab === "dashboard" ? "Dashboard" :
              activeTab === "orders" ? "Orders" :
              activeTab === "analytics" ? "Analytics" :
@@ -1541,21 +1541,21 @@ export default function AdminOrdersPage() {
 
         {/* Toasts */}
         {createSuccessMsg && (
-          <div className="mb-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-3">
-            <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-base mt-0.5 flex-shrink-0"></i>
-            <p className="text-sm text-[#1a5c4f] font-semibold">{createSuccessMsg}</p>
+          <div className="mb-4 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-3">
+            <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-base mt-0.5 flex-shrink-0"></i>
+            <p className="text-sm text-[#3b6ea5] font-semibold">{createSuccessMsg}</p>
           </div>
         )}
         {bulkMsg && (
-          <div className={`mb-4 rounded-xl px-4 py-3 flex items-start gap-3 border ${bulkMsg.includes("failed") ? "bg-amber-50 border-amber-200" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
-            <i className={`text-base mt-0.5 flex-shrink-0 ${bulkMsg.includes("failed") ? "ri-error-warning-line text-amber-600" : "ri-checkbox-circle-fill text-[#1a5c4f]"}`}></i>
-            <p className={`text-sm font-semibold ${bulkMsg.includes("failed") ? "text-amber-800" : "text-[#1a5c4f]"}`}>{bulkMsg}</p>
+          <div className={`mb-4 rounded-xl px-4 py-3 flex items-start gap-3 border ${bulkMsg.includes("failed") ? "bg-amber-50 border-amber-200" : "bg-[#e8f0f9] border-[#b8cce4]"}`}>
+            <i className={`text-base mt-0.5 flex-shrink-0 ${bulkMsg.includes("failed") ? "ri-error-warning-line text-amber-600" : "ri-checkbox-circle-fill text-[#3b6ea5]"}`}></i>
+            <p className={`text-sm font-semibold ${bulkMsg.includes("failed") ? "text-amber-800" : "text-[#3b6ea5]"}`}>{bulkMsg}</p>
           </div>
         )}
         {bulkDeleteMsg && (
-          <div className={`mb-4 rounded-xl px-4 py-3 flex items-start gap-3 border ${bulkDeleteMsg.includes("failed") ? "bg-red-50 border-red-200" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
-            <i className={`text-base mt-0.5 flex-shrink-0 ${bulkDeleteMsg.includes("failed") ? "ri-error-warning-line text-red-600" : "ri-delete-bin-2-fill text-[#1a5c4f]"}`}></i>
-            <p className={`text-sm font-semibold ${bulkDeleteMsg.includes("failed") ? "text-red-700" : "text-[#1a5c4f]"}`}>{bulkDeleteMsg}</p>
+          <div className={`mb-4 rounded-xl px-4 py-3 flex items-start gap-3 border ${bulkDeleteMsg.includes("failed") ? "bg-red-50 border-red-200" : "bg-[#e8f0f9] border-[#b8cce4]"}`}>
+            <i className={`text-base mt-0.5 flex-shrink-0 ${bulkDeleteMsg.includes("failed") ? "ri-error-warning-line text-red-600" : "ri-delete-bin-2-fill text-[#3b6ea5]"}`}></i>
+            <p className={`text-sm font-semibold ${bulkDeleteMsg.includes("failed") ? "text-red-700" : "text-[#3b6ea5]"}`}>{bulkDeleteMsg}</p>
           </div>
         )}
 
@@ -1611,7 +1611,7 @@ export default function AdminOrdersPage() {
         ) : activeTab === "orders" && (
           <>
             {!loading && (
-              <div className="bg-white rounded-xl border border-gray-200 mb-4 divide-y divide-gray-100 sm:divide-y-0 sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:divide-x sm:divide-gray-100 overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
                   {
                     label: "Lead (Unpaid)",
@@ -1653,9 +1653,9 @@ export default function AdminOrdersPage() {
                     key={s.label}
                     type="button"
                     onClick={() => setStatusFilter(s.filter)}
-                    className={`flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors w-full ${statusFilter === s.filter ? "bg-[#f0faf7]" : "hover:bg-gray-50"}`}
+                    className={`flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors w-full ${statusFilter === s.filter ? "bg-[#e8f0f9]" : "hover:bg-slate-50"}`}
                   >
-                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${statusFilter === s.filter ? "bg-[#1a5c4f]/10" : "bg-gray-100"}`}>
+                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${statusFilter === s.filter ? "bg-[#3b6ea5]/10" : "bg-slate-100"}`}>
                       <i className={`${s.icon} ${s.color} text-sm`}></i>
                     </div>
                     <div className="min-w-0">

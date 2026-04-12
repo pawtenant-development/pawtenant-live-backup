@@ -24,14 +24,14 @@ Deno.serve(async (req) => {
     // Look up matching order
     const { data: orderRows } = await supabase
       .from("orders")
-      .select("id, confirmation_id, first_name, last_name, email, phone")
+      .select("id, confirmation_id, first_name, last_name, email, phone, ghl_contact_id")
       .or(`phone.eq.${from},phone.eq.+${fromDigits},phone.eq.${fromDigits}`)
       .order("created_at", { ascending: false })
       .limit(1);
 
     const match = orderRows && orderRows.length > 0 ? (orderRows[0] as {
       id: string; confirmation_id: string; first_name: string | null; last_name: string | null;
-      email: string; phone: string | null;
+      email: string; phone: string | null; ghl_contact_id: string | null;
     }) : null;
 
     await supabase.from("communications").insert({
@@ -47,31 +47,29 @@ Deno.serve(async (req) => {
       sent_by: match ? `${match.first_name ?? ""} ${match.last_name ?? ""}`.trim() || match.email : from,
     });
 
-    // ── Push to GHL so it appears on contact timeline ────────────────────
+    // ── Push to GHL comms webhook so it appears on contact timeline ──────
     if (match) {
       try {
-        const ghlPayload = {
-          webhookType: "comms",
-          eventType: "sms_inbound",
+        // eventType "sms_inbound" auto-routes to GHL_COMMS_WEBHOOK_URL in the proxy
+        const ghlCommsPayload = {
+          eventType:   "sms_inbound",
+          email:       match.email,
+          phone:       from,
+          firstName:   match.first_name ?? "",
+          lastName:    match.last_name ?? "",
+          messageBody: body,
+          direction:   "inbound",
+          timestamp:   new Date().toISOString(),
           confirmationId: match.confirmation_id,
-          email: match.email,
-          phone: from,
-          firstName: match.first_name ?? "",
-          lastName: match.last_name ?? "",
-          smsBody: body,
-          smsFrom: from,
-          smsTo: to,
-          smsSid,
-          timestamp: new Date().toISOString(),
-          note: `📱 Inbound SMS from ${match.first_name ?? ""} ${match.last_name ?? ""}: "${body}"`,
+          ...(match.ghl_contact_id ? { contactId: match.ghl_contact_id } : {}),
         };
         fetch(`${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(ghlPayload),
-        }).catch((e) => console.error("[twilio-sms-webhook] GHL push failed:", e));
+          body: JSON.stringify(ghlCommsPayload),
+        }).catch((e) => console.error("[twilio-sms-webhook] GHL comms push failed:", e));
       } catch (e) {
-        console.error("[twilio-sms-webhook] GHL push error:", e);
+        console.error("[twilio-sms-webhook] GHL comms push error:", e);
       }
     }
 

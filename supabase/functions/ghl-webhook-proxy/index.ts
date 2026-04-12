@@ -7,9 +7,32 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function getGhlUrl(webhookType: string | undefined): string {
-  if (webhookType === "network") return Deno.env.get("GHL_NETWORK_WEBHOOK_URL") ?? "";
-  if (webhookType === "comms") return Deno.env.get("GHL_COMMS_WEBHOOK_URL") ?? Deno.env.get("GHL_WEBHOOK_URL") ?? "";
+// ── Comms event types → GHL_COMMS_WEBHOOK_URL ────────────────────────────────
+const COMMS_EVENT_TYPES = new Set([
+  "sms_inbound",
+  "sms_outbound",
+  "call_inbound",
+  "call_outbound",
+  "call_completed",
+  "call_missed",
+  "call_voicemail",
+]);
+
+// ── Order/contact event types → GHL_WEBHOOK_URL ──────────────────────────────
+// All other event types default to the order/contact webhook.
+
+function getGhlUrl(eventType: string, explicitWebhookType?: string): string {
+  // Explicit override still supported for backward compat
+  if (explicitWebhookType === "comms") {
+    return Deno.env.get("GHL_COMMS_WEBHOOK_URL") ?? "";
+  }
+  if (explicitWebhookType === "network") {
+    return Deno.env.get("GHL_NETWORK_WEBHOOK_URL") ?? "";
+  }
+  // Auto-route based on event type
+  if (COMMS_EVENT_TYPES.has(eventType)) {
+    return Deno.env.get("GHL_COMMS_WEBHOOK_URL") ?? "";
+  }
   return Deno.env.get("GHL_WEBHOOK_URL") ?? "";
 }
 
@@ -88,9 +111,6 @@ function deriveOrderStatus(event: string): string {
   return map[event] ?? event;
 }
 
-/**
- * Derive orderSource from utm_source / gclid / fbclid fields.
- */
 function deriveOrderSource(payload: Record<string, unknown>): string {
   const existing = (payload.orderSource as string) ?? "";
   if (existing && existing !== "Direct / Unknown") return existing;
@@ -253,38 +273,13 @@ async function upsertGhlContact(opts: {
   return { success: saved, contactId, action };
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
-  }
-
-  const { webhookType, ...payload } = body;
-  const authHeader = req.headers.get("authorization") ?? "";
-  const triggeredBy = authHeader.includes("Bearer ") ? "admin" : "system";
-
-  const ghlUrl = getGhlUrl(webhookType as string | undefined);
-  if (!ghlUrl) {
-    return new Response(
-      JSON.stringify({ ok: false, error: "GHL_WEBHOOK_URL not configured in Supabase secrets." }),
-      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
-    );
-  }
-
-  const eventName      = ((payload.eventType as string) ?? (payload.event as string) ?? "").trim();
-  const rawFirst       = ((payload.firstName as string) ?? "").trim();
-  const rawLast        = ((payload.lastName as string) ?? "").trim();
-  const rawEmail       = ((payload.email as string) ?? "").trim().toLowerCase();
-  const rawPhone       = (payload.phone as string) ?? "";
-  const phone          = normalizePhone(rawPhone);
-  const state          = ((payload.state as string) ?? (payload.patientState as string) ?? "").trim();
+// ── Build order/contact payload (Workflow 1 → GHL_WEBHOOK_URL) ───────────────
+function buildOrderPayload(payload: Record<string, unknown>, eventName: string): Record<string, unknown> {
+  const rawFirst = ((payload.firstName as string) ?? "").trim();
+  const rawLast  = ((payload.lastName as string) ?? "").trim();
+  const rawEmail = ((payload.email as string) ?? "").trim().toLowerCase();
+  const phone    = normalizePhone((payload.phone as string) ?? "");
+  const state    = ((payload.state as string) ?? (payload.patientState as string) ?? "").trim();
   const confirmationId = ((payload.confirmationId as string) ?? "").trim();
 
   const rawAmount = payload.amount ?? payload.orderTotal ?? payload.price;
@@ -306,65 +301,122 @@ Deno.serve(async (req: Request) => {
 
   const orderSource = deriveOrderSource(payload);
 
-  // ── Clean payload: 12 core fields + tags + fullName for comm sync ──────────
-  // No pipeline fields. No letterType.
-  // GHL workflows should update contact custom fields using these values.
-  const ghlPayload: Record<string, unknown> = {
-    // ── 12 core fields ──
-    confirmationId:   confirmationId,
-    orderStatus:      (payload.orderStatus as string) ?? deriveOrderStatus(eventName),
-    orderAmount:      amount,
-    assignedDoctor:   (payload.assignedDoctor as string) ?? "",
-    state:            state,
-    firstName:        rawFirst || fullName.split(" ")[0] || "",
-    lastName:         rawLast  || fullName.split(" ").slice(1).join(" ") || "",
-    email:            rawEmail,
-    phone:            phone,
-    orderSource:      orderSource,
-    eventType:        eventName,
-    refundAmount:     refundAmount,
-
-    // ── Comm sync fields ──
-    // fullName and tags allow GHL workflows to update contact records
-    // and keep communication logs in sync between GHL and the admin portal.
-    fullName:         fullName,
-    tags:             tags.join(", "),
+  return {
+    // ── 12 core order/contact fields ──
+    confirmationId,
+    orderStatus:    (payload.orderStatus as string) ?? deriveOrderStatus(eventName),
+    orderAmount:    amount,
+    assignedDoctor: ((payload.assignedDoctor as string) ?? "").trim(),
+    state,
+    firstName:      rawFirst || fullName.split(" ")[0] || "",
+    lastName:       rawLast  || fullName.split(" ").slice(1).join(" ") || "",
+    email:          rawEmail,
+    phone,
+    orderSource,
+    eventType:      eventName,
+    refundAmount,
+    // ── Contact sync helpers ──
+    fullName,
+    tags:           tags.join(", "),
   };
+}
 
-  const emailForLog = rawEmail || "(no email)";
-  const confIdForLog = confirmationId || "(no confirmationId)";
+// ── Build comms payload (Workflow 2 → GHL_COMMS_WEBHOOK_URL) ─────────────────
+function buildCommsPayload(payload: Record<string, unknown>, eventName: string): Record<string, unknown> {
+  const rawEmail = ((payload.email as string) ?? "").trim().toLowerCase();
+  const phone    = normalizePhone((payload.phone as string) ?? "");
+  const rawFirst = ((payload.firstName as string) ?? "").trim();
+  const rawLast  = ((payload.lastName as string) ?? "").trim();
+
+  // Message body — try multiple field names GHL/Twilio may use
+  const messageBody =
+    (payload.messageBody as string) ??
+    (payload.smsBody as string) ??
+    (payload.body as string) ??
+    (payload.note as string) ??
+    "";
+
+  return {
+    email:       rawEmail,
+    phone,
+    firstName:   rawFirst,
+    lastName:    rawLast,
+    eventType:   eventName,
+    messageBody: messageBody.trim(),
+    direction:   (payload.direction as string) ?? (eventName.includes("inbound") ? "inbound" : "outbound"),
+    callStatus:  (payload.callStatus as string) ?? (payload.status as string) ?? "",
+    timestamp:   (payload.timestamp as string) ?? new Date().toISOString(),
+    // Optional — include contactId if available for deduplication
+    ...(payload.contactId ? { contactId: payload.contactId } : {}),
+    ...(payload.confirmationId ? { confirmationId: payload.confirmationId } : {}),
+  };
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+  }
+
+  const { webhookType, ...payload } = body;
+  const authHeader = req.headers.get("authorization") ?? "";
+  const triggeredBy = authHeader.includes("Bearer ") ? "admin" : "system";
+
+  const eventName = ((payload.eventType as string) ?? (payload.event as string) ?? "").trim();
+
+  // ── Determine which webhook URL to use ───────────────────────────────────
+  const isCommsEvent = COMMS_EVENT_TYPES.has(eventName) || webhookType === "comms";
+  const ghlUrl = getGhlUrl(eventName, webhookType as string | undefined);
+
+  if (!ghlUrl) {
+    const missingSecret = isCommsEvent ? "GHL_COMMS_WEBHOOK_URL" : "GHL_WEBHOOK_URL";
+    return new Response(
+      JSON.stringify({ ok: false, error: `${missingSecret} not configured in Supabase secrets.` }),
+      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+    );
+  }
+
+  // ── Build the correct payload type ───────────────────────────────────────
+  const ghlPayload = isCommsEvent
+    ? buildCommsPayload(payload, eventName)
+    : buildOrderPayload(payload, eventName);
+
+  const confirmationId = ((payload.confirmationId as string) ?? "").trim();
+  const rawEmail       = ((payload.email as string) ?? "").trim().toLowerCase();
+  const confIdForLog   = confirmationId || "(no confirmationId)";
+  const emailForLog    = rawEmail || "(no email)";
 
   console.log(
-    `[GHL-PROXY] ▶ Sending to GHL` +
+    `[GHL-PROXY] ▶ ${isCommsEvent ? "COMMS" : "ORDER"} event → ${isCommsEvent ? "GHL_COMMS_WEBHOOK_URL" : "GHL_WEBHOOK_URL"}` +
     `\n  eventType      = "${eventName}"` +
     `\n  confirmationId = "${confIdForLog}"` +
-    `\n  email          = "${emailForLog}"` +
-    `\n  firstName      = "${ghlPayload.firstName}"` +
-    `\n  lastName       = "${ghlPayload.lastName}"` +
-    `\n  phone          = "${phone}"` +
-    `\n  state          = "${state}"` +
-    `\n  orderAmount    = ${amount}` +
-    `\n  orderStatus    = "${ghlPayload.orderStatus}"` +
-    `\n  assignedDoctor = "${ghlPayload.assignedDoctor}"` +
-    `\n  orderSource    = "${orderSource}"` +
-    `\n  refundAmount   = ${refundAmount}` +
-    `\n  tags           = "${ghlPayload.tags}"`
+    `\n  email          = "${emailForLog}"`
   );
 
+  // ── For order events: upsert GHL contact via API ─────────────────────────
   let contactUpsertResult: { success: boolean; contactId: string | null; action: string; error?: string } = {
     success: false, contactId: null, action: "skipped",
   };
 
-  if (confirmationId && confirmationId !== "(no confirmationId)" && rawEmail) {
+  if (!isCommsEvent && confirmationId && confirmationId !== "(no confirmationId)" && rawEmail) {
+    const orderPl = ghlPayload as Record<string, unknown>;
     contactUpsertResult = await upsertGhlContact({
       confirmationId,
-      firstName: (ghlPayload.firstName as string) || "",
-      lastName: (ghlPayload.lastName as string) || "",
-      email: rawEmail,
-      phone,
+      firstName: (orderPl.firstName as string) || "",
+      lastName:  (orderPl.lastName as string) || "",
+      email:     rawEmail,
+      phone:     (orderPl.phone as string) || "",
     });
   }
 
+  // ── Fire the webhook ─────────────────────────────────────────────────────
   const result = await fetchWithRetry(
     ghlUrl,
     {
@@ -379,67 +431,79 @@ Deno.serve(async (req: Request) => {
     eventType: eventName,
     confirmationId: confIdForLog,
     email: emailForLog,
-    state,
-    orderAmount: amount,
-    orderStatus: ghlPayload.orderStatus,
-    assignedDoctor: ghlPayload.assignedDoctor,
-    orderSource,
-    refundAmount,
-    tags: ghlPayload.tags,
-    webhookType: webhookType ?? "main",
+    webhookTarget: isCommsEvent ? "GHL_COMMS_WEBHOOK_URL" : "GHL_WEBHOOK_URL",
+    webhookType: webhookType ?? "auto",
     ghlContactId: contactUpsertResult.contactId,
     contactAction: contactUpsertResult.action,
   };
 
+  if (!isCommsEvent) {
+    const op = ghlPayload as Record<string, unknown>;
+    payloadSummary.orderAmount    = op.orderAmount;
+    payloadSummary.orderStatus    = op.orderStatus;
+    payloadSummary.assignedDoctor = op.assignedDoctor;
+    payloadSummary.orderSource    = op.orderSource;
+    payloadSummary.refundAmount   = op.refundAmount;
+    payloadSummary.tags           = op.tags;
+  }
+
   if (!result.ok) {
     const errMsg = `GHL HTTP ${result.status} after ${result.attempts} attempt(s): ${result.body.slice(0, 300)}`;
     console.error(`[GHL-PROXY] ❌ ${errMsg}`);
-    await updateOrderSyncStatus(confirmationId, false, errMsg);
-    await logSyncAttempt({
-      confirmationId: confIdForLog,
-      eventType: eventName,
-      status: "failed",
-      ghlStatusCode: result.status,
-      errorMessage: errMsg.slice(0, 500),
-      attempts: result.attempts,
-      triggeredBy,
-      payloadSummary,
-    });
+    if (!isCommsEvent) {
+      await updateOrderSyncStatus(confirmationId, false, errMsg);
+      await logSyncAttempt({
+        confirmationId: confIdForLog,
+        eventType: eventName,
+        status: "failed",
+        ghlStatusCode: result.status,
+        errorMessage: errMsg.slice(0, 500),
+        attempts: result.attempts,
+        triggeredBy,
+        payloadSummary,
+      });
+    }
     return new Response(
       JSON.stringify({ ok: false, ghlStatus: result.status, error: errMsg, contactUpsert: contactUpsertResult }),
       { status: 502, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
     );
   }
 
-  updateOrderSyncStatus(confirmationId, true).catch(() => {});
-  logSyncAttempt({
-    confirmationId: confIdForLog,
-    eventType: eventName,
-    status: "success",
-    ghlStatusCode: result.status,
-    errorMessage: null,
-    attempts: result.attempts,
-    triggeredBy,
-    payloadSummary,
-  }).catch(() => {});
+  if (!isCommsEvent) {
+    updateOrderSyncStatus(confirmationId, true).catch(() => {});
+    logSyncAttempt({
+      confirmationId: confIdForLog,
+      eventType: eventName,
+      status: "success",
+      ghlStatusCode: result.status,
+      errorMessage: null,
+      attempts: result.attempts,
+      triggeredBy,
+      payloadSummary,
+    }).catch(() => {});
+  }
 
+  const orderPl = ghlPayload as Record<string, unknown>;
   return new Response(
     JSON.stringify({
       ok: true,
       ghlStatus: result.status,
       attempts: result.attempts,
+      webhookTarget: isCommsEvent ? "GHL_COMMS_WEBHOOK_URL" : "GHL_WEBHOOK_URL",
       confirmationId: confIdForLog,
       email: emailForLog,
-      tagsSent: tags,
-      orderStatus: ghlPayload.orderStatus,
-      assignedDoctor: ghlPayload.assignedDoctor,
-      orderSource,
-      refundAmount,
+      ...(isCommsEvent ? {} : {
+        tagsSent:      (orderPl.tags as string ?? "").split(", ").filter(Boolean),
+        orderStatus:   orderPl.orderStatus,
+        assignedDoctor: orderPl.assignedDoctor,
+        orderSource:   orderPl.orderSource,
+        refundAmount:  orderPl.refundAmount,
+      }),
       contactUpsert: {
-        success: contactUpsertResult.success,
+        success:   contactUpsertResult.success,
         contactId: contactUpsertResult.contactId,
-        action: contactUpsertResult.action,
-        error: contactUpsertResult.error,
+        action:    contactUpsertResult.action,
+        error:     contactUpsertResult.error,
       },
     }),
     { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
