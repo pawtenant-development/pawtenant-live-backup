@@ -34,6 +34,7 @@ interface StripePaymentFormProps {
   clientSecret?: string;
   amount: number;
   returnUrl?: string;
+  onReady?: () => void;
   onSuccess: (paymentIntentId: string) => void;
   onError: (message: string) => void;
   onBeforeSubmit?: () => boolean;
@@ -63,6 +64,7 @@ function ProcessingOverlay() {
 export default function StripePaymentForm({
   clientSecret,
   amount,
+  onReady,
   onSuccess,
   onError,
   onBeforeSubmit,
@@ -271,7 +273,7 @@ export default function StripePaymentForm({
           </label>
           <div className={`border rounded-lg px-3 py-3 transition-colors flex items-center gap-2 ${getFieldBorderClass("number")}`}>
             <div className="flex-1">
-              <CardNumberElement options={CARD_INPUT_OPTIONS} onChange={handleNumberChange} />
+              <CardNumberElement options={CARD_INPUT_OPTIONS} onChange={handleNumberChange} onReady={onReady} />
             </div>
             {renderCardBrandIcon()}
           </div>

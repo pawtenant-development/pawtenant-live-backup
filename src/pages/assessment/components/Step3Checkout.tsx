@@ -93,13 +93,14 @@ function SectionLabel({ children }: { children: string }) {
 interface CouponRowProps {
   basePrice: number;
   onDiscountChange: (discount: number, code: string) => void;
+  initialApplied?: { code: string; discount: number } | null;
 }
 
-function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
+function CouponRow({ basePrice, onDiscountChange, initialApplied }: CouponRowProps) {
   const [code, setCode]       = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
-  const [applied, setApplied] = useState<{ code: string; discount: number } | null>(null);
+  const [applied, setApplied] = useState<{ code: string; discount: number } | null>(initialApplied ?? null);
 
   const handleApply = async () => {
     if (!code.trim()) return;
@@ -240,34 +241,44 @@ function SecurePaymentCard({
   const [qrAgreedError, setQrAgreedError] = useState(false);
   // Track applied coupon code to pass to Klarna/QR tabs
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
+  // Track applied coupon state so CouponRow can re-initialize after Stripe remount
+  const [appliedCouponState, setAppliedCouponState] = useState<{ code: string; discount: number } | null>(null);
 
   // For one-time payments: wait for clientSecret before mounting Elements
   // For subscriptions: mount Elements immediately (clientSecret fetched lazily on submit)
   const [elementsOptions, setElementsOptions] = useState<StripeElementsOptions | null>(
     isSubscription ? { appearance: STRIPE_APPEARANCE } : null
   );
+  // True once CardNumberElement fires onReady — keeps the overlay visible until Stripe is interactive
+  const [elementReady, setElementReady] = useState(false);
 
+  // Sync elementsOptions on every clientSecret / plan change.
+  // No !elementsOptions guard — stale secrets are now cleared in page.tsx before re-fetch,
+  // so this effect correctly drives null (loading) → options (mount fresh Elements).
   useEffect(() => {
-    if (!isSubscription && stripeClientSecret && !elementsOptions) {
-      setElementsOptions({ clientSecret: stripeClientSecret, appearance: STRIPE_APPEARANCE });
+    setElementReady(false);
+    if (isSubscription) {
+      setElementsOptions({ appearance: STRIPE_APPEARANCE });
+    } else {
+      setElementsOptions(
+        stripeClientSecret
+          ? { clientSecret: stripeClientSecret, appearance: STRIPE_APPEARANCE }
+          : null
+      );
     }
-  }, [stripeClientSecret, elementsOptions, isSubscription]);
-
-  useEffect(() => {
-    setElementsOptions(isSubscription ? { appearance: STRIPE_APPEARANCE } : null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan]);
+  }, [stripeClientSecret, isSubscription]);
 
   // Wrap onDiscountChange to also capture the coupon code for Klarna/QR tabs
   const handleDiscountChange = (discount: number, code: string) => {
     setAppliedCouponCode(discount > 0 ? code : "");
+    setAppliedCouponState(discount > 0 && code ? { code, discount } : null);
     onDiscountChange(discount, code);
   };
 
   const couponSlot = useMemo(() => (
-    <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={handleDiscountChange} />
+    <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={handleDiscountChange} initialApplied={appliedCouponState} />
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [priceBeforeDiscount]);
+  ), [priceBeforeDiscount, appliedCouponState]);
 
   const handlePaymentSuccess = (paymentIntentId: string) => onPaymentSuccess?.(paymentIntentId);
   const handlePaymentError = (message: string) => console.error("Payment error:", message);
@@ -384,20 +395,30 @@ function SecurePaymentCard({
                 )}
               </div>
             ) : (
-              <Elements stripe={stripePromise} options={elementsOptions}>
-                <StripePaymentForm
-                  clientSecret={stripeClientSecret}
-                  amount={totalPrice}
-                  onSuccess={handlePaymentSuccess}
-                  onError={handlePaymentError}
-                  onBeforeSubmit={handleBeforeSubmit}
-                  agreed={cardAgreed}
-                  setAgreed={setCardAgreed}
-                  agreedError={cardAgreedError}
-                  setAgreedError={setCardAgreedError}
-                  couponSlot={couponSlot}
-                />
-              </Elements>
+              /* key forces a full Stripe remount on every new clientSecret.
+                 The overlay sits on top until CardNumberElement fires onReady. */
+              <div className="relative">
+                {!elementReady && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center bg-white rounded-b-2xl">
+                    <i className="ri-loader-4-line animate-spin text-orange-500 text-xl"></i>
+                  </div>
+                )}
+                <Elements key={stripeClientSecret} stripe={stripePromise} options={elementsOptions}>
+                  <StripePaymentForm
+                    clientSecret={stripeClientSecret}
+                    amount={totalPrice}
+                    onReady={() => setElementReady(true)}
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                    onBeforeSubmit={handleBeforeSubmit}
+                    agreed={cardAgreed}
+                    setAgreed={setCardAgreed}
+                    agreedError={cardAgreedError}
+                    setAgreedError={setCardAgreedError}
+                    couponSlot={couponSlot}
+                  />
+                </Elements>
+              </div>
             )
           )}
         </>
@@ -463,6 +484,7 @@ export default function Step3Checkout({
   confirmationId = "",
   petCount,
   onBeforeRedirect,
+  onCouponApplied,
 }: Step3CheckoutProps) {
   const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -509,7 +531,10 @@ export default function Step3Checkout({
     onBeforeRedirect,
     plan: selectedPlan,
     priceBeforeDiscount,
-    onDiscountChange: (discount) => setCouponDiscount(discount),
+    onDiscountChange: (discount, code) => {
+      setCouponDiscount(discount);
+      onCouponApplied?.(discount > 0 && code ? { code, discount } : null);
+    },
     subscriptionParams,
   };
 
