@@ -597,19 +597,12 @@ export default function AssessmentPage() {
     fetchClientSecret(step2, confirmationId.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, step2.email]);
-
-  // ── Update PaymentIntent amount when coupon is applied / removed ─────────
-  // fetchClientSecret passes existingPaymentIntentId so the backend UPDATES
-  // the existing PI (never creates a new one). Stripe's client_secret is
-  // immutable per PI, so setStripeClientSecret() receives the same value →
-  // React bails out → elementsOptions effect does NOT fire → Elements stays
-  // mounted → card fields are preserved.
   useEffect(() => {
-    if (currentStep !== 3) return;
-    if (!stripePaymentIntentId) return; // PI must exist before we can update it
-    fetchClientSecret(step2, confirmationId.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedCoupon]);
+  if (currentStep !== 3) return;
+  if (!stripePaymentIntentId) return;
+  fetchClientSecret(step2, confirmationId.current);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [appliedCoupon]);
 
   // ── Fetch Stripe client_secret from server ────────────────────────────────
   // Accepts step2 data directly so it works both from goNext (current state)
@@ -622,6 +615,7 @@ export default function AssessmentPage() {
     stripeSecretInFlight.current = true;
     setStripeSecretLoading(true);
     setStripeSecretError("");
+    setStripeClientSecret(""); // clear stale secret so Elements unmounts before new PI arrives
     try {
       const res = await loggedFetch(
         "create-payment-intent",
@@ -680,30 +674,6 @@ export default function AssessmentPage() {
     } finally {
       setStripeSecretLoading(false);
       stripeSecretInFlight.current = false;
-    }
-  };
-
-  // ── Auto-apply coupon from exit-intent popup ──────────────────────────────
-  // Validates the code via our DB then sets appliedCoupon, which triggers the
-  // [appliedCoupon] useEffect to update the Stripe PaymentIntent amount.
-  const handleAutoApplyCoupon = async (code: string) => {
-    if (!code) return;
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/validate-coupon`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
-        body: JSON.stringify({ code: code.trim().toUpperCase() }),
-      });
-      const data = await res.json() as { valid?: boolean; discount?: number; code?: string };
-      if (data.valid && data.discount != null) {
-        setAppliedCoupon({ code: data.code ?? code.trim().toUpperCase(), discount: data.discount });
-      }
-    } catch {
-      // Silent — never block the user flow for a popup coupon
     }
   };
 
@@ -1169,7 +1139,6 @@ export default function AssessmentPage() {
         progressPercent={getProgressPercent()}
         currentStep={currentStep}
         onStay={() => {}}
-        onApplyCode={currentStep === 3 ? handleAutoApplyCoupon : undefined}
       />
 
       {/* Minimal Navbar */}
