@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -124,7 +125,8 @@ Deno.serve(async (req: Request) => {
   const cancelSubId     = (body.cancelSubscriptionId as string) ?? "";
   const paymentMethodId = (body.paymentMethodId  as string)   ?? "";
   // Coupon code from frontend (validated by our DB validate-coupon function)
-  const couponCode      = (body.couponCode       as string)   ?? "";
+  const couponCode             = (body.couponCode             as string) ?? "";
+  const existingPaymentIntentId = (body.existingPaymentIntentId as string) ?? "";
 
   // ── Action: cancel_subscription ──────────────────────────────────────────
   if (action === "cancel_subscription" && cancelSubId) {
@@ -291,30 +293,132 @@ Deno.serve(async (req: Request) => {
       baseAmount = getESAOneTimeAmount(petCount, deliverySpeed);
     }
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: baseAmount,
-      currency: "usd",
-      payment_method_types: ["card"],
-      // receipt_email intentionally omitted — we send our own branded receipt via Resend
-      metadata: {
-        ...(confirmationId ? { confirmation_id: confirmationId } : {}),
-        email,
-        first_name: firstName,
-        last_name: lastName,
-        state,
-        letter_type: letterType,
-        delivery_speed: deliverySpeed,
-        pet_count: String(petCount),
-      },
-    });
+    // ── Apply coupon discount (one-time payments have no native Stripe coupon param) ──
+    let discountedAmount = baseAmount;
+    if (couponCode === "ADMINDISCOUNT90") {
+      // Temporary hardcoded override: $98 = 9800 cents.
+      // Remove once the Stripe coupon is corrected to amount_off: 9800.
+      discountedAmount = Math.max(50, baseAmount - 9800);
+      console.info(`[create-payment-intent] Hardcoded override: ${couponCode} → $${discountedAmount / 100} (was $${baseAmount / 100})`);
+    } else if (couponCode) {
+      const couponId = await resolveStripeCouponId(stripe, couponCode);
+      if (couponId) {
+        try {
+          const coupon = await stripe.coupons.retrieve(couponId);
+          if (coupon.valid) {
+            if (coupon.percent_off) {
+              discountedAmount = Math.max(50, Math.round(baseAmount * (1 - coupon.percent_off / 100)));
+            } else if (coupon.amount_off) {
+              discountedAmount = Math.max(50, baseAmount - coupon.amount_off);
+            }
+            console.info(`[create-payment-intent] One-time Stripe coupon applied: ${couponCode} → $${discountedAmount / 100} (was $${baseAmount / 100})`);
+          }
+        } catch {
+          console.warn(`[create-payment-intent] Could not retrieve coupon ${couponId} — no discount applied`);
+        }
+      } else {
+        // Stripe doesn't know this code — fall back to our own coupons DB table.
+        // validate-coupon uses the same table, so this keeps the two in sync.
+        try {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+          const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          if (supabaseUrl && serviceKey) {
+            const supabase = createClient(supabaseUrl, serviceKey);
+            const { data: dbCoupon } = await supabase
+              .from("coupons")
+              .select("discount, is_active, expires_at")
+              .eq("code", couponCode.toUpperCase())
+              .maybeSingle();
+            if (
+              dbCoupon &&
+              dbCoupon.is_active === true &&
+              !(dbCoupon.expires_at && new Date(dbCoupon.expires_at) < new Date())
+            ) {
+              // discount column is stored in dollars (e.g. 20 = $20 off)
+              const discountCents = Math.round(Number(dbCoupon.discount) * 100);
+              discountedAmount = Math.max(50, baseAmount - discountCents);
+              console.info(`[create-payment-intent] DB coupon applied: ${couponCode} → $${discountedAmount / 100} (was $${baseAmount / 100})`);
+            } else {
+              console.warn(`[create-payment-intent] DB coupon not found or inactive: ${couponCode}`);
+            }
+          }
+        } catch (err: unknown) {
+          console.warn(`[create-payment-intent] DB coupon lookup failed for ${couponCode}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
 
-    console.info(`[create-payment-intent] PI ${paymentIntent.id} — $${baseAmount / 100} (${letterType}, ${petCount} pet(s), ${deliverySpeed}) — cid: ${confirmationId || "none"}`);
+    // receipt_email intentionally omitted — we send our own branded receipt via Resend
+    const oneTimeMetadata = {
+      ...(confirmationId ? { confirmation_id: confirmationId } : {}),
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      state,
+      letter_type: letterType,
+      delivery_speed: deliverySpeed,
+      pet_count: String(petCount),
+      ...(couponCode ? { coupon_code: couponCode } : {}),
+    };
+
+    // ── Update existing PaymentIntent if provided; fall back to create ────────
+    let piId: string;
+    let piClientSecret: string | null;
+
+    if (existingPaymentIntentId) {
+      let updatedPi: Stripe.PaymentIntent | null = null;
+      try {
+        const retrieved = await stripe.paymentIntents.retrieve(existingPaymentIntentId);
+        const updatableStatuses = ["requires_payment_method", "requires_confirmation", "requires_action"];
+        if (updatableStatuses.includes(retrieved.status)) {
+          updatedPi = await stripe.paymentIntents.update(existingPaymentIntentId, {
+            amount: discountedAmount,
+            metadata: oneTimeMetadata,
+          });
+        } else {
+          console.warn(`[create-payment-intent] PI ${existingPaymentIntentId} status "${retrieved.status}" is not updatable — creating new PI`);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[create-payment-intent] Could not update PI ${existingPaymentIntentId}: ${msg} — creating new PI`);
+      }
+
+      if (updatedPi) {
+        piId = updatedPi.id;
+        piClientSecret = updatedPi.client_secret;
+      } else {
+        const newPi = await stripe.paymentIntents.create({
+          amount: discountedAmount,
+          currency: "usd",
+          payment_method_types: ["card"],
+          metadata: oneTimeMetadata,
+        });
+        piId = newPi.id;
+        piClientSecret = newPi.client_secret;
+      }
+    } else {
+      const newPi = await stripe.paymentIntents.create({
+        amount: discountedAmount,
+        currency: "usd",
+        payment_method_types: ["card"],
+        metadata: oneTimeMetadata,
+      });
+      piId = newPi.id;
+      piClientSecret = newPi.client_secret;
+    }
+
+    if (!piClientSecret) {
+      return json({ error: "Could not obtain payment intent client secret" }, 500);
+    }
+
+    console.info(`[create-payment-intent] PI ${piId} — $${discountedAmount / 100} (base $${baseAmount / 100}) (${letterType}, ${petCount} pet(s), ${deliverySpeed}) — cid: ${confirmationId || "none"} coupon: ${couponCode || "none"}`);
 
     return json({
-      clientSecret:    paymentIntent.client_secret,
-      amount:          baseAmount,
-      basePriceAmount: baseAmount,
-      paymentIntentId: paymentIntent.id,
+      clientSecret:     piClientSecret,
+      amount:           discountedAmount,
+      basePriceAmount:  baseAmount,
+      paymentIntentId:  piId,
+      discountedAmount,
     });
 
   } catch (err: unknown) {

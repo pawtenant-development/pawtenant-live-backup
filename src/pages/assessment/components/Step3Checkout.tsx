@@ -1,5 +1,5 @@
 // Step3Checkout — Payment orchestration (Card / Klarna / QR tabs)
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import type { StripeElementsOptions } from "@stripe/stripe-js";
@@ -101,6 +101,20 @@ function CouponRow({ basePrice, onDiscountChange, initialApplied }: CouponRowPro
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
   const [applied, setApplied] = useState<{ code: string; discount: number } | null>(initialApplied ?? null);
+
+  // Respond to external override (e.g. auto-apply from the exit-intent popup).
+  // Uses a ref to track the last processed code so we only act on real changes,
+  // never on re-renders that preserve the same value.
+  const prevInitialCodeRef = useRef(initialApplied?.code ?? "");
+  useEffect(() => {
+    const newCode = initialApplied?.code ?? "";
+    if (newCode === prevInitialCodeRef.current) return;
+    prevInitialCodeRef.current = newCode;
+    setApplied(initialApplied ?? null);
+    setCode(initialApplied?.code ?? "");
+  // Intentionally omits onDiscountChange — the caller already updated the discount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialApplied]);
 
   const handleApply = async () => {
     if (!code.trim()) return;
@@ -207,6 +221,8 @@ interface SecurePaymentCardProps {
   plan: PlanType;
   priceBeforeDiscount: number;
   onDiscountChange: (discount: number, code: string) => void;
+  /** Coupon applied externally (e.g. popup auto-apply) — syncs into internal state */
+  externalApplied?: { code: string; discount: number } | null;
   // Subscription-specific params for lazy backend call
   subscriptionParams?: SubscriptionParams;
 }
@@ -229,6 +245,7 @@ function SecurePaymentCard({
   plan,
   priceBeforeDiscount,
   onDiscountChange,
+  externalApplied,
   subscriptionParams,
 }: SecurePaymentCardProps) {
   const isSubscription = plan === "subscription";
@@ -252,9 +269,9 @@ function SecurePaymentCard({
   // True once CardNumberElement fires onReady — keeps the overlay visible until Stripe is interactive
   const [elementReady, setElementReady] = useState(false);
 
-  // Sync elementsOptions on every clientSecret / plan change.
-  // No !elementsOptions guard — stale secrets are now cleared in page.tsx before re-fetch,
-  // so this effect correctly drives null (loading) → options (mount fresh Elements).
+  // Sync elementsOptions when clientSecret first arrives (null → options) or plan changes.
+  // stripeClientSecret is immutable per Stripe PI — it never changes after the initial fetch,
+  // so this effect only fires once for one-time payments and Elements stays mounted thereafter.
   useEffect(() => {
     setElementReady(false);
     if (isSubscription) {
@@ -274,6 +291,18 @@ function SecurePaymentCard({
     setAppliedCouponState(discount > 0 && code ? { code, discount } : null);
     onDiscountChange(discount, code);
   };
+
+  // Sync coupon applied externally (e.g. popup auto-apply from page.tsx).
+  // Guard by code string so re-renders that preserve the same coupon are no-ops.
+  useEffect(() => {
+    const extCode = externalApplied?.code ?? "";
+    const curCode = appliedCouponState?.code ?? "";
+    if (extCode === curCode) return;
+    setAppliedCouponState(externalApplied ?? null);
+    setAppliedCouponCode(extCode);
+    onDiscountChange(externalApplied?.discount ?? 0, extCode);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalApplied]);
 
   const couponSlot = useMemo(() => (
     <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={handleDiscountChange} initialApplied={appliedCouponState} />
@@ -403,7 +432,7 @@ function SecurePaymentCard({
                     <i className="ri-loader-4-line animate-spin text-orange-500 text-xl"></i>
                   </div>
                 )}
-                <Elements key={stripeClientSecret} stripe={stripePromise} options={elementsOptions}>
+                <Elements stripe={stripePromise} options={elementsOptions}>
                   <StripePaymentForm
                     clientSecret={stripeClientSecret}
                     amount={totalPrice}
@@ -485,6 +514,7 @@ export default function Step3Checkout({
   petCount,
   onBeforeRedirect,
   onCouponApplied,
+  appliedCoupon,
 }: Step3CheckoutProps) {
   const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -535,6 +565,7 @@ export default function Step3Checkout({
       setCouponDiscount(discount);
       onCouponApplied?.(discount > 0 && code ? { code, discount } : null);
     },
+    externalApplied: appliedCoupon,
     subscriptionParams,
   };
 

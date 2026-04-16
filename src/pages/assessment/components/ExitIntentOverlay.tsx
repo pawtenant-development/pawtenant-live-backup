@@ -7,6 +7,8 @@ interface ExitIntentOverlayProps {
   currentStep: number;
   onStay: () => void;
   letterType?: "esa" | "psd";
+  /** Called when user clicks "Apply Code" on the Step 3 discount popup */
+  onApplyCode?: (code: string) => void;
 }
 
 const STEP_LABELS: Record<number, string> = {
@@ -61,11 +63,18 @@ export default function ExitIntentOverlay({
   currentStep,
   onStay,
   letterType = "esa",
+  onApplyCode,
 }: ExitIntentOverlayProps) {
   const BENEFITS = letterType === "psd" ? PSD_BENEFITS : ESA_BENEFITS;
   const [visible, setVisible] = useState(false);
-  // Track if already shown this tab-switch session — resets when overlay is closed
+  // Prevents double-show within a single tab-leave event
   const hasShownRef = useRef(false);
+  // Total tab leaves since last popup was shown — resets to 0 on each show
+  const leavesSinceLastShowRef = useRef(0);
+  // Whether the popup has ever been shown this session (first leave always shows)
+  const hasEverShownRef = useRef(false);
+  // Only show again after this many tab leaves (2nd show onward)
+  const RETRIGGER_AFTER_LEAVES = 3;
   const [leaving, setLeaving] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
 
@@ -73,46 +82,43 @@ export default function ExitIntentOverlay({
   const { mins, secs, expired } = useCountdown(STEP3_DISCOUNT_MINS, visible && isStep3);
 
   const show = useCallback(() => {
-    // Only show once per tab-switch event — reset after dismiss
     if (hasShownRef.current) return;
-    const sessionShown = sessionStorage.getItem(EXIT_INTENT_KEY);
-    // Allow re-triggering on subsequent tab switches within same session
-    // but only once per tab-switch event (not continuously)
     hasShownRef.current = true;
-    sessionStorage.setItem(EXIT_INTENT_KEY, "true");
+    hasEverShownRef.current = true;
+    leavesSinceLastShowRef.current = 0; // reset counter after showing
     setVisible(true);
   }, []);
 
   useEffect(() => {
     let cooldown: ReturnType<typeof setTimeout> | null = null;
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) return;
-      // User returned from another tab — reset hasShownRef after cooldown
-      // This means the popup can show again if they switch tabs multiple times
-      // but only once per tab-switch (not on every render)
-      if (cooldown) clearTimeout(cooldown);
-      cooldown = setTimeout(() => {
-        hasShownRef.current = false;
-      }, 500);
+    const handleHidden = () => {
+      if (!document.hidden) return;
+      leavesSinceLastShowRef.current += 1;
+      const isFirst = !hasEverShownRef.current;
+      const isNth   = leavesSinceLastShowRef.current >= RETRIGGER_AFTER_LEAVES;
+      if (isFirst || isNth) show();
     };
 
-    const handleHidden = () => {
-      if (document.hidden) show();
+    const handleReturn = () => {
+      if (document.hidden) return;
+      // After returning, allow the next qualifying leave to re-trigger
+      if (cooldown) clearTimeout(cooldown);
+      cooldown = setTimeout(() => { hasShownRef.current = false; }, 500);
     };
 
     document.addEventListener("visibilitychange", handleHidden);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleReturn);
     return () => {
       document.removeEventListener("visibilitychange", handleHidden);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleReturn);
       if (cooldown) clearTimeout(cooldown);
     };
   }, [show]);
 
   const handleStay = () => {
     setVisible(false);
-    hasShownRef.current = false; // Reset so it can show again on next tab switch
+    hasShownRef.current = false;
     onStay();
   };
 
@@ -120,7 +126,7 @@ export default function ExitIntentOverlay({
     setLeaving(true);
     setTimeout(() => {
       setVisible(false);
-      hasShownRef.current = false; // Reset so it can show again on next tab switch
+      hasShownRef.current = false;
     }, 300);
   };
 
@@ -144,8 +150,12 @@ export default function ExitIntentOverlay({
       <div
         className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ${leaving ? "opacity-0" : "opacity-100"}`}
         style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
+        onClick={handleLeave}
       >
-        <div className={`bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transition-all duration-300 ${leaving ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}>
+        <div
+          className={`bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transition-all duration-300 ${leaving ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Top gradient bar */}
           <div className="h-1.5 bg-gradient-to-r from-orange-400 via-red-400 to-orange-500" />
 
@@ -219,7 +229,10 @@ export default function ExitIntentOverlay({
             {/* CTAs */}
             <button
               type="button"
-              onClick={handleStay}
+              onClick={() => {
+                if (!expired && onApplyCode) onApplyCode(STEP3_DISCOUNT_CODE);
+                handleStay();
+              }}
               className="whitespace-nowrap w-full py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-sm rounded-xl transition-colors cursor-pointer mb-2.5 flex items-center justify-center gap-2"
             >
               <i className="ri-coupon-3-line text-base"></i>
@@ -243,8 +256,12 @@ export default function ExitIntentOverlay({
     <div
       className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ${leaving ? "opacity-0" : "opacity-100"}`}
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
+      onClick={handleLeave}
     >
-      <div className={`bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transition-all duration-300 ${leaving ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}>
+      <div
+        className={`bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transition-all duration-300 ${leaving ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="h-1.5 bg-gradient-to-r from-orange-400 to-amber-400" />
 
         <div className="bg-gradient-to-br from-orange-50 to-amber-50 px-6 py-6 text-center border-b border-orange-100">
