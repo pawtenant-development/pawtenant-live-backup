@@ -721,11 +721,11 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             <div className="mb-4">
               <div className="flex items-center justify-between text-[10px] text-gray-400 mb-1">
                 <span>Active rate</span>
-                <span className="font-bold text-[#1a5c4f]">{Math.round((stats.activeProviders / doctorContacts.length) * 100)}%</span>
+                <span className="font-bold text-[#3b6ea5]">{Math.round((stats.activeProviders / doctorContacts.length) * 100)}%</span>
               </div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#1a5c4f] rounded-full transition-all"
+                  className="h-full bg-[#3b6ea5] rounded-full transition-all"
                   style={{ width: `${Math.round((stats.activeProviders / doctorContacts.length) * 100)}%` }}
                 ></div>
               </div>
@@ -740,10 +740,10 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             {doctorContacts.map(d => (
               <div key={d.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 transition-colors">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${d.is_active !== false ? "bg-[#1a5c4f]" : "bg-red-400"}`}></div>
+                  <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${d.is_active !== false ? "bg-[#3b6ea5]" : "bg-red-400"}`}></div>
                   <span className="text-xs font-semibold text-gray-800 truncate">{d.full_name}</span>
                 </div>
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${d.is_active !== false ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-50 text-red-400"}`}>
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${d.is_active !== false ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-50 text-red-400"}`}>
                   {d.is_active !== false ? "Active" : "Off"}
                 </span>
               </div>
@@ -760,7 +760,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             <p className="text-[10px] text-gray-400 mt-0.5">Latest {recentActivity.length} orders &amp; leads</p>
           </div>
           <button type="button" onClick={() => onTabChange("orders", { statusFilter: "all" })}
-            className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#f0faf7] border border-[#b8ddd5] text-[#1a5c4f] text-[10px] font-bold rounded-lg hover:bg-[#e0f2ec] cursor-pointer transition-colors">
+            className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#e8f0f9] border border-[#b8cce4] text-[#3b6ea5] text-[10px] font-bold rounded-lg hover:bg-[#e0f2ec] cursor-pointer transition-colors">
             <i className="ri-arrow-right-line"></i>View All
           </button>
         </div>
@@ -781,8 +781,8 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             return (
               <div key={order.id} className="grid grid-cols-1 md:grid-cols-[1fr_130px_80px_140px_120px_70px] gap-1.5 md:gap-3 px-5 py-3 items-center hover:bg-gray-50/60 transition-colors cursor-default">
                 <div className="min-w-0 flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-[#f0faf7] border border-[#b8ddd5] flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] font-extrabold text-[#1a5c4f]">
+                  <div className="w-7 h-7 rounded-full bg-[#e8f0f9] border border-[#b8cce4] flex items-center justify-center flex-shrink-0">
+                    <span className="text-[10px] font-extrabold text-[#3b6ea5]">
                       {(order.first_name?.[0] ?? order.email[0]).toUpperCase()}
                     </span>
                   </div>
@@ -800,7 +800,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
                 </div>
                 <div className="hidden md:block">
                   {order.doctor_name ? (
-                    <p className="text-[10px] font-semibold text-[#1a5c4f] truncate flex items-center gap-1">
+                    <p className="text-[10px] font-semibold text-[#3b6ea5] truncate flex items-center gap-1">
                       <i className="ri-user-heart-line flex-shrink-0"></i>{order.doctor_name}
                     </p>
                   ) : (

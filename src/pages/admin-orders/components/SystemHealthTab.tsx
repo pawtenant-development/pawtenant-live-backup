@@ -51,7 +51,7 @@ interface HealthLog {
 }
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  infrastructure: { label: "Infrastructure",    icon: "ri-server-line",          color: "text-[#1a5c4f]"  },
+  infrastructure: { label: "Infrastructure",    icon: "ri-server-line",          color: "text-[#3b6ea5]"  },
   payments:       { label: "Payments",          icon: "ri-bank-card-line",       color: "text-violet-600" },
   communications: { label: "Communications",   icon: "ri-message-3-line",       color: "text-sky-600"    },
   crm:            { label: "CRM",              icon: "ri-contacts-line",        color: "text-amber-600"  },
@@ -60,7 +60,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: string; color: stri
 };
 
 const STATUS_CONFIG = {
-  pass:    { icon: "ri-checkbox-circle-fill",  color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7]",  border: "border-[#b8ddd5]",  label: "Pass"    },
+  pass:    { icon: "ri-checkbox-circle-fill",  color: "text-[#3b6ea5]",   bg: "bg-[#e8f0f9]",  border: "border-[#b8cce4]",  label: "Pass"    },
   warn:    { icon: "ri-error-warning-fill",    color: "text-amber-600",   bg: "bg-amber-50",   border: "border-amber-200",  label: "Warning" },
   fail:    { icon: "ri-close-circle-fill",     color: "text-red-500",     bg: "bg-red-50",     border: "border-red-200",    label: "Fail"    },
   unknown: { icon: "ri-question-line",         color: "text-gray-400",    bg: "bg-gray-50",    border: "border-gray-200",   label: "Unknown" },
@@ -85,7 +85,7 @@ function fmtTime(ts: string): string {
 function OverallBadge({ status }: { status: HealthLog["overall_status"] }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.unknown;
   const extra: Record<string, string> = {
-    pass: "bg-[#1a5c4f] text-white",
+    pass: "bg-[#3b6ea5] text-white",
     warn: "bg-amber-500 text-white",
     fail: "bg-red-500 text-white",
     unknown: "bg-gray-200 text-gray-600",
@@ -420,7 +420,7 @@ export default function SystemHealthTab() {
             type="button"
             onClick={runAuthScan}
             disabled={authScanLoading}
-            className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors"
+            className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-60 cursor-pointer transition-colors"
           >
             {authScanLoading
               ? <><i className="ri-loader-4-line animate-spin"></i>Scanning...</>
@@ -441,7 +441,7 @@ export default function SystemHealthTab() {
             <div className="grid grid-cols-3 gap-3 mb-4">
               {[
                 { label: "Total Auth Users", value: authScanResult.total_auth_users, color: "text-gray-700", bg: "bg-gray-50" },
-                { label: "Matched to Profile", value: authScanResult.total_auth_users - authScanResult.orphans.length, color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]" },
+                { label: "Matched to Profile", value: authScanResult.total_auth_users - authScanResult.orphans.length, color: "text-[#3b6ea5]", bg: "bg-[#e8f0f9]" },
                 { label: "Orphaned (No Profile)", value: authScanResult.orphans.length, color: authScanResult.orphans.length > 0 ? "text-red-600" : "text-gray-400", bg: authScanResult.orphans.length > 0 ? "bg-red-50" : "bg-gray-50" },
               ].map(s => (
                 <div key={s.label} className={`${s.bg} rounded-xl border border-gray-200 px-4 py-3 text-center`}>
@@ -452,11 +452,11 @@ export default function SystemHealthTab() {
             </div>
 
             {authScanResult.orphans.length === 0 ? (
-              <div className="flex items-center gap-3 px-4 py-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
-                <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-lg flex-shrink-0"></i>
+              <div className="flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
+                <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-lg flex-shrink-0"></i>
                 <div>
-                  <p className="text-sm font-bold text-[#1a5c4f]">All clean — no orphaned accounts found</p>
-                  <p className="text-xs text-[#1a5c4f]/70 mt-0.5">Every auth user has a matching profile. Scanned {authScanResult.scannedAt.toLocaleTimeString()}</p>
+                  <p className="text-sm font-bold text-[#3b6ea5]">All clean — no orphaned accounts found</p>
+                  <p className="text-xs text-[#3b6ea5]/70 mt-0.5">Every auth user has a matching profile. Scanned {authScanResult.scannedAt.toLocaleTimeString()}</p>
                 </div>
               </div>
             ) : (
@@ -504,7 +504,7 @@ export default function SystemHealthTab() {
                           </div>
                         </div>
                         {result ? (
-                          <span className={`text-xs font-bold flex items-center gap-1 ${result.ok ? "text-[#1a5c4f]" : "text-red-600"}`}>
+                          <span className={`text-xs font-bold flex items-center gap-1 ${result.ok ? "text-[#3b6ea5]" : "text-red-600"}`}>
                             <i className={result.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                             {result.ok ? "Deleted" : result.msg}
                           </span>
@@ -545,8 +545,8 @@ export default function SystemHealthTab() {
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
-              <i className="ri-mail-send-line text-[#1a5c4f] text-base"></i>
+            <div className="w-9 h-9 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
+              <i className="ri-mail-send-line text-[#3b6ea5] text-base"></i>
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-gray-900">Sequence Results</h3>
@@ -577,7 +577,7 @@ export default function SystemHealthTab() {
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Last 24 Hours</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: "Emails Sent", value: seqStats.emails_24h, icon: "ri-mail-line", color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]" },
+                  { label: "Emails Sent", value: seqStats.emails_24h, icon: "ri-mail-line", color: "text-[#3b6ea5]", bg: "bg-[#e8f0f9]" },
                   { label: "SMS Sent", value: seqStats.sms_24h, icon: "ri-message-2-line", color: "text-sky-600", bg: "bg-sky-50" },
                   { label: "Step 1 (30min)", value: seqStats.step1_count, icon: "ri-time-line", color: "text-gray-600", bg: "bg-gray-50" },
                   { label: "Step 2 (24h)", value: seqStats.step2_count, icon: "ri-calendar-line", color: "text-amber-600", bg: "bg-amber-50" },
@@ -600,7 +600,7 @@ export default function SystemHealthTab() {
                 {[
                   { label: "Step 3 (3-Day)", value: seqStats.step3_count, icon: "ri-gift-line", color: "text-violet-600", bg: "bg-violet-50" },
                   { label: "Active Leads", value: seqStats.active_leads, icon: "ri-user-follow-line", color: "text-orange-600", bg: "bg-orange-50" },
-                  { label: "Converted", value: seqStats.converted_leads, icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]" },
+                  { label: "Converted", value: seqStats.converted_leads, icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]", bg: "bg-[#e8f0f9]" },
                   { label: "Opted Out", value: seqStats.opted_out_total, icon: "ri-mail-forbid-line", color: "text-red-500", bg: "bg-red-50" },
                 ].map(s => (
                   <div key={s.label} className={`${s.bg} rounded-xl border border-gray-200 p-4`}>
@@ -616,13 +616,13 @@ export default function SystemHealthTab() {
 
             {/* Conversion rate callout */}
             {seqStats.converted_leads > 0 && (seqStats.converted_leads + seqStats.active_leads + seqStats.opted_out_total) > 0 && (
-              <div className="flex items-center gap-3 px-4 py-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
-                <i className="ri-line-chart-line text-[#1a5c4f] text-lg flex-shrink-0"></i>
+              <div className="flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
+                <i className="ri-line-chart-line text-[#3b6ea5] text-lg flex-shrink-0"></i>
                 <div>
-                  <p className="text-sm font-bold text-[#1a5c4f]">
+                  <p className="text-sm font-bold text-[#3b6ea5]">
                     {Math.round((seqStats.converted_leads / (seqStats.converted_leads + seqStats.active_leads + seqStats.opted_out_total)) * 100)}% conversion rate
                   </p>
-                  <p className="text-xs text-[#1a5c4f]/70 mt-0.5">
+                  <p className="text-xs text-[#3b6ea5]/70 mt-0.5">
                     {seqStats.converted_leads} leads converted after receiving at least one sequence email
                   </p>
                 </div>
@@ -706,7 +706,7 @@ export default function SystemHealthTab() {
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 {clearMsg && (
-                  <span className={`text-xs font-semibold flex items-center gap-1 ${clearMsg.ok ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                  <span className={`text-xs font-semibold flex items-center gap-1 ${clearMsg.ok ? "text-[#3b6ea5]" : "text-red-500"}`}>
                     <i className={clearMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                     {clearMsg.text}
                   </span>
@@ -776,8 +776,8 @@ export default function SystemHealthTab() {
               </div>
             ) : filtered.length === 0 ? (
               <div className="px-5 py-12 text-center">
-                <div className="w-12 h-12 flex items-center justify-center bg-[#f0faf7] rounded-full mx-auto mb-3">
-                  <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-xl"></i>
+                <div className="w-12 h-12 flex items-center justify-center bg-[#e8f0f9] rounded-full mx-auto mb-3">
+                  <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-xl"></i>
                 </div>
                 <p className="text-sm font-bold text-gray-700">No errors recorded</p>
                 <p className="text-xs text-gray-400 mt-1">
@@ -870,7 +870,7 @@ export default function SystemHealthTab() {
           </div>
           <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
             {sheetsSyncMsg && (
-              <span className={`text-xs font-semibold flex items-center gap-1.5 ${sheetsSyncMsg.ok ? "text-[#1a5c4f]" : "text-red-500"}`}>
+              <span className={`text-xs font-semibold flex items-center gap-1.5 ${sheetsSyncMsg.ok ? "text-[#3b6ea5]" : "text-red-500"}`}>
                 <i className={sheetsSyncMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                 {sheetsSyncMsg.text}
               </span>
@@ -903,7 +903,7 @@ export default function SystemHealthTab() {
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-1">Auto-monitoring</p>
+          <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-1">Auto-monitoring</p>
           <h2 className="text-xl font-extrabold text-gray-900">System Health</h2>
           <p className="text-xs text-gray-400 mt-0.5">
             Checks run automatically every 3 hours · All portals, automations &amp; integrations
@@ -911,7 +911,7 @@ export default function SystemHealthTab() {
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           {runMsg && (
-            <span className={`text-sm font-semibold flex items-center gap-1.5 ${runMsg.includes("complete") ? "text-[#1a5c4f]" : "text-red-500"}`}>
+            <span className={`text-sm font-semibold flex items-center gap-1.5 ${runMsg.includes("complete") ? "text-[#3b6ea5]" : "text-red-500"}`}>
               <i className={runMsg.includes("complete") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
               {runMsg}
             </span>
@@ -920,7 +920,7 @@ export default function SystemHealthTab() {
             type="button"
             onClick={runCheck}
             disabled={running}
-            className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors"
+            className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-60 cursor-pointer transition-colors"
           >
             {running
               ? <><i className="ri-loader-4-line animate-spin"></i>Running checks...</>
@@ -933,7 +933,7 @@ export default function SystemHealthTab() {
       {loadingLog ? (
         <div className="flex items-center justify-center py-32">
           <div className="text-center">
-            <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f] block mb-3"></i>
+            <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
             <p className="text-sm text-gray-500">Loading health data...</p>
           </div>
         </div>
@@ -948,7 +948,7 @@ export default function SystemHealthTab() {
             type="button"
             onClick={runCheck}
             disabled={running}
-            className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors"
+            className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors"
           >
             <i className="ri-play-circle-line"></i>Run First Check
           </button>
@@ -957,7 +957,7 @@ export default function SystemHealthTab() {
         <>
           {/* Overall status banner */}
           <div className={`rounded-2xl border-2 p-5 flex items-center justify-between gap-4 flex-wrap ${
-            latestLog.overall_status === "pass" ? "bg-[#f0faf7] border-[#b8ddd5]" :
+            latestLog.overall_status === "pass" ? "bg-[#e8f0f9] border-[#b8cce4]" :
             latestLog.overall_status === "warn" ? "bg-amber-50 border-amber-300" :
             latestLog.overall_status === "fail" ? "bg-red-50 border-red-300" :
             "bg-gray-50 border-gray-200"
@@ -974,7 +974,7 @@ export default function SystemHealthTab() {
                 <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
                   <i className="ri-time-line"></i>
                   Last checked {fmtRelative(latestLog.checked_at)} · {fmtTime(latestLog.checked_at)}
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${latestLog.triggered_by === "cron" ? "bg-gray-100 text-gray-500" : "bg-[#e8f5f1] text-[#1a5c4f]"}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${latestLog.triggered_by === "cron" ? "bg-gray-100 text-gray-500" : "bg-[#e8f0f9] text-[#3b6ea5]"}`}>
                     {latestLog.triggered_by === "cron" ? "Auto" : "Manual"}
                   </span>
                 </p>
@@ -991,7 +991,7 @@ export default function SystemHealthTab() {
                   <i className="ri-error-warning-fill"></i>{warnCount(latestLog.checks)} Warnings
                 </span>
               )}
-              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-[#e8f5f1] text-[#1a5c4f] rounded-lg font-bold">
+              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-[#e8f0f9] text-[#3b6ea5] rounded-lg font-bold">
                 <i className="ri-checkbox-circle-fill"></i>{latestLog.checks.filter(c => c.status === "pass").length} Passing
               </span>
             </div>
@@ -1002,7 +1002,7 @@ export default function SystemHealthTab() {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
                 { label: "Total Orders",     value: latestLog.order_health.totalOrders,           icon: "ri-file-list-3-line",   color: "text-gray-700",   bg: "bg-white"         },
-                { label: "Paid Orders",       value: latestLog.order_health.totalPaid,             icon: "ri-bank-card-line",    color: "text-[#1a5c4f]",  bg: "bg-[#f0faf7]"    },
+                { label: "Paid Orders",       value: latestLog.order_health.totalPaid,             icon: "ri-bank-card-line",    color: "text-[#3b6ea5]",  bg: "bg-[#e8f0f9]"    },
                 { label: "Completed",         value: latestLog.order_health.totalCompleted,        icon: "ri-checkbox-circle-line", color: "text-emerald-600", bg: "bg-emerald-50"  },
                 { label: "Unassigned 3h+",   value: latestLog.order_health.paidUnassignedOver3h,  icon: "ri-alarm-warning-line", color: "text-amber-600",  bg: "bg-amber-50"     },
                 { label: "Unassigned 24h+",  value: latestLog.order_health.paidUnassignedOver24h, icon: "ri-error-warning-line", color: "text-red-500",    bg: "bg-red-50"       },
@@ -1054,7 +1054,7 @@ export default function SystemHealthTab() {
                         </span>
                       )}
                       {catFails === 0 && catWarns === 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded-full text-xs font-bold">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded-full text-xs font-bold">
                           <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>All good
                         </span>
                       )}
@@ -1120,14 +1120,14 @@ export default function SystemHealthTab() {
               return (
                 <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors flex-wrap">
                   <div className="flex items-center gap-3">
-                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${log.overall_status === "pass" ? "bg-[#1a5c4f]" : log.overall_status === "warn" ? "bg-amber-400" : "bg-red-500"}`}></div>
+                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${log.overall_status === "pass" ? "bg-[#3b6ea5]" : log.overall_status === "warn" ? "bg-amber-400" : "bg-red-500"}`}></div>
                     <div>
                       <div className="flex items-center gap-2">
                         <span className={`text-xs font-extrabold ${cfg.color}`}>
                           {log.overall_status === "pass" ? "All systems OK" : log.overall_status === "warn" ? "Warnings" : "Failures"}
                         </span>
                         {isLatest && (
-                          <span className="text-xs px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded-full font-bold">Latest</span>
+                          <span className="text-xs px-1.5 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded-full font-bold">Latest</span>
                         )}
                         <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${log.triggered_by === "cron" ? "bg-gray-100 text-gray-500" : "bg-sky-50 text-sky-600"}`}>
                           {log.triggered_by === "cron" ? "Auto" : "Manual"}
@@ -1139,7 +1139,7 @@ export default function SystemHealthTab() {
                   <div className="flex items-center gap-2 text-xs">
                     {fails > 0 && <span className="flex items-center gap-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg font-bold"><i className="ri-close-circle-fill" style={{ fontSize: "9px" }}></i>{fails} fail{fails !== 1 ? "s" : ""}</span>}
                     {warns > 0 && <span className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-600 rounded-lg font-bold"><i className="ri-error-warning-fill" style={{ fontSize: "9px" }}></i>{warns} warn{warns !== 1 ? "s" : ""}</span>}
-                    {fails === 0 && warns === 0 && <span className="flex items-center gap-1 px-2 py-1 bg-[#f0faf7] text-[#1a5c4f] rounded-lg font-bold"><i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>Clean</span>}
+                    {fails === 0 && warns === 0 && <span className="flex items-center gap-1 px-2 py-1 bg-[#e8f0f9] text-[#3b6ea5] rounded-lg font-bold"><i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>Clean</span>}
                     <span className="text-gray-300">{log.checks.length} checks</span>
                   </div>
                 </div>

@@ -55,7 +55,7 @@ const ACTION_COLORS: Record<string, { bg: string; icon: string; badge: string }>
   broadcast: { bg: "bg-violet-100", icon: "text-violet-600", badge: "bg-violet-100 text-violet-700" },
   bulk_email: { bg: "bg-emerald-100", icon: "text-emerald-600", badge: "bg-emerald-100 text-emerald-700" },
   refund: { bg: "bg-orange-100", icon: "text-orange-600", badge: "bg-orange-100 text-orange-700" },
-  orders_tab_access: { bg: "bg-[#e8f5f1]", icon: "text-[#1a5c4f]", badge: "bg-[#e8f5f1] text-[#1a5c4f]" },
+  orders_tab_access: { bg: "bg-[#e8f0f9]", icon: "text-[#3b6ea5]", badge: "bg-[#e8f0f9] text-[#3b6ea5]" },
 };
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
@@ -157,8 +157,8 @@ export default function ApprovalRequestModal({
           {submitted ? (
             /* ── Success state ── */
             <div className="text-center py-6 space-y-4">
-              <div className="w-16 h-16 flex items-center justify-center bg-[#f0faf7] rounded-full mx-auto">
-                <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-3xl"></i>
+              <div className="w-16 h-16 flex items-center justify-center bg-[#e8f0f9] rounded-full mx-auto">
+                <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-3xl"></i>
               </div>
               <div>
                 <p className="text-base font-extrabold text-gray-900">Request Submitted!</p>
@@ -166,22 +166,22 @@ export default function ApprovalRequestModal({
                   Your request has been sent to the Owner and Admin Manager for review. They&apos;ve also been notified by email. You&apos;ll be notified once it&apos;s approved or rejected.
                 </p>
               </div>
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 text-left space-y-1.5">
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 text-left space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <i className="ri-time-line text-[#1a5c4f] text-xs flex-shrink-0"></i>
-                  <p className="text-xs text-[#1a5c4f] font-semibold">Pending review by Owner / Admin Manager</p>
+                  <i className="ri-time-line text-[#3b6ea5] text-xs flex-shrink-0"></i>
+                  <p className="text-xs text-[#3b6ea5] font-semibold">Pending review by Owner / Admin Manager</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <i className="ri-mail-send-line text-[#1a5c4f] text-xs flex-shrink-0"></i>
-                  <p className="text-xs text-[#1a5c4f]">Email notification sent to all owners &amp; admins</p>
+                  <i className="ri-mail-send-line text-[#3b6ea5] text-xs flex-shrink-0"></i>
+                  <p className="text-xs text-[#3b6ea5]">Email notification sent to all owners &amp; admins</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <i className="ri-notification-3-line text-[#1a5c4f] text-xs flex-shrink-0"></i>
-                  <p className="text-xs text-[#1a5c4f]">They&apos;ll also see it in their Approvals inbox (bell icon)</p>
+                  <i className="ri-notification-3-line text-[#3b6ea5] text-xs flex-shrink-0"></i>
+                  <p className="text-xs text-[#3b6ea5]">They&apos;ll also see it in their Approvals inbox (bell icon)</p>
                 </div>
               </div>
               <button type="button" onClick={onClose}
-                className="whitespace-nowrap px-6 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
+                className="whitespace-nowrap px-6 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors">
                 Got it — Close
               </button>
             </div>
@@ -293,7 +293,7 @@ export default function ApprovalRequestModal({
                   onChange={(e) => setNote(e.target.value.slice(0, 300))}
                   rows={3}
                   placeholder="e.g. Customer requested urgent refund, or this is a test batch..."
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] resize-none"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5] resize-none"
                 />
                 <p className="text-xs text-gray-400 text-right mt-0.5">{note.length}/300</p>
               </div>
@@ -320,7 +320,7 @@ export default function ApprovalRequestModal({
                   Cancel
                 </button>
                 <button type="button" onClick={handleSubmit} disabled={submitting}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                   {submitting
                     ? <><i className="ri-loader-4-line animate-spin"></i>Submitting...</>
                     : <><i className="ri-send-plane-line"></i>Submit for Approval</>

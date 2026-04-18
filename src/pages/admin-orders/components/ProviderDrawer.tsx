@@ -53,7 +53,7 @@ const US_STATES_ABBR: { name: string; abbr: string }[] = [
 ];
 
 const AVAIL_CONFIG: Record<AvailabilityStatus, { label: string; desc: string; icon: string; badge: string; btn: string }> = {
-  active:      { label: "Active",       desc: "Accepting new assignments",          icon: "ri-checkbox-circle-fill",   badge: "bg-[#e8f5f1] text-[#1a5c4f] border-[#b8ddd5]",       btn: "border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f]" },
+  active:      { label: "Active",       desc: "Accepting new assignments",          icon: "ri-checkbox-circle-fill",   badge: "bg-[#e8f5f1] text-[#3b6ea5] border-[#b8cce4]",       btn: "border-[#b8cce4] bg-[#e8f0f9] text-[#3b6ea5]" },
   at_capacity: { label: "At Capacity",  desc: "No new assignments — still visible", icon: "ri-time-line",              badge: "bg-amber-50 text-amber-700 border-amber-200",          btn: "border-amber-200 bg-amber-50 text-amber-700" },
   inactive:    { label: "Inactive",     desc: "Hidden from website + assignments",  icon: "ri-forbid-line",            badge: "bg-gray-100 text-gray-500 border-gray-200",            btn: "border-gray-200 bg-gray-50 text-gray-500" },
 };
@@ -458,11 +458,11 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
           <>
             {/* Header */}
             <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-100 flex-shrink-0">
-              <div className={`w-11 h-11 rounded-full flex-shrink-0 overflow-hidden border-2 ${isActive ? "border-[#b8ddd5]" : "border-gray-200"}`}>
+              <div className={`w-11 h-11 rounded-full flex-shrink-0 overflow-hidden border-2 ${isActive ? "border-[#b8cce4]" : "border-gray-200"}`}>
                 {currentPhotoUrl ? (
                   <img src={currentPhotoUrl} alt={doc.name} className="w-full h-full object-cover object-top" />
                 ) : (
-                  <div className={`w-full h-full flex items-center justify-center text-sm font-extrabold ${isActive ? "bg-[#e8f5f1] text-[#1a5c4f]" : "bg-gray-100 text-gray-400"}`}>{initials}</div>
+                  <div className={`w-full h-full flex items-center justify-center text-sm font-extrabold ${isActive ? "bg-[#e8f5f1] text-[#3b6ea5]" : "bg-gray-100 text-gray-400"}`}>{initials}</div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -488,12 +488,12 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer capitalize ${activeTab === tab ? "border-[#1a5c4f] text-[#1a5c4f]" : "border-transparent text-gray-400 hover:text-gray-600"}`}
+                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer capitalize ${activeTab === tab ? "border-[#3b6ea5] text-[#3b6ea5]" : "border-transparent text-gray-400 hover:text-gray-600"}`}
                 >
                   <i className={tab === "overview" ? "ri-user-line" : tab === "notes" ? "ri-sticky-note-line" : "ri-eye-line"}></i>
                   {tab === "overview" ? "Overview" : tab === "notes" ? "Admin Notes" : "View Portal"}
                   {tab === "notes" && providerNotes.length > 0 && (
-                    <span className="px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] text-xs font-extrabold rounded-full">{providerNotes.length}</span>
+                    <span className="px-1.5 py-0.5 bg-[#e8f5f1] text-[#3b6ea5] text-xs font-extrabold rounded-full">{providerNotes.length}</span>
                   )}
                 </button>
               ))}
@@ -501,7 +501,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
 
             {/* Toast */}
             {toast && (
-              <div className="mx-6 mt-3 flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl text-xs text-[#1a5c4f] font-semibold">
+              <div className="mx-6 mt-3 flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl text-xs text-[#3b6ea5] font-semibold">
                 <i className="ri-checkbox-circle-fill flex-shrink-0"></i>{toast}
               </div>
             )}
@@ -515,7 +515,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Profile</p>
                     <button type="button" onClick={() => { setEditing((v) => !v); if (!editing) setPhotoPreview(form.photo_url || doc.profile?.photo_url || doc.contact?.photo_url || ""); }}
-                      className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${editing ? "bg-gray-100 border-gray-200 text-gray-600" : "border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ec]"}`}>
+                      className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${editing ? "bg-gray-100 border-gray-200 text-gray-600" : "border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#e0f2ec]"}`}>
                       <i className={editing ? "ri-close-line" : "ri-pencil-line"}></i>{editing ? "Cancel" : "Edit"}
                     </button>
                   </div>
@@ -525,7 +525,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Provider Headshot</label>
                         <div
-                          className={`relative border-2 border-dashed rounded-xl transition-colors cursor-pointer ${dragOver ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 hover:border-gray-300 bg-gray-50"}`}
+                          className={`relative border-2 border-dashed rounded-xl transition-colors cursor-pointer ${dragOver ? "border-[#3b6ea5] bg-[#e8f0f9]" : "border-gray-200 hover:border-gray-300 bg-gray-50"}`}
                           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                           onDragLeave={() => setDragOver(false)}
                           onDrop={handleDrop}
@@ -557,7 +557,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           <input ref={photoInputRef} type="file" accept="image/*" className="sr-only"
                             onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoFile(f); }} />
                         </div>
-                        {uploadingPhoto && <div className="mt-1.5 flex items-center gap-2 text-xs text-[#1a5c4f] font-semibold"><i className="ri-loader-4-line animate-spin"></i>Uploading...</div>}
+                        {uploadingPhoto && <div className="mt-1.5 flex items-center gap-2 text-xs text-[#3b6ea5] font-semibold"><i className="ri-loader-4-line animate-spin"></i>Uploading...</div>}
                       </div>
 
                       {[
@@ -570,7 +570,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           <input type={type} value={form[key as keyof typeof form]}
                             onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                             placeholder={placeholder}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                         </div>
                       ))}
 
@@ -583,13 +583,13 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         <input type="text" value={form.npi_number}
                           onChange={(e) => setForm((f) => ({ ...f, npi_number: e.target.value }))}
                           placeholder="e.g. 1234567890"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                       </div>
 
                       {/* State License Numbers — managed via Manage States */}
-                      <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-2">
-                        <i className="ri-information-line text-[#1a5c4f] text-sm flex-shrink-0 mt-0.5"></i>
-                        <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+                      <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-2">
+                        <i className="ri-information-line text-[#3b6ea5] text-sm flex-shrink-0 mt-0.5"></i>
+                        <p className="text-xs text-[#3b6ea5]/80 leading-relaxed">
                           State license numbers are managed in <strong>Manage States</strong> — click the &quot;Manage States&quot; button below to add or update license numbers per state.
                         </p>
                       </div>
@@ -598,13 +598,13 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Bio <span className="font-normal text-gray-400">(shown to customers)</span></label>
                         <textarea value={form.bio} onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
                           placeholder="Short professional summary..." rows={3} maxLength={500}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] resize-none" />
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] resize-none" />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Internal Notes</label>
                         <input type="text" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                           placeholder="Quick admin-only note"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Per-Order Rate ($)</label>
@@ -613,11 +613,11 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           <input type="number" min="0" value={form.per_order_rate}
                             onChange={(e) => setForm((f) => ({ ...f, per_order_rate: e.target.value }))}
                             placeholder="e.g. 30"
-                            className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                            className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                         </div>
                       </div>
                       <button type="button" onClick={handleSaveEdit} disabled={saving || uploadingPhoto}
-                        className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                        className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                         {saving || uploadingPhoto ? <><i className="ri-loader-4-line animate-spin"></i>{uploadingPhoto ? "Uploading..." : "Saving..."}</> : <><i className="ri-save-line"></i>Save Changes</>}
                       </button>
                     </div>
@@ -687,9 +687,9 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                 {/* Licensed States */}
                 <div className="border-t border-gray-100 pt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Licensed States <span className="text-[#1a5c4f] font-extrabold ml-1">{states.length}</span></p>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Licensed States <span className="text-[#3b6ea5] font-extrabold ml-1">{states.length}</span></p>
                     <button type="button" onClick={() => onOpenStates(doc)}
-                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors">
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors">
                       <i className="ri-map-pin-add-line"></i>Manage States
                     </button>
                   </div>
@@ -699,7 +699,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                     <div className="flex flex-wrap gap-1">
                       {states.map((s) => {
                         const abbr = US_STATES_ABBR.find((u) => u.name === s)?.abbr ?? s;
-                        return <span key={s} className="px-2 py-0.5 bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5] rounded-full text-xs font-semibold">{abbr}</span>;
+                        return <span key={s} className="px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4] rounded-full text-xs font-semibold">{abbr}</span>;
                       })}
                     </div>
                   )}
@@ -710,22 +710,22 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Payout &amp; Workload</p>
                     <button type="button" onClick={() => { setRateOpen((v) => !v); setRateInput(currentRate != null ? String(currentRate) : ""); }}
-                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] text-xs font-bold rounded-lg hover:bg-[#e0f2ec] cursor-pointer transition-colors">
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] text-xs font-bold rounded-lg hover:bg-[#e0f2ec] cursor-pointer transition-colors">
                       <i className="ri-money-dollar-circle-line"></i>{currentRate != null ? `$${currentRate}/order` : "Set rate"}
                     </button>
                   </div>
                   {rateOpen && (
-                    <div className="mb-3 p-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
+                    <div className="mb-3 p-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1a5c4f] font-bold text-sm">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#3b6ea5] font-bold text-sm">$</span>
                           <input type="number" min="0" value={rateInput} onChange={(e) => setRateInput(e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter") handleSaveRate(); if (e.key === "Escape") setRateOpen(false); }}
                             placeholder="e.g. 30" autoFocus
-                            className="w-full pl-7 pr-3 py-2 border border-[#b8ddd5] rounded-lg text-sm font-bold focus:outline-none focus:border-[#1a5c4f] bg-white text-[#1a5c4f]" />
+                            className="w-full pl-7 pr-3 py-2 border border-[#b8cce4] rounded-lg text-sm font-bold focus:outline-none focus:border-[#3b6ea5] bg-white text-[#3b6ea5]" />
                         </div>
                         <button type="button" onClick={handleSaveRate} disabled={savingRate}
-                          className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer">
+                          className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer">
                           {savingRate ? <i className="ri-loader-4-line animate-spin"></i> : "Save"}
                         </button>
                         <button type="button" onClick={() => setRateOpen(false)} className="whitespace-nowrap text-xs text-gray-500 hover:text-gray-700 cursor-pointer px-2 py-2">Cancel</button>
@@ -735,8 +735,8 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   <div className="grid grid-cols-3 gap-2">
                     {[
                       { label: "Active Cases", value: doc.workload.active, color: "text-sky-600" },
-                      { label: "Completed", value: doc.workload.completed, color: "text-[#1a5c4f]" },
-                      { label: "Est. Earned", value: estimatedEarnings != null ? `$${estimatedEarnings}` : "—", color: "text-[#1a5c4f]" },
+                      { label: "Completed", value: doc.workload.completed, color: "text-[#3b6ea5]" },
+                      { label: "Est. Earned", value: estimatedEarnings != null ? `$${estimatedEarnings}` : "—", color: "text-[#3b6ea5]" },
                     ].map(({ label, value, color }) => (
                       <div key={label} className="bg-gray-50 rounded-xl border border-gray-100 p-3 text-center">
                         <p className={`text-lg font-extrabold ${color}`}>{value}</p>
@@ -750,7 +750,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         <span>Completion rate</span><span className="font-bold">{completionRate}%</span>
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div className="bg-[#1a5c4f] h-1.5 rounded-full" style={{ width: `${completionRate}%` }}></div>
+                        <div className="bg-[#3b6ea5] h-1.5 rounded-full" style={{ width: `${completionRate}%` }}></div>
                       </div>
                     </div>
                   )}
@@ -763,14 +763,14 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                     <div className="space-y-2">
                       <button type="button" onClick={handleResendInvite} disabled={resending}
                         className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 text-left hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50">
-                        <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-lg flex-shrink-0">
-                          <i className="ri-mail-send-line text-[#1a5c4f] text-sm"></i>
+                        <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0">
+                          <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-800">{resending ? "Sending invite..." : "Resend Portal Invite"}</p>
                           <p className="text-xs text-gray-400">Send a fresh account setup email</p>
                         </div>
-                        {resending && <i className="ri-loader-4-line animate-spin text-[#1a5c4f] flex-shrink-0"></i>}
+                        {resending && <i className="ri-loader-4-line animate-spin text-[#3b6ea5] flex-shrink-0"></i>}
                       </button>
 
                       <button type="button" onClick={handleCopyInviteLink} disabled={copyingLink}
@@ -864,26 +864,26 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         type="button"
                         onClick={handleCreatePortal}
                         disabled={creatingPortal}
-                        className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#b8ddd5] bg-[#f0faf7] text-left hover:bg-[#e0f2ec] cursor-pointer transition-colors disabled:opacity-50"
+                        className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#b8cce4] bg-[#e8f0f9] text-left hover:bg-[#e0f2ec] cursor-pointer transition-colors disabled:opacity-50"
                       >
-                        <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                        <div className="w-7 h-7 flex items-center justify-center bg-[#3b6ea5] rounded-lg flex-shrink-0">
                           <i className="ri-user-add-line text-white text-sm"></i>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#1a5c4f]">
+                          <p className="text-sm font-semibold text-[#3b6ea5]">
                             {creatingPortal ? "Creating portal account..." : "Create Portal Account"}
                           </p>
                           <p className="text-xs text-gray-400">Sends invite email &amp; activates provider login</p>
                         </div>
                         {creatingPortal
-                          ? <i className="ri-loader-4-line animate-spin text-[#1a5c4f] flex-shrink-0"></i>
-                          : <i className="ri-arrow-right-line text-[#1a5c4f] text-sm flex-shrink-0"></i>
+                          ? <i className="ri-loader-4-line animate-spin text-[#3b6ea5] flex-shrink-0"></i>
+                          : <i className="ri-arrow-right-line text-[#3b6ea5] text-sm flex-shrink-0"></i>
                         }
                       </button>
                       {createPortalMsg && (
-                        <div className={`px-4 py-3 rounded-xl border text-xs font-semibold ${createPortalMsg.success ? "bg-[#f0faf7] text-[#1a5c4f] border-[#b8ddd5]" : "bg-red-50 text-red-700 border-red-200"}`}>
+                        <div className={`px-4 py-3 rounded-xl border text-xs font-semibold ${createPortalMsg.success ? "bg-[#e8f0f9] text-[#3b6ea5] border-[#b8cce4]" : "bg-red-50 text-red-700 border-red-200"}`}>
                           <div className="flex items-start gap-2">
-                            <i className={`mt-0.5 flex-shrink-0 text-sm ${createPortalMsg.success ? "ri-checkbox-circle-fill text-[#1a5c4f]" : "ri-error-warning-line text-red-500"}`}></i>
+                            <i className={`mt-0.5 flex-shrink-0 text-sm ${createPortalMsg.success ? "ri-checkbox-circle-fill text-[#3b6ea5]" : "ri-error-warning-line text-red-500"}`}></i>
                             <p className="leading-relaxed">{createPortalMsg.text}</p>
                           </div>
                         </div>
@@ -949,7 +949,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                     placeholder="Enter note about this provider..."
                     rows={3}
                     maxLength={1000}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] resize-none bg-white"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] resize-none bg-white"
                   />
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-xs text-gray-400">{noteInput.length}/1000</span>
@@ -957,7 +957,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                       type="button"
                       onClick={handleSubmitNote}
                       disabled={submittingNote || !noteInput.trim()}
-                      className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+                      className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
                     >
                       {submittingNote ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-sticky-note-add-line"></i>Post Note</>}
                     </button>
@@ -966,11 +966,11 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
 
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">
-                    Notes History {providerNotes.length > 0 && <span className="text-[#1a5c4f] ml-1">{providerNotes.length}</span>}
+                    Notes History {providerNotes.length > 0 && <span className="text-[#3b6ea5] ml-1">{providerNotes.length}</span>}
                   </p>
                   {loadingNotes ? (
                     <div className="flex items-center justify-center py-10">
-                      <i className="ri-loader-4-line animate-spin text-[#1a5c4f] text-xl"></i>
+                      <i className="ri-loader-4-line animate-spin text-[#3b6ea5] text-xl"></i>
                     </div>
                   ) : providerNotes.length === 0 ? (
                     <div className="text-center py-10 border border-dashed border-gray-200 rounded-xl">
@@ -985,7 +985,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2">
                               <div className="w-6 h-6 flex items-center justify-center bg-[#e8f5f1] rounded-full">
-                                <i className="ri-admin-line text-[#1a5c4f] text-xs"></i>
+                                <i className="ri-admin-line text-[#3b6ea5] text-xs"></i>
                               </div>
                               <span className="text-xs font-semibold text-gray-700">{note.admin_name ?? "Admin"}</span>
                             </div>

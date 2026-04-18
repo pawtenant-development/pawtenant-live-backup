@@ -304,13 +304,13 @@ export default function PaymentsTab() {
           {data && (
             <button type="button" onClick={() => downloadCSV(data.charges, data.refunds, period)}
               className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
-              <i className="ri-download-2-line text-[#1a5c4f]"></i>Export CSV
+              <i className="ri-download-2-line text-[#3b6ea5]"></i>Export CSV
             </button>
           )}
           <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1">
             {(["7d", "30d", "90d"] as Period[]).map((p) => (
               <button key={p} type="button" onClick={() => setPeriod(p)}
-                className={`whitespace-nowrap px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${period === p ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+                className={`whitespace-nowrap px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${period === p ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-50"}`}>
                 {PERIOD_LABELS[p]}
               </button>
             ))}
@@ -321,7 +321,7 @@ export default function PaymentsTab() {
       {loading ? (
         <div className="flex items-center justify-center py-24">
           <div className="text-center">
-            <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f] block mb-3"></i>
+            <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
             <p className="text-sm text-gray-500">Loading Stripe data...</p>
           </div>
         </div>
@@ -339,7 +339,7 @@ export default function PaymentsTab() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             {[
               { label: "Gross Revenue", value: formatCurrency(data.summary.total_revenue), icon: "ri-money-dollar-circle-line", color: "text-emerald-600", sub: `${data.summary.charge_count} transactions` },
-              { label: "Net Revenue", value: formatCurrency(data.summary.net_revenue), icon: "ri-funds-line", color: "text-[#1a5c4f]", sub: "After refunds" },
+              { label: "Net Revenue", value: formatCurrency(data.summary.net_revenue), icon: "ri-funds-line", color: "text-[#3b6ea5]", sub: "After refunds" },
               { label: "Total Refunded", value: formatCurrency(data.summary.total_refunded), icon: "ri-refund-2-line", color: "text-orange-500", sub: `${data.summary.refund_count} refunds` },
               { label: "Available Balance", value: formatCurrency(data.summary.available_balance), icon: "ri-bank-line", color: "text-teal-600", sub: `${formatCurrency(data.summary.pending_balance)} pending` },
             ].map((s) => (
@@ -361,14 +361,14 @@ export default function PaymentsTab() {
             <div className="flex items-center justify-between p-3 border-b border-gray-100 bg-gray-50 flex-wrap gap-2">
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => setActiveSection("charges")}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeSection === "charges" ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-gray-100"}`}>
+                  className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeSection === "charges" ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-100"}`}>
                   <i className="ri-bank-card-line"></i>Charges
                   <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${activeSection === "charges" ? "bg-white/20 text-white" : "bg-gray-200 text-gray-600"}`}>
                     {data.charges.length}
                   </span>
                 </button>
                 <button type="button" onClick={() => setActiveSection("refunds")}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeSection === "refunds" ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-gray-100"}`}>
+                  className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeSection === "refunds" ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-100"}`}>
                   <i className="ri-refund-2-line"></i>Refunds
                   {data.refunds.length > 0 && (
                     <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${activeSection === "refunds" ? "bg-white/20 text-white" : "bg-orange-100 text-orange-600"}`}>
@@ -397,7 +397,7 @@ export default function PaymentsTab() {
                     <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
                     <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search customer, email, ID..."
-                      className="pl-7 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] w-44" />
+                      className="pl-7 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] w-44" />
                   </div>
                 </div>
               )}
@@ -406,7 +406,7 @@ export default function PaymentsTab() {
             {activeSection === "charges" && (
               <>
                 {bulkDeletePayMsg && (
-                  <div className="mx-4 mt-3 px-4 py-2.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl text-xs font-semibold text-[#1a5c4f] flex items-center gap-2">
+                  <div className="mx-4 mt-3 px-4 py-2.5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl text-xs font-semibold text-[#3b6ea5] flex items-center gap-2">
                     <i className="ri-checkbox-circle-fill"></i>{bulkDeletePayMsg}
                   </div>
                 )}
@@ -443,7 +443,7 @@ export default function PaymentsTab() {
                               const orderId = charge.payment_intent ? orderMap[charge.payment_intent] : undefined;
                               if (orderId) {
                                 return (
-                                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-full text-xs font-bold text-[#1a5c4f]">
+                                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-[#e8f0f9] border border-[#b8cce4] rounded-full text-xs font-bold text-[#3b6ea5]">
                                     <i className="ri-hashtag text-xs"></i>{orderId}
                                   </span>
                                 );
@@ -550,7 +550,7 @@ export default function PaymentsTab() {
                         {formatCurrency(d.revenue)}
                       </div>
                     )}
-                    <div className={`w-full rounded-t transition-all ${isToday ? "bg-[#1a5c4f]" : "bg-[#c3e8df]"} ${d.revenue === 0 ? "opacity-30" : ""}`}
+                    <div className={`w-full rounded-t transition-all ${isToday ? "bg-[#3b6ea5]" : "bg-[#b8cce4]"} ${d.revenue === 0 ? "opacity-30" : ""}`}
                       style={{ height: `${Math.max(heightPct, d.revenue > 0 ? 4 : 2)}px` }}>
                     </div>
                   </div>

@@ -28,7 +28,7 @@ const STATUS_COLOR: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700",
   in_review: "bg-sky-100 text-sky-700",
   approved: "bg-emerald-100 text-emerald-700",
-  letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
+  letter_sent: "bg-[#e8f0f9] text-[#3b6ea5]",
   patient_notified: "bg-violet-100 text-violet-700",
   unassigned: "bg-gray-100 text-gray-400",
 };
@@ -94,7 +94,7 @@ export default function OrderStatusLogModal({
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Status History</p>
+            <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-0.5">Status History</p>
             <h2 className="text-base font-extrabold text-gray-900">Order {confirmationId}</h2>
           </div>
           <button
@@ -110,7 +110,7 @@ export default function OrderStatusLogModal({
         <div className="px-6 py-5 max-h-[480px] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-10">
-              <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+              <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
             </div>
           ) : (
             <div className="relative">
@@ -120,8 +120,8 @@ export default function OrderStatusLogModal({
               <div className="space-y-4">
                 {/* Order created */}
                 <div className="flex gap-4 items-start">
-                  <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] border-2 border-[#1a5c4f] rounded-full flex-shrink-0 z-10">
-                    <i className="ri-file-add-line text-[#1a5c4f]" style={{ fontSize: "11px" }}></i>
+                  <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] border-2 border-[#3b6ea5] rounded-full flex-shrink-0 z-10">
+                    <i className="ri-file-add-line text-[#3b6ea5]" style={{ fontSize: "11px" }}></i>
                   </div>
                   <div className="pt-0.5 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -149,7 +149,7 @@ export default function OrderStatusLogModal({
                     const hasDoctorChange = log.old_doctor_status !== log.new_doctor_status;
                     return (
                       <div key={log.id} className="flex gap-4 items-start">
-                        <div className={`w-7 h-7 flex items-center justify-center rounded-full flex-shrink-0 z-10 border-2 ${idx === logs.length - 1 ? "bg-[#1a5c4f] border-[#1a5c4f]" : "bg-white border-gray-300"}`}>
+                        <div className={`w-7 h-7 flex items-center justify-center rounded-full flex-shrink-0 z-10 border-2 ${idx === logs.length - 1 ? "bg-[#3b6ea5] border-[#3b6ea5]" : "bg-white border-gray-300"}`}>
                           <i className={`ri-refresh-line ${idx === logs.length - 1 ? "text-white" : "text-gray-400"}`} style={{ fontSize: "11px" }}></i>
                         </div>
                         <div className="pt-0.5 flex-1 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">

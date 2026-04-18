@@ -29,7 +29,7 @@ interface DoctorProfile {
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700 border-amber-200",
-  paid: "bg-[#e8f5f1] text-[#1a5c4f] border-[#b8ddd5]",
+  paid: "bg-[#e8f5f1] text-[#3b6ea5] border-[#b8cce4]",
   cancelled: "bg-red-100 text-red-600 border-red-200",
 };
 
@@ -94,7 +94,7 @@ function EarningRow({
   };
 
   return (
-    <div className={`border rounded-xl overflow-hidden transition-colors ${earning.status === "paid" ? "border-[#b8ddd5] bg-[#f8fdfc]" : selected ? "border-amber-300 bg-amber-50/40" : "border-gray-200 bg-white"}`}>
+    <div className={`border rounded-xl overflow-hidden transition-colors ${earning.status === "paid" ? "border-[#b8cce4] bg-[#f8fdfc]" : selected ? "border-amber-300 bg-amber-50/40" : "border-gray-200 bg-white"}`}>
       <div className="flex items-start gap-3 px-5 py-4">
         {/* Checkbox — only for pending */}
         {earning.status === "pending" && (
@@ -103,7 +103,7 @@ function EarningRow({
               type="checkbox"
               checked={selected}
               onChange={() => onToggleSelect(earning.id)}
-              className="w-4 h-4 rounded border-gray-300 accent-[#1a5c4f] cursor-pointer"
+              className="w-4 h-4 rounded border-gray-300 accent-[#3b6ea5] cursor-pointer"
             />
           </div>
         )}
@@ -154,19 +154,19 @@ function EarningRow({
               <span>Order: <strong className="text-gray-700">${earning.order_amount ?? "—"}</strong></span>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
-              <i className="ri-money-dollar-circle-line text-[#1a5c4f]"></i>
-              <span className={`font-bold ${earning.doctor_amount != null ? "text-[#1a5c4f]" : "text-gray-400"}`}>
+              <i className="ri-money-dollar-circle-line text-[#3b6ea5]"></i>
+              <span className={`font-bold ${earning.doctor_amount != null ? "text-[#3b6ea5]" : "text-gray-400"}`}>
                 Doctor gets: {earning.doctor_amount != null ? `$${earning.doctor_amount}` : "Not set"}
               </span>
             </div>
           </div>
           {/* Paid info with reference */}
           {earning.status === "paid" && earning.paid_at && (
-            <p className="mt-1.5 text-xs text-[#1a5c4f] flex items-center gap-1.5 flex-wrap">
+            <p className="mt-1.5 text-xs text-[#3b6ea5] flex items-center gap-1.5 flex-wrap">
               <i className="ri-checkbox-circle-fill"></i>
               <span>Paid on {new Date(earning.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
               {earning.payment_reference && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f5f1] border border-[#b8ddd5] rounded-full font-semibold">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f5f1] border border-[#b8cce4] rounded-full font-semibold">
                   <i className="ri-bank-card-line text-xs"></i>
                   {earning.payment_reference}
                 </span>
@@ -186,7 +186,7 @@ function EarningRow({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="whitespace-nowrap flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-[#1a5c4f] cursor-pointer transition-colors"
+              className="whitespace-nowrap flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-[#3b6ea5] cursor-pointer transition-colors"
             >
               <i className="ri-edit-line"></i> {earning.doctor_amount != null ? "Edit Amount" : "Set Amount"}
             </button>
@@ -195,7 +195,7 @@ function EarningRow({
                 type="button"
                 onClick={() => { if (earning.doctor_amount != null) setShowPayConfirm(true); }}
                 disabled={earning.doctor_amount == null}
-                className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-40 cursor-pointer"
+                className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-40 cursor-pointer"
               >
                 <i className="ri-checkbox-circle-line"></i>
                 Mark as Paid
@@ -223,7 +223,7 @@ function EarningRow({
           <div className="flex items-center gap-3 flex-wrap w-full">
             <div className="flex items-center gap-2 flex-1 min-w-[220px]">
               <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                <i className="ri-bank-card-line text-[#1a5c4f] text-sm"></i>
+                <i className="ri-bank-card-line text-[#3b6ea5] text-sm"></i>
               </div>
               <input
                 type="text"
@@ -231,7 +231,7 @@ function EarningRow({
                 onChange={(e) => setPayRef(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleMarkPaid(); if (e.key === "Escape") { setShowPayConfirm(false); setPayRef(""); } }}
                 placeholder='Payment method/ref — e.g. "Zelle", "Check #1234" (optional)'
-                className="flex-1 px-3 py-1.5 border border-[#b8ddd5] rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] bg-white"
+                className="flex-1 px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
                 autoFocus
               />
             </div>
@@ -240,7 +240,7 @@ function EarningRow({
                 type="button"
                 onClick={handleMarkPaid}
                 disabled={markingPaid}
-                className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-60 cursor-pointer"
+                className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-60 cursor-pointer"
               >
                 {markingPaid ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-checkbox-circle-line"></i>}
                 Confirm Payment
@@ -267,7 +267,7 @@ function EarningRow({
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0"
                 min="0"
-                className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold focus:outline-none focus:border-[#1a5c4f]"
+                className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold focus:outline-none focus:border-[#3b6ea5]"
               />
             </div>
             <div className="flex items-center gap-2 flex-1">
@@ -276,7 +276,7 @@ function EarningRow({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Notes (optional)..."
-                className="flex-1 min-w-[160px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f]"
+                className="flex-1 min-w-[160px] px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -284,7 +284,7 @@ function EarningRow({
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-[#17504a] disabled:opacity-60"
+                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-[#2d5a8e] disabled:opacity-60"
               >
                 {saving ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-save-line"></i>}
                 Save
@@ -535,7 +535,7 @@ export default function EarningsPanel() {
           {[
             { label: "Total Cases", value: earnings.length, icon: "ri-file-list-3-line", color: "text-gray-700" },
             { label: "Pending Payout", value: `$${totalPending}`, subtext: `${pendingCount} case${pendingCount !== 1 ? "s" : ""}`, icon: "ri-time-line", color: "text-amber-600" },
-            { label: "Total Paid Out", value: `$${totalPaid}`, icon: "ri-checkbox-circle-fill", color: "text-[#1a5c4f]" },
+            { label: "Total Paid Out", value: `$${totalPaid}`, icon: "ri-checkbox-circle-fill", color: "text-[#3b6ea5]" },
             { label: "Amount Unset", value: unsetCount, subtext: unsetCount > 0 ? "Need attention" : "All set", icon: "ri-alert-line", color: unsetCount > 0 ? "text-orange-500" : "text-gray-400" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
@@ -561,7 +561,7 @@ export default function EarningsPanel() {
                 type="checkbox"
                 checked={allPendingSelected}
                 onChange={handleSelectAll}
-                className="w-4 h-4 rounded border-gray-300 accent-[#1a5c4f] cursor-pointer"
+                className="w-4 h-4 rounded border-gray-300 accent-[#3b6ea5] cursor-pointer"
               />
               <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">Select All</span>
             </label>
@@ -575,7 +575,7 @@ export default function EarningsPanel() {
               key={opt.value}
               type="button"
               onClick={() => { setFilterStatus(opt.value); setSelectedIds(new Set()); }}
-              className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${filterStatus === opt.value ? "bg-[#1a5c4f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+              className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${filterStatus === opt.value ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
             >
               {opt.label}
             </button>
@@ -583,7 +583,7 @@ export default function EarningsPanel() {
           <select
             value={filterDoctor}
             onChange={(e) => { setFilterDoctor(e.target.value); setSelectedIds(new Set()); }}
-            className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#1a5c4f] cursor-pointer"
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#3b6ea5] cursor-pointer"
           >
             <option value="all">All Doctors</option>
             {doctors.map((d) => <option key={d.user_id} value={d.user_id}>{d.full_name}</option>)}
@@ -597,7 +597,7 @@ export default function EarningsPanel() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search doctor, patient, order ID..."
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
             />
           </div>
           {filtered.length > 0 && (
@@ -605,7 +605,7 @@ export default function EarningsPanel() {
               type="button"
               onClick={() => exportToCSV(filtered, `earnings-export-${new Date().toISOString().slice(0, 10)}.csv`)}
               title="Export current view to CSV"
-              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-[#1a5c4f] rounded-lg cursor-pointer transition-colors"
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-[#3b6ea5] rounded-lg cursor-pointer transition-colors"
             >
               <i className="ri-file-excel-2-line"></i> CSV
             </button>
@@ -651,7 +651,7 @@ export default function EarningsPanel() {
               type="button"
               onClick={handleBulkMarkPaid}
               disabled={bulkMarkingPaid}
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors"
+              className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-60 cursor-pointer transition-colors"
             >
               {bulkMarkingPaid
                 ? <><i className="ri-loader-4-line animate-spin"></i> Processing...</>
@@ -663,18 +663,18 @@ export default function EarningsPanel() {
 
       {/* Bulk success toast */}
       {bulkSuccess && (
-        <div className="bg-[#e8f5f1] border border-[#b8ddd5] rounded-xl px-5 py-3 mb-4 flex items-center gap-2">
+        <div className="bg-[#e8f5f1] border border-[#b8cce4] rounded-xl px-5 py-3 mb-4 flex items-center gap-2">
           <div className="w-5 h-5 flex items-center justify-center">
-            <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-sm"></i>
+            <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-sm"></i>
           </div>
-          <span className="text-sm font-bold text-[#1a5c4f]">{bulkSuccess}</span>
+          <span className="text-sm font-bold text-[#3b6ea5]">{bulkSuccess}</span>
         </div>
       )}
 
       {/* Earnings list */}
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+          <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5]"></i>
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -716,7 +716,7 @@ export default function EarningsPanel() {
             <div>
               <div className="flex items-center gap-2 mb-0.5">
                 <div className="w-5 h-5 flex items-center justify-center">
-                  <i className="ri-mail-send-line text-[#1a5c4f] text-sm"></i>
+                  <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>
                 </div>
                 <p className="text-sm font-bold text-gray-900">Payout Reminder Email</p>
               </div>
@@ -734,14 +734,14 @@ export default function EarningsPanel() {
                 type="button"
                 onClick={handleSendReminder}
                 disabled={sendingReminder}
-                className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors"
+                className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-60 cursor-pointer transition-colors"
               >
                 {sendingReminder
                   ? <><i className="ri-loader-4-line animate-spin"></i> Sending...</>
                   : <><i className="ri-mail-send-line"></i> Send Reminder Now</>}
               </button>
               {reminderResult && (
-                <p className={`text-xs font-semibold flex items-center gap-1 ${reminderResult.ok ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                <p className={`text-xs font-semibold flex items-center gap-1 ${reminderResult.ok ? "text-[#3b6ea5]" : "text-red-500"}`}>
                   <i className={reminderResult.ok ? "ri-checkbox-circle-fill" : "ri-close-circle-line"}></i>
                   {reminderResult.message}
                 </p>
@@ -757,7 +757,7 @@ export default function EarningsPanel() {
                 <button
                   type="button"
                   onClick={() => exportToCSV(earnings, "all-earnings.csv")}
-                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-[#1a5c4f] rounded-lg cursor-pointer transition-colors"
+                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-[#3b6ea5] rounded-lg cursor-pointer transition-colors"
                 >
                   <i className="ri-download-2-line"></i> Export All CSV
                 </button>
@@ -776,13 +776,13 @@ export default function EarningsPanel() {
                       <div className="flex items-center gap-3">
                         <div className="text-right">
                           <p className="text-xs text-amber-600 font-bold">${docPending} pending</p>
-                          <p className="text-xs text-[#1a5c4f] font-semibold">${docPaid} paid</p>
+                          <p className="text-xs text-[#3b6ea5] font-semibold">${docPaid} paid</p>
                         </div>
                         <button
                           type="button"
                           title="Export this provider's earnings to CSV"
                           onClick={() => exportToCSV(docEarnings, `earnings-${doc.full_name.replace(/\s+/g, "-").toLowerCase()}.csv`)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-[#1a5c4f] hover:border-[#1a5c4f] hover:bg-[#f0faf7] cursor-pointer transition-colors flex-shrink-0"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-[#3b6ea5] hover:border-[#3b6ea5] hover:bg-[#e8f0f9] cursor-pointer transition-colors flex-shrink-0"
                         >
                           <i className="ri-download-2-line text-xs"></i>
                         </button>

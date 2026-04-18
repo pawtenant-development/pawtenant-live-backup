@@ -96,7 +96,7 @@ function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
             onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(""); }}
             onKeyDown={(e) => e.key === "Enter" && handleApply()}
             placeholder="Discount code (optional)"
-            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-[#1a5c4f] transition-colors placeholder-gray-400"
+            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-[#2c5282] transition-colors placeholder-gray-400"
           />
         </div>
         <button
@@ -106,7 +106,7 @@ function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
           className={`whitespace-nowrap px-4 py-2.5 text-xs font-extrabold rounded-xl transition-colors flex-shrink-0 ${
             loading || !code.trim()
               ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-[#1a5c4f] text-white hover:bg-[#164d42] cursor-pointer"
+              : "bg-[#2c5282] text-white hover:bg-[#1e3a5f] cursor-pointer"
           }`}
         >
           {loading ? <i className="ri-loader-4-line animate-spin"></i> : "Apply"}

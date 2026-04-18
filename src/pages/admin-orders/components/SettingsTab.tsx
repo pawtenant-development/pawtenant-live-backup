@@ -47,7 +47,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button type="button" onClick={handle}
       className="whitespace-nowrap flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-500 hover:bg-gray-200 cursor-pointer transition-colors">
-      <i className={copied ? "ri-checkbox-circle-line text-[#1a5c4f]" : "ri-file-copy-line"}></i>
+      <i className={copied ? "ri-checkbox-circle-line text-[#3b6ea5]" : "ri-file-copy-line"}></i>
       {copied ? "Copied!" : "Copy"}
     </button>
   );
@@ -55,8 +55,8 @@ function CopyButton({ text }: { text: string }) {
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${ok ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-100 text-red-600"}`}>
-      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ok ? "bg-[#1a5c4f]" : "bg-red-500"}`}></span>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${ok ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-100 text-red-600"}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ok ? "bg-[#3b6ea5]" : "bg-red-500"}`}></span>
       {label}
     </span>
   );
@@ -119,8 +119,8 @@ const BAA_VENDORS: BaaEntry[] = [
     vendor: "Stripe",
     description: "Payment processing — handles customer billing and payment records.",
     icon: "ri-bank-card-line",
-    iconBg: "bg-[#f0faf7]",
-    iconColor: "text-[#1a5c4f]",
+    iconBg: "bg-[#e8f0f9]",
+    iconColor: "text-[#3b6ea5]",
     docUrl: "https://stripe.com/guides/hipaa",
     planNote: "Stripe is not itself a HIPAA-covered service (payment data ≠ PHI). A BAA is generally not required unless you pass PHI in payment metadata.",
   },
@@ -167,8 +167,8 @@ const DEFAULT_RETENTION: RetentionSettings = {
 
 function BaaStatusBadge({ status }: { status: BaaStatus }) {
   if (status === "signed") return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#f0faf7] text-[#1a5c4f]">
-      <i className="ri-shield-check-fill text-[#1a5c4f]" style={{ fontSize: "10px" }}></i>BAA Signed
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#e8f0f9] text-[#3b6ea5]">
+      <i className="ri-shield-check-fill text-[#3b6ea5]" style={{ fontSize: "10px" }}></i>BAA Signed
     </span>
   );
   if (status === "pending") return (
@@ -217,8 +217,8 @@ function BaaPanel() {
             <p className="text-xs text-gray-400">Track Business Associate Agreements with third-party vendors handling PHI.</p>
           </div>
         </div>
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${allSigned ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-50 text-red-600"}`}>
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allSigned ? "bg-[#1a5c4f]" : "bg-red-500"}`}></span>
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${allSigned ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-50 text-red-600"}`}>
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allSigned ? "bg-[#3b6ea5]" : "bg-red-500"}`}></span>
           {signedCount}/{BAA_VENDORS.length} Signed
         </span>
       </div>
@@ -246,7 +246,7 @@ function BaaPanel() {
           </div>
           <div className="w-full bg-gray-100 rounded-full h-2">
             <div className="h-2 rounded-full transition-all"
-              style={{ width: `${(signedCount / BAA_VENDORS.length) * 100}%`, backgroundColor: allSigned ? "#1a5c4f" : signedCount > 1 ? "#f59e0b" : "#ef4444" }}>
+              style={{ width: `${(signedCount / BAA_VENDORS.length) * 100}%`, backgroundColor: allSigned ? "#3b6ea5" : signedCount > 1 ? "#f59e0b" : "#ef4444" }}>
             </div>
           </div>
         </div>
@@ -289,7 +289,7 @@ function BaaPanel() {
                           onClick={() => setStatus(v.key, s)}
                           className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                             status === s
-                              ? s === "signed" ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
+                              ? s === "signed" ? "bg-[#3b6ea5] text-white border-[#3b6ea5]"
                                 : s === "pending" ? "bg-amber-500 text-white border-amber-500"
                                 : "bg-red-500 text-white border-red-500"
                               : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
@@ -332,11 +332,11 @@ function BaaPanel() {
         )}
 
         {allSigned && (
-          <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4 flex items-center gap-3">
-            <i className="ri-shield-check-fill text-[#1a5c4f] text-lg"></i>
+          <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4 flex items-center gap-3">
+            <i className="ri-shield-check-fill text-[#3b6ea5] text-lg"></i>
             <div>
-              <p className="text-xs font-bold text-[#1a5c4f]">All BAAs on Record</p>
-              <p className="text-xs text-[#2d7a6a]">Technical BAA coverage is complete. Remember to also maintain written policies, staff training records, and a risk assessment to fully satisfy HIPAA requirements.</p>
+              <p className="text-xs font-bold text-[#3b6ea5]">All BAAs on Record</p>
+              <p className="text-xs text-[#2d5a8e]">Technical BAA coverage is complete. Remember to also maintain written policies, staff training records, and a risk assessment to fully satisfy HIPAA requirements.</p>
             </div>
           </div>
         )}
@@ -391,7 +391,7 @@ function DataRetentionPanel() {
           type="button"
           onClick={handleSave}
           className={`whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-            saved ? "bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5]" : "bg-[#1a5c4f] text-white hover:bg-[#17504a]"
+            saved ? "bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4]" : "bg-[#3b6ea5] text-white hover:bg-[#2d5a8e]"
           }`}
         >
           <i className={saved ? "ri-checkbox-circle-fill" : "ri-save-line"}></i>
@@ -430,7 +430,7 @@ function DataRetentionPanel() {
               <select
                 value={settings[f.key] as string}
                 onChange={(e) => update(f.key, e.target.value as RetentionSettings[typeof f.key])}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 cursor-pointer"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#3b6ea5]/20 cursor-pointer"
               >
                 {RETENTION_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -455,7 +455,7 @@ function DataRetentionPanel() {
             <button
               type="button"
               onClick={() => update("autoArchive", !settings.autoArchive)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${settings.autoArchive ? "bg-[#1a5c4f]" : "bg-gray-200"}`}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${settings.autoArchive ? "bg-[#3b6ea5]" : "bg-gray-200"}`}
             >
               <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${settings.autoArchive ? "translate-x-5" : "translate-x-0"}`}></span>
             </button>
@@ -469,26 +469,26 @@ function DataRetentionPanel() {
                 value={settings.archiveNotifyEmail}
                 onChange={(e) => update("archiveNotifyEmail", e.target.value)}
                 placeholder="admin@yourdomain.com"
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#3b6ea5]/20"
               />
             </div>
           )}
         </div>
 
         {/* Summary card */}
-        <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
-          <p className="text-xs font-bold text-[#1a5c4f] uppercase tracking-widest mb-3">Current Policy Summary</p>
+        <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
+          <p className="text-xs font-bold text-[#3b6ea5] uppercase tracking-widest mb-3">Current Policy Summary</p>
           <div className="grid grid-cols-2 gap-2">
             {retentionFields.map((f) => (
               <div key={String(f.key)} className="bg-white rounded-lg px-3 py-2">
                 <p className="text-xs text-gray-400">{f.label}</p>
-                <p className="text-xs font-bold text-[#1a5c4f]">
+                <p className="text-xs font-bold text-[#3b6ea5]">
                   {RETENTION_OPTIONS.find((o) => o.value === settings[f.key])?.label ?? "—"}
                 </p>
               </div>
             ))}
           </div>
-          <p className="text-xs text-[#2d7a6a] mt-3 leading-relaxed">
+          <p className="text-xs text-[#2d5a8e] mt-3 leading-relaxed">
             <i className="ri-information-line mr-1"></i>
             This policy is stored locally as a reference. Actual data deletion must be performed manually in Supabase or via a scheduled Edge Function — no data is deleted automatically by this panel.
           </p>
@@ -576,10 +576,10 @@ function GoogleSheetsSyncPanel({ supabaseUrl }: { supabaseUrl: string }) {
         </div>
 
         {/* Sync info */}
-        <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+        <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
           <div className="flex items-start gap-3">
-            <i className="ri-information-line text-[#1a5c4f] text-sm mt-0.5 flex-shrink-0"></i>
-            <div className="text-xs text-[#2d7a6a] leading-relaxed space-y-1">
+            <i className="ri-information-line text-[#3b6ea5] text-sm mt-0.5 flex-shrink-0"></i>
+            <div className="text-xs text-[#2d5a8e] leading-relaxed space-y-1">
               <p><strong>Auto-sync:</strong> New ESA leads are sent to the sheet automatically when a customer completes Step 2. Payment status updates automatically after checkout.</p>
               <p><strong>Full sync:</strong> Click the button below to wipe and rewrite the entire sheet with all orders from the database — useful to catch up on historical data or after schema changes.</p>
             </div>
@@ -605,7 +605,7 @@ function GoogleSheetsSyncPanel({ supabaseUrl }: { supabaseUrl: string }) {
                 ? "bg-green-500 text-white"
                 : syncState === "error"
                   ? "bg-red-500 text-white"
-                  : "bg-[#1a5c4f] text-white hover:bg-[#17504a]"
+                  : "bg-[#3b6ea5] text-white hover:bg-[#2d5a8e]"
             }`}
           >
             {syncState === "syncing" && <><i className="ri-loader-4-line animate-spin"></i>Syncing all orders...</>}
@@ -642,7 +642,17 @@ function GoogleSheetsSyncPanel({ supabaseUrl }: { supabaseUrl: string }) {
 
 // ── Email Templates Preview ──────────────────────────────────────────────────
 
-const PREVIEW_TEMPLATES = [
+interface EmailTemplate {
+  id: string;
+  label: string;
+  group: string;
+  subject: string;
+  body: string;
+  ctaLabel: string;
+  ctaUrl: string;
+}
+
+const DEFAULT_TEMPLATES: EmailTemplate[] = [
   {
     id: "order_confirmed",
     label: "Order Confirmed",
@@ -718,7 +728,7 @@ Our licensed providers can evaluate your eligibility and issue a PSD letter — 
   },
   {
     id: "broadcast_promo",
-    label: "Broadcast Promo (Light Green)",
+    label: "Broadcast Promo",
     group: "Broadcast",
     subject: "Exclusive Offer from PawTenant — Just for You",
     body: `Hi {name},
@@ -746,7 +756,7 @@ function buildEmailHtml(subject: string, body: string, ctaLabel: string, ctaUrl:
 
   const ctaHtml = ctaLabel && ctaUrl
     ? `<div style="text-align:center;margin:28px 0;">
-        <a href="${ctaUrl}" style="display:inline-block;background:#1a5c4f;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${ctaLabel}</a>
+        <a href="${ctaUrl}" style="display:inline-block;background:#3b6ea5;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${ctaLabel}</a>
       </div>`
     : "";
 
@@ -758,7 +768,7 @@ function buildEmailHtml(subject: string, body: string, ctaLabel: string, ctaUrl:
     <tr>
       <td align="center">
         <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-          <div style="background:#1a5c4f;padding:28px 32px;text-align:center;">
+          <div style="background:#3b6ea5;padding:28px 32px;text-align:center;">
             <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
             <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
           </div>
@@ -768,7 +778,7 @@ function buildEmailHtml(subject: string, body: string, ctaLabel: string, ctaUrl:
             ${ctaHtml}
           </div>
           <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 36px;text-align:center;">
-            <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:hello@pawtenant.com" style="color:#1a5c4f;text-decoration:none;">hello@pawtenant.com</a></p>
+            <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:hello@pawtenant.com" style="color:#3b6ea5;text-decoration:none;">hello@pawtenant.com</a></p>
             <p style="margin:0;font-size:11px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Letter Consultations &nbsp;&middot;&nbsp; <a href="https://pawtenant.com" style="color:#9ca3af;">pawtenant.com</a></p>
           </div>
         </div>
@@ -779,42 +789,242 @@ function buildEmailHtml(subject: string, body: string, ctaLabel: string, ctaUrl:
 </html>`;
 }
 
+const NEW_TEMPLATE_DEFAULTS: Omit<EmailTemplate, "id"> = {
+  label: "New Template",
+  group: "Marketing",
+  subject: "Subject line here",
+  body: `Hi {name},
+
+Write your email body here. Use {name} to personalize with the recipient's name.
+
+Separate paragraphs with a blank line.`,
+  ctaLabel: "Click Here",
+  ctaUrl: "https://pawtenant.com",
+};
+
 function EmailTemplatesPreview() {
-  const [selectedId, setSelectedId] = useState(PREVIEW_TEMPLATES[0].id);
+  const [templates, setTemplates] = useState<EmailTemplate[]>(DEFAULT_TEMPLATES);
+  const [selectedId, setSelectedId] = useState(DEFAULT_TEMPLATES[0].id);
   const [previewName, setPreviewName] = useState("Jane");
   const [showRaw, setShowRaw] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [addingNew, setAddingNew] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newGroup, setNewGroup] = useState("Marketing");
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [dbLoaded, setDbLoaded] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  const selected = PREVIEW_TEMPLATES.find((t) => t.id === selectedId) ?? PREVIEW_TEMPLATES[0];
+  // Load saved templates from DB on mount
+  useEffect(() => {
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("email_templates")
+        .select("*")
+        .order("created_at");
+      if (!error && data && data.length > 0) {
+        const mapped: EmailTemplate[] = data.map((r: {
+          id: string; label: string; group: string; subject: string;
+          body: string; cta_label: string; cta_url: string;
+        }) => ({
+          id: r.id,
+          label: r.label,
+          group: r.group,
+          subject: r.subject,
+          body: r.body,
+          ctaLabel: r.cta_label,
+          ctaUrl: r.cta_url,
+        }));
+        setTemplates(mapped);
+        setSelectedId(mapped[0].id);
+      }
+      setDbLoaded(true);
+    };
+    load();
+  }, []);
+
+  const saveAllToDb = async () => {
+    setSaving(true);
+    setSaveStatus("idle");
+    try {
+      const rows = templates.map((t) => ({
+        id: t.id,
+        label: t.label,
+        group: t.group,
+        subject: t.subject,
+        body: t.body,
+        cta_label: t.ctaLabel,
+        cta_url: t.ctaUrl,
+        updated_at: new Date().toISOString(),
+      }));
+      // Upsert all templates
+      const { error } = await supabase
+        .from("email_templates")
+        .upsert(rows, { onConflict: "id" });
+      // Delete any DB rows not in current templates (handles deletions)
+      const currentIds = templates.map((t) => t.id);
+      await supabase
+        .from("email_templates")
+        .delete()
+        .not("id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`);
+      if (error) throw error;
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 4000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selected = templates.find((t) => t.id === selectedId) ?? templates[0];
 
   const html = useMemo(
     () => buildEmailHtml(selected.subject, selected.body, selected.ctaLabel, selected.ctaUrl, previewName),
     [selected, previewName]
   );
 
-  const groups = [...new Set(PREVIEW_TEMPLATES.map((t) => t.group))];
+  const groups = [...new Set(templates.map((t) => t.group))];
+
+  const updateField = (field: keyof EmailTemplate, value: string) => {
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === selectedId ? { ...t, [field]: value } : t))
+    );
+  };
+
+  const addTemplate = () => {
+    if (!newLabel.trim()) return;
+    const id = `custom_${Date.now()}`;
+    setTemplates((prev) => [...prev, { ...NEW_TEMPLATE_DEFAULTS, id, label: newLabel.trim(), group: newGroup }]);
+    setSelectedId(id);
+    setAddingNew(false);
+    setNewLabel("");
+    setEditMode(true);
+  };
+
+  const deleteTemplate = (id: string) => {
+    const remaining = templates.filter((t) => t.id !== id);
+    setTemplates(remaining);
+    if (selectedId === id) setSelectedId(remaining[0]?.id ?? "");
+  };
+
+  const copyHtml = () => {
+    navigator.clipboard.writeText(html).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const resetToDefaults = async () => {
+    setTemplates(DEFAULT_TEMPLATES);
+    setSelectedId(DEFAULT_TEMPLATES[0].id);
+    setEditMode(false);
+    setShowResetConfirm(false);
+    // Also wipe DB rows so next load gets defaults
+    setSaving(true);
+    try {
+      await supabase.from("email_templates").delete().neq("id", "__never__");
+    } catch { /* ignore */ }
+    setSaving(false);
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 2500);
+  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
-            <i className="ri-eye-line text-[#1a5c4f] text-lg"></i>
+          <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
+            <i className="ri-mail-settings-line text-[#3b6ea5] text-lg"></i>
           </div>
           <div>
-            <h3 className="text-sm font-extrabold text-gray-900">Email Templates Preview</h3>
-            <p className="text-xs text-gray-400">Visually QA every email template before sending — no send required</p>
+            <h3 className="text-sm font-extrabold text-gray-900">Email Templates</h3>
+            <p className="text-xs text-gray-400">Edit templates, preview rendered output, copy HTML — changes are session-only</p>
           </div>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#f0faf7] text-[#1a5c4f]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#1a5c4f] flex-shrink-0"></span>
-          {PREVIEW_TEMPLATES.length} templates
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => { setAddingNew(true); setEditMode(false); }}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#e8f0f9] text-[#3b6ea5] hover:bg-[#b8cce4] transition-colors cursor-pointer"
+          >
+            <i className="ri-add-line"></i> Add Template
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditMode((v) => !v)}
+            className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${editMode ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+          >
+            <i className={editMode ? "ri-eye-line" : "ri-edit-line"}></i>
+            {editMode ? "Preview Mode" : "Edit Mode"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowResetConfirm(true)}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+            title="Reset all templates back to factory defaults"
+          >
+            <i className="ri-refresh-line"></i> Reset Defaults
+          </button>
+          <button
+            type="button"
+            onClick={saveAllToDb}
+            disabled={saving || !dbLoaded}
+            className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
+              saveStatus === "saved" ? "bg-green-100 text-green-700" :
+              saveStatus === "error" ? "bg-red-100 text-red-600" :
+              "bg-gray-900 text-white hover:bg-gray-700"
+            }`}
+          >
+            {saving ? (
+              <><i className="ri-loader-4-line animate-spin"></i>Saving...</>
+            ) : saveStatus === "saved" ? (
+              <><i className="ri-checkbox-circle-line"></i>Saved to DB</>
+            ) : saveStatus === "error" ? (
+              <><i className="ri-error-warning-line"></i>Save Failed</>
+            ) : (
+              <><i className="ri-save-line"></i>Save to DB</>
+            )}
+          </button>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#e8f0f9] text-[#3b6ea5]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#3b6ea5] flex-shrink-0"></span>
+            {templates.length} templates
+          </span>
+        </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row" style={{ minHeight: "520px" }}>
+      {/* Add new template bar */}
+      {addingNew && (
+        <div className="px-5 py-3 bg-[#e8f0f9] border-b border-[#b8cce4] flex items-center gap-3 flex-wrap">
+          <input
+            type="text"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="Template name..."
+            className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white w-48"
+            autoFocus
+          />
+          <select
+            value={newGroup}
+            onChange={(e) => setNewGroup(e.target.value)}
+            className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
+          >
+            <option>Transactional</option>
+            <option>Marketing</option>
+            <option>Broadcast</option>
+          </select>
+          <button type="button" onClick={addTemplate} className="whitespace-nowrap px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] transition-colors cursor-pointer">Create</button>
+          <button type="button" onClick={() => setAddingNew(false)} className="whitespace-nowrap px-3 py-1.5 bg-white text-gray-600 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row" style={{ minHeight: "560px" }}>
         {/* Left: template picker */}
-        <div className="w-full lg:w-56 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4">
+        <div className="w-full lg:w-60 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4">
           {/* Preview name */}
           <div>
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Preview As</label>
@@ -823,9 +1033,9 @@ function EmailTemplatesPreview() {
               value={previewName}
               onChange={(e) => setPreviewName(e.target.value || "Jane")}
               placeholder="Jane"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] bg-white"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
             />
-            <p className="text-[10px] text-gray-400 mt-1">Replaces &lbrace;name&rbrace; in preview</p>
+            <p className="text-[10px] text-gray-400 mt-1">Replaces &#123;name&#125; in preview</p>
           </div>
 
           {/* Template list grouped */}
@@ -833,91 +1043,251 @@ function EmailTemplatesPreview() {
             {groups.map((grp) => (
               <div key={grp}>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <i className={`text-xs ${grp === "Transactional" ? "ri-mail-check-line text-[#1a5c4f]" : grp === "Marketing" ? "ri-megaphone-line text-amber-500" : "ri-broadcast-line text-violet-500"}`}></i>
+                  <i className={`text-xs ${grp === "Transactional" ? "ri-mail-check-line text-[#3b6ea5]" : grp === "Marketing" ? "ri-megaphone-line text-amber-500" : "ri-broadcast-line text-violet-500"}`}></i>
                   {grp}
                 </p>
                 <div className="space-y-1">
-                  {PREVIEW_TEMPLATES.filter((t) => t.group === grp).map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setSelectedId(t.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                        selectedId === t.id
-                          ? "bg-[#1a5c4f] text-white"
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
-                    >
-                      {t.label}
-                    </button>
+                  {templates.filter((t) => t.group === grp).map((t) => (
+                    <div key={t.id} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedId(t.id); }}
+                        className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                          selectedId === t.id
+                            ? "bg-[#3b6ea5] text-white"
+                            : "text-gray-600 hover:bg-gray-100"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                      {editMode && (
+                        <button
+                          type="button"
+                          onClick={() => deleteTemplate(t.id)}
+                          title="Delete template"
+                          className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0"
+                        >
+                          <i className="ri-delete-bin-line text-xs"></i>
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
             ))}
           </div>
 
-          {/* View toggle */}
-          <div className="pt-2 border-t border-gray-200">
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-              <button
-                type="button"
-                onClick={() => setShowRaw(false)}
-                className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${!showRaw ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500"}`}
-              >
-                Preview
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowRaw(true)}
-                className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${showRaw ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500"}`}
-              >
-                HTML
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: preview pane */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Subject bar */}
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center gap-3">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex-shrink-0">Subject:</span>
-            <span className="text-xs font-semibold text-gray-800 truncate">{selected.subject}</span>
-            <span className={`ml-auto flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              selected.group === "Transactional" ? "bg-[#f0faf7] text-[#1a5c4f]" :
-              selected.group === "Marketing" ? "bg-amber-50 text-amber-700" :
-              "bg-violet-50 text-violet-700"
-            }`}>{selected.group}</span>
-          </div>
-
-          {/* Preview notice */}
-          <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
-            <i className="ri-information-line text-amber-500 text-xs flex-shrink-0"></i>
-            <p className="text-[11px] text-amber-700 font-semibold">
-              Preview only — &lbrace;name&rbrace; replaced with &ldquo;{previewName}&rdquo; · No email is sent
-            </p>
-          </div>
-
-          {/* Iframe or raw HTML */}
-          {showRaw ? (
-            <div className="flex-1 overflow-auto bg-gray-900 p-4">
-              <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all leading-relaxed">
-                {html}
-              </pre>
-            </div>
-          ) : (
-            <div className="flex-1 bg-[#f3f4f6]" style={{ minHeight: "420px" }}>
-              <iframe
-                srcDoc={html}
-                title={`Email Preview: ${selected.label}`}
-                className="w-full h-full border-0"
-                style={{ minHeight: "420px" }}
-                sandbox="allow-same-origin"
-              />
+          {/* View toggle (only in preview mode) */}
+          {!editMode && (
+            <div className="pt-2 border-t border-gray-200">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowRaw(false)}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${!showRaw ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500"}`}
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRaw(true)}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${showRaw ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500"}`}
+                >
+                  HTML
+                </button>
+              </div>
             </div>
           )}
         </div>
+
+        {/* Right: edit or preview pane */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {editMode ? (
+            /* ── Edit Mode ── */
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-[#3b6ea5] flex-shrink-0"></div>
+                <span className="text-xs font-bold text-gray-700">Editing: {selected.label}</span>
+                <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  selected.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" :
+                  selected.group === "Marketing" ? "bg-amber-50 text-amber-700" :
+                  "bg-violet-50 text-violet-700"
+                }`}>{selected.group}</span>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Template Label</label>
+                <input
+                  type="text"
+                  value={selected.label}
+                  onChange={(e) => updateField("label", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Group</label>
+                <select
+                  value={selected.group}
+                  onChange={(e) => updateField("group", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
+                >
+                  <option>Transactional</option>
+                  <option>Marketing</option>
+                  <option>Broadcast</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Subject Line</label>
+                <input
+                  type="text"
+                  value={selected.subject}
+                  onChange={(e) => updateField("subject", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                  Body <span className="normal-case font-normal text-gray-400">— use &#123;name&#125; for personalization, blank line = new paragraph</span>
+                </label>
+                <textarea
+                  value={selected.body}
+                  onChange={(e) => updateField("body", e.target.value)}
+                  rows={10}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white font-mono resize-y"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA Button Label</label>
+                  <input
+                    type="text"
+                    value={selected.ctaLabel}
+                    onChange={(e) => updateField("ctaLabel", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA URL</label>
+                  <input
+                    type="text"
+                    value={selected.ctaUrl}
+                    onChange={(e) => updateField("ctaUrl", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditMode(false)}
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] transition-colors cursor-pointer"
+                >
+                  <i className="ri-eye-line"></i> Preview Result
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── Preview Mode ── */
+            <>
+              {/* Subject bar */}
+              <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center gap-3 flex-wrap">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex-shrink-0">Subject:</span>
+                <span className="text-xs font-semibold text-gray-800 truncate flex-1">{selected.subject}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={copyHtml}
+                    className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
+                  >
+                    <i className={copied ? "ri-check-line text-green-500" : "ri-clipboard-line"}></i>
+                    {copied ? "Copied!" : "Copy HTML"}
+                  </button>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    selected.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" :
+                    selected.group === "Marketing" ? "bg-amber-50 text-amber-700" :
+                    "bg-violet-50 text-violet-700"
+                  }`}>{selected.group}</span>
+                </div>
+              </div>
+
+              {/* Preview notice */}
+              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+                <i className="ri-information-line text-amber-500 text-xs flex-shrink-0"></i>
+                <p className="text-[11px] text-amber-700 font-semibold">
+                  Preview only — &#123;name&#125; replaced with &ldquo;{previewName}&rdquo; &middot; No email is sent
+                </p>
+              </div>
+
+              {/* Iframe or raw HTML */}
+              {showRaw ? (
+                <div className="flex-1 overflow-auto bg-gray-900 p-4">
+                  <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all leading-relaxed">
+                    {html}
+                  </pre>
+                </div>
+              ) : (
+                <div className="flex-1 bg-[#f3f4f6]" style={{ minHeight: "420px" }}>
+                  <iframe
+                    srcDoc={html}
+                    title={`Email Preview: ${selected.label}`}
+                    className="w-full h-full border-0"
+                    style={{ minHeight: "420px" }}
+                    sandbox="allow-same-origin"
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
+
+      {/* ── Reset to Defaults Confirmation Dialog ── */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowResetConfirm(false)}></div>
+          <div className="relative bg-white rounded-2xl w-full max-w-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+              <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
+                <i className="ri-refresh-line text-red-500 text-base"></i>
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-gray-900">Reset to Defaults?</h3>
+                <p className="text-xs text-gray-400">This will overwrite all current templates</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                All <strong>{templates.length} current templates</strong> (including any custom ones you&apos;ve added) will be replaced with the original {DEFAULT_TEMPLATES.length} factory defaults. This also clears any saved DB versions.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                <i className="ri-error-warning-line text-amber-500 text-sm flex-shrink-0"></i>
+                <p className="text-xs text-amber-700 font-semibold">This cannot be undone.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 px-5 py-4 bg-gray-50 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="whitespace-nowrap flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={resetToDefaults}
+                className="whitespace-nowrap flex-1 px-4 py-2 bg-red-500 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-600 transition-colors"
+              >
+                Yes, Reset All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -927,11 +1297,11 @@ const NOTIF_DEFS_PREVIEW = [
   { key: "new_paid_order", label: "New Paid Order", icon: "ri-shopping-cart-2-line", color: "text-green-600" },
   { key: "unpaid_lead", label: "Unpaid Lead", icon: "ri-user-search-line", color: "text-amber-600" },
   { key: "order_under_review", label: "Order Under Review", icon: "ri-eye-line", color: "text-orange-500" },
-  { key: "order_completed", label: "Order Completed", icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]" },
+  { key: "order_completed", label: "Order Completed", icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]" },
   { key: "order_cancelled", label: "Order Cancelled", icon: "ri-close-circle-line", color: "text-red-500" },
   { key: "refund_issued", label: "Refund Issued", icon: "ri-refund-2-line", color: "text-rose-500" },
   { key: "provider_application", label: "Provider Application", icon: "ri-user-add-line", color: "text-indigo-600" },
-  { key: "provider_license_change", label: "License Change", icon: "ri-shield-check-line", color: "text-[#1a5c4f]" },
+  { key: "provider_license_change", label: "License Change", icon: "ri-shield-check-line", color: "text-[#3b6ea5]" },
   { key: "provider_letter_submitted", label: "Letter Submitted", icon: "ri-file-text-line", color: "text-orange-500" },
   { key: "provider_rejected_order", label: "Provider Rejected", icon: "ri-user-unfollow-line", color: "text-red-500" },
   { key: "payout_reminder", label: "Payout Reminder", icon: "ri-money-dollar-circle-line", color: "text-green-600" },
@@ -974,7 +1344,7 @@ function NotificationRoutingTestPanel({ supabaseUrl }: { supabaseUrl: string }) 
   };
 
   const sourceLabel = (s: string) => s === "specific" ? "Specific" : s === "group" ? "Group" : "Default";
-  const sourceBg = (s: string) => s === "specific" ? "bg-[#e8f5f1] text-[#1a5c4f]" : s === "group" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700";
+  const sourceBg = (s: string) => s === "specific" ? "bg-[#dbeafe] text-[#3b6ea5]" : s === "group" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700";
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -1063,10 +1433,10 @@ function NotificationRoutingTestPanel({ supabaseUrl }: { supabaseUrl: string }) 
 // ── Pipeline Stage Map (static reference — matches edge function) ─────────────
 const PIPELINE_STAGE_MAP = [
   { event: "assessment_started", stageName: "Assessment Started", secretKey: "GHL_STAGE_ASSESSMENT_STARTED", icon: "ri-file-edit-line", color: "text-gray-500", description: "Customer completes Step 2 personal info" },
-  { event: "payment_confirmed / payment_confirmed_backfill", stageName: "Payment Confirmed", secretKey: "GHL_STAGE_PAYMENT_CONFIRMED", icon: "ri-bank-card-line", color: "text-[#1a5c4f]", description: "Stripe payment succeeds" },
+  { event: "payment_confirmed / payment_confirmed_backfill", stageName: "Payment Confirmed", secretKey: "GHL_STAGE_PAYMENT_CONFIRMED", icon: "ri-bank-card-line", color: "text-[#3b6ea5]", description: "Stripe payment succeeds" },
   { event: "doctor_assigned", stageName: "Under Review", secretKey: "GHL_STAGE_DOCTOR_ASSIGNED", icon: "ri-stethoscope-line", color: "text-amber-600", description: "Admin assigns a provider to the order" },
   { event: "documents_ready_for_patient", stageName: "Documents Ready", secretKey: "GHL_STAGE_DOCUMENTS_READY", icon: "ri-file-check-line", color: "text-sky-600", description: "Provider submits letter, patient notified" },
-  { event: "order_completed", stageName: "Completed", secretKey: "GHL_STAGE_ORDER_COMPLETED", icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]", description: "Provider submits final letter" },
+  { event: "order_completed", stageName: "Completed", secretKey: "GHL_STAGE_ORDER_COMPLETED", icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]", description: "Provider submits final letter" },
   { event: "refund_issued", stageName: "Refunded", secretKey: "GHL_STAGE_REFUND_ISSUED", icon: "ri-refund-2-line", color: "text-rose-500", description: "Admin issues a refund" },
   { event: "order_cancelled", stageName: "Cancelled", secretKey: "GHL_STAGE_ORDER_CANCELLED", icon: "ri-close-circle-line", color: "text-red-500", description: "Admin cancels the order" },
 ];
@@ -1123,8 +1493,8 @@ function GhlPipelineConfigPanel() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-lg flex-shrink-0">
-            <i className="ri-git-branch-line text-[#1a5c4f] text-sm"></i>
+          <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0">
+            <i className="ri-git-branch-line text-[#3b6ea5] text-sm"></i>
           </div>
           <div>
             <p className="text-xs font-extrabold text-gray-800">Pipeline Stage Auto-Mover</p>
@@ -1132,14 +1502,14 @@ function GhlPipelineConfigPanel() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${allConfigured ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-amber-50 text-amber-700"}`}>
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allConfigured ? "bg-[#1a5c4f]" : "bg-amber-500"}`}></span>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${allConfigured ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-amber-50 text-amber-700"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allConfigured ? "bg-[#3b6ea5]" : "bg-amber-500"}`}></span>
             {allConfigured ? "Fully Configured" : `${configuredCount}/${PIPELINE_STAGE_MAP.length} stages set`}
           </span>
           <button
             type="button"
             onClick={handleSave}
-            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${saved ? "bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5]" : "bg-[#1a5c4f] text-white hover:bg-[#17504a]"}`}
+            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${saved ? "bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4]" : "bg-[#3b6ea5] text-white hover:bg-[#2d5a8e]"}`}
           >
             <i className={saved ? "ri-checkbox-circle-fill" : "ri-save-line"}></i>
             {saved ? "Saved!" : "Save IDs"}
@@ -1148,10 +1518,10 @@ function GhlPipelineConfigPanel() {
       </div>
 
       {/* How it works */}
-      <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4 mb-4">
+      <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4 mb-4">
         <div className="flex items-start gap-3">
-          <i className="ri-information-line text-[#1a5c4f] text-sm mt-0.5 flex-shrink-0"></i>
-          <div className="text-xs text-[#2d7a6a] leading-relaxed space-y-1.5">
+          <i className="ri-information-line text-[#3b6ea5] text-sm mt-0.5 flex-shrink-0"></i>
+          <div className="text-xs text-[#2d5a8e] leading-relaxed space-y-1.5">
             <p><strong>How it works:</strong> Every GHL webhook payload now includes <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineId</code>, <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineStageId</code>, and <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineStage</code> fields — automatically set based on the event type.</p>
             <p><strong>GHL Workflow setup:</strong> In your GHL Workflow&apos;s &ldquo;Create/Update Contact&rdquo; action, map <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineId</code> → Pipeline and <code className="bg-[#e0f5ef] px-1 rounded font-mono text-[10px]">pipelineStageId</code> → Stage. That&apos;s it — no If/Else branches needed.</p>
             <p><strong>Where to find IDs:</strong> GHL → Settings → Pipelines → click your pipeline → the URL contains the Pipeline ID. Stage IDs are in the pipeline settings page or via GHL API.</p>
@@ -1176,7 +1546,7 @@ function GhlPipelineConfigPanel() {
                   onClick={() => copySecret(name)}
                   className="whitespace-nowrap inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 border border-amber-300 rounded text-[10px] font-mono text-amber-800 hover:bg-amber-200 cursor-pointer transition-colors"
                 >
-                  <i className={copied === name ? "ri-checkbox-circle-line text-[#1a5c4f]" : "ri-file-copy-line"} style={{ fontSize: "9px" }}></i>
+                  <i className={copied === name ? "ri-checkbox-circle-line text-[#3b6ea5]" : "ri-file-copy-line"} style={{ fontSize: "9px" }}></i>
                   {copied === name ? "Copied!" : name}
                 </button>
               ))}
@@ -1197,7 +1567,7 @@ function GhlPipelineConfigPanel() {
           value={config.pipelineId}
           onChange={(e) => updatePipelineId(e.target.value)}
           placeholder="e.g. abc123def456..."
-          className={`w-full text-xs border rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 ${config.pipelineId ? "border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f]" : "border-gray-200 bg-white text-gray-700"}`}
+          className={`w-full text-xs border rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 ${config.pipelineId ? "border-[#b8cce4] bg-[#e8f0f9] text-[#3b6ea5]" : "border-gray-200 bg-white text-gray-700"}`}
         />
         <p className="text-[10px] text-gray-400 mt-1">Found in GHL → Settings → Pipelines → URL bar when viewing your pipeline</p>
       </div>
@@ -1210,9 +1580,9 @@ function GhlPipelineConfigPanel() {
             const stageId = config.stageIds[stage.secretKey] ?? "";
             const isSet = !!stageId;
             return (
-              <div key={stage.secretKey} className={`rounded-xl border overflow-hidden ${isSet ? "border-[#b8ddd5]" : "border-gray-200"}`}>
+              <div key={stage.secretKey} className={`rounded-xl border overflow-hidden ${isSet ? "border-[#b8cce4]" : "border-gray-200"}`}>
                 {/* Stage header row */}
-                <div className={`flex items-center gap-3 px-4 py-2.5 ${isSet ? "bg-[#f0faf7]" : "bg-gray-50"}`}>
+                <div className={`flex items-center gap-3 px-4 py-2.5 ${isSet ? "bg-[#e8f0f9]" : "bg-gray-50"}`}>
                   <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
                     <i className={`${stage.icon} ${stage.color} text-sm`}></i>
                   </div>
@@ -1225,7 +1595,7 @@ function GhlPipelineConfigPanel() {
                     <p className="text-[10px] text-gray-400 mt-0.5">{stage.description}</p>
                   </div>
                   {isSet ? (
-                    <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#1a5c4f] text-white rounded text-[10px] font-bold">
+                    <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#3b6ea5] text-white rounded text-[10px] font-bold">
                       <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>Set
                     </span>
                   ) : (
@@ -1242,7 +1612,7 @@ function GhlPipelineConfigPanel() {
                     value={stageId}
                     onChange={(e) => updateStageId(stage.secretKey, e.target.value)}
                     placeholder="Paste GHL Stage ID here..."
-                    className={`flex-1 text-xs border rounded-lg px-3 py-1.5 font-mono focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 ${isSet ? "border-[#b8ddd5] bg-[#f0faf7] text-[#1a5c4f]" : "border-gray-200 bg-gray-50 text-gray-700"}`}
+                    className={`flex-1 text-xs border rounded-lg px-3 py-1.5 font-mono focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 ${isSet ? "border-[#b8cce4] bg-[#e8f0f9] text-[#3b6ea5]" : "border-gray-200 bg-gray-50 text-gray-700"}`}
                   />
                 </div>
               </div>
@@ -1315,6 +1685,45 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
   const [testEvent, setTestEvent] = useState("assessment_started");
   const [testTagsRaw, setTestTagsRaw] = useState("GHL Test, Admin Connection Test");
   const rawRef = useRef<HTMLPreElement>(null);
+
+  // ── Comms test state ──────────────────────────────────────────────────────
+  const [commsState, setCommsState] = useState<"idle" | "running" | "done">("idle");
+  const [commsResult, setCommsResult] = useState<{ ok: boolean; status: number; body: string; durationMs: number } | null>(null);
+  const [commsShowRaw, setCommsShowRaw] = useState(false);
+
+  const runCommsTest = async () => {
+    setCommsState("running");
+    setCommsResult(null);
+    setCommsShowRaw(false);
+    const start = Date.now();
+    try {
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          eventType: "sms_outbound",
+          email: testEmail.trim() || "ghl-test@pawtenant.com",
+          phone: testPhone.trim() || "+14099655885",
+          firstName: "GHL",
+          lastName: "CommsTest",
+          messageBody: "Test SMS payload from PawTenant admin — verifying GHL Call/SMS Hub routing.",
+          direction: "outbound",
+          timestamp: new Date().toISOString(),
+        }),
+      });
+      const durationMs = Date.now() - start;
+      let body = "";
+      try { body = await res.text(); } catch { body = "(unreadable)"; }
+      let parsed: Record<string, unknown> = {};
+      try { parsed = JSON.parse(body); } catch { /* raw */ }
+      setCommsResult({ ok: (parsed.ok as boolean) ?? res.ok, status: res.status, body, durationMs });
+    } catch (err) {
+      setCommsResult({ ok: false, status: 0, body: err instanceof Error ? err.message : String(err), durationMs: Date.now() - start });
+    } finally {
+      setCommsState("done");
+    }
+  };
 
   const parsedTags = testTagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
 
@@ -1476,7 +1885,7 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
                 }
                 const allTags = [...autoTags, ...parsedTags.filter((t) => !autoTags.includes(t))];
                 return allTags.map((tag) => (
-                  <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${parsedTags.includes(tag) && !autoTags.includes(tag) ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]"}`}>
+                  <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${parsedTags.includes(tag) && !autoTags.includes(tag) ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-[#e8f0f9] border-[#b8cce4] text-[#3b6ea5]"}`}>
                     <i className="ri-price-tag-3-line" style={{ fontSize: "9px" }}></i>{tag}
                   </span>
                 ));
@@ -1495,35 +1904,83 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
       )}
 
       {/* Run button */}
-      {state !== "done" && (
+      <div className="flex flex-wrap gap-3">
+        {state !== "done" && (
+          <button
+            type="button"
+            onClick={runTest}
+            disabled={state === "running"}
+            className={`whitespace-nowrap flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-extrabold transition-colors cursor-pointer disabled:opacity-60 ${
+              state === "running" ? "bg-amber-400 text-white" : "bg-amber-500 text-white hover:bg-amber-600"
+            }`}
+          >
+            {state === "running"
+              ? <><i className="ri-loader-4-line animate-spin"></i>Firing test payload to GHL...</>
+              : <><i className="ri-send-plane-line"></i>Fire GHL Connection Test</>}
+          </button>
+        )}
+        {/* Comms webhook test button */}
         <button
           type="button"
-          onClick={runTest}
-          disabled={state === "running"}
+          onClick={runCommsTest}
+          disabled={commsState === "running"}
           className={`whitespace-nowrap flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-extrabold transition-colors cursor-pointer disabled:opacity-60 ${
-            state === "running" ? "bg-amber-400 text-white" : "bg-amber-500 text-white hover:bg-amber-600"
+            commsState === "running" ? "bg-sky-400 text-white" : "bg-sky-600 text-white hover:bg-sky-700"
           }`}
         >
-          {state === "running"
-            ? <><i className="ri-loader-4-line animate-spin"></i>Firing test payload to GHL...</>
-            : <><i className="ri-send-plane-line"></i>Fire GHL Connection Test</>}
+          {commsState === "running"
+            ? <><i className="ri-loader-4-line animate-spin"></i>Firing comms test...</>
+            : <><i className="ri-message-2-line"></i>Fire Comms Hub Test (SMS)</>}
         </button>
+      </div>
+
+      {/* Comms test result */}
+      {commsState === "done" && commsResult && (
+        <div className={`mt-3 rounded-xl border overflow-hidden ${commsResult.ok ? "border-sky-200" : "border-red-200"}`}>
+          <div className={`px-4 py-3 flex items-center justify-between flex-wrap gap-2 ${commsResult.ok ? "bg-sky-50" : "bg-red-50"}`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-7 h-7 flex items-center justify-center rounded-full flex-shrink-0 ${commsResult.ok ? "bg-sky-600" : "bg-red-500"}`}>
+                <i className={`${commsResult.ok ? "ri-checkbox-circle-fill" : "ri-close-circle-fill"} text-white text-sm`}></i>
+              </div>
+              <div>
+                <p className={`text-sm font-extrabold ${commsResult.ok ? "text-sky-700" : "text-red-700"}`}>
+                  {commsResult.ok ? "Comms Hub accepted the payload" : "Comms Hub rejected the payload"}
+                </p>
+                <p className={`text-xs ${commsResult.ok ? "text-sky-500" : "text-red-500"}`}>
+                  HTTP {commsResult.status} · {commsResult.durationMs}ms · Event: sms_outbound → GHL_COMMS_WEBHOOK_URL
+                </p>
+              </div>
+            </div>
+            <button type="button" onClick={() => setCommsShowRaw(!commsShowRaw)}
+              className="whitespace-nowrap text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors flex items-center gap-1">
+              <i className={commsShowRaw ? "ri-eye-off-line" : "ri-code-line"}></i>
+              {commsShowRaw ? "Hide Raw" : "Show Raw"}
+            </button>
+          </div>
+          {commsShowRaw && (
+            <div className="px-4 py-3 bg-white border-t border-gray-100">
+              <pre className="bg-gray-900 text-green-400 text-[10px] font-mono p-4 rounded-lg overflow-auto max-h-40 whitespace-pre-wrap break-all leading-relaxed">
+                {commsResult.body || "(empty)"}
+              </pre>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Result */}
       {state === "done" && result && (
-        <div className={`rounded-xl border overflow-hidden ${result.ok ? "border-[#b8ddd5]" : "border-red-200"}`}>
+        <div className={`rounded-xl border overflow-hidden ${result.ok ? "border-[#b8cce4]" : "border-red-200"}`}>
           {/* Status bar */}
-          <div className={`px-4 py-3 flex items-center justify-between flex-wrap gap-2 ${result.ok ? "bg-[#f0faf7]" : "bg-red-50"}`}>
+          <div className={`px-4 py-3 flex items-center justify-between flex-wrap gap-2 ${result.ok ? "bg-[#e8f0f9]" : "bg-red-50"}`}>
             <div className="flex items-center gap-2">
-              <div className={`w-7 h-7 flex items-center justify-center rounded-full flex-shrink-0 ${result.ok ? "bg-[#1a5c4f]" : "bg-red-500"}`}>
+              <div className={`w-7 h-7 flex items-center justify-center rounded-full flex-shrink-0 ${result.ok ? "bg-[#3b6ea5]" : "bg-red-500"}`}>
                 <i className={`${result.ok ? "ri-checkbox-circle-fill" : "ri-close-circle-fill"} text-white text-sm`}></i>
               </div>
               <div>
-                <p className={`text-sm font-extrabold ${result.ok ? "text-[#1a5c4f]" : "text-red-700"}`}>
+                <p className={`text-sm font-extrabold ${result.ok ? "text-[#3b6ea5]" : "text-red-700"}`}>
                   {result.ok ? "GHL accepted the payload" : "GHL rejected the payload"}
                 </p>
-                <p className={`text-xs ${result.ok ? "text-[#2d7a6a]" : "text-red-500"}`}>
+                <p className={`text-xs ${result.ok ? "text-[#2d5a8e]" : "text-red-500"}`}>
                   HTTP {result.ghlStatus} · {result.durationMs}ms · Event: {testEvent}
                 </p>
               </div>
@@ -1551,9 +2008,9 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
                 { label: "Event type", value: testEvent, ok: true },
                 { label: "Proxy response", value: result.ok ? "OK" : result.error ?? "Error", ok: result.ok },
               ].map((f) => (
-                <div key={f.label} className={`rounded-lg px-3 py-2.5 border ${f.ok ? "bg-[#f0faf7] border-[#b8ddd5]" : "bg-red-50 border-red-200"}`}>
+                <div key={f.label} className={`rounded-lg px-3 py-2.5 border ${f.ok ? "bg-[#e8f0f9] border-[#b8cce4]" : "bg-red-50 border-red-200"}`}>
                   <p className="text-[10px] text-gray-400 mb-0.5">{f.label}</p>
-                  <p className={`text-xs font-bold truncate ${f.ok ? "text-[#1a5c4f]" : "text-red-600"}`}>{f.value}</p>
+                  <p className={`text-xs font-bold truncate ${f.ok ? "text-[#3b6ea5]" : "text-red-600"}`}>{f.value}</p>
                 </div>
               ))}
             </div>
@@ -1584,9 +2041,9 @@ function GhlConnectionTestPanel({ supabaseUrl }: { supabaseUrl: string }) {
             )}
 
             {/* Diagnosis */}
-            <div className={`rounded-lg px-3 py-2.5 flex items-start gap-2 ${result.ok ? "bg-[#f0faf7] border border-[#b8ddd5]" : "bg-red-50 border border-red-200"}`}>
-              <i className={`${result.ok ? "ri-lightbulb-line text-[#1a5c4f]" : "ri-alert-line text-red-500"} text-sm flex-shrink-0 mt-0.5`}></i>
-              <p className={`text-xs leading-relaxed ${result.ok ? "text-[#2d7a6a]" : "text-red-600"}`}>
+            <div className={`rounded-lg px-3 py-2.5 flex items-start gap-2 ${result.ok ? "bg-[#e8f0f9] border border-[#b8cce4]" : "bg-red-50 border border-red-200"}`}>
+              <i className={`${result.ok ? "ri-lightbulb-line text-[#3b6ea5]" : "ri-alert-line text-red-500"} text-sm flex-shrink-0 mt-0.5`}></i>
+              <p className={`text-xs leading-relaxed ${result.ok ? "text-[#2d5a8e]" : "text-red-600"}`}>
                 {result.ok
                   ? "GHL webhook URL is reachable and accepted the payload. Now verify in GHL that the contact was created with the phone number — if phone is missing, the GHL Workflow's \"Create/Update Contact\" action is not mapping the phone field."
                   : result.ghlStatus === 500 && !result.ghlBody
@@ -2188,7 +2645,7 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         iconBg="bg-amber-50"
         iconColor="text-amber-600"
         badge={!loadingGhl && ghl ? (ghl.failed === 0 ? "All Synced" : `${ghlHealthPct}% Healthy`) : undefined}
-        badgeColor={!loadingGhl && ghl ? (ghl.failed === 0 || ghlHealthPct >= 90 ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-100 text-red-600") : undefined}
+        badgeColor={!loadingGhl && ghl ? (ghl.failed === 0 || ghlHealthPct >= 90 ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-100 text-red-600") : undefined}
         defaultOpen={true}
       >
         <div>
@@ -2203,7 +2660,7 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                 {[
                   { label: "Total Orders", value: ghl.total, color: "text-gray-700" },
-                  { label: "Synced to GHL", value: `${ghl.synced} (${ghlHealthPct}%)`, color: "text-[#1a5c4f]" },
+                  { label: "Synced to GHL", value: `${ghl.synced} (${ghlHealthPct}%)`, color: "text-[#3b6ea5]" },
                   { label: "Sync Errors", value: ghl.failed, color: ghl.failed > 0 ? "text-red-500" : "text-gray-400" },
                   { label: "Pending Sync", value: ghl.pending, color: ghl.pending > 5 ? "text-amber-600" : "text-gray-400" },
                 ].map((s) => (
@@ -2240,8 +2697,8 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
                     </span>
                   )}
                   {unsyncedCount === 0 && ghl && (
-                    <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-[#f0faf7] text-[#1a5c4f] rounded-full text-[10px] font-bold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#1a5c4f] flex-shrink-0"></span>
+                    <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded-full text-[10px] font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#3b6ea5] flex-shrink-0"></span>
                       All synced
                     </span>
                   )}
@@ -2249,16 +2706,16 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
 
                 <div className="px-4 py-4 space-y-3 bg-white">
                   {/* Primary: Sync unsynced only */}
-                  <div className="flex items-start gap-3 p-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
-                    <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0 mt-0.5">
+                  <div className="flex items-start gap-3 p-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
+                    <div className="w-8 h-8 flex items-center justify-center bg-[#3b6ea5] rounded-lg flex-shrink-0 mt-0.5">
                       <i className="ri-upload-cloud-2-line text-white text-sm"></i>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-extrabold text-[#1a5c4f] mb-0.5">
+                      <p className="text-xs font-extrabold text-[#3b6ea5] mb-0.5">
                         Sync Unsynced Orders Only
-                        {unsyncedCount > 0 && <span className="ml-1.5 font-normal text-[#2d7a6a]">({unsyncedCount} orders)</span>}
+                        {unsyncedCount > 0 && <span className="ml-1.5 font-normal text-[#2d5a8e]">({unsyncedCount} orders)</span>}
                       </p>
-                      <p className="text-xs text-[#2d7a6a] leading-relaxed mb-2">
+                      <p className="text-xs text-[#2d5a8e] leading-relaxed mb-2">
                         {unsyncedCount > 0
                           ? `Pushes all ${unsyncedCount} order${unsyncedCount !== 1 ? "s" : ""} (paid + unpaid leads) where ghl_synced_at IS NULL to GHL. Safe one-click catch-up for orders never synced.`
                           : "No unsynced orders found — all orders (paid + unpaid) have been pushed to GHL at least once."}
@@ -2268,7 +2725,7 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
                           type="button"
                           onClick={() => handleBulkGhlRetry("unsynced")}
                           disabled={bulkRetry.running || unsyncedCount === 0}
-                          className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-extrabold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+                          className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-extrabold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
                         >
                           {bulkRetry.running && bulkRetry.mode === "unsynced"
                             ? <><i className="ri-loader-4-line animate-spin"></i>Syncing {bulkRetry.done}/{bulkRetry.total}...</>
@@ -2316,12 +2773,12 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
                       </div>
                       <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                         <div
-                          className="h-2 rounded-full bg-[#1a5c4f] transition-all duration-300"
+                          className="h-2 rounded-full bg-[#3b6ea5] transition-all duration-300"
                           style={{ width: bulkRetry.total > 0 ? `${Math.round((bulkRetry.done / bulkRetry.total) * 100)}%` : "0%" }}
                         ></div>
                       </div>
                       <div className="flex items-center gap-4 mt-2 text-xs">
-                        <span className="text-[#1a5c4f] font-semibold flex items-center gap-1">
+                        <span className="text-[#3b6ea5] font-semibold flex items-center gap-1">
                           <i className="ri-checkbox-circle-fill"></i>{bulkRetry.successCount} synced
                         </span>
                         {bulkRetry.failCount > 0 && (
@@ -2335,7 +2792,7 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
 
                   {/* Finished result */}
                   {bulkRetry.finished && (
-                    <div className={`px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${bulkRetry.failCount === 0 ? "bg-[#1a5c4f] text-white" : "bg-amber-100 text-amber-800"}`}>
+                    <div className={`px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${bulkRetry.failCount === 0 ? "bg-[#3b6ea5] text-white" : "bg-amber-100 text-amber-800"}`}>
                       <i className={bulkRetry.failCount === 0 ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                       {bulkRetry.total === 0
                         ? bulkRetry.mode === "unsynced"
@@ -2381,12 +2838,12 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
               )}
 
               {/* Data synced fields */}
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4 mb-5">
-                <p className="text-xs font-bold text-[#1a5c4f] uppercase tracking-widest mb-3">Fields Synced to GHL</p>
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4 mb-5">
+                <p className="text-xs font-bold text-[#3b6ea5] uppercase tracking-widest mb-3">Fields Synced to GHL</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   {["customer email", "first + last name", "phone", "state", "confirmation ID", "selected provider", "assigned doctor", "plan type", "delivery speed", "order total", "payment status", "letter URL", "order status", "doctor status", "assessment completed"].map((f) => (
-                    <div key={f} className="flex items-center gap-1.5 text-xs text-[#1a5c4f]">
-                      <i className="ri-checkbox-circle-fill text-[#1a5c4f]" style={{ fontSize: "10px" }}></i>
+                    <div key={f} className="flex items-center gap-1.5 text-xs text-[#3b6ea5]">
+                      <i className="ri-checkbox-circle-fill text-[#3b6ea5]" style={{ fontSize: "10px" }}></i>
                       <span className="capitalize">{f}</span>
                     </div>
                   ))}
@@ -2400,22 +2857,22 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
             <p className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3">GHL Webhook Configuration</p>
 
             {/* Architecture overview */}
-            <div className="mb-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+            <div className="mb-4 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
               <div className="flex items-start gap-3">
-                <i className="ri-information-line text-[#1a5c4f] text-sm flex-shrink-0 mt-0.5"></i>
+                <i className="ri-information-line text-[#3b6ea5] text-sm flex-shrink-0 mt-0.5"></i>
                 <div>
-                  <p className="text-xs font-bold text-[#1a5c4f] mb-1.5">Dual Webhook Architecture</p>
-                  <p className="text-xs text-[#2d7a6a] leading-relaxed mb-2">
+                  <p className="text-xs font-bold text-[#3b6ea5] mb-1.5">Dual Webhook Architecture</p>
+                  <p className="text-xs text-[#2d5a8e] leading-relaxed mb-2">
                     The admin portal routes payloads to <strong>two separate GHL workflows</strong> based on event type. Set both secrets in <strong>Supabase Dashboard → Edge Functions → Secrets</strong>.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                    <div className="bg-white border border-[#b8ddd5] rounded-lg px-3 py-2.5">
-                      <p className="text-[10px] font-bold text-[#1a5c4f] uppercase tracking-widest mb-1">Workflow 1 — Order / Contact Sync</p>
-                      <code className="text-[10px] font-mono bg-[#e0f5ef] px-1.5 py-0.5 rounded text-[#1a5c4f]">GHL_WEBHOOK_URL</code>
-                      <p className="text-[10px] text-[#2d7a6a] mt-1.5 leading-relaxed">Receives order events. Updates GHL contact custom fields: orderStatus, orderAmount, assignedDoctor, orderSource, etc.</p>
+                    <div className="bg-white border border-[#b8cce4] rounded-lg px-3 py-2.5">
+                      <p className="text-[10px] font-bold text-[#3b6ea5] uppercase tracking-widest mb-1">Workflow 1 — Order / Contact Sync</p>
+                      <code className="text-[10px] font-mono bg-[#e0f5ef] px-1.5 py-0.5 rounded text-[#3b6ea5]">GHL_WEBHOOK_URL</code>
+                      <p className="text-[10px] text-[#2d5a8e] mt-1.5 leading-relaxed">Receives order events. Updates GHL contact custom fields: orderStatus, orderAmount, assignedDoctor, orderSource, etc.</p>
                       <div className="mt-2 flex flex-wrap gap-1">
                         {["assessment_started", "payment_confirmed", "doctor_assigned", "order_completed", "refund_issued", "order_cancelled"].map((e) => (
-                          <span key={e} className="text-[9px] font-mono bg-[#e0f5ef] text-[#1a5c4f] px-1.5 py-0.5 rounded">{e}</span>
+                          <span key={e} className="text-[9px] font-mono bg-[#e0f5ef] text-[#3b6ea5] px-1.5 py-0.5 rounded">{e}</span>
                         ))}
                       </div>
                     </div>
@@ -2465,7 +2922,7 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
             {/* Reference webhook URLs */}
             <div className="space-y-3">
               {[
-                { label: "Workflow 1 — Order/Contact Sync", url: GHL_WEBHOOK_MAIN, badge: "GHL_WEBHOOK_URL", badgeColor: "bg-[#1a5c4f] text-white", desc: "Paste this URL as the trigger in your GHL Order/Contact Sync workflow" },
+                { label: "Workflow 1 — Order/Contact Sync", url: GHL_WEBHOOK_MAIN, badge: "GHL_WEBHOOK_URL", badgeColor: "bg-[#3b6ea5] text-white", desc: "Paste this URL as the trigger in your GHL Order/Contact Sync workflow" },
                 { label: "Network Webhook — Join Our Network", url: GHL_WEBHOOK_NETWORK, badge: "GHL_NETWORK_WEBHOOK_URL", badgeColor: "bg-gray-200 text-gray-600", desc: "Used when providers apply via the Join Our Network page" },
               ].map((w) => (
                 <div key={w.label} className="bg-gray-50 border border-gray-200 rounded-xl p-3">
@@ -2563,10 +3020,10 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         title="Stripe"
         subtitle="Payment processing and refunds"
         icon="ri-bank-card-line"
-        iconBg="bg-[#f0faf7]"
-        iconColor="text-[#1a5c4f]"
+        iconBg="bg-[#e8f0f9]"
+        iconColor="text-[#3b6ea5]"
         badge={!loadingStripe && stripe ? (stripe.ok ? "Connected" : "Error") : undefined}
-        badgeColor={!loadingStripe && stripe ? (stripe.ok ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-100 text-red-600") : undefined}
+        badgeColor={!loadingStripe && stripe ? (stripe.ok ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-100 text-red-600") : undefined}
       >
         {loadingStripe ? (
           <div className="flex items-center gap-2 py-4 text-gray-500">
@@ -2579,7 +3036,7 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 {[
                   { label: "Revenue (30d)", value: formatCurrency(stripe.total_revenue), color: "text-emerald-600" },
-                  { label: "Available Balance", value: formatCurrency(stripe.available_balance), color: "text-[#1a5c4f]" },
+                  { label: "Available Balance", value: formatCurrency(stripe.available_balance), color: "text-[#3b6ea5]" },
                   { label: "Charges (30d)", value: stripe.charge_count, color: "text-gray-700" },
                   { label: "Refunds (30d)", value: stripe.refund_count, color: "text-orange-500" },
                 ].map((s) => (
@@ -2589,10 +3046,10 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
                   </div>
                 ))}
               </div>
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
                 <div className="grid grid-cols-2 gap-2">
                   {["Payment intents", "Refund creation", "Balance retrieval", "Webhook handler", "Checkout sessions", "CSV export"].map((cap) => (
-                    <div key={cap} className="flex items-center gap-1.5 text-xs text-[#1a5c4f]">
+                    <div key={cap} className="flex items-center gap-1.5 text-xs text-[#3b6ea5]">
                       <i className="ri-checkbox-circle-fill" style={{ fontSize: "10px" }}></i>{cap}
                     </div>
                   ))}
@@ -2628,8 +3085,8 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
             { label: "Patient Portal Invite", desc: "Customer login invite via customer-login page.", ok: true },
           ].map((t) => (
             <div key={t.label} className="flex items-start gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
-              <div className={`w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0 ${t.ok ? "bg-[#f0faf7]" : "bg-red-50"}`}>
-                <i className={`${t.ok ? "ri-mail-check-line text-[#1a5c4f]" : "ri-mail-close-line text-red-500"} text-sm`}></i>
+              <div className={`w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0 ${t.ok ? "bg-[#e8f0f9]" : "bg-red-50"}`}>
+                <i className={`${t.ok ? "ri-mail-check-line text-[#3b6ea5]" : "ri-mail-close-line text-red-500"} text-sm`}></i>
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-0.5">
@@ -2686,7 +3143,7 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
       </AccordionSection>
 
       {/* ── Email Templates Preview ── */}
-      <AccordionSection title="Email Templates Preview" subtitle="Visually QA every email template — no send required" icon="ri-eye-line" iconBg="bg-[#f0faf7]" iconColor="text-[#1a5c4f]">
+      <AccordionSection title="Email Templates Preview" subtitle="Visually QA every email template — no send required" icon="ri-eye-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
         <EmailTemplatesPreview />
       </AccordionSection>
 

@@ -66,7 +66,7 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+        <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
       </div>
     );
   }
@@ -80,16 +80,16 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
       {/* Profile card */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <div className="flex items-center gap-4 mb-5">
-          <div className="w-16 h-16 rounded-full overflow-hidden flex-shrink-0 bg-[#f0faf7] border-2 border-[#b8ddd5] flex items-center justify-center">
+          <div className="w-16 h-16 rounded-full overflow-hidden flex-shrink-0 bg-[#e8f0f9] border-2 border-[#b8cce4] flex items-center justify-center">
             {data?.photo_url ? (
               <img src={data.photo_url} alt={providerName} className="w-full h-full object-cover object-top" />
             ) : (
-              <span className="text-xl font-extrabold text-[#1a5c4f]">{initials}</span>
+              <span className="text-xl font-extrabold text-[#2c5282]">{initials}</span>
             )}
           </div>
           <div>
             <p className="text-lg font-extrabold text-gray-900">{data?.full_name ?? providerName}</p>
-            {data?.title && <p className="text-sm text-[#1a5c4f] font-semibold">{data.title}</p>}
+            {data?.title && <p className="text-sm text-[#2c5282] font-semibold">{data.title}</p>}
             {data?.email && <p className="text-xs text-gray-400 mt-0.5">{data.email}</p>}
           </div>
         </div>
@@ -111,7 +111,7 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
             onChange={(e) => { setBio(e.target.value); setError(""); setSaved(false); }}
             rows={7}
             placeholder="e.g. I am a Licensed Clinical Social Worker with over 10 years of experience specializing in anxiety, depression, and ESA evaluations..."
-            className={`w-full px-4 py-3 border rounded-xl text-sm text-gray-800 focus:outline-none resize-none leading-relaxed ${isOver ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-[#1a5c4f]"}`}
+            className={`w-full px-4 py-3 border rounded-xl text-sm text-gray-800 focus:outline-none resize-none leading-relaxed ${isOver ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-[#2c5282]"}`}
           />
 
           {error && (
@@ -123,7 +123,7 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
           <div className="flex items-center justify-between mt-4">
             <div>
               {saved && (
-                <div className="flex items-center gap-1.5 text-[#1a5c4f] text-sm font-semibold">
+                <div className="flex items-center gap-1.5 text-[#2c5282] text-sm font-semibold">
                   <i className="ri-checkbox-circle-fill"></i>
                   Bio saved successfully
                 </div>
@@ -133,7 +133,7 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
               type="button"
               onClick={handleSave}
               disabled={saving || isOver}
-              className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+              className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#2c5282] text-white text-sm font-bold rounded-xl hover:bg-[#1e3a5f] disabled:opacity-50 cursor-pointer transition-colors"
             >
               {saving ? (
                 <><i className="ri-loader-4-line animate-spin"></i>Saving...</>

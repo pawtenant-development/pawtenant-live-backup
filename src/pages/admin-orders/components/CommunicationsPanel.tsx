@@ -51,8 +51,8 @@ interface CommunicationsPanelProps {
 }
 
 const EMAIL_TYPE_LABEL: Record<string, { label: string; icon: string; color: string; bg: string }> = {
-  order_confirmation:          { label: "Order Confirmation",        icon: "ri-mail-check-line",      color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7] border-[#b8ddd5]"   },
-  payment_receipt:             { label: "Payment Receipt",           icon: "ri-receipt-line",          color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7] border-[#b8ddd5]"   },
+  order_confirmation:          { label: "Order Confirmation",        icon: "ri-mail-check-line",      color: "text-[#3b6ea5]",   bg: "bg-[#e8f0f9] border-[#b8cce4]"   },
+  payment_receipt:             { label: "Payment Receipt",           icon: "ri-receipt-line",          color: "text-[#3b6ea5]",   bg: "bg-[#e8f0f9] border-[#b8cce4]"   },
   letter_ready:                { label: "Documents Ready",           icon: "ri-file-check-line",       color: "text-amber-700",   bg: "bg-amber-50 border-amber-200"    },
   status_under_review:         { label: "Under Review Update",       icon: "ri-search-eye-line",       color: "text-sky-700",     bg: "bg-sky-50 border-sky-200"        },
   status_completed:            { label: "Status: Completed",         icon: "ri-checkbox-circle-line",  color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
@@ -64,7 +64,7 @@ const TYPE_CONFIG: Record<string, {
   icon: string; label: string;
   bg: string; dot: string; textColor: string;
 }> = {
-  sms_outbound:      { icon: "ri-message-3-line",    label: "SMS Out",       bg: "bg-[#f0faf7] border-[#b8ddd5]",   dot: "bg-[#1a5c4f]",   textColor: "text-[#1a5c4f]"  },
+  sms_outbound:      { icon: "ri-message-3-line",    label: "SMS Out",       bg: "bg-[#e8f0f9] border-[#b8cce4]",   dot: "bg-[#3b6ea5]",   textColor: "text-[#3b6ea5]"  },
   sms_inbound:       { icon: "ri-message-3-fill",    label: "SMS In",        bg: "bg-white border-gray-200",         dot: "bg-gray-400",    textColor: "text-gray-700"    },
   call_outbound:     { icon: "ri-phone-line",         label: "Call Out",      bg: "bg-sky-50 border-sky-200",         dot: "bg-sky-500",     textColor: "text-sky-700"     },
   call_inbound:      { icon: "ri-phone-fill",         label: "Call In",       bg: "bg-violet-50 border-violet-200",   dot: "bg-violet-500",  textColor: "text-violet-700"  },
@@ -255,7 +255,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
       {/* Header stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "SMS Sent",      value: comms.filter((c) => c.type === "sms_outbound").length,  icon: "ri-message-3-line",   color: "text-[#1a5c4f]",  bg: "bg-[#f0faf7]",   border: "border-[#b8ddd5]" },
+          { label: "SMS Sent",      value: comms.filter((c) => c.type === "sms_outbound").length,  icon: "ri-message-3-line",   color: "text-[#3b6ea5]",  bg: "bg-[#e8f0f9]",   border: "border-[#b8cce4]" },
           { label: "SMS Received",  value: comms.filter((c) => c.type === "sms_inbound").length,   icon: "ri-message-3-fill",   color: "text-gray-600",   bg: "bg-gray-50",     border: "border-gray-200" },
           { label: "Total Calls",   value: callsCount,                                              icon: "ri-phone-line",        color: "text-sky-600",    bg: "bg-sky-50",      border: "border-sky-200" },
           { label: "Emails Sent",   value: emailEntries.filter((e) => e.success).length,            icon: "ri-mail-send-line",    color: "text-amber-600",  bg: "bg-amber-50",    border: "border-amber-200" },
@@ -330,7 +330,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search message, phone, name..."
-                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 <button type="button" onClick={loadComms}
@@ -345,7 +345,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {loading ? (
               <div className="flex items-center justify-center py-16">
-                <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+                <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
               </div>
             ) : filteredComms.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -420,7 +420,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                         {/* Customer */}
                         {order ? (
                           <button type="button" onClick={() => onViewOrder(order)} className="text-left group cursor-pointer min-w-0">
-                            <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#1a5c4f] transition-colors">{name}</p>
+                            <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#3b6ea5] transition-colors">{name}</p>
                             <p className="text-xs text-gray-400 font-mono truncate">{entry.confirmation_id}</p>
                             {order.state && <p className="text-xs text-gray-400">{order.state}</p>}
                           </button>
@@ -436,7 +436,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                         <p className="text-xs font-mono text-gray-600 truncate">{fmtPhone(phone)}</p>
                         {/* Status */}
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold w-fit ${
-                          entry.status === "delivered" || entry.status === "sent"   ? "bg-[#f0faf7] text-[#1a5c4f]" :
+                          entry.status === "delivered" || entry.status === "sent"   ? "bg-[#e8f0f9] text-[#3b6ea5]" :
                           entry.status === "failed"                                 ? "bg-red-50 text-red-600"       :
                           entry.status === "received"                               ? "bg-violet-50 text-violet-700" :
                           entry.status === "in_progress" || entry.status === "initiated" ? "bg-sky-50 text-sky-700" :
@@ -476,7 +476,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                   <select
                     value={emailTypeFilter}
                     onChange={(e) => setEmailTypeFilter(e.target.value)}
-                    className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer"
+                    className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
                   >
                     <option value="all">All Types ({emailEntries.length})</option>
                     {uniqueEmailTypes.map((t) => {
@@ -514,7 +514,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search name, email, order ID..."
-                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 <button type="button" onClick={loadEmails}
@@ -529,7 +529,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {loadingEmails ? (
               <div className="flex items-center justify-center py-16">
-                <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+                <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
               </div>
             ) : filteredEmails.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -558,7 +558,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                       <div key={entry.id}
                         className="grid grid-cols-1 md:grid-cols-[28px_160px_1fr_170px_90px_80px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors">
                         <div className="hidden md:flex items-center justify-center">
-                          <div className={`w-2 h-2 rounded-full ${entry.success ? "bg-[#1a5c4f]" : "bg-red-500"}`}></div>
+                          <div className={`w-2 h-2 rounded-full ${entry.success ? "bg-[#3b6ea5]" : "bg-red-500"}`}></div>
                         </div>
                         <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border w-fit ${cfg.bg} ${cfg.color}`}>
                           <i className={`${cfg.icon} text-sm`}></i>
@@ -566,7 +566,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                         </div>
                         {order ? (
                           <button type="button" onClick={() => onViewOrder(order)} className="text-left group cursor-pointer min-w-0">
-                            <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#1a5c4f] transition-colors">{entry.customer_name}</p>
+                            <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#3b6ea5] transition-colors">{entry.customer_name}</p>
                             <p className="text-xs text-gray-400 font-mono truncate">{entry.confirmation_id}</p>
                           </button>
                         ) : (
@@ -576,7 +576,7 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                           </div>
                         )}
                         <p className="text-xs text-gray-500 truncate font-mono">{entry.to}</p>
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold w-fit ${entry.success ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-red-50 text-red-600"}`}>
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold w-fit ${entry.success ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-50 text-red-600"}`}>
                           <i className={entry.success ? "ri-checkbox-circle-fill" : "ri-close-circle-fill"} style={{ fontSize: "10px" }}></i>
                           {entry.success ? "Sent" : "Failed"}
                         </span>

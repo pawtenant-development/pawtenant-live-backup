@@ -190,7 +190,7 @@ export default function CustomersTab() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, email, phone, or state..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
           />
         </div>
         {search && (
@@ -210,7 +210,7 @@ export default function CustomersTab() {
           onClick={handleExportCSV}
           disabled={exporting || filtered.length === 0}
           title="Export visible customers to CSV"
-          className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors flex-shrink-0"
+          className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors flex-shrink-0"
         >
           {exporting
             ? <><i className="ri-loader-4-line animate-spin text-sm"></i>Exporting...</>
@@ -221,7 +221,7 @@ export default function CustomersTab() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+          <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5]"></i>
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -260,7 +260,7 @@ export default function CustomersTab() {
                 >
                   {/* Customer */}
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 flex items-center justify-center bg-[#f0faf7] rounded-full flex-shrink-0 text-[#1a5c4f] text-sm font-extrabold">
+                    <div className="w-9 h-9 flex items-center justify-center bg-[#e8f0f9] rounded-full flex-shrink-0 text-[#3b6ea5] text-sm font-extrabold">
                       {initials}
                     </div>
                     <div className="min-w-0">

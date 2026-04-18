@@ -2,6 +2,7 @@
 import { useState, useCallback } from "react";
 import OrderNotesPanel from "./OrderNotesPanel";
 import { supabase } from "@/lib/supabaseClient";
+import { isProviderEligibleForState } from "./providerEligibility";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface Order {
@@ -28,6 +29,7 @@ export interface Order {
 export interface DoctorContact {
   id: string; full_name: string; email: string; phone: string | null;
   licensed_states: string[]; is_active: boolean | null;
+  state_license_numbers?: Record<string, string> | null;
 }
 
 interface AdminProfile { id: string; user_id: string; full_name: string; email: string | null; role: string | null; }
@@ -347,7 +349,7 @@ export default function OrderCard({
               disabled={isAssigningThis} onClick={stop}
               className="w-full sm:w-64 appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer disabled:opacity-60">
               <option value="">— {order.doctor_name ? "Reassign" : "Assign"} Provider —</option>
-              {assignableProviders.filter((d) => { if (d.is_active === false) return false; const sName = US_STATES.find((s) => s.abbr === order.state)?.name ?? ""; const sAbbr = order.state ?? ""; const states = d.licensed_states ?? []; return !sAbbr || states.includes(sAbbr) || states.includes(sName) || states.some((st) => US_STATES.find((u) => u.name === st)?.abbr === sAbbr); }).map((doc) => (
+              {assignableProviders.filter((d) => isProviderEligibleForState(d, order.state ?? "")).map((doc) => (
                 <option key={doc.id} value={doc.email}>{doc.full_name}</option>
               ))}
             </select>

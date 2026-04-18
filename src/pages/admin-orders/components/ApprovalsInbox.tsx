@@ -279,8 +279,8 @@ export default function ApprovalsInbox({
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
-            <i className="ri-shield-check-line text-[#1a5c4f] text-lg"></i>
+          <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
+            <i className="ri-shield-check-line text-[#3b6ea5] text-lg"></i>
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-extrabold text-gray-900">Approvals Inbox</h2>
@@ -302,7 +302,7 @@ export default function ApprovalsInbox({
         <div className="flex items-center gap-1 px-6 py-2.5 border-b border-gray-100 flex-shrink-0">
           {(["pending", "all"] as const).map((f) => (
             <button key={f} type="button" onClick={() => setFilter(f)}
-              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer capitalize ${filter === f ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-gray-100"}`}>
+              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer capitalize ${filter === f ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-100"}`}>
               {f === "pending" ? `Pending (${pendingCount})` : `All (${requests.length})`}
             </button>
           ))}
@@ -312,12 +312,12 @@ export default function ApprovalsInbox({
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+              <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
             </div>
           ) : displayed.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-              <div className="w-14 h-14 flex items-center justify-center bg-[#f0faf7] rounded-full mb-3">
-                <i className="ri-checkbox-circle-line text-[#1a5c4f] text-2xl"></i>
+              <div className="w-14 h-14 flex items-center justify-center bg-[#e8f0f9] rounded-full mb-3">
+                <i className="ri-checkbox-circle-line text-[#3b6ea5] text-2xl"></i>
               </div>
               <p className="text-sm font-bold text-gray-700">
                 {filter === "pending" ? "No pending requests" : "No requests yet"}
@@ -357,7 +357,7 @@ export default function ApprovalsInbox({
                             </span>
                           )}
                           {req.status === "approved" && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5] text-xs font-bold rounded-full">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4] text-xs font-bold rounded-full">
                               <i className="ri-checkbox-circle-fill text-xs"></i>Approved
                             </span>
                           )}
@@ -380,23 +380,23 @@ export default function ApprovalsInbox({
 
                         {/* Finance orders_tab_access context card */}
                         {req.action_type === "orders_tab_access" && (
-                          <div className="mt-2 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 space-y-2">
-                            <p className="text-xs font-extrabold text-[#1a5c4f] flex items-center gap-1.5">
+                          <div className="mt-2 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 space-y-2">
+                            <p className="text-xs font-extrabold text-[#3b6ea5] flex items-center gap-1.5">
                               <i className="ri-file-list-3-line text-sm"></i>
                               Orders Tab Access Request — Finance Role
                             </p>
-                            <p className="text-xs text-[#2d7a6a] leading-relaxed">
+                            <p className="text-xs text-[#2d5a8e] leading-relaxed">
                               <strong>{req.requester_name}</strong> (Finance) is requesting access to the full Orders tab. Finance users are restricted from the Orders tab by default for data security.
                             </p>
-                            <div className="pt-2 border-t border-[#b8ddd5] space-y-1">
-                              <p className="text-[10px] font-bold text-[#1a5c4f] uppercase tracking-widest">If approved, they will be able to:</p>
+                            <div className="pt-2 border-t border-[#b8cce4] space-y-1">
+                              <p className="text-[10px] font-bold text-[#3b6ea5] uppercase tracking-widest">If approved, they will be able to:</p>
                               {["View all orders and order details", "See provider assignments and status", "Access order documents and assessment data"].map((item) => (
                                 <div key={item} className="flex items-center gap-1.5">
-                                  <i className="ri-checkbox-circle-line text-[#1a5c4f] text-xs flex-shrink-0"></i>
-                                  <p className="text-xs text-[#2d7a6a]">{item}</p>
+                                  <i className="ri-checkbox-circle-line text-[#3b6ea5] text-xs flex-shrink-0"></i>
+                                  <p className="text-xs text-[#2d5a8e]">{item}</p>
                                 </div>
                               ))}
-                              <p className="text-[10px] font-bold text-[#1a5c4f] uppercase tracking-widest mt-2">They will still NOT be able to:</p>
+                              <p className="text-[10px] font-bold text-[#3b6ea5] uppercase tracking-widest mt-2">They will still NOT be able to:</p>
                               {["Issue refunds (requires separate approval)", "Delete orders (requires separate approval)", "Send bulk broadcasts"].map((item) => (
                                 <div key={item} className="flex items-center gap-1.5">
                                   <i className="ri-close-circle-line text-red-400 text-xs flex-shrink-0"></i>
@@ -405,7 +405,7 @@ export default function ApprovalsInbox({
                               ))}
                             </div>
                             {sessionAccessGranted.has(req.requester_id) && (
-                              <div className="flex items-center gap-1.5 pt-1 border-t border-[#b8ddd5]">
+                              <div className="flex items-center gap-1.5 pt-1 border-t border-[#b8cce4]">
                                 <i className="ri-checkbox-circle-fill text-emerald-600 text-sm"></i>
                                 <p className="text-xs font-bold text-emerald-700">Session access granted — {req.requester_name} has been notified via bell to refresh.</p>
                               </div>
@@ -520,7 +520,7 @@ export default function ApprovalsInbox({
                         {!showingRejectNote && (
                           <div className="flex items-center gap-2">
                             <button type="button" onClick={() => handleApprove(req)} disabled={isProcessing}
-                              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer disabled:opacity-50 transition-colors">
+                              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer disabled:opacity-50 transition-colors">
                               {isProcessing
                                 ? <><i className="ri-loader-4-line animate-spin"></i>Processing...</>
                                 : <><i className="ri-checkbox-circle-line"></i>Approve &amp; Execute</>

@@ -266,7 +266,7 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
                   <div className="space-y-1.5">
                     {(application.documents_urls ?? []).map((url, i) => (
                       <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-xs text-[#1a5c4f] hover:underline cursor-pointer bg-[#f0faf7] px-3 py-2 rounded-lg border border-[#b8ddd5]">
+                        className="flex items-center gap-2 text-xs text-[#3b6ea5] hover:underline cursor-pointer bg-[#e8f0f9] px-3 py-2 rounded-lg border border-[#b8cce4]">
                         <i className="ri-file-line"></i>Document {i + 1}
                         <i className="ri-external-link-line text-[10px] ml-auto"></i>
                       </a>
@@ -283,34 +283,34 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Full Name <span className="text-red-400">*</span></label>
                   <input type="text" value={approvalForm.full_name} onChange={(e) => setApprovalForm((f)=>({...f,full_name:e.target.value}))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Title (credential)</label>
                   <input type="text" value={approvalForm.title} placeholder="e.g. LCSW" onChange={(e) => setApprovalForm((f)=>({...f,title:e.target.value}))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Role / Specialty</label>
                   <input type="text" value={approvalForm.role} placeholder="Licensed Mental Health Professional" onChange={(e) => setApprovalForm((f)=>({...f,role:e.target.value}))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Bio</label>
                   <textarea rows={4} value={approvalForm.bio} onChange={(e) => setApprovalForm((f)=>({...f,bio:e.target.value}))}
                     placeholder="Write a professional bio for the website..."
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] resize-none"></textarea>
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] resize-none"></textarea>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1 flex items-center gap-2">
                     Photo URL
                     {approvalForm.photo_url && (
-                      <span className="font-normal text-[#1a5c4f]">(preview below)</span>
+                      <span className="font-normal text-[#3b6ea5]">(preview below)</span>
                     )}
                   </label>
                   <input type="url" value={approvalForm.photo_url} onChange={(e) => setApprovalForm((f)=>({...f,photo_url:e.target.value}))}
                     placeholder="https://... or leave blank to use uploaded headshot"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                   {approvalForm.photo_url && (
                     <div className="mt-2 w-14 h-14 rounded-full overflow-hidden border-2 border-orange-100">
                       <img src={approvalForm.photo_url} alt="Preview" className="w-full h-full object-cover object-top" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'}} />
@@ -321,7 +321,7 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
                   <label className="block text-xs font-bold text-gray-500 mb-1">Verification URL (optional)</label>
                   <input type="url" value={approvalForm.verification_url} onChange={(e) => setApprovalForm((f)=>({...f,verification_url:e.target.value}))}
                     placeholder="https://psychologytoday.com/..."
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                 </div>
               </div>
 
@@ -329,7 +329,7 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
               <div className="mt-4">
                 <label className="block text-xs font-bold text-gray-500 mb-2">
                   Licensed States <span className="text-red-400">*</span>
-                  <span className="font-normal text-[#1a5c4f] ml-1">({selectedStates.size} selected)</span>
+                  <span className="font-normal text-[#3b6ea5] ml-1">({selectedStates.size} selected)</span>
                 </label>
                 <div className="bg-gray-50 rounded-xl p-3 max-h-40 overflow-y-auto">
                   <div className="flex flex-wrap gap-1.5">
@@ -337,7 +337,7 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
                       const sel = selectedStates.has(code);
                       return (
                         <button key={code} type="button" onClick={() => toggleState(code)}
-                          className={`whitespace-nowrap w-10 h-8 flex items-center justify-center rounded-lg text-xs font-bold border cursor-pointer transition-colors ${sel ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "bg-white text-gray-600 border-gray-200 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"}`}>
+                          className={`whitespace-nowrap w-10 h-8 flex items-center justify-center rounded-lg text-xs font-bold border cursor-pointer transition-colors ${sel ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "bg-white text-gray-600 border-gray-200 hover:border-[#3b6ea5] hover:text-[#3b6ea5]"}`}>
                           {code}
                         </button>
                       );
@@ -372,7 +372,7 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
           {!showReject && (
             <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
               <button type="button" onClick={handleApprove} disabled={processing}
-                className="whitespace-nowrap flex items-center gap-2 px-7 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                className="whitespace-nowrap flex items-center gap-2 px-7 py-3 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                 {processing ? <><i className="ri-loader-4-line animate-spin"></i>Approving...</> : <><i className="ri-checkbox-circle-line"></i>Approve &amp; Add to Network</>}
               </button>
               <button type="button" onClick={() => setShowReject(true)}

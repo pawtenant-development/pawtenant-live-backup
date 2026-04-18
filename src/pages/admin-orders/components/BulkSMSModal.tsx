@@ -194,7 +194,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
-          <div className={`w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 ${isRestricted || isFinanceRole || isReadOnlyRole ? "bg-gray-100" : "bg-[#1a5c4f]"}`}>
+          <div className={`w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 ${isRestricted || isFinanceRole || isReadOnlyRole ? "bg-gray-100" : "bg-[#3b6ea5]"}`}>
             <i className={`text-lg ${isRestricted || isFinanceRole || isReadOnlyRole ? "ri-lock-line text-gray-400" : "ri-send-plane-2-line text-white"}`}></i>
           </div>
           <div className="flex-1">
@@ -207,7 +207,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
                   : isReadOnlyRole
                     ? "Read Only — viewing SMS info only, no send capability"
                     : <>Message all Lead (Paid) · Unassigned customers —&nbsp;
-                        <strong className="text-[#1a5c4f]">{withPhone.length}</strong> with phone,&nbsp;
+                        <strong className="text-[#3b6ea5]">{withPhone.length}</strong> with phone,&nbsp;
                         <strong className="text-amber-500">{withoutPhone.length}</strong> without
                       </>
               }
@@ -240,8 +240,8 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
               </div>
 
               {/* What you CAN do */}
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
-                <p className="text-xs font-extrabold text-[#1a5c4f] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
+                <p className="text-xs font-extrabold text-[#3b6ea5] uppercase tracking-widest mb-3 flex items-center gap-1.5">
                   <i className="ri-checkbox-circle-line"></i>What you CAN do
                 </p>
                 <ul className="space-y-2">
@@ -250,7 +250,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
                     { icon: "ri-mail-send-line",  text: "Send individual emails from the order detail panel" },
                     { icon: "ri-phone-line",       text: "Make outbound calls from individual orders" },
                   ].map((item) => (
-                    <li key={item.text} className="flex items-start gap-2 text-xs text-[#1a5c4f]">
+                    <li key={item.text} className="flex items-start gap-2 text-xs text-[#3b6ea5]">
                       <i className={`${item.icon} flex-shrink-0 mt-0.5`}></i>
                       <span>{item.text}</span>
                     </li>
@@ -325,7 +325,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
                 <button
                   type="button"
                   onClick={() => setShowApprovalRequest(true)}
-                  className="whitespace-nowrap flex items-center justify-center gap-2 px-6 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors"
+                  className="whitespace-nowrap flex items-center justify-center gap-2 px-6 py-3 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors"
                 >
                   <i className="ri-send-plane-line"></i>
                   Request Approval to Send Bulk SMS
@@ -415,8 +415,8 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
               )}
 
               {/* What you CAN do */}
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
-                <p className="text-xs font-extrabold text-[#1a5c4f] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
+                <p className="text-xs font-extrabold text-[#3b6ea5] uppercase tracking-widest mb-3 flex items-center gap-1.5">
                   <i className="ri-checkbox-circle-line"></i>What you CAN do
                 </p>
                 <ul className="space-y-2">
@@ -425,7 +425,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
                     { icon: "ri-bar-chart-2-line", text: "View analytics, payments, and earnings" },
                     { icon: "ri-file-list-3-line", text: "View audit logs and system health" },
                   ].map((item) => (
-                    <li key={item.text} className="flex items-start gap-2 text-xs text-[#1a5c4f]">
+                    <li key={item.text} className="flex items-start gap-2 text-xs text-[#3b6ea5]">
                       <i className={`${item.icon} flex-shrink-0 mt-0.5`}></i>
                       <span>{item.text}</span>
                     </li>
@@ -463,8 +463,8 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
           ) : result ? (
             /* ── Result screen ── */
             <div className="text-center py-10 space-y-4">
-              <div className={`w-16 h-16 flex items-center justify-center rounded-full mx-auto ${result.failCount === 0 ? "bg-[#f0faf7]" : "bg-amber-50"}`}>
-                <i className={`text-3xl ${result.failCount === 0 ? "ri-checkbox-circle-fill text-[#1a5c4f]" : "ri-error-warning-fill text-amber-500"}`}></i>
+              <div className={`w-16 h-16 flex items-center justify-center rounded-full mx-auto ${result.failCount === 0 ? "bg-[#e8f0f9]" : "bg-amber-50"}`}>
+                <i className={`text-3xl ${result.failCount === 0 ? "ri-checkbox-circle-fill text-[#3b6ea5]" : "ri-error-warning-fill text-amber-500"}`}></i>
               </div>
               <div>
                 <p className="text-xl font-extrabold text-gray-900">
@@ -478,7 +478,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
               </div>
               <div className="flex items-center justify-center gap-3">
                 <button type="button" onClick={onClose}
-                  className="whitespace-nowrap px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-[#17504a]">
+                  className="whitespace-nowrap px-5 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-[#2d5a8e]">
                   Done
                 </button>
                 <button type="button" onClick={() => setResult(null)}
@@ -496,7 +496,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
                   {TEMPLATES.map((t) => (
                     <button key={t.id} type="button"
                       onClick={() => handleTemplateSelect(t.id)}
-                      className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${selectedTemplate === t.id ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"}`}>
+                      className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${selectedTemplate === t.id ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "border-gray-200 text-gray-600 hover:border-[#3b6ea5] hover:text-[#3b6ea5]"}`}>
                       {t.label}
                     </button>
                   ))}
@@ -514,7 +514,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
                   onChange={(e) => setMessage(e.target.value.slice(0, 640))}
                   rows={5}
                   placeholder="Type your message here... Use {name} to personalise with customer's first name"
-                  className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] resize-none"
+                  className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5] resize-none"
                 />
                 <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                   <i className="ri-lightbulb-line text-amber-500"></i>
@@ -525,7 +525,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
               {/* Preview toggle */}
               <div>
                 <button type="button" onClick={() => setPreview((v) => !v)}
-                  className="whitespace-nowrap flex items-center gap-1.5 text-xs font-bold text-[#1a5c4f] hover:underline cursor-pointer">
+                  className="whitespace-nowrap flex items-center gap-1.5 text-xs font-bold text-[#3b6ea5] hover:underline cursor-pointer">
                   <i className={preview ? "ri-eye-off-line" : "ri-eye-line"}></i>
                   {preview ? "Hide" : "Preview"} recipients ({recipients.length})
                 </button>
@@ -538,8 +538,8 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
                         const previewText = message.replace(/\{name\}/gi, first).slice(0, 60) + (message.length > 60 ? "..." : "");
                         return (
                           <div key={o.id} className="flex items-center gap-3 px-4 py-2.5">
-                            <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-full flex-shrink-0">
-                              <i className="ri-user-3-line text-[#1a5c4f] text-xs"></i>
+                            <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-full flex-shrink-0">
+                              <i className="ri-user-3-line text-[#3b6ea5] text-xs"></i>
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-gray-900 truncate">{name}</p>
@@ -592,7 +592,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
               {/* Stats bar */}
               <div className="grid grid-cols-3 gap-3 bg-gray-50 rounded-xl border border-gray-200 p-4">
                 <div className="text-center">
-                  <p className="text-xl font-extrabold text-[#1a5c4f]">{recipients.length}</p>
+                  <p className="text-xl font-extrabold text-[#3b6ea5]">{recipients.length}</p>
                   <p className="text-xs text-gray-500">Will receive</p>
                 </div>
                 <div className="text-center border-x border-gray-200">
@@ -627,7 +627,7 @@ export default function BulkSMSModal({ orders: rawOrders, adminName, adminRole, 
               type="button"
               onClick={handleSend}
               disabled={sending || !message.trim() || recipients.length === 0}
-              className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+              className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
             >
               {sending
                 ? <><i className="ri-loader-4-line animate-spin"></i>Sending to {recipients.length} customers...</>

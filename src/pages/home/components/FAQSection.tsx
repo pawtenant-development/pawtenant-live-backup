@@ -30,6 +30,14 @@ const faqs = [
     a: "Absolutely. All our ESA letters are issued by licensed mental health professionals who are properly credentialed and authorized to prescribe ESA letters in your state. Each letter includes the professional's license number, signature, and contact information for verification.",
   },
   {
+    q: "Is it safe to get a legit ESA letter online?",
+    a: "Yes — getting a legitimate ESA letter online through PawTenant is completely safe and legal. Our process mirrors a traditional in-person evaluation: a licensed mental health professional reviews your assessment, conducts a clinical evaluation, and issues a signed ESA letter if you qualify. The entire process is HIPAA-compliant and your data is fully protected. Thousands of pet owners have received their legit ESA letter online through our platform.",
+  },
+  {
+    q: "How do I know if an ESA letter online is legit?",
+    a: "A legitimate ESA letter online must be signed by a licensed mental health professional (LMHP) — such as a licensed therapist, psychologist, or clinical social worker — who is licensed in your state. It should include their license number, state of licensure, signature, and contact information. PawTenant letters also include a unique Verification ID so landlords can confirm authenticity instantly. Avoid any service that issues letters without a real clinical evaluation.",
+  },
+  {
     q: "What is the difference between Basic and Premium packages?",
     a: "Both packages include a legitimate ESA letter from a licensed professional. The Premium Package adds priority same-day processing and a discounted annual renewal. If you need your letter urgently or want renewal savings, the Premium Package is the better value.",
   },
@@ -82,7 +90,7 @@ export default function FAQSection() {
             Frequently Asked <span className="text-orange-500">Questions</span>
           </h2>
           <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
-            Everything you need to know about ESA letters, the process, and your rights.
+            Everything you need to know about getting a <strong>legit ESA letter online</strong>, the process, and your housing rights.
           </p>
         </div>
 

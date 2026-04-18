@@ -54,16 +54,13 @@ export default function HeroSection() {
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
-            Get Your Legitimate{" "}
-            <span className="text-orange-400">ESA Letter</span> Online
+            Get a <span className="text-orange-400">Legit ESA Letter</span> Online
             <br className="hidden sm:block" />
             {" "}Fast, Simple &amp; Stress Free
           </h1>
 
           <p className="text-gray-300 text-base sm:text-lg mb-7 leading-relaxed">
-            Connect with licensed mental health professionals and receive a
-            valid Emotional Support Animal letter — accepted for housing
-            nationwide. No waiting rooms, no hassle.
+            Get your <strong className="text-white font-semibold">legitimate ESA letter online</strong> from licensed mental health professionals — accepted for housing nationwide under the Fair Housing Act. No waiting rooms, no hassle.
           </p>
 
           {/* Stats Row */}
@@ -86,6 +83,12 @@ export default function HeroSection() {
             ))}
           </div>
 
+          {/* Legit ESA trust note */}
+          <p className="text-orange-300 text-xs font-semibold mb-4 flex items-center gap-1.5">
+            <i className="ri-shield-check-line"></i>
+            100% legit ESA letter — signed by a licensed clinician, accepted by landlords nationwide
+          </p>
+
           {/* 50 States Trust Badge */}
           <div className="inline-flex items-center gap-2.5 bg-white/10 border border-white/20 backdrop-blur-sm px-4 py-2.5 rounded-full mb-7">
             <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -106,7 +109,7 @@ export default function HeroSection() {
               href={withAttribution("/assessment")}
               className="whitespace-nowrap px-7 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer inline-flex items-center justify-center gap-2"
             >
-              Get Your ESA Letter Now
+              Get Your Legit ESA Letter Now
               <i className="ri-arrow-right-line"></i>
             </a>
             <a
@@ -139,32 +142,28 @@ export default function HeroSection() {
           </div>
 
           {/* ── Provider Credibility Strip ── */}
-          <div className="bg-white/10 border border-white/20 backdrop-blur-sm rounded-2xl px-4 py-3">
-            <p className="text-white/60 text-[10px] font-semibold uppercase tracking-widest mb-2.5">
-              Our Licensed Providers
-            </p>
-            <div className="flex items-center gap-4 flex-wrap">
-              {PROVIDERS.map((p) => (
-                <div key={p.name} className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-orange-400/60 flex-shrink-0">
-                    <img
-                      src={p.img}
-                      alt={p.name}
-                      className="w-full h-full object-cover object-top"
-                      loading="lazy"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-white text-xs font-bold leading-tight">{p.name}</p>
-                    <p className="text-orange-300 text-[10px] font-semibold leading-tight">{p.cred}</p>
-                    <p className="text-white/50 text-[9px] leading-tight">{p.role}</p>
-                  </div>
+          <div className="inline-flex items-center gap-3 bg-white/10 border border-white/20 backdrop-blur-sm rounded-2xl px-4 py-3">
+            {/* Stacked avatars */}
+            <div className="flex items-center">
+              {PROVIDERS.map((p, i) => (
+                <div
+                  key={p.name}
+                  className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/60 flex-shrink-0"
+                  style={{ marginLeft: i === 0 ? 0 : "-10px", zIndex: PROVIDERS.length - i }}
+                >
+                  <img
+                    src={p.img}
+                    alt="Licensed clinician"
+                    className="w-full h-full object-cover object-top"
+                    loading="lazy"
+                  />
                 </div>
               ))}
-              <div className="ml-auto flex items-center gap-1.5 bg-orange-500/20 border border-orange-400/30 rounded-full px-3 py-1">
-                <i className="ri-shield-check-fill text-orange-400 text-xs"></i>
-                <span className="text-orange-300 text-[10px] font-bold whitespace-nowrap">State Licensed</span>
-              </div>
+            </div>
+            {/* Text */}
+            <div>
+              <p className="text-white text-xs font-bold leading-tight">Licensed clinician review</p>
+              <p className="text-white/60 text-[11px] leading-tight">100% online &middot; Real clinical evaluation</p>
             </div>
           </div>
 

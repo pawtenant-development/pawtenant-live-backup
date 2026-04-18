@@ -399,7 +399,7 @@ export default function ProviderPortalPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f8f7f4] flex items-center justify-center">
-        <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+        <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
       </div>
     );
   }
@@ -419,11 +419,11 @@ export default function ProviderPortalPage() {
               className="h-9 w-auto object-contain"
             />
           </Link>
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-[#f0faf7] rounded-full">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-[#e8f0f9] rounded-full">
             <div className="w-2 h-2 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-[#1a5c4f]"></div>
+              <div className="w-2 h-2 rounded-full bg-[#2c5282]"></div>
             </div>
-            <span className="text-xs font-bold text-[#1a5c4f]">Provider Portal</span>
+            <span className="text-xs font-bold text-[#2c5282]">Provider Portal</span>
           </div>
         </div>
 
@@ -433,7 +433,7 @@ export default function ProviderPortalPage() {
             <button type="button"
               onClick={(e) => { e.stopPropagation(); setShowNotifications((v) => !v); if (!showNotifications) markNotificationsRead(); setProfileDropdown(false); }}
               className="whitespace-nowrap relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 cursor-pointer transition-colors">
-              <i className={`ri-notification-3-line text-base ${unreadCount > 0 ? "text-[#1a5c4f]" : ""}`}></i>
+              <i className={`ri-notification-3-line text-base ${unreadCount > 0 ? "text-[#2c5282]" : ""}`}></i>
               {unreadCount > 0 && (
                 <>
                   <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center bg-red-500 text-white text-[10px] font-extrabold rounded-full z-10">
@@ -466,7 +466,7 @@ export default function ProviderPortalPage() {
                           }
                         }}>
                         <div className="flex items-start gap-2.5">
-                          {!n.is_read && <div className="w-2 h-2 rounded-full bg-[#1a5c4f] flex-shrink-0 mt-1.5"></div>}
+                          {!n.is_read && <div className="w-2 h-2 rounded-full bg-[#2c5282] flex-shrink-0 mt-1.5"></div>}
                           {n.is_read && <div className="w-2 h-2 flex-shrink-0"></div>}
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-gray-900">{n.title}</p>
@@ -487,7 +487,7 @@ export default function ProviderPortalPage() {
             <button type="button"
               onClick={(e) => { e.stopPropagation(); setProfileDropdown((v) => !v); setShowNotifications(false); }}
               className="whitespace-nowrap flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors">
-              <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] text-white text-xs font-extrabold rounded-full">
+              <div className="w-7 h-7 flex items-center justify-center bg-[#2c5282] text-white text-xs font-extrabold rounded-full">
                 {initials}
               </div>
               <span className="hidden sm:block text-sm font-bold text-gray-700">{firstName}</span>
@@ -498,7 +498,7 @@ export default function ProviderPortalPage() {
                 <div className="px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-bold text-gray-900">{profile?.full_name}</p>
                   <p className="text-xs text-gray-400 truncate">{profile?.email}</p>
-                  {profile?.title && <p className="text-xs text-[#1a5c4f] font-semibold mt-0.5">{profile.title}</p>}
+                  {profile?.title && <p className="text-xs text-[#2c5282] font-semibold mt-0.5">{profile.title}</p>}
                 </div>
                 <div className="py-1">
                   {profile?.licensed_states && profile.licensed_states.length > 0 && (
@@ -524,7 +524,7 @@ export default function ProviderPortalPage() {
           <div className={`${
             newCaseToast.type === "error" ? "bg-red-600" :
             newCaseToast.type === "warning" ? "bg-amber-500" :
-            "bg-[#1a5c4f]"
+            "bg-[#2c5282]"
           } text-white rounded-2xl shadow-lg overflow-hidden`}>
             <div className="px-5 py-4 flex items-start gap-3">
               <div className="w-9 h-9 flex items-center justify-center bg-white/20 rounded-xl flex-shrink-0 mt-0.5">
@@ -557,7 +557,7 @@ export default function ProviderPortalPage() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         {/* Welcome header */}
         <div className="mb-6">
-          <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-1">Welcome back</p>
+          <p className="text-xs text-[#2c5282] font-bold uppercase tracking-widest mb-1">Welcome back</p>
           <h1 className="text-2xl font-extrabold text-gray-900">{profile?.full_name ?? "Provider"}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {orders.length > 0
@@ -573,7 +573,7 @@ export default function ProviderPortalPage() {
             { label: "Total Assigned", value: orders.length, icon: "ri-file-list-3-line", color: "text-gray-700", bg: "bg-gray-100" },
             { label: "New / Pending", value: newCount, icon: "ri-time-line", color: "text-amber-600", bg: "bg-amber-100" },
             { label: "In Progress", value: inProgressCount, icon: "ri-stethoscope-line", color: "text-sky-600", bg: "bg-sky-100" },
-            { label: "Completed", value: completedCount, icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]", bg: "bg-[#e8f5f1]" },
+            { label: "Completed", value: completedCount, icon: "ri-checkbox-circle-line", color: "text-[#2c5282]", bg: "bg-[#e8f0f9]" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -596,7 +596,7 @@ export default function ProviderPortalPage() {
             { key: "profile" as TabKey, label: "Profile", icon: "ri-user-settings-line" },
           ]).map((tab) => (
             <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
-              className={`whitespace-nowrap relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-extrabold transition-colors cursor-pointer ${activeTab === tab.key ? "bg-white text-[#1a5c4f]" : "text-gray-500 hover:text-gray-700"}`}>
+              className={`whitespace-nowrap relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-extrabold transition-colors cursor-pointer ${activeTab === tab.key ? "bg-white text-[#2c5282]" : "text-gray-500 hover:text-gray-700"}`}>
               <i className={tab.icon}></i>{tab.label}
               {tab.key === "orders" && newCount > 0 && (
                 <span className="inline-flex items-center justify-center w-5 h-5 bg-amber-500 text-white text-[10px] font-extrabold rounded-full">
@@ -620,7 +620,7 @@ export default function ProviderPortalPage() {
                   { value: "completed", label: "Completed" },
                 ] as { value: StatusFilter; label: string }[]).map((opt) => (
                   <button key={opt.value} type="button" onClick={() => setStatusFilter(opt.value)}
-                    className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#1a5c4f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#2c5282] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
                     {opt.label}
                   </button>
                 ))}
@@ -629,14 +629,14 @@ export default function ProviderPortalPage() {
                 <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                 <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search name, state, order ID..."
-                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2c5282]" />
               </div>
             </div>
 
             {/* Orders list */}
             {loadingOrders ? (
               <div className="flex items-center justify-center py-20">
-                <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+                <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
               </div>
             ) : filtered.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-16 text-center">
@@ -666,10 +666,10 @@ export default function ProviderPortalPage() {
 
                   return (
                     <div key={order.id}
-                      className={`bg-white rounded-xl border p-5 transition-colors ${isRefunded ? "border-red-200 bg-red-50/30 opacity-80" : isPSD ? "border-amber-200" : isNew ? "border-amber-200" : isThirtyDay ? "border-orange-200" : isLetterIssued ? "border-[#b8ddd5]" : "border-gray-200"}`}>
+                      className={`bg-white rounded-xl border p-5 transition-colors ${isRefunded ? "border-red-200 bg-red-50/30 opacity-80" : isPSD ? "border-amber-200" : isNew ? "border-amber-200" : isThirtyDay ? "border-orange-200" : isLetterIssued ? "border-[#b8cce4]" : "border-gray-200"}`}>
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                         <div className="flex items-start gap-3 flex-1 min-w-0">
-                          <div className={`w-10 h-10 flex items-center justify-center rounded-full text-xs font-extrabold flex-shrink-0 ${isRefunded ? "bg-red-100 text-red-600" : isLetterIssued ? "bg-[#f0faf7] text-[#1a5c4f]" : isPSD ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
+                          <div className={`w-10 h-10 flex items-center justify-center rounded-full text-xs font-extrabold flex-shrink-0 ${isRefunded ? "bg-red-100 text-red-600" : isLetterIssued ? "bg-[#e8f0f9] text-[#2c5282]" : isPSD ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
                             {fullName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -688,7 +688,7 @@ export default function ProviderPortalPage() {
                                   <i className="ri-service-line" style={{ fontSize: "9px" }}></i>PSD Letter
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] border border-[#b8ddd5] rounded-full text-[10px] font-extrabold">
+                                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-[#e8f0f9] text-[#2c5282] border border-[#b8cce4] rounded-full text-[10px] font-extrabold">
                                   <i className="ri-heart-line" style={{ fontSize: "9px" }}></i>ESA Letter
                                 </span>
                               )}
@@ -728,7 +728,7 @@ export default function ProviderPortalPage() {
                             </div>
                           ) : (
                             <button type="button" onClick={() => handleOpenOrder(order)}
-                              className={`whitespace-nowrap flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-xl cursor-pointer transition-colors ${isNew ? "bg-[#1a5c4f] text-white hover:bg-[#17504a]" : isThirtyDay ? "bg-orange-500 text-white hover:bg-orange-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                              className={`whitespace-nowrap flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-xl cursor-pointer transition-colors ${isNew ? "bg-[#2c5282] text-white hover:bg-[#17504a]" : isThirtyDay ? "bg-orange-500 text-white hover:bg-orange-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
                               {isNew ? <><i className="ri-eye-line"></i>View Case</> : isThirtyDay ? <><i className="ri-time-line"></i>Issue Letter</> : <><i className="ri-arrow-right-line"></i>Open</>}
                             </button>
                           )}

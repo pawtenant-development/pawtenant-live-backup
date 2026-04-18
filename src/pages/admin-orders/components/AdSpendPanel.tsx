@@ -143,7 +143,7 @@ function CampaignRow({ campaign, totalSpend, currency = "USD" }: { campaign: Cam
         <p className="text-xs font-bold text-gray-900 truncate">{campaign.name}</p>
         <div className="flex items-center gap-2 mt-1">
           <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden max-w-[80px]">
-            <div className="h-full bg-[#1a5c4f] rounded-full" style={{ width: `${pct}%` }}></div>
+            <div className="h-full bg-[#3b6ea5] rounded-full" style={{ width: `${pct}%` }}></div>
           </div>
           <span className="text-[10px] text-gray-400">{pct}% of spend</span>
         </div>
@@ -283,7 +283,7 @@ function PlatformCard({
                       value={tokenInput}
                       onChange={(e) => setTokenInput(e.target.value)}
                       placeholder={field.placeholder}
-                      className="w-full px-3 py-2.5 pr-20 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#1a5c4f] bg-white"
+                      className="w-full px-3 py-2.5 pr-20 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#3b6ea5] bg-white"
                     />
                   ) : (
                     <div className="flex items-center gap-2">
@@ -315,7 +315,7 @@ function PlatformCard({
                   value={accountIdInput}
                   onChange={(e) => setAccountIdInput(e.target.value)}
                   placeholder={field.placeholder}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#1a5c4f] bg-white"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#3b6ea5] bg-white"
                 />
               )}
               <p className="text-[10px] text-gray-400 mt-1 flex items-start gap-1">
@@ -329,7 +329,7 @@ function PlatformCard({
               type="button"
               onClick={handleSave}
               disabled={saving || !accountIdInput.trim() || (!isGooglePlatform && !editingToken && !settings?.access_token)}
-              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
             >
               {saving ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-save-line"></i>Save & Connect</>}
             </button>
@@ -473,7 +473,7 @@ function PlatformCard({
                   label="Paid Orders"
                   value={paidOrders > 0 ? String(paidOrders) : "—"}
                   icon="ri-shopping-bag-line"
-                  color="text-[#1a5c4f]"
+                  color="text-[#3b6ea5]"
                   sub={`Avg. order: ${paidOrders > 0 && revenue > 0 ? fmtCurrency(revenue / paidOrders) : "—"}`}
                 />
               </div>
@@ -732,7 +732,7 @@ export default function AdSpendPanel({ revenueByChannel, paidOrdersByChannel, da
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-sm font-extrabold text-gray-900 flex items-center gap-2">
-            <i className="ri-advertisement-line text-[#1a5c4f]"></i>
+            <i className="ri-advertisement-line text-[#3b6ea5]"></i>
             Ad Spend & ROI Tracker
           </h3>
           <p className="text-xs text-gray-400 mt-0.5">

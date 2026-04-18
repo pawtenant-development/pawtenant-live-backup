@@ -1,6 +1,7 @@
 // OrderDetailModal — Full case management view for admins
 import { useState, useEffect, useCallback } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
+import { isProviderEligibleForState } from "./providerEligibility";
 import OrderNotesPanel from "./OrderNotesPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 import CommunicationTab from "./CommunicationTab";
@@ -76,6 +77,7 @@ interface DoctorContact {
   email: string;
   licensed_states?: string[];
   is_active?: boolean | null;
+  state_license_numbers?: Record<string, string> | null;
 }
 
 interface AdminProfile {
@@ -154,21 +156,21 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700",
   in_review: "bg-sky-100 text-sky-700",
   approved: "bg-emerald-100 text-emerald-700",
-  letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
+  letter_sent: "bg-[#dbeafe] text-[#3b6ea5]",
   patient_notified: "bg-violet-100 text-violet-700",
   provider_rejected: "bg-red-100 text-red-700",
   unassigned: "bg-sky-100 text-sky-700",
 };
 
 const EMAIL_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; failColor: string }> = {
-  order_confirmation: { label: "Order Confirmation",   icon: "ri-mail-check-line",   color: "text-[#1a5c4f] bg-[#e8f5f1] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
+  order_confirmation: { label: "Order Confirmation",   icon: "ri-mail-check-line",   color: "text-[#3b6ea5] bg-[#dbeafe] border-[#b8cce4]", failColor: "text-red-600 bg-red-50 border-red-200" },
   payment_receipt:   { label: "Payment Receipt",       icon: "ri-file-text-line",     color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   internal_notification: { label: "Internal Notification (Admin)", icon: "ri-notification-3-line", color: "text-gray-600 bg-gray-50 border-gray-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   letter_ready:      { label: "Letter Ready",          icon: "ri-file-check-line",    color: "text-violet-700 bg-violet-50 border-violet-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   refund:            { label: "Refund Confirmation",   icon: "ri-refund-line",        color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   status_under_review: { label: "Status: Under Review",  icon: "ri-eye-line",          color: "text-sky-700 bg-sky-50 border-sky-200",  failColor: "text-red-600 bg-red-50 border-red-200" },
   status_completed:    { label: "Status: Completed (Paid)", icon: "ri-checkbox-circle-line", color: "text-emerald-700 bg-emerald-50 border-emerald-200", failColor: "text-red-600 bg-red-50 border-red-200" },
-  provider_assigned_provider: { label: "Provider Assignment Notice", icon: "ri-user-received-line", color: "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]", failColor: "text-red-600 bg-red-50 border-red-200" },
+  provider_assigned_provider: { label: "Provider Assignment Notice", icon: "ri-user-received-line", color: "text-[#3b6ea5] bg-[#e8f0f9] border-[#b8cce4]", failColor: "text-red-600 bg-red-50 border-red-200" },
   provider_assigned_customer: { label: "Provider Assigned (Patient)", icon: "ri-user-star-line", color: "text-sky-700 bg-sky-50 border-sky-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   provider_notification:      { label: "Provider Nudge",              icon: "ri-notification-3-line", color: "text-amber-700 bg-amber-50 border-amber-200", failColor: "text-red-600 bg-red-50 border-red-200" },
   thirty_day_reminder:        { label: "30-Day Reissue Reminder",      icon: "ri-time-fill",           color: "text-orange-700 bg-orange-50 border-orange-200", failColor: "text-red-600 bg-red-50 border-red-200" },
@@ -317,7 +319,7 @@ function CopyFieldButton({ value }: { value: string }) {
       type="button"
       onClick={handle}
       title="Copy"
-      className="whitespace-nowrap flex-shrink-0 w-5 h-5 flex items-center justify-center text-gray-300 hover:text-[#1a5c4f] cursor-pointer transition-colors"
+      className="whitespace-nowrap flex-shrink-0 w-5 h-5 flex items-center justify-center text-gray-300 hover:text-[#3b6ea5] cursor-pointer transition-colors"
     >
       <i className={copied ? "ri-checkbox-circle-line text-emerald-500" : "ri-file-copy-line"} style={{ fontSize: "12px" }}></i>
     </button>
@@ -528,11 +530,11 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
   return (
     <div className="col-span-2 sm:col-span-3 md:col-span-4">
       <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
-        <i className="ri-shield-check-line text-[#1a5c4f]"></i>
+        <i className="ri-shield-check-line text-[#3b6ea5]"></i>
         Verification ID
       </p>
       <div className="flex items-center gap-2 flex-wrap">
-        <span className={`text-sm font-mono font-bold px-3 py-1.5 rounded-lg select-all tracking-wider border ${status === "revoked" ? "text-red-600 bg-red-50 border-red-200 line-through opacity-70" : "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]"}`}>
+        <span className={`text-sm font-mono font-bold px-3 py-1.5 rounded-lg select-all tracking-wider border ${status === "revoked" ? "text-red-600 bg-red-50 border-red-200 line-through opacity-70" : "text-[#3b6ea5] bg-[#e8f0f9] border-[#b8cce4]"}`}>
           {letterId}
         </span>
         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${VERIF_STATUS_BADGE[status] ?? VERIF_STATUS_BADGE.valid}`}>
@@ -542,7 +544,7 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
         <button
           type="button"
           onClick={handleCopy}
-          className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-[#1a5c4f] cursor-pointer transition-colors"
+          className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-[#3b6ea5] cursor-pointer transition-colors"
         >
           <i className={copied ? "ri-checkbox-circle-line" : "ri-file-copy-line"}></i>
           {copied ? "Copied!" : "Copy"}
@@ -566,13 +568,13 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
           href={`/verify/${letterId}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+          className="text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
         >
           Preview verify page
         </a>
       </p>
       {revokeMsg && (
-        <p className={`text-xs mt-1.5 flex items-center gap-1 font-semibold ${revokeMsg.includes("success") || revokeMsg.includes("Already") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+        <p className={`text-xs mt-1.5 flex items-center gap-1 font-semibold ${revokeMsg.includes("success") || revokeMsg.includes("Already") ? "text-[#3b6ea5]" : "text-red-600"}`}>
           <i className={revokeMsg.includes("success") || revokeMsg.includes("Already") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
           {revokeMsg}
         </p>
@@ -1650,16 +1652,9 @@ export default function OrderDetailModal({
   // Filter doctors: active only + licensed in the order's state
   const orderStateCode = order.state ?? "";
   const orderStateName = US_STATES_MAP[orderStateCode] ?? orderStateCode ?? "";
-  const eligibleDoctors = doctorContacts.filter((d) => {
-    const isActive = d.is_active !== false;
-    // Support both full name ("California") and code ("CA") formats in licensed_states
-    const licensedInState =
-      !orderStateName ||
-      !d.licensed_states ||
-      d.licensed_states.includes(orderStateName) ||   // full name match (CreateDoctorModal)
-      d.licensed_states.includes(orderStateCode);      // code match (application approval)
-    return isActive && licensedInState;
-  });
+  const eligibleDoctors = doctorContacts.filter((d) =>
+    isProviderEligibleForState(d, orderStateCode)
+  );
 
   // ── Remove Provider / Mark Unassigned state ──
   const [removingProvider, setRemovingProvider] = useState(false);
@@ -2073,7 +2068,7 @@ export default function OrderDetailModal({
         <div className="flex-shrink-0 border-b border-gray-100">
           {/* Top row: avatar + name + status + actions + close */}
           <div className="flex items-center gap-3 px-4 sm:px-6 pt-4 pb-3">
-            <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-full text-[#1a5c4f] text-sm font-extrabold flex-shrink-0">
+            <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-full text-[#3b6ea5] text-sm font-extrabold flex-shrink-0">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
@@ -2135,7 +2130,7 @@ export default function OrderDetailModal({
                   target="_blank"
                   rel="noopener noreferrer"
                   title={`Preview provider portal for ${order.doctor_name ?? order.doctor_email ?? "assigned provider"}`}
-                  className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ec] transition-colors cursor-pointer"
+                  className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#e0f2ec] transition-colors cursor-pointer"
                 >
                   <i className="ri-user-heart-line text-sm"></i>
                   <span className="hidden sm:inline">Provider View</span>
@@ -2145,7 +2140,7 @@ export default function OrderDetailModal({
                 type="button"
                 onClick={() => setSection("comms")}
                 title={order.phone ? `SMS ${order.phone}` : "No phone on file"}
-                className={`whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-[#b8ddd5] text-[#1a5c4f] hover:bg-[#f0faf7]" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+                className={`whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-[#b8cce4] text-[#3b6ea5] hover:bg-[#e8f0f9]" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
               >
                 <i className="ri-message-3-line"></i>
               </button>
@@ -2222,14 +2217,14 @@ export default function OrderDetailModal({
             <div className="border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
               {/* Mobile: compact select dropdown */}
               <div className="flex sm:hidden items-center gap-2 px-4 py-2.5">
-                <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                <div className="w-7 h-7 flex items-center justify-center bg-[#3b6ea5] rounded-lg flex-shrink-0">
                   <i className={`${activeTab?.icon ?? "ri-layout-grid-line"} text-white text-sm`}></i>
                 </div>
                 <div className="relative flex-1">
                   <select
                     value={section}
                     onChange={(e) => setSection(e.target.value as Section)}
-                    className="w-full appearance-none pl-3 pr-8 py-2 bg-white border border-gray-200 text-sm font-bold text-gray-800 rounded-lg focus:outline-none focus:border-[#1a5c4f] cursor-pointer"
+                    className="w-full appearance-none pl-3 pr-8 py-2 bg-white border border-gray-200 text-sm font-bold text-gray-800 rounded-lg focus:outline-none focus:border-[#3b6ea5] cursor-pointer"
                   >
                     {TABS.map((tab) => (
                       <option key={tab.key} value={tab.key}>
@@ -2246,11 +2241,11 @@ export default function OrderDetailModal({
               <div className="hidden sm:flex items-center gap-1 px-4 py-2 flex-wrap">
                 {TABS.map((tab) => (
                   <button key={tab.key} type="button" onClick={() => setSection(tab.key)}
-                    className={`whitespace-nowrap relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-white hover:text-gray-800"}`}>
+                    className={`whitespace-nowrap relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-white hover:text-gray-800"}`}>
                     <i className={tab.icon}></i>
                     {tab.label}
                     {tab.badge !== null && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${section === tab.key ? "bg-white/20 text-white" : "bg-[#e8f5f1] text-[#1a5c4f]"}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${section === tab.key ? "bg-white/20 text-white" : "bg-[#dbeafe] text-[#3b6ea5]"}`}>
                         {tab.badge}
                       </span>
                     )}
@@ -2318,7 +2313,7 @@ export default function OrderDetailModal({
                     label: "Provider",
                     value: order.doctor_name ?? (order.doctor_email ? order.doctor_email.split("@")[0] : "Unassigned"),
                     icon: "ri-user-heart-line",
-                    color: order.doctor_name || order.doctor_email ? "text-[#1a5c4f] bg-[#f0faf7] border-[#b8ddd5]" : "text-gray-500 bg-gray-50 border-gray-200",
+                    color: order.doctor_name || order.doctor_email ? "text-[#3b6ea5] bg-[#e8f0f9] border-[#b8cce4]" : "text-gray-500 bg-gray-50 border-gray-200",
                   },
                   {
                     label: "Documents",
@@ -2380,7 +2375,7 @@ export default function OrderDetailModal({
                     </button>
                   </div>
                   {paymentSyncMsg && (
-                    <p className={`text-xs mt-2 flex items-center gap-1 ${paymentSyncMsg.toLowerCase().includes("fail") || paymentSyncMsg.toLowerCase().includes("error") ? "text-red-600" : "text-[#1a5c4f]"}`}>
+                    <p className={`text-xs mt-2 flex items-center gap-1 ${paymentSyncMsg.toLowerCase().includes("fail") || paymentSyncMsg.toLowerCase().includes("error") ? "text-red-600" : "text-[#3b6ea5]"}`}>
                       <i className="ri-information-line"></i>{paymentSyncMsg}
                     </p>
                   )}
@@ -2517,7 +2512,7 @@ export default function OrderDetailModal({
                     {/* Requested Provider */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Requested Provider</p>
-                      <p className={`text-sm font-semibold ${order.selected_provider ? "text-[#1a5c4f]" : "text-gray-400"}`}>{order.selected_provider ?? "—"}</p>
+                      <p className={`text-sm font-semibold ${order.selected_provider ? "text-[#3b6ea5]" : "text-gray-400"}`}>{order.selected_provider ?? "—"}</p>
                     </div>
                     {/* Payment status */}
                     <div>
@@ -2630,7 +2625,7 @@ export default function OrderDetailModal({
                     </p>
                     {order.ghl_contact_id ? (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-mono font-semibold text-[#1a5c4f] bg-[#f0faf7] border border-[#b8ddd5] px-3 py-1.5 rounded-lg select-all tracking-wide">
+                        <span className="text-xs font-mono font-semibold text-[#3b6ea5] bg-[#e8f0f9] border border-[#b8cce4] px-3 py-1.5 rounded-lg select-all tracking-wide">
                           {order.ghl_contact_id}
                         </span>
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
@@ -2641,7 +2636,7 @@ export default function OrderDetailModal({
                           href={`https://app.gohighlevel.com/contacts/${order.ghl_contact_id}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+                          className="inline-flex items-center gap-1 text-xs text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
                         >
                           <i className="ri-external-link-line text-xs"></i>Open in GHL
                         </a>
@@ -2674,7 +2669,7 @@ export default function OrderDetailModal({
                             href={`https://dashboard.stripe.com/payments/${order.payment_intent_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+                            className="inline-flex items-center gap-1 text-xs text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
                           >
                             <i className="ri-external-link-line text-xs"></i>Open in Stripe
                           </a>
@@ -2699,7 +2694,7 @@ export default function OrderDetailModal({
                               href={`https://dashboard.stripe.com/payments/${order.checkout_session_id}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-[#1a5c4f] font-semibold hover:underline cursor-pointer"
+                              className="inline-flex items-center gap-1 text-xs text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
                             >
                               <i className="ri-external-link-line text-xs"></i>Open Session
                             </a>
@@ -2753,12 +2748,12 @@ export default function OrderDetailModal({
                   {(order.letter_issue_date || order.letter_expiry_date) && (
                     <div className="col-span-2 sm:col-span-3 md:col-span-4">
                       <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
-                        <i className="ri-calendar-check-line text-[#1a5c4f]"></i>
+                        <i className="ri-calendar-check-line text-[#3b6ea5]"></i>
                         Letter Validity Period
                       </p>
                       <div className="flex items-center gap-4 flex-wrap">
-                        <div className="flex items-center gap-2 bg-[#f0faf7] border border-[#b8ddd5] rounded-lg px-3 py-2">
-                          <i className="ri-calendar-line text-[#1a5c4f] text-sm"></i>
+                        <div className="flex items-center gap-2 bg-[#e8f0f9] border border-[#b8cce4] rounded-lg px-3 py-2">
+                          <i className="ri-calendar-line text-[#3b6ea5] text-sm"></i>
                           <div>
                             <p className="text-xs text-gray-400 leading-tight">Issue Date</p>
                             <p className="text-sm font-bold text-gray-900">
@@ -3027,14 +3022,14 @@ export default function OrderDetailModal({
                 ) : (
                   <>
                     {order.doctor_name && (
-                      <div className="flex items-center gap-3 mb-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-3">
+                      <div className="flex items-center gap-3 mb-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-3">
                         <div className="w-9 h-9 flex items-center justify-center bg-white rounded-full flex-shrink-0">
-                          <i className="ri-user-heart-line text-[#1a5c4f] text-base"></i>
+                          <i className="ri-user-heart-line text-[#3b6ea5] text-base"></i>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-[#1a5c4f] font-bold">Currently Assigned</p>
-                          <p className="text-sm font-bold text-[#1a5c4f]">{order.doctor_name}</p>
-                          {order.doctor_email && <p className="text-xs text-[#1a5c4f]/70">{order.doctor_email}</p>}
+                          <p className="text-xs text-[#3b6ea5] font-bold">Currently Assigned</p>
+                          <p className="text-sm font-bold text-[#3b6ea5]">{order.doctor_name}</p>
+                          {order.doctor_email && <p className="text-xs text-[#3b6ea5]/70">{order.doctor_email}</p>}
                         </div>
                         {/* Nudge Provider button — only shows when a provider is assigned */}
                         <button
@@ -3061,13 +3056,13 @@ export default function OrderDetailModal({
                       </div>
                     )}
                     {removeProviderMsg && (
-                      <p className={`text-xs mb-2 flex items-center gap-1 font-semibold ${removeProviderMsg.includes("Unassigned") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+                      <p className={`text-xs mb-2 flex items-center gap-1 font-semibold ${removeProviderMsg.includes("Unassigned") ? "text-[#3b6ea5]" : "text-red-600"}`}>
                         <i className={removeProviderMsg.includes("Unassigned") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                         {removeProviderMsg}
                       </p>
                     )}
                     {resendProviderMsg && (
-                      <p className={`text-xs mb-2 flex items-center gap-1 font-semibold ${resendProviderMsg.includes("resent") ? "text-[#1a5c4f]" : "text-orange-600"}`}>
+                      <p className={`text-xs mb-2 flex items-center gap-1 font-semibold ${resendProviderMsg.includes("resent") ? "text-[#3b6ea5]" : "text-orange-600"}`}>
                         <i className={resendProviderMsg.includes("resent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                         {resendProviderMsg}
                       </p>
@@ -3081,7 +3076,7 @@ export default function OrderDetailModal({
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
                         <select value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)}
-                          className="w-full appearance-none pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                          className="w-full appearance-none pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                           <option value="">— {order.doctor_name ? "Select to Reassign" : "Select Doctor"} —</option>
                           {eligibleDoctors.map((doc) => <option key={doc.id} value={doc.email}>{doc.full_name}</option>)}
                         </select>
@@ -3090,7 +3085,7 @@ export default function OrderDetailModal({
                         </div>
                       </div>
                       <button type="button" onClick={handleAssign} disabled={assigning || !assignEmail}
-                        className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                        className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                         {assigning ? <><i className="ri-loader-4-line animate-spin"></i>Assigning...</> : <><i className="ri-user-received-line"></i>{order.doctor_name ? "Reassign" : "Assign"}</>}
                       </button>
                     </div>
@@ -3101,7 +3096,7 @@ export default function OrderDetailModal({
                       </p>
                     )}
                     {assignMsg && (
-                      <p className={`text-xs mt-2 flex items-center gap-1 ${assignMsg.includes("notified") ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                      <p className={`text-xs mt-2 flex items-center gap-1 ${assignMsg.includes("notified") ? "text-[#3b6ea5]" : "text-red-500"}`}>
                         <i className={assignMsg.includes("notified") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{assignMsg}
                       </p>
                     )}
@@ -3248,7 +3243,7 @@ export default function OrderDetailModal({
                     </div>
 
                     {(statusMsg || emailMsg || confirmResendMsg || resetMsg) && (
-                      <p className={`text-xs flex items-center gap-1 ${(statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-500" : "text-[#1a5c4f]"}`}>
+                      <p className={`text-xs flex items-center gap-1 ${(statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-500" : "text-[#3b6ea5]"}`}>
                         <i className="ri-information-line"></i>{statusMsg || emailMsg || confirmResendMsg || resetMsg}
                       </p>
                     )}
@@ -3272,7 +3267,7 @@ export default function OrderDetailModal({
                           Moves order back to Under Review with a special note. Provider will be notified to issue the official letter.
                         </p>
                         {thirtyDayMsg && (
-                          <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${thirtyDayMsg.includes("notified") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+                          <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${thirtyDayMsg.includes("notified") ? "text-[#3b6ea5]" : "text-red-600"}`}>
                             <i className={thirtyDayMsg.includes("notified") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                             {thirtyDayMsg}
                           </p>
@@ -3374,7 +3369,7 @@ export default function OrderDetailModal({
                         {order.payment_intent_id ? " Optionally issues a full Stripe refund." : ""}
                       </p>
                       {cancelMsg && (
-                        <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${cancelMsg.includes("success") || cancelMsg.includes("cancelled") ? "text-[#1a5c4f]" : cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "text-red-600" : "text-[#1a5c4f]"}`}>
+                        <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${cancelMsg.includes("success") || cancelMsg.includes("cancelled") ? "text-[#3b6ea5]" : cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "text-red-600" : "text-[#3b6ea5]"}`}>
                           <i className={cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
                           {cancelMsg}
                         </p>
@@ -3561,11 +3556,11 @@ export default function OrderDetailModal({
                     </button>
                   )}
                   <button type="button" onClick={handleSendAllToCustomer} disabled={sendingAll}
-                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                     {sendingAll ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send All to Customer</>}
                   </button>
                   <button type="button" onClick={() => setShowAddDocForm((v) => !v)}
-                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-[#1a5c4f] text-[#1a5c4f] text-xs font-bold rounded-lg hover:bg-[#f0faf7] cursor-pointer transition-colors">
+                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-[#1a5c4f] text-[#3b6ea5] text-xs font-bold rounded-lg hover:bg-[#e8f0f9] cursor-pointer transition-colors">
                     <i className={showAddDocForm ? "ri-close-line" : "ri-add-line"}></i>
                     {showAddDocForm ? "Cancel" : "Add Document"}
                   </button>
@@ -3573,8 +3568,8 @@ export default function OrderDetailModal({
               </div>
 
               {/* Doctor message */}
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
-                <label className="block text-xs font-bold text-[#1a5c4f] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
+                <label className="block text-xs font-bold text-[#3b6ea5] uppercase tracking-widest mb-2 flex items-center gap-1.5">
                   <i className="ri-message-3-line"></i>
                   Personal Message from Provider (Optional)
                 </label>
@@ -3584,13 +3579,13 @@ export default function OrderDetailModal({
                   rows={3}
                   maxLength={500}
                   placeholder="Add a short personal note from the provider — this will appear in the patient's email alongside their documents. E.g. 'It was a pleasure evaluating your case. Please don't hesitate to reach out with any questions.'"
-                  className="w-full px-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm bg-white focus:outline-none focus:border-[#1a5c4f] resize-none"
+                  className="w-full px-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm bg-white focus:outline-none focus:border-[#3b6ea5] resize-none"
                 />
-                <p className="text-xs text-[#1a5c4f]/60 mt-1 text-right">{doctorMessage.length}/500</p>
+                <p className="text-xs text-[#3b6ea5]/60 mt-1 text-right">{doctorMessage.length}/500</p>
               </div>
 
               {sendAllMsg && (
-                <div className={`flex items-start gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${sendAllMsg.includes("sent") ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                <div className={`flex items-start gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${sendAllMsg.includes("sent") ? "bg-[#e8f0f9] border-[#b8cce4] text-[#3b6ea5]" : "bg-red-50 border-red-200 text-red-700"}`}>
                   <i className={sendAllMsg.includes("sent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                   {sendAllMsg}
                 </div>
@@ -3632,19 +3627,19 @@ export default function OrderDetailModal({
                       <label className="block text-xs font-bold text-gray-500 mb-1">Document URL *</label>
                       <input type="url" value={addDocForm.url} onChange={(e) => setAddDocForm((f) => ({ ...f, url: e.target.value }))}
                         placeholder="https://storage.example.com/doc.pdf"
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-500 mb-1">Document Label *</label>
                       <input type="text" value={addDocForm.label} onChange={(e) => setAddDocForm((f) => ({ ...f, label: e.target.value }))}
                         placeholder="e.g. Signed ESA Letter, Housing Verification..."
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-500 mb-1">Document Type</label>
                       <div className="relative">
                         <select value={addDocForm.docType} onChange={(e) => setAddDocForm((f) => ({ ...f, docType: e.target.value }))}
-                          className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                          className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                           {DOC_TYPE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
                         <i className="ri-arrow-down-s-line absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
@@ -3654,17 +3649,17 @@ export default function OrderDetailModal({
                       <label className="block text-xs font-bold text-gray-500 mb-1">Internal Notes</label>
                       <input type="text" value={addDocForm.notes} onChange={(e) => setAddDocForm((f) => ({ ...f, notes: e.target.value }))}
                         placeholder="Optional notes for this document..."
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                     </div>
                   </div>
                   {addDocMsg && (
-                    <p className={`text-xs flex items-center gap-1 ${addDocMsg.includes("saved") ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                    <p className={`text-xs flex items-center gap-1 ${addDocMsg.includes("saved") ? "text-[#3b6ea5]" : "text-red-500"}`}>
                       <i className={addDocMsg.includes("saved") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{addDocMsg}
                     </p>
                   )}
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={handleAddDoc} disabled={savingDoc}
-                      className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer">
+                      className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer">
                         {savingDoc ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-save-line"></i>Save Document</>}
                     </button>
                   </div>
@@ -3673,7 +3668,7 @@ export default function OrderDetailModal({
 
               {loadingDocs ? (
                 <div className="flex items-center justify-center py-8">
-                  <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+                  <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -3681,11 +3676,11 @@ export default function OrderDetailModal({
                   {orderDocs.map((doc) => {
                     const typeOpt = DOC_TYPE_OPTIONS.find((o) => o.value === doc.doc_type);
                     return (
-                      <div key={doc.id} className={`bg-white rounded-xl border overflow-hidden ${!doc.customer_visible ? "opacity-70 border-dashed border-gray-300" : doc.sent_to_customer ? "border-[#b8ddd5]" : "border-gray-200"}`}>
+                      <div key={doc.id} className={`bg-white rounded-xl border overflow-hidden ${!doc.customer_visible ? "opacity-70 border-dashed border-gray-300" : doc.sent_to_customer ? "border-[#b8cce4]" : "border-gray-200"}`}>
                         <div className="flex items-center justify-between px-4 py-3">
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className={`w-9 h-9 flex items-center justify-center rounded-lg flex-shrink-0 ${!doc.customer_visible ? "bg-gray-100" : doc.sent_to_customer ? "bg-[#e8f5f1]" : "bg-violet-50"}`}>
-                              <i className={`ri-file-check-line text-base ${!doc.customer_visible ? "text-gray-400" : doc.sent_to_customer ? "text-[#1a5c4f]" : "text-violet-500"}`}></i>
+                            <div className={`w-9 h-9 flex items-center justify-center rounded-lg flex-shrink-0 ${!doc.customer_visible ? "bg-gray-100" : doc.sent_to_customer ? "bg-[#dbeafe]" : "bg-violet-50"}`}>
+                              <i className={`ri-file-check-line text-base ${!doc.customer_visible ? "text-gray-400" : doc.sent_to_customer ? "text-[#3b6ea5]" : "text-violet-500"}`}></i>
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
@@ -3709,7 +3704,7 @@ export default function OrderDetailModal({
                                   </>
                                 )}
                                 {doc.sent_to_customer && (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] rounded-full text-xs font-semibold">
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#dbeafe] text-[#3b6ea5] rounded-full text-xs font-semibold">
                                     <i className="ri-mail-check-line" style={{ fontSize: "9px" }}></i>Emailed
                                   </span>
                                 )}
@@ -3784,7 +3779,7 @@ export default function OrderDetailModal({
                               target="_blank"
                               rel="noopener noreferrer"
                               title={doc.footer_injected && doc.processed_file_url ? "Opens stamped PDF with verification footer" : "Opens original uploaded PDF (not yet stamped)"}
-                              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-colors ${doc.footer_injected && doc.processed_file_url ? "bg-[#e8f5f1] text-[#1a5c4f] hover:bg-[#d0ede6]" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-colors ${doc.footer_injected && doc.processed_file_url ? "bg-[#dbeafe] text-[#3b6ea5] hover:bg-[#d0ede6]" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                             >
                               <i className={doc.footer_injected && doc.processed_file_url ? "ri-shield-check-line" : "ri-external-link-line"}></i>
                               {doc.footer_injected && doc.processed_file_url ? "Open Verified PDF" : "Open Original"}
@@ -3817,7 +3812,7 @@ export default function OrderDetailModal({
                           type="button"
                           onClick={handleNotifyPatientFromDocs}
                           disabled={notifyingPatient}
-                          className="whitespace-nowrap ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
+                          className="whitespace-nowrap ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
                         >
                           {notifyingPatient
                             ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
@@ -3830,13 +3825,13 @@ export default function OrderDetailModal({
 
                   {/* ── Notify Patient banner — always visible when docs exist and footer injected ── */}
                   {orderDocs.some((d) => d.footer_injected) && !reinjectFooterMsg && (
-                    <div className="flex items-center gap-3 px-4 py-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
-                      <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                        <i className="ri-mail-send-line text-[#1a5c4f] text-sm"></i>
+                    <div className="flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
+                      <div className="w-8 h-8 flex items-center justify-center bg-[#dbeafe] rounded-lg flex-shrink-0">
+                        <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-[#1a5c4f]">Ready to send to patient</p>
-                        <p className="text-xs text-[#1a5c4f]/70">
+                        <p className="text-xs font-bold text-[#3b6ea5]">Ready to send to patient</p>
+                        <p className="text-xs text-[#3b6ea5]/70">
                           {order.patient_notification_sent_at
                             ? `Last sent ${new Date(order.patient_notification_sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} — click to resend`
                             : "Footer injected — notify the patient to download their verified letter"
@@ -3847,7 +3842,7 @@ export default function OrderDetailModal({
                         type="button"
                         onClick={handleNotifyPatientFromDocs}
                         disabled={notifyingPatient}
-                        className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
+                        className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
                       >
                         {notifyingPatient
                           ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
@@ -3859,7 +3854,7 @@ export default function OrderDetailModal({
 
                   {/* Notify Patient feedback */}
                   {notifyPatientMsg && (
-                    <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${notifyPatientOk ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                    <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${notifyPatientOk ? "bg-[#e8f0f9] border-[#b8cce4] text-[#3b6ea5]" : "bg-red-50 border-red-200 text-red-700"}`}>
                       <i className={notifyPatientOk ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                       {notifyPatientMsg}
                     </div>
@@ -3889,8 +3884,8 @@ export default function OrderDetailModal({
                       <div className="mt-2">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-lg">
-                              <i className="ri-mail-check-line text-[#1a5c4f] text-sm"></i>
+                            <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-lg">
+                              <i className="ri-mail-check-line text-[#3b6ea5] text-sm"></i>
                             </div>
                             <div>
                               <p className="text-xs font-bold text-gray-700">Email Notification History</p>
@@ -3927,8 +3922,8 @@ export default function OrderDetailModal({
                                   key={idx}
                                   className={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 ${!entry.success ? "bg-red-50/30" : isDocEmail ? "bg-[#f8fffe]" : ""}`}
                                 >
-                                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? (isDocEmail ? "bg-[#e8f5f1]" : "bg-gray-100") : "bg-red-100"}`}>
-                                    <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? (isDocEmail ? "text-[#1a5c4f]" : "text-gray-500") : "text-red-500"} text-xs`}></i>
+                                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? (isDocEmail ? "bg-[#dbeafe]" : "bg-gray-100") : "bg-red-100"}`}>
+                                    <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? (isDocEmail ? "text-[#3b6ea5]" : "text-gray-500") : "text-red-500"} text-xs`}></i>
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-semibold text-gray-800 truncate">{cfg.label}</p>
@@ -4200,8 +4195,8 @@ export default function OrderDetailModal({
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 flex items-center justify-center bg-[#e8f5f1] rounded-lg">
-                        <i className="ri-user-received-line text-[#1a5c4f] text-sm"></i>
+                      <div className="w-7 h-7 flex items-center justify-center bg-[#dbeafe] rounded-lg">
+                        <i className="ri-user-received-line text-[#3b6ea5] text-sm"></i>
                       </div>
                       <div>
                         <p className="text-xs font-bold text-gray-800">Provider Notifications</p>
@@ -4212,7 +4207,7 @@ export default function OrderDetailModal({
                       type="button"
                       onClick={handleResendProviderEmail}
                       disabled={resendingProvider}
-                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors disabled:opacity-50"
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors disabled:opacity-50"
                     >
                       {resendingProvider
                         ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
@@ -4245,8 +4240,8 @@ export default function OrderDetailModal({
                       };
                       return (
                         <div key={idx} className={`flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0 ${entry.success ? "" : "bg-red-50/40"}`}>
-                          <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? "bg-[#e8f5f1]" : "bg-red-100"}`}>
-                            <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? "text-[#1a5c4f]" : "text-red-500"} text-sm`}></i>
+                          <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? "bg-[#dbeafe]" : "bg-red-100"}`}>
+                            <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? "text-[#3b6ea5]" : "text-red-500"} text-sm`}></i>
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-gray-900">{cfg.label}</p>
@@ -4260,7 +4255,7 @@ export default function OrderDetailModal({
                     });
                   })()}
                   {resendProviderMsg && (
-                    <div className={`px-4 py-2 border-t border-gray-100 flex items-center gap-1.5 text-xs font-semibold ${resendProviderMsg.includes("resent") ? "text-[#1a5c4f] bg-[#f0faf7]" : "text-orange-700 bg-orange-50"}`}>
+                    <div className={`px-4 py-2 border-t border-gray-100 flex items-center gap-1.5 text-xs font-semibold ${resendProviderMsg.includes("resent") ? "text-[#3b6ea5] bg-[#e8f0f9]" : "text-orange-700 bg-orange-50"}`}>
                       <i className={resendProviderMsg.includes("resent") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                       {resendProviderMsg}
                     </div>
@@ -4337,7 +4332,7 @@ export default function OrderDetailModal({
 
               {emailLogLoading && (
                 <div className="flex items-center justify-center py-12">
-                  <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+                  <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
                 </div>
               )}
 

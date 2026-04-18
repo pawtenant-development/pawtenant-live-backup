@@ -155,7 +155,7 @@ export default function CouponManagementPanel() {
           <button
             type="button"
             onClick={() => { setShowCreate((v) => !v); setSaveMsg(""); }}
-            className={`whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${showCreate ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-[#1a5c4f] text-white hover:bg-[#17504a]"}`}
+            className={`whitespace-nowrap flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${showCreate ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-[#3b6ea5] text-white hover:bg-[#2d5a8e]"}`}
           >
             <i className={showCreate ? "ri-close-line" : "ri-add-line"}></i>
             {showCreate ? "Cancel" : "New Coupon"}
@@ -167,8 +167,8 @@ export default function CouponManagementPanel() {
 
         {/* Create Form */}
         {showCreate && (
-          <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-5">
-            <p className="text-xs font-extrabold text-[#1a5c4f] uppercase tracking-widest mb-4 flex items-center gap-1.5">
+          <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-5">
+            <p className="text-xs font-extrabold text-[#3b6ea5] uppercase tracking-widest mb-4 flex items-center gap-1.5">
               <i className="ri-add-circle-line"></i>Create New Coupon
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -182,7 +182,7 @@ export default function CouponManagementPanel() {
                   onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
                   placeholder="e.g. SAVE20"
                   maxLength={30}
-                  className="w-full px-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm font-mono font-bold uppercase focus:outline-none focus:border-[#1a5c4f] bg-white"
+                  className="w-full px-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm font-mono font-bold uppercase focus:outline-none focus:border-[#3b6ea5] bg-white"
                 />
                 <p className="text-xs text-gray-400 mt-1">Letters, numbers only. Auto-uppercased.</p>
               </div>
@@ -199,7 +199,7 @@ export default function CouponManagementPanel() {
                     placeholder="20"
                     min={1}
                     max={999}
-                    className="w-full pl-7 pr-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm font-bold focus:outline-none focus:border-[#1a5c4f] bg-white"
+                    className="w-full pl-7 pr-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm font-bold focus:outline-none focus:border-[#3b6ea5] bg-white"
                   />
                 </div>
                 <p className="text-xs text-gray-400 mt-1">Fixed dollar amount off the total.</p>
@@ -211,7 +211,7 @@ export default function CouponManagementPanel() {
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="e.g. Summer sale campaign"
-                  className="w-full px-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white"
+                  className="w-full px-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white"
                 />
               </div>
               <div>
@@ -222,7 +222,7 @@ export default function CouponManagementPanel() {
                   onChange={(e) => setForm((f) => ({ ...f, max_uses: e.target.value }))}
                   placeholder="Unlimited"
                   min={1}
-                  className="w-full px-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white"
+                  className="w-full px-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white"
                 />
                 <p className="text-xs text-gray-400 mt-1">Leave blank for unlimited uses.</p>
               </div>
@@ -233,14 +233,14 @@ export default function CouponManagementPanel() {
                   value={form.expires_at}
                   onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
                   min={new Date().toISOString().split("T")[0]}
-                  className="w-full px-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer"
+                  className="w-full px-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
                 />
                 <p className="text-xs text-gray-400 mt-1">Leave blank for no expiry.</p>
               </div>
             </div>
 
             {saveMsg && (
-              <p className={`text-xs mb-3 flex items-center gap-1.5 font-semibold ${saveMsg.includes("success") ? "text-[#1a5c4f]" : "text-red-600"}`}>
+              <p className={`text-xs mb-3 flex items-center gap-1.5 font-semibold ${saveMsg.includes("success") ? "text-[#3b6ea5]" : "text-red-600"}`}>
                 <i className={saveMsg.includes("success") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                 {saveMsg}
               </p>
@@ -251,7 +251,7 @@ export default function CouponManagementPanel() {
                 type="button"
                 onClick={handleCreate}
                 disabled={saving}
-                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors"
+                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-60 cursor-pointer transition-colors"
               >
                 {saving
                   ? <><i className="ri-loader-4-line animate-spin"></i>Creating...</>
@@ -311,7 +311,7 @@ export default function CouponManagementPanel() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                          <span className={`text-xs font-bold ${effectivelyActive ? "text-[#1a5c4f]" : "text-gray-400"}`}>
+                          <span className={`text-xs font-bold ${effectivelyActive ? "text-[#3b6ea5]" : "text-gray-400"}`}>
                             ${coupon.discount} off
                           </span>
                           {coupon.description && (
@@ -369,7 +369,7 @@ export default function CouponManagementPanel() {
                             className="h-1.5 rounded-full transition-all"
                             style={{
                               width: `${Math.min(100, Math.round((usage / coupon.max_uses) * 100))}%`,
-                              backgroundColor: isAtLimit ? "#ef4444" : usage / coupon.max_uses > 0.7 ? "#f59e0b" : "#1a5c4f",
+                              backgroundColor: isAtLimit ? "#ef4444" : usage / coupon.max_uses > 0.7 ? "#f59e0b" : "#3b6ea5",
                             }}
                           ></div>
                         </div>
@@ -386,9 +386,9 @@ export default function CouponManagementPanel() {
         )}
 
         {/* Info note */}
-        <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-2">
-          <i className="ri-information-line text-[#1a5c4f] text-sm mt-0.5 flex-shrink-0"></i>
-          <p className="text-xs text-[#2d7a6a] leading-relaxed">
+        <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-2">
+          <i className="ri-information-line text-[#3b6ea5] text-sm mt-0.5 flex-shrink-0"></i>
+          <p className="text-xs text-[#2d5a8e] leading-relaxed">
             Coupons are validated in real-time at checkout. Deactivated coupons will be rejected immediately even if a customer already entered them.
             Usage counts reflect orders that successfully completed checkout with that code.
           </p>

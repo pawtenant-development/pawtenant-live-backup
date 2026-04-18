@@ -95,7 +95,7 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700",
   in_review: "bg-sky-100 text-sky-700",
   approved: "bg-emerald-100 text-emerald-700",
-  letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
+  letter_sent: "bg-[#e8f0f9] text-[#2c5282]",
   patient_notified: "bg-emerald-100 text-emerald-700",
   thirty_day_reissue: "bg-orange-100 text-orange-700",
 };
@@ -476,7 +476,7 @@ export default function ProviderOrderDetail({
 
         {/* Header */}
         <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="w-11 h-11 flex items-center justify-center bg-[#f0faf7] rounded-full text-[#1a5c4f] text-base font-extrabold flex-shrink-0">
+          <div className="w-11 h-11 flex items-center justify-center bg-[#e8f0f9] rounded-full text-[#2c5282] text-base font-extrabold flex-shrink-0">
             {initials}
           </div>
           <div className="flex-1 min-w-0">
@@ -514,7 +514,7 @@ export default function ProviderOrderDetail({
             { key: "upload" as Section, label: isLetterSubmitted ? "Documents ✓" : "Upload Letter", icon: isLetterSubmitted ? "ri-file-check-line" : "ri-upload-cloud-line" },
           ]).map((tab) => (
             <button key={tab.key} type="button" onClick={() => setSection(tab.key)}
-              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:bg-white"}`}>
+              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${section === tab.key ? "bg-[#2c5282] text-white" : "text-gray-500 hover:bg-white"}`}>
               <i className={tab.icon}></i>{tab.label}
             </button>
           ))}
@@ -544,7 +544,7 @@ export default function ProviderOrderDetail({
 
               {/* Reject feedback message */}
               {rejectMsg && (
-                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${rejectMsg.ok ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${rejectMsg.ok ? "bg-[#e8f0f9] border-[#b8cce4] text-[#2c5282]" : "bg-red-50 border-red-200 text-red-700"}`}>
                   <i className={rejectMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                   {rejectMsg.text}
                 </div>
@@ -652,9 +652,9 @@ export default function ProviderOrderDetail({
 
                 {/* In-Review feedback */}
                 {inReviewMsg && (
-                  <div className={`mb-3 rounded-xl px-4 py-2.5 flex items-center gap-2 ${inReviewMsg.ok ? "bg-[#f0faf7] border border-[#b8ddd5]" : "bg-red-50 border border-red-200"}`}>
-                    <i className={`text-sm flex-shrink-0 ${inReviewMsg.ok ? "ri-checkbox-circle-fill text-[#1a5c4f]" : "ri-error-warning-line text-red-500"}`}></i>
-                    <p className={`text-xs font-semibold ${inReviewMsg.ok ? "text-[#1a5c4f]" : "text-red-700"}`}>{inReviewMsg.text}</p>
+                  <div className={`mb-3 rounded-xl px-4 py-2.5 flex items-center gap-2 ${inReviewMsg.ok ? "bg-[#e8f0f9] border border-[#b8cce4]" : "bg-red-50 border border-red-200"}`}>
+                    <i className={`text-sm flex-shrink-0 ${inReviewMsg.ok ? "ri-checkbox-circle-fill text-[#2c5282]" : "ri-error-warning-line text-red-500"}`}></i>
+                    <p className={`text-xs font-semibold ${inReviewMsg.ok ? "text-[#2c5282]" : "text-red-700"}`}>{inReviewMsg.text}</p>
                   </div>
                 )}
 
@@ -667,10 +667,10 @@ export default function ProviderOrderDetail({
                     <span key={s.status}
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
                         doctorStatus === s.status || (s.status === "patient_notified" && doctorStatus === "letter_sent")
-                          ? "border-[#1a5c4f] bg-[#f0faf7] text-[#1a5c4f]"
+                          ? "border-[#2c5282] bg-[#e8f0f9] text-[#2c5282]"
                           : "border-gray-200 text-gray-400"
                       }`}>
-                      {(doctorStatus === s.status || (s.status === "patient_notified" && doctorStatus === "letter_sent")) && <i className="ri-checkbox-circle-fill text-[#1a5c4f]"></i>}
+                      {(doctorStatus === s.status || (s.status === "patient_notified" && doctorStatus === "letter_sent")) && <i className="ri-checkbox-circle-fill text-[#2c5282]"></i>}
                       {s.label}
                     </span>
                   ))}
@@ -716,18 +716,18 @@ export default function ProviderOrderDetail({
 
                 {isLetterSubmitted && (
                   <div className="mt-3 space-y-2">
-                    <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-2">
-                      <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-base"></i>
-                      <p className="text-sm font-semibold text-[#1a5c4f]">
+                    <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center gap-2">
+                      <i className="ri-checkbox-circle-fill text-[#2c5282] text-base"></i>
+                      <p className="text-sm font-semibold text-[#2c5282]">
                         Order completed! Documents submitted and the patient has been notified.
                       </p>
                     </div>
 
                     {/* ── Letter validity dates ── */}
                     {(order.letter_issue_date || order.letter_expiry_date) && (
-                      <div className="bg-white border border-[#b8ddd5] rounded-xl px-4 py-3">
+                      <div className="bg-white border border-[#b8cce4] rounded-xl px-4 py-3">
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1">
-                          <i className="ri-calendar-check-line text-[#1a5c4f]"></i>
+                          <i className="ri-calendar-check-line text-[#2c5282]"></i>
                           Letter Validity Period
                         </p>
                         <div className="grid grid-cols-2 gap-4">
@@ -738,7 +738,7 @@ export default function ProviderOrderDetail({
                           <div>
                             <p className="text-xs text-gray-400 mb-0.5">Expiry Date</p>
                             <p className="text-sm font-bold text-gray-900">{fmtDate(order.letter_expiry_date)}</p>
-                            <p className="text-xs text-[#1a5c4f] mt-0.5 flex items-center gap-1">
+                            <p className="text-xs text-[#2c5282] mt-0.5 flex items-center gap-1">
                               <i className="ri-time-line"></i>Valid for 1 year
                             </p>
                           </div>
@@ -748,13 +748,13 @@ export default function ProviderOrderDetail({
 
                     {/* Verification ID */}
                     {order.letter_id && (
-                      <div className="bg-white border border-[#b8ddd5] rounded-xl px-4 py-3">
+                      <div className="bg-white border border-[#b8cce4] rounded-xl px-4 py-3">
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1">
-                          <i className="ri-shield-check-line text-[#1a5c4f]"></i>
+                          <i className="ri-shield-check-line text-[#2c5282]"></i>
                           Verification ID
                         </p>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-mono font-bold text-[#1a5c4f] bg-[#f0faf7] border border-[#b8ddd5] px-3 py-1.5 rounded-lg select-all tracking-wider">
+                          <span className="text-sm font-mono font-bold text-[#2c5282] bg-[#e8f0f9] border border-[#b8cce4] px-3 py-1.5 rounded-lg select-all tracking-wider">
                             {order.letter_id}
                           </span>
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
@@ -778,31 +778,31 @@ export default function ProviderOrderDetail({
                   <div className="space-y-2">
                     {uploadedDocs.map((doc) => (
                       <a key={doc.id} href={doc.file_url} target="_blank" rel="noopener noreferrer"
-                        className="whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl hover:bg-[#e0f2ec] cursor-pointer transition-colors">
+                        className="whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl hover:bg-[#dce8f5] cursor-pointer transition-colors">
                         <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                          <i className="ri-file-check-line text-[#1a5c4f]"></i>
+                          <i className="ri-file-check-line text-[#2c5282]"></i>
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-bold text-[#1a5c4f]">{doc.label}</p>
-                          <p className="text-xs text-[#1a5c4f]/60">
+                          <p className="text-sm font-bold text-[#2c5282]">{doc.label}</p>
+                          <p className="text-xs text-[#2c5282]/60">
                             {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                             {doc.sent_to_customer && " · Sent to patient ✓"}
                           </p>
                         </div>
-                        <i className="ri-external-link-line text-[#1a5c4f]/60"></i>
+                        <i className="ri-external-link-line text-[#2c5282]/60"></i>
                       </a>
                     ))}
                     {order.signed_letter_url && !uploadedDocs.some((d) => d.file_url === order.signed_letter_url) && (
                       <a href={order.signed_letter_url} target="_blank" rel="noopener noreferrer"
-                        className="whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl hover:bg-[#e0f2ec] cursor-pointer transition-colors">
+                        className="whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl hover:bg-[#dce8f5] cursor-pointer transition-colors">
                         <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                          <i className="ri-shield-check-line text-[#1a5c4f]"></i>
+                          <i className="ri-shield-check-line text-[#2c5282]"></i>
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-bold text-[#1a5c4f]">Signed ESA Letter</p>
-                          <p className="text-xs text-[#1a5c4f]/60">Your submitted document</p>
+                          <p className="text-sm font-bold text-[#2c5282]">Signed ESA Letter</p>
+                          <p className="text-xs text-[#2c5282]/60">Your submitted document</p>
                         </div>
-                        <i className="ri-external-link-line text-[#1a5c4f]/60"></i>
+                        <i className="ri-external-link-line text-[#2c5282]/60"></i>
                       </a>
                     )}
                   </div>
@@ -834,7 +834,7 @@ export default function ProviderOrderDetail({
                 {/* Submit Letter button */}
                 {(!isLetterSubmitted || isThirtyDayReissue) && !isRefunded && !readOnly && !isRejected && (
                   <button type="button" onClick={() => setSection("upload")}
-                    className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-white text-sm font-bold rounded-xl cursor-pointer transition-colors ${isThirtyDayReissue ? "bg-orange-500 hover:bg-orange-600" : "bg-[#1a5c4f] hover:bg-[#17504a]"}`}>
+                    className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-white text-sm font-bold rounded-xl cursor-pointer transition-colors ${isThirtyDayReissue ? "bg-orange-500 hover:bg-orange-600" : "bg-[#2c5282] hover:bg-[#1e3a5f]"}`}>
                     <i className="ri-upload-cloud-line"></i>{isThirtyDayReissue ? "Submit Official Letter" : "Submit Letter"}
                   </button>
                 )}
@@ -1033,7 +1033,7 @@ export default function ProviderOrderDetail({
 
                   {/* Read-only: show what was already submitted */}
                   {loadingDocs ? (
-                    <div className="flex justify-center py-4"><i className="ri-loader-4-line animate-spin text-[#1a5c4f]"></i></div>
+                    <div className="flex justify-center py-4"><i className="ri-loader-4-line animate-spin text-[#2c5282]"></i></div>
                   ) : uploadedDocs.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -1051,7 +1051,7 @@ export default function ProviderOrderDetail({
                             <p className="text-xs font-bold text-gray-900 truncate">{doc.label}</p>
                             <p className="text-xs text-gray-400">
                               {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              {doc.sent_to_customer && <span className="ml-2 text-[#1a5c4f] font-semibold">· Sent to patient ✓</span>}
+                              {doc.sent_to_customer && <span className="ml-2 text-[#2c5282] font-semibold">· Sent to patient ✓</span>}
                             </p>
                           </div>
                           <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
@@ -1078,18 +1078,18 @@ export default function ProviderOrderDetail({
 
                   {/* Already submitted banner */}
                   {isLetterSubmitted && !submitted && (
-                    <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-3">
-                      <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-lg flex-shrink-0 mt-0.5"></i>
+                    <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-3">
+                      <i className="ri-checkbox-circle-fill text-[#2c5282] text-lg flex-shrink-0 mt-0.5"></i>
                       <div>
-                        <p className="text-sm font-bold text-[#1a5c4f] mb-0.5">Order completed</p>
-                        <p className="text-xs text-[#1a5c4f]/70">You can upload additional documents for this order below.</p>
+                        <p className="text-sm font-bold text-[#2c5282] mb-0.5">Order completed</p>
+                        <p className="text-xs text-[#2c5282]/70">You can upload additional documents for this order below.</p>
                       </div>
                     </div>
                   )}
 
                   {/* Queue result */}
                   {queueMsg && (
-                    <div className={`flex items-start gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${queueMsg.ok ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                    <div className={`flex items-start gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${queueMsg.ok ? "bg-[#e8f0f9] border-[#b8cce4] text-[#2c5282]" : "bg-red-50 border-red-200 text-red-700"}`}>
                       <i className={queueMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                       {queueMsg.text}
                     </div>
@@ -1097,7 +1097,7 @@ export default function ProviderOrderDetail({
 
                   {/* Previously uploaded docs */}
                   {loadingDocs ? (
-                    <div className="flex justify-center py-4"><i className="ri-loader-4-line animate-spin text-[#1a5c4f]"></i></div>
+                    <div className="flex justify-center py-4"><i className="ri-loader-4-line animate-spin text-[#2c5282]"></i></div>
                   ) : uploadedDocs.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -1112,7 +1112,7 @@ export default function ProviderOrderDetail({
                             <p className="text-xs font-bold text-gray-900 truncate">{doc.label}</p>
                             <p className="text-xs text-gray-400">
                               {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              {doc.sent_to_customer && <span className="ml-2 text-[#1a5c4f] font-semibold">· Sent to patient ✓</span>}
+                              {doc.sent_to_customer && <span className="ml-2 text-[#2c5282] font-semibold">· Sent to patient ✓</span>}
                             </p>
                           </div>
                           <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
@@ -1132,7 +1132,7 @@ export default function ProviderOrderDetail({
                         {isLetterSubmitted ? "Upload Additional Documents" : "Upload Documents"}
                       </p>
                       {fileQueue.length > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#f0faf7] text-[#1a5c4f] text-xs font-bold rounded-full">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f0f9] text-[#2c5282] text-xs font-bold rounded-full">
                           {fileQueue.filter((i) => !i.done).length} pending
                         </span>
                       )}
@@ -1148,21 +1148,21 @@ export default function ProviderOrderDetail({
                     />
 
                     <div
-                      className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#1a5c4f] hover:bg-[#f8fdfc] transition-colors"
+                      className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#2c5282] hover:bg-[#f8fdfc] transition-colors"
                       onClick={() => multiFileInputRef.current?.click()}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length > 0) addFilesToQueue(e.dataTransfer.files); }}
                     >
                       <div className="flex flex-col items-center gap-3">
-                        <div className="w-14 h-14 flex items-center justify-center bg-[#f0faf7] rounded-full">
-                          <i className="ri-upload-cloud-2-line text-[#1a5c4f] text-2xl"></i>
+                        <div className="w-14 h-14 flex items-center justify-center bg-[#e8f0f9] rounded-full">
+                          <i className="ri-upload-cloud-2-line text-[#2c5282] text-2xl"></i>
                         </div>
                         <div>
                           <p className="text-sm font-bold text-gray-800 mb-1">Click or drag to add files</p>
                           <p className="text-xs text-gray-400">Select multiple files at once · PDF, JPG, PNG up to 50MB each</p>
                         </div>
                         <button type="button"
-                          className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
+                          className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#2c5282] text-white text-sm font-bold rounded-xl hover:bg-[#1e3a5f] cursor-pointer transition-colors">
                           <i className="ri-folder-open-line"></i>Choose Files
                         </button>
                       </div>
@@ -1174,7 +1174,7 @@ export default function ProviderOrderDetail({
                       <div className="flex-1 h-px bg-gray-100"></div>
                     </div>
                     <button type="button" onClick={addUrlItem}
-                      className="whitespace-nowrap w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 text-gray-500 text-sm font-semibold rounded-xl hover:border-[#1a5c4f] hover:text-[#1a5c4f] hover:bg-[#f8fdfc] cursor-pointer transition-colors">
+                      className="whitespace-nowrap w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 text-gray-500 text-sm font-semibold rounded-xl hover:border-[#2c5282] hover:text-[#2c5282] hover:bg-[#f8fdfc] cursor-pointer transition-colors">
                       <i className="ri-link"></i>Add a Google Drive / Dropbox link instead
                     </button>
                   </div>
@@ -1184,13 +1184,13 @@ export default function ProviderOrderDetail({
                     <div className="space-y-3">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Files to Submit ({fileQueue.filter((i) => !i.done).length})</p>
                       {fileQueue.map((item) => (
-                        <div key={item.id} className={`bg-white rounded-xl border overflow-hidden transition-all ${item.done ? "border-[#b8ddd5] bg-[#f8fdfb]" : item.error ? "border-red-200" : "border-gray-200"}`}>
+                        <div key={item.id} className={`bg-white rounded-xl border overflow-hidden transition-all ${item.done ? "border-[#b8cce4] bg-[#f8fdfb]" : item.error ? "border-red-200" : "border-gray-200"}`}>
                           <div className="flex items-center gap-3 px-4 py-3">
                             <div className={`w-9 h-9 flex items-center justify-center rounded-lg flex-shrink-0 ${item.done ? "bg-[#e8f5f1]" : item.error ? "bg-red-50" : "bg-violet-50"}`}>
                               {item.uploading
-                                ? <i className="ri-loader-4-line animate-spin text-[#1a5c4f] text-base"></i>
+                                ? <i className="ri-loader-4-line animate-spin text-[#2c5282] text-base"></i>
                                 : item.done
-                                  ? <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-base"></i>
+                                  ? <i className="ri-checkbox-circle-fill text-[#2c5282] text-base"></i>
                                   : item.error
                                     ? <i className="ri-error-warning-line text-red-500 text-base"></i>
                                     : <i className="ri-file-check-line text-violet-500 text-base"></i>
@@ -1206,7 +1206,7 @@ export default function ProviderOrderDetail({
                                   onChange={(e) => updateQueueItem(item.id, { url: e.target.value })}
                                   placeholder="https://drive.google.com/file/..."
                                   disabled={item.done}
-                                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] bg-white disabled:bg-gray-50 disabled:text-gray-400"
+                                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2c5282] bg-white disabled:bg-gray-50 disabled:text-gray-400"
                                 />
                               )}
                               <div className="flex items-center gap-2">
@@ -1216,14 +1216,14 @@ export default function ProviderOrderDetail({
                                   onChange={(e) => updateQueueItem(item.id, { label: e.target.value })}
                                   placeholder="Document label..."
                                   disabled={item.done}
-                                  className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] bg-white disabled:bg-gray-50 disabled:text-gray-400"
+                                  className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2c5282] bg-white disabled:bg-gray-50 disabled:text-gray-400"
                                 />
                                 <div className="relative">
                                   <select
                                     value={item.docType}
                                     onChange={(e) => updateQueueItem(item.id, { docType: e.target.value })}
                                     disabled={item.done}
-                                    className="appearance-none pl-2.5 pr-6 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:border-[#1a5c4f] cursor-pointer disabled:bg-gray-50 disabled:text-gray-400"
+                                    className="appearance-none pl-2.5 pr-6 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:border-[#2c5282] cursor-pointer disabled:bg-gray-50 disabled:text-gray-400"
                                   >
                                     <option value="esa_letter">ESA Letter</option>
                                     <option value="signed_letter">Signed Letter</option>
@@ -1240,7 +1240,7 @@ export default function ProviderOrderDetail({
                                 </p>
                               )}
                               {item.done && (
-                                <p className="text-xs text-[#1a5c4f] flex items-center gap-1 font-semibold">
+                                <p className="text-xs text-[#2c5282] flex items-center gap-1 font-semibold">
                                   <i className="ri-checkbox-circle-fill"></i>Submitted successfully
                                 </p>
                               )}
@@ -1260,13 +1260,13 @@ export default function ProviderOrderDetail({
                         <textarea value={providerNote} onChange={(e) => setProviderNote(e.target.value)}
                           rows={2} maxLength={500}
                           placeholder="A short personal note included in the patient's notification email..."
-                          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] resize-none transition-colors" />
+                          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2c5282] resize-none transition-colors" />
                         <p className="text-xs text-gray-400 text-right mt-0.5">{providerNote.length}/500</p>
                       </div>
 
                       {fileQueue.some((i) => !i.done) && (
                         <button type="button" onClick={() => setShowSubmitConfirm(true)} disabled={submittingQueue}
-                          className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                          className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-[#2c5282] text-white text-sm font-extrabold rounded-xl hover:bg-[#1e3a5f] disabled:opacity-50 cursor-pointer transition-colors">
                           {submittingQueue
                             ? <><i className="ri-loader-4-line animate-spin"></i>Submitting documents...</>
                             : <><i className="ri-send-plane-line"></i>Submit {fileQueue.filter((i) => !i.done).length} Document{fileQueue.filter((i) => !i.done).length !== 1 ? "s" : ""} &amp; Notify Patient</>
@@ -1300,7 +1300,7 @@ export default function ProviderOrderDetail({
           <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 flex items-center justify-center bg-[#e8f5f1] rounded-xl flex-shrink-0">
-                <i className="ri-send-plane-fill text-[#1a5c4f] text-lg"></i>
+                <i className="ri-send-plane-fill text-[#2c5282] text-lg"></i>
               </div>
               <div>
                 <p className="text-sm font-extrabold text-gray-900">Submit Documents &amp; Complete Order?</p>
@@ -1309,16 +1309,16 @@ export default function ProviderOrderDetail({
                 </p>
               </div>
             </div>
-            <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 mb-4 space-y-1">
-              <p className="text-xs text-[#1a5c4f] font-semibold flex items-center gap-1.5">
+            <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 mb-4 space-y-1">
+              <p className="text-xs text-[#2c5282] font-semibold flex items-center gap-1.5">
                 <i className="ri-file-check-line"></i>
                 {fileQueue.filter((i) => !i.done).length} document{fileQueue.filter((i) => !i.done).length !== 1 ? "s" : ""} ready to submit
               </p>
-              <p className="text-xs text-[#1a5c4f] font-semibold flex items-center gap-1.5">
+              <p className="text-xs text-[#2c5282] font-semibold flex items-center gap-1.5">
                 <i className="ri-mail-send-line"></i>
                 Patient will receive an email notification
               </p>
-              <p className="text-xs text-[#1a5c4f] font-semibold flex items-center gap-1.5">
+              <p className="text-xs text-[#2c5282] font-semibold flex items-center gap-1.5">
                 <i className="ri-checkbox-circle-line"></i>
                 Order will be marked as <strong>Completed</strong>
               </p>
@@ -1328,7 +1328,7 @@ export default function ProviderOrderDetail({
                 type="button"
                 onClick={() => { setShowSubmitConfirm(false); handleSubmitQueue(); }}
                 disabled={submittingQueue}
-                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors disabled:opacity-50"
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#2c5282] text-white text-sm font-bold rounded-lg hover:bg-[#1e3a5f] cursor-pointer transition-colors disabled:opacity-50"
               >
                 <i className="ri-send-plane-line"></i>Yes, Submit &amp; Complete
               </button>

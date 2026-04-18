@@ -96,17 +96,17 @@ export default function HowToGetPSDLetterPage() {
 
   return (
     <main>
-      <title>Get a PSD Letter | Psychiatric Service Dog Documentation</title>
-      <meta name="description" content="Qualify for a Psychiatric Service Dog (PSD) letter through a professional clinical evaluation. Licensed US providers and HIPAA-compliant process." />
-      <meta name="keywords" content="get psd letter, psychiatric service dog letter, psd documentation, service dog evaluation" />
+      <title>How to Get a Psychiatric Service Dog Letter | PawTenant</title>
+      <meta name="description" content="Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed LMHP. Speak 1-on-1 with a qualified professional and receive your PSD letter in 24 hours." />
+      <meta name="keywords" content="get psd letter, psychiatric service dog letter, psd documentation, service dog evaluation, legitimate PSD letter" />
       <link rel="canonical" href="https://www.pawtenant.com/how-to-get-psd-letter/" />
-      <meta property="og:title" content="Get a PSD Letter | Psychiatric Service Dog Documentation" />
-      <meta property="og:description" content="Qualify for a Psychiatric Service Dog (PSD) letter through a professional clinical evaluation. Licensed US providers and HIPAA-compliant process." />
+      <meta property="og:title" content="How to Get a Psychiatric Service Dog Letter | PawTenant" />
+      <meta property="og:description" content="Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed LMHP. Speak 1-on-1 with a qualified professional and receive your PSD letter in 24 hours." />
       <meta property="og:url" content="https://www.pawtenant.com/how-to-get-psd-letter/" />
       <meta property="og:type" content="article" />
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content="How to Get a PSD Letter (Psychiatric Service Dog) 2026 | PawTenant" />
-      <meta name="twitter:description" content="Step-by-step guide to getting a psychiatric service dog letter online. Licensed professionals, 24–48 hour delivery, valid in all 50 states." />
+      <meta name="twitter:title" content="How to Get a Psychiatric Service Dog Letter | PawTenant" />
+      <meta name="twitter:description" content="Get a legitimate PSD letter from a licensed LMHP. Speak 1-on-1 with a qualified professional and receive your psychiatric service dog letter in 24 hours." />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@type": "FAQPage",

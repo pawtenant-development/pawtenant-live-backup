@@ -43,6 +43,7 @@ interface DoctorProfile {
   is_admin: boolean;
   is_active: boolean;
   licensed_states: string[] | null;
+  state_license_numbers?: Record<string, string> | null;
   role: string | null;
   custom_tab_access: string[] | null;
 }
@@ -54,6 +55,8 @@ interface DoctorContact {
   phone: string | null;
   licensed_states: string[];
   is_active: boolean | null;
+  /** Keys are 2-letter state abbrs (e.g. "TX"). Used as fallback eligibility check. */
+  state_license_numbers?: Record<string, string> | null;
 }
 
 interface Order {
@@ -219,7 +222,7 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700",
   in_review: "bg-sky-100 text-sky-700",
   approved: "bg-emerald-100 text-emerald-700",
-  letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
+  letter_sent: "bg-[#dbeafe] text-[#3b6ea5]",
   patient_notified: "bg-violet-100 text-violet-700",
   unassigned: "bg-gray-100 text-gray-500",
   thirty_day_reissue: "bg-orange-100 text-orange-700",
@@ -256,7 +259,7 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
 function roleBadge(role: string | null) {
   const cfg: Record<string, { label: string; color: string }> = {
     owner:         { label: "Owner",     color: "bg-[#f3e8ff] text-[#7c3aed]" },
-    admin_manager: { label: "Admin",     color: "bg-[#e8f5f1] text-[#1a5c4f]" },
+    admin_manager: { label: "Admin",     color: "bg-[#dbeafe] text-[#3b6ea5]" },
     support:       { label: "Support",   color: "bg-cyan-100 text-cyan-700" },
     finance:       { label: "Finance",   color: "bg-emerald-100 text-emerald-700" },
     read_only:     { label: "Read Only", color: "bg-gray-100 text-gray-500" },
@@ -305,9 +308,9 @@ function fmtLastContacted(ts: string | null): { label: string; color: string } |
   if (!ts) return null;
   const diffMs   = Date.now() - new Date(ts).getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 60)    return { label: `${diffMins}m ago`,                  color: "bg-[#f0faf7] text-[#1a5c4f]" };
+  if (diffMins < 60)    return { label: `${diffMins}m ago`,                  color: "bg-[#e8f0f9] text-[#3b6ea5]" };
   const diffHrs = Math.floor(diffMins / 60);
-  if (diffHrs < 24)    return { label: `${diffHrs}h ago`,                    color: "bg-[#f0faf7] text-[#1a5c4f]" };
+  if (diffHrs < 24)    return { label: `${diffHrs}h ago`,                    color: "bg-[#e8f0f9] text-[#3b6ea5]" };
   const diffDays = Math.floor(diffHrs / 24);
   if (diffDays < 3)    return { label: `${diffDays}d ago`,                   color: "bg-amber-50 text-amber-700"   };
   return               { label: `${diffDays}d ago`,                          color: "bg-red-50 text-red-500"       };
@@ -455,6 +458,7 @@ export default function AdminOrdersPage() {
           phone: p.phone,
           licensed_states: p.licensed_states ?? [],
           is_active: p.is_active,
+          state_license_numbers: p.state_license_numbers ?? null,
         });
       });
     return result.sort((a, b) => a.full_name.localeCompare(b.full_name));
@@ -465,13 +469,20 @@ export default function AdminOrdersPage() {
     const covered = new Set<string>();
     assignableProviders.forEach((d) => {
       if (d.is_active === false) return;
+      // From licensed_states array
       (d.licensed_states ?? []).forEach((state) => {
         // Support full name ("New York") → add abbr ("NY")
         const abbr = US_STATES.find((s) => s.name === state)?.abbr;
         if (abbr) covered.add(abbr);
         // Support abbr directly ("NY")
-        if (state.length === 2) covered.add(state);
+        if (state.length === 2) covered.add(state.toUpperCase());
       });
+      // Also include states from state_license_numbers keys (safety net)
+      if (d.state_license_numbers) {
+        Object.keys(d.state_license_numbers).forEach((abbr) => {
+          if (abbr.length === 2) covered.add(abbr.toUpperCase());
+        });
+      }
     });
     return covered;
   }, [assignableProviders]);
@@ -539,7 +550,7 @@ export default function AdminOrdersPage() {
     const [ordersRes, contactsRes, profilesRes] = await Promise.all([
       supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import").order("created_at", { ascending: false }),
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
-      supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role").order("full_name"),
+      supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
     ]);
     const loadedOrders = (ordersRes.data as Order[]) ?? [];
     setOrders(loadedOrders);
@@ -750,7 +761,7 @@ export default function AdminOrdersPage() {
     if (activeTab !== "orders") return;
     Promise.all([
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
-      supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role").order("full_name"),
+      supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
     ]).then(([contactsRes, profilesRes]) => {
       if (contactsRes.data) setDoctorContacts(contactsRes.data as DoctorContact[]);
       if (profilesRes.data) setDoctorProfiles(profilesRes.data as DoctorProfile[]);
@@ -761,7 +772,7 @@ export default function AdminOrdersPage() {
     setShowCreateModal(false);
     setCreateSuccessMsg(`${result.full_name} (${result.email}) — provider added to the panel successfully.`);
     setTimeout(() => setCreateSuccessMsg(""), 7000);
-    supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states").order("full_name")
+    supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers").order("full_name")
       .then(({ data }) => { if (data) setDoctorProfiles(data as DoctorProfile[]); });
     supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name")
       .then(({ data }) => { if (data) setDoctorContacts(data as DoctorContact[]); });
@@ -1408,10 +1419,10 @@ export default function AdminOrdersPage() {
         </Link>
         <div className="flex items-center gap-1.5 sm:gap-3">
           {/* Desktop-only extras */}
-          <Link to="/admin-guide" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#1a5c4f] transition-colors cursor-pointer">
+          <Link to="/admin-guide" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3b6ea5] transition-colors cursor-pointer">
             <i className="ri-book-2-line"></i> Runbook
           </Link>
-          <Link to="/admin-doctors" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#1a5c4f] transition-colors cursor-pointer">
+          <Link to="/admin-doctors" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3b6ea5] transition-colors cursor-pointer">
             <i className="ri-stethoscope-line"></i> Providers
           </Link>
 
@@ -1669,20 +1680,20 @@ export default function AdminOrdersPage() {
 
             {/* Source filter banner — only visible when redirected from dashboard */}
             {sourceFilter && (
-              <div className="mb-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f]/10 rounded-lg flex-shrink-0">
-                  <i className="ri-filter-line text-[#1a5c4f] text-sm"></i>
+              <div className="mb-4 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-7 h-7 flex items-center justify-center bg-[#3b6ea5]/10 rounded-lg flex-shrink-0">
+                  <i className="ri-filter-line text-[#3b6ea5] text-sm"></i>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-[#1a5c4f]">
+                  <p className="text-xs font-bold text-[#3b6ea5]">
                     Filtered by Lead Source: <span className="font-extrabold">{sourceFilter}</span>
                   </p>
-                  <p className="text-[10px] text-[#1a5c4f]/60 mt-0.5">Showing orders from this traffic channel only</p>
+                  <p className="text-[10px] text-[#3b6ea5]/60 mt-0.5">Showing orders from this traffic channel only</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSourceFilter(null)}
-                  className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors flex-shrink-0"
+                  className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors flex-shrink-0"
                 >
                   <i className="ri-close-line"></i>Clear Filter
                 </button>
@@ -1721,7 +1732,7 @@ export default function AdminOrdersPage() {
                   { value: "payment_failed", label: "Payment Failed" },
                 ].map((opt) => (
                   <button key={opt.value} type="button" onClick={() => setStatusFilter(opt.value)}
-                    className={`whitespace-nowrap flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f] hover:bg-gray-50"}`}
+                    className={`whitespace-nowrap flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${statusFilter === opt.value ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:text-[#3b6ea5] hover:bg-gray-50"}`}
                   >
                     {opt.label}
                   </button>
@@ -1741,7 +1752,7 @@ export default function AdminOrdersPage() {
                     <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                     <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
                       placeholder="Name, email, phone, order ID, GHL contact ID..."
-                      className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                      className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                   </div>
                 </div>
                 {/* Tool buttons row */}
@@ -1755,7 +1766,7 @@ export default function AdminOrdersPage() {
                   </button>
                   <div className="w-px h-4 bg-gray-200 flex-shrink-0"></div>
                   <button type="button" onClick={() => setShowAdvancedFilters((v) => !v)}
-                    className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showAdvancedFilters || activeFilterCount > 0 ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                    className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showAdvancedFilters || activeFilterCount > 0 ? "bg-[#3b6ea5] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
                   >
                     <i className="ri-filter-3-line"></i>
                     <span className="hidden sm:inline">Filters</span>{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
@@ -1798,7 +1809,7 @@ export default function AdminOrdersPage() {
                 <button
                   type="button"
                   onClick={() => setHideRecentFollowup((v) => !v)}
-                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${hideRecentFollowup ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-[#1a5c4f]"}`}
+                  className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${hideRecentFollowup ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:text-[#3b6ea5]"}`}
                 >
                   <i className={hideRecentFollowup ? "ri-eye-off-line" : "ri-filter-line"}></i>
                   {hideRecentFollowup ? "Hiding sent within 7d" : "Hide sent within 7 days"}
@@ -1832,7 +1843,7 @@ export default function AdminOrdersPage() {
                 <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 mb-2">
                   <div className="flex items-center gap-2 mb-2.5">
                     <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                      <i className="ri-mail-send-line text-[#1a5c4f] text-sm"></i>
+                      <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>
                     </div>
                     <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Sequence Stage</span>
                     {sequenceFilter !== "all" && (
@@ -1880,7 +1891,7 @@ export default function AdminOrdersPage() {
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">State</label>
                     <div className="relative">
                       <select value={stateFilterAdv} onChange={(e) => setStateFilterAdv(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                         <option value="all">All States</option>
                         {US_STATES.map((s) => <option key={s.abbr} value={s.abbr}>{s.abbr}</option>)}
                       </select>
@@ -1892,7 +1903,7 @@ export default function AdminOrdersPage() {
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">Assigned Provider</label>
                     <div className="relative">
                       <select value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                         <option value="all">All Providers</option>
                         <option value="unassigned">Unassigned</option>
                         {assignableProviders.map((d) => <option key={d.id} value={d.email}>{d.full_name}</option>)}
@@ -1910,7 +1921,7 @@ export default function AdminOrdersPage() {
                   </label>
                     <div className="relative">
                       <select value={selectedProviderFilter} onChange={(e) => setSelectedProviderFilter(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                         <option value="all">Any</option>
                         {selectedProviders.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
@@ -1922,7 +1933,7 @@ export default function AdminOrdersPage() {
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">Payment</label>
                     <div className="relative">
                       <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                         <option value="all">All</option>
                         <option value="paid">Paid</option>
                         <option value="unpaid">No Payment</option>
@@ -1935,7 +1946,7 @@ export default function AdminOrdersPage() {
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">Traffic Source</label>
                     <div className="relative">
                       <select value={referredByFilter} onChange={(e) => setReferredByFilter(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                         <option value="all">All Sources</option>
                         <option value="facebook">Facebook</option>
                         <option value="google_ads">Google Ads</option>
@@ -1956,7 +1967,7 @@ export default function AdminOrdersPage() {
                     </label>
                     <div className="relative">
                       <select value={sequenceFilter} onChange={(e) => setSequenceFilter(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                         <option value="all">All Sequences</option>
                         <option value="no_sequence">No Sequence Sent</option>
                         <option value="30min_sent">30min Email Sent</option>
@@ -1971,14 +1982,14 @@ export default function AdminOrdersPage() {
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">From Date</label>
                     <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer" />
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer" />
                   </div>
                   {/* Date To */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">To Date</label>
                     <div className="flex items-center gap-2">
                       <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer" />
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer" />
                       {activeFilterCount > 0 && (
                         <button type="button" onClick={clearAdvancedFilters}
                           className="whitespace-nowrap flex items-center gap-1.5 px-2.5 py-2 bg-gray-100 text-gray-500 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer transition-colors">
@@ -1997,7 +2008,7 @@ export default function AdminOrdersPage() {
             {loading ? (
               <div className="flex items-center justify-center py-24">
                 <div className="text-center">
-                  <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f] block mb-3"></i>
+                  <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
                   <p className="text-sm text-gray-500">Loading all orders...</p>
                 </div>
               </div>
@@ -2024,15 +2035,15 @@ export default function AdminOrdersPage() {
                       onClick={toggleSelectAll}
                       className="flex items-center gap-2.5 cursor-pointer group"
                     >
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${allFilteredSelected ? "bg-[#1a5c4f] border-[#1a5c4f]" : "border-gray-300 group-hover:border-[#1a5c4f]"}`}>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${allFilteredSelected ? "bg-[#3b6ea5] border-[#1a5c4f]" : "border-gray-300 group-hover:border-[#1a5c4f]"}`}>
                         {allFilteredSelected && <i className="ri-check-line text-white" style={{ fontSize: "11px" }}></i>}
                       </div>
-                      <span className="text-xs font-bold text-gray-600 group-hover:text-[#1a5c4f] transition-colors">
+                      <span className="text-xs font-bold text-gray-600 group-hover:text-[#3b6ea5] transition-colors">
                         {allFilteredSelected ? "Deselect All" : "Select All"}
                       </span>
                     </button>
                     {selectedOrders.size > 0 && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1a5c4f] text-white rounded-full text-xs font-bold">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#3b6ea5] text-white rounded-full text-xs font-bold">
                         <i className="ri-checkbox-multiple-line" style={{ fontSize: "10px" }}></i>
                         {selectedOrders.size} selected
                       </span>
@@ -2047,7 +2058,7 @@ export default function AdminOrdersPage() {
                       <button
                         type="button"
                         onClick={clearAdvancedFilters}
-                        className="whitespace-nowrap flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-500 hover:text-[#1a5c4f] rounded-lg text-xs font-semibold cursor-pointer transition-colors ml-1"
+                        className="whitespace-nowrap flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-500 hover:text-[#3b6ea5] rounded-lg text-xs font-semibold cursor-pointer transition-colors ml-1"
                       >
                         <i className="ri-close-line"></i>Clear filters
                       </button>
@@ -2129,9 +2140,9 @@ export default function AdminOrdersPage() {
                             {/* Date ribbon */}
                             <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200">
                               <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                                <i className="ri-calendar-line text-[#1a5c4f] text-xs"></i>
+                                <i className="ri-calendar-line text-[#3b6ea5] text-xs"></i>
                               </div>
-                              <span className="text-xs font-extrabold text-[#1a5c4f] tracking-wide">{group.dateLabel}</span>
+                              <span className="text-xs font-extrabold text-[#3b6ea5] tracking-wide">{group.dateLabel}</span>
                               <div className="flex-1 h-px bg-[#d0ede6]"></div>
                               <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
                                 {group.orders.length} order{group.orders.length !== 1 ? "s" : ""}
@@ -2167,9 +2178,9 @@ export default function AdminOrdersPage() {
                             {/* Date ribbon */}
                             <div className="flex items-center gap-2 mb-2 px-1">
                               <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                                <i className="ri-calendar-line text-[#1a5c4f] text-xs"></i>
+                                <i className="ri-calendar-line text-[#3b6ea5] text-xs"></i>
                               </div>
-                              <span className="text-xs font-extrabold text-[#1a5c4f]">{group.dateLabel}</span>
+                              <span className="text-xs font-extrabold text-[#3b6ea5]">{group.dateLabel}</span>
                               <div className="flex-1 h-px bg-[#d0ede6]"></div>
                               <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
                                 {group.orders.length}
@@ -2271,7 +2282,7 @@ export default function AdminOrdersPage() {
 
       {/* ── BULK ASSIGN BAR ── */}
       {selectedOrders.size > 0 && activeTab === "orders" && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#1a5c4f] border-t border-[#17504a] px-3 sm:px-6 py-3 sm:py-4 pb-[calc(0.75rem+56px)] lg:pb-4">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#3b6ea5] border-t border-[#17504a] px-3 sm:px-6 py-3 sm:py-4 pb-[calc(0.75rem+56px)] lg:pb-4">
           <div className={`${sidebarCollapsed ? "lg:ml-14" : "lg:ml-[220px]"} space-y-2 transition-[margin] duration-200`}>
             {/* Lead warning strip */}
             {(() => {
@@ -2369,7 +2380,7 @@ export default function AdminOrdersPage() {
                                 type="button"
                                 onClick={() => { if (bulkDoctorEmail) setShowBulkConfirm(true); }}
                                 disabled={!bulkDoctorEmail || bulkAssigning}
-                                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white text-[#1a5c4f] text-sm font-extrabold rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer transition-colors"
+                                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white text-[#3b6ea5] text-sm font-extrabold rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer transition-colors"
                               >
                                 <i className="ri-user-received-line"></i>Assign {assignableCount} Order{assignableCount !== 1 ? "s" : ""}
                               </button>
@@ -2391,11 +2402,11 @@ export default function AdminOrdersPage() {
                           type="button"
                           onClick={() => setShowBulkSMS(true)}
                           title={adminProfile?.role === "support" ? "Bulk SMS (view restrictions)" : "Send bulk SMS to unassigned paid orders"}
-                          className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold rounded-lg cursor-pointer transition-colors ${adminProfile?.role === "support" ? "bg-white/10 text-white/50 border border-white/20 hover:bg-white/20" : "bg-[#f0faf7] text-[#1a5c4f] hover:bg-white"}`}
+                          className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold rounded-lg cursor-pointer transition-colors ${adminProfile?.role === "support" ? "bg-white/10 text-white/50 border border-white/20 hover:bg-white/20" : "bg-[#e8f0f9] text-[#3b6ea5] hover:bg-white"}`}
                         >
                           <i className={adminProfile?.role === "support" ? "ri-lock-line" : "ri-message-3-line"}></i>
                           Bulk SMS
-                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${adminProfile?.role === "support" ? "bg-white/20 text-white/60" : "bg-[#1a5c4f] text-white"}`}>
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${adminProfile?.role === "support" ? "bg-white/20 text-white/60" : "bg-[#3b6ea5] text-white"}`}>
                             {paidUnassigned.length}
                           </span>
                         </button>
@@ -2432,7 +2443,7 @@ export default function AdminOrdersPage() {
                       type="button"
                       onClick={handleBulkAssign}
                       disabled={bulkAssigning}
-                      className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white text-[#1a5c4f] text-sm font-extrabold rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer transition-colors"
+                      className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white text-[#3b6ea5] text-sm font-extrabold rounded-lg hover:bg-gray-50 disabled:opacity-50 cursor-pointer transition-colors"
                     >
                       {bulkAssigning
                         ? <><i className="ri-loader-4-line animate-spin"></i>Assigning&hellip;</>
@@ -2750,8 +2761,8 @@ export default function AdminOrdersPage() {
               {/* Discount offer */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                    <i className="ri-coupon-3-line text-[#1a5c4f] text-xs"></i>
+                  <div className="w-6 h-6 flex items-center justify-center bg-[#dbeafe] rounded-lg flex-shrink-0">
+                    <i className="ri-coupon-3-line text-[#3b6ea5] text-xs"></i>
                   </div>
                   <p className="text-xs font-bold text-gray-700">Discount / Promo Code (Optional)</p>
                 </div>
@@ -2763,7 +2774,7 @@ export default function AdminOrdersPage() {
                       value={recoveryDiscount}
                       onChange={(e) => setRecoveryDiscount(e.target.value.toUpperCase())}
                       placeholder="e.g. SAVE10, WELCOME20"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-[#1a5c4f] bg-white"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-[#3b6ea5] bg-white"
                     />
                     <p className="text-xs text-gray-400 mt-1">Leave blank to send without a discount offer</p>
                   </div>
@@ -2775,7 +2786,7 @@ export default function AdminOrdersPage() {
                           <select
                             value={recoveryDiscountType}
                             onChange={(e) => setRecoveryDiscountType(e.target.value as "percent" | "fixed")}
-                            className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer"
+                            className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
                           >
                             <option value="percent">Percentage (%)</option>
                             <option value="fixed">Fixed Amount ($)</option>
@@ -2794,7 +2805,7 @@ export default function AdminOrdersPage() {
                           value={recoveryDiscountValue}
                           onChange={(e) => setRecoveryDiscountValue(e.target.value)}
                           placeholder={recoveryDiscountType === "percent" ? "10" : "15"}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] bg-white"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white"
                         />
                       </div>
                     </div>
@@ -2816,7 +2827,7 @@ export default function AdminOrdersPage() {
                   rows={3}
                   maxLength={300}
                   placeholder="Add a personal note to include in the email, e.g. 'We noticed you didn\'t complete — happy to answer any questions!'"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] resize-none bg-gray-50"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5] resize-none bg-gray-50"
                 />
                 <p className="text-xs text-gray-400 text-right mt-0.5">{recoveryCustomMsg.length}/300</p>
               </div>
@@ -2833,7 +2844,7 @@ export default function AdminOrdersPage() {
 
               {/* Result */}
               {recoveryResult && (
-                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${recoveryResult.ok ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${recoveryResult.ok ? "bg-[#e8f0f9] border-[#b8cce4] text-[#3b6ea5]" : "bg-red-50 border-red-200 text-red-700"}`}>
                   <i className={recoveryResult.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
                   {recoveryResult.msg}
                 </div>

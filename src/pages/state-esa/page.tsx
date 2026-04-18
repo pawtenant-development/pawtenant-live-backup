@@ -6,6 +6,215 @@ import { getStateBySlug } from "../../mocks/states";
 import PrivacySafeVerificationNote from "../../components/feature/PrivacySafeVerificationNote";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 
+// ── Per-state custom meta titles & descriptions ───────────────────────────────
+// Keyed by state slug. Falls back to generic template for unlisted states.
+const STATE_META: Record<string, { title: string; desc: string }> = {
+  alabama: {
+    title: "ESA Letter Alabama | Licensed LMHP | PawTenant",
+    desc: "Get a legitimate ESA letter in Alabama from a state-licensed mental health professional. Protect your housing rights under the Fair Housing Act.",
+  },
+  alaska: {
+    title: "ESA Letter Alaska | Valid for Housing | PawTenant",
+    desc: "Need an ESA letter in Alaska? Connect with a licensed LMHP and receive valid ESA documentation for housing. HIPAA-secure, fully compliant with Alaska law.",
+  },
+  arizona: {
+    title: "ESA Letter Arizona | Licensed Professionals | PawTenant",
+    desc: "Get a legitimate ESA letter in Arizona. Our licensed mental health professionals evaluate your needs and issue housing-compliant ESA documentation fast.",
+  },
+  arkansas: {
+    title: "ESA Letter Arkansas | 30-Day Rule Explained | PawTenant",
+    desc: "Arkansas requires a 30-day provider relationship before an ESA letter can be issued. PawTenant connects you with licensed Arkansas LMHPs.",
+  },
+  california: {
+    title: "ESA Letter California | CA-Licensed Therapists | PawTenant",
+    desc: "Get a legitimate ESA letter in California from a state-licensed therapist. California law requires a 30-day relationship. PawTenant ensures full compliance.",
+  },
+  colorado: {
+    title: "ESA Letter Colorado | Valid for Housing | PawTenant",
+    desc: "Get a legitimate ESA letter in Colorado from a licensed mental health professional. No waiting period. Housing-compliant documentation delivered digitally.",
+  },
+  connecticut: {
+    title: "ESA Letter Connecticut | Licensed LMHP | PawTenant",
+    desc: "Need an ESA letter in Connecticut? PawTenant connects you with state-licensed professionals for a proper evaluation. Receive valid ESA letter fast.",
+  },
+  delaware: {
+    title: "ESA Letter Delaware | Housing-Compliant | PawTenant",
+    desc: "Get your ESA letter in Delaware from a licensed mental health professional. PawTenant ensures your documentation is FHA-compliant.",
+  },
+  florida: {
+    title: "ESA Letter Florida | Legitimate & Legal | PawTenant",
+    desc: "Get a legitimate ESA letter in Florida from a licensed LMHP. Florida penalizes fake ESA letters. PawTenant ensures every letter is issued through a proper evaluation.",
+  },
+  georgia: {
+    title: "ESA Letter Georgia | Licensed Therapists | PawTenant",
+    desc: "Need an ESA letter in Georgia? Connect with a state-licensed mental health professional through PawTenant. Valid for housing under the Fair Housing Act.",
+  },
+  hawaii: {
+    title: "ESA Letter Hawaii | Valid Housing Documentation | PawTenant",
+    desc: "Get a legitimate ESA letter in Hawaii from a licensed LMHP. PawTenant provides housing-compliant ESA documentation valid across all Hawaii housing types.",
+  },
+  idaho: {
+    title: "ESA Letter Idaho | Licensed Professionals | PawTenant",
+    desc: "Receive your ESA letter in Idaho from a state-licensed mental health professional. PawTenant ensures full FHA compliance so your landlord recognizes your letter.",
+  },
+  illinois: {
+    title: "ESA Letter Illinois | Verify Your LMHP | PawTenant",
+    desc: "Landlords may verify your LMHP's license before accepting an ESA letter in Illinois. PawTenant only works with fully verifiable, state-licensed professionals.",
+  },
+  indiana: {
+    title: "ESA Letter Indiana | Fast & Compliant | PawTenant",
+    desc: "Get an ESA letter in Indiana from a licensed mental health professional. PawTenant's process is fast, HIPAA-secure, and fully compliant with Indiana housing law.",
+  },
+  iowa: {
+    title: "ESA Letter Iowa | 30-Day Rule | Licensed LMHP | PawTenant",
+    desc: "Iowa requires a 30-day relationship with your LMHP before issuing an ESA letter. PawTenant helps you start the process early so it takes less time.",
+  },
+  kansas: {
+    title: "ESA Letter Kansas | Housing Rights | PawTenant",
+    desc: "Get a legitimate ESA letter in Kansas from a licensed professional. PawTenant ensures your ESA documentation protects your housing rights.",
+  },
+  kentucky: {
+    title: "ESA Letter Kentucky | Licensed & Legitimate | PawTenant",
+    desc: "Need an ESA letter in Kentucky? PawTenant connects you with a state-licensed LMHP for a thorough evaluation and delivers your ESA letter digitally.",
+  },
+  louisiana: {
+    title: "ESA Letter Louisiana | Protect Your Housing Rights | PawTenant",
+    desc: "Get a legitimate ESA letter in Louisiana. PawTenant works with licensed Louisiana mental health professionals to issue FHA-compliant documentation.",
+  },
+  maine: {
+    title: "ESA Letter Maine | Valid for Housing | PawTenant",
+    desc: "Get your ESA letter in Maine from a licensed mental health professional. PawTenant ensures your letter meets FHA standards so landlords accept it statewide.",
+  },
+  maryland: {
+    title: "ESA Letter Maryland | Licensed Therapists | PawTenant",
+    desc: "Get your ESA letter in Maryland from a state-licensed LMHP. PawTenant's housing-compliant ESA letter protects you from unfair pet fees and no-pet policies.",
+  },
+  massachusetts: {
+    title: "ESA Letter Massachusetts | Legitimate & Fast | PawTenant",
+    desc: "Need an ESA letter in Massachusetts? PawTenant connects you with licensed MA mental health professionals for a compliant evaluation.",
+  },
+  michigan: {
+    title: "ESA Letter Michigan | Licensed LMHP | PawTenant",
+    desc: "Get a legitimate ESA letter in Michigan from an LMHP. PawTenant provides fast, housing-compliant ESA documentation valid across all of Michigan.",
+  },
+  minnesota: {
+    title: "ESA Letter Minnesota | Housing Compliant | PawTenant",
+    desc: "Receive a legitimate ESA letter in Minnesota from a state-licensed LMHP. PawTenant ensures full compliance with FHA so your ESA letter is accepted easily.",
+  },
+  mississippi: {
+    title: "ESA Letter Mississippi | Valid for Housing | PawTenant",
+    desc: "Get your ESA letter in Mississippi from a licensed mental health professional. PawTenant delivers HIPAA-secure, FHA-compliant documentation. Apply online.",
+  },
+  missouri: {
+    title: "ESA Letter Missouri | Licensed Professionals | PawTenant",
+    desc: "Need an ESA letter in Missouri? PawTenant connects you with state-licensed LMHPs for evaluation and fast digital delivery. Housing-compliant and FHA-valid.",
+  },
+  montana: {
+    title: "ESA Letter Montana | Legitimate & Compliant | PawTenant",
+    desc: "Get a legitimate ESA letter in Montana from a licensed LMHP. PawTenant ensures your letter protects your housing rights under the Fair Housing Act statewide.",
+  },
+  nebraska: {
+    title: "ESA Letter Nebraska | Housing Rights | PawTenant",
+    desc: "Receive a legitimate ESA letter in Nebraska from a licensed professional. PawTenant's process is compliant with Nebraska and federal housing requirements.",
+  },
+  nevada: {
+    title: "ESA Letter Nevada | Licensed LMHP | PawTenant",
+    desc: "Get your ESA letter in Nevada from a state-licensed mental health professional. PawTenant ensures FHA-compliant letter so landlords accept it easily.",
+  },
+  "new-hampshire": {
+    title: "ESA Letter New Hampshire | Fast & Legitimate | PawTenant",
+    desc: "Need an ESA letter in New Hampshire? PawTenant connects you with a licensed NH LMHP for a proper evaluation. Receive ESA letter within 24–48 hours.",
+  },
+  "new-jersey": {
+    title: "ESA Letter New Jersey | Verify Your Provider | PawTenant",
+    desc: "Landlords may verify your provider's license before accepting an ESA letter in New Jersey. PawTenant only uses verifiable, state-licensed NJ professionals.",
+  },
+  "new-mexico": {
+    title: "ESA Letter New Mexico | Licensed Therapists | PawTenant",
+    desc: "Get a legitimate ESA letter in New Mexico from an LMHP. PawTenant provides housing-compliant ESA letter that protects your rights as a tenant in NM.",
+  },
+  "new-york": {
+    title: "ESA Letter New York | Licensed NY Therapist | PawTenant",
+    desc: "New York landlords are encouraged to verify LMHP license status. PawTenant works only with verifiable NY-licensed professionals. Get your ESA letter today.",
+  },
+  "north-carolina": {
+    title: "ESA Letter North Carolina | Housing Compliant | PawTenant",
+    desc: "Get a legitimate ESA letter in North Carolina from an LMHP. PawTenant ensures FHA-compliant documentation so you can live with your ESA easily.",
+  },
+  "north-dakota": {
+    title: "ESA Letter North Dakota | Legitimate & Fast | PawTenant",
+    desc: "Receive a legitimate ESA letter in North Dakota from a licensed mental health professional. PawTenant delivers housing-compliant ESA letter. Apply now.",
+  },
+  ohio: {
+    title: "ESA Letter Ohio | Licensed LMHP | PawTenant",
+    desc: "Get your ESA letter in Ohio from a state-licensed LMHP. PawTenant ensures your letter is FHA-compliant and accepted by Ohio landlords. Apply today.",
+  },
+  oklahoma: {
+    title: "ESA Letter Oklahoma | Valid for Housing | PawTenant",
+    desc: "Get a legitimate ESA letter in Oklahoma from a licensed LMHP. PawTenant follows FHA and Oklahoma law to issue ESA letter. Apply online in minutes.",
+  },
+  oregon: {
+    title: "ESA Letter Oregon | Licensed Professionals | PawTenant",
+    desc: "Need an ESA letter in Oregon? PawTenant connects you with a state-licensed LMHP for a proper evaluation. Receive valid, FHA-compliant ESA documentation.",
+  },
+  pennsylvania: {
+    title: "ESA Letter Pennsylvania | Licensed Therapists | PawTenant",
+    desc: "Get a legitimate ESA letter in Pennsylvania from an LMHP. PawTenant delivers housing-compliant documentation accepted by PA landlords. Apply now.",
+  },
+  "rhode-island": {
+    title: "ESA Letter Rhode Island | Fast & Compliant | PawTenant",
+    desc: "Receive your ESA letter in Rhode Island from a state-licensed LMHP. PawTenant ensures fully compliant ESA letter that protects your housing rights in RI.",
+  },
+  "south-carolina": {
+    title: "ESA Letter South Carolina | Housing Rights | PawTenant",
+    desc: "Get a legitimate ESA letter in South Carolina from a licensed mental health professional. PawTenant ensures FHA-compliant documentation.",
+  },
+  "south-dakota": {
+    title: "ESA Letter South Dakota | Licensed LMHP | PawTenant",
+    desc: "Need an ESA letter in South Dakota? PawTenant connects you with a licensed SD professional for a proper evaluation. Apply now.",
+  },
+  tennessee: {
+    title: "ESA Letter Tennessee | Legitimate & Legal | PawTenant",
+    desc: "Get a legitimate ESA letter in Tennessee from a licensed LMHP. PawTenant ensures your letter meets FHA standards so you can live with your ESA easily.",
+  },
+  texas: {
+    title: "ESA Letter Texas | TX-Licensed Professionals | PawTenant",
+    desc: "Get a legitimate ESA letter in Texas from a state-licensed mental health professional. No waiting period in TX. Housing-compliant and digitally delivered.",
+  },
+  utah: {
+    title: "ESA Letter Utah | Valid for Housing | PawTenant",
+    desc: "Receive a legitimate ESA letter in Utah from a licensed LMHP. PawTenant ensures your documentation is fully FHA-compliant and accepted by Utah landlords.",
+  },
+  vermont: {
+    title: "ESA Letter Vermont | Licensed & Compliant | PawTenant",
+    desc: "Get your ESA letter in Vermont from a state-licensed mental health professional. PawTenant delivers ESA documentation fast and securely. Apply today.",
+  },
+  virginia: {
+    title: "ESA Letter Virginia | Licensed Therapists | PawTenant",
+    desc: "Need an ESA letter in Virginia? PawTenant connects you with a licensed VA LMHP. Receive valid, FHA-compliant ESA documentation within 24–48 hours.",
+  },
+  washington: {
+    title: "ESA Letter Washington State | Licensed LMHP | PawTenant",
+    desc: "Get a legitimate ESA letter in Washington State. PawTenant works with licensed WA mental health professionals to issue FHA-compliant documentation.",
+  },
+  "washington-dc": {
+    title: "ESA Letter Washington DC | Housing Compliant | PawTenant",
+    desc: "Get a legitimate ESA letter in Washington DC from a licensed LMHP. PawTenant ensures full FHA compliance so your ESA letter is accepted easily. Apply now.",
+  },
+  "west-virginia": {
+    title: "ESA Letter West Virginia | Fast & Legitimate | PawTenant",
+    desc: "Receive your ESA letter in West Virginia from a licensed LMHP. PawTenant ensures FHA-compliant ESA documentation delivered digitally. Apply today.",
+  },
+  wisconsin: {
+    title: "ESA Letter Wisconsin | Licensed Professionals | PawTenant",
+    desc: "Get a legitimate ESA letter in Wisconsin from a licensed LMHP. PawTenant delivers fast, housing-compliant ESA letter accepted statewide. Apply now.",
+  },
+  wyoming: {
+    title: "ESA Letter Wyoming | Valid for Housing | PawTenant",
+    desc: "Need an ESA letter in Wyoming? PawTenant connects you with a state-licensed professional for a proper evaluation. FHA-compliant ESA letter delivered fast.",
+  },
+};
+
 // ── State-specific image themes ───────────────────────────────────────────────
 // Each state gets a unique visual environment so pages look distinct
 const STATE_IMAGE_THEMES: Record<string, {
@@ -163,8 +372,14 @@ export default function StateESAPage() {
   useEffect(() => {
     if (!stateData) return;
 
-    const title = `ESA Letter ${stateData.name} 2026 — Licensed LMHP, Same-Day Delivery | PawTenant`;
-    const description = `Need an ESA letter in ${stateData.name}? PawTenant connects you with ${stateData.name}-licensed mental health professionals. Valid for housing across all of ${stateData.name}, HIPAA-secure, same-day delivery, 100% money-back guarantee. ${stateData.name} ESA housing rights explained.`;
+    // Use custom meta if available, otherwise fall back to generic template
+    const customMeta = STATE_META[stateData.slug];
+    const title = customMeta
+      ? customMeta.title
+      : `ESA Letter ${stateData.name} 2026 — Licensed LMHP, Same-Day Delivery | PawTenant`;
+    const description = customMeta
+      ? customMeta.desc
+      : `Need an ESA letter in ${stateData.name}? PawTenant connects you with ${stateData.name}-licensed mental health professionals. Valid for housing across all of ${stateData.name}, HIPAA-secure, same-day delivery, 100% money-back guarantee. ${stateData.name} ESA housing rights explained.`;
     const canonical = `https://www.pawtenant.com/esa-letter/${stateData.slug}`;
 
     document.title = title;
@@ -280,7 +495,7 @@ export default function StateESAPage() {
               <span className="text-white/90 text-sm">{stateData.name}</span>
             </div>
             <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              About Emotional Support Animals in {stateData.name}
+              ESA Letter in {stateData.name}
             </h1>
             <p className="text-white/85 text-base leading-relaxed mb-8">
               {stateData.introText}

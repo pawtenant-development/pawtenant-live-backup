@@ -53,7 +53,7 @@ const INIT_FORM: AddMemberForm = { full_name: "", email: "", title: "", role: "a
 
 const ROLE_CONFIG: Record<string, { label: string; color: string; icon: string; desc: string; isAdmin: boolean }> = {
   owner:         { label: "Owner",     color: "bg-[#f3e8ff] text-[#7c3aed]",         icon: "ri-vip-crown-line",          desc: "Full control + billing",        isAdmin: true },
-  admin_manager: { label: "Admin",     color: "bg-[#e8f5f1] text-[#1a5c4f]",          icon: "ri-shield-star-line",         desc: "Full dashboard access",          isAdmin: true },
+  admin_manager: { label: "Admin",     color: "bg-[#dbeafe] text-[#3b6ea5]",          icon: "ri-shield-star-line",         desc: "Full dashboard access",          isAdmin: true },
   support:       { label: "Support",   color: "bg-cyan-100 text-cyan-700",             icon: "ri-customer-service-2-line",  desc: "Orders & customers only",        isAdmin: true },
   finance:       { label: "Finance",   color: "bg-emerald-100 text-emerald-700",       icon: "ri-money-dollar-circle-line", desc: "Payments & refunds only",        isAdmin: true },
   read_only:     { label: "Read Only", color: "bg-gray-100 text-gray-600",             icon: "ri-eye-line",                 desc: "View access only",               isAdmin: true },
@@ -77,7 +77,7 @@ const PERMISSIONS: { module: string; owner: string; admin_manager: string; suppo
 ];
 
 function PermValue({ v }: { v: string }) {
-  if (v === "Full") return <span className="text-xs font-bold text-[#1a5c4f]">Full</span>;
+  if (v === "Full") return <span className="text-xs font-bold text-[#3b6ea5]">Full</span>;
   if (v === "View") return <span className="text-xs text-gray-500">View</span>;
   if (v === "Edit") return <span className="text-xs font-semibold text-sky-600">Edit</span>;
   return <span className="text-xs text-gray-300">—</span>;
@@ -139,11 +139,11 @@ function TabAccessEditor({
       <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
-            <i className="ri-layout-grid-line text-[#1a5c4f] text-lg"></i>
+          <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
+            <i className="ri-layout-grid-line text-[#3b6ea5] text-lg"></i>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Tab Access</p>
+            <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-0.5">Tab Access</p>
             <h2 className="text-base font-extrabold text-gray-900 truncate">{member.full_name}</h2>
           </div>
           <button
@@ -176,7 +176,7 @@ function TabAccessEditor({
             <button
               type="button"
               onClick={resetToRoleDefaults}
-              className="whitespace-nowrap text-xs font-semibold text-[#1a5c4f] hover:underline cursor-pointer"
+              className="whitespace-nowrap text-xs font-semibold text-[#3b6ea5] hover:underline cursor-pointer"
             >
               Reset to role defaults
             </button>
@@ -194,15 +194,15 @@ function TabAccessEditor({
                   onClick={() => toggle(tab.key)}
                   className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-all cursor-pointer text-left ${
                     isOn
-                      ? "border-[#1a5c4f] bg-[#f0faf7]"
+                      ? "border-[#3b6ea5] bg-[#e8f0f9]"
                       : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
-                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${isOn ? "bg-[#1a5c4f]/10" : "bg-gray-100"}`}>
-                    <i className={`${tab.icon} text-sm ${isOn ? "text-[#1a5c4f]" : "text-gray-400"}`}></i>
+                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${isOn ? "bg-[#3b6ea5]/10" : "bg-gray-100"}`}>
+                    <i className={`${tab.icon} text-sm ${isOn ? "text-[#3b6ea5]" : "text-gray-400"}`}></i>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold leading-tight ${isOn ? "text-[#1a5c4f]" : "text-gray-600"}`}>{tab.label}</p>
+                    <p className={`text-xs font-bold leading-tight ${isOn ? "text-[#3b6ea5]" : "text-gray-600"}`}>{tab.label}</p>
                     {!isDefault && isOn && (
                       <p className="text-xs text-amber-600 leading-tight mt-0.5">Custom</p>
                     )}
@@ -210,7 +210,7 @@ function TabAccessEditor({
                       <p className="text-xs text-gray-400 leading-tight mt-0.5">Removed</p>
                     )}
                   </div>
-                  <div className={`w-4 h-4 flex items-center justify-center rounded-full flex-shrink-0 ${isOn ? "bg-[#1a5c4f]" : "bg-gray-200"}`}>
+                  <div className={`w-4 h-4 flex items-center justify-center rounded-full flex-shrink-0 ${isOn ? "bg-[#3b6ea5]" : "bg-gray-200"}`}>
                     {isOn && <i className="ri-check-line text-white" style={{ fontSize: "9px" }}></i>}
                   </div>
                 </button>
@@ -240,7 +240,7 @@ function TabAccessEditor({
             onClick={handleSave}
             disabled={saving || saved}
             className={`whitespace-nowrap flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-60 ${
-              saved ? "bg-[#f0faf7] text-[#1a5c4f] border border-[#b8ddd5]" : "bg-[#1a5c4f] text-white hover:bg-[#17504a]"
+              saved ? "bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4]" : "bg-[#3b6ea5] text-white hover:bg-[#2d5a8e]"
             }`}
           >
             {saving
@@ -561,7 +561,7 @@ export default function TeamTab() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {[
             { label: "Total Staff",         value: members.length,                                                                          icon: "ri-team-line",           color: "text-gray-700",     bg: "bg-gray-50",       border: "border-gray-200" },
-            { label: "Admin Portal Access", value: members.filter((m) => m.is_admin).length,                                                icon: "ri-shield-star-line",    color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7]",     border: "border-[#b8ddd5]" },
+            { label: "Admin Portal Access", value: members.filter((m) => m.is_admin).length,                                                icon: "ri-shield-star-line",    color: "text-[#3b6ea5]",   bg: "bg-[#e8f0f9]",     border: "border-[#b8cce4]" },
             { label: "Active Accounts",     value: members.filter((m) => m.is_active).length,                                               icon: "ri-checkbox-circle-line", color: "text-emerald-600", bg: "bg-emerald-50",    border: "border-emerald-200" },
             { label: "Owners / Admins",     value: members.filter((m) => ["owner", "admin_manager"].includes(m.role ?? "")).length,          icon: "ri-vip-crown-line",      color: "text-amber-600",    bg: "bg-amber-50",      border: "border-amber-200" },
           ].map((s) => (
@@ -577,9 +577,9 @@ export default function TeamTab() {
       )}
 
       {successMsg && (
-        <div className="mb-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-3">
-          <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-base mt-0.5 flex-shrink-0"></i>
-          <p className="text-sm text-[#1a5c4f] font-semibold">{successMsg}</p>
+        <div className="mb-4 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-3">
+          <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-base mt-0.5 flex-shrink-0"></i>
+          <p className="text-sm text-[#3b6ea5] font-semibold">{successMsg}</p>
         </div>
       )}
 
@@ -600,7 +600,7 @@ export default function TeamTab() {
       <div className="flex items-start justify-between mb-5 gap-4 flex-wrap">
         <div>
           <h2 className="text-base font-extrabold text-gray-900">Internal Staff &amp; Role Management</h2>
-          <p className="text-xs text-gray-500 mt-0.5 max-w-lg">Invite internal staff, assign dashboard roles, and control access levels. To add a licensed provider, use the <strong className="text-[#1a5c4f]">Providers tab</strong>.</p>
+          <p className="text-xs text-gray-500 mt-0.5 max-w-lg">Invite internal staff, assign dashboard roles, and control access levels. To add a licensed provider, use the <strong className="text-[#3b6ea5]">Providers tab</strong>.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setShowMatrix((v) => !v)}
@@ -610,7 +610,7 @@ export default function TeamTab() {
           {/* Owner AND admins can invite new team members */}
           {(currentUser?.role === "owner" || currentUser?.role === "admin_manager") && (
             <button type="button" onClick={() => setShowModal(true)}
-              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
+              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors">
               <i className="ri-user-add-line"></i><span>Invite Member</span>
             </button>
           )}
@@ -664,7 +664,7 @@ export default function TeamTab() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+          <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5]"></i>
         </div>
       ) : members.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -692,13 +692,13 @@ export default function TeamTab() {
                   <div className="hidden lg:grid grid-cols-[2fr_1.8fr_0.8fr_180px_auto] gap-4 items-center">
                     {/* Name */}
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 text-sm font-extrabold ${member.is_active ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-gray-100 text-gray-400"}`}>
+                      <div className={`w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 text-sm font-extrabold ${member.is_active ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-gray-100 text-gray-400"}`}>
                         {member.full_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 truncate">{member.full_name}</p>
                         {member.custom_tab_access && (
-                          <p className="text-xs text-[#1a5c4f] mt-0.5 flex items-center gap-1">
+                          <p className="text-xs text-[#3b6ea5] mt-0.5 flex items-center gap-1">
                             <i className="ri-layout-grid-line" style={{ fontSize: "10px" }}></i>
                             <span>{member.custom_tab_access.length} custom tabs</span>
                           </p>
@@ -715,7 +715,7 @@ export default function TeamTab() {
                         <select value={currentRole}
                           onChange={(e) => handleRoleChange(member, e.target.value)}
                           disabled={togglingId === member.id}
-                          className={`appearance-none pl-3 pr-7 py-1.5 rounded-full text-xs font-bold cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20 disabled:opacity-50 ${roleCfg.color}`}>
+                          className={`appearance-none pl-3 pr-7 py-1.5 rounded-full text-xs font-bold cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-[#3b6ea5]/20 disabled:opacity-50 ${roleCfg.color}`}>
                           {(currentUser?.role === "owner" ? TEAM_INVITE_ROLES_OWNER : TEAM_INVITE_ROLES_ADMIN).map((key) => {
                             const cfg = ROLE_CONFIG[key];
                             return <option key={key} value={key} className="bg-white text-gray-800 font-normal">{cfg.label} — {cfg.desc}</option>;
@@ -737,13 +737,13 @@ export default function TeamTab() {
                       {/* Owner cannot be deactivated */}
                       {member.role !== "owner" && (
                         <button type="button" onClick={() => handleToggleActive(member)} disabled={togglingId === member.id}
-                          className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#1a5c4f]" : "bg-gray-300"}`}>
+                          className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#3b6ea5]" : "bg-gray-300"}`}>
                           <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${member.is_active ? "translate-x-4" : "translate-x-0.5"}`}></div>
                         </button>
                       )}
                       <div className="w-px h-4 bg-gray-200 mx-0.5 flex-shrink-0"></div>
                       <button type="button" onClick={() => setTabAccessMember(member)} title="Edit tab access"
-                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ee] cursor-pointer transition-colors flex-shrink-0">
+                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#dbeafe] cursor-pointer transition-colors flex-shrink-0">
                         <i className="ri-layout-grid-line text-xs"></i>
                       </button>
                       {/* Owner row: only show Change Email (no password reset, no delete) */}
@@ -751,7 +751,7 @@ export default function TeamTab() {
                         <button type="button"
                           onClick={() => { setChangeEmailMemberId(member.id); setChangeEmailValue(member.email ?? ""); setChangeEmailMsg(null); }}
                           title="Change owner email"
-                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ee] cursor-pointer transition-colors flex-shrink-0">
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#dbeafe] cursor-pointer transition-colors flex-shrink-0">
                           <i className="ri-mail-settings-line text-xs"></i>
                         </button>
                       ) : (
@@ -779,7 +779,7 @@ export default function TeamTab() {
                   {/* Mobile layout — card style */}
                   <div className="lg:hidden">
                     <div className="flex items-start gap-3">
-                      <div className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 text-sm font-extrabold ${member.is_active ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-gray-100 text-gray-400"}`}>
+                      <div className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 text-sm font-extrabold ${member.is_active ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-gray-100 text-gray-400"}`}>
                         {member.full_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -790,7 +790,7 @@ export default function TeamTab() {
                               {member.is_active ? "Active" : "Inactive"}
                             </span>
                             <button type="button" onClick={() => handleToggleActive(member)} disabled={togglingId === member.id}
-                              className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#1a5c4f]" : "bg-gray-300"}`}>
+                              className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${member.is_active ? "bg-[#3b6ea5]" : "bg-gray-300"}`}>
                               <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${member.is_active ? "translate-x-4" : "translate-x-0.5"}`}></div>
                             </button>
                           </div>
@@ -817,13 +817,13 @@ export default function TeamTab() {
                         {/* Mobile action buttons */}
                         <div className="flex items-center gap-2 mt-3 flex-wrap">
                           <button type="button" onClick={() => setTabAccessMember(member)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] text-xs font-semibold cursor-pointer">
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] text-xs font-semibold cursor-pointer">
                             <i className="ri-layout-grid-line text-xs"></i>Tabs
                           </button>
                           {member.role === "owner" ? (
                             <button type="button"
                               onClick={() => { setChangeEmailMemberId(member.id); setChangeEmailValue(member.email ?? ""); setChangeEmailMsg(null); }}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] text-xs font-semibold cursor-pointer">
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] text-xs font-semibold cursor-pointer">
                               <i className="ri-mail-settings-line text-xs"></i>Change Email
                             </button>
                           ) : (
@@ -872,7 +872,7 @@ export default function TeamTab() {
       )}
 
       {/* Login link */}
-      <div className="mt-6 bg-[#0f1e1a] rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="mt-6 bg-[#1e3a5f] rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <p className="text-sm font-bold text-white mb-0.5">Admin Login Portal URL</p>
           <p className="text-xs text-white/50">Share with new team members for dashboard access.</p>
@@ -904,11 +904,11 @@ export default function TeamTab() {
           <div className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden">
               <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
-                <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
-                  <i className="ri-mail-settings-line text-[#1a5c4f] text-lg"></i>
+                <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
+                  <i className="ri-mail-settings-line text-[#3b6ea5] text-lg"></i>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Owner Account</p>
+                  <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-0.5">Owner Account</p>
                   <h2 className="text-base font-extrabold text-gray-900">Change Email Address</h2>
                 </div>
                 <button type="button" onClick={() => { setChangeEmailMemberId(null); setChangeEmailMsg(null); setChangeEmailValue(""); }}
@@ -935,11 +935,11 @@ export default function TeamTab() {
                     value={changeEmailValue}
                     onChange={(e) => setChangeEmailValue(e.target.value)}
                     placeholder="new@email.com"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 {changeEmailMsg && (
-                  <div className={`flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold border ${changeEmailMsg.ok ? "bg-[#f0faf7] text-[#1a5c4f] border-[#b8ddd5]" : "bg-red-50 text-red-700 border-red-200"}`}>
+                  <div className={`flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold border ${changeEmailMsg.ok ? "bg-[#e8f0f9] text-[#3b6ea5] border-[#b8cce4]" : "bg-red-50 text-red-700 border-red-200"}`}>
                     <i className={`mt-0.5 flex-shrink-0 ${changeEmailMsg.ok ? "ri-checkbox-circle-line" : "ri-error-warning-line"}`}></i>
                     {changeEmailMsg.text}
                   </div>
@@ -947,7 +947,7 @@ export default function TeamTab() {
               </div>
               <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-2">
                 <button type="button" onClick={() => handleChangeEmail(member)} disabled={changeEmailSaving || !changeEmailValue.trim()}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                   {changeEmailSaving ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-save-line"></i>Update Email</>}
                 </button>
                 <button type="button" onClick={() => { setChangeEmailMemberId(null); setChangeEmailMsg(null); setChangeEmailValue(""); }}
@@ -1008,7 +1008,7 @@ export default function TeamTab() {
                   </button>
                 )}
                 <button type="button" onClick={() => setDeleteConfirmId(null)}
-                  className={`whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors ${isOwner ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f] font-bold" : ""}`}>
+                  className={`whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors ${isOwner ? "bg-[#e8f0f9] border-[#b8cce4] text-[#3b6ea5] font-bold" : ""}`}>
                   {isOwner ? "Got it" : "Cancel"}
                 </button>
               </div>
@@ -1023,11 +1023,11 @@ export default function TeamTab() {
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
             {/* Modal header */}
             <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
-              <div className="w-10 h-10 flex items-center justify-center bg-[#f0faf7] rounded-xl flex-shrink-0">
-                <i className="ri-user-add-line text-[#1a5c4f] text-lg"></i>
+              <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
+                <i className="ri-user-add-line text-[#3b6ea5] text-lg"></i>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Invite</p>
+                <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-0.5">Invite</p>
                 <h2 className="text-base font-extrabold text-gray-900">Add Internal Staff Member</h2>
               </div>
               <button type="button" onClick={() => { setShowModal(false); setForm(INIT_FORM); setFormError(""); }}
@@ -1038,9 +1038,9 @@ export default function TeamTab() {
 
             <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
               {/* Info notice */}
-              <div className="bg-[#f0faf7] border border-[#c3e8df] rounded-xl px-4 py-3 flex items-start gap-2.5">
-                <i className="ri-mail-send-line text-[#1a5c4f] text-sm mt-0.5 flex-shrink-0"></i>
-                <p className="text-xs text-[#1a5c4f] leading-relaxed">An <strong>invite email</strong> will be sent automatically. They click the link to set their own password.</p>
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-2.5">
+                <i className="ri-mail-send-line text-[#3b6ea5] text-sm mt-0.5 flex-shrink-0"></i>
+                <p className="text-xs text-[#3b6ea5] leading-relaxed">An <strong>invite email</strong> will be sent automatically. They click the link to set their own password.</p>
               </div>
 
               {formError && (
@@ -1056,13 +1056,13 @@ export default function TeamTab() {
                   <label className="block text-xs font-bold text-gray-600 mb-1.5">Full Name <span className="text-red-400">*</span></label>
                   <input type="text" value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
                     placeholder="Jane Smith"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1.5">Email Address <span className="text-red-400">*</span></label>
                   <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                     placeholder="jane@pawtenant.com"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                 </div>
               </div>
 
@@ -1070,7 +1070,7 @@ export default function TeamTab() {
                 <label className="block text-xs font-bold text-gray-600 mb-1.5">Title <span className="text-gray-400 font-normal">(optional)</span></label>
                 <input type="text" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                   placeholder="Operations Manager, Support Specialist..."
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]" />
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
               </div>
 
               {/* Role selection — owner sees all roles, admin sees all except owner */}
@@ -1082,12 +1082,12 @@ export default function TeamTab() {
                     const isSelected = form.role === key;
                     return (
                       <button key={key} type="button" onClick={() => setForm((f) => ({ ...f, role: key }))}
-                        className={`whitespace-nowrap flex items-start gap-2.5 p-3 rounded-xl border-2 transition-all cursor-pointer text-left ${isSelected ? "border-[#1a5c4f] bg-[#f0faf7]" : "border-gray-200 hover:border-gray-300 bg-white"}`}>
-                        <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 mt-0.5 ${isSelected ? "bg-[#1a5c4f]/10" : "bg-gray-100"}`}>
-                          <i className={`${cfg.icon} text-sm ${isSelected ? "text-[#1a5c4f]" : "text-gray-400"}`}></i>
+                        className={`whitespace-nowrap flex items-start gap-2.5 p-3 rounded-xl border-2 transition-all cursor-pointer text-left ${isSelected ? "border-[#3b6ea5] bg-[#e8f0f9]" : "border-gray-200 hover:border-gray-300 bg-white"}`}>
+                        <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 mt-0.5 ${isSelected ? "bg-[#3b6ea5]/10" : "bg-gray-100"}`}>
+                          <i className={`${cfg.icon} text-sm ${isSelected ? "text-[#3b6ea5]" : "text-gray-400"}`}></i>
                         </div>
                         <div className="min-w-0">
-                          <p className={`text-xs font-bold leading-tight ${isSelected ? "text-[#1a5c4f]" : "text-gray-700"}`}>{cfg.label}</p>
+                          <p className={`text-xs font-bold leading-tight ${isSelected ? "text-[#3b6ea5]" : "text-gray-700"}`}>{cfg.label}</p>
                           <p className="text-xs text-gray-400 leading-tight mt-0.5">{cfg.desc}</p>
                         </div>
                       </button>
@@ -1113,7 +1113,7 @@ export default function TeamTab() {
               <button type="button" onClick={() => { setShowModal(false); setForm(INIT_FORM); setFormError(""); }}
                 className="whitespace-nowrap px-4 py-2.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors">Cancel</button>
               <button type="button" onClick={handleCreateMember} disabled={submitting}
-                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                 {submitting ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send Invite</>}
               </button>
             </div>

@@ -28,11 +28,11 @@ const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
 // ── SMS Templates ──────────────────────────────────────────────────────────
 const SMS_TEMPLATES = [
-  { label: "Order Confirmed",       icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]",  bg: "bg-[#f0faf7] border-[#b8ddd5] hover:border-[#1a5c4f]",   getMessage: (fn: string, id: string) => `Hi ${fn}, your ESA consultation with PawTenant is confirmed! Your Order ID is ${id}. Track your order anytime at pawtenant.com/my-orders` },
+  { label: "Order Confirmed",       icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]",  bg: "bg-[#e8f0f9] border-[#b8cce4] hover:border-[#3b6ea5]",   getMessage: (fn: string, id: string) => `Hi ${fn}, your ESA consultation with PawTenant is confirmed! Your Order ID is ${id}. Track your order anytime at pawtenant.com/my-orders` },
   { label: "Documents Ready",       icon: "ri-file-check-line",      color: "text-amber-700",  bg: "bg-amber-50 border-amber-200 hover:border-amber-400",       getMessage: (fn: string) => `Hi ${fn}, great news! Your ESA letter is ready. Log in to download your documents at pawtenant.com/my-orders` },
   { label: "Under Review",          icon: "ri-search-eye-line",      color: "text-sky-700",    bg: "bg-sky-50 border-sky-200 hover:border-sky-400",             getMessage: (fn: string) => `Hi ${fn}, your ESA assessment is under review by our licensed provider. We\'ll notify you as soon as it\'s complete, usually within 24 hours.` },
-  { label: "Finish Your ESA Letter",icon: "ri-mail-send-line",       color: "text-orange-600", bg: "bg-orange-50 border-orange-200 hover:border-orange-400",    getMessage: (fn: string, id: string) => `Hi ${fn}, you\'re one step away from your ESA letter! Complete your order here: pawtenant.com/assessment?resume=${id} — Reply STOP to opt out.` },
-  { label: "Still Thinking?",       icon: "ri-lightbulb-line",       color: "text-amber-700",  bg: "bg-amber-50 border-amber-200 hover:border-amber-400",       getMessage: (fn: string, id: string) => `Hi ${fn}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment?resume=${id} — Reply STOP to opt out.` },
+  { label: "Finish Your ESA Letter",icon: "ri-mail-send-line",       color: "text-orange-600", bg: "bg-orange-50 border-orange-200 hover:border-orange-400",    getMessage: (fn: string, id: string) => `Hi ${fn}, you\'re one step away from your ESA letter! Complete your order here: pawtenant.com/assessment?resume=${id}` },
+  { label: "Still Thinking?",       icon: "ri-lightbulb-line",       color: "text-amber-700",  bg: "bg-amber-50 border-amber-200 hover:border-amber-400",       getMessage: (fn: string, id: string) => `Hi ${fn}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment?resume=${id}` },
   { label: "Consultation Booked",   icon: "ri-calendar-check-line",  color: "text-violet-700", bg: "bg-violet-50 border-violet-200 hover:border-violet-400",    getMessage: (fn: string, id: string) => `Hi ${fn}, your provider consultation with PawTenant is confirmed! Complete your payment to lock in your spot: pawtenant.com/assessment?resume=${id}` },
   { label: "Need More Info",        icon: "ri-information-line",     color: "text-violet-700", bg: "bg-violet-50 border-violet-200 hover:border-violet-400",    getMessage: (fn: string) => `Hi ${fn}, we need a bit more information to complete your ESA assessment. Please reply here or call us and we\'ll get you sorted quickly!` },
   { label: "Follow Up",             icon: "ri-chat-check-line",      color: "text-gray-600",   bg: "bg-gray-50 border-gray-200 hover:border-gray-400",          getMessage: (fn: string) => `Hi ${fn}, just checking in on your ESA order. Is there anything we can help you with?` },
@@ -43,7 +43,7 @@ const SMS_TEMPLATES = [
 interface EmailOption { value: string; label: string; desc: string; badge?: string; badgeColor?: string; }
 const EMAIL_OPTION_GROUPS: { group: string; icon: string; options: EmailOption[] }[] = [
   { group: "Order Updates", icon: "ri-file-list-3-line", options: [
-    { value: "order_confirmation", label: "Resend Order Confirmation", desc: "Resends the initial order confirmation + payment receipt email", badge: "Transactional", badgeColor: "bg-[#f0faf7] text-[#1a5c4f]" },
+    { value: "order_confirmation", label: "Resend Order Confirmation", desc: "Resends the initial order confirmation + payment receipt email", badge: "Transactional", badgeColor: "bg-[#e8f0f9] text-[#3b6ea5]" },
     { value: "under-review",       label: "Under Review Update",       desc: "Lets the customer know their case is being reviewed",           badge: "Status",        badgeColor: "bg-sky-50 text-sky-700" },
     { value: "completed",          label: "Completed Update",          desc: "Notifies the customer their order is done",                     badge: "Status",        badgeColor: "bg-emerald-50 text-emerald-700" },
     { value: "letter_ready",       label: "Resend Documents Email",    desc: "Re-sends the letter/documents email to the customer",           badge: "Documents",     badgeColor: "bg-amber-50 text-amber-700" },
@@ -101,7 +101,7 @@ function getChatConfig(entry: UnifiedLogEntry): {
       channel: "sms",
       label: isOut ? "SMS" : "SMS Reply",
       icon: isOut ? "ri-message-3-line" : "ri-message-2-line",
-      bubbleClass: isOut ? "bg-[#1a5c4f] text-white" : "bg-white border border-gray-200 text-gray-800",
+      bubbleClass: isOut ? "bg-[#3b6ea5] text-white" : "bg-white border border-gray-200 text-gray-800",
       headerClass: isOut ? "text-white/80" : "text-gray-500",
     };
   }
@@ -331,7 +331,7 @@ export default function CommunicationTab({
           <button
             type="button"
             onClick={() => togglePanel("sms")}
-            className={`whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${activePanel === "sms" ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "bg-[#f0faf7] text-[#1a5c4f] border-[#b8ddd5] hover:border-[#1a5c4f]"}`}
+            className={`whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${activePanel === "sms" ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "bg-[#e8f0f9] text-[#3b6ea5] border-[#b8cce4] hover:border-[#3b6ea5]"}`}
           >
             <i className="ri-message-3-line text-sm"></i>
             Send SMS
@@ -361,16 +361,16 @@ export default function CommunicationTab({
 
         {/* ── SMS Panel ── */}
         {activePanel === "sms" && (
-          <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4 space-y-3">
+          <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4 space-y-3">
             {!phone && (
               <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
                 <i className="ri-alert-line text-amber-500 text-sm flex-shrink-0"></i>
                 <p className="text-xs text-amber-700 font-semibold">No phone number — add one to enable SMS</p>
               </div>
             )}
-            {phone && <p className="text-xs text-[#1a5c4f]/70 font-mono">{phone}</p>}
+            {phone && <p className="text-xs text-[#3b6ea5]/70 font-mono">{phone}</p>}
             <button type="button" onClick={() => setShowTemplates((v) => !v)}
-              className="whitespace-nowrap w-full flex items-center justify-between px-3 py-2 bg-white border border-[#b8ddd5] rounded-lg text-xs font-semibold text-[#1a5c4f] hover:bg-[#eaf6f2] transition-colors cursor-pointer">
+              className="whitespace-nowrap w-full flex items-center justify-between px-3 py-2 bg-white border border-[#b8cce4] rounded-lg text-xs font-semibold text-[#3b6ea5] hover:bg-[#eaf6f2] transition-colors cursor-pointer">
               <span className="flex items-center gap-1.5"><i className="ri-layout-grid-line text-sm"></i>Quick Templates</span>
               <i className={showTemplates ? "ri-arrow-up-s-line text-sm" : "ri-arrow-down-s-line text-sm"}></i>
             </button>
@@ -388,16 +388,16 @@ export default function CommunicationTab({
             )}
             <textarea value={smsText} onChange={(e) => setSmsText(e.target.value.slice(0, 320))} rows={3}
               placeholder={`Message to ${firstName}...`} disabled={!phone}
-              className="w-full px-3 py-2.5 border border-[#b8ddd5] rounded-lg text-sm bg-white focus:outline-none focus:border-[#1a5c4f] resize-none disabled:opacity-50" />
+              className="w-full px-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm bg-white focus:outline-none focus:border-[#3b6ea5] resize-none disabled:opacity-50" />
             <div className="flex items-center justify-between">
               <button type="button" onClick={handleSendSMS} disabled={sending || !phone || !smsText.trim()}
-                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors">
+                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                 {sending ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-send-plane-line"></i>Send SMS</>}
               </button>
               <span className="text-xs text-gray-400">{smsText.length}/320</span>
             </div>
             {sendMsg && (
-              <p className={`text-xs font-semibold flex items-center gap-1 ${sendMsg === "Sent!" ? "text-[#1a5c4f]" : "text-red-500"}`}>
+              <p className={`text-xs font-semibold flex items-center gap-1 ${sendMsg === "Sent!" ? "text-[#3b6ea5]" : "text-red-500"}`}>
                 <i className={sendMsg === "Sent!" ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{sendMsg}
               </p>
             )}
@@ -498,7 +498,7 @@ export default function CommunicationTab({
       <div className="flex-1 overflow-y-auto bg-[#f5f5f0]" style={{ minHeight: 0 }}>
         {loadingComms && allLogs.length === 0 ? (
           <div className="flex items-center justify-center py-16">
-            <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+            <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
           </div>
         ) : allLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center px-6">
@@ -554,7 +554,7 @@ export default function CommunicationTab({
                           </div>
                         )}
                         <div className={`max-w-[72%] ${isOut ? "items-end" : "items-start"} flex flex-col`}>
-                          <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${isOut ? "bg-[#1a5c4f] text-white rounded-br-sm" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
+                          <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${isOut ? "bg-[#3b6ea5] text-white rounded-br-sm" : "bg-white border border-gray-200 text-gray-800 rounded-bl-sm"}`}>
                             {/* Header */}
                             <div className={`flex items-center gap-1.5 mb-1 ${isOut ? "text-white/60" : "text-gray-400"}`}>
                               <i className="ri-message-3-line text-xs"></i>
@@ -565,11 +565,11 @@ export default function CommunicationTab({
                           </div>
                           <span className={`text-[10px] mt-1 px-1 ${isOut ? "text-gray-400 text-right" : "text-gray-400"}`}>
                             {isOut ? "PawTenant" : patientName} · {fmtTime(entry.sentAt)}
-                            {isOut && entry.success && <i className="ri-check-double-line ml-1 text-[#1a5c4f]"></i>}
+                            {isOut && entry.success && <i className="ri-check-double-line ml-1 text-[#3b6ea5]"></i>}
                           </span>
                         </div>
                         {isOut && (
-                          <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-full flex-shrink-0 ml-2 mt-auto mb-1">
+                          <div className="w-7 h-7 flex items-center justify-center bg-[#3b6ea5] rounded-full flex-shrink-0 ml-2 mt-auto mb-1">
                             <i className="ri-customer-service-2-line text-white text-xs"></i>
                           </div>
                         )}
@@ -616,7 +616,8 @@ export default function CommunicationTab({
                               {entry.type === "refund" && "Refund confirmation email sent to customer."}
                               {entry.type === "cancelled" && "Cancellation notice sent to customer."}
                               {entry.type === "provider_assigned_customer" && "Customer notified that a provider has been assigned."}
-                              {!["order_confirmation","under-review","status_under_review","completed","status_completed","letter_ready","checkout_recovery","followup_lead","consultation_booking","seq_30min","seq_24h","seq_3day","refund","cancelled","provider_assigned_customer"].includes(entry.type) && "Email sent to customer."}
+                              {entry.type === "provider_assigned_provider" && "Provider notified of new case assignment."}
+                              {!["order_confirmation","under-review","status_under_review","completed","status_completed","letter_ready","checkout_recovery","followup_lead","consultation_booking","seq_30min","seq_24h","seq_3day","refund","cancelled","provider_assigned_customer","provider_assigned_provider"].includes(entry.type) && "Email sent to customer."}
                             </p>
                           </div>
                         </div>
@@ -643,7 +644,7 @@ export default function CommunicationTab({
         <div className="flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-white flex-shrink-0">
           <p className="text-[10px] text-gray-400 font-semibold">{allLogs.length} communication{allLogs.length !== 1 ? "s" : ""} logged</p>
           <button type="button" onClick={loadCommLogs}
-            className="whitespace-nowrap flex items-center gap-1 text-[10px] text-gray-400 hover:text-[#1a5c4f] cursor-pointer transition-colors">
+            className="whitespace-nowrap flex items-center gap-1 text-[10px] text-gray-400 hover:text-[#3b6ea5] cursor-pointer transition-colors">
             <i className="ri-refresh-line text-xs"></i>Refresh
           </button>
         </div>

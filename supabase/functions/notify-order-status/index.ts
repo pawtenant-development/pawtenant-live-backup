@@ -18,7 +18,7 @@ const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
 const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
-const ACCENT = "#1a5c4f";
+const ACCENT = "#4a7fb5";
 
 // ── Recipient routing ────────────────────────────────────────────────────────
 async function getAdminRecipients(notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
@@ -97,7 +97,7 @@ function detailCard(title: string, rows: Array<[string, string, string?]>): stri
       <td style="padding:7px 0;font-size:13px;color:#6b7280;width:160px;vertical-align:top;">${label}</td>
       <td style="padding:7px 0;font-size:13px;font-weight:600;color:${vc ?? "#111827"};">${value}</td>
     </tr>`).join("");
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;">
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f9;border:1px solid #b8cce4;border-radius:12px;margin-bottom:24px;">
     <tr><td style="padding:20px 24px;">
       <p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">${title}</p>
       <table width="100%" cellpadding="0" cellspacing="0">${rowsHtml}</table>
@@ -141,7 +141,7 @@ function buildAdminNotifEmail(opts: { confirmationId: string; customerEmail: str
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
       <tr>
-        <td style="background:#1a5c4f;padding:24px 32px;text-align:center;">
+        <td style="background:${ACCENT};padding:24px 32px;text-align:center;">
           <img src="${LOGO_URL}" width="140" alt="PawTenant" style="display:block;margin:0 auto 12px;height:auto;" />
           <div style="display:inline-block;background:rgba(255,255,255,0.2);color:#fff;padding:4px 14px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Admin Notification</div>
           <h1 style="margin:12px 0 0;font-size:20px;font-weight:800;color:#ffffff;">Order Status Changed</h1>
@@ -156,12 +156,12 @@ function buildAdminNotifEmail(opts: { confirmationId: string; customerEmail: str
                 <tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;width:140px;">Order ID</td><td style="font-size:13px;font-weight:700;color:#111827;font-family:monospace;">${escapeHtml(opts.confirmationId)}</td></tr>
                 <tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Customer</td><td style="font-size:13px;font-weight:600;color:#111827;">${escapeHtml(opts.customerName)} &lt;${escapeHtml(opts.customerEmail)}&gt;</td></tr>
                 <tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">New Status</td><td style="font-size:13px;font-weight:700;color:${statusColor};">${statusLabel}</td></tr>
-                ${opts.doctorName ? `<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Provider</td><td style="font-size:13px;font-weight:600;color:#1a5c4f;">${escapeHtml(opts.doctorName)}</td></tr>` : ""}
+                ${opts.doctorName ? `<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af;">Provider</td><td style="font-size:13px;font-weight:600;color:${ACCENT};">${escapeHtml(opts.doctorName)}</td></tr>` : ""}
               </table>
             </td></tr>
           </table>
           <div style="text-align:center;">
-            <a href="https://${COMPANY_DOMAIN}/admin-orders" style="background:#1a5c4f;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block;">View in Admin Portal &rarr;</a>
+            <a href="https://${COMPANY_DOMAIN}/admin-orders" style="background:${ACCENT};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block;">View in Admin Portal &rarr;</a>
           </div>
         </td>
       </tr>
@@ -271,11 +271,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
 
-  // Use service role key — this function is called from the admin portal only
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-  // Validate that the caller has a valid token (anon key OR user session) — 
-  // just ensure the Authorization header is present and non-empty
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return jsonResp({ error: "Unauthorized" }, 401);
@@ -327,7 +324,6 @@ Deno.serve(async (req: Request) => {
     adminNotifKey = "order_cancelled";
   }
 
-  // Send customer email
   const customerEmailSent = await sendViaResend({
     to: order.email, subject, html: customerHtml,
     tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: emailType }],
@@ -335,7 +331,6 @@ Deno.serve(async (req: Request) => {
 
   await appendEmailLog(supabase, confirmationId, { type: emailType, sentAt: new Date().toISOString(), to: order.email, success: customerEmailSent });
 
-  // Send admin notification emails
   if (adminNotifKey) {
     const { enabled: adminEnabled, recipients: adminRecipients } = await getAdminRecipients(adminNotifKey);
     if (adminEnabled && adminRecipients.length > 0) {

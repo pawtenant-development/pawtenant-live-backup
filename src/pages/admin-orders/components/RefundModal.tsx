@@ -117,19 +117,19 @@ export default function RefundModal({ charge, confirmationId, onClose, onRefunde
 
           {/* Success state */}
           {isSuccess ? (
-            <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-4 text-center">
+            <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-4 text-center">
               <div className="w-12 h-12 flex items-center justify-center bg-[#e8f5f1] rounded-full mx-auto mb-3">
-                <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-xl"></i>
+                <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-xl"></i>
               </div>
-              <p className="text-sm font-bold text-[#1a5c4f] mb-1">Refund Issued!</p>
-              <p className="text-xs text-[#1a5c4f]/70">{result?.message}</p>
+              <p className="text-sm font-bold text-[#3b6ea5] mb-1">Refund Issued!</p>
+              <p className="text-xs text-[#3b6ea5]/70">{result?.message}</p>
               {result?.customerNotified && (
-                <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[#1a5c4f]/80 font-semibold">
+                <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[#3b6ea5]/80 font-semibold">
                   <i className="ri-mail-send-line"></i> Customer notification sent to GHL
                 </div>
               )}
               <button type="button" onClick={onClose}
-                className="whitespace-nowrap mt-4 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-[#17504a]">
+                className="whitespace-nowrap mt-4 px-5 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-[#2d5a8e]">
                 Done
               </button>
             </div>

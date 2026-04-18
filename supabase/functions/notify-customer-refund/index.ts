@@ -18,7 +18,7 @@ const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
 const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
-const ACCENT = "#1a5c4f";
+const ACCENT = "#4a7fb5";
 
 async function getAdminNotifRecipients(supabaseUrl: string, serviceKey: string, notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
   try {
@@ -29,7 +29,6 @@ async function getAdminNotifRecipients(supabaseUrl: string, serviceKey: string, 
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json() as { enabled: boolean; recipients: string[]; source: string };
-    console.info(`[notify-customer-refund] recipients for "${notificationKey}": ${data.recipients.join(", ")} (source: ${data.source})`);
     return { enabled: data.enabled, recipients: data.recipients };
   } catch (err) {
     console.warn(`[notify-customer-refund] getAdminNotifRecipients failed:`, err instanceof Error ? err.message : String(err));
@@ -102,7 +101,7 @@ function detailCard(title: string, rows: Array<[string, string, string?]>): stri
       <td style="padding:7px 0;font-size:13px;color:#6b7280;width:160px;vertical-align:top;">${label}</td>
       <td style="padding:7px 0;font-size:13px;font-weight:600;color:${vc ?? "#111827"};">${value}</td>
     </tr>`).join("");
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;">
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f9;border:1px solid #b8cce4;border-radius:12px;margin-bottom:24px;">
     <tr><td style="padding:20px 24px;">
       <p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">${title}</p>
       <table width="100%" cellpadding="0" cellspacing="0">${rowsHtml}</table>
@@ -215,21 +214,11 @@ Deno.serve(async (req: Request) => {
 
   if (!isInternalCall) {
     if (!token) return json({ error: "Unauthorized" }, 401);
-
-    // Try Supabase Auth session JWT
     const { data: { user }, error: authErr } = await adminClient.auth.getUser(token);
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
-
-    const { data: callerProfile } = await adminClient
-      .from("doctor_profiles")
-      .select("is_admin, full_name, role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const isAdmin = callerProfile?.is_admin === true ||
-      ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
+    const { data: callerProfile } = await adminClient.from("doctor_profiles").select("is_admin, full_name, role").eq("user_id", user.id).maybeSingle();
+    const isAdmin = callerProfile?.is_admin === true || ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
     if (!isAdmin) return json({ error: "Forbidden — admin only" }, 403);
-
     actorName = callerProfile?.full_name ?? "Admin";
     actorId = user.id;
     actorRole = callerProfile?.role ?? "admin_manager";
@@ -243,118 +232,36 @@ Deno.serve(async (req: Request) => {
   if (!confirmationId) return json({ error: "confirmationId is required" }, 400);
   if (!refundAmount || refundAmount <= 0) return json({ error: "refundAmount is required" }, 400);
 
-  const { data: order, error: orderErr } = await adminClient
-    .from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, price, plan_type, doctor_name, status")
-    .eq("confirmation_id", confirmationId).maybeSingle();
+  const { data: order, error: orderErr } = await adminClient.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, price, plan_type, doctor_name, status").eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);
 
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || order.email;
   const formattedAmount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(refundAmount);
-  const refundReasonLabel: Record<string, string> = {
-    requested_by_customer: "Customer Request",
-    duplicate: "Duplicate Charge",
-    fraudulent: "Fraudulent",
-  };
+  const refundReasonLabel: Record<string, string> = { requested_by_customer: "Customer Request", duplicate: "Duplicate Charge", fraudulent: "Fraudulent" };
   const reasonLabel = refundReasonLabel[reason ?? ""] ?? reason ?? "Customer Request";
   const issuedAt = new Date().toISOString();
 
-  const html = buildRefundEmail({
-    firstName: order.first_name ?? "there",
-    confirmationId,
-    formattedAmount,
-    reasonLabel,
-    issuedAt,
-    note,
-  });
-
-  const emailSent = await sendViaResend({
-    to: order.email,
-    subject: `Refund Confirmation — Order ${confirmationId}`,
-    html,
-    tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "refund" }],
-  });
-
+  const html = buildRefundEmail({ firstName: order.first_name ?? "there", confirmationId, formattedAmount, reasonLabel, issuedAt, note });
+  const emailSent = await sendViaResend({ to: order.email, subject: `Refund Confirmation — Order ${confirmationId}`, html, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "refund" }] });
   await appendEmailLog(adminClient, confirmationId, { type: "refund", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
 
   const { enabled: refundNotifEnabled, recipients: adminRecipients } = await getAdminNotifRecipients(supabaseUrl, serviceKey, "refund_issued");
   let adminNotifSentCount = 0;
   if (refundNotifEnabled && adminRecipients.length > 0) {
-    const adminHtml = buildAdminRefundNotificationHtml({
-      confirmationId,
-      customerName: patientName,
-      customerEmail: order.email,
-      formattedAmount,
-      reasonLabel,
-      note,
-      issuedAt,
-    });
-    const adminResults = await Promise.allSettled(
-      adminRecipients.map((recipient) =>
-        sendViaResend({
-          to: recipient,
-          subject: `[PawTenant] Refund Issued — ${confirmationId} — ${formattedAmount}`,
-          html: adminHtml,
-          tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "refund_admin_notification" }],
-        })
-      )
-    );
+    const adminHtml = buildAdminRefundNotificationHtml({ confirmationId, customerName: patientName, customerEmail: order.email, formattedAmount, reasonLabel, note, issuedAt });
+    const adminResults = await Promise.allSettled(adminRecipients.map((recipient) => sendViaResend({ to: recipient, subject: `[PawTenant] Refund Issued — ${confirmationId} — ${formattedAmount}`, html: adminHtml, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "refund_admin_notification" }] })));
     adminNotifSentCount = adminResults.filter((r) => r.status === "fulfilled" && r.value).length;
-    console.info(`[notify-customer-refund] Admin refund notifications sent: ${adminNotifSentCount}/${adminRecipients.length} to [${adminRecipients.join(", ")}]`);
   }
 
   let ghlOk = false;
   let ghlStatus = 0;
   try {
-    const ghlRes = await fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
-      body: JSON.stringify({
-        webhookType: "main", event: "refund_issued",
-        email: order.email,
-        firstName: order.first_name ?? "",
-        lastName: order.last_name ?? "",
-        phone: (order.phone as string) ?? "",
-        fullName: patientName,
-        confirmationId,
-        refundId: refundId ?? "",
-        refundAmount,
-        refundAmountFormatted: formattedAmount,
-        refundReason: reasonLabel,
-        refundNote: note ?? "",
-        refundIssuedAt: issuedAt,
-        orderTotal: order.price ?? 0,
-        planType: order.plan_type ?? "",
-        patientState: order.state ?? "",
-        doctorName: order.doctor_name ?? "",
-        leadStatus: `Refund Issued — ${formattedAmount}`,
-        tags: ["Refund Issued"],
-      }),
-    });
+    const ghlRes = await fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` }, body: JSON.stringify({ webhookType: "main", event: "refund_issued", email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "", phone: (order.phone as string) ?? "", fullName: patientName, confirmationId, refundId: refundId ?? "", refundAmount, refundAmountFormatted: formattedAmount, refundReason: reasonLabel, refundNote: note ?? "", refundIssuedAt: issuedAt, orderTotal: order.price ?? 0, planType: order.plan_type ?? "", patientState: order.state ?? "", doctorName: order.doctor_name ?? "", leadStatus: `Refund Issued — ${formattedAmount}`, tags: ["Refund Issued"] }) });
     ghlStatus = ghlRes.status;
     ghlOk = ghlRes.ok;
-  } catch (err: unknown) {
-    console.error(`[REFUND-NOTIFY] GHL proxy failed: ${err instanceof Error ? err.message : "GHL fetch error"}`);
-  }
+  } catch (err: unknown) { console.error(`[REFUND-NOTIFY] GHL proxy failed: ${err instanceof Error ? err.message : "GHL fetch error"}`); }
 
-  await adminClient.from("audit_logs").insert({
-    actor_id: actorId, actor_name: actorName, actor_role: actorRole,
-    object_type: "refund", object_id: confirmationId,
-    action: "refund_customer_notified",
-    description: `Refund notification sent to ${order.email} for ${formattedAmount} — order ${confirmationId}`,
-    new_values: { refundAmount, refundId, reason: reasonLabel, ghlOk, emailSent, adminNotifSentCount, adminRecipients },
-    metadata: { confirmationId, note, ghlStatus, isInternal: isInternalCall },
-  });
+  await adminClient.from("audit_logs").insert({ actor_id: actorId, actor_name: actorName, actor_role: actorRole, object_type: "refund", object_id: confirmationId, action: "refund_customer_notified", description: `Refund notification sent to ${order.email} for ${formattedAmount} — order ${confirmationId}`, new_values: { refundAmount, refundId, reason: reasonLabel, ghlOk, emailSent, adminNotifSentCount, adminRecipients }, metadata: { confirmationId, note, ghlStatus, isInternal: isInternalCall } });
 
-  return json({
-    ok: true,
-    message: `Refund notification sent to ${order.email} (${formattedAmount})`,
-    confirmationId,
-    patientEmail: order.email,
-    refundAmount,
-    ghlOk,
-    ghlStatus,
-    emailSent,
-    adminNotifSentCount,
-    adminRecipients: refundNotifEnabled ? adminRecipients : [],
-  });
+  return json({ ok: true, message: `Refund notification sent to ${order.email} (${formattedAmount})`, confirmationId, patientEmail: order.email, refundAmount, ghlOk, ghlStatus, emailSent, adminNotifSentCount, adminRecipients: refundNotifEnabled ? adminRecipients : [] });
 });

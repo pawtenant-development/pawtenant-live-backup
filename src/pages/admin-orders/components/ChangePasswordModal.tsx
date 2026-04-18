@@ -64,11 +64,11 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 flex items-center justify-center bg-[#f0faf7] rounded-xl">
-              <i className="ri-lock-password-line text-[#1a5c4f] text-lg"></i>
+            <div className="w-9 h-9 flex items-center justify-center bg-[#e8f0f9] rounded-xl">
+              <i className="ri-lock-password-line text-[#3b6ea5] text-lg"></i>
             </div>
             <div>
-              <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Security</p>
+              <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-0.5">Security</p>
               <h2 className="text-lg font-extrabold text-gray-900">Change Password</h2>
             </div>
           </div>
@@ -84,8 +84,8 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
         <div className="px-6 py-6">
           {success ? (
             <div className="text-center py-4">
-              <div className="w-14 h-14 flex items-center justify-center bg-[#f0faf7] rounded-full mx-auto mb-4">
-                <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-3xl"></i>
+              <div className="w-14 h-14 flex items-center justify-center bg-[#e8f0f9] rounded-full mx-auto mb-4">
+                <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-3xl"></i>
               </div>
               <p className="text-base font-extrabold text-gray-900 mb-1">Password Updated!</p>
               <p className="text-sm text-gray-500">Your new password is active. Closing...</p>
@@ -110,7 +110,7 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     placeholder="Your current password"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] pr-11"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5] pr-11"
                   />
                   <button
                     type="button"
@@ -134,7 +134,7 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Min. 8 characters"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] pr-11"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5] pr-11"
                     />
                     <button
                       type="button"
@@ -156,7 +156,7 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
               </div>
@@ -193,7 +193,7 @@ export default function ChangePasswordModal({ onClose }: ChangePasswordModalProp
                 <button
                   type="submit"
                   disabled={saving}
-                  className="whitespace-nowrap flex-1 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors flex items-center justify-center gap-2"
+                  className="whitespace-nowrap flex-1 py-3 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors flex items-center justify-center gap-2"
                 >
                   {saving ? (
                     <><i className="ri-loader-4-line animate-spin"></i>Updating...</>

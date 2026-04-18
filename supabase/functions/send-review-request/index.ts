@@ -8,9 +8,9 @@ const CORS = {
 };
 
 const TRUSTPILOT_REVIEW_URL = "https://www.trustpilot.com/review/pawtenant.com";
-const PAWTENANT_GREEN = "#1a5c4f";
-const PAWTENANT_LIGHT = "#f0faf7";
-const PAWTENANT_BORDER = "#b8ddd5";
+const ACCENT = "#4a7fb5";
+const ACCENT_LIGHT = "#eef2f9";
+const ACCENT_BORDER = "#b8cce4";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -33,7 +33,7 @@ function buildEmailHTML(firstName: string): string {
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e0e0e0;">
       <tr>
-        <td style="background:${PAWTENANT_GREEN};padding:32px 40px;text-align:center;">
+        <td style="background:${ACCENT};padding:32px 40px;text-align:center;">
           <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.3px;">Your ESA Letter is Ready!</h1>
           <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">Thank you for choosing PawTenant</p>
         </td>
@@ -49,9 +49,9 @@ function buildEmailHTML(firstName: string): string {
           </p>
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
             <tr>
-              <td align="center" style="background:${PAWTENANT_LIGHT};border:1px solid ${PAWTENANT_BORDER};border-radius:12px;padding:24px 20px;">
+              <td align="center" style="background:${ACCENT_LIGHT};border:1px solid ${ACCENT_BORDER};border-radius:12px;padding:24px 20px;">
                 <p style="margin:0 0 8px;font-size:28px;letter-spacing:4px;">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
-                <p style="margin:0 0 4px;color:${PAWTENANT_GREEN};font-size:15px;font-weight:700;">Leave us a 5-star review on Trustpilot</p>
+                <p style="margin:0 0 4px;color:${ACCENT};font-size:15px;font-weight:700;">Leave us a 5-star review on Trustpilot</p>
                 <p style="margin:0;color:#666;font-size:13px;">Takes less than 60 seconds</p>
               </td>
             </tr>
@@ -60,7 +60,7 @@ function buildEmailHTML(firstName: string): string {
             <tr>
               <td align="center">
                 <a href="${TRUSTPILOT_REVIEW_URL}"
-                   style="display:inline-block;background:${PAWTENANT_GREEN};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:0.2px;">
+                   style="display:inline-block;background:${ACCENT};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:0.2px;">
                   &#9733; Write My Review
                 </a>
               </td>
@@ -68,7 +68,7 @@ function buildEmailHTML(firstName: string): string {
           </table>
           <p style="margin:0 0 8px;color:#888;font-size:13px;line-height:1.6;">
             Or copy this link into your browser:<br/>
-            <a href="${TRUSTPILOT_REVIEW_URL}" style="color:${PAWTENANT_GREEN};word-break:break-all;">${TRUSTPILOT_REVIEW_URL}</a>
+            <a href="${TRUSTPILOT_REVIEW_URL}" style="color:${ACCENT};word-break:break-all;">${TRUSTPILOT_REVIEW_URL}</a>
           </p>
         </td>
       </tr>
@@ -108,13 +108,10 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[send-review-request] channel=${channel} confirmationId=${confirmationId} email=${email}`);
 
-    // ── EMAIL ──────────────────────────────────────────────────────────────
     if (channel === "email") {
       if (!email) return json({ ok: false, error: "email is required" }, 400);
 
       const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-      console.log(`[send-review-request] RESEND_API_KEY present: ${!!RESEND_API_KEY}`);
-
       if (!RESEND_API_KEY) {
         return json({ ok: false, error: "RESEND_API_KEY not configured in Supabase secrets" }, 500);
       }
@@ -143,8 +140,6 @@ Deno.serve(async (req: Request) => {
       });
 
       const resendText = await resendRes.text();
-      console.log(`[send-review-request] Resend status=${resendRes.status} body=${resendText}`);
-
       if (!resendRes.ok) {
         return json({ ok: false, error: `Email send failed (${resendRes.status}): ${resendText}` }, 500);
       }
@@ -152,15 +147,12 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, channel: "email", to: email });
     }
 
-    // ── SMS ────────────────────────────────────────────────────────────────
     if (channel === "sms") {
       if (!phone) return json({ ok: false, error: "phone is required for SMS" }, 400);
 
       const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
       const TWILIO_AUTH_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN");
       const TWILIO_FROM        = Deno.env.get("TWILIO_FROM_NUMBER");
-
-      console.log(`[send-review-request] Twilio SID=${!!TWILIO_ACCOUNT_SID} TOKEN=${!!TWILIO_AUTH_TOKEN} FROM=${!!TWILIO_FROM}`);
 
       if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM) {
         return json({
@@ -185,8 +177,6 @@ Deno.serve(async (req: Request) => {
       );
 
       const twilioText = await twilioRes.text();
-      console.log(`[send-review-request] Twilio status=${twilioRes.status} body=${twilioText}`);
-
       if (!twilioRes.ok) {
         return json({ ok: false, error: `SMS send failed (${twilioRes.status}): ${twilioText}` }, 500);
       }
@@ -198,7 +188,6 @@ Deno.serve(async (req: Request) => {
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[send-review-request] Unexpected error:", msg);
     return json({ ok: false, error: `Internal error: ${msg}` }, 500);
   }
 });

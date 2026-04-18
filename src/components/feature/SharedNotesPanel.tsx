@@ -137,8 +137,8 @@ export default function SharedNotesPanel({
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/40 flex-shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-            <i className="ri-chat-3-line text-[#1a5c4f] text-sm"></i>
+          <div className="w-8 h-8 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0">
+            <i className="ri-chat-3-line text-[#2c5282] text-sm"></i>
           </div>
           <div>
             <p className="text-sm font-extrabold text-gray-900">Shared Notes</p>
@@ -147,7 +147,7 @@ export default function SharedNotesPanel({
             </p>
           </div>
           {notes.length > 0 && (
-            <span className="ml-auto inline-flex items-center justify-center px-2.5 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] text-xs font-extrabold rounded-full">
+            <span className="ml-auto inline-flex items-center justify-center px-2.5 py-0.5 bg-[#e8f0f9] text-[#2c5282] text-xs font-extrabold rounded-full">
               {notes.length}
             </span>
           )}
@@ -156,7 +156,7 @@ export default function SharedNotesPanel({
         {/* Legend */}
         <div className="flex items-center gap-4 mt-3">
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-[#1a5c4f]"></div>
+            <div className="w-3 h-3 rounded-full bg-[#2c5282]"></div>
             <span className="text-xs text-gray-500 font-semibold">Admin (Pawtenant Team)</span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -170,7 +170,7 @@ export default function SharedNotesPanel({
       <div className="overflow-y-auto px-6 py-4 space-y-4 bg-white" style={{ minHeight: "320px", maxHeight: "420px" }}>
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f]"></i>
+            <i className="ri-loader-4-line animate-spin text-2xl text-[#2c5282]"></i>
           </div>
         ) : notes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -196,7 +196,7 @@ export default function SharedNotesPanel({
                 >
                   {/* Avatar */}
                   <div
-                    className={`w-8 h-8 flex items-center justify-center rounded-full text-white text-xs font-extrabold flex-shrink-0 self-end ${isAdmin ? "bg-[#1a5c4f]" : "bg-amber-500"}`}
+                    className={`w-8 h-8 flex items-center justify-center rounded-full text-white text-xs font-extrabold flex-shrink-0 self-end ${isAdmin ? "bg-[#2c5282]" : "bg-amber-500"}`}
                   >
                     {note.author_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
                   </div>
@@ -205,10 +205,10 @@ export default function SharedNotesPanel({
                   <div className={`max-w-[75%] space-y-1 ${alignRight ? "items-end" : "items-start"} flex flex-col`}>
                     {/* Meta */}
                     <div className={`flex items-center gap-1.5 ${alignRight ? "flex-row-reverse" : ""}`}>
-                      <span className={`text-xs font-extrabold ${isAdmin ? "text-[#1a5c4f]" : "text-amber-700"}`}>
+                      <span className={`text-xs font-extrabold ${isAdmin ? "text-[#2c5282]" : "text-amber-700"}`}>
                         {note.author_name}
                       </span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${isAdmin ? "bg-[#e8f5f1] text-[#1a5c4f]" : "bg-amber-100 text-amber-700"}`}>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${isAdmin ? "bg-[#e8f0f9] text-[#2c5282]" : "bg-amber-100 text-amber-700"}`}>
                         {isAdmin ? "Admin" : "Provider"}
                       </span>
                     </div>
@@ -219,10 +219,10 @@ export default function SharedNotesPanel({
                         className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
                           alignRight
                             ? isAdmin
-                              ? "bg-[#1a5c4f] text-white rounded-br-sm"
+                              ? "bg-[#2c5282] text-white rounded-br-sm"
                               : "bg-amber-500 text-white rounded-br-sm"
                             : isAdmin
-                              ? "bg-[#f0faf7] border border-[#b8ddd5] text-gray-800 rounded-bl-sm"
+                              ? "bg-[#e8f0f9] border border-[#b8cce4] text-gray-800 rounded-bl-sm"
                               : "bg-amber-50 border border-amber-200 text-gray-800 rounded-bl-sm"
                         }`}
                       >
@@ -261,9 +261,9 @@ export default function SharedNotesPanel({
         )}
 
         {/* Role indicator */}
-        <div className={`flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-lg w-fit ${currentUserRole === "admin" ? "bg-[#e8f5f1]" : "bg-amber-50 border border-amber-200"}`}>
-          <div className={`w-2 h-2 rounded-full ${currentUserRole === "admin" ? "bg-[#1a5c4f]" : "bg-amber-500"}`}></div>
-          <span className={`text-xs font-bold ${currentUserRole === "admin" ? "text-[#1a5c4f]" : "text-amber-700"}`}>
+        <div className={`flex items-center gap-1.5 mb-2 px-3 py-1.5 rounded-lg w-fit ${currentUserRole === "admin" ? "bg-[#e8f0f9]" : "bg-amber-50 border border-amber-200"}`}>
+          <div className={`w-2 h-2 rounded-full ${currentUserRole === "admin" ? "bg-[#2c5282]" : "bg-amber-500"}`}></div>
+          <span className={`text-xs font-bold ${currentUserRole === "admin" ? "text-[#2c5282]" : "text-amber-700"}`}>
             Sending as {currentUserName} ({currentUserRole === "admin" ? "Admin" : "Provider"})
           </span>
         </div>
@@ -278,13 +278,13 @@ export default function SharedNotesPanel({
             }}
             placeholder={`Add a note visible to both admin and provider... (Ctrl+Enter to send)`}
             rows={3}
-            className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] bg-white resize-none transition-colors"
+            className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2c5282] bg-white resize-none transition-colors"
           />
           <button
             type="button"
             onClick={handleSend}
             disabled={saving || !noteText.trim()}
-            className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 text-white text-sm font-extrabold rounded-xl cursor-pointer transition-colors disabled:opacity-40 self-end ${currentUserRole === "admin" ? "bg-[#1a5c4f] hover:bg-[#17504a]" : "bg-amber-500 hover:bg-amber-600"}`}
+            className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 text-white text-sm font-extrabold rounded-xl cursor-pointer transition-colors disabled:opacity-40 self-end ${currentUserRole === "admin" ? "bg-[#2c5282] hover:bg-[#17504a]" : "bg-amber-500 hover:bg-amber-600"}`}
           >
             {saving ? (
               <i className="ri-loader-4-line animate-spin"></i>

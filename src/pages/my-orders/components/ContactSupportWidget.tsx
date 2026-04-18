@@ -100,7 +100,7 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="whitespace-nowrap fixed bottom-7 right-7 z-50 flex items-center gap-2 px-5 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-full shadow-lg hover:bg-[#17504a] active:scale-95 transition-all cursor-pointer"
+        className="whitespace-nowrap fixed bottom-7 right-7 z-50 flex items-center gap-2 px-5 py-3 bg-[#2c5282] text-white text-sm font-bold rounded-full shadow-lg hover:bg-[#1e3a5f] active:scale-95 transition-all cursor-pointer"
         aria-label="Contact Support"
       >
         <div className="w-5 h-5 flex items-center justify-center">
@@ -121,7 +121,7 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
             style={{ maxHeight: "90vh" }}
           >
             {/* Header */}
-            <div className="bg-[#1a5c4f] px-5 py-4 flex items-center justify-between flex-shrink-0">
+            <div className="bg-[#2c5282] px-5 py-4 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 flex items-center justify-center bg-white/20 rounded-full">
                   <i className="ri-customer-service-2-line text-white text-base"></i>
@@ -154,7 +154,7 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="whitespace-nowrap px-6 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] transition-colors cursor-pointer"
+                    className="whitespace-nowrap px-6 py-2.5 bg-[#2c5282] text-white text-sm font-bold rounded-lg hover:bg-[#1e3a5f] transition-colors cursor-pointer"
                   >
                     Close
                   </button>
@@ -169,7 +169,7 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
                   <div className="flex gap-2">
                     <a
                       href="tel:+14099655885"
-                      className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:border-[#1a5c4f] hover:text-[#1a5c4f] transition-colors cursor-pointer"
+                      className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:border-[#2c5282] hover:text-[#2c5282] transition-colors cursor-pointer"
                     >
                       <div className="w-4 h-4 flex items-center justify-center">
                         <i className="ri-phone-line"></i>
@@ -178,7 +178,7 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
                     </a>
                     <a
                       href="mailto:hello@pawtenant.com"
-                      className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:border-[#1a5c4f] hover:text-[#1a5c4f] transition-colors cursor-pointer"
+                      className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:border-[#2c5282] hover:text-[#2c5282] transition-colors cursor-pointer"
                     >
                       <div className="w-4 h-4 flex items-center justify-center">
                         <i className="ri-mail-line"></i>
@@ -203,7 +203,7 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
                         name="order_reference"
                         value={selectedOrder}
                         onChange={(e) => setSelectedOrder(e.target.value)}
-                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 text-gray-800 bg-gray-50 focus:outline-none focus:border-[#1a5c4f] cursor-pointer"
+                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 text-gray-800 bg-gray-50 focus:outline-none focus:border-[#2c5282] cursor-pointer"
                       >
                         {orders.map((o) => (
                           <option key={o.id} value={o.confirmation_id}>
@@ -228,12 +228,12 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
                           onClick={() => setSubject(opt.value)}
                           className={`whitespace-nowrap text-left px-3 py-2.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                             subject === opt.value
-                              ? "border-[#1a5c4f] bg-[#f0faf7] text-[#1a5c4f]"
+                              ? "border-[#2c5282] bg-[#e8f0f9] text-[#2c5282]"
                               : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
                           }`}
                         >
                           {subject === opt.value && (
-                            <i className="ri-checkbox-circle-fill mr-1.5 text-[#1a5c4f]"></i>
+                            <i className="ri-checkbox-circle-fill mr-1.5 text-[#2c5282]"></i>
                           )}
                           {opt.label}
                         </button>
@@ -253,7 +253,7 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
                       placeholder="Describe your question or issue in detail..."
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
-                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#1a5c4f] resize-none bg-gray-50"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#2c5282] resize-none bg-gray-50"
                     />
                     <p className="text-right text-xs text-gray-400 mt-1">{message.length}/500</p>
                   </div>

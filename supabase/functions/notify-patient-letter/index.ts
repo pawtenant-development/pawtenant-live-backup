@@ -18,7 +18,7 @@ const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
 const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
-const ACCENT = "#1a5c4f";
+const ACCENT = "#4a7fb5";
 
 async function sendViaResend(opts: { to: string; subject: string; html: string }): Promise<boolean> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
@@ -29,22 +29,13 @@ async function sendViaResend(opts: { to: string; subject: string; html: string }
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html }),
     });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error(`[notify-patient-letter] Resend error ${res.status}: ${errBody}`);
-      return false;
-    }
+    if (!res.ok) { const errBody = await res.text(); console.error(`[notify-patient-letter] Resend error ${res.status}: ${errBody}`); return false; }
     return true;
-  } catch (err) {
-    console.error("[notify-patient-letter] Resend fetch error:", err);
-    return false;
-  }
+  } catch (err) { console.error("[notify-patient-letter] Resend fetch error:", err); return false; }
 }
 
 function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function baseLayout(badge: string, heading: string, subheading: string, body: string): string {
@@ -83,7 +74,7 @@ function detailCard(title: string, rows: Array<[string, string, string?]>): stri
       <td style="padding:7px 0;font-size:13px;color:#6b7280;width:160px;vertical-align:top;">${label}</td>
       <td style="padding:7px 0;font-size:13px;font-weight:600;color:${valueColor ?? "#111827"};">${value}</td>
     </tr>`).join("");
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;">
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f9;border:1px solid #b8cce4;border-radius:12px;margin-bottom:24px;">
     <tr><td style="padding:20px 24px;">
       <p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">${title}</p>
       <table width="100%" cellpadding="0" cellspacing="0">${rowsHtml}</table>
@@ -145,7 +136,7 @@ function buildDocumentsReadyEmail(opts: {
       </tr>`).join("")
     : `<tr><td colspan="2" style="padding:8px 0;font-size:13px;color:#6b7280;">Documents are available in your portal below.</td></tr>`;
 
-  const docsCard = `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;">
+  const docsCard = `<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f9;border:1px solid #b8cce4;border-radius:12px;margin-bottom:24px;">
     <tr><td style="padding:20px 24px;">
       <p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Your Documents</p>
       <table width="100%" cellpadding="0" cellspacing="0">${docListHtml}</table>
@@ -153,7 +144,7 @@ function buildDocumentsReadyEmail(opts: {
   </table>`;
 
   const doctorNoteHtml = opts.doctorMessage
-    ? `<div style="background:#f0faf7;border-left:4px solid ${ACCENT};border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:24px;">
+    ? `<div style="background:#eef2f9;border-left:4px solid ${ACCENT};border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:24px;">
         <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:${ACCENT};text-transform:uppercase;letter-spacing:0.08em;">A note from ${providerName}</p>
         <p style="margin:0;font-size:14px;color:#374151;line-height:1.7;font-style:italic;">&ldquo;${escapeHtml(opts.doctorMessage)}&rdquo;</p>
       </div>`
@@ -199,43 +190,22 @@ function buildDocumentsReadyEmail(opts: {
 }
 
 function jsonResp(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
 }
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
 
-async function appendEmailLog(
-  supabase: ReturnType<typeof createClient>,
-  confirmationId: string,
-  entry: EmailLogEntry
-): Promise<void> {
+async function appendEmailLog(supabase: ReturnType<typeof createClient>, confirmationId: string, entry: EmailLogEntry): Promise<void> {
   try {
-    const { data } = await supabase
-      .from("orders")
-      .select("email_log")
-      .eq("confirmation_id", confirmationId)
-      .maybeSingle();
+    const { data } = await supabase.from("orders").select("email_log").eq("confirmation_id", confirmationId).maybeSingle();
     const currentLog: EmailLogEntry[] = (data?.email_log as EmailLogEntry[]) ?? [];
-    await supabase
-      .from("orders")
-      .update({ email_log: [...currentLog, entry] })
-      .eq("confirmation_id", confirmationId);
-  } catch (err) {
-    console.warn("[notify-patient-letter] email_log update failed:", err);
-  }
+    await supabase.from("orders").update({ email_log: [...currentLog, entry] }).eq("confirmation_id", confirmationId);
+  } catch (err) { console.warn("[notify-patient-letter] email_log update failed:", err); }
 }
 
 interface OrderDoc {
-  id: string;
-  label: string;
-  doc_type: string;
-  file_url: string;
-  processed_file_url: string | null;
-  footer_injected: boolean | null;
-  customer_visible: boolean;
+  id: string; label: string; doc_type: string; file_url: string;
+  processed_file_url: string | null; footer_injected: boolean | null; customer_visible: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -244,262 +214,97 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  // ── Auth ─────────────────────────────────────────────────────────────────
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace("Bearer ", "").trim();
-
   if (!token) return jsonResp({ error: "Unauthorized — missing token" }, 401);
 
   let userId: string | null = null;
   let isAdmin = false;
 
   if (token === serviceKey) {
-    // Internal service call — full trust
     isAdmin = true;
     userId = null;
   } else {
-    // Try to resolve as a Supabase Auth user
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !user) {
-      // Not a valid Supabase Auth session — check if it's the anon key (OTP admin login)
-      // For OTP-based admin logins, the token may be the anon key; treat as unauthorized
-      // unless we can verify via doctor_profiles by another means.
-      // Since we can't identify the user without a valid JWT, reject.
-      console.error("[notify-patient-letter] Auth failed:", authErr?.message ?? "no user");
-      return jsonResp({ error: "Unauthorized" }, 401);
-    }
+    if (authErr || !user) { console.error("[notify-patient-letter] Auth failed:", authErr?.message ?? "no user"); return jsonResp({ error: "Unauthorized" }, 401); }
     userId = user.id;
-
-    const { data: callerProfile } = await supabase
-      .from("doctor_profiles")
-      .select("is_admin, role")
-      .eq("user_id", userId)
-      .maybeSingle();
-    isAdmin = callerProfile?.is_admin === true ||
-      ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
+    const { data: callerProfile } = await supabase.from("doctor_profiles").select("is_admin, role").eq("user_id", userId).maybeSingle();
+    isAdmin = callerProfile?.is_admin === true || ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
   }
 
-  // ── Parse body ────────────────────────────────────────────────────────────
   let body: Record<string, unknown>;
-  try {
-    body = (await req.json()) as Record<string, unknown>;
-  } catch {
-    return jsonResp({ error: "Invalid JSON body" }, 400);
-  }
+  try { body = (await req.json()) as Record<string, unknown>; }
+  catch { return jsonResp({ error: "Invalid JSON body" }, 400); }
 
   const confirmationId = body.confirmationId as string | undefined;
   const doctorMessage = (body.doctorMessage as string | null | undefined) ?? null;
   if (!confirmationId) return jsonResp({ error: "confirmationId is required" }, 400);
 
-  console.log(`[notify-patient-letter] Processing ${confirmationId} — isAdmin:${isAdmin} userId:${userId ?? "internal"}`);
+  const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_email, doctor_name, signed_letter_url, price, doctor_status, patient_notification_sent_at, letter_id").eq("confirmation_id", confirmationId).maybeSingle();
+  if (orderErr) { console.error("[notify-patient-letter] Order fetch error:", orderErr.message); return jsonResp({ error: `Order fetch failed: ${orderErr.message}` }, 500); }
+  if (!order) return jsonResp({ error: `Order not found: ${confirmationId}` }, 404);
 
-  // ── Fetch order ───────────────────────────────────────────────────────────
-  const { data: order, error: orderErr } = await supabase
-    .from("orders")
-    .select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_email, doctor_name, signed_letter_url, price, doctor_status, patient_notification_sent_at, letter_id")
-    .eq("confirmation_id", confirmationId)
-    .maybeSingle();
-
-  if (orderErr) {
-    console.error("[notify-patient-letter] Order fetch error:", orderErr.message);
-    return jsonResp({ error: `Order fetch failed: ${orderErr.message}` }, 500);
-  }
-  if (!order) {
-    return jsonResp({ error: `Order not found: ${confirmationId}` }, 404);
-  }
-
-  // ── Authorization check (skip for admin/internal) ─────────────────────────
   if (!isAdmin && userId) {
     const isAssignedByUserId = order.doctor_user_id === userId;
     let isAssignedByEmail = false;
-
     if (!isAssignedByUserId && order.doctor_email) {
-      const { data: providerProfile } = await supabase
-        .from("doctor_profiles")
-        .select("email")
-        .eq("user_id", userId)
-        .maybeSingle();
+      const { data: providerProfile } = await supabase.from("doctor_profiles").select("email").eq("user_id", userId).maybeSingle();
       if (providerProfile?.email && order.doctor_email.toLowerCase() === providerProfile.email.toLowerCase()) {
         isAssignedByEmail = true;
         await supabase.from("orders").update({ doctor_user_id: userId }).eq("confirmation_id", confirmationId);
       }
     }
-
-    if (!isAssignedByUserId && !isAssignedByEmail) {
-      return jsonResp({ error: "Access denied — not assigned to this case" }, 403);
-    }
+    if (!isAssignedByUserId && !isAssignedByEmail) return jsonResp({ error: "Access denied — not assigned to this case" }, 403);
   }
 
-  // ── Fetch documents ───────────────────────────────────────────────────────
   let docs: OrderDoc[] = [];
   try {
-    const { data: orderDocs, error: docsErr } = await supabase
-      .from("order_documents")
-      .select("id, label, doc_type, file_url, processed_file_url, footer_injected, customer_visible")
-      .eq("order_id", order.id)
-      .eq("customer_visible", true)
-      .order("uploaded_at", { ascending: true });
+    const { data: orderDocs, error: docsErr } = await supabase.from("order_documents").select("id, label, doc_type, file_url, processed_file_url, footer_injected, customer_visible").eq("order_id", order.id).eq("customer_visible", true).order("uploaded_at", { ascending: true });
+    if (docsErr) { console.warn("[notify-patient-letter] order_documents fetch error:", docsErr.message); }
+    else { docs = (orderDocs as OrderDoc[]) ?? []; }
+  } catch (err) { console.warn("[notify-patient-letter] order_documents exception:", err); }
 
-    if (docsErr) {
-      console.warn("[notify-patient-letter] order_documents fetch error:", docsErr.message);
-    } else {
-      docs = (orderDocs as OrderDoc[]) ?? [];
-    }
-  } catch (err) {
-    console.warn("[notify-patient-letter] order_documents exception:", err);
-  }
+  const totalDocCount = (order.signed_letter_url ? 1 : 0) + docs.filter((d) => d.file_url !== order.signed_letter_url).length;
+  if (!order.signed_letter_url && docs.length === 0) return jsonResp({ error: "No documents available to send for this order" }, 400);
 
-  const totalDocCount = (order.signed_letter_url ? 1 : 0) +
-    docs.filter((d) => d.file_url !== order.signed_letter_url).length;
+  const { error: updateErr } = await supabase.from("orders").update({ patient_notification_sent_at: new Date().toISOString(), doctor_status: "patient_notified", status: "completed" }).eq("confirmation_id", confirmationId);
+  if (updateErr) { console.error("[notify-patient-letter] Order update error:", updateErr.message); return jsonResp({ error: `Failed to update order: ${updateErr.message}` }, 500); }
 
-  if (!order.signed_letter_url && docs.length === 0) {
-    return jsonResp({ error: "No documents available to send for this order" }, 400);
-  }
-
-  // ── Update order status ───────────────────────────────────────────────────
-  const { error: updateErr } = await supabase
-    .from("orders")
-    .update({
-      patient_notification_sent_at: new Date().toISOString(),
-      doctor_status: "patient_notified",
-      status: "completed",
-    })
-    .eq("confirmation_id", confirmationId);
-
-  if (updateErr) {
-    console.error("[notify-patient-letter] Order update error:", updateErr.message);
-    return jsonResp({ error: `Failed to update order: ${updateErr.message}` }, 500);
-  }
-
-  // ── Earnings record ───────────────────────────────────────────────────────
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || order.email;
   const resolvedDoctorUserId = order.doctor_user_id ?? userId;
   let earningsCreated = false;
 
   try {
-    const { data: existingEarning } = await supabase
-      .from("doctor_earnings")
-      .select("id")
-      .eq("confirmation_id", confirmationId)
-      .maybeSingle();
-
+    const { data: existingEarning } = await supabase.from("doctor_earnings").select("id").eq("confirmation_id", confirmationId).maybeSingle();
     if (!existingEarning && resolvedDoctorUserId) {
-      const { data: doctorProfile } = await supabase
-        .from("doctor_profiles")
-        .select("full_name, email, per_order_rate")
-        .eq("user_id", resolvedDoctorUserId)
-        .maybeSingle();
+      const { data: doctorProfile } = await supabase.from("doctor_profiles").select("full_name, email, per_order_rate").eq("user_id", resolvedDoctorUserId).maybeSingle();
       const perOrderRate = (doctorProfile as { per_order_rate?: number | null } | null)?.per_order_rate ?? null;
-      await supabase.from("doctor_earnings").insert({
-        doctor_user_id: resolvedDoctorUserId,
-        doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "",
-        doctor_email: doctorProfile?.email ?? order.doctor_email ?? "",
-        order_id: order.id,
-        confirmation_id: confirmationId,
-        patient_name: patientName,
-        patient_state: order.state ?? "",
-        order_amount: order.price ?? 0,
-        doctor_amount: perOrderRate,
-        status: "pending",
-      });
+      await supabase.from("doctor_earnings").insert({ doctor_user_id: resolvedDoctorUserId, doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "", doctor_email: doctorProfile?.email ?? order.doctor_email ?? "", order_id: order.id, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? "", order_amount: order.price ?? 0, doctor_amount: perOrderRate, status: "pending" });
       earningsCreated = true;
     }
-  } catch (err) {
-    console.warn("[notify-patient-letter] earnings insert error:", err);
-  }
+  } catch (err) { console.warn("[notify-patient-letter] earnings insert error:", err); }
 
-  // ── Resolve best URL for each doc ─────────────────────────────────────────
-  const resolveUrl = (doc: OrderDoc): string => {
-    if (doc.footer_injected && doc.processed_file_url) return doc.processed_file_url;
-    return doc.file_url;
-  };
-
+  const resolveUrl = (doc: OrderDoc): string => { if (doc.footer_injected && doc.processed_file_url) return doc.processed_file_url; return doc.file_url; };
   const allDocs: Array<{ label: string; url: string }> = [];
-
   if (order.signed_letter_url) {
-    const matchingDoc = docs.find(
-      (d) => d.file_url === order.signed_letter_url || d.processed_file_url === order.signed_letter_url
-    );
+    const matchingDoc = docs.find((d) => d.file_url === order.signed_letter_url || d.processed_file_url === order.signed_letter_url);
     const url = matchingDoc ? resolveUrl(matchingDoc) : order.signed_letter_url;
     allDocs.push({ label: "Signed ESA Letter", url });
   }
-
-  docs
-    .filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url)
-    .forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc) }));
+  docs.filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url).forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc) }));
 
   const letterId = (order.letter_id as string | null) ?? null;
-
-  // ── Build + send email ────────────────────────────────────────────────────
   const docCount = allDocs.length;
   const subjectSuffix = docCount > 1 ? ` (${docCount} documents)` : "";
+  const html = buildDocumentsReadyEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name ?? "Your Provider", doctorMessage: doctorMessage?.trim() || null, letterId }, allDocs);
+  const emailSent = await sendViaResend({ to: order.email, subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`, html });
 
-  const html = buildDocumentsReadyEmail(
-    {
-      firstName: order.first_name ?? "there",
-      confirmationId,
-      doctorName: order.doctor_name ?? "Your Provider",
-      doctorMessage: doctorMessage?.trim() || null,
-      letterId,
-    },
-    allDocs,
-  );
+  await appendEmailLog(supabase, confirmationId, { type: "letter_ready", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
+  if (emailSent && docs.length > 0) { await supabase.from("order_documents").update({ sent_to_customer: true }).in("id", docs.filter((d) => d.file_url !== order.signed_letter_url).map((d) => d.id)); }
 
-  const emailSent = await sendViaResend({
-    to: order.email,
-    subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`,
-    html,
-  });
+  fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` }, body: JSON.stringify({ webhookType: "main", event: "documents_ready_for_patient", email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "", phone: (order.phone as string) ?? "", confirmationId, patientName, patientState: order.state ?? "", documentsCount: totalDocCount, notifiedAt: new Date().toISOString(), leadStatus: "Documents Ready — Patient Notified", tags: ["Documents Ready", "Patient Notified"] }) }).catch(() => {});
 
-  console.log(`[notify-patient-letter] Email sent: ${emailSent} to ${order.email} — letterId: ${letterId ?? "none"} — docs: ${allDocs.length}`);
-
-  await appendEmailLog(supabase, confirmationId, {
-    type: "letter_ready",
-    sentAt: new Date().toISOString(),
-    to: order.email,
-    success: emailSent,
-  });
-
-  if (emailSent && docs.length > 0) {
-    await supabase
-      .from("order_documents")
-      .update({ sent_to_customer: true })
-      .in("id", docs.filter((d) => d.file_url !== order.signed_letter_url).map((d) => d.id));
-  }
-
-  // ── GHL webhook ───────────────────────────────────────────────────────────
-  fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
-    body: JSON.stringify({
-      webhookType: "main",
-      event: "documents_ready_for_patient",
-      email: order.email,
-      firstName: order.first_name ?? "",
-      lastName: order.last_name ?? "",
-      phone: (order.phone as string) ?? "",
-      confirmationId,
-      patientName,
-      patientState: order.state ?? "",
-      documentsCount: totalDocCount,
-      notifiedAt: new Date().toISOString(),
-      leadStatus: "Documents Ready — Patient Notified",
-      tags: ["Documents Ready", "Patient Notified"],
-    }),
-  }).catch(() => {});
-
-  return jsonResp({
-    ok: true,
-    message: `Patient notified for order ${confirmationId}`,
-    confirmationId,
-    patientEmail: order.email,
-    docsEmailed: totalDocCount,
-    emailSent,
-    earningsCreated,
-    letterId,
-    verificationIncluded: !!letterId,
-  });
+  return jsonResp({ ok: true, message: `Patient notified for order ${confirmationId}`, confirmationId, patientEmail: order.email, docsEmailed: totalDocCount, emailSent, earningsCreated, letterId, verificationIncluded: !!letterId });
 });

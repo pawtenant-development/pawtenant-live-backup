@@ -292,7 +292,7 @@ function RevenueTrendChart({
                 key={m}
                 type="button"
                 onClick={() => setMetric(m)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${metric === m ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${metric === m ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
               >
                 {m === "revenue" ? "Revenue ($)" : "Orders (#)"}
               </button>
@@ -304,7 +304,7 @@ function RevenueTrendChart({
                 key={g}
                 type="button"
                 onClick={() => onGranularityChange(g)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${granularity === g ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${granularity === g ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
               >
                 {g === "daily" ? "Daily" : "Weekly"}
               </button>
@@ -398,7 +398,7 @@ function RevenueTrendChart({
                       ) : (
                         <div
                           className="w-full h-full rounded-t-sm transition-opacity"
-                          style={{ backgroundColor: "#1a5c4f", opacity: isHovered ? 1 : 0.75 }}
+                          style={{ backgroundColor: "#3b6ea5", opacity: isHovered ? 1 : 0.75 }}
                         ></div>
                       )}
                     </div>
@@ -788,7 +788,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             key={v.key}
             type="button"
             onClick={() => setAnalyticsView(v.key as typeof analyticsView)}
-            className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${analyticsView === v.key ? "bg-white text-[#1a5c4f]" : "text-gray-500 hover:text-gray-700"}`}
+            className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${analyticsView === v.key ? "bg-white text-[#3b6ea5]" : "text-gray-500 hover:text-gray-700"}`}
           >
             <i className={v.icon}></i>
             {v.label}
@@ -836,7 +836,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
                 key={p.value}
                 type="button"
                 onClick={() => setDatePreset(p.value)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${datePreset === p.value ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${datePreset === p.value ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
               >
                 {p.label}
               </button>
@@ -847,10 +847,10 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           {datePreset === "custom" && (
             <div className="flex items-center gap-2">
               <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f]" />
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
               <span className="text-xs text-gray-400">to</span>
               <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f]" />
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
             </div>
           )}
 
@@ -864,7 +864,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
               { value: "lead", label: "Leads Only" },
             ].map((p) => (
               <button key={p.value} type="button" onClick={() => setOrderTypeFilter(p.value)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${orderTypeFilter === p.value ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${orderTypeFilter === p.value ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
                 {p.label}
               </button>
             ))}
@@ -878,7 +878,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
               { value: "psd", label: "PSD" },
             ].map((p) => (
               <button key={p.value} type="button" onClick={() => setLetterTypeFilter(p.value)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${letterTypeFilter === p.value ? "bg-[#1a5c4f] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${letterTypeFilter === p.value ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
                 {p.label}
               </button>
             ))}
@@ -887,7 +887,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           {/* State filter */}
           <div className="relative">
             <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+              className="appearance-none pl-3 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
               <option value="all">All States</option>
               {allStates.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -897,7 +897,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           {/* Channel filter */}
           <div className="relative">
             <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f] bg-white cursor-pointer">
+              className="appearance-none pl-3 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
               <option value="all">All Channels</option>
               {allChannels.map((c) => <option key={c} value={c}>{getChannelConfig(c).label}</option>)}
             </select>
@@ -916,7 +916,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           { label: "Total Orders", value: kpis.total, icon: "ri-file-list-3-line", color: "text-gray-700", bg: "bg-gray-50", sub: null },
           { label: "Paid Orders", value: kpis.paid, icon: "ri-bank-card-line", color: "text-emerald-600", bg: "bg-emerald-50", sub: null },
           { label: "Unpaid Leads", value: kpis.leads, icon: "ri-user-follow-line", color: "text-amber-600", bg: "bg-amber-50", sub: null },
-          { label: "Completed", value: kpis.completed, icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]", bg: "bg-[#f0faf7]", sub: null },
+          { label: "Completed", value: kpis.completed, icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]", bg: "bg-[#e8f0f9]", sub: null },
           { label: "Conversion Rate", value: `${kpis.convRate}%`, icon: "ri-percent-line", color: "text-violet-600", bg: "bg-violet-50", sub: null },
           { label: "Total Revenue", value: `$${kpis.revenue.toLocaleString()}`, icon: "ri-money-dollar-circle-line", color: "text-emerald-700", bg: "bg-emerald-50", sub: null },
           {
@@ -955,7 +955,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-3 text-xs text-gray-400">
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-[#1a5c4f] inline-block"></span>Revenue
+                <span className="w-2.5 h-2.5 rounded-sm bg-[#3b6ea5] inline-block"></span>Revenue
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block"></span>Paid
@@ -1026,7 +1026,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
                       setSelectedChannel(isSelected ? null : ch.channel);
                       setOrderListPage(1);
                     }}
-                    className={`w-full grid grid-cols-12 gap-2 px-5 py-3.5 text-left transition-colors cursor-pointer ${isSelected ? "bg-[#f0faf7] border-l-2 border-[#1a5c4f]" : "hover:bg-gray-50"}`}
+                    className={`w-full grid grid-cols-12 gap-2 px-5 py-3.5 text-left transition-colors cursor-pointer ${isSelected ? "bg-[#e8f0f9] border-l-2 border-[#3b6ea5]" : "hover:bg-gray-50"}`}
                   >
                     {/* Channel name */}
                     <div className="col-span-3 flex items-center gap-2.5 min-w-0">
@@ -1181,7 +1181,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             {stateStats.map(([state, count]) => (
               <div key={state} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
                 <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                  <span className="text-xs font-extrabold text-[#1a5c4f]">{state}</span>
+                  <span className="text-xs font-extrabold text-[#3b6ea5]">{state}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
@@ -1190,7 +1190,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
                       {filteredOrders.length > 0 ? Math.round((count / filteredOrders.length) * 100) : 0}%
                     </span>
                   </div>
-                  <MiniBar value={count} max={maxStateCount} color="#1a5c4f" />
+                  <MiniBar value={count} max={maxStateCount} color="#3b6ea5" />
                 </div>
               </div>
             ))}
@@ -1221,12 +1221,12 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
               disabled={channelOrders.length === 0 || csvExporting}
               className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
                 csvExporting
-                  ? "bg-[#f0faf7] text-[#1a5c4f] border-[#b8ddd5]"
+                  ? "bg-[#e8f0f9] text-[#3b6ea5] border-[#b8cce4]"
                   : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300"
               }`}
             >
               {csvExporting ? (
-                <><i className="ri-checkbox-circle-fill text-[#1a5c4f]"></i>Exported!</>
+                <><i className="ri-checkbox-circle-fill text-[#3b6ea5]"></i>Exported!</>
               ) : (
                 <><i className="ri-download-2-line"></i>Export CSV ({channelOrders.length})</>
               )}
@@ -1266,7 +1266,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
                   >
                     {/* Customer */}
                     <div className="col-span-3 flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-full flex-shrink-0 text-[#1a5c4f] text-xs font-extrabold">
+                      <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-full flex-shrink-0 text-[#3b6ea5] text-xs font-extrabold">
                         {fullName.slice(0, 2).toUpperCase()}
                       </div>
                       <div className="min-w-0">

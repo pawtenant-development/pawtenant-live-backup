@@ -218,7 +218,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+        <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
       </div>
     );
   }
@@ -256,18 +256,18 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
     <div className="space-y-5">
       {/* Toast */}
       {toast && (
-        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold ${toast.ok ? "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]" : "bg-red-50 border-red-200 text-red-700"}`}>
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold ${toast.ok ? "bg-[#e8f0f9] border-[#b8cce4] text-[#2c5282]" : "bg-red-50 border-red-200 text-red-700"}`}>
           <i className={`flex-shrink-0 ${toast.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}`}></i>
           {toast.text}
         </div>
       )}
 
       {/* Info banner */}
-      <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-3">
+      <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-3">
         <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <i className="ri-shield-check-line text-[#1a5c4f] text-sm"></i>
+          <i className="ri-shield-check-line text-[#2c5282] text-sm"></i>
         </div>
-        <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+        <p className="text-xs text-[#2c5282]/80 leading-relaxed">
           Your license information is used for customer verification and case assignment. Any changes you make here will be reviewed by the admin team. You can only add a state if you have a valid license number for it.
         </p>
       </div>
@@ -281,7 +281,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
           </div>
           {!editingNpi && (
             <button type="button" onClick={() => { setEditingNpi(true); setNpiInput(profile.npi_number ?? ""); }}
-              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] text-xs font-bold rounded-lg hover:bg-[#e0f2ec] cursor-pointer transition-colors">
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-[#b8cce4] text-[#2c5282] bg-[#e8f0f9] text-xs font-bold rounded-lg hover:bg-[#dce8f5] cursor-pointer transition-colors">
               <i className="ri-pencil-line"></i>Edit
             </button>
           )}
@@ -295,10 +295,10 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
               onChange={(e) => setNpiInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
               placeholder="10-digit NPI number"
               maxLength={10}
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-[#1a5c4f]"
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-[#2c5282]"
             />
             <button type="button" onClick={handleSaveNpi} disabled={savingNpi}
-              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer hover:bg-[#17504a]">
+              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#2c5282] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer hover:bg-[#1e3a5f]">
               {savingNpi ? <i className="ri-loader-4-line animate-spin"></i> : "Save"}
             </button>
             <button type="button" onClick={() => setEditingNpi(false)}
@@ -306,9 +306,9 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border flex-1 ${profile.npi_number ? "bg-[#f8fdfc] border-[#b8ddd5]" : "bg-gray-50 border-gray-200 border-dashed"}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border flex-1 ${profile.npi_number ? "bg-[#f8fdfc] border-[#b8cce4]" : "bg-gray-50 border-gray-200 border-dashed"}`}>
               <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                <i className="ri-id-card-line text-[#1a5c4f] text-sm"></i>
+                <i className="ri-id-card-line text-[#2c5282] text-sm"></i>
               </div>
               {profile.npi_number ? (
                 <div>
@@ -346,7 +346,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
           <button
             type="button"
             onClick={() => { setShowAddState(true); setAddStateAbbr(""); setAddLicenseNum(""); }}
-            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] cursor-pointer transition-colors"
+            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#2c5282] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] cursor-pointer transition-colors"
           >
             <i className="ri-add-line"></i>Add State
           </button>
@@ -354,13 +354,13 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
 
         {/* Add State Form */}
         {showAddState && (
-          <div className="mb-4 p-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl">
-            <p className="text-xs font-bold text-[#1a5c4f] mb-3">Add New Licensed State</p>
+          <div className="mb-4 p-4 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
+            <p className="text-xs font-bold text-[#2c5282] mb-3">Add New Licensed State</p>
             <div className="flex flex-col sm:flex-row gap-2">
               <select
                 value={addStateAbbr}
                 onChange={(e) => setAddStateAbbr(e.target.value)}
-                className="flex-1 px-3 py-2 border border-[#b8ddd5] rounded-lg text-sm bg-white focus:outline-none focus:border-[#1a5c4f] cursor-pointer"
+                className="flex-1 px-3 py-2 border border-[#b8cce4] rounded-lg text-sm bg-white focus:outline-none focus:border-[#2c5282] cursor-pointer"
               >
                 <option value="">Select state...</option>
                 {availableToAdd.map((s) => (
@@ -372,16 +372,16 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
                 value={addLicenseNum}
                 onChange={(e) => setAddLicenseNum(e.target.value)}
                 placeholder="License number (required)"
-                className="flex-1 px-3 py-2 border border-[#b8ddd5] rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                className="flex-1 px-3 py-2 border border-[#b8cce4] rounded-lg text-sm focus:outline-none focus:border-[#2c5282]"
               />
             </div>
-            <p className="text-[10px] text-[#1a5c4f]/70 mt-1.5">A valid license number is required to add a new state.</p>
+            <p className="text-[10px] text-[#2c5282]/70 mt-1.5">A valid license number is required to add a new state.</p>
             <div className="flex items-center gap-2 mt-3">
               <button
                 type="button"
                 onClick={handleAddState}
                 disabled={addingState || !addStateAbbr || !addLicenseNum.trim()}
-                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer hover:bg-[#17504a]"
+                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#2c5282] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer hover:bg-[#1e3a5f]"
               >
                 {addingState ? <><i className="ri-loader-4-line animate-spin"></i>Adding...</> : <><i className="ri-add-circle-line"></i>Add State</>}
               </button>
@@ -411,7 +411,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
                 <div key={abbr} className="border border-gray-200 rounded-xl overflow-hidden">
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="w-10 h-10 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                      <span className="text-xs font-extrabold text-[#1a5c4f]">{abbr}</span>
+                      <span className="text-xs font-extrabold text-[#2c5282]">{abbr}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-gray-900">{stateName}</p>
@@ -423,10 +423,10 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
                             onChange={(e) => setLicenseInput(e.target.value)}
                             placeholder="License number"
                             autoFocus
-                            className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#1a5c4f]"
+                            className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#2c5282]"
                           />
                           <button type="button" onClick={() => handleSaveLicense(abbr)} disabled={savingLicense}
-                            className="whitespace-nowrap flex items-center gap-1 px-3 py-1 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer">
+                            className="whitespace-nowrap flex items-center gap-1 px-3 py-1 bg-[#2c5282] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer">
                             {savingLicense ? <i className="ri-loader-4-line animate-spin"></i> : "Save"}
                           </button>
                           <button type="button" onClick={() => setEditingLicenseState(null)}
@@ -441,7 +441,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
                         <button
                           type="button"
                           onClick={() => { setEditingLicenseState(abbr); setLicenseInput(licenseNum); }}
-                          className="whitespace-nowrap w-8 h-8 flex items-center justify-center text-gray-400 hover:text-[#1a5c4f] hover:bg-[#f0faf7] rounded-lg cursor-pointer transition-colors"
+                          className="whitespace-nowrap w-8 h-8 flex items-center justify-center text-gray-400 hover:text-[#2c5282] hover:bg-[#e8f0f9] rounded-lg cursor-pointer transition-colors"
                           title="Edit license number"
                         >
                           <i className="ri-pencil-line text-sm"></i>
@@ -501,10 +501,10 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
                               onChange={(e) => setLicenseInput(e.target.value)}
                               placeholder="Enter license number"
                               autoFocus
-                              className="flex-1 px-2 py-1 border border-amber-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#1a5c4f]"
+                              className="flex-1 px-2 py-1 border border-amber-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#2c5282]"
                             />
                             <button type="button" onClick={() => handleSaveLicense(abbr)} disabled={savingLicense}
-                              className="whitespace-nowrap flex items-center gap-1 px-3 py-1 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer">
+                              className="whitespace-nowrap flex items-center gap-1 px-3 py-1 bg-[#2c5282] text-white text-xs font-bold rounded-lg disabled:opacity-50 cursor-pointer">
                               {savingLicense ? <i className="ri-loader-4-line animate-spin"></i> : "Save"}
                             </button>
                             <button type="button" onClick={() => setEditingLicenseState(null)}
@@ -541,7 +541,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
               const abbr = Object.entries(STATE_ABBR_MAP).find(([, name]) => name === s)?.[0] ?? s;
               const hasLicense = !!stateLicenses[abbr];
               return (
-                <span key={s} className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1 ${hasLicense ? "bg-[#f0faf7] text-[#1a5c4f] border-[#b8ddd5]" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                <span key={s} className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1 ${hasLicense ? "bg-[#e8f0f9] text-[#2c5282] border-[#b8cce4]" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
                   {abbr}
                   {hasLicense ? <i className="ri-checkbox-circle-fill text-[10px]"></i> : <i className="ri-alert-line text-[10px]"></i>}
                 </span>
@@ -549,7 +549,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
             })}
           </div>
           <p className="text-[10px] text-gray-400 mt-2">
-            <i className="ri-checkbox-circle-fill text-[#1a5c4f]"></i> = license number on file &nbsp;·&nbsp;
+            <i className="ri-checkbox-circle-fill text-[#2c5282]"></i> = license number on file &nbsp;·&nbsp;
             <i className="ri-alert-line text-amber-500"></i> = missing license number
           </p>
         </div>

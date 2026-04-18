@@ -153,12 +153,12 @@ const faqs = [
 export default function HowToGetESAPage() {
   return (
     <main>
-      <title>How to Get an ESA Letter | Fast 3-Step Online Process</title>
-      <meta name="description" content="Start your ESA evaluation today. Complete our quick assessment, consult with a licensed professional, and receive your legal housing letter. HIPAA-compliant." />
-      <meta name="keywords" content="how to get an ESA letter, ESA assessment, online ESA evaluation, get ESA letter fast" />
+      <title>How to Get an ESA Letter | Step-by-Step Guide | PawTenant</title>
+      <meta name="description" content="Learn how to get a legitimate ESA letter from a licensed professional. Follow our simple step-by-step process and receive your letter within 24 hours." />
+      <meta name="keywords" content="how to get an ESA letter, ESA assessment, online ESA evaluation, get ESA letter fast, legitimate ESA letter" />
       <link rel="canonical" href="https://www.pawtenant.com/how-to-get-esa-letter" />
-      <meta property="og:title" content="How to Get an ESA Letter | Fast 3-Step Online Process" />
-      <meta property="og:description" content="Start your ESA evaluation today. Complete our quick assessment, consult with a licensed professional, and receive your legal housing letter. HIPAA-compliant." />
+      <meta property="og:title" content="How to Get an ESA Letter | Step-by-Step Guide | PawTenant" />
+      <meta property="og:description" content="Learn how to get a legitimate ESA letter from a licensed professional. Follow our simple step-by-step process and receive your letter within 24 hours." />
       <meta property="og:url" content="https://www.pawtenant.com/how-to-get-esa-letter" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",

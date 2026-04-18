@@ -46,7 +46,7 @@ const TYPE_STYLE: Record<string, { color: string; icon: string; label: string }>
   order:      { color: "bg-emerald-100 text-emerald-700", icon: "ri-file-list-3-line",       label: "Order" },
   payment:    { color: "bg-teal-100 text-teal-700",       icon: "ri-bank-card-line",          label: "Payment" },
   refund:     { color: "bg-orange-100 text-orange-700",   icon: "ri-refund-2-line",            label: "Refund" },
-  doctor:     { color: "bg-[#e8f5f1] text-[#1a5c4f]",    icon: "ri-stethoscope-line",        label: "Doctor" },
+  doctor:     { color: "bg-[#e8f5f1] text-[#3b6ea5]",    icon: "ri-stethoscope-line",        label: "Doctor" },
   staff:      { color: "bg-slate-100 text-slate-600",     icon: "ri-team-line",               label: "Staff" },
   ghl_sync:   { color: "bg-amber-100 text-amber-700",     icon: "ri-radar-line",              label: "GHL Sync" },
   customer:   { color: "bg-rose-100 text-rose-600",       icon: "ri-group-line",              label: "Customer" },
@@ -215,7 +215,7 @@ export default function AuditLogTab() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           {[
             { label: "Events Today", value: todayCount, icon: "ri-calendar-check-line", color: "text-gray-700" },
-            { label: "Total Logged", value: entries.length, icon: "ri-list-check-2", color: "text-[#1a5c4f]" },
+            { label: "Total Logged", value: entries.length, icon: "ri-list-check-2", color: "text-[#3b6ea5]" },
             { label: "GHL Sync Errors", value: ghlErrors, icon: "ri-radar-line", color: "text-amber-600" },
             { label: "Refunds Issued", value: refunds, icon: "ri-refund-2-line", color: "text-orange-500" },
             { label: "Approval Decisions", value: approvalDecisions, icon: "ri-shield-check-line", color: "text-slate-600" },
@@ -240,7 +240,7 @@ export default function AuditLogTab() {
             const style = TYPE_STYLE[t];
             return (
               <button key={t} type="button" onClick={() => setTypeFilter(t)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer capitalize ${typeFilter === t ? "bg-[#1a5c4f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer capitalize ${typeFilter === t ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
                 {t === "all" ? "All Events" : (style?.label ?? t)}
               </button>
             );
@@ -248,12 +248,12 @@ export default function AuditLogTab() {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] cursor-pointer" />
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] cursor-pointer" />
           <div className="relative">
             <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Search actor, action, ID..."
-              className="pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] w-48" />
+              className="pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] w-48" />
           </div>
         </div>
       </div>
@@ -261,7 +261,7 @@ export default function AuditLogTab() {
       {loading ? (
         <div className="flex items-center justify-center py-24">
           <div className="text-center">
-            <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f] block mb-3"></i>
+            <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
             <p className="text-sm text-gray-500">Loading audit log...</p>
           </div>
         </div>
@@ -381,12 +381,12 @@ export default function AuditLogTab() {
                         )}
                         {entry.new_values && Object.keys(entry.new_values).length > 0 && (
                           <div>
-                            <p className="text-xs font-bold text-[#1a5c4f] uppercase tracking-widest mb-2">After</p>
+                            <p className="text-xs font-bold text-[#3b6ea5] uppercase tracking-widest mb-2">After</p>
                             <div className="space-y-1">
                               {Object.entries(entry.new_values).map(([k, v]) => (
                                 <div key={k} className="flex items-center gap-2">
                                   <span className="text-xs text-gray-400 w-28 flex-shrink-0">{k.replace(/_/g, " ")}</span>
-                                  <span className="text-xs text-[#1a5c4f] font-mono font-semibold truncate">{String(v ?? "—")}</span>
+                                  <span className="text-xs text-[#3b6ea5] font-mono font-semibold truncate">{String(v ?? "—")}</span>
                                 </div>
                               ))}
                             </div>

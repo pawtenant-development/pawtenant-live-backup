@@ -58,10 +58,10 @@ export default function WhyChooseSection() {
         <div className="text-center mb-14">
           <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-2">Our Advantage</p>
           <h2 className="text-3xl font-extrabold text-gray-900">
-            Why Choose <span className="text-orange-500">PawTenant</span> for Your ESA Letter?
+            Why Choose <span className="text-orange-500">PawTenant</span> for Your Legitimate ESA Letter?
           </h2>
           <p className="text-gray-500 mt-3 max-w-xl mx-auto text-sm">
-            We are committed to providing the most reliable, legitimate, and affordable ESA letter service available.
+            We are committed to providing the most reliable, <strong>legit ESA letter online</strong> service — affordable, fast, and backed by licensed professionals.
           </p>
         </div>
 
@@ -117,9 +117,12 @@ export default function WhyChooseSection() {
             href="#pricing"
             className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
-            Get Your ESA Letter Today
+            Get Your Legit ESA Letter Today
             <i className="ri-arrow-right-line"></i>
           </a>
+          <p className="text-gray-400 text-xs mt-3">
+            Trusted by 15,000+ pet owners — the fastest way to get a <strong className="text-gray-600">legitimate ESA letter online</strong>
+          </p>
         </div>
       </div>
     </section>

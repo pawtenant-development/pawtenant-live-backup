@@ -30,7 +30,7 @@ interface ProviderEarningsProps {
 
 const STATUS_STYLE: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
-  paid: "bg-[#e8f5f1] text-[#1a5c4f]",
+  paid: "bg-[#e8f0f9] text-[#2c5282]",
   cancelled: "bg-red-100 text-red-600",
 };
 
@@ -186,7 +186,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+        <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
       </div>
     );
   }
@@ -196,7 +196,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
       {/* ── Payment received toast ── */}
       {paidToast && (
         <div className="fixed bottom-6 right-6 z-[200] max-w-sm w-full animate-in slide-in-from-bottom-4">
-          <div className="bg-[#1a5c4f] text-white rounded-2xl overflow-hidden">
+          <div className="bg-[#2c5282] text-white rounded-2xl overflow-hidden">
             <div className="px-5 py-4 flex items-start gap-3">
               <div className="w-9 h-9 flex items-center justify-center bg-white/20 rounded-xl flex-shrink-0 mt-0.5">
                 <i className="ri-money-dollar-circle-fill text-white text-base"></i>
@@ -226,7 +226,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Per-Order Rate", value: perOrderRate != null ? `$${perOrderRate}` : "TBD", icon: "ri-price-tag-3-line", color: "text-[#1a5c4f]", note: "Set by admin" },
+          { label: "Per-Order Rate", value: perOrderRate != null ? `$${perOrderRate}` : "TBD", icon: "ri-price-tag-3-line", color: "text-[#2c5282]", note: "Set by admin" },
           { label: "Completed Orders", value: summary.completedCount, icon: "ri-checkbox-circle-line", color: "text-emerald-600", note: "Total cases done" },
           { label: "Total Earned", value: `$${summary.totalEarned}`, icon: "ri-money-dollar-circle-line", color: "text-gray-800", note: "Paid + unpaid" },
           { label: "Unpaid Balance", value: `$${summary.unpaidAmount}`, icon: "ri-time-line", color: "text-amber-600", note: `$${summary.paidAmount} already paid` },
@@ -249,7 +249,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Payout Calculation</p>
           <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
-            <span className="font-mono font-bold text-[#1a5c4f]">${perOrderRate}</span>
+            <span className="font-mono font-bold text-[#2c5282]">${perOrderRate}</span>
             <span className="text-gray-400">per order</span>
             <span className="text-gray-300 mx-1">×</span>
             <span className="font-bold text-gray-800">{summary.completedCount}</span>
@@ -268,7 +268,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden flex">
               <div
-                className="h-full bg-[#1a5c4f] rounded-l-full transition-all"
+                className="h-full bg-[#2c5282] rounded-l-full transition-all"
                 style={{ width: `${Math.round((summary.paidAmount / Math.max(summary.totalEarned, 1)) * 100)}%` }}
               ></div>
               <div
@@ -279,7 +279,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
           </div>
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#1a5c4f] flex-shrink-0"></div>
+              <div className="w-3 h-3 rounded-full bg-[#2c5282] flex-shrink-0"></div>
               <span className="text-xs font-semibold text-gray-700">Paid: <strong>${summary.paidAmount}</strong></span>
             </div>
             <div className="flex items-center gap-2">
@@ -295,18 +295,18 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
         <button
           type="button"
           onClick={() => setActiveTab("overview")}
-          className={`whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeTab === "overview" ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-gray-700"}`}
+          className={`whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeTab === "overview" ? "bg-[#2c5282] text-white" : "text-gray-500 hover:text-gray-700"}`}
         >
           <i className="ri-list-check"></i> All Cases
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("payout-history")}
-          className={`whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeTab === "payout-history" ? "bg-[#1a5c4f] text-white" : "text-gray-500 hover:text-gray-700"}`}
+          className={`whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${activeTab === "payout-history" ? "bg-[#2c5282] text-white" : "text-gray-500 hover:text-gray-700"}`}
         >
           <i className="ri-history-line"></i> Payout History
           {paidRecords.length > 0 && (
-            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-extrabold ${activeTab === "payout-history" ? "bg-white/20 text-white" : "bg-[#e8f5f1] text-[#1a5c4f]"}`}>
+            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-extrabold ${activeTab === "payout-history" ? "bg-white/20 text-white" : "bg-[#e8f0f9] text-[#2c5282]"}`}>
               {paidRecords.length}
             </span>
           )}
@@ -325,7 +325,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
               { value: "paid", label: "Paid" },
             ].map((opt) => (
               <button key={opt.value} type="button" onClick={() => setFilterStatus(opt.value)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${filterStatus === opt.value ? "bg-[#1a5c4f] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${filterStatus === opt.value ? "bg-[#2c5282] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
                 {opt.label}
               </button>
             ))}
@@ -347,7 +347,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                 const wasRefunded = !!(orderInfo?.refunded_at || orderInfo?.status === "refunded");
                 return (
                   <div key={earning.id}
-                    className={`bg-white rounded-xl border p-5 ${earning.status === "paid" ? "border-[#b8ddd5]" : wasRefunded ? "border-orange-200" : "border-gray-200"}`}>
+                    className={`bg-white rounded-xl border p-5 ${earning.status === "paid" ? "border-[#b8cce4]" : wasRefunded ? "border-orange-200" : "border-gray-200"}`}>
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div>
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -369,13 +369,13 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                             {new Date(earning.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                           </span>
                           {earning.paid_at && (
-                            <span className="text-xs text-[#1a5c4f] flex items-center gap-1">
+                            <span className="text-xs text-[#2c5282] flex items-center gap-1">
                               <i className="ri-checkbox-circle-fill"></i>
                               Paid {new Date(earning.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                             </span>
                           )}
                           {earning.payment_reference && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f5f1] border border-[#b8ddd5] rounded-full text-xs font-semibold text-[#1a5c4f]">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f0f9] border border-[#b8cce4] rounded-full text-xs font-semibold text-[#2c5282]">
                               <i className="ri-bank-card-line"></i>
                               {earning.payment_reference}
                             </span>
@@ -387,7 +387,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <p className={`text-lg font-extrabold ${earning.doctor_amount != null ? "text-[#1a5c4f]" : "text-gray-300"}`}>
+                          <p className={`text-lg font-extrabold ${earning.doctor_amount != null ? "text-[#2c5282]" : "text-gray-300"}`}>
                             {earning.doctor_amount != null ? `$${earning.doctor_amount}` : "TBD"}
                           </p>
                         </div>
@@ -410,8 +410,8 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
         <>
           {paidRecords.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-              <div className="w-14 h-14 flex items-center justify-center bg-[#e8f5f1] rounded-full mx-auto mb-3">
-                <i className="ri-history-line text-[#1a5c4f] text-2xl"></i>
+              <div className="w-14 h-14 flex items-center justify-center bg-[#e8f0f9] rounded-full mx-auto mb-3">
+                <i className="ri-history-line text-[#2c5282] text-2xl"></i>
               </div>
               <p className="text-sm font-bold text-gray-700 mb-1">No payments received yet</p>
               <p className="text-xs text-gray-400">Your payment history will appear here once admin marks earnings as paid.</p>
@@ -419,29 +419,29 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
           ) : (
             <>
               {/* Payout total banner */}
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 flex items-center justify-center bg-[#1a5c4f] rounded-xl flex-shrink-0">
+                  <div className="w-10 h-10 flex items-center justify-center bg-[#2c5282] rounded-xl flex-shrink-0">
                     <i className="ri-checkbox-circle-fill text-white text-lg"></i>
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-[#1a5c4f]">Total Payments Received</p>
-                    <p className="text-xs text-[#1a5c4f]/70">{paidRecords.length} payment{paidRecords.length !== 1 ? "s" : ""} on record</p>
+                    <p className="text-sm font-bold text-[#2c5282]">Total Payments Received</p>
+                    <p className="text-xs text-[#2c5282]/70">{paidRecords.length} payment{paidRecords.length !== 1 ? "s" : ""} on record</p>
                   </div>
                 </div>
-                <p className="text-2xl font-extrabold text-[#1a5c4f]">${summary.paidAmount}</p>
+                <p className="text-2xl font-extrabold text-[#2c5282]">${summary.paidAmount}</p>
               </div>
 
               {/* Timeline */}
               <div className="space-y-3">
                 {paidRecords.map((record, idx) => (
-                  <div key={record.id} className="bg-white rounded-xl border border-[#b8ddd5] overflow-hidden">
+                  <div key={record.id} className="bg-white rounded-xl border border-[#b8cce4] overflow-hidden">
                     <div className="px-5 py-4">
                       <div className="flex items-start gap-4">
                         {/* Timeline dot */}
                         <div className="flex flex-col items-center flex-shrink-0 mt-1">
-                          <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-full">
-                            <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-sm"></i>
+                          <div className="w-8 h-8 flex items-center justify-center bg-[#e8f0f9] rounded-full">
+                            <i className="ri-checkbox-circle-fill text-[#2c5282] text-sm"></i>
                           </div>
                           {idx < paidRecords.length - 1 && (
                             <div className="w-px flex-1 bg-[#d0ece7] mt-2 min-h-[16px]"></div>
@@ -464,7 +464,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                               </div>
                             </div>
                             <div className="text-right flex-shrink-0">
-                              <p className="text-lg font-extrabold text-[#1a5c4f]">
+                              <p className="text-lg font-extrabold text-[#2c5282]">
                                 {record.doctor_amount != null ? `$${record.doctor_amount}` : "—"}
                               </p>
                             </div>
@@ -473,13 +473,13 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                           {/* Payment details row */}
                           <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-3 flex-wrap">
                             {record.paid_at && (
-                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1a5c4f]">
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2c5282]">
                                 <i className="ri-calendar-check-line"></i>
                                 {new Date(record.paid_at).toLocaleDateString("en-US", { weekday: "short", month: "long", day: "numeric", year: "numeric" })}
                               </span>
                             )}
                             {record.payment_reference ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#e8f5f1] border border-[#b8ddd5] rounded-full text-xs font-bold text-[#1a5c4f]">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#e8f0f9] border border-[#b8cce4] rounded-full text-xs font-bold text-[#2c5282]">
                                 <i className="ri-bank-card-line"></i>
                                 {record.payment_reference}
                               </span>
@@ -505,11 +505,11 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
         </>
       )}
 
-      <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4 flex items-start gap-3">
+      <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4 flex items-start gap-3">
         <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-          <i className="ri-information-line text-[#1a5c4f] text-sm"></i>
+          <i className="ri-information-line text-[#2c5282] text-sm"></i>
         </div>
-        <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+        <p className="text-xs text-[#2c5282]/80 leading-relaxed">
           Payout amounts are set and managed by the PawTenant admin team. If you have questions about your earnings or payment schedule, please contact your account manager.
         </p>
       </div>

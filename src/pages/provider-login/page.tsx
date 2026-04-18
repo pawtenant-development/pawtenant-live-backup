@@ -122,7 +122,7 @@ export default function ProviderLoginPage() {
   if (checking) {
     return (
       <div className="min-h-screen bg-[#f8f7f4] flex items-center justify-center">
-        <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+        <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
       </div>
     );
   }
@@ -139,7 +139,7 @@ export default function ProviderLoginPage() {
               className="h-12 mx-auto object-contain"
             />
           </Link>
-          <p className="text-xs font-bold text-[#1a5c4f] uppercase tracking-widest mt-3 mb-1">Provider Portal</p>
+          <p className="text-xs font-bold text-[#2c5282] uppercase tracking-widest mt-3 mb-1">Provider Portal</p>
           <h1 className="text-2xl font-extrabold text-gray-900">
             {showReset ? "Reset Your Password" : "Sign in to your account"}
           </h1>
@@ -154,9 +154,9 @@ export default function ProviderLoginPage() {
 
           {/* ── Password reset success banner ── */}
           {passwordResetSuccess && !showReset && (
-            <div className="mb-5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-2.5">
-              <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-sm flex-shrink-0 mt-0.5"></i>
-              <p className="text-sm text-[#1a5c4f] font-semibold">Password updated successfully! Sign in with your new password.</p>
+            <div className="mb-5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-2.5">
+              <i className="ri-checkbox-circle-fill text-[#2c5282] text-sm flex-shrink-0 mt-0.5"></i>
+              <p className="text-sm text-[#2c5282] font-semibold">Password updated successfully! Sign in with your new password.</p>
             </div>
           )}
 
@@ -164,19 +164,19 @@ export default function ProviderLoginPage() {
           {showReset ? (
             resetSent ? (
               <div className="text-center py-4">
-                <div className="w-14 h-14 flex items-center justify-center bg-[#f0faf7] rounded-full mx-auto mb-4">
-                  <i className="ri-mail-check-line text-[#1a5c4f] text-2xl"></i>
+                <div className="w-14 h-14 flex items-center justify-center bg-[#e8f0f9] rounded-full mx-auto mb-4">
+                  <i className="ri-mail-check-line text-[#2c5282] text-2xl"></i>
                 </div>
                 <p className="text-base font-extrabold text-gray-900 mb-1">Check your inbox</p>
                 <p className="text-sm text-gray-500 mb-1">We sent a password reset link to:</p>
-                <p className="text-sm font-bold text-[#1a5c4f] mb-5">{resetEmail}</p>
+                <p className="text-sm font-bold text-[#2c5282] mb-5">{resetEmail}</p>
                 <p className="text-xs text-gray-400 mb-6">
                   Click the link in the email to set a new password. The link expires in 1 hour.
                 </p>
                 <button
                   type="button"
                   onClick={() => { setShowReset(false); setResetSent(false); setResetEmail(""); }}
-                  className="whitespace-nowrap text-sm text-[#1a5c4f] font-bold hover:underline cursor-pointer"
+                  className="whitespace-nowrap text-sm text-[#2c5282] font-bold hover:underline cursor-pointer"
                 >
                   &larr; Back to Sign In
                 </button>
@@ -199,7 +199,7 @@ export default function ProviderLoginPage() {
                       onChange={(e) => setResetEmail(e.target.value)}
                       placeholder="doctor@example.com"
                       autoFocus
-                      className="w-full pl-9 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] bg-white transition-colors"
+                      className="w-full pl-9 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2c5282] bg-white transition-colors"
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-1.5">
@@ -209,7 +209,7 @@ export default function ProviderLoginPage() {
                 <button
                   type="submit"
                   disabled={resetLoading}
-                  className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors"
+                  className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-[#2c5282] text-white text-sm font-extrabold rounded-xl hover:bg-[#1e3a5f] disabled:opacity-60 cursor-pointer transition-colors"
                 >
                   {resetLoading
                     ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
@@ -243,7 +243,7 @@ export default function ProviderLoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="doctor@example.com"
-                    className="w-full pl-9 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] bg-white transition-colors"
+                    className="w-full pl-9 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2c5282] bg-white transition-colors"
                     autoComplete="email"
                   />
                 </div>
@@ -255,7 +255,7 @@ export default function ProviderLoginPage() {
                   <button
                     type="button"
                     onClick={() => { setShowReset(true); setResetEmail(email); setError(""); }}
-                    className="whitespace-nowrap text-xs text-[#1a5c4f] hover:underline font-semibold cursor-pointer"
+                    className="whitespace-nowrap text-xs text-[#2c5282] hover:underline font-semibold cursor-pointer"
                   >
                     Forgot password?
                   </button>
@@ -267,7 +267,7 @@ export default function ProviderLoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
-                    className="w-full pl-9 pr-10 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] bg-white transition-colors"
+                    className="w-full pl-9 pr-10 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2c5282] bg-white transition-colors"
                     autoComplete="current-password"
                   />
                   <button
@@ -283,7 +283,7 @@ export default function ProviderLoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-60 cursor-pointer transition-colors"
+                className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-[#2c5282] text-white text-sm font-extrabold rounded-xl hover:bg-[#1e3a5f] disabled:opacity-60 cursor-pointer transition-colors"
               >
                 {loading
                   ? <><i className="ri-loader-4-line animate-spin"></i>Signing in...</>
@@ -295,13 +295,13 @@ export default function ProviderLoginPage() {
 
           {!showReset && (
             <div className="mt-6 pt-5 border-t border-gray-100">
-              <div className="flex items-start gap-3 bg-[#f0faf7] rounded-xl p-3">
+              <div className="flex items-start gap-3 bg-[#e8f0f9] rounded-xl p-3">
                 <div className="w-7 h-7 flex items-center justify-center flex-shrink-0">
-                  <i className="ri-information-line text-[#1a5c4f] text-sm"></i>
+                  <i className="ri-information-line text-[#2c5282] text-sm"></i>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[#1a5c4f] mb-0.5">Need help signing in?</p>
-                  <p className="text-xs text-[#1a5c4f]/70 leading-relaxed">
+                  <p className="text-xs font-bold text-[#2c5282] mb-0.5">Need help signing in?</p>
+                  <p className="text-xs text-[#2c5282]/70 leading-relaxed">
                     Your login credentials were sent when your account was created. Check your email for an invite from PawTenant, or contact your admin.
                   </p>
                 </div>
@@ -311,9 +311,9 @@ export default function ProviderLoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          <Link to="/" className="hover:text-[#1a5c4f] transition-colors cursor-pointer">pawtenant.com</Link>
+          <Link to="/" className="hover:text-[#2c5282] transition-colors cursor-pointer">pawtenant.com</Link>
           {" · "}
-          <a href="mailto:support@pawtenant.com" className="hover:text-[#1a5c4f] transition-colors cursor-pointer">support@pawtenant.com</a>
+          <a href="mailto:support@pawtenant.com" className="hover:text-[#2c5282] transition-colors cursor-pointer">support@pawtenant.com</a>
         </p>
       </div>
     </div>

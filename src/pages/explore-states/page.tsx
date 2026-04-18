@@ -33,17 +33,17 @@ export default function ExploreStatesPage() {
 
   return (
     <main>
-      <title>ESA Letter by State 2026: Emotional Support Animal Laws All 50 States | PawTenant</title>
-      <meta name="description" content="Find ESA letter requirements and emotional support animal laws for all 50 US states. PawTenant's licensed professionals serve every state with same-day delivery." />
+      <title>ESA Letter by State | All 50 US States | PawTenant</title>
+      <meta name="description" content="Find ESA letter requirements for your state. PawTenant connects you with licensed professionals in all 50 US states. Know your rights and get your letter today." />
       <meta name="keywords" content="ESA letter by state, emotional support animal laws by state, state ESA requirements, ESA housing rights, ESA letter all states" />
       <link rel="canonical" href="https://www.pawtenant.com/explore-esa-letters-all-states" />
-      <meta property="og:title" content="ESA Letter by State 2026 | All 50 States | PawTenant" />
-      <meta property="og:description" content="ESA laws and letter requirements for all 50 states. Find your state and get a legitimate ESA letter from PawTenant — nationwide coverage, same-day delivery." />
+      <meta property="og:title" content="ESA Letter by State | All 50 US States | PawTenant" />
+      <meta property="og:description" content="Find ESA letter requirements for your state. PawTenant connects you with licensed professionals in all 50 US states. Know your rights and get your letter today." />
       <meta property="og:url" content="https://www.pawtenant.com/explore-esa-letters-all-states" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content="ESA Letter by State 2026 | All 50 States | PawTenant" />
-      <meta name="twitter:description" content="Emotional support animal laws and ESA letter requirements for all 50 states. Same-day delivery, licensed professionals, money-back guarantee." />
+      <meta name="twitter:title" content="ESA Letter by State | All 50 US States | PawTenant" />
+      <meta name="twitter:description" content="Find ESA letter requirements for your state. Licensed professionals in all 50 US states. Know your rights and get your letter today." />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@type": "FAQPage",

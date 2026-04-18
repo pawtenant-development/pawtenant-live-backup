@@ -301,7 +301,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
                     </div>
                   </div>
                   <button type="button" onClick={() => setReviewingApp(app)}
-                    className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors flex-shrink-0">
+                    className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors flex-shrink-0">
                     <i className="ri-search-eye-line"></i>Review
                   </button>
                 </div>
@@ -318,7 +318,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
             { label: "Total Providers", value: doctors.length, icon: "ri-stethoscope-line", color: "text-gray-700" },
             { label: "Active", value: doctors.filter((d) => d.profile ? d.profile.is_active !== false : d.contact?.is_active !== false).length, icon: "ri-checkbox-circle-line", color: "text-emerald-600" },
             { label: "Active Cases", value: doctors.reduce((s, d) => s + d.workload.active, 0), icon: "ri-folder-open-line", color: "text-sky-600" },
-            { label: "Completed Cases", value: doctors.reduce((s, d) => s + d.workload.completed, 0), icon: "ri-award-line", color: "text-[#1a5c4f]" },
+            { label: "Completed Cases", value: doctors.reduce((s, d) => s + d.workload.completed, 0), icon: "ri-award-line", color: "text-[#3b6ea5]" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center gap-2 mb-1">
@@ -332,9 +332,9 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
       )}
 
       {(savedMsg || createMsg) && (
-        <div className="mb-4 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center gap-3">
-          <i className="ri-checkbox-circle-fill text-[#1a5c4f] text-base flex-shrink-0"></i>
-          <p className="text-sm text-[#1a5c4f] font-semibold">{savedMsg || createMsg}</p>
+        <div className="mb-4 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center gap-3">
+          <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-base flex-shrink-0"></i>
+          <p className="text-sm text-[#3b6ea5] font-semibold">{savedMsg || createMsg}</p>
         </div>
       )}
 
@@ -347,11 +347,11 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleExportCSV} disabled={doctors.length === 0}
             title="Export provider roster with NPI numbers and state license numbers"
-            className="whitespace-nowrap flex items-center gap-2 px-3 py-2 border border-[#1a5c4f] text-[#1a5c4f] bg-[#f0faf7] text-sm font-bold rounded-xl hover:bg-[#e0f2ec] disabled:opacity-50 cursor-pointer transition-colors">
+            className="whitespace-nowrap flex items-center gap-2 px-3 py-2 border border-[#3b6ea5] text-[#3b6ea5] bg-[#e8f0f9] text-sm font-bold rounded-xl hover:bg-[#dbeafe] disabled:opacity-50 cursor-pointer transition-colors">
             <i className="ri-download-2-line"></i><span className="hidden sm:inline">Export NPI + Licenses</span>
           </button>
           <button type="button" onClick={() => setShowCreate(true)}
-            className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors">
+            className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors">
             <i className="ri-user-add-line"></i>Add Provider
           </button>
         </div>
@@ -366,7 +366,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name or email..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-[#1a5c4f]"
+            className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-[#3b6ea5]"
           />
           {searchQuery && (
             <button type="button" onClick={() => setSearchQuery("")} className="whitespace-nowrap absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-400 hover:text-gray-600">
@@ -377,7 +377,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "at_capacity" | "inactive")}
-          className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-[#1a5c4f] cursor-pointer text-gray-700"
+          className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-[#3b6ea5] cursor-pointer text-gray-700"
         >
           <option value="all">All Statuses</option>
           <option value="active">Active only</option>
@@ -387,7 +387,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
         <select
           value={filterState}
           onChange={(e) => setFilterState(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-[#1a5c4f] cursor-pointer text-gray-700"
+          className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:border-[#3b6ea5] cursor-pointer text-gray-700"
         >
           <option value="all">All States</option>
           {allStatesInRoster.map((s) => (
@@ -408,7 +408,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
       {/* ── Provider List ── */}
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+          <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5]"></i>
         </div>
       ) : doctors.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -419,7 +419,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
           <i className="ri-search-line text-2xl text-gray-300 mb-2 block"></i>
           <p className="text-sm font-bold text-gray-700">No providers match your filters</p>
           <button type="button" onClick={() => { setSearchQuery(""); setFilterStatus("all"); setFilterState("all"); }}
-            className="whitespace-nowrap mt-3 text-xs font-bold text-[#1a5c4f] hover:underline cursor-pointer">Clear filters</button>
+            className="whitespace-nowrap mt-3 text-xs font-bold text-[#3b6ea5] hover:underline cursor-pointer">Clear filters</button>
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -436,14 +436,14 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
             const photoUrl = doc.profile?.photo_url ?? doc.contact?.photo_url ?? "";
 
             return (
-              <div key={doc.email} className={`bg-white rounded-xl border transition-colors ${isSelected ? "border-[#1a5c4f] ring-1 ring-[#1a5c4f]/20" : "border-gray-200 hover:border-gray-300"}`}>
+              <div key={doc.email} className={`bg-white rounded-xl border transition-colors ${isSelected ? "border-[#3b6ea5] ring-1 ring-[#3b6ea5]/20" : "border-gray-200 hover:border-gray-300"}`}>
                 <div className="flex items-center gap-3 px-4 py-3">
                   {/* Avatar */}
-                  <div className={`w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 overflow-hidden ${isActive ? "bg-[#f0faf7]" : "bg-gray-100"}`}>
+                  <div className={`w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 overflow-hidden ${isActive ? "bg-[#e8f0f9]" : "bg-gray-100"}`}>
                     {photoUrl ? (
                       <img src={photoUrl} alt={doc.name} className="w-full h-full object-cover object-top" />
                     ) : (
-                      <span className={`text-xs font-extrabold ${isActive ? "text-[#1a5c4f]" : "text-gray-400"}`}>{initials}</span>
+                      <span className={`text-xs font-extrabold ${isActive ? "text-[#3b6ea5]" : "text-gray-400"}`}>{initials}</span>
                     )}
                   </div>
 
@@ -467,7 +467,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
                       <p className="text-xs text-gray-400 leading-none">Active</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-extrabold text-[#1a5c4f]">{doc.workload.completed}</p>
+                      <p className="text-sm font-extrabold text-[#3b6ea5]">{doc.workload.completed}</p>
                       <p className="text-xs text-gray-400 leading-none">Done</p>
                     </div>
                     <div className="text-center">
@@ -475,20 +475,20 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
                       <p className="text-xs text-gray-400 leading-none">States</p>
                     </div>
                     {currentRate != null && (
-                      <span className="px-2 py-1 bg-[#f0faf7] border border-[#b8ddd5] text-[#1a5c4f] text-xs font-bold rounded-lg">${currentRate}/order</span>
+                      <span className="px-2 py-1 bg-[#e8f0f9] border border-[#b8cce4] text-[#3b6ea5] text-xs font-bold rounded-lg">${currentRate}/order</span>
                     )}
                   </div>
 
                   {/* Quick toggle */}
                   <button type="button" onClick={() => handleQuickToggle(doc)} disabled={isToggling}
                     title={isActive ? "Deactivate" : "Activate"}
-                    className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${isActive ? "bg-[#1a5c4f]" : "bg-gray-300"}`}>
+                    className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${isActive ? "bg-[#3b6ea5]" : "bg-gray-300"}`}>
                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${isActive ? "translate-x-4" : "translate-x-0.5"}`}></div>
                   </button>
 
                   {/* Manage button */}
                   <button type="button" onClick={() => setSelectedDoc(isSelected ? null : doc)}
-                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border cursor-pointer transition-colors flex-shrink-0 ${isSelected ? "bg-[#1a5c4f] border-[#1a5c4f] text-white" : "border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"}`}>
+                    className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border cursor-pointer transition-colors flex-shrink-0 ${isSelected ? "bg-[#3b6ea5] border-[#3b6ea5] text-white" : "border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"}`}>
                     <i className="ri-settings-3-line text-sm"></i>
                     <span className="hidden sm:inline">Manage</span>
                     <i className="ri-arrow-right-s-line text-xs"></i>

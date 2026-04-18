@@ -2,6 +2,16 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 /**
+ * Providers hidden from the PUBLIC website only.
+ * They remain fully visible in the admin portal and provider assignment logic.
+ * Add a provider's lowercase email here to hide them from all customer-facing surfaces.
+ */
+export const PUBLIC_HIDDEN_PROVIDER_EMAILS: ReadonlySet<string> = new Set([
+  "edna_kwan@yahoo.com",
+  "plester601@gmail.com",
+]);
+
+/**
  * Returns a Set of lowercase emails for all DEACTIVATED providers.
  * Doctors whose email appears in this set should be hidden from the website and checkout.
  */

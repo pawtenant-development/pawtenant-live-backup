@@ -19,7 +19,7 @@ const stripePromise = loadStripe(import.meta.env.VITE_PUBLIC_STRIPE_PUBLISHABLE_
 const STRIPE_APPEARANCE: StripeElementsOptions["appearance"] = {
   theme: "flat",
   variables: {
-    colorPrimary: "#1a5c4f",
+    colorPrimary: "#2c5282",
     colorBackground: "#ffffff",
     colorText: "#1f2937",
     colorDanger: "#ef4444",
@@ -182,7 +182,7 @@ function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
           className={`whitespace-nowrap px-4 py-2.5 text-xs font-extrabold rounded-xl transition-colors flex-shrink-0 ${
             loading || !code.trim()
               ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-[#1a5c4f] text-white hover:bg-[#164d42] cursor-pointer"
+              : "bg-[#2c5282] text-white hover:bg-[#164d42] cursor-pointer"
           }`}
         >
           {loading ? <i className="ri-loader-4-line animate-spin"></i> : "Apply"}
@@ -376,7 +376,7 @@ function SecurePaymentCard({
             !elementsOptions ? (
               <div className="mx-4 sm:mx-5 my-5 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-col items-center justify-center py-8 px-4 text-center gap-3">
                 <div className="w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-2xl">
-                  <i className="ri-loader-4-line animate-spin text-[#1a5c4f] text-xl"></i>
+                  <i className="ri-loader-4-line animate-spin text-[#2c5282] text-xl"></i>
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-600">Loading Secure Checkout</p>
@@ -847,7 +847,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
                     ].map((item) => (
                       <div key={item.text} className="flex items-center gap-1.5 min-w-0">
                         <div className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
-                          <i className={`${item.icon} text-[#1a5c4f] text-xs`}></i>
+                          <i className={`${item.icon} text-[#2c5282] text-xs`}></i>
                         </div>
                         <span className="text-xs text-gray-700 font-bold truncate">{item.text}</span>
                       </div>
@@ -963,13 +963,13 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
 
             {/* SMS Consent */}
             <label className="flex items-start gap-2.5 cursor-pointer bg-white rounded-xl border border-gray-100 px-4 py-3.5 hover:border-gray-200 transition-colors">
-              <input type="checkbox" className="mt-0.5 accent-[#1a5c4f] flex-shrink-0 cursor-pointer" />
+              <input type="checkbox" className="mt-0.5 accent-[#2c5282] flex-shrink-0 cursor-pointer" />
               <span className="text-xs text-gray-600 leading-relaxed">
                 <span className="font-semibold text-gray-700">(Optional)</span> I consent to receive
                 automated text messages from PawTenant. Reply <strong>STOP</strong> to unsubscribe.{" "}
-                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer">Privacy Policy</a>{" "}
+                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-[#2c5282] font-semibold hover:underline cursor-pointer">Privacy Policy</a>{" "}
                 &amp;{" "}
-                <a href="/terms-of-use" target="_blank" rel="noopener noreferrer" className="text-[#1a5c4f] font-semibold hover:underline cursor-pointer">Terms</a>.
+                <a href="/terms-of-use" target="_blank" rel="noopener noreferrer" className="text-[#2c5282] font-semibold hover:underline cursor-pointer">Terms</a>.
               </span>
             </label>
           </div>
@@ -979,18 +979,18 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
         <div className="order-2 lg:order-1 lg:col-start-1 lg:col-span-3 flex flex-col gap-5">
 
           {/* 1 ── Guarantee Banner ── */}
-          <div className="bg-gradient-to-br from-[#e8f5f1] to-[#f5fbf9] border-2 border-[#b8ddd5] rounded-2xl p-5 sm:p-6">
+          <div className="bg-gradient-to-br from-[#e8f0f9] to-[#f0f4fb] border-2 border-[#b8cce4] rounded-2xl p-5 sm:p-6">
             <div className="flex items-start gap-3.5 mb-4">
-              <div className="w-11 h-11 flex items-center justify-center bg-[#1a5c4f] rounded-xl flex-shrink-0">
+              <div className="w-11 h-11 flex items-center justify-center bg-[#2c5282] rounded-xl flex-shrink-0">
                 <i className="ri-shield-check-fill text-white text-xl"></i>
               </div>
               <div className="pt-1 min-w-0">
-                <h3 className="text-sm font-extrabold text-[#1a5c4f] leading-snug">
+                <h3 className="text-sm font-extrabold text-[#2c5282] leading-snug">
                   You Only Pay for a Valid PSD Letter — Guaranteed
                 </h3>
               </div>
             </div>
-            <p className="text-sm text-[#1a5c4f]/80 mb-5 leading-relaxed">
+            <p className="text-sm text-[#2c5282]/80 mb-5 leading-relaxed">
               If you are not clinically eligible or your letter is not accepted for valid
               ADA-related use, you&apos;ll receive a full refund according to our refund policy.
             </p>
@@ -1002,10 +1002,10 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
                 { icon: "ri-timer-flash-line", text: "Fast delivery after approval" },
               ].map((item) => (
                 <div key={item.text} className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 flex items-center justify-center bg-[#1a5c4f] rounded-full flex-shrink-0">
+                  <div className="w-6 h-6 flex items-center justify-center bg-[#2c5282] rounded-full flex-shrink-0">
                     <i className={`${item.icon} text-white text-xs`}></i>
                   </div>
-                  <span className="text-xs font-semibold text-[#1a5c4f] leading-snug">{item.text}</span>
+                  <span className="text-xs font-semibold text-[#2c5282] leading-snug">{item.text}</span>
                 </div>
               ))}
             </div>
@@ -1015,15 +1015,15 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
             <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-gray-100 gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 flex items-center justify-center bg-[#f0faf7] rounded-lg flex-shrink-0">
-                  <i className="ri-user-line text-[#1a5c4f] text-sm"></i>
+                <div className="w-8 h-8 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0">
+                  <i className="ri-user-line text-[#2c5282] text-sm"></i>
                 </div>
                 <p className="text-sm font-extrabold text-gray-900">Your Evaluation Profile</p>
               </div>
               <button
                 type="button"
                 onClick={onBack}
-                className="whitespace-nowrap flex items-center gap-1 text-xs font-semibold text-[#1a5c4f] hover:underline cursor-pointer flex-shrink-0"
+                className="whitespace-nowrap flex items-center gap-1 text-xs font-semibold text-[#2c5282] hover:underline cursor-pointer flex-shrink-0"
               >
                 <i className="ri-edit-line text-xs"></i>Edit info
               </button>
@@ -1063,11 +1063,11 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
               )}
             </div>
             <div className="px-4 sm:px-5 pb-4">
-              <div className="bg-[#f0faf7] rounded-xl px-3 py-2 flex items-center gap-2">
+              <div className="bg-[#e8f0f9] rounded-xl px-3 py-2 flex items-center gap-2">
                 <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                  <i className="ri-shield-check-line text-[#1a5c4f] text-xs"></i>
+                  <i className="ri-shield-check-line text-[#2c5282] text-xs"></i>
                 </div>
-                <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+                <p className="text-xs text-[#2c5282]/80 leading-relaxed">
                   Your information is securely saved — no need to re-enter details.
                 </p>
               </div>
@@ -1150,10 +1150,10 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
               { num: "01", icon: "ri-file-check-line", color: "bg-amber-500",
                 title: "Assessment Submitted",
                 desc: "Your evaluation answers are immediately available to a licensed provider in your state." },
-              { num: "02", icon: "ri-stethoscope-line", color: "bg-[#1a5c4f]",
+              { num: "02", icon: "ri-stethoscope-line", color: "bg-[#2c5282]",
                 title: "Licensed Provider Review",
                 desc: "A board-licensed mental health professional evaluates your case within your chosen delivery window." },
-              { num: "03", icon: "ri-mail-check-line", color: "bg-[#1a5c4f]",
+              { num: "03", icon: "ri-mail-check-line", color: "bg-[#2c5282]",
                 title: "PSD Letter Delivered",
                 desc: "Your signed, official PSD letter is emailed as a professional PDF document — ready to use." },
               { num: "04", icon: "ri-service-line", color: "bg-emerald-500",
@@ -1182,7 +1182,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
         <button
           type="button"
           onClick={onBack}
-          className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f]/10 border border-[#1a5c4f]/30 text-[#1a5c4f] font-bold text-sm rounded-lg hover:bg-[#1a5c4f]/15 hover:border-[#1a5c4f]/40 transition-colors cursor-pointer"
+          className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-[#2c5282]/10 border border-[#2c5282]/30 text-[#2c5282] font-bold text-sm rounded-lg hover:bg-[#2c5282]/15 hover:border-[#2c5282]/40 transition-colors cursor-pointer"
         >
           <i className="ri-arrow-left-line"></i>Back to Step 2
         </button>

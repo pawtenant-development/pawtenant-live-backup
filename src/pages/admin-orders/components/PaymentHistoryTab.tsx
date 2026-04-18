@@ -198,7 +198,7 @@ function DiscountEmailButton({ order, supabaseUrl, anonKey }: { order: Order; su
         type="button"
         onClick={handleSend}
         disabled={sending}
-        className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 border border-[#b8ddd5] text-[#1a5c4f] bg-[#f0faf7] hover:bg-[#e0f2ec] text-xs font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-60"
+        className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#dce8f5] text-xs font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-60"
       >
         {sending
           ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
@@ -331,11 +331,11 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
               </p>
               <RetryPaymentButton order={order} supabaseUrl={supabaseUrl} anonKey={anonKey} />
             </div>
-            <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-3">
-              <p className="text-xs font-bold text-[#1a5c4f] mb-1 flex items-center gap-1">
+            <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-3">
+              <p className="text-xs font-bold text-[#3b6ea5] mb-1 flex items-center gap-1">
                 <i className="ri-coupon-3-line"></i>Discount Recovery Email
               </p>
-              <p className="text-xs text-[#1a5c4f]/70 mb-2 leading-relaxed">
+              <p className="text-xs text-[#3b6ea5]/70 mb-2 leading-relaxed">
                 Sends a recovery email with a discount offer to nudge the customer to complete checkout.
               </p>
               <DiscountEmailButton order={order} supabaseUrl={supabaseUrl} anonKey={anonKey} />

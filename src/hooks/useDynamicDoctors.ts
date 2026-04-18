@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { Doctor } from "../mocks/doctors";
+import { PUBLIC_HIDDEN_PROVIDER_EMAILS } from "./useActiveProviders";
 
 const DEFAULT_IMAGE = "https://readdy.ai/api/search-image?query=professional%20licensed%20mental%20health%20therapist%20portrait%20headshot%20neutral%20warm%20background%20soft%20studio%20lighting%20confident%20friendly%20expression&width=200&height=200&seq=default-dyn-provider&orientation=squarish";
 
@@ -50,13 +51,18 @@ export function useDynamicDoctors(): { doctors: Doctor[]; loading: boolean; relo
       setLoading(true);
 
       // Fetch approved providers
-      const { data: providers } = await supabase
+      const { data: rawProviders } = await supabase
         .from("approved_providers")
         .select("*")
         .eq("is_active", true)
         .order("created_at");
 
       if (cancelled) return;
+
+      // Filter out providers hidden from the public website
+      const providers = (rawProviders ?? []).filter(
+        (p: ApprovedProviderRow) => !p.email || !PUBLIC_HIDDEN_PROVIDER_EMAILS.has(p.email.toLowerCase())
+      );
 
       if (providers && providers.length > 0) {
         // Fetch NPI numbers from doctor_profiles for these providers

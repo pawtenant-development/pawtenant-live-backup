@@ -362,12 +362,12 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
           {tab === "followup" && (
             <div className="space-y-4">
               {/* Info banner */}
-              <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-start gap-3">
-                <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f]/10 rounded-lg flex-shrink-0">
-                  <i className="ri-mail-send-line text-[#1a5c4f] text-base"></i>
+              <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-3">
+                <div className="w-8 h-8 flex items-center justify-center bg-[#3b6ea5]/10 rounded-lg flex-shrink-0">
+                  <i className="ri-mail-send-line text-[#3b6ea5] text-base"></i>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[#1a5c4f] mb-1">Sent from hello@pawtenant.com via Resend</p>
+                  <p className="text-xs font-bold text-[#3b6ea5] mb-1">Sent from hello@pawtenant.com via Resend</p>
                   <p className="text-xs text-[#2d6b5e] leading-relaxed">
                     Sends a branded follow-up email reminding leads to complete their{" "}
                     <strong>{previewIsPSD ? "PSD" : "ESA"} assessment</strong>. PSD leads get an ADA-branded email with a PSD resume link. Logged to Audit Log for HIPAA tracking.
@@ -384,7 +384,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
 
               {/* Bulk send message */}
               {followupBulkMsg && (
-                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${followupBulkMsg.includes("failed") ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]"}`}>
+                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${followupBulkMsg.includes("failed") ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-[#e8f0f9] border-[#b8cce4] text-[#3b6ea5]"}`}>
                   <i className={followupBulkMsg.includes("failed") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
                   {followupBulkMsg}
                 </div>
@@ -409,7 +409,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
                         </div>
                         <div>
                           {result ? (
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${result.ok ? "bg-[#e8f5f1] text-[#1a5c4f]" : "bg-red-50 text-red-600"}`}>
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${result.ok ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-50 text-red-600"}`}>
                               <i className={result.ok ? "ri-checkbox-circle-fill" : "ri-close-circle-line"}></i>
                               {result.msg}
                             </span>
@@ -431,7 +431,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
                           type="button"
                           onClick={() => sendFollowupEmail(lead)}
                           disabled={isSending || followupSendingAll}
-                          className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+                          className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
                         >
                           {isSending
                             ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
@@ -454,13 +454,13 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
                     {templateCopied ? "Copied!" : "Copy template"}
                   </button>
                 </div>
-                <div className={`border rounded-xl p-4 space-y-2.5 ${previewIsPSD ? "bg-amber-50 border-amber-200" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
-                  <div className={`flex items-start gap-2 pb-2 border-b ${previewIsPSD ? "border-amber-200" : "border-[#b8ddd5]"}`}>
-                    <span className={`text-xs font-bold w-14 flex-shrink-0 ${previewIsPSD ? "text-amber-800" : "text-[#1a5c4f]"}`}>From:</span>
+                <div className={`border rounded-xl p-4 space-y-2.5 ${previewIsPSD ? "bg-amber-50 border-amber-200" : "bg-[#e8f0f9] border-[#b8cce4]"}`}>
+                  <div className={`flex items-start gap-2 pb-2 border-b ${previewIsPSD ? "border-amber-200" : "border-[#b8cce4]"}`}>
+                    <span className={`text-xs font-bold w-14 flex-shrink-0 ${previewIsPSD ? "text-amber-800" : "text-[#3b6ea5]"}`}>From:</span>
                     <span className="text-xs text-gray-600">hello@pawtenant.com</span>
                   </div>
-                  <div className={`flex items-start gap-2 pb-2 border-b ${previewIsPSD ? "border-amber-200" : "border-[#b8ddd5]"}`}>
-                    <span className={`text-xs font-bold w-14 flex-shrink-0 ${previewIsPSD ? "text-amber-800" : "text-[#1a5c4f]"}`}>Subject:</span>
+                  <div className={`flex items-start gap-2 pb-2 border-b ${previewIsPSD ? "border-amber-200" : "border-[#b8cce4]"}`}>
+                    <span className={`text-xs font-bold w-14 flex-shrink-0 ${previewIsPSD ? "text-amber-800" : "text-[#3b6ea5]"}`}>Subject:</span>
                     <span className="text-xs text-gray-800 font-semibold">{getFollowupSubject(previewIsPSD)}</span>
                   </div>
                   <div className="text-xs text-gray-700 leading-relaxed space-y-1.5">
@@ -479,16 +479,16 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
                         ))
                         : ["Licensed Medical Providers in your state", "Delivered within 24 hours", "Legally enforced for rentals & dorms"].map((t) => (
                           <p key={t} className="flex items-start gap-1.5">
-                            <i className="ri-checkbox-circle-fill text-[#1a5c4f] flex-shrink-0 mt-0.5" style={{ fontSize: "11px" }}></i>{t}
+                            <i className="ri-checkbox-circle-fill text-[#3b6ea5] flex-shrink-0 mt-0.5" style={{ fontSize: "11px" }}></i>{t}
                           </p>
                         ))
                       }
                     </div>
-                    <p className={`font-bold ${previewIsPSD ? "text-amber-700" : "text-[#1a5c4f]"}`}>
+                    <p className={`font-bold ${previewIsPSD ? "text-amber-700" : "text-[#3b6ea5]"}`}>
                       <i className="ri-arrow-right-line"></i>{" "}
                       Complete: pawtenant.com/{previewIsPSD ? "psd-assessment" : "assessment"}
                     </p>
-                    <p className={`text-[11px] pt-1 border-t mt-2 ${previewIsPSD ? "text-amber-700/70 border-amber-200" : "text-gray-500 border-[#b8ddd5]"}`}>
+                    <p className={`text-[11px] pt-1 border-t mt-2 ${previewIsPSD ? "text-amber-700/70 border-amber-200" : "text-gray-500 border-[#b8cce4]"}`}>
                       Warm regards, The PawTenant Team · (409) 965-5885
                     </p>
                   </div>
@@ -513,7 +513,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
               </div>
 
               {bulkSendMsg && (
-                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${bulkSendMsg.includes("failed") ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-[#f0faf7] border-[#b8ddd5] text-[#1a5c4f]"}`}>
+                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-xs font-semibold ${bulkSendMsg.includes("failed") ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-[#e8f0f9] border-[#b8cce4] text-[#3b6ea5]"}`}>
                   <i className={bulkSendMsg.includes("failed") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
                   {bulkSendMsg}
                 </div>
@@ -542,7 +542,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
                         </div>
                         <div>
                           {result ? (
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${result.ok ? "bg-[#e8f5f1] text-[#1a5c4f]" : "bg-red-50 text-red-600"}`}>
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${result.ok ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-50 text-red-600"}`}>
                               <i className={result.ok ? "ri-checkbox-circle-fill" : "ri-close-circle-line"}></i>
                               {result.msg}
                             </span>
@@ -586,7 +586,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
           </button>
           {tab === "export" && (
             <button type="button" onClick={handleExportCSV}
-              className="whitespace-nowrap flex items-center gap-2 px-6 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-lg hover:bg-[#17504a] cursor-pointer">
+              className="whitespace-nowrap flex items-center gap-2 px-6 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-lg hover:bg-[#2d5a8e] cursor-pointer">
               <i className="ri-download-2-line"></i>Download {leads.length} Leads as CSV
             </button>
           )}
@@ -595,7 +595,7 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
               type="button"
               onClick={sendAllFollowupEmails}
               disabled={followupSendingAll}
-              className="whitespace-nowrap flex items-center gap-2 px-6 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+              className="whitespace-nowrap flex items-center gap-2 px-6 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
             >
               {followupSendingAll
                 ? <><i className="ri-loader-4-line animate-spin"></i>Sending all...</>

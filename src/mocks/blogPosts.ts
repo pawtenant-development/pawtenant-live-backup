@@ -590,7 +590,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=exotic rabbit guinea pig colorful parrot bird small reptile turtle emotional support animal ESA cozy bright home interior variety of pets apartment living warm natural lighting&width=1200&height=630&seq=pwexotic01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=exotic%20rabbit%20guinea%20pig%20colorful%20parrot%20bird%20small%20reptile%20turtle%20emotional%20support%20animal%20ESA%20cozy%20bright%20home%20interior%20variety%20of%20pets%20apartment%20living%20warm%20natural%20lighting&width=1200&height=630&seq=pwexotic01&orientation=landscape",
     excerpt: "Emotional Support Animals (ESAs) have gained recognition for helping people deal with stress, anxiety, depression, and other mental health struggles. But when it comes to exotic animals, the rules get a lot more nuanced.",
     sections: [
       {
@@ -631,7 +631,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=Florida warm sunny apartment interior living room ESA tenant renter housing rights documentation letter key handover bright open window tropical indoor plants&width=1200&height=630&seq=pwfl01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=Florida%20warm%20sunny%20apartment%20interior%20living%20room%20ESA%20tenant%20renter%20housing%20rights%20documentation%20letter%20key%20handover%20bright%20open%20window%20tropical%20indoor%20plants&width=1200&height=630&seq=pwfl01&orientation=landscape",
     excerpt: "Living with an Emotional Support Animal (ESA) in Florida isn\u2019t just about companionship\u2014it\u2019s about legal rights too. Many people with anxiety, PTSD, and other conditions rely on their ESA daily.",
     sections: [
       {
@@ -672,7 +672,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=New York City urban apartment building brownstone exterior street tenant housing rights protection ESA emotional support animal documentation sunny day USA&width=1200&height=630&seq=pwny01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=New%20York%20City%20urban%20apartment%20building%20brownstone%20exterior%20street%20tenant%20housing%20rights%20protection%20ESA%20emotional%20support%20animal%20documentation%20sunny%20day%20USA&width=1200&height=630&seq=pwny01&orientation=landscape",
     excerpt: "If you live in New York and rely on an emotional support animal (ESA), you already know how important housing protections are. New York has some of the strongest tenant protections in the country.",
     sections: [
       {
@@ -706,14 +706,14 @@ export const blogPosts: BlogPost[] = [
   {
     slug: "california-esa-laws-explained-2025-update",
     title: "California ESA Laws Explained (2025 Update)",
-    metaTitle: "California ESA Laws Explained 2025 Update | PawTenant",
-    metaDesc: "Living with an Emotional Support Animal in California is more than comfort\u2014it\u2019s about legal rights. Learn the latest California ESA laws for renters, students, and families.",
+    metaTitle: "California ESA Laws Explained | 2026 Update | PawTenant",
+    metaDesc: "California ESA letter rules require a 30-day provider relationship. Learn what the law says, who can issue your letter, and how to protect your housing rights.",
     category: "Legal & Rights",
     date: "September 29, 2025",
     readTime: "8 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=California sunny modern apartment exterior palm trees blue sky ESA emotional support animal letter documentation housing rights tenant renter warm day&width=1200&height=630&seq=pwca01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=California%20sunny%20modern%20apartment%20exterior%20palm%20trees%20blue%20sky%20ESA%20emotional%20support%20animal%20letter%20documentation%20housing%20rights%20tenant%20renter%20warm%20day&width=1200&height=630&seq=pwca01&orientation=landscape",
     excerpt: "Living with an Emotional Support Animal (ESA) in California is more than comfort\u2014it\u2019s about legal rights. Many renters, students, and families in California are protected under both state and federal law.",
     sections: [
       {
@@ -747,14 +747,14 @@ export const blogPosts: BlogPost[] = [
   {
     slug: "are-online-esa-letters-legit",
     title: "Are Online ESA Letters Legit? How to Verify a Provider in 2025",
-    metaTitle: "Are Online ESA Letters Legit? How to Verify a Provider in 2025 | PawTenant",
-    metaDesc: "Emotional Support Animals are more than pets. Learn how to tell a legitimate online ESA letter provider from a scam in 2025.",
+    metaTitle: "How to Get an ESA Letter Online | Complete Guide | PawTenant",
+    metaDesc: "Everything you need to know about getting an ESA letter online. Avoid scams, find licensed professionals, and secure your legitimate ESA documentation.",
     category: "Getting Started",
     date: "September 26, 2025",
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=person on laptop telehealth video consultation online ESA letter provider verification home office bright clean desk licensed therapist screen secure connection&width=1200&height=630&seq=pwonline01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=person%20on%20laptop%20telehealth%20video%20consultation%20online%20ESA%20letter%20provider%20verification%20home%20office%20bright%20clean%20desk%20licensed%20therapist%20screen%20secure%20connection&width=1200&height=630&seq=pwonline01&orientation=landscape",
     excerpt: "Emotional Support Animals (ESAs) are more than pets. For many people, they are daily companions that ease anxiety, depression, PTSD, and other conditions. But how do you know if an online ESA letter is actually legit?",
     sections: [
       {
@@ -795,7 +795,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=official professional ESA letter document desk licensed therapist letterhead pen signature mental health credentials clean organized white office bright&width=1200&height=630&seq=pwlegit01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=official%20professional%20ESA%20letter%20document%20desk%20licensed%20therapist%20letterhead%20pen%20signature%20mental%20health%20credentials%20clean%20organized%20white%20office%20bright&width=1200&height=630&seq=pwlegit01&orientation=landscape",
     excerpt: "If you\u2019re searching \u2018what does a legit ESA letter look like\u2019, chances are you\u2019ve run into dozens of templates online, some looking official and some clearly questionable. Here\u2019s what to look for.",
     sections: [
       {
@@ -836,7 +836,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=person comparing different animals choosing cat dog rabbit guinea pig emotional support animal selection cozy bright living room warm interior pet adoption decision&width=1200&height=630&seq=pwchoose01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=person%20comparing%20different%20animals%20choosing%20cat%20dog%20rabbit%20guinea%20pig%20emotional%20support%20animal%20selection%20cozy%20bright%20living%20room%20warm%20interior%20pet%20adoption%20decision&width=1200&height=630&seq=pwchoose01&orientation=landscape",
     excerpt: "Choosing the right Emotional Support Animal (ESA) is a significant decision that can greatly impact your mental and emotional well-being. An ESA is more than a pet \u2014 it\u2019s a therapeutic companion.",
     sections: [
       {
@@ -873,7 +873,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=happy dog owner holding ESA letter certification document official approval emotional support animal housing rights warm natural light bond companion&width=1200&height=630&seq=pwdogcert01&orientation=landscape",
+    image: "https://readdy.ai/api/search-image?query=happy%20dog%20owner%20holding%20ESA%20letter%20certification%20document%20official%20approval%20emotional%20support%20animal%20housing%20rights%20warm%20natural%20light%20bond%20companion&width=1200&height=630&seq=pwdogcert01&orientation=landscape",
     excerpt: "Emotional support animals (ESAs) do more than offer friendship\u2014they can play a vital role in easing the symptoms of anxiety, depression, PTSD and other conditions. Here\u2019s your complete guide.",
     sections: [
       {

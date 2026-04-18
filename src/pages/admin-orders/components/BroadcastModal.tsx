@@ -70,7 +70,7 @@ const AUDIENCE_OPTIONS: AudienceOption[] = [
     label: "Completed Orders",
     description: "Customers who received their ESA letter",
     icon: "ri-checkbox-circle-line",
-    color: "text-[#1a5c4f]",
+    color: "text-[#3b6ea5]",
   },
   {
     key: "unassigned",
@@ -314,19 +314,19 @@ const SMS_TEMPLATES = [
     id: "trustpilot_review",
     label: "Trustpilot Review Request",
     group: "Review Requests",
-    text: "Hi {name}! Your ESA letter from PawTenant is complete. If you had a great experience, we'd love a quick Trustpilot review! ⭐ https://www.trustpilot.com/review/pawtenant.com — Reply STOP to opt out.",
+    text: "Hi {name}! Your ESA letter from PawTenant is complete. If you had a great experience, we'd love a quick Trustpilot review! ⭐ https://www.trustpilot.com/review/pawtenant.com",
   },
   {
     id: "finish_esa",
     label: "Finish Your ESA Letter",
     group: "Lead Recovery",
-    text: "Hi {name}, you're one step away from your ESA letter! Complete your order here: pawtenant.com/assessment — Reply STOP to opt out.",
+    text: "Hi {name}, you're one step away from your ESA letter! Complete your order here: pawtenant.com/assessment",
   },
   {
     id: "still_thinking",
     label: "Still Thinking?",
     group: "Lead Recovery",
-    text: "Hi {name}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment — Reply STOP to opt out.",
+    text: "Hi {name}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment",
   },
   {
     id: "consultation_booking",
@@ -338,7 +338,7 @@ const SMS_TEMPLATES = [
     id: "renewal",
     label: "ESA Renewal",
     group: "Existing Customers",
-    text: "Hi {name}! Your ESA letter may need renewal soon. Renew today at pawtenant.com/renew-esa-letter — our licensed providers complete it within 24-48hrs. Reply STOP to opt out.",
+    text: "Hi {name}! Your ESA letter may need renewal soon. Renew today at pawtenant.com/renew-esa-letter — our licensed providers complete it within 24-48hrs.",
   },
   {
     id: "order_confirmed",
@@ -356,7 +356,7 @@ const SMS_TEMPLATES = [
     id: "update",
     label: "Status Update",
     group: "General",
-    text: "Hi {name}, this is PawTenant. We have an important update regarding your account. Log into pawtenant.com/my-orders to view details. Reply STOP to opt out.",
+    text: "Hi {name}, this is PawTenant. We have an important update regarding your account. Log into pawtenant.com/my-orders to view details.",
   },
   {
     id: "custom",
@@ -615,7 +615,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
     const ctaHtml = includePortalCta && ctaLabel && ctaUrl
       ? `<div style="text-align:center;margin:28px 0;">
-          <a href="${ctaUrl}" style="display:inline-block;background:#1a5c4f;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${ctaLabel}</a>
+          <a href="${ctaUrl}" style="display:inline-block;background:#3b6ea5;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${ctaLabel}</a>
         </div>`
       : "";
 
@@ -639,7 +639,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
         <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
 
           <!-- Header -->
-          <div style="background:#1a5c4f;padding:28px 32px;text-align:center;">
+          <div style="background:#3b6ea5;padding:28px 32px;text-align:center;">
             <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
             <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
           </div>
@@ -653,7 +653,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
           <!-- Footer -->
           <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 36px;text-align:center;">
-            <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:hello@pawtenant.com" style="color:#1a5c4f;text-decoration:none;">hello@pawtenant.com</a></p>
+            <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:hello@pawtenant.com" style="color:#3b6ea5;text-decoration:none;">hello@pawtenant.com</a></p>
             <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Sent by ${adminName || "PawTenant Admin"} via PawTenant</p>
             <p style="margin:0;font-size:11px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Letter Consultations &nbsp;&middot;&nbsp; <a href="https://pawtenant.com" style="color:#9ca3af;">pawtenant.com</a></p>
           </div>
@@ -946,7 +946,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
         {/* ── Header ── */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="w-10 h-10 flex items-center justify-center bg-[#1a5c4f] rounded-xl flex-shrink-0">
+          <div className="w-10 h-10 flex items-center justify-center bg-[#3b6ea5] rounded-xl flex-shrink-0">
             <i className="ri-broadcast-line text-white text-lg"></i>
           </div>
           <div className="flex-1 min-w-0">
@@ -997,7 +997,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: "All Paid", value: orders.filter((o) => !!o.payment_intent_id && o.status !== "cancelled").length, icon: "ri-money-dollar-circle-line", color: "text-emerald-600" },
-                  { label: "Completed", value: orders.filter((o) => o.doctor_status === "patient_notified").length, icon: "ri-checkbox-circle-line", color: "text-[#1a5c4f]" },
+                  { label: "Completed", value: orders.filter((o) => o.doctor_status === "patient_notified").length, icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]" },
                   { label: "Under Review", value: orders.filter((o) => !!o.payment_intent_id && !!(o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified").length, icon: "ri-time-line", color: "text-sky-600" },
                   { label: "Leads", value: orders.filter((o) => !o.payment_intent_id).length, icon: "ri-user-follow-line", color: "text-amber-600" },
                 ].map((stat) => (
@@ -1013,8 +1013,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
             </div>
 
             {/* What you CAN do */}
-            <div className="w-full max-w-sm bg-[#f0faf7] border border-[#b8ddd5] rounded-2xl p-5 text-left mb-4">
-              <p className="text-xs font-extrabold text-[#1a5c4f] uppercase tracking-widest mb-3 flex items-center gap-2">
+            <div className="w-full max-w-sm bg-[#e8f0f9] border border-[#b8cce4] rounded-2xl p-5 text-left mb-4">
+              <p className="text-xs font-extrabold text-[#3b6ea5] uppercase tracking-widest mb-3 flex items-center gap-2">
                 <i className="ri-checkbox-circle-line text-base"></i>
                 What you can view
               </p>
@@ -1025,8 +1025,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                   "Opt-out statistics",
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-2">
-                    <i className="ri-check-line text-[#1a5c4f] text-sm flex-shrink-0"></i>
-                    <p className="text-xs text-[#1a5c4f]">{item}</p>
+                    <i className="ri-check-line text-[#3b6ea5] text-sm flex-shrink-0"></i>
+                    <p className="text-xs text-[#3b6ea5]">{item}</p>
                   </div>
                 ))}
               </div>
@@ -1104,8 +1104,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
             </div>
 
             {/* What you CAN do */}
-            <div className="w-full max-w-sm bg-[#f0faf7] border border-[#b8ddd5] rounded-2xl p-5 text-left mb-6">
-              <p className="text-xs font-extrabold text-[#1a5c4f] uppercase tracking-widest mb-3 flex items-center gap-2">
+            <div className="w-full max-w-sm bg-[#e8f0f9] border border-[#b8cce4] rounded-2xl p-5 text-left mb-6">
+              <p className="text-xs font-extrabold text-[#3b6ea5] uppercase tracking-widest mb-3 flex items-center gap-2">
                 <i className="ri-checkbox-circle-line text-base"></i>
                 What you can do without approval
               </p>
@@ -1116,8 +1116,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                   "Make outbound calls from individual orders",
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-2">
-                    <i className="ri-check-line text-[#1a5c4f] text-sm flex-shrink-0"></i>
-                    <p className="text-xs text-[#1a5c4f]">{item}</p>
+                    <i className="ri-check-line text-[#3b6ea5] text-sm flex-shrink-0"></i>
+                    <p className="text-xs text-[#3b6ea5]">{item}</p>
                   </div>
                 ))}
               </div>
@@ -1127,7 +1127,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
               <button
                 type="button"
                 onClick={() => setShowSupportApproval(true)}
-                className="whitespace-nowrap flex items-center justify-center gap-2 px-6 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors"
+                className="whitespace-nowrap flex items-center justify-center gap-2 px-6 py-3 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors"
               >
                 <i className="ri-send-plane-line"></i>
                 Request Approval for Broadcast
@@ -1154,8 +1154,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
               {result ? (
                 /* ── Result screen ── */
                 <div className="text-center py-10 space-y-4">
-                  <div className={`w-20 h-20 flex items-center justify-center rounded-full mx-auto ${result.failCount === 0 ? "bg-[#f0faf7]" : "bg-amber-50"}`}>
-                    <i className={`text-4xl ${result.failCount === 0 ? "ri-checkbox-circle-fill text-[#1a5c4f]" : "ri-error-warning-fill text-amber-500"}`}></i>
+                  <div className={`w-20 h-20 flex items-center justify-center rounded-full mx-auto ${result.failCount === 0 ? "bg-[#e8f0f9]" : "bg-amber-50"}`}>
+                    <i className={`text-4xl ${result.failCount === 0 ? "ri-checkbox-circle-fill text-[#3b6ea5]" : "ri-error-warning-fill text-amber-500"}`}></i>
                   </div>
                   <div>
                     <p className="text-2xl font-extrabold text-gray-900">
@@ -1178,14 +1178,14 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
                   {/* ── Send Next 30 CTA ── */}
                   {hasNextBatch && (
-                    <div className="mx-auto max-w-sm bg-[#f0faf7] border border-[#b8ddd5] rounded-2xl px-5 py-4 text-left space-y-3">
+                    <div className="mx-auto max-w-sm bg-[#e8f0f9] border border-[#b8cce4] rounded-2xl px-5 py-4 text-left space-y-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                        <div className="w-8 h-8 flex items-center justify-center bg-[#3b6ea5] rounded-lg flex-shrink-0">
                           <i className="ri-skip-forward-line text-white text-sm"></i>
                         </div>
                         <div>
-                          <p className="text-xs font-extrabold text-[#1a5c4f]">More recipients waiting</p>
-                          <p className="text-xs text-[#2d7a6a]">
+                          <p className="text-xs font-extrabold text-[#3b6ea5]">More recipients waiting</p>
+                          <p className="text-xs text-[#2d5a8e]">
                             {allEligibleRecipients.length - batchOffset} remaining · {allEligibleRecipients.length} total eligible
                           </p>
                         </div>
@@ -1193,12 +1193,12 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                       <button
                         type="button"
                         onClick={() => setResult(null)}
-                        className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] cursor-pointer transition-colors"
+                        className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors"
                       >
                         <i className={channel === "email" ? "ri-mail-send-line" : "ri-chat-1-line"}></i>
                         Send Next {Math.min(RECIPIENT_LIMIT, allEligibleRecipients.length - batchOffset)} Recipients
                       </button>
-                      <p className="text-[10px] text-[#2d7a6a] text-center">
+                      <p className="text-[10px] text-[#2d5a8e] text-center">
                         Batch {Math.ceil(batchOffset / RECIPIENT_LIMIT)} of {Math.ceil(allEligibleRecipients.length / RECIPIENT_LIMIT)} complete — same message &amp; filters apply
                       </p>
                     </div>
@@ -1206,7 +1206,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
                   <div className="flex items-center justify-center gap-3 flex-wrap">
                     <button type="button" onClick={onClose}
-                      className="whitespace-nowrap px-6 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-xl cursor-pointer hover:bg-[#17504a]">
+                      className="whitespace-nowrap px-6 py-2.5 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl cursor-pointer hover:bg-[#2d5a8e]">
                       Done
                     </button>
                     <button type="button" onClick={() => setShowHistory(true)}
@@ -1232,7 +1232,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                           onClick={() => setChannel(ch)}
                           className={`whitespace-nowrap flex items-center gap-2 px-5 py-3 rounded-xl border-2 text-sm font-bold transition-all cursor-pointer ${
                             channel === ch
-                              ? "border-[#1a5c4f] bg-[#f0faf7] text-[#1a5c4f]"
+                              ? "border-[#3b6ea5] bg-[#e8f0f9] text-[#3b6ea5]"
                               : "border-gray-200 text-gray-500 hover:border-gray-300"
                           }`}
                         >
@@ -1275,17 +1275,17 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                             onClick={() => setAudience(opt.key)}
                             className={`whitespace-nowrap text-left p-3 rounded-xl border-2 transition-all cursor-pointer ${
                               audience === opt.key
-                                ? "border-[#1a5c4f] bg-[#f0faf7]"
+                                ? "border-[#3b6ea5] bg-[#e8f0f9]"
                                 : "border-gray-200 hover:border-gray-300 bg-white"
                             }`}
                           >
                             <div className="flex items-center justify-between mb-1">
                               <i className={`${opt.icon} ${opt.color} text-sm`}></i>
-                              <span className={`text-sm font-extrabold ${audience === opt.key ? "text-[#1a5c4f]" : "text-gray-700"}`}>
+                              <span className={`text-sm font-extrabold ${audience === opt.key ? "text-[#3b6ea5]" : "text-gray-700"}`}>
                                 {count}
                               </span>
                             </div>
-                            <p className={`text-xs font-bold leading-tight ${audience === opt.key ? "text-[#1a5c4f]" : "text-gray-700"}`}>
+                            <p className={`text-xs font-bold leading-tight ${audience === opt.key ? "text-[#3b6ea5]" : "text-gray-700"}`}>
                               {opt.label}
                             </p>
                             <p className="text-xs text-gray-400 mt-0.5 leading-tight">{opt.description}</p>
@@ -1328,8 +1328,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                             onClick={() => setTimeRange(opt.key)}
                             className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                               timeRange === opt.key
-                                ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
-                                : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"
+                                ? "bg-[#3b6ea5] text-white border-[#3b6ea5]"
+                                : "border-gray-200 text-gray-600 hover:border-[#3b6ea5] hover:text-[#3b6ea5]"
                             }`}
                           >
                             {opt.label}
@@ -1403,11 +1403,11 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                       onClick={() => setShowRecipients((v) => !v)}
                     >
                       <div className="flex items-center gap-2">
-                        <i className="ri-group-line text-[#1a5c4f] text-sm"></i>
+                        <i className="ri-group-line text-[#3b6ea5] text-sm"></i>
                         <span className="text-xs font-bold text-gray-700">
                           Recipients
                         </span>
-                        <span className="px-2 py-0.5 bg-[#1a5c4f] text-white text-xs font-extrabold rounded-full">
+                        <span className="px-2 py-0.5 bg-[#3b6ea5] text-white text-xs font-extrabold rounded-full">
                           {recipients.length} will receive
                         </span>
                         {excludedEmails.size > 0 && (
@@ -1421,7 +1421,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); includeAll(); }}
-                            className="whitespace-nowrap text-xs font-bold text-[#1a5c4f] hover:underline cursor-pointer"
+                            className="whitespace-nowrap text-xs font-bold text-[#3b6ea5] hover:underline cursor-pointer"
                           >
                             Include all
                           </button>
@@ -1441,7 +1441,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                               value={recipientSearch}
                               onChange={(e) => setRecipientSearch(e.target.value)}
                               placeholder="Search name, email, phone..."
-                              className="w-full pl-7 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#1a5c4f]"
+                              className="w-full pl-7 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]"
                               onClick={(e) => e.stopPropagation()}
                             />
                           </div>
@@ -1475,8 +1475,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                   <div
                                     className="w-4 h-4 flex items-center justify-center rounded border-2 flex-shrink-0 transition-colors"
                                     style={{
-                                      borderColor: isExcluded ? "#ef4444" : "#1a5c4f",
-                                      backgroundColor: isExcluded ? "#fef2f2" : "#1a5c4f",
+                                      borderColor: isExcluded ? "#ef4444" : "#3b6ea5",
+                                      backgroundColor: isExcluded ? "#fef2f2" : "#3b6ea5",
                                     }}
                                   >
                                     {isExcluded
@@ -1484,8 +1484,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                       : <i className="ri-check-line text-white" style={{ fontSize: "9px" }}></i>
                                     }
                                   </div>
-                                  <div className="w-6 h-6 flex items-center justify-center bg-[#f0faf7] rounded-full flex-shrink-0">
-                                    <i className="ri-user-3-line text-[#1a5c4f] text-xs"></i>
+                                  <div className="w-6 h-6 flex items-center justify-center bg-[#e8f0f9] rounded-full flex-shrink-0">
+                                    <i className="ri-user-3-line text-[#3b6ea5] text-xs"></i>
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <p className={`text-xs font-semibold truncate ${isExcluded ? "line-through text-gray-400" : "text-gray-900"}`}>{name}</p>
@@ -1535,7 +1535,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                               {groups.map((grp) => (
                                 <div key={grp}>
                                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                                    <i className={`text-xs ${grp === "Lead Recovery" ? "ri-user-follow-line text-orange-400" : grp === "Existing Customers" ? "ri-group-line text-[#1a5c4f]" : "ri-settings-3-line text-gray-400"}`}></i>
+                                    <i className={`text-xs ${grp === "Lead Recovery" ? "ri-user-follow-line text-orange-400" : grp === "Existing Customers" ? "ri-group-line text-[#3b6ea5]" : "ri-settings-3-line text-gray-400"}`}></i>
                                     {grp}
                                   </p>
                                   <div className="flex flex-wrap gap-1.5">
@@ -1544,8 +1544,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                         onClick={() => handleEmailTemplateSelect(t.id)}
                                         className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                                           emailTemplateId === t.id
-                                            ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
-                                            : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"
+                                            ? "bg-[#3b6ea5] text-white border-[#3b6ea5]"
+                                            : "border-gray-200 text-gray-600 hover:border-[#3b6ea5] hover:text-[#3b6ea5]"
                                         }`}>
                                         {t.label}
                                       </button>
@@ -1566,7 +1566,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                           value={subject}
                           onChange={(e) => { setSubject(e.target.value); setEmailTemplateId("custom"); }}
                           placeholder="e.g. Time to Renew Your ESA Letter"
-                          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f]"
+                          className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5]"
                         />
                       </div>
 
@@ -1584,7 +1584,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                           onChange={(e) => { setBody(e.target.value); setEmailTemplateId("custom"); }}
                           rows={7}
                           placeholder="Write your message here..."
-                          className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] resize-none"
+                          className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5] resize-none"
                         />
                       </div>
 
@@ -1598,7 +1598,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                           <button
                             type="button"
                             onClick={() => setIncludePortalCta((v) => !v)}
-                            className={`whitespace-nowrap w-10 h-5 rounded-full relative transition-colors cursor-pointer flex-shrink-0 ${includePortalCta ? "bg-[#1a5c4f]" : "bg-gray-300"}`}
+                            className={`whitespace-nowrap w-10 h-5 rounded-full relative transition-colors cursor-pointer flex-shrink-0 ${includePortalCta ? "bg-[#3b6ea5]" : "bg-gray-300"}`}
                           >
                             <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${includePortalCta ? "translate-x-5" : "translate-x-0.5"}`}></div>
                           </button>
@@ -1612,7 +1612,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                 value={ctaLabel}
                                 onChange={(e) => setCtaLabel(e.target.value)}
                                 placeholder="e.g. Renew My Letter"
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                               />
                             </div>
                             <div>
@@ -1622,7 +1622,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                 value={ctaUrl}
                                 onChange={(e) => setCtaUrl(e.target.value)}
                                 placeholder="https://pawtenant.com/..."
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                               />
                             </div>
                           </div>
@@ -1654,9 +1654,9 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                           className="whitespace-nowrap w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                         >
                           <div className="flex items-center gap-2">
-                            <i className="ri-eye-line text-[#1a5c4f] text-sm"></i>
+                            <i className="ri-eye-line text-[#3b6ea5] text-sm"></i>
                             <span className="text-xs font-bold text-gray-700">Preview Email</span>
-                            <span className="px-2 py-0.5 bg-[#1a5c4f]/10 text-[#1a5c4f] text-[10px] font-extrabold rounded-full uppercase tracking-wide">Live</span>
+                            <span className="px-2 py-0.5 bg-[#3b6ea5]/10 text-[#3b6ea5] text-[10px] font-extrabold rounded-full uppercase tracking-wide">Live</span>
                           </div>
                           <i className={`text-gray-400 text-sm transition-transform ${showEmailPreview ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}`}></i>
                         </button>
@@ -1742,7 +1742,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                               {groups.map((grp) => (
                                 <div key={grp}>
                                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                                    <i className={`text-xs ${grp === "Lead Recovery" ? "ri-user-follow-line text-orange-400" : grp === "Existing Customers" ? "ri-group-line text-[#1a5c4f]" : "ri-settings-3-line text-gray-400"}`}></i>
+                                    <i className={`text-xs ${grp === "Lead Recovery" ? "ri-user-follow-line text-orange-400" : grp === "Existing Customers" ? "ri-group-line text-[#3b6ea5]" : "ri-settings-3-line text-gray-400"}`}></i>
                                     {grp}
                                   </p>
                                   <div className="flex flex-wrap gap-1.5">
@@ -1751,8 +1751,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                         onClick={() => handleSmsTemplateSelect(t.id)}
                                         className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                                           smsTemplateId === t.id
-                                            ? "bg-[#1a5c4f] text-white border-[#1a5c4f]"
-                                            : "border-gray-200 text-gray-600 hover:border-[#1a5c4f] hover:text-[#1a5c4f]"
+                                            ? "bg-[#3b6ea5] text-white border-[#3b6ea5]"
+                                            : "border-gray-200 text-gray-600 hover:border-[#3b6ea5] hover:text-[#3b6ea5]"
                                         }`}>
                                         {t.label}
                                       </button>
@@ -1774,7 +1774,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                           onChange={(e) => { setSmsText(e.target.value.slice(0, 640)); setSmsTemplateId("custom"); }}
                           rows={5}
                           placeholder="Type your SMS message... Use {name} to personalise"
-                          className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1a5c4f] resize-none"
+                          className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#3b6ea5] resize-none"
                         />
                         <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                           <i className="ri-lightbulb-line text-amber-500"></i>
@@ -1795,7 +1795,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                       <div className="grid gap-3 bg-gray-50 rounded-xl border border-gray-200 p-4"
                         style={{ gridTemplateColumns: `repeat(${totalCols}, minmax(0, 1fr))` }}>
                         <div className="text-center">
-                          <p className="text-2xl font-extrabold text-[#1a5c4f]">{recipients.length}</p>
+                          <p className="text-2xl font-extrabold text-[#3b6ea5]">{recipients.length}</p>
                           <p className="text-xs text-gray-500">Will receive</p>
                         </div>
                         <div className="text-center border-x border-gray-200">
@@ -1843,7 +1843,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                   )}
 
                   {/* Audience summary */}
-                  <div className={`flex items-center gap-3 p-3 rounded-xl border ${audience === "all_everyone" ? "bg-violet-50 border-violet-200" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
+                  <div className={`flex items-center gap-3 p-3 rounded-xl border ${audience === "all_everyone" ? "bg-violet-50 border-violet-200" : "bg-[#e8f0f9] border-[#b8cce4]"}`}>
                     <i className={`${selectedAudienceOption.icon} ${selectedAudienceOption.color} text-base flex-shrink-0`}></i>
                     <div>
                       <p className="text-xs font-bold text-gray-700">{selectedAudienceOption.label}</p>
@@ -1873,7 +1873,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                   type="button"
                   onClick={() => setShowConfirmDialog(true)}
                   disabled={sending || !isReadyToSend}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   {sending ? (
                     <><i className="ri-loader-4-line animate-spin"></i>Sending to {recipients.length} customers...</>
@@ -1937,7 +1937,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                 {/* Channel */}
                 <div className="flex items-center justify-between py-2 border-b border-gray-100">
                   <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Channel</span>
-                  <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold ${channel === "email" ? "bg-[#f0faf7] text-[#1a5c4f]" : "bg-amber-50 text-amber-700"}`}>
+                  <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold ${channel === "email" ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-amber-50 text-amber-700"}`}>
                     <i className={channel === "email" ? "ri-mail-send-line" : "ri-chat-1-line"}></i>
                     {channel === "email" ? "Email" : "SMS"}
                   </span>
@@ -1977,7 +1977,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                         </span>
                       )}
                       {timeRange !== "all" && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-[#f0faf7] text-[#1a5c4f] text-[10px] font-bold rounded-full">
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] text-[10px] font-bold rounded-full">
                           <i className="ri-calendar-line"></i>
                           {timeRange === "24h" ? "Last 24h" : timeRange === "3d" ? "Last 3 days" : "Last 7 days"}
                         </span>
@@ -2006,16 +2006,16 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                 )}
 
                 {/* Recipient count — big highlight */}
-                <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3 flex items-center justify-between">
+                <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold text-[#1a5c4f]">Final recipient count</p>
-                    <p className="text-xs text-[#2d7a6a] mt-0.5">
+                    <p className="text-xs font-bold text-[#3b6ea5]">Final recipient count</p>
+                    <p className="text-xs text-[#2d5a8e] mt-0.5">
                       {channel === "email" ? "Each will receive a personalized email" : "Each will receive an SMS via Twilio"}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-3xl font-extrabold text-[#1a5c4f]">{recipients.length}</p>
-                    <p className="text-xs text-[#2d7a6a] font-semibold">{channel === "email" ? "emails" : "texts"}</p>
+                    <p className="text-3xl font-extrabold text-[#3b6ea5]">{recipients.length}</p>
+                    <p className="text-xs text-[#2d5a8e] font-semibold">{channel === "email" ? "emails" : "texts"}</p>
                   </div>
                 </div>
 
@@ -2043,7 +2043,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                   type="button"
                   onClick={() => { setShowConfirmDialog(false); handleSend(); }}
                   disabled={sending}
-                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-sm font-extrabold rounded-xl hover:bg-[#17504a] disabled:opacity-50 cursor-pointer transition-colors"
+                  className="whitespace-nowrap flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#3b6ea5] text-white text-sm font-extrabold rounded-xl hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   <i className={channel === "email" ? "ri-mail-send-line" : "ri-chat-1-line"}></i>
                   Confirm &amp; Send

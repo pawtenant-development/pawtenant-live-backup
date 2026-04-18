@@ -115,7 +115,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-0.5">Admin Action</p>
+            <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-0.5">Admin Action</p>
             <h2 className="text-lg font-extrabold text-gray-900">Add Provider to Panel</h2>
           </div>
           <button
@@ -132,7 +132,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
           <button
             type="button"
             onClick={() => setStep(1)}
-            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${step === 1 ? "bg-[#1a5c4f] text-white" : "bg-gray-100 text-gray-500"}`}
+            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${step === 1 ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-500"}`}
           >
             <i className="ri-user-line"></i> Provider Info
           </button>
@@ -140,12 +140,12 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
           <button
             type="button"
             onClick={() => setStep(2)}
-            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${step === 2 ? "bg-[#1a5c4f] text-white" : "bg-gray-100 text-gray-500"}`}
+            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${step === 2 ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-500"}`}
           >
             <i className="ri-map-pin-line"></i> Licensed States
             {selectedStates.length > 0 && (
               <span
-                className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-extrabold ${step === 2 ? "bg-white/20 text-white" : "bg-[#1a5c4f] text-white"}`}
+                className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-extrabold ${step === 2 ? "bg-white/20 text-white" : "bg-[#3b6ea5] text-white"}`}
               >
                 {selectedStates.length}
               </span>
@@ -168,7 +168,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                     value={form.full_name}
                     onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
                     placeholder="Dr. Jane Smith"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 <div>
@@ -178,7 +178,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                     value={form.title}
                     onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                     placeholder="PhD, LCSW, MD..."
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 <div>
@@ -188,7 +188,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                     value={form.license_number}
                     onChange={(e) => setForm((f) => ({ ...f, license_number: e.target.value }))}
                     placeholder="LIC-000000"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 <div className="col-span-2">
@@ -198,7 +198,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                     value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                     placeholder="doctor@example.com"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 <div>
@@ -208,7 +208,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                     value={form.phone}
                     onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                     placeholder="+1 (555) 000-0000"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>
                 <div>
@@ -224,7 +224,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                       value={form.per_order_rate}
                       onChange={(e) => setForm((f) => ({ ...f, per_order_rate: e.target.value }))}
                       placeholder="e.g. 30"
-                      className="w-full pl-7 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                      className="w-full pl-7 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-1">Payout amount per completed ESA case</p>
@@ -237,7 +237,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                     placeholder="Brief professional summary shown to customers..."
                     rows={3}
                     maxLength={500}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f] resize-none"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] resize-none"
                   />
                 </div>
               </div>
@@ -256,7 +256,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                   value={stateFilter}
                   onChange={(e) => setStateFilter(e.target.value)}
                   placeholder="Filter states..."
-                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#1a5c4f]"
+                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                 />
               </div>
               <div className="grid grid-cols-3 gap-1.5 max-h-56 overflow-y-auto pr-1">
@@ -268,12 +268,12 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                       onClick={() => toggleState(s.name)}
                       className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-colors text-xs font-medium select-none ${
                         checked
-                          ? "bg-[#e8f5f1] text-[#1a5c4f] border border-[#b8ddd5]"
+                          ? "bg-[#e8f5f1] text-[#3b6ea5] border border-[#b8cce4]"
                           : "bg-gray-50 text-gray-500 border border-gray-100 hover:bg-gray-100"
                       }`}
                     >
                       <div
-                        className={`w-3.5 h-3.5 flex items-center justify-center rounded flex-shrink-0 ${checked ? "bg-[#1a5c4f]" : "border border-gray-300"}`}
+                        className={`w-3.5 h-3.5 flex items-center justify-center rounded flex-shrink-0 ${checked ? "bg-[#3b6ea5]" : "border border-gray-300"}`}
                       >
                         {checked && <i className="ri-check-line text-white" style={{ fontSize: "9px" }}></i>}
                       </div>
@@ -284,8 +284,8 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                 })}
               </div>
               {selectedStates.length > 0 && (
-                <div className="mt-3 p-2 bg-[#f0faf7] rounded-lg">
-                  <p className="text-xs font-bold text-[#1a5c4f] mb-1">
+                <div className="mt-3 p-2 bg-[#e8f0f9] rounded-lg">
+                  <p className="text-xs font-bold text-[#3b6ea5] mb-1">
                     {selectedStates.length} state{selectedStates.length !== 1 ? "s" : ""} selected
                   </p>
                   <div className="flex flex-wrap gap-1">
@@ -293,7 +293,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                       <span
                         key={name}
                         onClick={() => toggleState(name)}
-                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#1a5c4f] text-white rounded text-xs cursor-pointer hover:bg-[#17504a]"
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#3b6ea5] text-white rounded text-xs cursor-pointer hover:bg-[#2d5a8e]"
                       >
                         {US_STATES.find((s) => s.name === name)?.abbr}
                         <i className="ri-close-line" style={{ fontSize: "9px" }}></i>
@@ -339,7 +339,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] cursor-pointer"
+                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer"
               >
                 Next: Licensed States <i className="ri-arrow-right-s-line"></i>
               </button>
@@ -348,7 +348,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] disabled:opacity-50 cursor-pointer"
+                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer"
               >
                 {submitting ? (
                   <><i className="ri-loader-4-line animate-spin"></i> Saving...</>

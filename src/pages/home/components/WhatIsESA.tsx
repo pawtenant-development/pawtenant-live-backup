@@ -64,7 +64,7 @@ export default function WhatIsESA() {
               An Emotional Support Animal (ESA) is a companion animal that provides therapeutic benefit to its owner through affection and companionship. Unlike service animals, ESAs do not need specialized training. Their presence alone provides significant mental health benefits for people struggling with emotional or psychological conditions.
             </p>
             <p className="text-gray-600 text-sm leading-relaxed mb-8">
-              With a valid ESA letter signed by a licensed mental health professional, you gain legal protections allowing you to live with your emotional support animal even in no-pet housing — without additional pet fees.
+              With a <strong className="text-gray-800">legitimate ESA letter</strong> signed by a licensed mental health professional, you gain legal protections allowing you to live with your emotional support animal even in no-pet housing — without additional pet fees. You can get your <strong className="text-gray-800">legit ESA letter online</strong> in as little as 24 hours through our simple, fully digital process.
             </p>
 
             <ul className="space-y-3 mb-8">

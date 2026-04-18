@@ -53,11 +53,11 @@ export default function TrustFeatures() {
         <div className="text-center mb-14">
           <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-2">Why Choose Us</p>
           <h2 className="text-3xl font-extrabold text-gray-900">
-            Why Thousands Trust Us for Their{" "}
-            <span className="text-orange-500">ESA Letters</span>
+            Why Thousands Get Their{" "}
+            <span className="text-orange-500">Legit ESA Letter</span> With Us
           </h2>
           <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
-            We make getting a legitimate emotional support animal letter fast, affordable, and completely stress-free.
+            We make getting a <strong>legitimate ESA letter online</strong> fast, affordable, and completely stress-free — from licensed professionals you can trust.
           </p>
         </div>
 
@@ -87,12 +87,17 @@ export default function TrustFeatures() {
         </div>
 
         {/* CTA */}
-        <div className="text-center mt-12">
+        {/* Inline keyword reinforcement */}
+        <p className="text-center text-gray-500 text-xs mt-8 max-w-lg mx-auto">
+          Looking for a <strong className="text-gray-700">legit ESA letter online</strong>? PawTenant connects you with licensed clinicians who issue <strong className="text-gray-700">legitimate ESA letters</strong> accepted by landlords across all 50 states.
+        </p>
+
+        <div className="text-center mt-6">
           <a
             href="#pricing"
             className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
-            Get Your ESA Letter Now
+            Get Your Legit ESA Letter Now
             <i className="ri-arrow-right-line"></i>
           </a>
         </div>

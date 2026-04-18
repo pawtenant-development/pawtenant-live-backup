@@ -30,10 +30,10 @@ export default function StepsSection() {
         <div className="text-center mb-14">
           <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-2">Simple Process</p>
           <h2 className="text-3xl font-extrabold text-gray-900">
-            Get Your <span className="text-orange-500">ESA Letter</span> in 3 Simple Steps
+            Get Your <span className="text-orange-500">Legit ESA Letter</span> in 3 Simple Steps
           </h2>
           <p className="text-gray-500 mt-3 max-w-xl mx-auto text-sm">
-            Our streamlined process makes it easy to obtain a legitimate emotional support animal letter without the stress.
+            Our streamlined process makes it easy to get a <strong>legitimate ESA letter online</strong> — no waiting rooms, no in-person visits, no stress.
           </p>
         </div>
 
@@ -63,7 +63,7 @@ export default function StepsSection() {
             href={withAttribution("/assessment")}
             className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
-            Start Your ESA Letter Now
+            Start Your Legitimate ESA Letter Online
             <i className="ri-arrow-right-line"></i>
           </a>
         </div>

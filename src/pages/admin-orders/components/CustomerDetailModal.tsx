@@ -81,7 +81,7 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700",
   in_review: "bg-sky-100 text-sky-700",
   approved: "bg-emerald-100 text-emerald-700",
-  letter_sent: "bg-[#e8f5f1] text-[#1a5c4f]",
+  letter_sent: "bg-[#e8f5f1] text-[#3b6ea5]",
   patient_notified: "bg-violet-100 text-violet-700",
   unassigned: "bg-gray-100 text-gray-500",
 };
@@ -266,7 +266,7 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 flex items-center justify-center bg-[#f0faf7] rounded-full text-[#1a5c4f] text-lg font-extrabold flex-shrink-0">
+            <div className="w-12 h-12 flex items-center justify-center bg-[#e8f0f9] rounded-full text-[#3b6ea5] text-lg font-extrabold flex-shrink-0">
               {initials}
             </div>
             <div>
@@ -274,8 +274,8 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                 <h2 className="text-base font-extrabold text-gray-900">{fullName}</h2>
                 {/* Portal status badge */}
                 {portalStatus === "exists" ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#f0faf7] text-[#1a5c4f] rounded-full text-xs font-bold">
-                    <i className="ri-user-check-line" style={{ fontSize: "10px" }}></i>Portal Active
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded-full text-xs font-bold">
+                    <i className="ri-user-follow-line" style={{ fontSize: "10px" }}></i>Portal Active
                   </span>
                 ) : portalStatus === "not_found" ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs font-bold">
@@ -317,7 +317,7 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="text-center">
-              <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f] block mb-3"></i>
+              <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
               <p className="text-sm text-gray-500">Loading case details...</p>
             </div>
           </div>
@@ -361,7 +361,7 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                           <p className="text-xs font-bold text-emerald-600 mt-1">${order.price}</p>
                         )}
                         {(notes[order.id]?.length ?? 0) > 0 && (
-                          <p className="text-xs text-[#1a5c4f] mt-1 flex items-center gap-1">
+                          <p className="text-xs text-[#3b6ea5] mt-1 flex items-center gap-1">
                             <i className="ri-sticky-note-line"></i>{notes[order.id].length} note{notes[order.id].length !== 1 ? "s" : ""}
                           </p>
                         )}
@@ -409,8 +409,8 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                     )}
 
                     {activeOrder.ghl_synced_at && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#f0faf7] text-[#1a5c4f] text-xs font-semibold rounded-lg">
-                        <i className="ri-checkbox-circle-fill text-[#1a5c4f]"></i>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#e8f0f9] text-[#3b6ea5] text-xs font-semibold rounded-lg">
+                        <i className="ri-checkbox-circle-fill text-[#3b6ea5]"></i>
                         GHL Synced {formatDateShort(activeOrder.ghl_synced_at)}
                       </span>
                     )}
@@ -427,7 +427,7 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
 
                     {/* Feedback messages */}
                     {(emailMsg[activeOrder.confirmation_id] || ghlMsg[activeOrder.confirmation_id]) && (
-                      <p className={`text-xs flex items-center gap-1 ${(emailMsg[activeOrder.confirmation_id]?.ok ?? ghlMsg[activeOrder.confirmation_id]?.ok) ? "text-[#1a5c4f]" : "text-red-500"}`}>
+                      <p className={`text-xs flex items-center gap-1 ${(emailMsg[activeOrder.confirmation_id]?.ok ?? ghlMsg[activeOrder.confirmation_id]?.ok) ? "text-[#3b6ea5]" : "text-red-500"}`}>
                         <i className={`${(emailMsg[activeOrder.confirmation_id]?.ok ?? ghlMsg[activeOrder.confirmation_id]?.ok) ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}`}></i>
                         {emailMsg[activeOrder.confirmation_id]?.msg ?? ghlMsg[activeOrder.confirmation_id]?.msg}
                       </p>
@@ -496,19 +496,19 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
 
                   {/* Assigned Doctor */}
                   {activeOrder.doctor_name && (
-                    <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4 mb-5 flex items-center gap-3">
+                    <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4 mb-5 flex items-center gap-3">
                       <div className="w-9 h-9 flex items-center justify-center bg-white rounded-full flex-shrink-0">
-                        <i className="ri-user-heart-line text-[#1a5c4f] text-base"></i>
+                        <i className="ri-user-heart-line text-[#3b6ea5] text-base"></i>
                       </div>
                       <div>
-                        <p className="text-xs text-[#1a5c4f] font-bold">Assigned Provider</p>
-                        <p className="text-sm font-bold text-[#1a5c4f]">{activeOrder.doctor_name}</p>
-                        {activeOrder.doctor_email && <p className="text-xs text-[#1a5c4f]/70">{activeOrder.doctor_email}</p>}
+                        <p className="text-xs text-[#3b6ea5] font-bold">Assigned Provider</p>
+                        <p className="text-sm font-bold text-[#3b6ea5]">{activeOrder.doctor_name}</p>
+                        {activeOrder.doctor_email && <p className="text-xs text-[#3b6ea5]/70">{activeOrder.doctor_email}</p>}
                       </div>
                       {activeOrder.patient_notification_sent_at && (
                         <div className="ml-auto text-right">
-                          <p className="text-xs text-[#1a5c4f]/60">Patient notified</p>
-                          <p className="text-xs font-semibold text-[#1a5c4f]">{formatDateShort(activeOrder.patient_notification_sent_at)}</p>
+                          <p className="text-xs text-[#3b6ea5]/60">Patient notified</p>
+                          <p className="text-xs font-semibold text-[#3b6ea5]">{formatDateShort(activeOrder.patient_notification_sent_at)}</p>
                         </div>
                       )}
                     </div>
@@ -528,11 +528,11 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                               href={doc.file_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl text-sm font-semibold text-[#1a5c4f] hover:bg-[#e0f2ec] cursor-pointer transition-colors"
+                              className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl text-sm font-semibold text-[#3b6ea5] hover:bg-[#e0f2ec] cursor-pointer transition-colors"
                             >
                               <i className="ri-file-check-line text-base"></i>
                               {doc.label}
-                              <i className="ri-external-link-line text-[#1a5c4f]/40 text-xs"></i>
+                              <i className="ri-external-link-line text-[#3b6ea5]/40 text-xs"></i>
                             </a>
                           ))}
                         {/* Legacy signed_letter_url (direct upload from old provider flow) */}
@@ -541,11 +541,11 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                             href={activeOrder.signed_letter_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl text-sm font-semibold text-[#1a5c4f] hover:bg-[#e0f2ec] cursor-pointer transition-colors"
+                            className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl text-sm font-semibold text-[#3b6ea5] hover:bg-[#e0f2ec] cursor-pointer transition-colors"
                           >
                             <i className="ri-shield-check-line text-base"></i>
                             Signed Letter
-                            <i className="ri-external-link-line text-[#1a5c4f]/40 text-xs"></i>
+                            <i className="ri-external-link-line text-[#3b6ea5]/40 text-xs"></i>
                           </a>
                         )}
                       </div>
@@ -569,7 +569,7 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                         <i className={tab.icon}></i>
                         {tab.label}
                         {tab.count !== null && tab.count > 0 && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${activeSection === tab.key ? "bg-[#1a5c4f] text-white" : "bg-gray-200 text-gray-600"}`}>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${activeSection === tab.key ? "bg-[#3b6ea5] text-white" : "bg-gray-200 text-gray-600"}`}>
                             {tab.count}
                           </span>
                         )}
@@ -594,8 +594,8 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                             <div key={note.id} className="bg-white border border-gray-100 rounded-xl p-4">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-full flex-shrink-0">
-                                    <i className="ri-user-heart-line text-[#1a5c4f] text-xs"></i>
+                                  <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-full flex-shrink-0">
+                                    <i className="ri-user-heart-line text-[#3b6ea5] text-xs"></i>
                                   </div>
                                   <p className="text-xs font-bold text-gray-700">{getDoctorName(note.doctor_user_id)}</p>
                                 </div>
@@ -624,9 +624,9 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                           {activeNotifs.map((notif) => {
                             const icon = NOTIF_ICON[notif.type] ?? "ri-notification-3-line";
                             return (
-                              <div key={notif.id} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${notif.is_read ? "bg-white border-gray-100" : "bg-[#f0faf7] border-[#b8ddd5]"}`}>
-                                <div className={`w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0 ${notif.is_read ? "bg-gray-100" : "bg-[#1a5c4f]/10"}`}>
-                                  <i className={`${icon} ${notif.is_read ? "text-gray-400" : "text-[#1a5c4f]"} text-sm`}></i>
+                              <div key={notif.id} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${notif.is_read ? "bg-white border-gray-100" : "bg-[#e8f0f9] border-[#b8cce4]"}`}>
+                                <div className={`w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0 ${notif.is_read ? "bg-gray-100" : "bg-[#3b6ea5]/10"}`}>
+                                  <i className={`${icon} ${notif.is_read ? "text-gray-400" : "text-[#3b6ea5]"} text-sm`}></i>
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center justify-between gap-2">
@@ -635,7 +635,7 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                                   </div>
                                   <p className="text-xs text-gray-500 mt-0.5">{notif.message}</p>
                                   {!notif.is_read && (
-                                    <span className="inline-block mt-1 px-1.5 py-0.5 bg-[#1a5c4f] text-white text-xs font-bold rounded">Unread</span>
+                                    <span className="inline-block mt-1 px-1.5 py-0.5 bg-[#3b6ea5] text-white text-xs font-bold rounded">Unread</span>
                                   )}
                                 </div>
                               </div>

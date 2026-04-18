@@ -360,10 +360,6 @@ export default function AssessmentPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const [stripeClientSecret, setStripeClientSecret] = useState("");
   const [stripeSecretLoading, setStripeSecretLoading] = useState(false);
-  const [stripePaymentIntentId, setStripePaymentIntentId] = useState("");
-  // Actual discounted amount (dollars) set on the PaymentIntent by the backend.
-  // This is the source of truth for what Stripe will charge — used in handlePaymentSuccess.
-  const [stripeChargeAmount, setStripeChargeAmount] = useState<number | null>(null);
   const [stripeSecretError, setStripeSecretError] = useState("");
   const stripeSecretInFlight = useRef(false); // dedupe concurrent calls
   const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
@@ -597,12 +593,6 @@ export default function AssessmentPage() {
     fetchClientSecret(step2, confirmationId.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, step2.email]);
-  useEffect(() => {
-  if (currentStep !== 3) return;
-  if (!stripePaymentIntentId) return;
-  fetchClientSecret(step2, confirmationId.current);
-// eslint-disable-next-line react-hooks/exhaustive-deps
-}, [appliedCoupon]);
 
   // ── Fetch Stripe client_secret from server ────────────────────────────────
   // Accepts step2 data directly so it works both from goNext (current state)
@@ -615,7 +605,6 @@ export default function AssessmentPage() {
     stripeSecretInFlight.current = true;
     setStripeSecretLoading(true);
     setStripeSecretError("");
-    setStripeClientSecret(""); // clear stale secret so Elements unmounts before new PI arrives
     try {
       const res = await loggedFetch(
         "create-payment-intent",
@@ -631,22 +620,17 @@ export default function AssessmentPage() {
             deliverySpeed:  s2.deliverySpeed,
             petCount:       s2.pets?.length ?? 1,
             email:          s2.email,
-            confirmationId: confirmationId.current,
+            confirmationId: confId,
             firstName:      s2.firstName,
             lastName:       s2.lastName,
             state:          s2.state,
-            couponCode:             appliedCoupon?.code ?? "",
-            existingPaymentIntentId: stripePaymentIntentId,
           }),
         },
         confId,
       );
-      const result = (await res.json()) as { clientSecret?: string; paymentIntentId?: string; amount?: number; error?: string };
+      const result = (await res.json()) as { clientSecret?: string; error?: string };
       if (result.clientSecret) {
         setStripeClientSecret(result.clientSecret);
-        if (result.paymentIntentId) setStripePaymentIntentId(result.paymentIntentId);
-        // amount is in cents from the backend (e.g. 8000 = $80); convert to dollars for use in success handler
-        if (typeof result.amount === "number") setStripeChargeAmount(result.amount / 100);
         setStripeSecretError("");
       } else {
         const errMsg = result.error ?? "Payment setup failed. Please try again.";
@@ -913,7 +897,7 @@ export default function AssessmentPage() {
    * the write bypasses RLS — anon client upserts fail silently when
    * user_id is null and RLS requires auth.uid() = user_id.
    */
-  const saveOrderToSupabase = async (price: number, docName: string, paymentIntentId?: string, paymentMethod?: string, couponCode?: string, couponDiscount?: number) => {
+  const saveOrderToSupabase = async (price: number, docName: string, paymentIntentId?: string, paymentMethod?: string) => {
     const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
     const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
     const paidAt = new Date().toISOString();
@@ -941,8 +925,6 @@ export default function AssessmentPage() {
           paymentIntentId: paymentIntentId ?? null,
           paymentMethod: paymentMethod ?? null,
           paidAt,
-          couponCode: couponCode ?? null,
-          couponDiscount: couponDiscount ?? null,
           selectedProvider: docName,
           planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
           addonServices: (step3.addonServices ?? []).length > 0 ? step3.addonServices : null,
@@ -992,7 +974,7 @@ export default function AssessmentPage() {
         Authorization: `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({
-        confirmationId: confirmationId.current,
+        confirmationId: confId,
         doctorEmail,
       }),
     }).catch(() => {
@@ -1010,12 +992,10 @@ export default function AssessmentPage() {
     const is2to3Days = step2.deliverySpeed === "2-3days";
     const isSubscription = step3.plan === "subscription";
 
-    // Compute the base price for fallback
-    const basePrice = isSubscription
+    // Compute the correct price based on plan type (subscription vs one-time)
+    const price = isSubscription
       ? (petTier === 1 ? (is2to3Days ? 90 : 105) : petTier === 2 ? (is2to3Days ? 105 : 120) : (is2to3Days ? 120 : 135))
       : (petTier === 1 ? (is2to3Days ? 100 : 115) : petTier === 2 ? (is2to3Days ? 115 : 130) : (is2to3Days ? 130 : 145));
-    // Use the backend-confirmed charge amount (discounted). Fall back to base price if unavailable.
-    const price = stripeChargeAmount ?? basePrice;
 
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
@@ -1044,14 +1024,12 @@ export default function AssessmentPage() {
   const handlePaymentSuccess = async (paymentIntentId: string) => {
     paymentCompletedRef.current = true; // prevent unmount cleanup from cancelling the subscription
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
-    // Compute base price (used as fallback if stripeChargeAmount is unavailable)
+    // Compute correct price based on actual pet count + delivery speed + plan
     const petTier = step2.pets.length >= 3 ? 3 : step2.pets.length === 2 ? 2 : 1;
     const is2to3Days = step2.deliverySpeed === "2-3days";
-    const basePrice = step3.plan === "subscription"
+    const price = step3.plan === "subscription"
       ? (petTier === 1 ? (is2to3Days ? 90 : 105) : petTier === 2 ? (is2to3Days ? 105 : 120) : (is2to3Days ? 120 : 135))
       : (petTier === 1 ? (is2to3Days ? 100 : 115) : petTier === 2 ? (is2to3Days ? 115 : 130) : (is2to3Days ? 130 : 145));
-    // Use the backend-confirmed charge amount (discounted). Fall back to base price if unavailable.
-    const price = stripeChargeAmount ?? basePrice;
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
 
     // Read payment method stored in session storage by Step3Checkout
@@ -1071,7 +1049,7 @@ export default function AssessmentPage() {
     // triggerSheetsFullSync() below handles this automatically after the order is saved.
 
     // Await order save so assign-doctor and generate-esa-letter can find the row immediately
-    await saveOrderToSupabase(price, docName, paymentIntentId, paymentMethod, appliedCoupon?.code, appliedCoupon?.discount);
+    await saveOrderToSupabase(price, docName, paymentIntentId, paymentMethod);
 
     // Sync Google Sheets after payment (ensures all columns are correct)
     triggerSheetsFullSync();

@@ -129,11 +129,12 @@ export default function ESALetterCostPage() {
 
   return (
     <main>
-      <title>ESA Letter Cost 2026: How Much Does an ESA Letter Cost? | PawTenant</title>
-      <meta name="description" content="How much does an ESA letter cost in 2026? PawTenant offers legitimate ESA letters starting at $99 — includes licensed LMHP consultation, same-day delivery, and 100% money-back guarantee." />
+      <title>Affordable ESA Letter | Legitimate &amp; Fast | PawTenant</title>
+      <meta name="description" content="Get an affordable ESA letter without sacrificing legitimacy. Licensed professionals issue your letter within 24 hours. Protect your housing rights at a fair price." />
+      <meta name="keywords" content="affordable ESA letter, ESA letter cost, legitimate ESA letter, ESA letter price, cheap ESA letter" />
       <link rel="canonical" href="https://www.pawtenant.com/esa-letter-cost" />
-      <meta property="og:title" content="ESA Letter Cost 2026: Starting at $99 | PawTenant" />
-      <meta property="og:description" content="Affordable ESA letters starting at $99. Licensed professionals, same-day delivery, 100% money-back guarantee. Covers housing under the Fair Housing Act." />
+      <meta property="og:title" content="Affordable ESA Letter | Legitimate & Fast | PawTenant" />
+      <meta property="og:description" content="Get an affordable ESA letter without sacrificing legitimacy. Licensed professionals issue your letter within 24 hours. Protect your housing rights at a fair price." />
       <meta property="og:url" content="https://www.pawtenant.com/esa-letter-cost" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",

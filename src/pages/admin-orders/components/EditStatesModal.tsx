@@ -139,26 +139,32 @@ export default function EditStatesModal({ doctor, onClose, onSaved }: EditStates
     setSaving(true);
     setError("");
     try {
+      // Clean up license numbers — remove entries for deselected states
+      const cleanedLicenses: Record<string, string> = {};
+      Object.entries(licenseNumbers).forEach(([abbr, num]) => {
+        if (num.trim()) {
+          const stateName = US_STATES.find((s) => s.abbr === abbr)?.name;
+          if (stateName && selected.includes(stateName)) {
+            cleanedLicenses[abbr] = num.trim();
+          }
+        }
+      });
+
+      // Auto-sync: any state that has a license number must also be in licensed_states.
+      // This prevents drift where state_license_numbers has a key but licensed_states is missing it.
+      const licenseStateNames = Object.keys(cleanedLicenses)
+        .map((abbr) => US_STATES.find((s) => s.abbr === abbr)?.name)
+        .filter((name): name is string => !!name);
+      const finalStates = Array.from(new Set([...selected, ...licenseStateNames]));
+
       const updates: Promise<unknown>[] = [];
 
       if (doctor.contactId) {
-        updates.push(supabase.from("doctor_contacts").update({ licensed_states: selected }).eq("id", doctor.contactId));
+        updates.push(supabase.from("doctor_contacts").update({ licensed_states: finalStates }).eq("id", doctor.contactId));
       }
       if (doctor.profileId) {
-        // Clean up license numbers — remove entries for deselected states
-        const cleanedLicenses: Record<string, string> = {};
-        Object.entries(licenseNumbers).forEach(([abbr, num]) => {
-          if (num.trim()) {
-            // Only keep if the state is still selected
-            const stateName = US_STATES.find((s) => s.abbr === abbr)?.name;
-            if (stateName && selected.includes(stateName)) {
-              cleanedLicenses[abbr] = num.trim();
-            }
-          }
-        });
-
         updates.push(supabase.from("doctor_profiles").update({
-          licensed_states: selected,
+          licensed_states: finalStates,
           state_license_numbers: Object.keys(cleanedLicenses).length > 0 ? cleanedLicenses : null,
         }).eq("id", doctor.profileId));
       }
@@ -166,7 +172,7 @@ export default function EditStatesModal({ doctor, onClose, onSaved }: EditStates
       const results = await Promise.all(updates);
       const anyError = results.find((r: unknown) => (r as { error?: { message: string } })?.error);
       if (anyError) throw new Error((anyError as { error: { message: string } }).error.message);
-      onSaved(doctor.name, selected.length);
+      onSaved(doctor.name, finalStates.length);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save. Please try again.");
     }

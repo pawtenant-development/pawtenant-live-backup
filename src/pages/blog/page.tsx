@@ -259,11 +259,12 @@ export default function BlogPage() {
 
   return (
     <main>
-      <title>ESA Blog: Emotional Support Animal Guides, Laws &amp; Tips 2026 | PawTenant</title>
-      <meta name="description" content="Expert guides on ESA laws, housing rights, ESA letters, state regulations, and college dorm rules. Written by licensed professionals at PawTenant." />
+      <title>ESA Letter Blog | Guides, Laws &amp; Tips | PawTenant</title>
+      <meta name="description" content="Explore expert guides on ESA letters, emotional support animal laws, and tenant rights. Stay informed with PawTenant's blog, your trusted ESA resource." />
+      <meta name="keywords" content="ESA letter blog, emotional support animal guides, ESA laws, ESA housing rights, ESA tips" />
       <link rel="canonical" href="https://www.pawtenant.com/blog" />
-      <meta property="og:title" content="ESA Blog: Emotional Support Animal Guides & Laws 2026 | PawTenant" />
-      <meta property="og:description" content="Expert guides on ESA laws, housing rights, ESA letters, and state regulations. PawTenant's licensed professionals share what you need to know." />
+      <meta property="og:title" content="ESA Letter Blog | Guides, Laws & Tips | PawTenant" />
+      <meta property="og:description" content="Explore expert guides on ESA letters, emotional support animal laws, and tenant rights. Stay informed with PawTenant's blog, your trusted ESA resource." />
       <meta property="og:url" content="https://www.pawtenant.com/blog" />
       <meta property="og:type" content="website" />
 

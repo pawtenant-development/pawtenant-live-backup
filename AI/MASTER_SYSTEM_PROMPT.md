@@ -88,6 +88,18 @@ Always return:
 
 ---
 
+## REPO SAFETY
+
+- pawtenant-test = development environment
+- pawtenant-live-backup = production environment
+
+Rules:
+- All fixes start in pawtenant-test
+- Live changes may only mirror tested changes
+- Never create or modify files outside the active repo
+
+---
+
 ## ENVIRONMENT RULES
 
 Test:

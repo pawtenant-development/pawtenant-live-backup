@@ -131,7 +131,7 @@ export default function DoctorProfilePage() {
       <>
         <SharedNavbar />
         <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4]">
-          <i className="ri-loader-4-line animate-spin text-3xl text-[#1a5c4f]"></i>
+          <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
         </div>
         <SharedFooter />
       </>
@@ -201,8 +201,8 @@ export default function DoctorProfilePage() {
                   </a>
                   {(npiNumber || doctor.npi_number) && (
                     <>
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0faf7] border border-[#b8ddd5] text-[#1a5c4f] text-xs font-semibold">
-                        <i className="ri-medal-line text-[#1a5c4f]"></i>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e8f0f9] border border-[#b8cce4] text-[#2c5282] text-xs font-semibold">
+                        <i className="ri-medal-line text-[#2c5282]"></i>
                         NPI Verified
                       </span>
                       <button
@@ -214,7 +214,7 @@ export default function DoctorProfilePage() {
                         {npiVerify.status === "loading" ? (
                           <><i className="ri-loader-4-line animate-spin"></i>Verifying...</>
                         ) : npiVerify.status === "verified" ? (
-                          <><i className="ri-checkbox-circle-fill text-[#1a5c4f]"></i>NPI Confirmed</>
+                          <><i className="ri-checkbox-circle-fill text-[#2c5282]"></i>NPI Confirmed</>
                         ) : (
                           <><i className="ri-search-eye-line"></i>Verify NPI</>
                         )}
@@ -240,19 +240,19 @@ export default function DoctorProfilePage() {
               <div className="mx-8 md:mx-10 mt-5">
                 {npiVerify.status === "loading" && (
                   <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl">
-                    <i className="ri-loader-4-line animate-spin text-[#1a5c4f]"></i>
+                    <i className="ri-loader-4-line animate-spin text-[#2c5282]"></i>
                     <p className="text-sm text-gray-600">Checking NPI Registry (CMS)...</p>
                   </div>
                 )}
                 {npiVerify.status === "verified" && (
-                  <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+                  <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-9 h-9 flex items-center justify-center bg-[#1a5c4f] rounded-xl flex-shrink-0">
+                      <div className="w-9 h-9 flex items-center justify-center bg-[#2c5282] rounded-xl flex-shrink-0">
                         <i className="ri-shield-check-fill text-white text-base"></i>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-extrabold text-[#1a5c4f]">NPI License Verified</p>
-                        <p className="text-xs text-[#1a5c4f]/70 mt-0.5">Source: CMS National Plan &amp; Provider Enumeration System (NPPES)</p>
+                        <p className="text-sm font-extrabold text-[#2c5282]">NPI License Verified</p>
+                        <p className="text-xs text-[#2c5282]/70 mt-0.5">Source: CMS National Plan &amp; Provider Enumeration System (NPPES)</p>
                         <div className="mt-2 space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500 w-20 flex-shrink-0">NPI #</span>
@@ -269,7 +269,7 @@ export default function DoctorProfilePage() {
                               <span className="text-xs text-gray-500 w-20 flex-shrink-0 mt-0.5">States</span>
                               <div className="flex flex-wrap gap-1">
                                 {npiVerify.states.map((s) => (
-                                  <span key={s} className="px-2 py-0.5 bg-[#e8f5f1] text-[#1a5c4f] text-xs font-bold rounded-full border border-[#b8ddd5]">{s}</span>
+                                  <span key={s} className="px-2 py-0.5 bg-[#e8f0f9] text-[#2c5282] text-xs font-bold rounded-full border border-[#b8cce4]">{s}</span>
                                 ))}
                               </div>
                             </div>
@@ -372,8 +372,8 @@ export default function DoctorProfilePage() {
                       </div>
                       {licenseNum && (
                         <div className="flex items-center gap-1.5 pl-6">
-                          <i className="ri-file-list-3-line text-[#1a5c4f] text-xs flex-shrink-0"></i>
-                          <span className="text-xs font-mono text-[#1a5c4f] font-semibold">{licenseNum}</span>
+                          <i className="ri-file-list-3-line text-[#2c5282] text-xs flex-shrink-0"></i>
+                          <span className="text-xs font-mono text-[#2c5282] font-semibold">{licenseNum}</span>
                         </div>
                       )}
                     </div>
@@ -386,11 +386,11 @@ export default function DoctorProfilePage() {
 
             {/* License verification note */}
             {licenseEntries.length > 0 && (
-              <div className="mt-6 flex items-start gap-3 bg-[#f0faf7] border border-[#b8ddd5] rounded-xl px-4 py-3">
+              <div className="mt-6 flex items-start gap-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3">
                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <i className="ri-shield-check-line text-[#1a5c4f] text-sm"></i>
+                  <i className="ri-shield-check-line text-[#2c5282] text-sm"></i>
                 </div>
-                <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
+                <p className="text-xs text-[#2c5282]/80 leading-relaxed">
                   License numbers are provided for verification purposes. Landlords and housing providers can use these numbers to independently verify licensure through each state&apos;s licensing board.
                 </p>
               </div>

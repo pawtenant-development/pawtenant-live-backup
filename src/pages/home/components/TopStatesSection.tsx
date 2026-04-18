@@ -49,6 +49,42 @@ const topStates = [
     border: "border-slate-200 hover:border-slate-400",
     badge: "bg-slate-100 text-slate-700",
   },
+  {
+    name: "North Carolina",
+    slug: "north-carolina",
+    abbr: "NC",
+    tagline: "FHA-backed ESA rights across NC",
+    highlight: "Licensed clinician coverage",
+    facts: ["FHA protections statewide", "No pet deposits on ESAs", "Same-day letter available"],
+    image: "https://readdy.ai/api/search-image?query=North%20Carolina%20rolling%20green%20hills%20blue%20ridge%20mountains%20scenic%20countryside%20lush%20forests%20warm%20golden%20afternoon%20light%20peaceful%20rural%20landscape%20vibrant%20nature&width=600&height=400&seq=state-nc01&orientation=landscape",
+    color: "from-emerald-50 to-green-50",
+    border: "border-emerald-200 hover:border-emerald-400",
+    badge: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    name: "Pennsylvania",
+    slug: "pennsylvania",
+    abbr: "PA",
+    tagline: "Strong tenant protections in PA",
+    highlight: "PHRA + FHA dual coverage",
+    facts: ["State + federal dual protection", "No breed or weight restrictions", "Landlord must accommodate"],
+    image: "https://readdy.ai/api/search-image?query=Pennsylvania%20autumn%20foliage%20rolling%20hills%20countryside%20scenic%20landscape%20warm%20fall%20colors%20golden%20light%20forests%20and%20fields%20beautiful%20rural%20scenery&width=600&height=400&seq=state-pa01&orientation=landscape",
+    color: "from-amber-50 to-yellow-50",
+    border: "border-amber-200 hover:border-amber-400",
+    badge: "bg-amber-100 text-amber-700",
+  },
+  {
+    name: "Virginia",
+    slug: "virginia",
+    abbr: "VA",
+    tagline: "VHDA & FHA protections for VA renters",
+    highlight: "Virginia Fair Housing Law",
+    facts: ["State + FHA dual coverage", "No extra pet fees allowed", "Clinician-signed letters accepted"],
+    image: "https://readdy.ai/api/search-image?query=Virginia%20historic%20colonial%20architecture%20rolling%20green%20countryside%20blue%20sky%20warm%20sunlight%20scenic%20pastoral%20landscape%20beautiful%20nature%20vibrant%20colors&width=600&height=400&seq=state-va01&orientation=landscape",
+    color: "from-sky-50 to-blue-50",
+    border: "border-sky-200 hover:border-sky-400",
+    badge: "bg-sky-100 text-sky-700",
+  },
 ];
 
 export default function TopStatesSection() {
@@ -69,7 +105,7 @@ export default function TopStatesSection() {
         </div>
 
         {/* State Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
           {topStates.map((state) => (
             <Link
               key={state.slug}
