@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80" role="img" aria-label="HIPAA-compliant secure evaluation">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2">
+    <path d="M40 12 18 20v18c0 14 10 24 22 30 12-6 22-16 22-30V20z" stroke="#1F2937"/>
+    <rect x="30" y="38" width="20" height="16" rx="2.5" fill="#F26A21" stroke="#F26A21"/>
+    <path d="M34 38v-5a6 6 0 0 1 12 0v5" stroke="#1F2937"/>
+    <circle cx="40" cy="46" r="1.8" fill="#ffffff"/>
+    <path d="M40 47.5v3" stroke="#ffffff" stroke-width="2.2"/>
+  </g>
+</svg>

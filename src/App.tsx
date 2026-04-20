@@ -26,6 +26,7 @@ const PORTAL_ROUTES = [
   "/customer-login",
   "/reset-password",
   "/admin-login",
+  "/account/checkout",
 ];
 
 function ConditionalFloatingCTA() {

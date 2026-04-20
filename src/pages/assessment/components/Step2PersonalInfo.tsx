@@ -149,8 +149,6 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
       setDobError("");
     }
     if (!data.state) errs.state = true;
-    // Only require deliverySpeed for ESA mode — PSD selects it in step 3
-    if (!isPSD && !data.deliverySpeed) errs.deliverySpeed = true;
 
     data.pets.forEach((p, i) => {
       if (!p.name) errs[`pet_${i}_name`] = true;
@@ -448,68 +446,6 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
           ))}
         </div>
       </div>
-
-      {/* ── Delivery Speed — hidden in PSD mode (selected in step 3) ── */}
-      {!isPSD && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mt-5">
-          <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
-            <span className="w-6 h-6 flex items-center justify-center bg-orange-500 rounded-full text-white text-xs">
-              <i className="ri-time-line"></i>
-            </span>
-            How fast do you need your ESA Letter?
-            <span className="text-orange-500 ml-0.5">*</span>
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              {
-                value: "24h",
-                label: "Within 24 Hours",
-                desc: "Your letter delivered the same day after evaluation.",
-                badge: "Most Popular",
-                icon: "ri-flashlight-line",
-              },
-              {
-                value: "2-3days",
-                label: "Within 2-3 Days",
-                desc: "Standard delivery within 2-3 business days.",
-                badge: "",
-                icon: "ri-calendar-check-line",
-              },
-            ].map((opt) => {
-              const selected = data.deliverySpeed === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => update("deliverySpeed", opt.value)}
-                  className={`text-left px-5 py-4 rounded-xl border-2 transition-all duration-150 cursor-pointer ${
-                    selected ? "border-orange-500 bg-orange-50" : errors.deliverySpeed ? "border-red-300 bg-white" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 flex items-center justify-center">
-                        <i className={`${opt.icon} ${selected ? "text-orange-500" : "text-gray-400"} text-base`}></i>
-                      </div>
-                      <span className="font-bold text-sm text-gray-900">{opt.label}</span>
-                    </div>
-                    <span className={`whitespace-nowrap text-xs font-bold px-2 py-0.5 rounded-full ${opt.value === "24h" ? "bg-orange-500 text-white" : opt.badge ? "bg-gray-100 text-gray-600 border border-gray-200" : "hidden"}`}>
-                      {opt.badge}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 ml-7">{opt.desc}</p>
-                </button>
-              );
-            })}
-          </div>
-          {errors.deliverySpeed && (
-            <p className="text-red-500 text-xs mt-2 flex items-center gap-1">
-              <i className="ri-error-warning-line"></i>
-              Please select a delivery speed.
-            </p>
-          )}
-        </div>
-      )}
 
       <div className="mt-6 sm:mt-8 flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3">
         <button

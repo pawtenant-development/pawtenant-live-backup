@@ -41,6 +41,68 @@ function isPSDOrder(order: Order): boolean {
   return order.letter_type === "psd" || (order.confirmation_id?.includes("-PSD") ?? false);
 }
 
+function ReturningCustomerActions({ orderId }: { orderId: string }) {
+  const [busy, setBusy] = useState<"upgrade" | "repeat" | null>(null);
+  const [err, setErr] = useState("");
+
+  const spawn = async (action: "upgrade" | "repeat") => {
+    setBusy(action);
+    setErr("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        setErr("Your session has expired — please sign in again.");
+        setBusy(null);
+        return;
+      }
+      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-returning-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ parentOrderId: orderId, action }),
+      });
+      const result = (await res.json()) as { ok?: boolean; confirmationId?: string; error?: string };
+      if (!res.ok || !result.ok || !result.confirmationId) {
+        setErr(result.error ?? "Could not start checkout. Please try again.");
+        setBusy(null);
+        return;
+      }
+      window.location.href = `/account/checkout?cid=${encodeURIComponent(result.confirmationId)}`;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Network error");
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mt-4 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-xl px-4 py-3">
+      <p className="text-xs font-extrabold text-orange-700 uppercase tracking-wide mb-2">Next steps</p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => spawn("upgrade")}
+          disabled={busy !== null}
+          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-60 cursor-pointer transition-colors"
+        >
+          {busy === "upgrade" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-vip-crown-line"></i>}
+          Upgrade to Annual Subscription
+        </button>
+        <button
+          type="button"
+          onClick={() => spawn("repeat")}
+          disabled={busy !== null}
+          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 disabled:opacity-60 cursor-pointer transition-colors"
+        >
+          {busy === "repeat" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-add-circle-line"></i>}
+          Buy Another ESA
+        </button>
+      </div>
+      {err && <p className="text-xs text-red-600 mt-2 flex items-center gap-1"><i className="ri-error-warning-line"></i>{err}</p>}
+    </div>
+  );
+}
+
 // Derive a friendly display status from both order.status and doctor_status
 function getDisplayStatus(order: Order): {
   label: string; color: string; icon: string; bgGradient: string; step: number;
@@ -404,6 +466,11 @@ function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userE
 
         {/* Documents section */}
         <DocumentsSection order={order} />
+
+        {/* Returning-customer actions — only for PAID, non-PSD orders (V1: ESA only) */}
+        {order.payment_intent_id && !isPSDOrder(order) && (
+          <ReturningCustomerActions orderId={order.id} />
+        )}
 
         {/* Landlord Verification Badge — shown when letter is delivered */}
         {order.doctor_status === "patient_notified" && (

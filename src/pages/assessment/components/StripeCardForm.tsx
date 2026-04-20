@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CardNumberElement,
   CardExpiryElement,
@@ -16,20 +16,43 @@ const SUPABASE_KEY_LOCAL = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as stri
 interface CouponRowProps {
   basePrice: number;
   onDiscountChange: (discount: number, code: string) => void;
+  /**
+   * Externally-applied coupon (e.g. set by the page-level applyCouponByCode
+   * triggered from ExitIntentOverlay). When provided, the row mirrors this
+   * value as the source of truth so the displayed state and the code sent to
+   * the backend on submit always match what the parent has applied.
+   */
+  appliedFromParent?: { code: string; discount: number } | null;
 }
 
-function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
-  const [code,    setCode]    = useState("");
+// ISSUE 4 FIX: CouponRow always calls the backend validate-coupon function to
+// get the real discount amount. No discount is hardcoded or assumed client-side.
+// The UI price update (via onDiscountChange) reflects exactly what the backend
+// returns, which also matches what Stripe will actually charge.
+function CouponRow({ basePrice, onDiscountChange, appliedFromParent }: CouponRowProps) {
+  const [code, setCode] = useState(appliedFromParent?.code ?? "");
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
-  const [applied, setApplied] = useState<{ code: string; discount: number } | null>(null);
+  const [error, setError] = useState("");
+  const [applied, setApplied] = useState<{ code: string; discount: number } | null>(
+    appliedFromParent ?? null,
+  );
+
+  // Mirror parent-applied coupon (e.g. from the exit-intent popup) so this
+  // row's displayed state stays in sync with the page-level coupon.
+  useEffect(() => {
+    setApplied(appliedFromParent ?? null);
+    setCode(appliedFromParent?.code ?? "");
+    setError("");
+  }, [appliedFromParent?.code, appliedFromParent?.discount]);
 
   const handleApply = async () => {
     if (!code.trim()) return;
     setLoading(true);
     setError("");
     try {
-      const res  = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/validate-coupon`, {
+      // Always validate server-side — no client-side discount calculation.
+      // Backend returns the real discount amount in dollars for this basePrice.
+      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/validate-coupon`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -40,6 +63,7 @@ function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
       });
       const data = await res.json() as { valid?: boolean; discount?: number; error?: string };
       if (data.valid && data.discount != null) {
+        // Use the server-returned discount directly — not a local calculation
         const discount = data.discount;
         setApplied({ code: code.trim().toUpperCase(), discount });
         onDiscountChange(discount, code.trim().toUpperCase());
@@ -103,11 +127,10 @@ function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
           type="button"
           onClick={handleApply}
           disabled={loading || !code.trim()}
-          className={`whitespace-nowrap px-4 py-2.5 text-xs font-extrabold rounded-xl transition-colors flex-shrink-0 ${
-            loading || !code.trim()
-              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-[#2c5282] text-white hover:bg-[#1e3a5f] cursor-pointer"
-          }`}
+          className={`whitespace-nowrap px-4 py-2.5 text-xs font-extrabold rounded-xl transition-colors flex-shrink-0 ${loading || !code.trim()
+            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+            : "bg-[#2c5282] text-white hover:bg-[#1e3a5f] cursor-pointer"
+            }`}
         >
           {loading ? <i className="ri-loader-4-line animate-spin"></i> : "Apply"}
         </button>
@@ -173,13 +196,13 @@ export default function StripeCardForm({
   priceBeforeDiscount,
   onDiscountChange,
 }: StripeCardFormProps) {
-  const stripe   = useStripe();
+  const stripe = useStripe();
   const elements = useElements();
 
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [termsError,    setTermsError]    = useState(false);
-  const [cardError,     setCardError]     = useState("");
-  const [processing,    setProcessing]    = useState(false);
+  const [termsError, setTermsError] = useState(false);
+  const [cardError, setCardError] = useState("");
+  const [processing, setProcessing] = useState(false);
   const [fieldsDone, setFieldsDone] = useState({ number: false, expiry: false, cvc: false });
   const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
   // Track applied coupon code so it can be sent to backend for subscription discount
@@ -188,7 +211,10 @@ export default function StripeCardForm({
   const allFieldsComplete = fieldsDone.number && fieldsDone.expiry && fieldsDone.cvc;
   const canSubmit = !processing && !!stripe && !!elements;
 
-  // Wrap onDiscountChange to also capture the coupon code
+  // Wrap onDiscountChange to also capture the coupon code.
+  // ISSUE 4: discount value comes directly from the backend validate-coupon
+  // response — never computed client-side. This ensures the displayed saving
+  // and the price passed to the parent always match what the backend will charge.
   const handleDiscountChange = (discount: number, code: string) => {
     setAppliedCouponCode(discount > 0 ? code : "");
     onDiscountChange?.(discount, code);
@@ -221,7 +247,9 @@ export default function StripeCardForm({
       return;
     }
 
-    // Step 2: create subscription on backend — pass couponCode if one was applied
+    // Step 2: create subscription on backend — pass couponCode if one was applied.
+    // The backend uses appliedCouponCode to resolve the real Stripe coupon and
+    // attach it to the subscription, so the charged amount matches the UI price.
     let subClientSecret: string;
     try {
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/create-payment-intent`, {
@@ -410,9 +438,8 @@ export default function StripeCardForm({
       {/* ── Agreement checkbox ── */}
       <div className="px-5 pb-4">
         <label
-          className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-orange-200 transition-colors ${
-            termsError ? "border-red-300 bg-red-50" : "bg-gray-50 border-gray-200"
-          }`}
+          className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-orange-200 transition-colors ${termsError ? "border-red-300 bg-red-50" : "bg-gray-50 border-gray-200"
+            }`}
         >
           <input
             type="checkbox"
@@ -427,7 +454,7 @@ export default function StripeCardForm({
             I agree to the{" "}
             <button
               type="button"
-              onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Terms of Use" })}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/terms-of-use", title: "Terms of Use" }); }}
               className="text-orange-500 font-semibold hover:underline cursor-pointer"
             >
               Terms of Use
@@ -435,7 +462,7 @@ export default function StripeCardForm({
             ,{" "}
             <button
               type="button"
-              onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Informed Consent" })}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/terms-of-use", title: "Informed Consent" }); }}
               className="text-orange-500 font-semibold hover:underline cursor-pointer"
             >
               Informed Consent
@@ -443,7 +470,7 @@ export default function StripeCardForm({
             , and{" "}
             <button
               type="button"
-              onClick={() => setPolicyModal({ url: "/privacy-policy", title: "HIPAA Acknowledgment" })}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/privacy-policy", title: "HIPAA Acknowledgment" }); }}
               className="text-orange-500 font-semibold hover:underline cursor-pointer"
             >
               HIPAA Acknowledgment
@@ -464,11 +491,10 @@ export default function StripeCardForm({
           type="button"
           onClick={handlePay}
           disabled={!canSubmit}
-          className={`whitespace-nowrap w-full py-4 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-colors ${
-            canSubmit
-              ? "bg-orange-400 text-white hover:bg-orange-500 cursor-pointer"
-              : "bg-orange-50 border-2 border-dashed border-orange-200 text-orange-300 cursor-not-allowed select-none"
-          }`}
+          className={`whitespace-nowrap w-full py-4 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-colors ${canSubmit
+            ? "bg-orange-400 text-white hover:bg-orange-500 cursor-pointer"
+            : "bg-orange-50 border-2 border-dashed border-orange-200 text-orange-300 cursor-not-allowed select-none"
+            }`}
         >
           {processing ? (
             <>

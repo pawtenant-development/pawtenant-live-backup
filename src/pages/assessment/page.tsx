@@ -53,6 +53,16 @@ const defaultStep2: Step2Data = {
   additionalDocs: undefined,
 };
 
+function getAssessmentBasePrice(petCount: number, _deliverySpeed: string, plan: "one-time" | "subscription"): number {
+  const n = Math.max(1, Math.min(3, petCount));
+  if (plan === "subscription") return 99 + (n - 1) * 20;
+  return 110 + (n - 1) * 25;
+}
+
+function getDiscountedAssessmentPrice(basePrice: number, coupon: { code: string; discount: number } | null): number {
+  return Math.max(0, basePrice - (coupon?.discount ?? 0));
+}
+
 // ─── Test / Dev prefill data ──────────────────────────────────────────────────
 const testStep1: Step1Data = {
   emotionalFrequency: "daily",
@@ -80,7 +90,7 @@ const testStep2: Step2Data = {
   dob: "1990-06-15",
   state: "TX",
   pets: [{ name: "Buddy", age: "3", breed: "Golden Retriever", type: "dog", weight: "65" }],
-  deliverySpeed: "2-3days",
+  deliverySpeed: "",
   additionalDocs: undefined,
 };
 
@@ -164,7 +174,6 @@ function getLandingUrl(): string {
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
-const ESA_LETTER_URL = `${SUPABASE_URL}/functions/v1/generate-esa-letter`;
 
 // REMOVED: GOOGLE_SHEETS_WEBHOOK_URL and SHEETS_SECRET removed from the browser bundle.
 // All Sheets syncing is handled exclusively by the sync-to-sheets edge function
@@ -285,9 +294,9 @@ async function fireGHLFinalLead(
         leadStatus: "Paid \u2013 Order Completed",
         confirmationId,
         orderTotal: price,
-        deliverySpeed: step2.deliverySpeed,
+        deliverySpeed: "",
         selectedProvider: selectedDocName,
-        pricingPlan: step2.deliverySpeed === "2-3days" ? "Standard ($90)" : "Priority 24h ($115)",
+        pricingPlan: step3.plan === "subscription" ? `Annual ($${price})` : `One-Time ($${price})`,
         planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
         cardHolderName: step3.nameOnCard,
         smsConsentGiven: step3.smsConsent === true,
@@ -321,7 +330,6 @@ async function fireGHLFinalLead(
         tags: [
           "ESA Assessment",
           "Paid Customer",
-          step2.deliverySpeed === "2-3days" ? "Standard Delivery" : "Priority Delivery",
           step3.plan === "subscription" ? "Subscription" : "One-Time",
           ...(step3.smsConsent === true ? ["SMS Opted-In"] : ["SMS Opted-Out"]),
         ],
@@ -361,6 +369,7 @@ export default function AssessmentPage() {
   const [stripeClientSecret, setStripeClientSecret] = useState("");
   const [stripeSecretLoading, setStripeSecretLoading] = useState(false);
   const [stripeSecretError, setStripeSecretError] = useState("");
+  const [stripePaymentIntentId, setStripePaymentIntentId] = useState("");
   const stripeSecretInFlight = useRef(false); // dedupe concurrent calls
   const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
   const [resumeNotFound, setResumeNotFound] = useState(false);
@@ -369,7 +378,7 @@ export default function AssessmentPage() {
   // ── Sync confirmation ID + coupon into attribution store ─────────────────
   useEffect(() => {
     setConfirmationId(confirmationId.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -378,7 +387,7 @@ export default function AssessmentPage() {
 
   useEffect(() => {
     if (preSelectedState) setSelectedState(preSelectedState);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preSelectedState]);
   const isTestMode = searchParams.get("testCheckout") === "1";
   const [resendEmail, setResendEmail] = useState("");
@@ -548,7 +557,7 @@ export default function AssessmentPage() {
     };
 
     fetchLead();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Payment processing removed - Stripe integration disabled
@@ -561,7 +570,7 @@ export default function AssessmentPage() {
     setCurrentStep(3);
     window.scrollTo(0, 0);
     fetchClientSecret(testStep2, confirmationId.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTestMode]);
 
   // ── Cancel orphaned subscription on unmount (if payment never completed) ──
@@ -576,10 +585,10 @@ export default function AssessmentPage() {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
           body: JSON.stringify({ action: "cancel_subscription", cancelSubscriptionId: subId }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Retry fetchClientSecret when step 3 mounts with a valid email ────────
@@ -590,14 +599,14 @@ export default function AssessmentPage() {
     if (stripeClientSecret) return; // already have one — don't re-fetch
     const email = step2.email?.trim();
     if (!email || !email.includes("@") || !email.includes(".")) return;
-    fetchClientSecret(step2, confirmationId.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchClientSecret(step2, confirmationId.current, appliedCoupon);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, step2.email]);
 
   // ── Fetch Stripe client_secret from server ────────────────────────────────
   // Accepts step2 data directly so it works both from goNext (current state)
   // and from the resume useEffect (state hasn't updated yet).
-  const fetchClientSecret = async (s2: Step2Data, confId: string) => {
+  const fetchClientSecret = async (s2: Step2Data, confId: string, coupon: { code: string; discount: number } | null = null) => {
     // Guard: email must be a valid non-empty address before calling Stripe
     if (!s2.email || !s2.email.includes("@") || !s2.email.includes(".")) return;
     // In-flight lock — prevents duplicate concurrent calls (resume + retry + useEffect)
@@ -617,20 +626,23 @@ export default function AssessmentPage() {
             Authorization: `Bearer ${SUPABASE_KEY}`,
           },
           body: JSON.stringify({
-            deliverySpeed:  s2.deliverySpeed,
-            petCount:       s2.pets?.length ?? 1,
-            email:          s2.email,
+            deliverySpeed: "",
+            petCount: s2.pets?.length ?? 1,
+            email: s2.email,
             confirmationId: confId,
-            firstName:      s2.firstName,
-            lastName:       s2.lastName,
-            state:          s2.state,
+            firstName: s2.firstName,
+            lastName: s2.lastName,
+            state: s2.state,
+            plan: step3.plan,
+            couponCode: coupon?.code ?? "",
           }),
         },
         confId,
       );
-      const result = (await res.json()) as { clientSecret?: string; error?: string };
+      const result = (await res.json()) as { clientSecret?: string; paymentIntentId?: string; error?: string };
       if (result.clientSecret) {
         setStripeClientSecret(result.clientSecret);
+        setStripePaymentIntentId(result.paymentIntentId ?? "");
         setStripeSecretError("");
       } else {
         const errMsg = result.error ?? "Payment setup failed. Please try again.";
@@ -646,7 +658,7 @@ export default function AssessmentPage() {
             confirmation_id: confId,
             error: errMsg,
             email_present: !!s2.email,
-            delivery_speed: s2.deliverySpeed,
+            delivery_speed: "",
             timestamp: new Date().toISOString(),
           },
         });
@@ -666,15 +678,27 @@ export default function AssessmentPage() {
     if (currentStep === 2) {
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
-      // Save lead to Supabase so it appears immediately in the admin portal
-      saveLeadToSupabase();
+      // Save lead FIRST and await it — saveLeadToSupabase may rewrite
+      // confirmationId.current if email-based dedup matched an existing row.
+      // Stripe client_secret MUST be minted against the canonical id so the
+      // webhook resolves to the correct order row.
+      const leadResult = await saveLeadToSupabase();
+      // HARD BLOCK: if the email already has a PAID order, refuse to advance
+      // to Step 3. Relying on React state (checkoutError) here was a stale-
+      // closure bug — setCheckoutError doesn't update the closure synchronously,
+      // so Step 3 was reached and Stripe was still able to charge. Use the
+      // return value instead.
+      if (leadResult.emailConflict) {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
       // Fire begin_checkout for Google Ads "Abandoned Checkout" remarketing audience
-      const is2to3Days = step2.deliverySpeed === "2-3days";
-      fireGoogleAdsBeginCheckout(is2to3Days ? 100 : 115);
+      const estimate = getAssessmentBasePrice(step2.pets.length, "", step3.plan);
+      fireGoogleAdsBeginCheckout(estimate);
       // Facebook Pixel: Lead (personal info collected) + InitiateCheckout (entering payment)
       fireLead();
-      fireInitiateCheckout({ value: is2to3Days ? 100 : 115, content_name: "ESA Letter Checkout" });
-      // Fetch Stripe client_secret so the payment form is ready when step 3 loads
+      fireInitiateCheckout({ value: estimate, content_name: "ESA Letter Checkout" });
+      // Fetch Stripe client_secret — uses canonical confirmationId.current
       fetchClientSecret(step2, confirmationId.current);
     }
     setCurrentStep((s) => s + 1);
@@ -698,10 +722,9 @@ export default function AssessmentPage() {
     setCheckoutError("");
     // Stripe removed
     const petCount = step2.pets.length;
-    const is2to3Days = step2.deliverySpeed === "2-3days";
     const additionalDocTypes = (step2.additionalDocs?.types ?? []).filter((t) => t !== "ESA Letter");
     const additionalDocCount = additionalDocTypes.length;
-    const baseEstimate = step3.plan === "subscription" ? 10000 : (is2to3Days ? 9000 : 11500);
+    const baseEstimate = getAssessmentBasePrice(petCount, "", step3.plan) * 100;
     const estimatedPrice = baseEstimate + additionalDocCount * 3000;
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
@@ -711,9 +734,9 @@ export default function AssessmentPage() {
       lastName: step2.lastName,
       email: step2.email,
       selectedProvider: docName,
-      pricingPlan: is2to3Days ? "Standard" : "Priority 24h",
+      pricingPlan: step3.plan === "subscription" ? "Annual" : "One-Time",
       planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
-      deliverySpeed: step2.deliverySpeed,
+      deliverySpeed: "",
       petCount,
       price: estimatedPrice / 100,
       confirmationId: confirmationId.current,
@@ -736,7 +759,7 @@ export default function AssessmentPage() {
         body: JSON.stringify({
           plan: step3.plan,
           petCount,
-          deliverySpeed: step2.deliverySpeed,
+          deliverySpeed: "",
           email: step2.email,
           customerName: `${step2.firstName} ${step2.lastName}`,
           additionalDocCount,
@@ -749,7 +772,7 @@ export default function AssessmentPage() {
             state: step2.state,
             selectedProvider: docName,
             planType: step3.plan,
-            deliverySpeed: step2.deliverySpeed,
+            deliverySpeed: "",
             petCount: String(petCount),
             additionalDocCount: String(additionalDocCount),
           },
@@ -765,48 +788,28 @@ export default function AssessmentPage() {
     }
   };
 
-  /** Trigger ESA letter PDF generation — fire-and-forget, never blocks UX */
-  const triggerEsaLetterGeneration = (confId: string) => {
-    fetch(ESA_LETTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-      },
-      body: JSON.stringify({ confirmationId: confId }),
-    }).catch(() => {
-      // Silently ignore — PDF generation is best-effort from the client trigger
-    });
-  };
-
-  /** Save lead to Supabase after Step 2 — uses service-role edge function to guarantee bypass of RLS */
-  const saveLeadToSupabase = async () => {
+  /**
+   * Save lead to Supabase after Step 2 via the service-role edge function.
+   *
+   * CRITICAL: the edge function may return a DIFFERENT confirmationId when
+   * email-based dedup matches an existing unpaid lead. We MUST adopt it so
+   * downstream calls (Stripe PI creation, payment upsert, webhook metadata,
+   * auto-assign) all operate on the canonical row. Without this step, a
+   * duplicate paid row is created alongside the original unpaid lead.
+   */
+  const saveLeadToSupabase = async (): Promise<{ emailConflict: boolean; error?: string }> => {
     const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
     const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
-    const is2to3Days = step2.deliverySpeed === "2-3days";
-    const petTier = step2.pets.length >= 3 ? 3 : step2.pets.length === 2 ? 2 : 1;
-    const estimatedPrice = petTier === 1
-      ? (is2to3Days ? 90 : 115)
-      : petTier === 2
-        ? (is2to3Days ? 115 : 130)
-        : (is2to3Days ? 130 : 145);
+    const estimatedPrice = getAssessmentBasePrice(step2.pets.length, "", "one-time");
 
-    // ── Capture full attribution at Step 2 via centralized store ──────────
     const attr = getAttribution();
-    const gclidVal       = attr.gclid;
-    const fbclidVal      = attr.fbclid;
-    const utmSourceVal   = attr.utm_source;
-    const utmMediumVal   = attr.utm_medium;
-    const utmCampaignVal = attr.utm_campaign;
-    const utmTermVal     = attr.utm_term;
-    const utmContentVal  = attr.utm_content;
-    const landingUrlVal  = attr.landing_url;
     const attributionJsonVal = buildAttributionJson("step2_lead");
 
-    // Primary: service-role edge function (bypasses all RLS + CHECK constraints)
+    let emailConflict = false;
+    let conflictError: string | undefined;
+
     try {
-      await loggedFetch(
+      const res = await loggedFetch(
         "get-resume-order/upsert-lead",
         `${supabaseUrl}/functions/v1/get-resume-order`,
         {
@@ -824,19 +827,19 @@ export default function AssessmentPage() {
             lastName: step2.lastName,
             phone: step2.phone,
             state: step2.state,
-            deliverySpeed: step2.deliverySpeed,
+            deliverySpeed: "",
             price: estimatedPrice,
             letterType: "esa",
             status: "lead",
             referredBy: referredBy ?? "",
-            gclid:        gclidVal,
-            fbclid:       fbclidVal,
-            utmSource:    utmSourceVal,
-            utmMedium:    utmMediumVal,
-            utmCampaign:  utmCampaignVal,
-            utmTerm:      utmTermVal,
-            utmContent:   utmContentVal,
-            landingUrl:   landingUrlVal,
+            gclid: attr.gclid,
+            fbclid: attr.fbclid,
+            utmSource: attr.utm_source,
+            utmMedium: attr.utm_medium,
+            utmCampaign: attr.utm_campaign,
+            utmTerm: attr.utm_term,
+            utmContent: attr.utm_content,
+            landingUrl: attr.landing_url,
             attributionJson: attributionJsonVal,
             assessmentAnswers: {
               ...step1,
@@ -848,59 +851,81 @@ export default function AssessmentPage() {
         },
         confirmationId.current,
       );
-    } catch {
-      // Fallback: direct anon client insert
+
       try {
-        await supabase.from("orders").insert({
-          user_id: null,
-          confirmation_id: confirmationId.current,
-          email: step2.email,
-          first_name: step2.firstName,
-          last_name: step2.lastName,
-          state: step2.state,
-          phone: step2.phone,
-          delivery_speed: step2.deliverySpeed,
-          price: estimatedPrice,
-          payment_intent_id: null,
-          letter_type: "esa",
-          status: "lead",
-          referred_by: referredBy,
-          gclid:        gclidVal,
-          fbclid:       fbclidVal,
-          utm_source:   utmSourceVal,
-          utm_medium:   utmMediumVal,
-          utm_campaign: utmCampaignVal,
-          utm_term:     utmTermVal,
-          utm_content:  utmContentVal,
-          landing_url:  landingUrlVal,
-          attribution_json: attributionJsonVal,
-          additional_documents_requested: step2.additionalDocs ?? null,
-          assessment_answers: {
-            ...step1,
-            pets: step2.pets,
-            dob: step2.dob,
-            additionalDocs: step2.additionalDocs ?? null,
-          },
-        });
+        const result = (await res.json()) as {
+          ok?: boolean;
+          confirmationId?: string;
+          idDiverged?: boolean;
+          emailConflict?: boolean;
+          error?: string;
+        };
+
+        if (result?.emailConflict) {
+          // A PAID order already exists for this email — block progression.
+          const msg = result.error ?? "An order already exists for this email. Please use a different email.";
+          setCheckoutError(msg);
+          emailConflict = true;
+          conflictError = msg;
+          // Invalidate any stale Stripe client_secret so a later refetch can't
+          // accidentally charge against an orphaned PI if the user retries.
+          setStripeClientSecret("");
+          setStripePaymentIntentId("");
+        }
+
+        if (
+          result?.ok &&
+          result.confirmationId &&
+          result.confirmationId !== confirmationId.current
+        ) {
+          console.info(
+            `[saveLeadToSupabase] adopting canonical confirmationId ${result.confirmationId} (was ${confirmationId.current})`,
+          );
+          confirmationId.current = result.confirmationId;
+          setConfirmationId(result.confirmationId);
+          // Invalidate any Stripe client_secret so a fresh PI is minted with
+          // the canonical confirmation_id in metadata. The useEffect at step 3
+          // will refetch automatically.
+          setStripeClientSecret("");
+          setStripePaymentIntentId("");
+        }
       } catch {
-        // Silently fail — never block user flow
+        // Response not JSON — row was still written server-side; continue.
       }
+    } catch {
+      // Edge function call failed (network / cold start). Do NOT fall back to
+      // a raw client insert — the previous raw insert bypassed all dedup and
+      // created duplicate rows. Surface a soft warning and let the user retry.
+      console.warn("[saveLeadToSupabase] edge function failed — lead not saved");
     }
 
-    // Trigger full Google Sheets sync — now includes attribution fields for abandoned leads
-    triggerSheetsFullSync();
+    // Skip Sheets sync when we rejected the lead for an email conflict —
+    // nothing was written to the DB.
+    if (!emailConflict) {
+      triggerSheetsFullSync();
+    }
+
+    return { emailConflict, error: conflictError };
   };
 
   /**
-   * Save order to Supabase after successful payment.
-   * Uses the get-resume-order edge function (service role) to GUARANTEE
-   * the write bypasses RLS — anon client upserts fail silently when
-   * user_id is null and RLS requires auth.uid() = user_id.
+   * Save order to Supabase after successful payment via the service-role edge
+   * function. The edge function now REFUSES to create a new row for payment
+   * upserts — if no existing lead row matches by confirmationId, payment
+   * intent, or email, it returns 404 and we log loudly (this should never
+   * happen in a correctly-flowing session; if it does, the webhook is still
+   * the safety net).
    */
-  const saveOrderToSupabase = async (price: number, docName: string, paymentIntentId?: string, paymentMethod?: string) => {
+  const saveOrderToSupabase = async (
+    price: number,
+    docName: string,
+    paymentIntentId?: string,
+    paymentMethod?: string,
+  ) => {
     const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
     const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
     const paidAt = new Date().toISOString();
+    const attr = getAttribution();
 
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/get-resume-order`, {
@@ -918,7 +943,7 @@ export default function AssessmentPage() {
           lastName: step2.lastName,
           state: step2.state,
           phone: step2.phone,
-          deliverySpeed: step2.deliverySpeed,
+          deliverySpeed: "",
           letterType: "esa",
           status: "processing",
           price,
@@ -929,18 +954,17 @@ export default function AssessmentPage() {
           planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
           addonServices: (step3.addonServices ?? []).length > 0 ? step3.addonServices : null,
           referredBy: referredBy ?? "",
-          gclid:      getAttribution().gclid,
-          fbclid:     getAttribution().fbclid,
-          utmSource:  getAttribution().utm_source,
-          utmMedium:  getAttribution().utm_medium,
-          utmCampaign: getAttribution().utm_campaign,
-          utmTerm:    getAttribution().utm_term,
-          utmContent: getAttribution().utm_content,
-          landingUrl: getAttribution().landing_url,
-          sessionId:  getAttribution().session_id,
+          gclid: attr.gclid,
+          fbclid: attr.fbclid,
+          utmSource: attr.utm_source,
+          utmMedium: attr.utm_medium,
+          utmCampaign: attr.utm_campaign,
+          utmTerm: attr.utm_term,
+          utmContent: attr.utm_content,
+          landingUrl: attr.landing_url,
           attributionJson: buildAttributionJson("payment_confirmed"),
-          // Always include pets, dob and additionalDocs so the
-          // payment upsert doesn't overwrite the full assessment saved at lead time.
+          // Always include pets, dob and additionalDocs so the payment upsert
+          // doesn't overwrite the full assessment saved at lead time.
           assessmentAnswers: {
             ...step1,
             pets: step2.pets,
@@ -950,14 +974,38 @@ export default function AssessmentPage() {
         }),
       });
 
-      const result = await res.json() as { ok: boolean; error?: string };
-      if (!result.ok) {
-        console.error("[saveOrderToSupabase] Edge function upsert failed:", result.error);
-      } else {
-        console.info("[saveOrderToSupabase] ✓ Payment record saved via service role");
+      const result = (await res.json()) as {
+        ok?: boolean;
+        confirmationId?: string;
+        idDiverged?: boolean;
+        missingOrder?: boolean;
+        alreadyPaid?: boolean;
+        error?: string;
+      };
+
+      if (!result?.ok) {
+        if (result?.missingOrder) {
+          console.error(
+            `[saveOrderToSupabase] REFUSED: no existing row for ${confirmationId.current}. ` +
+              `Webhook will be the sole writer. Error: ${result.error}`,
+          );
+        } else {
+          console.error("[saveOrderToSupabase] edge function upsert failed:", result?.error);
+        }
+        return;
       }
+
+      if (result.confirmationId && result.confirmationId !== confirmationId.current) {
+        console.info(
+          `[saveOrderToSupabase] adopting canonical confirmationId ${result.confirmationId} (was ${confirmationId.current})`,
+        );
+        confirmationId.current = result.confirmationId;
+        setConfirmationId(result.confirmationId);
+      }
+
+      console.info("[saveOrderToSupabase] ✓ payment recorded against canonical row");
     } catch (err) {
-      console.error("[saveOrderToSupabase] Network error:", err);
+      console.error("[saveOrderToSupabase] network error:", err);
     }
   };
 
@@ -988,34 +1036,30 @@ export default function AssessmentPage() {
    * fire GHL, Meta Pixel, PDF generation, etc. on return.
    */
   const handleBeforeRedirect = () => {
-    const petTier = step2.pets.length >= 3 ? 3 : step2.pets.length === 2 ? 2 : 1;
-    const is2to3Days = step2.deliverySpeed === "2-3days";
     const isSubscription = step3.plan === "subscription";
-
-    // Compute the correct price based on plan type (subscription vs one-time)
-    const price = isSubscription
-      ? (petTier === 1 ? (is2to3Days ? 90 : 105) : petTier === 2 ? (is2to3Days ? 105 : 120) : (is2to3Days ? 120 : 135))
-      : (petTier === 1 ? (is2to3Days ? 100 : 115) : petTier === 2 ? (is2to3Days ? 115 : 130) : (is2to3Days ? 130 : 145));
+    const basePrice = getAssessmentBasePrice(step2.pets.length, "", step3.plan);
+    const price = getDiscountedAssessmentPrice(basePrice, appliedCoupon);
 
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
-    const speedLabel = is2to3Days ? "Standard" : "Priority";
-    const pricingLabel = `${speedLabel} ($${price})`;
+    const pricingLabel = isSubscription ? `Annual ($${price})` : `One-Time ($${price})`;
     const planType = isSubscription ? "Subscription (Annual)" : "One-Time Purchase";
 
     const pendingOrder = {
-      firstName:        step2.firstName,
-      lastName:         step2.lastName,
-      email:            step2.email,
+      firstName: step2.firstName,
+      lastName: step2.lastName,
+      email: step2.email,
       selectedProvider: docName,
-      pricingPlan:      pricingLabel,
+      pricingPlan: pricingLabel,
       planType,
-      deliverySpeed:    step2.deliverySpeed,
+      deliverySpeed: "",
       price,
-      confirmationId:   confirmationId.current,
-      _step1:           step1 as Record<string, unknown>,
-      _step2:           step2 as Record<string, unknown>,
-      _step3Plan:       step3.plan,
+      couponCode: appliedCoupon?.code ?? "",
+      couponDiscount: appliedCoupon?.discount ?? 0,
+      confirmationId: confirmationId.current,
+      _step1: step1 as Record<string, unknown>,
+      _step2: step2 as Record<string, unknown>,
+      _step3Plan: step3.plan,
     };
     sessionStorage.setItem("esa_pending_order", JSON.stringify(pendingOrder));
   };
@@ -1025,11 +1069,8 @@ export default function AssessmentPage() {
     paymentCompletedRef.current = true; // prevent unmount cleanup from cancelling the subscription
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
     // Compute correct price based on actual pet count + delivery speed + plan
-    const petTier = step2.pets.length >= 3 ? 3 : step2.pets.length === 2 ? 2 : 1;
-    const is2to3Days = step2.deliverySpeed === "2-3days";
-    const price = step3.plan === "subscription"
-      ? (petTier === 1 ? (is2to3Days ? 90 : 105) : petTier === 2 ? (is2to3Days ? 105 : 120) : (is2to3Days ? 120 : 135))
-      : (petTier === 1 ? (is2to3Days ? 100 : 115) : petTier === 2 ? (is2to3Days ? 115 : 130) : (is2to3Days ? 130 : 145));
+    const basePrice = getAssessmentBasePrice(step2.pets.length, "", step3.plan);
+    const price = getDiscountedAssessmentPrice(basePrice, appliedCoupon);
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
 
     // Read payment method stored in session storage by Step3Checkout
@@ -1048,7 +1089,7 @@ export default function AssessmentPage() {
     // Update Google Sheets with confirmed order + payment status (via edge function sync)
     // triggerSheetsFullSync() below handles this automatically after the order is saved.
 
-    // Await order save so assign-doctor and generate-esa-letter can find the row immediately
+    // Await order save so assign-doctor can find the row immediately
     await saveOrderToSupabase(price, docName, paymentIntentId, paymentMethod);
 
     // Sync Google Sheets after payment (ensures all columns are correct)
@@ -1079,10 +1120,7 @@ export default function AssessmentPage() {
       autoAssignDoctor(selectedDoc.email, confirmationId.current);
     }
 
-    // Trigger PDF generation (fire-and-forget — user navigates away)
-    triggerEsaLetterGeneration(confirmationId.current);
-
-    navigate(`/assessment/thank-you?amount=${price}&order_id=${paymentIntentId}`);
+    navigate(`/assessment/thank-you?amount=${price}&order_id=${confirmationId.current}&payment_intent_id=${paymentIntentId}`);
   };
 
   // Stripe payment error handler removed
@@ -1098,6 +1136,30 @@ export default function AssessmentPage() {
     if (currentStep === 3) return 78;
     return 100;
   }
+
+  const handleCouponApplied = async (coupon: { code: string; discount: number } | null) => {
+    console.info("[assessment] coupon state changed", {
+      code: coupon?.code ?? null,
+      discount: coupon?.discount ?? 0,
+      plan: step3.plan,
+    });
+    setAppliedCoupon(coupon);
+
+    // Card one-time payments must refresh the client secret so Stripe charges
+    // the backend-owned discounted amount instead of a stale PaymentIntent.
+    if (step3.plan !== "one-time") return;
+
+    setStripeClientSecret("");
+    setStripePaymentIntentId("");
+    setStripeSecretError("");
+
+    try {
+      await fetchClientSecret(step2, confirmationId.current, coupon);
+      console.info("[assessment] payment intent refreshed for coupon", { code: coupon?.code ?? null });
+    } catch (err) {
+      console.warn("[handleCouponApplied] failed to refresh payment intent for coupon:", err);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-orange-50">
@@ -1116,7 +1178,7 @@ export default function AssessmentPage() {
       <ExitIntentOverlay
         progressPercent={getProgressPercent()}
         currentStep={currentStep}
-        onStay={() => {}}
+        onStay={() => { }}
       />
 
       {/* Minimal Navbar */}
@@ -1270,10 +1332,10 @@ export default function AssessmentPage() {
                   stripeClientSecret={stripeClientSecret}
                   stripeSecretLoading={stripeSecretLoading}
                   stripeSecretError={stripeSecretError}
-                  onRetryClientSecret={() => fetchClientSecret(step2, confirmationId.current)}
+                  onRetryClientSecret={() => fetchClientSecret(step2, confirmationId.current, appliedCoupon)}
                   onPaymentSuccess={handlePaymentSuccess}
                   confirmationId={confirmationId.current}
-                  onCouponApplied={setAppliedCoupon}
+                  onCouponApplied={handleCouponApplied}
                   appliedCoupon={appliedCoupon}
                   petCount={step2.pets.length}
                   onBeforeRedirect={handleBeforeRedirect}

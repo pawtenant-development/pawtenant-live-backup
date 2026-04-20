@@ -43,47 +43,26 @@ const GUARANTEE_POINTS = [
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
-const ESA_LETTER_FUNC_URL = `${SUPABASE_URL}/functions/v1/generate-esa-letter`;
 
-/** Fire-and-forget PDF generation trigger — never blocks the thank-you page */
-function triggerEsaLetterGeneration(confirmationId: string): void {
-  if (!confirmationId) return;
-  fetch(ESA_LETTER_FUNC_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-    },
-    body: JSON.stringify({ confirmationId }),
-  }).catch(() => {
-    // Best-effort — silently ignore
-  });
-}
-
-// ── Persist redirect-based (Klarna / Amazon Pay) orders to Supabase ───────────
-async function saveOrderToSupabase(order: PendingOrder): Promise<void> {
-  try {
-    const step2 = (order._step2 ?? {}) as Record<string, unknown>;
-    await supabase.from("orders").insert({
-      user_id: null,
-      confirmation_id: order.confirmationId ?? `PT-${Date.now().toString(36).toUpperCase()}`,
-      email: order.email ?? (step2.email as string) ?? "",
-      first_name: order.firstName ?? (step2.firstName as string) ?? "",
-      last_name: order.lastName ?? (step2.lastName as string) ?? "",
-      state: (step2.state as string) ?? "",
-      selected_provider: order.selectedProvider ?? "",
-      plan_type: order.planType ?? "One-Time Purchase",
-      delivery_speed: order.deliverySpeed ?? "",
-      price: order.price ?? null,
-      payment_intent_id: null, // Not available for redirect-based payments
-      assessment_answers: order._step1 ?? null,
-      status: "processing",
-    });
-  } catch {
-    // Silently fail — never block the thank-you page render
-  }
-}
+// ── REMOVED: raw orders.insert() from the thank-you page ─────────────────────
+// Previously this function called supabase.from("orders").insert({...}) with
+// payment_intent_id: null and status: "processing" for redirect-based payments.
+// That caused two serious problems:
+//   1. When the lead row already existed (normal case), the insert violated
+//      the unique constraint on confirmation_id and failed silently.
+//   2. When sessionStorage held a stale/different confirmationId, it CREATED
+//      a ghost duplicate row that the webhook could never reconcile because
+//      status was already "processing" but payment_intent_id was null.
+//
+// The thank-you page must not write to the orders table. Authority:
+//   • Inline card path  → assessment/page.tsx → saveOrderToSupabase() writes
+//     via the get-resume-order edge function BEFORE navigating here.
+//   • Klarna / Amazon Pay / Checkout Session path → stripe-webhook handles
+//     checkout.session.completed (sync) and async_payment_succeeded (async)
+//     and calls markOrderProcessing on the existing lead row.
+//
+// If the webhook hasn't fired yet when the user lands here, the row will
+// update within a few seconds — do NOT try to race it from the client.
 
 async function fireGHLPaidLead(order: PendingOrder) {
   try {
@@ -360,9 +339,8 @@ function SocialShareSection({ shareLinks, shareUrl, copied, onCopy }: {
         <button
           type="button"
           onClick={onCopy}
-          className={`whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-            copied ? "bg-green-100 text-green-700" : "bg-orange-500 hover:bg-orange-600 text-white"
-          }`}
+          className={`whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${copied ? "bg-green-100 text-green-700" : "bg-orange-500 hover:bg-orange-600 text-white"
+            }`}
         >
           <div className="w-3.5 h-3.5 flex items-center justify-center">
             <i className={copied ? "ri-checkbox-circle-line" : "ri-clipboard-line"}></i>
@@ -584,13 +562,9 @@ export default function AssessmentThankYouPage() {
                 transaction_id: txId,
               });
             }
-            // Persist to Supabase then trigger PDF generation
-            saveOrderToSupabase(order).then(() => {
-              if (order.confirmationId) {
-                triggerEsaLetterGeneration(order.confirmationId);
-              }
-            });
-            // Fire GHL paid lead for redirect-based methods
+            // Order persistence is handled exclusively by the stripe-webhook
+            // for redirect-based methods — see note above the removed
+            // saveOrderToSupabase() function. Do NOT write from the client.
             fireGHLPaidLead(order);
           }
         } catch {
@@ -734,7 +708,7 @@ export default function AssessmentThankYouPage() {
     }, 100);
 
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 

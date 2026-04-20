@@ -208,6 +208,19 @@ interface OrderDocument {
   notes: string | null;
 }
 
+// ── Clean up document labels that come from raw filenames ────────────────────
+// Strips .pdf/.PDF extension, removes trailing " Copy" duplicates, trims numbers
+function cleanDocLabel(raw: string): string {
+  let label = raw.trim();
+  // Remove .pdf extension (case-insensitive)
+  label = label.replace(/\.pdf$/i, "").trim();
+  // Remove trailing " Copy" repeated any number of times (e.g. "Copy Copy Copy")
+  label = label.replace(/(\s+Copy)+$/i, "").trim();
+  // Remove trailing isolated numbers like " 1", " 2" that come from macOS duplicate naming
+  label = label.replace(/\s+\d+$/, "").trim();
+  return label || raw;
+}
+
 const DOC_TYPE_OPTIONS = [
   { value: "esa_letter", label: "ESA Letter" },
   { value: "housing_verification", label: "Housing Verification Letter" },
@@ -1025,7 +1038,9 @@ export default function OrderDetailModal({
           fetch(`${supabaseUrl}/functions/v1/notify-order-status`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ confirmationId: order.confirmation_id, newStatus: statusForEmail }),
+            // force=true for completed: ensures email fires even if patient_notification_sent_at is set
+            // (covers cases where notify-patient-letter ran but email was never actually delivered)
+            body: JSON.stringify({ confirmationId: order.confirmation_id, newStatus: statusForEmail, force: statusForEmail === "completed" }),
           }).catch(() => {});
         } catch {
           // Silently fail — status email is best-effort
@@ -1080,6 +1095,34 @@ export default function OrderDetailModal({
     }
     setGhlFiring(false);
     setTimeout(() => setGhlMsg(""), 8000);
+  };
+
+  const spawnReturningOrder = async (parentOrderId: string, action: "upgrade" | "repeat") => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        alert("Your admin session has expired. Please sign in again.");
+        return;
+      }
+      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-returning-order`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ parentOrderId, action }),
+      });
+      const result = (await res.json()) as { ok?: boolean; confirmationId?: string; error?: string };
+      if (!res.ok || !result.ok || !result.confirmationId) {
+        alert(`Could not start checkout: ${result.error ?? "unknown error"}`);
+        return;
+      }
+      window.open(`/account/checkout?cid=${encodeURIComponent(result.confirmationId)}`, "_blank");
+    } catch (err) {
+      alert(`Could not start checkout: ${err instanceof Error ? err.message : "network error"}`);
+    }
   };
 
   const handleResendEmail = async () => {
@@ -2123,6 +2166,29 @@ export default function OrderDetailModal({
                 <i className="ri-eye-line text-sm"></i>
                 <span className="hidden sm:inline">Customer View</span>
               </button>
+              {/* Returning-customer actions — only for paid orders */}
+              {(order.payment_intent_id || order.paid_at) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => spawnReturningOrder(order.id, "upgrade")}
+                    title="Upgrade this customer to an annual subscription"
+                    className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer"
+                  >
+                    <i className="ri-vip-crown-line text-sm"></i>
+                    <span className="hidden sm:inline">Upgrade</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => spawnReturningOrder(order.id, "repeat")}
+                    title="Start a new ESA order for this customer"
+                    className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors cursor-pointer"
+                  >
+                    <i className="ri-add-circle-line text-sm"></i>
+                    <span className="hidden sm:inline">New Order</span>
+                  </button>
+                </>
+              )}
               {/* Provider View — only when a provider is assigned */}
               {(order.doctor_email || order.doctor_user_id) && (
                 <a
@@ -3684,7 +3750,7 @@ export default function OrderDetailModal({
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <p className="text-sm font-bold text-gray-900 truncate">{doc.label}</p>
+                                <p className="text-sm font-bold text-gray-900 truncate">{cleanDocLabel(doc.label)}</p>
                                 {!doc.customer_visible && (
                                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs font-semibold flex-shrink-0">
                                     <i className="ri-eye-off-line" style={{ fontSize: "9px" }}></i>Hidden

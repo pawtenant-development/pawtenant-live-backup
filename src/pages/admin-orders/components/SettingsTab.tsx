@@ -1,7 +1,6 @@
 // SettingsTab — GHL, Stripe, and Email integration health
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
-import CouponManagementPanel from "./CouponManagementPanel";
 import UTMLinkGenerator from "./UTMLinkGenerator";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
 
@@ -3120,11 +3119,6 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
       {/* ── Google Sheets Sync ── */}
       <AccordionSection title="Google Sheets — Order Records" subtitle="Manual backup of all orders & leads to your Google Sheet" icon="ri-file-excel-2-line" iconBg="bg-green-50" iconColor="text-green-600">
         <GoogleSheetsSyncPanel supabaseUrl={supabaseUrl} />
-      </AccordionSection>
-
-      {/* ── Coupon Code Management ── */}
-      <AccordionSection title="Coupon Code Management" subtitle="Create and manage discount codes" icon="ri-coupon-3-line" iconBg="bg-orange-50" iconColor="text-orange-600">
-        <CouponManagementPanel />
       </AccordionSection>
 
       {/* ── Data Retention Policy ── */}

@@ -49,6 +49,7 @@ const BlogStatePage = lazy(() => import("../pages/blog-state/page"));
 const VerifyEntryPage = lazy(() => import("../pages/verify/page"));
 const VerifyResultPage = lazy(() => import("../pages/verify-result/page"));
 const ESALetterVerificationPage = lazy(() => import("../pages/esa-letter-verification/page"));
+const AccountCheckoutPage = lazy(() => import("../pages/account-checkout/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -82,6 +83,7 @@ const routes: RouteObject[] = [
   { path: "/assessment/thank-you", element: <P C={AssessmentThankYouPage} /> },
   { path: "/customer-login", element: <P C={CustomerLoginPage} /> },
   { path: "/my-orders", element: <P C={MyOrdersPage} /> },
+  { path: "/account/checkout", element: <P C={AccountCheckoutPage} /> },
   { path: "/how-to-get-esa-letter", element: <P C={HowToGetESAPage} /> },
   { path: "/housing-rights-esa", element: <P C={HousingRightsPage} /> },
   { path: "/esa-letter-cost", element: <P C={ESALetterCostPage} /> },

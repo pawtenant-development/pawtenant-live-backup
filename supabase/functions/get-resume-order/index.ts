@@ -13,7 +13,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ── Normalize phone to E.164 ──────────────────────────────────────────────────
 function normalizePhone(raw: unknown): string {
   if (!raw || typeof raw !== "string") return "";
   const stripped = raw.trim().replace(/[\s\-().]/g, "");
@@ -25,7 +24,12 @@ function normalizePhone(raw: unknown): string {
   return `+${digitsOnly}`;
 }
 
-// ── Fire GHL webhook server-side after upsert ─────────────────────────────────
+function isAlreadyPaid(
+  order: { payment_intent_id?: string | null; paid_at?: string | null } | null | undefined
+): boolean {
+  return !!(order?.payment_intent_id || order?.paid_at);
+}
+
 async function fireGHLServerSide(opts: {
   supabase: ReturnType<typeof createClient>;
   confirmationId: string;
@@ -46,7 +50,7 @@ async function fireGHLServerSide(opts: {
       firstName: opts.firstName,
       lastName: opts.lastName,
       email: opts.email,
-      phone: opts.phone, // raw — proxy will normalize to E.164
+      phone: opts.phone,
       state: opts.state,
       confirmationId: opts.confirmationId,
       letterType: opts.letterType,
@@ -66,14 +70,18 @@ async function fireGHLServerSide(opts: {
     const ghlBody = await ghlRes.text();
     const ghlOk = ghlRes.ok;
 
-    // Stamp ghl_synced_at / ghl_sync_error on the order row
-    await opts.supabase.from("orders").update({
-      ghl_synced_at: ghlOk ? new Date().toISOString() : null,
-      ghl_sync_error: ghlOk ? null : `HTTP ${ghlRes.status}: ${ghlBody.slice(0, 400)}`,
-    }).eq("confirmation_id", opts.confirmationId);
+    await opts.supabase
+      .from("orders")
+      .update({
+        ghl_synced_at: ghlOk ? new Date().toISOString() : null,
+        ghl_sync_error: ghlOk ? null : `HTTP ${ghlRes.status}: ${ghlBody.slice(0, 400)}`,
+      })
+      .eq("confirmation_id", opts.confirmationId);
 
     if (!ghlOk) {
-      console.warn(`[get-resume-order] GHL sync failed for ${opts.confirmationId}: HTTP ${ghlRes.status} — ${ghlBody.slice(0, 200)}`);
+      console.warn(
+        `[get-resume-order] GHL sync failed for ${opts.confirmationId}: HTTP ${ghlRes.status} — ${ghlBody.slice(0, 200)}`
+      );
     } else {
       console.info(`[get-resume-order] GHL sync OK for ${opts.confirmationId} (event=${opts.event})`);
     }
@@ -81,10 +89,15 @@ async function fireGHLServerSide(opts: {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[get-resume-order] GHL sync threw for ${opts.confirmationId}: ${msg}`);
     try {
-      await opts.supabase.from("orders").update({
-        ghl_sync_error: `GHL proxy error: ${msg.slice(0, 400)}`,
-      }).eq("confirmation_id", opts.confirmationId);
-    } catch { /* best-effort */ }
+      await opts.supabase
+        .from("orders")
+        .update({
+          ghl_sync_error: `GHL proxy error: ${msg.slice(0, 400)}`,
+        })
+        .eq("confirmation_id", opts.confirmationId);
+    } catch {
+      // best-effort only
+    }
   }
 }
 
@@ -100,22 +113,26 @@ function buildUnpaidLeadHtml(opts: {
   timestamp: string;
 }): string {
   const rows = [
-    ["Order ID",       opts.confirmationId],
-    ["Name",           `${opts.firstName} ${opts.lastName}`.trim() || "—"],
-    ["Email",          opts.email],
-    ["Phone",          opts.phone || "—"],
-    ["State",          opts.state || "—"],
-    ["Service",        opts.letterType === "psd" ? "PSD Letter" : "ESA Letter"],
-    ["Delivery",       opts.deliverySpeed === "2-3days" ? "Standard (2-3 days)" : "Priority (24h)"],
-    ["Status",         "UNPAID — Assessment Completed"],
-    ["Time",           opts.timestamp],
+    ["Order ID", opts.confirmationId],
+    ["Name", `${opts.firstName} ${opts.lastName}`.trim() || "—"],
+    ["Email", opts.email],
+    ["Phone", opts.phone || "—"],
+    ["State", opts.state || "—"],
+    ["Service", opts.letterType === "psd" ? "PSD Letter" : "ESA Letter"],
+    ["Delivery", opts.deliverySpeed === "2-3days" ? "Standard (2-3 days)" : "Priority (24h)"],
+    ["Status", "UNPAID — Assessment Completed"],
+    ["Time", opts.timestamp],
   ];
 
-  const rowsHtml = rows.map(([label, value]) => `
+  const rowsHtml = rows
+    .map(
+      ([label, value]) => `
     <tr>
       <td style="padding:8px 12px;font-size:13px;color:#6b7280;width:160px;border-bottom:1px solid #f3f4f6;font-weight:600;">${label}</td>
       <td style="padding:8px 12px;font-size:13px;color:#111827;border-bottom:1px solid #f3f4f6;">${value}</td>
-    </tr>`).join("");
+    </tr>`
+    )
+    .join("");
 
   return `<!DOCTYPE html>
 <html>
@@ -157,12 +174,14 @@ function buildUnpaidLeadHtml(opts: {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const body = await req.json() as {
+    const body = (await req.json()) as {
       confirmationId?: string;
       action?: string;
       email?: string;
@@ -192,7 +211,6 @@ serve(async (req) => {
       landingUrl?: string;
       attributionJson?: Record<string, unknown>;
       suppressLeadNotification?: boolean;
-      // New: skip GHL sync (e.g. for payment upserts where GHL already fired)
       skipGhlSync?: boolean;
     };
 
@@ -205,35 +223,188 @@ serve(async (req) => {
       );
     }
 
-    // ── UPSERT action: save/update order (service_role bypasses RLS) ──────
     if (action === "upsert") {
-      // Check if this is a NEW order (doesn't exist yet) before upsert
-      const { data: existingOrder } = await supabase
+      const normalizedPhone = normalizePhone(body.phone);
+      const normalizedEmail = (body.email ?? "").trim().toLowerCase();
+      const isPaymentUpsert = !!body.paymentIntentId || !!body.paidAt;
+
+      // ── Step 1: Resolve the canonical order row ──────────────────────────
+      // Priority:
+      //   1. existing row with this confirmation_id
+      //   2. (payment upserts only) existing row with this payment_intent_id
+      //   3. existing UNPAID row with the same email (lead carry-over)
+      //   4. none — create new row (lead only; payment upserts refuse)
+
+      const { data: byConfId, error: byConfIdErr } = await supabase
         .from("orders")
-        .select("id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type")
+        .select(
+          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider"
+        )
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
 
-      const isNewOrder = !existingOrder;
+      if (byConfIdErr) {
+        console.error("[get-resume-order] failed to fetch existing order:", byConfIdErr.message);
+        return new Response(
+          JSON.stringify({ ok: false, error: byConfIdErr.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
+      let existingOrder = byConfId;
+      let effectiveConfirmationId = confirmationId;
+      let matchedBy: "confirmation_id" | "payment_intent_id" | "email" | "new" = byConfId
+        ? "confirmation_id"
+        : "new";
+
+      // 2. Payment upsert fallback: match by payment_intent_id (webhook may have written first)
+      if (!existingOrder && isPaymentUpsert && body.paymentIntentId) {
+        const { data: byPi } = await supabase
+          .from("orders")
+          .select(
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider"
+          )
+          .eq("payment_intent_id", body.paymentIntentId)
+          .maybeSingle();
+        if (byPi) {
+          existingOrder = byPi;
+          effectiveConfirmationId = byPi.confirmation_id as string;
+          matchedBy = "payment_intent_id";
+          console.info(
+            `[get-resume-order] matched by payment_intent_id: ${body.paymentIntentId} -> ${effectiveConfirmationId}`
+          );
+        }
+      }
+
+      // 3. Email fallback — applies to BOTH lead and payment upserts
+      //    For PAID-email matches we still block (different user must use different email).
+      //    For UNPAID-email matches we reuse the existing row.
+      if (!existingOrder && normalizedEmail) {
+        const { data: byEmail } = await supabase
+          .from("orders")
+          .select(
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider"
+          )
+          .ilike("email", normalizedEmail)
+          .not("status", "in", `("refunded","cancelled")`)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (byEmail) {
+          if (isAlreadyPaid(byEmail) && !isPaymentUpsert) {
+            // Lead save attempted against an email that already has a paid order — block
+            console.warn(
+              `[get-resume-order] Email conflict (paid): ${normalizedEmail} already has order ${byEmail.confirmation_id}`
+            );
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: "An order already exists for this email. Please use a different email.",
+                emailConflict: true,
+              }),
+              { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          if (isAlreadyPaid(byEmail) && isPaymentUpsert) {
+            // Payment upsert against an already-paid email row with a different PI
+            const incomingPi = body.paymentIntentId ?? null;
+            if (incomingPi && byEmail.payment_intent_id && byEmail.payment_intent_id !== incomingPi) {
+              console.error(
+                `[get-resume-order] payment conflict (email): ${normalizedEmail} already paid with PI ${byEmail.payment_intent_id}, incoming PI ${incomingPi}`
+              );
+              return new Response(
+                JSON.stringify({
+                  ok: false,
+                  error: "Order already paid with a different payment intent",
+                  alreadyPaid: true,
+                  confirmationId: byEmail.confirmation_id,
+                }),
+                { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+          }
+          existingOrder = byEmail;
+          effectiveConfirmationId = byEmail.confirmation_id as string;
+          matchedBy = "email";
+          console.info(
+            `[get-resume-order] matched by email: ${normalizedEmail} -> ${effectiveConfirmationId} (status=${byEmail.status})`
+          );
+        }
+      }
+
+      // 4. Payment upserts MUST NEVER create a new row
+      if (isPaymentUpsert && !existingOrder) {
+        console.error(
+          `[get-resume-order] payment upsert refused — no existing row for ${confirmationId} / PI ${body.paymentIntentId ?? "none"} / email ${normalizedEmail || "none"}`
+        );
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error:
+              "Cannot record payment: no existing order found for this confirmation_id, payment_intent_id, or email. Lead must be saved before payment.",
+            missingOrder: true,
+            confirmationId,
+          }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // ── Step 2: Idempotent / conflict checks for payment upserts ─────────
+      if (isPaymentUpsert && existingOrder) {
+        const existingPi = existingOrder.payment_intent_id ?? null;
+        const incomingPi = body.paymentIntentId ?? null;
+        const alreadyPaid = isAlreadyPaid(existingOrder);
+
+        if (alreadyPaid && existingPi && incomingPi && existingPi === incomingPi) {
+          console.info(`[get-resume-order] idempotent payment upsert for ${effectiveConfirmationId}`);
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              alreadyPaid: true,
+              idempotent: true,
+              confirmationId: effectiveConfirmationId,
+              matchedBy,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (alreadyPaid && existingPi && incomingPi && existingPi !== incomingPi) {
+          console.error(
+            `[get-resume-order] payment conflict for ${effectiveConfirmationId}: existing PI ${existingPi}, incoming PI ${incomingPi}`
+          );
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              error: "Order already paid with a different payment intent",
+              alreadyPaid: true,
+              confirmationId: effectiveConfirmationId,
+            }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
+      const isNewOrder = matchedBy === "new";
+
+      // ── Step 3: Build and execute upsert ─────────────────────────────────
       const upsertPayload: Record<string, unknown> = {
-        confirmation_id: confirmationId,
+        confirmation_id: effectiveConfirmationId,
         user_id: null,
       };
 
       if (body.email !== undefined) upsertPayload.email = body.email;
       if (body.firstName !== undefined) upsertPayload.first_name = body.firstName;
       if (body.lastName !== undefined) upsertPayload.last_name = body.lastName;
-      if (body.phone !== undefined) upsertPayload.phone = body.phone;
+      if (body.phone !== undefined) upsertPayload.phone = normalizedPhone || body.phone;
       if (body.state !== undefined) upsertPayload.state = body.state;
       if (body.deliverySpeed !== undefined) upsertPayload.delivery_speed = body.deliverySpeed;
       if (body.letterType !== undefined) upsertPayload.letter_type = body.letterType;
       if (body.status !== undefined) upsertPayload.status = body.status;
       if (body.assessmentAnswers !== undefined) upsertPayload.assessment_answers = body.assessmentAnswers;
-      if (body.paymentIntentId !== undefined) upsertPayload.payment_intent_id = body.paymentIntentId;
       if (body.price !== undefined) upsertPayload.price = body.price;
       if (body.planType !== undefined) upsertPayload.plan_type = body.planType;
-      if (body.paidAt !== undefined) upsertPayload.paid_at = body.paidAt;
       if (body.paymentMethod !== undefined) upsertPayload.payment_method = body.paymentMethod;
       if (body.selectedProvider !== undefined) upsertPayload.selected_provider = body.selectedProvider;
       if (body.addonServices !== undefined) upsertPayload.addon_services = body.addonServices;
@@ -250,6 +421,15 @@ serve(async (req) => {
         upsertPayload.referred_by = body.referredBy;
       }
 
+      if (body.paymentIntentId !== undefined && body.paymentIntentId !== null && body.paymentIntentId !== "") {
+        upsertPayload.payment_intent_id = body.paymentIntentId;
+      }
+      if (body.paidAt !== undefined && body.paidAt !== null && body.paidAt !== "") {
+        upsertPayload.paid_at = body.paidAt;
+      }
+
+      // letter_url intentionally never set here — only provider uploads set it.
+
       const { error: upsertError } = await supabase
         .from("orders")
         .upsert(upsertPayload, { onConflict: "confirmation_id", ignoreDuplicates: false });
@@ -262,10 +442,9 @@ serve(async (req) => {
         );
       }
 
-      // ── Fire GHL webhook server-side (non-blocking) ───────────────────────
-      // Only fire for lead saves (not payment upserts — those are handled by assign-doctor/notify-patient-letter)
-      const isLeadSave = !body.paymentIntentId && !body.skipGhlSync;
-      const phoneForGhl = body.phone ?? existingOrder?.phone ?? "";
+      // ── Step 4: Side effects (GHL, lead notification) ────────────────────
+      const isLeadSave = !isPaymentUpsert && !body.skipGhlSync;
+      const phoneForGhl = normalizedPhone || body.phone || existingOrder?.phone || "";
       const emailForGhl = body.email ?? existingOrder?.email ?? "";
       const firstNameForGhl = body.firstName ?? existingOrder?.first_name ?? "";
       const lastNameForGhl = body.lastName ?? existingOrder?.last_name ?? "";
@@ -273,10 +452,9 @@ serve(async (req) => {
       const letterTypeForGhl = body.letterType ?? existingOrder?.letter_type ?? "esa";
 
       if (isLeadSave && emailForGhl) {
-        // Fire GHL in background — don't await so it doesn't slow down the response
         fireGHLServerSide({
           supabase,
-          confirmationId,
+          confirmationId: effectiveConfirmationId,
           firstName: firstNameForGhl,
           lastName: lastNameForGhl,
           email: emailForGhl,
@@ -291,11 +469,10 @@ serve(async (req) => {
         });
       }
 
-      // ── Send unpaid lead notification for NEW orders only ─────────────────
       const shouldNotify =
         isNewOrder &&
         !body.suppressLeadNotification &&
-        !body.paymentIntentId &&
+        !isPaymentUpsert &&
         (body.email || "").trim() !== "" &&
         RESEND_API_KEY;
 
@@ -304,18 +481,19 @@ serve(async (req) => {
           const emailData = body.email || "";
           const firstNameData = body.firstName || "";
           const lastNameData = body.lastName || "";
-          const phoneData = body.phone || "";
+          const phoneData = normalizedPhone || body.phone || "";
           const stateData = body.state || "";
           const letterTypeData = body.letterType || "esa";
           const deliveryData = body.deliverySpeed || "2-3days";
-          const timestamp = new Date().toLocaleString("en-US", {
-            timeZone: "America/New_York",
-            dateStyle: "medium",
-            timeStyle: "short",
-          }) + " ET";
+          const timestamp =
+            new Date().toLocaleString("en-US", {
+              timeZone: "America/New_York",
+              dateStyle: "medium",
+              timeStyle: "short",
+            }) + " ET";
 
           const html = buildUnpaidLeadHtml({
-            confirmationId,
+            confirmationId: effectiveConfirmationId,
             firstName: firstNameData,
             lastName: lastNameData,
             email: emailData,
@@ -329,19 +507,19 @@ serve(async (req) => {
           const res = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${RESEND_API_KEY}`,
+              Authorization: `Bearer ${RESEND_API_KEY}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
               from: FROM_EMAIL,
               to: [INTERNAL_NOTIFICATION_EMAIL],
-              subject: `[PawTenant] New Unpaid Lead — ${confirmationId} (${letterTypeData.toUpperCase()})`,
+              subject: `[PawTenant] New Unpaid Lead — ${effectiveConfirmationId} (${letterTypeData.toUpperCase()})`,
               html,
             }),
           });
 
           if (res.ok) {
-            console.info(`[get-resume-order] Unpaid lead notification sent for ${confirmationId}`);
+            console.info(`[get-resume-order] Unpaid lead notification sent for ${effectiveConfirmationId}`);
           } else {
             const errText = await res.text();
             console.warn(`[get-resume-order] Lead notification failed: ${errText}`);
@@ -352,16 +530,23 @@ serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ ok: true }),
+        JSON.stringify({
+          ok: true,
+          // Always return the canonical id; frontend MUST adopt this.
+          confirmationId: effectiveConfirmationId,
+          matchedBy,
+          alreadyPaid: isPaymentUpsert ? !!body.paymentIntentId : false,
+          idDiverged: effectiveConfirmationId !== confirmationId,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // ── Default GET action: fetch order for resume flow ───────────────────
+    // ── READ path ─────────────────────────────────────────────────────────
     const { data, error } = await supabase
       .from("orders")
       .select(
-        "confirmation_id, first_name, last_name, email, phone, state, delivery_speed, price, assessment_answers, payment_intent_id, status, plan_type, letter_type"
+        "confirmation_id, first_name, last_name, email, phone, state, delivery_speed, price, assessment_answers, payment_intent_id, paid_at, status, plan_type, letter_type"
       )
       .eq("confirmation_id", confirmationId)
       .maybeSingle();
@@ -373,7 +558,7 @@ serve(async (req) => {
       );
     }
 
-    const alreadyPaid = !!(data.payment_intent_id);
+    const alreadyPaid = !!(data.payment_intent_id || data.paid_at);
 
     const safeOrder = {
       confirmation_id: data.confirmation_id,

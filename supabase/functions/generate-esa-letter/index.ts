@@ -35,7 +35,6 @@ type OrderRow = {
   delivery_speed: string | null;
   price: number | null;
   status: string | null;
-  letter_url: string | null;
   assessment_answers: AssessmentAnswers | null;
 };
 
@@ -236,13 +235,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  if ((order as OrderRow).letter_url) {
-    return new Response(
-      JSON.stringify({ ok: true, letterUrl: (order as OrderRow).letter_url }),
-      { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
-    );
-  }
-
   let pdfBytes: Uint8Array;
   try {
     pdfBytes = await buildEsaLetterPdf(order as OrderRow);
@@ -272,10 +264,10 @@ Deno.serve(async (req: Request) => {
   const { data: publicUrlData } = supabase.storage.from("letters").getPublicUrl(fileName);
   const letterUrl = publicUrlData.publicUrl;
 
-  await supabase
-    .from("orders")
-    .update({ letter_url: letterUrl, status: "completed" })
-    .eq("confirmation_id", confirmationId);
+  // Intentionally no write to `orders.letter_url` — that column is invalid and
+  // only `signed_letter_url` (set by provider-submit-letter) is the source of
+  // truth for a finalized letter. The PDF is uploaded to storage and returned
+  // to the caller; order status/letter fields are not mutated here.
 
   await notifyGhlLetterReady(order as OrderRow, letterUrl);
 

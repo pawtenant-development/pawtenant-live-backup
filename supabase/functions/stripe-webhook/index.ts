@@ -149,10 +149,10 @@ function schedulePostPaymentTriggers(confirmationId: string, order?: Record<stri
       })()
     );
   } else {
-    triggerGoogleAdsSync(confirmationId).catch(() => {});
-    triggerMetaCAPIEvent(confirmationId).catch(() => {});
+    triggerGoogleAdsSync(confirmationId).catch(() => { });
+    triggerMetaCAPIEvent(confirmationId).catch(() => { });
     if (order && typeof amountDollars === "number") {
-      triggerGhlPaymentConfirmed(order, amountDollars).catch(() => {});
+      triggerGhlPaymentConfirmed(order, amountDollars).catch(() => { });
     }
   }
 }
@@ -218,8 +218,10 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // coupon_code and coupon_discount added to SELECT so idempotent backfill
+  // can check whether those fields are already populated before writing them.
   async function findOrderByConfId(confirmationId: string) {
-    const { data } = await supabase.from("orders").select("id, status, payment_intent_id, checkout_session_id, email, confirmation_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status").eq("confirmation_id", confirmationId).maybeSingle();
+    const { data } = await supabase.from("orders").select("id, status, payment_intent_id, checkout_session_id, email, confirmation_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status, coupon_code, coupon_discount").eq("confirmation_id", confirmationId).maybeSingle();
     return data;
   }
   async function findOrderByEmail(email: string) {
@@ -247,12 +249,37 @@ Deno.serve(async (req: Request) => {
     return null;
   }
 
-  async function markOrderProcessing(confirmationId: string, paymentIntentId: string, amountDollars: number, paymentMethod = "card", checkoutSessionId?: string) {
-    const payload: Record<string, unknown> = { status: "processing", payment_intent_id: paymentIntentId, price: amountDollars, payment_method: paymentMethod, paid_at: new Date().toISOString(), payment_failed_at: null, payment_failure_reason: null };
+  // ── markOrderProcessing ───────────────────────────────────────────────────
+  // letter_url is intentionally never set here — only provider uploads set it.
+  //
+  // couponCode and couponDiscount are sourced exclusively from Stripe PI metadata
+  // (stamped there by create-payment-intent at payment-creation / update-amount
+  // time). No frontend value is trusted for these fields.
+  async function markOrderProcessing(
+    confirmationId: string,
+    paymentIntentId: string,
+    amountDollars: number,
+    paymentMethod = "card",
+    checkoutSessionId?: string,
+    couponCode?: string | null,
+    couponDiscount?: number | null,
+  ) {
+    const payload: Record<string, unknown> = {
+      status: "processing",
+      payment_intent_id: paymentIntentId,
+      price: amountDollars,
+      payment_method: paymentMethod,
+      paid_at: new Date().toISOString(),
+      payment_failed_at: null,
+      payment_failure_reason: null,
+      // letter_url intentionally omitted — only provider uploads set this field
+    };
     if (checkoutSessionId) payload.checkout_session_id = checkoutSessionId;
+    if (couponCode) payload.coupon_code = couponCode;
+    if (couponDiscount != null && couponDiscount > 0) payload.coupon_discount = couponDiscount;
     const { error } = await supabase.from("orders").update(payload).eq("confirmation_id", confirmationId);
     if (error) { console.error(`[stripe-webhook] Failed to update order ${confirmationId}:`, error.message); return false; }
-    console.info(`[stripe-webhook] ✓ ${confirmationId} -> processing ($${amountDollars}) via ${paymentMethod}`);
+    console.info(`[stripe-webhook] ✓ ${confirmationId} -> processing ($${amountDollars}) via ${paymentMethod}${couponCode ? ` | coupon: ${couponCode} (-$${couponDiscount?.toFixed(2)})` : ""}`);
     return true;
   }
 
@@ -341,6 +368,16 @@ Deno.serve(async (req: Request) => {
     const cidFromMeta = pi.metadata?.confirmation_id;
     const emailFromMeta = pi.metadata?.email ?? pi.receipt_email;
     const sessionIdFromMeta = pi.metadata?.checkout_session_id;
+
+    // Extract coupon details stamped into PI metadata by create-payment-intent.
+    // coupon_code and coupon_discount_cents are written there at payment-creation
+    // time (update_amount for one-time payments, PI metadata patch for
+    // subscriptions). The webhook never trusts any frontend-supplied value.
+    const couponCodeFromMeta = (pi.metadata?.coupon_code as string) || null;
+    const couponDiscountDollars = pi.metadata?.coupon_discount_cents
+      ? Math.round(Number(pi.metadata.coupon_discount_cents)) / 100
+      : null;
+
     const resolved = await resolveOrder(cidFromMeta, pi.id, emailFromMeta, sessionIdFromMeta);
     if (!resolved) {
       console.error(`[stripe-webhook] ORPHANED PAYMENT: PI ${pi.id}`);
@@ -366,17 +403,27 @@ Deno.serve(async (req: Request) => {
 
     if ((order.status as string) === "processing" && (order.payment_intent_id as string) === pi.id) {
       console.info(`[stripe-webhook] ${confirmationId} already processing — idempotent. Firing triggers anyway.`);
-      if (sessionIdFromMeta && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: sessionIdFromMeta }).eq("confirmation_id", confirmationId); }
+      // Backfill coupon fields if they weren't saved on the first pass
+      const idempotentPatch: Record<string, unknown> = {};
+      if (sessionIdFromMeta && !order.checkout_session_id) idempotentPatch.checkout_session_id = sessionIdFromMeta;
+      if (couponCodeFromMeta && !order.coupon_code) idempotentPatch.coupon_code = couponCodeFromMeta;
+      if (couponDiscountDollars && couponDiscountDollars > 0 && !order.coupon_discount) idempotentPatch.coupon_discount = couponDiscountDollars;
+      if (Object.keys(idempotentPatch).length > 0) {
+        await supabase.from("orders").update(idempotentPatch).eq("confirmation_id", confirmationId);
+      }
       await sendPostPaymentEmails(order, pi.id, amt, matchedBy, sessionIdFromMeta);
       schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true, matchedBy });
     }
 
-    const updated = await markOrderProcessing(confirmationId, pi.id, amt, "card", sessionIdFromMeta);
+    const updated = await markOrderProcessing(
+      confirmationId, pi.id, amt, "card", sessionIdFromMeta,
+      couponCodeFromMeta, couponDiscountDollars,
+    );
     if (updated) {
       const freshOrder = await findOrderByConfId(confirmationId);
       if (freshOrder?.id) {
-        await logStatus(freshOrder.id, confirmationId, "processing", `Payment confirmed via Stripe. PI: ${pi.id}. Amount: $${amt}. Matched by: ${matchedBy}`);
+        await logStatus(freshOrder.id, confirmationId, "processing", `Payment confirmed via Stripe. PI: ${pi.id}. Amount: $${amt}. Matched by: ${matchedBy}${couponCodeFromMeta ? `. Coupon: ${couponCodeFromMeta} (-$${couponDiscountDollars?.toFixed(2)})` : ""}`);
         await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, pi.id, amt, matchedBy, sessionIdFromMeta);
         schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
       }
@@ -397,16 +444,13 @@ Deno.serve(async (req: Request) => {
 
     if (!cid) return json({ ok: true, skipped: true });
 
-    // Update order with failure info
     await supabase.from("orders").update({
       payment_failed_at: new Date().toISOString(),
       payment_failure_reason: failureMessage,
     }).eq("confirmation_id", cid);
 
-    // Look up order for orderId
     const order = await findOrderByConfId(cid);
 
-    // Log the failed attempt with full detail
     await logPaymentAttempt({
       confirmationId: cid,
       orderId: order?.id ?? null,
@@ -514,7 +558,6 @@ Deno.serve(async (req: Request) => {
     const { order, matchedBy } = resolved;
     const confirmationId = order.confirmation_id as string;
 
-    // Log successful checkout attempt
     await logPaymentAttempt({
       confirmationId,
       orderId: order.id as string,
@@ -643,7 +686,7 @@ Deno.serve(async (req: Request) => {
     if (cid) { await supabase.from("orders").update({ plan_type: "Subscription (Annual) — Cancelled" }).eq("confirmation_id", cid); const order = await findOrderByConfId(cid); if (order?.id) await logStatus(order.id, cid, "processing", `Subscription ${sub.id} cancelled.`); }
     return json({ ok: true, type: t });
   }
-  if (["customer.subscription.paused","customer.subscription.resumed","customer.subscription.trial_will_end"].includes(t)) { return json({ ok: true, type: t }); }
+  if (["customer.subscription.paused", "customer.subscription.resumed", "customer.subscription.trial_will_end"].includes(t)) { return json({ ok: true, type: t }); }
 
   if (t === "invoice.paid") {
     const invoice = event.data.object; const amt = Math.round((invoice.amount_paid ?? 0) / 100); const billing = invoice.billing_reason; const cid = invoice.subscription_details?.metadata?.confirmation_id;
@@ -675,7 +718,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, type: t });
   }
   if (t === "invoice.payment_action_required") { return json({ ok: true, type: t }); }
-  if (["invoice.created","invoice.finalized","invoice.upcoming","invoice.marked_uncollectible","invoice.voided"].includes(t)) { return json({ ok: true, type: t }); }
+  if (["invoice.created", "invoice.finalized", "invoice.upcoming", "invoice.marked_uncollectible", "invoice.voided"].includes(t)) { return json({ ok: true, type: t }); }
   if (t === "customer.created" || t === "customer.updated") { return json({ ok: true, type: t }); }
 
   console.info(`[stripe-webhook] Received unhandled event: ${t}`);

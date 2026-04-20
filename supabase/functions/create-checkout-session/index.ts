@@ -1,5 +1,53 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+/**
+ * Returns the paid-order row for this email if and only if the paid order
+ * belongs to a DIFFERENT confirmation_id than the current attempt. Used to
+ * hard-block Checkout Session creation for an email that already has a paid
+ * order, while still allowing idempotent retries against the same
+ * confirmation_id.
+ *
+ * We purposely ignore refunded/cancelled rows so a support-refunded order
+ * doesn't lock the email forever.
+ */
+async function findPaidOrderBlockingEmail(
+  email: string,
+  currentConfirmationId: string,
+): Promise<{ confirmation_id: string; payment_intent_id: string | null; paid_at: string | null } | null> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data } = await supabase
+      .from("orders")
+      .select("confirmation_id, payment_intent_id, paid_at, status")
+      .ilike("email", normalized)
+      .not("status", "in", `("refunded","cancelled")`)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (!data) return null;
+    for (const row of data) {
+      const paid = !!(row.payment_intent_id || row.paid_at);
+      if (paid && row.confirmation_id !== currentConfirmationId) {
+        return {
+          confirmation_id: row.confirmation_id as string,
+          payment_intent_id: (row.payment_intent_id as string | null) ?? null,
+          paid_at: (row.paid_at as string | null) ?? null,
+        };
+      }
+    }
+    return null;
+  } catch (err) {
+    console.warn("[create-checkout-session] paid-email check failed:", err);
+    return null;
+  }
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -14,19 +62,24 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// ─── ESA ONE-TIME Price IDs ────────────────────────────────────────────────
-const ESA_ONETIME_PRICE_IDS: Record<number, { standard: string; priority: string }> = {
-  1: { standard: "price_1TF1aRGwm9wIWlgiUh5D4hlk", priority: "price_1TF1aRGwm9wIWlgidsNUQWOh" },
-  2: { standard: "price_1TF1aRGwm9wIWlgi75IgoDD2", priority: "price_1TF1aRGwm9wIWlgiYbOUIUUJ" },
-  3: { standard: "price_1TF1aRGwm9wIWlgiKV1lvAxg", priority: "price_1TF1aRGwm9wIWlgi7VecucGQ" },
-};
+// ─── ESA Stripe price IDs (LIVE) — base + add-on model ────────────────────
+const ESA_ONETIME_BASE_PRICE_ID = "price_1TNN3RGwm9wIWlgi5wRMMfkW";
+const ESA_ONETIME_ADDON_PRICE_ID = "price_1TNN3yGwm9wIWlgiKd6ZdCUa";
+const ESA_ANNUAL_BASE_PRICE_ID = "price_1TNN4QGwm9wIWlgi05I7rDMe";
+const ESA_ANNUAL_ADDON_PRICE_ID = "price_1TNN4rGwm9wIWlgie4OcX3rZ";
 
-// ─── ESA ANNUAL SUBSCRIPTION Price IDs ────────────────────────────────────
-const ESA_ANNUAL_PRICE_IDS: Record<number, { standard: string; priority: string }> = {
-  1: { standard: "price_1THP45Gwm9wIWlgi1XDsvnTx", priority: "price_1TF1a9Gwm9wIWlgig0i7gdKz" },
-  2: { standard: "price_1THP5NGwm9wIWlgipmibdZro", priority: "price_1THP7RGwm9wIWlgiyd3wR6LM" },
-  3: { standard: "price_1THP6nGwm9wIWlgirhtFjBHe", priority: "price_1THP76Gwm9wIWlgiVw9ZI1Oj" },
-};
+function buildESALineItems(
+  petCount: number,
+  planType: string,
+): Array<{ price: string; quantity: number }> {
+  const n = Math.max(1, Math.min(3, petCount));
+  const isSub = planType === "subscription";
+  const base = isSub ? ESA_ANNUAL_BASE_PRICE_ID : ESA_ONETIME_BASE_PRICE_ID;
+  const addon = isSub ? ESA_ANNUAL_ADDON_PRICE_ID : ESA_ONETIME_ADDON_PRICE_ID;
+  const items = [{ price: base, quantity: 1 }];
+  if (n > 1) items.push({ price: addon, quantity: n - 1 });
+  return items;
+}
 
 // ─── PSD ONE-TIME Price IDs ────────────────────────────────────────────────
 const PSD_ONETIME_PRICE_IDS: Record<number, { standard: string; priority: string }> = {
@@ -42,23 +95,11 @@ const PSD_ANNUAL_PRICE_IDS: Record<number, string> = {
   3: "price_1TG6TKGwm9wIWlgiNFZbRloA",
 };
 
-function getPriceId(
-  letterType: string,
-  petCount: number,
-  deliverySpeed: string,
-  planType: string,
-): string {
+function getPSDPriceId(petCount: number, deliverySpeed: string, planType: string): string {
   const tier  = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
   const level = deliverySpeed === "2-3days" ? "standard" : "priority";
-
-  if (letterType === "psd") {
-    if (planType === "subscription") return PSD_ANNUAL_PRICE_IDS[tier];
-    return PSD_ONETIME_PRICE_IDS[tier][level];
-  }
-
-  // default: ESA
-  if (planType === "subscription") return ESA_ANNUAL_PRICE_IDS[tier][level];
-  return ESA_ONETIME_PRICE_IDS[tier][level];
+  if (planType === "subscription") return PSD_ANNUAL_PRICE_IDS[tier];
+  return PSD_ONETIME_PRICE_IDS[tier][level];
 }
 
 /**
@@ -127,14 +168,56 @@ Deno.serve(async (req: Request) => {
   const mode           = (body.mode           as string) ?? "klarna";  // "klarna" | "qr" | "card"
   const planType       = (body.planType       as string) ?? "one-time";
   const origin         = (body.origin         as string) ?? "https://www.pawtenant.com";
-  // Coupon code from frontend (already validated by our DB validate-coupon function)
+  // Coupon code from frontend (already validated against Stripe by validate-coupon)
   const couponCode     = (body.couponCode     as string) ?? "";
 
   if (!email || !confirmationId) {
     return json({ error: "email and confirmationId are required" }, 400);
   }
 
-  const priceId = getPriceId(letterType, petCount, deliverySpeed, planType);
+  // ── Returning-customer bypass ────────────────────────────────────────────
+  // See create-payment-intent for rationale. parent_order_id is set only by
+  // service-role create-returning-order, so this cannot be triggered from the
+  // public /assessment flow.
+  let isReturningCustomer = false;
+  if (confirmationId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { data: currentRow } = await sb
+        .from("orders")
+        .select("parent_order_id")
+        .eq("confirmation_id", confirmationId)
+        .maybeSingle();
+      isReturningCustomer = !!currentRow?.parent_order_id;
+    } catch (err) {
+      console.warn("[create-checkout-session] returning-customer lookup failed:", err);
+    }
+  }
+
+  // ── HARD BLOCK: email already has a PAID order under a different row ─────
+  // Mirrors the guard in create-payment-intent. Without this, redirect flows
+  // (Klarna / QR card / Link) can still reach a Stripe Checkout Session even
+  // when the inline card path is blocked.
+  const paidBlocker = isReturningCustomer
+    ? null
+    : await findPaidOrderBlockingEmail(email, confirmationId);
+  if (paidBlocker) {
+    console.warn(
+      `[create-checkout-session] REFUSED: email ${email} already paid under ${paidBlocker.confirmation_id} (PI ${paidBlocker.payment_intent_id ?? "n/a"})`,
+    );
+    return json(
+      {
+        error: "An order already exists for this email. Please use a different email or contact support to resume your existing order.",
+        emailConflict: true,
+        alreadyPaid: true,
+      },
+      409,
+    );
+  }
+
+  const isESA = letterType !== "psd";
+  const esaLineItems = isESA ? buildESALineItems(petCount, planType) : null;
+  const psdPriceId = !isESA ? getPSDPriceId(petCount, deliverySpeed, planType) : "";
 
   // Success/cancel URLs — route to correct thank-you page per letter type
   const thankYouPath = letterType === "psd" ? "/psd-assessment/thank-you" : "/assessment/thank-you";
@@ -168,7 +251,7 @@ Deno.serve(async (req: Request) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sessionParams: any = {
         mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
+        line_items: isESA ? esaLineItems! : [{ price: psdPriceId, quantity: 1 }],
         customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -196,7 +279,7 @@ Deno.serve(async (req: Request) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sessionParams: any = {
       mode: "payment",
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: isESA ? esaLineItems! : [{ price: psdPriceId, quantity: 1 }],
       customer_email: email,
       success_url: successUrl,
       cancel_url: cancelUrl,
