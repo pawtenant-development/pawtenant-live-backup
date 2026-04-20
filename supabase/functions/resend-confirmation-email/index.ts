@@ -10,7 +10,8 @@ const CORS_HEADERS = {
 const COMPANY_NAME = "PawTenant";
 const COMPANY_DOMAIN = "pawtenant.com";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
-const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
+const SITE_URL = Deno.env.get("SITE_URL") ?? `https://${COMPANY_DOMAIN}`;
+const PORTAL_URL = `${SITE_URL}/my-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
@@ -68,7 +69,7 @@ function baseLayout(badge: string, heading: string, subheading: string, body: st
       <tr>
         <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
           <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a></p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">${COMPANY_NAME} &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="${SITE_URL}" style="color:${ACCENT};text-decoration:none;">${COMPANY_DOMAIN}</a></p>
         </td>
       </tr>
     </table>
