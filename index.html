@@ -333,13 +333,6 @@
         window.Tawk_API = Tawk_API;
         window.Tawk_LoadStart = new Date();
 
-        // On mobile (<768px) hide Tawk's own bubble — our custom draggable button handles it
-        Tawk_API.onLoad = function() {
-          if (window.innerWidth < 768) {
-            Tawk_API.hideWidget();
-          }
-        };
-
         var s1 = document.createElement("script");
         var s0 = document.getElementsByTagName("script")[0];
         s1.async = true;

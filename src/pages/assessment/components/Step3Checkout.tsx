@@ -1107,8 +1107,8 @@ export default function Step3Checkout({
             </div>
           </div>
 
-          <div className="hidden sm:block bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+          <div className="block bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-1 flex items-center gap-1">
                   <i className="ri-award-line text-xs"></i>
@@ -1122,12 +1122,13 @@ export default function Step3Checkout({
                 Sample
               </span>
             </div>
-            <div className="w-full bg-gradient-to-b from-gray-100 to-gray-50 border-b border-gray-100 px-5 sm:px-8 py-6">
-              <div className="rounded-lg overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.10)] ring-1 ring-amber-100 bg-white">
+            <div className="w-full bg-gradient-to-b from-gray-100 to-gray-50 border-b border-gray-100 px-4 sm:px-8 py-5 sm:py-6">
+              <div className="rounded-lg overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.10)] ring-1 ring-amber-100 bg-white mx-auto max-w-[520px]">
                 <img
                   src="/images/checkout/esa-sample-letter.svg"
                   alt="Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature"
                   className="w-full h-auto block"
+                  loading="lazy"
                 />
               </div>
             </div>
