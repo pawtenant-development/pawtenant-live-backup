@@ -42,34 +42,25 @@ export default function ExitIntentOverlay({
 
   const show = useCallback(() => {
     if (hasShownRef.current) return;
+    if (sessionStorage.getItem(EXIT_INTENT_KEY) === "true") return;
     hasShownRef.current = true;
     sessionStorage.setItem(EXIT_INTENT_KEY, "true");
     setVisible(true);
   }, []);
 
   useEffect(() => {
-    let cooldown: ReturnType<typeof setTimeout> | null = null;
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) return;
-      if (cooldown) clearTimeout(cooldown);
-      cooldown = setTimeout(() => {
-        hasShownRef.current = false;
-      }, 500);
-    };
+    // Only arm on Step 1 and Step 2 — Step 3 has its own coupon popup
+    if (currentStep >= 3) return;
 
     const handleHidden = () => {
       if (document.hidden) show();
     };
 
     document.addEventListener("visibilitychange", handleHidden);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", handleHidden);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (cooldown) clearTimeout(cooldown);
     };
-  }, [show]);
+  }, [show, currentStep]);
 
   const handleStay = () => {
     setVisible(false);

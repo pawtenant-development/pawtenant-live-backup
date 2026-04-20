@@ -41,6 +41,26 @@ function getOneTimePrice(petCount: number): number {
 const COUPON_POPUP_SESSION_KEY = "esa_step3_coupon_popup_shown";
 const COUPON_POPUP_CODE = "PAW20";
 
+function CouponDogIllustration() {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      xmlns="http://www.w3.org/2000/svg"
+      className="w-full h-full"
+      aria-hidden="true"
+    >
+      <ellipse cx="16" cy="20" rx="7" ry="11" fill="#b45309" transform="rotate(-24 16 20)" />
+      <ellipse cx="48" cy="20" rx="7" ry="11" fill="#b45309" transform="rotate(24 48 20)" />
+      <circle cx="32" cy="34" r="18" fill="#f59e0b" />
+      <ellipse cx="32" cy="42" rx="9" ry="7" fill="#fde68a" />
+      <circle cx="25" cy="30" r="2.2" fill="#1f2937" />
+      <circle cx="39" cy="30" r="2.2" fill="#1f2937" />
+      <ellipse cx="32" cy="38" rx="2.6" ry="2" fill="#1f2937" />
+      <path d="M28 44 Q32 47 36 44" stroke="#1f2937" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function CouponPopup({ onDismiss }: { onDismiss: () => void }) {
   const [copied, setCopied] = useState(false);
 
@@ -74,13 +94,15 @@ function CouponPopup({ onDismiss }: { onDismiss: () => void }) {
           <i className="ri-close-line text-lg"></i>
         </button>
 
-        <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mb-3">
-          <i className="ri-gift-line text-orange-500 text-xl"></i>
+        <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mb-3 mx-auto">
+          <div className="w-12 h-12">
+            <CouponDogIllustration />
+          </div>
         </div>
-        <h3 className="text-lg font-extrabold text-gray-900 mb-1">
-          Save $20 on your ESA Letter
+        <h3 className="text-lg font-extrabold text-gray-900 mb-1 text-center">
+          Wait — don&apos;t leave empty-pawed!
         </h3>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-gray-600 mb-4 text-center">
           Copy this code and paste it in the discount field below.
         </p>
 
@@ -286,14 +308,7 @@ function CouponRow({
           <i className="ri-error-warning-line"></i>
           {error}
         </p>
-      ) : (
-        <p className="text-[11px] text-gray-400 ml-1 flex items-center gap-1">
-          <i className="ri-gift-line text-orange-400"></i>
-          Use code{" "}
-          <span className="font-bold text-orange-500 tracking-wide">PAW20</span>{" "}
-          for a $20 discount
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -688,7 +703,7 @@ export default function Step3Checkout({
     setLocalCoupon(appliedCoupon ?? null);
   }, [appliedCoupon]);
 
-  // ── Coupon popup: show once per session on Step 3 ──
+  // ── Coupon popup: show once per session on Step 3, only on first tab switch ──
   const [showCouponPopup, setShowCouponPopup] = useState(false);
   useEffect(() => {
     try {
@@ -696,8 +711,18 @@ export default function Step3Checkout({
     } catch {
       return;
     }
-    const t = setTimeout(() => setShowCouponPopup(true), 400);
-    return () => clearTimeout(t);
+    const onVisibility = () => {
+      if (!document.hidden) return;
+      try {
+        sessionStorage.setItem(COUPON_POPUP_SESSION_KEY, "1");
+      } catch {
+        // ignore
+      }
+      setShowCouponPopup(true);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
   const dismissCouponPopup = () => {
     try {
@@ -894,14 +919,6 @@ export default function Step3Checkout({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 pt-1">
-                  <i className="ri-coupon-3-line text-orange-400 text-xs flex-shrink-0"></i>
-                  <p className="text-[10px] text-gray-400">
-                    Use code{" "}
-                    <span className="font-bold text-orange-500 tracking-wide">PAW20</span>{" "}
-                    for a $20 discount
-                  </p>
-                </div>
               </div>
               <div className="bg-[#1A5C4F] px-5 py-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
