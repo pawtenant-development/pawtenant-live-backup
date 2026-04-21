@@ -54,3 +54,8 @@ supabase/.branches/
 # ---- Misc ----
 *.local
 .cache/
+
+graphify-out/cache/
+.claude/worktrees/
+.claude/scratch/
+graphify-out/graph.html

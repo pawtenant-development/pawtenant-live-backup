@@ -88,18 +88,6 @@ Always return:
 
 ---
 
-## REPO SAFETY
-
-- pawtenant-test = development environment
-- pawtenant-live-backup = production environment
-
-Rules:
-- All fixes start in pawtenant-test
-- Live changes may only mirror tested changes
-- Never create or modify files outside the active repo
-
----
-
 ## ENVIRONMENT RULES
 
 Test:
@@ -111,3 +99,31 @@ Live:
 - live Supabase project
 
 NEVER deploy to live without approval.
+
+# INCIDENT MODE — TOP PRIORITY
+
+We have identified a real customer-facing failure:
+
+1. Checkout is broken (terms checkbox issue blocking payment)
+2. Customer attempted multiple calls — call handling failed
+3. Admin did not receive proper alert or visibility
+4. Potential payment linking issue
+
+This is a LIVE revenue-impacting issue.
+
+PRIORITY ORDER:
+1. Fix checkout flow (blocking revenue)
+2. Verify Stripe payment linking integrity
+3. Fix inbound call handling / workflow
+4. Improve admin visibility for support events
+
+RULES:
+- All fixes must be done in pawtenant-test first
+- No changes to production until verified
+- Prefer minimal, targeted fixes (no rewrites)
+- Add logging where visibility is missing
+
+At the same time:
+Continue building AI automation system so future issues are detected and fixed automatically.
+
+Both tracks run in parallel.
