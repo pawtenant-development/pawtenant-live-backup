@@ -59,3 +59,4 @@ graphify-out/cache/
 .claude/worktrees/
 .claude/scratch/
 graphify-out/graph.html
+.claude/scratch/build_playbook.py
