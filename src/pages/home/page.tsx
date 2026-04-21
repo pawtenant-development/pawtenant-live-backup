@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
-import DiscountPopup from "../../components/feature/DiscountPopup";
 import HeroSection from "./components/HeroSection";
 import MediaTrustBar from "./components/MediaTrustBar";
 import TrustFeatures from "./components/TrustFeatures";
@@ -124,7 +123,7 @@ const ORGANIZATION_SCHEMA = {
 
 export default function Home() {
   useEffect(() => {
-    document.title = "Legitimate ESA Letter Online | Licensed Professionals | PawTenant";
+    document.title = "Legitimate ESA Letter Online | Licensed Professionals";
     let metaDesc = document.querySelector('meta[name="description"]');
     if (!metaDesc) { metaDesc = document.createElement("meta"); (metaDesc as HTMLMetaElement).name = "description"; document.head.appendChild(metaDesc); }
     (metaDesc as HTMLMetaElement).content = "Get a legitimate ESA letter from licensed mental health professionals. Valid in all US states. HIPAA-secure, same-day delivery, 100% money-back guarantee.";
@@ -151,7 +150,6 @@ export default function Home() {
 
   return (
     <main>
-      <DiscountPopup delayMs={8000} />
       <SharedNavbar />
       <HeroSection />
       <MediaTrustBar />

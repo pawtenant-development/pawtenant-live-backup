@@ -144,7 +144,7 @@ export default function DoctorProfilePage() {
         <SharedNavbar />
         <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4]">
           <div className="text-center">
-            <p className="text-2xl font-bold text-gray-800 mb-3">Doctor not found</p>
+            <p className="text-2xl font-bold text-gray-800 mb-3">Provider not found</p>
             <Link to="/" className="text-orange-500 hover:underline text-sm">Back to Home</Link>
           </div>
         </div>
@@ -203,7 +203,7 @@ export default function DoctorProfilePage() {
                     <>
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e8f0f9] border border-[#b8cce4] text-[#2c5282] text-xs font-semibold">
                         <i className="ri-medal-line text-[#2c5282]"></i>
-                        NPI Verified
+                        NPI Verified{(npiNumber || doctor.npi_number) ? ` · #${npiNumber || doctor.npi_number}` : ""}
                       </span>
                       <button
                         type="button"

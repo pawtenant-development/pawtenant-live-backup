@@ -52,7 +52,7 @@ export default function DoctorsSection() {
         <div className="flex items-end justify-between mb-12 flex-wrap gap-4">
           <div>
             <h2 className="text-4xl font-extrabold text-gray-900 mb-3" style={{ fontFamily: "'Playfair Display', serif" }}>
-              Choose Your Doctor
+              Choose Your Provider
             </h2>
             <p className="text-gray-500 text-sm max-w-xl leading-relaxed">
               Select the licensed mental health professional you&apos;d like to work with. Availability depends on the states where the provider is currently licensed.

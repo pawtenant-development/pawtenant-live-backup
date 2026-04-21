@@ -199,7 +199,7 @@ export default function ESALetterVerificationPage() {
                     { label: "Letter Type", value: "Emotional Support Animal (ESA)", mono: false },
                     { label: "State", value: "California", mono: false },
                     { label: "Issue Date", value: "April 6, 2026", mono: false },
-                    { label: "Provider", value: "Dr. Sarah Mitchell, LCSW", mono: false },
+                    { label: "Provider", value: "Sarah Mitchell, LCSW", mono: false },
                     { label: "NPI Number", value: "1234567890", mono: true },
                     { label: "State License", value: "CA-LCSW-98234", mono: true },
                   ].map((row) => (

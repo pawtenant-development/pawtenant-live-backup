@@ -2,9 +2,74 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
-import { getStateBySlug } from "../../mocks/states";
+import { getStateBySlug, usStates } from "../../mocks/states";
+import { getStateBlogEntry } from "../../mocks/stateBlogMap";
+import { blogPosts } from "../../mocks/blogPosts";
 import PrivacySafeVerificationNote from "../../components/feature/PrivacySafeVerificationNote";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
+
+// Universal fallback blog posts shown when no state-specific posts exist
+const FALLBACK_BLOG_SLUGS = [
+  "what-landlords-cannot-legally-do-esa",
+  "how-to-get-esa-letter-from-doctor",
+  "esa-housing-denial-rights-2026",
+  "mental-health-conditions-qualify-esa-2026",
+];
+
+// ── Nearby states map (by slug) ───────────────────────────────────────────────
+const NEARBY_STATES: Record<string, string[]> = {
+  alabama: ["georgia", "florida", "tennessee", "mississippi"],
+  alaska: ["washington", "oregon", "montana", "idaho"],
+  arizona: ["california", "nevada", "utah", "new-mexico", "colorado"],
+  arkansas: ["missouri", "tennessee", "mississippi", "louisiana", "oklahoma", "texas"],
+  california: ["oregon", "nevada", "arizona"],
+  colorado: ["utah", "wyoming", "nebraska", "kansas", "oklahoma", "new-mexico", "arizona"],
+  connecticut: ["new-york", "rhode-island", "massachusetts"],
+  delaware: ["maryland", "new-jersey", "pennsylvania"],
+  florida: ["georgia", "alabama"],
+  georgia: ["florida", "alabama", "tennessee", "north-carolina", "south-carolina"],
+  hawaii: ["california", "alaska"],
+  idaho: ["washington", "oregon", "nevada", "utah", "wyoming", "montana"],
+  illinois: ["indiana", "iowa", "wisconsin", "missouri", "kentucky"],
+  indiana: ["illinois", "ohio", "michigan", "kentucky"],
+  iowa: ["illinois", "wisconsin", "minnesota", "south-dakota", "nebraska", "missouri"],
+  kansas: ["colorado", "nebraska", "missouri", "oklahoma"],
+  kentucky: ["indiana", "ohio", "west-virginia", "virginia", "tennessee", "missouri"],
+  louisiana: ["texas", "arkansas", "mississippi"],
+  maine: ["new-hampshire", "vermont"],
+  maryland: ["virginia", "west-virginia", "pennsylvania", "delaware"],
+  massachusetts: ["connecticut", "rhode-island", "new-york", "vermont", "new-hampshire"],
+  michigan: ["indiana", "ohio", "wisconsin"],
+  minnesota: ["iowa", "wisconsin", "south-dakota", "north-dakota"],
+  mississippi: ["louisiana", "arkansas", "tennessee", "alabama"],
+  missouri: ["iowa", "illinois", "kentucky", "tennessee", "arkansas", "oklahoma", "kansas", "nebraska"],
+  montana: ["idaho", "wyoming", "north-dakota", "south-dakota"],
+  nebraska: ["iowa", "south-dakota", "wyoming", "colorado", "kansas", "missouri"],
+  nevada: ["california", "oregon", "idaho", "utah", "arizona"],
+  "new-hampshire": ["maine", "vermont", "massachusetts"],
+  "new-jersey": ["new-york", "pennsylvania", "delaware"],
+  "new-mexico": ["colorado", "utah", "arizona", "texas", "oklahoma"],
+  "new-york": ["connecticut", "massachusetts", "vermont", "new-jersey", "pennsylvania"],
+  "north-carolina": ["virginia", "tennessee", "georgia", "south-carolina"],
+  "north-dakota": ["minnesota", "south-dakota", "montana"],
+  ohio: ["indiana", "michigan", "pennsylvania", "west-virginia", "kentucky"],
+  oklahoma: ["kansas", "colorado", "new-mexico", "texas", "arkansas", "missouri"],
+  oregon: ["washington", "idaho", "nevada", "california"],
+  pennsylvania: ["new-york", "new-jersey", "delaware", "maryland", "west-virginia", "ohio"],
+  "rhode-island": ["connecticut", "massachusetts"],
+  "south-carolina": ["north-carolina", "georgia"],
+  "south-dakota": ["north-dakota", "minnesota", "iowa", "nebraska", "wyoming", "montana"],
+  tennessee: ["kentucky", "virginia", "north-carolina", "georgia", "alabama", "mississippi", "arkansas", "missouri"],
+  texas: ["new-mexico", "oklahoma", "arkansas", "louisiana"],
+  utah: ["idaho", "wyoming", "colorado", "new-mexico", "arizona", "nevada"],
+  vermont: ["new-york", "new-hampshire", "massachusetts", "maine"],
+  virginia: ["maryland", "west-virginia", "kentucky", "tennessee", "north-carolina"],
+  washington: ["oregon", "idaho"],
+  "washington-dc": ["maryland", "virginia"],
+  "west-virginia": ["ohio", "pennsylvania", "maryland", "virginia", "kentucky"],
+  wisconsin: ["minnesota", "iowa", "illinois", "michigan"],
+  wyoming: ["montana", "south-dakota", "nebraska", "colorado", "utah", "idaho"],
+};
 
 // ── Per-state custom meta titles & descriptions ───────────────────────────────
 // Keyed by state slug. Falls back to generic template for unlisted states.
@@ -502,7 +567,7 @@ export default function StateESAPage() {
             </p>
             <Link
               to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-              className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+              className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
               <i className="ri-file-text-line"></i>
               Get An ESA Letter Now
@@ -686,6 +751,100 @@ export default function StateESAPage() {
           </div>
         </div>
       </section>
+
+      {/* Related Blog Posts */}
+      {(() => {
+        const stateEntry = getStateBlogEntry(stateData.slug);
+        const slugsToShow = stateEntry && stateEntry.postSlugs.length > 0
+          ? stateEntry.postSlugs.slice(0, 4)
+          : FALLBACK_BLOG_SLUGS;
+        const posts = slugsToShow
+          .map((s) => blogPosts.find((p) => p.slug === s))
+          .filter(Boolean) as typeof blogPosts;
+        if (posts.length === 0) return null;
+        return (
+          <section className="py-14 bg-[#fafafa] border-t border-gray-100">
+            <div className="max-w-7xl mx-auto px-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-widest text-orange-500 mb-1 block">Learn More</span>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {stateEntry ? `${stateData.name} ESA Guides` : "ESA Housing Guides"}
+                  </h2>
+                </div>
+                <Link
+                  to="/blog"
+                  className="whitespace-nowrap text-sm font-semibold text-orange-500 hover:text-orange-600 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  All Articles
+                  <i className="ri-arrow-right-line text-xs"></i>
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                {posts.map((post) => (
+                  <Link
+                    key={post.slug}
+                    to={`/blog/${post.slug}`}
+                    className="group bg-white rounded-xl border border-gray-100 overflow-hidden hover:border-orange-200 transition-colors cursor-pointer flex flex-col"
+                  >
+                    <div className="w-full h-36 overflow-hidden flex-shrink-0">
+                      <img
+                        src={post.image}
+                        alt={post.title}
+                        className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                      />
+                    </div>
+                    <div className="p-4 flex flex-col flex-1">
+                      <span className="text-xs font-semibold text-orange-500 uppercase tracking-wide mb-2">{post.category}</span>
+                      <h3 className="text-sm font-bold text-gray-900 leading-snug mb-2 group-hover:text-orange-600 transition-colors line-clamp-3">
+                        {post.title}
+                      </h3>
+                      <div className="mt-auto flex items-center gap-2 pt-2">
+                        <span className="text-xs text-gray-400">{post.readTime}</span>
+                        <span className="text-gray-200">·</span>
+                        <span className="text-xs text-gray-400">{post.date}</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* Nearby States */}
+      {(() => {
+        const nearbySlug = NEARBY_STATES[stateData.slug] ?? [];
+        const nearbyList = nearbySlug
+          .map((s) => usStates.find((st) => st.slug === s))
+          .filter(Boolean) as typeof usStates;
+        if (nearbyList.length === 0) return null;
+        return (
+          <section className="py-14 bg-white border-t border-gray-100">
+            <div className="max-w-7xl mx-auto px-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-2">
+                Also Serving Nearby States
+              </h2>
+              <p className="text-sm text-gray-500 mb-6">
+                PawTenant provides licensed ESA letters across all 50 states. If you or someone you know is in a neighboring state, we can help there too.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {nearbyList.map((s) => (
+                  <Link
+                    key={s.slug}
+                    to={`/esa-letter/${s.slug}`}
+                    className="whitespace-nowrap inline-flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 text-orange-700 text-sm font-semibold rounded-lg hover:bg-orange-100 hover:border-orange-400 transition-colors cursor-pointer"
+                  >
+                    <i className="ri-map-pin-line text-orange-400 text-xs"></i>
+                    ESA Letter in {s.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* CTA */}
       <section className="py-16 bg-white">

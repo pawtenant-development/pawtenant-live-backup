@@ -107,7 +107,7 @@ export default function HeroSection() {
           <div className="flex flex-col sm:flex-row gap-3 mb-8">
             <a
               href={withAttribution("/assessment")}
-              className="whitespace-nowrap px-7 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer inline-flex items-center justify-center gap-2"
+              className="whitespace-nowrap px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer inline-flex items-center justify-center gap-2"
             >
               Get Your Legit ESA Letter Now
               <i className="ri-arrow-right-line"></i>
