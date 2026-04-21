@@ -1,8 +1,9 @@
-// Step3Checkout — Payment orchestration (Card / Klarna / QR tabs)
+// Step3Checkout — Payment orchestration (Card / Klarna tabs)
 import { useState, useEffect } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import type { StripeElementsOptions } from "@stripe/stripe-js";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Step1Data } from "./Step1Assessment";
 import type { Step2Data } from "./Step2PersonalInfo";
 import PolicyModal from "./PolicyModal";
@@ -20,15 +21,30 @@ const stripePromise = loadStripe(
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
+// ─── Color System ────────────────────────────────────────────────────────────
+const BRAND_GREEN = "#1A5C4F";
+const BRAND_GREEN_SOFT = "#E8F1EE";
+const BRAND_GREEN_BORDER = "#CFE2DC";
+
+const ACTION_ORANGE = "#F97316";
+const ACTION_ORANGE_DARK = "#EA580C";
+const ACTION_ORANGE_SOFT = "#FFF7ED";
+const ACTION_ORANGE_BORDER = "#FED7AA";
+
+const CARD_SHELL =
+  "bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_0_rgba(15,23,42,0.03),0_8px_28px_-14px_rgba(15,23,42,0.12)] overflow-hidden";
+
+const PAYMENT_SECTION_ID = "step3-payment-section";
+
 const STRIPE_APPEARANCE: StripeElementsOptions["appearance"] = {
   theme: "flat",
   variables: {
-    colorPrimary: "#F97316",
+    colorPrimary: ACTION_ORANGE,
     colorBackground: "#ffffff",
-    colorText: "#1f2937",
-    colorDanger: "#ef4444",
+    colorText: "#0f172a",
+    colorDanger: "#dc2626",
     fontFamily: "inherit",
-    borderRadius: "8px",
+    borderRadius: "10px",
   },
 };
 
@@ -37,29 +53,77 @@ function getOneTimePrice(petCount: number): number {
   return 110 + (n - 1) * 25;
 }
 
-// ─── CouponPopup (LIVE only — once-per-session) ──────────────────────────────
-const COUPON_POPUP_SESSION_KEY = "esa_step3_coupon_popup_shown";
-const COUPON_POPUP_CODE = "PAW20";
+function getAnnualSubPrice(petCount: number): number {
+  const n = Math.max(1, Math.min(3, petCount));
+  return 99 + (n - 1) * 20;
+}
 
-function CouponDogIllustration() {
+// ─── Card brand marks (inline SVGs) ──────────────────────────────────────────
+
+function VisaMark() {
   return (
-    <svg
-      viewBox="0 0 64 64"
-      xmlns="http://www.w3.org/2000/svg"
-      className="w-full h-full"
-      aria-hidden="true"
-    >
-      <ellipse cx="16" cy="20" rx="7" ry="11" fill="#b45309" transform="rotate(-24 16 20)" />
-      <ellipse cx="48" cy="20" rx="7" ry="11" fill="#b45309" transform="rotate(24 48 20)" />
-      <circle cx="32" cy="34" r="18" fill="#f59e0b" />
-      <ellipse cx="32" cy="42" rx="9" ry="7" fill="#fde68a" />
-      <circle cx="25" cy="30" r="2.2" fill="#1f2937" />
-      <circle cx="39" cy="30" r="2.2" fill="#1f2937" />
-      <ellipse cx="32" cy="38" rx="2.6" ry="2" fill="#1f2937" />
-      <path d="M28 44 Q32 47 36 44" stroke="#1f2937" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+    <svg width="34" height="10" viewBox="0 0 34 10" fill="none" aria-label="Visa">
+      <text x="0" y="9" fontFamily="Inter, Arial, sans-serif" fontWeight={900} fontStyle="italic" fontSize="11" letterSpacing="0.5" fill="#1A1F71">
+        VISA
+      </text>
     </svg>
   );
 }
+
+function MastercardMark() {
+  return (
+    <svg width="30" height="18" viewBox="0 0 30 18" fill="none" aria-label="Mastercard">
+      <circle cx="11" cy="9" r="7" fill="#EB001B" />
+      <circle cx="19" cy="9" r="7" fill="#F79E1B" fillOpacity="0.92" />
+      <path d="M15 4.2a6.98 6.98 0 0 1 0 9.6 6.98 6.98 0 0 1 0-9.6Z" fill="#FF5F00" />
+    </svg>
+  );
+}
+
+function AmexMark() {
+  return (
+    <svg width="34" height="14" viewBox="0 0 34 14" aria-label="American Express">
+      <rect x="0" y="0" width="34" height="14" rx="2" fill="#1F72CD" />
+      <text x="17" y="10" textAnchor="middle" fontFamily="Inter, Arial, sans-serif" fontWeight={800} fontSize="8" letterSpacing="0.8" fill="#FFFFFF">
+        AMEX
+      </text>
+    </svg>
+  );
+}
+
+function DiscoverMark() {
+  return (
+    <svg width="46" height="12" viewBox="0 0 46 12" fill="none" aria-label="Discover">
+      <text x="0" y="10" fontFamily="Inter, Arial, sans-serif" fontWeight={800} fontSize="9" letterSpacing="0.4" fill="#0F172A">
+        DISCOVER
+      </text>
+      <circle cx="43" cy="6" r="3" fill="#F97316" />
+    </svg>
+  );
+}
+
+function CardBrandRow() {
+  return (
+    <div className="flex items-center gap-1.5 flex-shrink-0">
+      <div className="h-7 px-2 flex items-center justify-center bg-white rounded-md ring-1 ring-slate-200">
+        <VisaMark />
+      </div>
+      <div className="h-7 px-1.5 flex items-center justify-center bg-white rounded-md ring-1 ring-slate-200">
+        <MastercardMark />
+      </div>
+      <div className="h-7 px-1.5 flex items-center justify-center bg-white rounded-md ring-1 ring-slate-200">
+        <AmexMark />
+      </div>
+      <div className="hidden sm:flex h-7 px-2 items-center justify-center bg-white rounded-md ring-1 ring-slate-200">
+        <DiscoverMark />
+      </div>
+    </div>
+  );
+}
+
+// ─── CouponPopup ─────────────────────────────────────────────────────────────
+const COUPON_POPUP_SESSION_KEY = "esa_step3_coupon_popup_shown";
+const COUPON_POPUP_CODE = "PAW20";
 
 function CouponPopup({ onDismiss }: { onDismiss: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -71,66 +135,73 @@ function CouponPopup({ onDismiss }: { onDismiss: () => void }) {
       // ignore clipboard errors — dismiss anyway
     }
     setCopied(true);
-    setTimeout(onDismiss, 600);
+    setTimeout(onDismiss, 700);
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 backdrop-blur-[2px] px-4"
       onClick={onDismiss}
       role="dialog"
       aria-modal="true"
     >
-      <div
-        className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 relative"
+      <motion.div
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 relative ring-1 ring-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           aria-label="Close"
           onClick={onDismiss}
-          className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+          className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
         >
           <i className="ri-close-line text-lg"></i>
         </button>
 
-        <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mb-3 mx-auto">
-          <div className="w-12 h-12">
-            <CouponDogIllustration />
-          </div>
+        <div
+          className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+          style={{ backgroundColor: ACTION_ORANGE_SOFT }}
+        >
+          <i className="ri-price-tag-3-line text-xl" style={{ color: ACTION_ORANGE }}></i>
         </div>
-        <h3 className="text-lg font-extrabold text-gray-900 mb-1 text-center">
-          Wait — don&apos;t leave empty-pawed!
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
+          A Small Thank You
+        </p>
+        <h3 className="text-lg font-bold text-slate-900 mb-1.5 leading-snug">
+          Your discount is ready
         </h3>
-        <p className="text-sm text-gray-600 mb-4 text-center">
-          Copy this code and paste it in the discount field below.
+        <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+          Copy the code below and paste it into the discount field on this page.
         </p>
 
         <button
           type="button"
           onClick={handleCopy}
-          className="w-full flex items-center justify-between border-2 border-dashed border-orange-400 rounded-xl px-4 py-3 bg-orange-50 hover:bg-orange-100 transition"
+          className="w-full flex items-center justify-between border border-slate-200 rounded-xl px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
         >
-          <span className="font-bold tracking-widest text-orange-600 text-base">
+          <span className="font-semibold tracking-[0.2em] text-slate-900 text-base">
             {COUPON_POPUP_CODE}
           </span>
-          <span className="text-xs font-semibold text-orange-600 flex items-center gap-1">
+          <span className="text-[11px] font-semibold flex items-center gap-1.5" style={{ color: ACTION_ORANGE_DARK }}>
             <i className={copied ? "ri-check-line" : "ri-file-copy-line"}></i>
-            {copied ? "Copied!" : "Copy"}
+            {copied ? "Copied" : "Copy code"}
           </span>
         </button>
 
-        <p className="text-[11px] text-gray-400 mt-3 text-center">
+        <p className="text-[11px] text-slate-400 mt-3">
           Tap anywhere outside to dismiss.
         </p>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
-}
-
-function getAnnualSubPrice(petCount: number): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return 99 + (n - 1) * 20;
 }
 
 export interface Step3Data {
@@ -166,7 +237,7 @@ interface Step3CheckoutProps {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.2em] mb-2">
       {children}
     </p>
   );
@@ -181,12 +252,7 @@ interface CouponRowProps {
   busy?: boolean;
 }
 
-function CouponRow({
-  basePrice,
-  appliedCoupon,
-  onDiscountChange,
-  busy = false,
-}: CouponRowProps) {
+function CouponRow({ basePrice, appliedCoupon, onDiscountChange, busy = false }: CouponRowProps) {
   const [code, setCode] = useState(appliedCoupon?.code ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -244,17 +310,22 @@ function CouponRow({
 
   if (appliedCoupon) {
     return (
-      <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
+      <motion.div
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className="bg-emerald-50/70 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between gap-2"
+      >
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-7 h-7 flex items-center justify-center bg-emerald-100 rounded-lg flex-shrink-0">
-            <i className="ri-coupon-3-line text-emerald-600 text-sm"></i>
+          <div className="w-7 h-7 flex items-center justify-center bg-white rounded-lg flex-shrink-0 ring-1 ring-emerald-200">
+            <i className="ri-check-line text-emerald-600 text-sm"></i>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-extrabold text-emerald-800 truncate">
-              {appliedCoupon.code} applied!
+            <p className="text-xs font-semibold text-emerald-800 truncate">
+              {appliedCoupon.code} applied
             </p>
-            <p className="text-[10px] text-emerald-600">
-              Saving ${appliedCoupon.discount.toFixed(2)}
+            <p className="text-[11px] text-emerald-700/80">
+              You save ${appliedCoupon.discount.toFixed(2)}
             </p>
           </div>
         </div>
@@ -262,12 +333,12 @@ function CouponRow({
           type="button"
           onClick={handleRemove}
           disabled={busy || loading}
-          className="whitespace-nowrap text-[10px] font-bold text-emerald-700 hover:text-red-500 transition-colors cursor-pointer flex items-center gap-1 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="whitespace-nowrap text-[11px] font-semibold text-emerald-700 hover:text-slate-600 transition-colors cursor-pointer flex items-center gap-1 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <i className="ri-close-line text-sm"></i>
           Remove
         </button>
-      </div>
+      </motion.div>
     );
   }
 
@@ -276,7 +347,7 @@ function CouponRow({
       <div className="flex items-center gap-2">
         <div className="flex-1 relative min-w-0">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center pointer-events-none">
-            <i className="ri-coupon-3-line text-gray-400 text-sm"></i>
+            <i className="ri-price-tag-3-line text-slate-400 text-sm"></i>
           </div>
           <input
             type="text"
@@ -288,23 +359,24 @@ function CouponRow({
             onKeyDown={(e) => e.key === "Enter" && handleApply()}
             placeholder="Discount code (optional)"
             disabled={loading || busy}
-            className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-orange-400 transition-colors placeholder-gray-400 disabled:bg-gray-50 disabled:text-gray-400"
+            className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/15 focus:border-slate-400 transition-colors placeholder-slate-400 disabled:bg-slate-50 disabled:text-slate-400"
           />
         </div>
         <button
           type="button"
           onClick={handleApply}
           disabled={loading || busy || !code.trim()}
-          className={`whitespace-nowrap px-4 py-2.5 text-xs font-extrabold rounded-xl transition-colors flex-shrink-0 ${loading || busy || !code.trim()
-              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "bg-orange-500 text-white hover:bg-orange-600 cursor-pointer"
-            }`}
+          className={`whitespace-nowrap px-4 py-2.5 text-xs font-semibold rounded-xl transition-colors flex-shrink-0 ${
+            loading || busy || !code.trim()
+              ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+              : "bg-slate-900 text-white hover:bg-slate-800 cursor-pointer"
+          }`}
         >
           {loading ? <i className="ri-loader-4-line animate-spin"></i> : "Apply"}
         </button>
       </div>
       {error ? (
-        <p className="text-xs text-red-500 ml-1 flex items-center gap-1">
+        <p className="text-xs text-red-600 ml-1 flex items-center gap-1">
           <i className="ri-error-warning-line"></i>
           {error}
         </p>
@@ -411,126 +483,81 @@ function SecurePaymentCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      {/* Header */}
-      <div className="bg-[#1A5C4F] px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 flex items-center justify-center bg-white/15 rounded-xl flex-shrink-0">
-            <i className="ri-lock-2-line text-white text-sm"></i>
+    <div id={PAYMENT_SECTION_ID} className={CARD_SHELL}>
+      {/* Header — GREEN = trust */}
+      <div className="px-4 sm:px-5 py-4 flex items-center justify-between gap-3 border-b border-slate-100">
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
+            style={{ backgroundColor: BRAND_GREEN_SOFT }}
+          >
+            <i className="ri-lock-2-line text-base" style={{ color: BRAND_GREEN }}></i>
           </div>
-          <div>
-            <p className="text-sm font-extrabold text-white tracking-tight">
-              Secure Checkout
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-900 tracking-tight leading-none">
+              Secure Payment
             </p>
-            <p className="text-[9px] text-white/60 mt-0.5">256-bit SSL Encrypted</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              256-bit SSL · PCI-DSS compliant
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <div
-            className="h-6 px-1.5 flex items-center justify-center bg-white rounded"
-            style={{ minWidth: "32px" }}
-          >
-            <span
-              style={{
-                color: "#1a1f71",
-                fontSize: "10px",
-                fontWeight: 900,
-                fontStyle: "italic",
-              }}
-            >
-              VISA
-            </span>
-          </div>
-          <div
-            className="h-6 flex items-center justify-center bg-white rounded relative overflow-hidden"
-            style={{ width: "38px" }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                left: "4px",
-                width: "18px",
-                height: "18px",
-                borderRadius: "50%",
-                background: "#eb001b",
-              }}
-            ></div>
-            <div
-              style={{
-                position: "absolute",
-                left: "16px",
-                width: "18px",
-                height: "18px",
-                borderRadius: "50%",
-                background: "#f79e1b",
-                opacity: 0.9,
-              }}
-            ></div>
-          </div>
-          <div
-            className="h-6 px-1.5 flex items-center justify-center rounded"
-            style={{ background: "#006fcf", minWidth: "32px" }}
-          >
-            <span
-              style={{
-                color: "white",
-                fontSize: "8px",
-                fontWeight: 800,
-                letterSpacing: "0.06em",
-              }}
-            >
-              AMEX
-            </span>
-          </div>
-        </div>
+        <CardBrandRow />
       </div>
 
       {/* Tab switcher */}
-      <div className="flex border-b border-gray-100 bg-gray-50/50">
+      <div className="flex border-b border-slate-100 bg-slate-50/50">
         <button
           type="button"
           onClick={() => setActiveTab("card")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${activeTab === "card"
-              ? "text-orange-500 border-b-2 border-orange-500 bg-white"
-              : "text-gray-400 hover:text-gray-600"
-            }`}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            activeTab === "card"
+              ? "text-slate-900 border-b-2 border-slate-900 bg-white"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
         >
           <i className="ri-bank-card-line text-sm"></i>
-          Card
+          Credit or Debit
         </button>
 
         {!isSubscription && (
           <button
             type="button"
             onClick={() => setActiveTab("klarna")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${activeTab === "klarna"
-                ? "text-[#ff679a] border-b-2 border-[#ff679a] bg-white"
-                : "text-gray-400 hover:text-gray-600"
-              }`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === "klarna"
+                ? "text-slate-900 border-b-2 border-slate-900 bg-white"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
           >
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#ffb3c7] text-[9px] font-extrabold text-[#17120e]">
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#ffb3c7] text-[9px] font-bold text-[#17120e]">
               K
             </span>
-            Klarna
+            Klarna — Pay Later
           </button>
         )}
-
       </div>
 
       {/* Card tab */}
       {activeTab === "card" && (
         <>
           {isSubscription && (
-            <div className="mx-4 sm:mx-5 mt-4 mb-1 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-3">
-              <div className="w-7 h-7 flex items-center justify-center bg-emerald-100 rounded-lg flex-shrink-0">
-                <i className="ri-refresh-line text-emerald-600 text-sm"></i>
+            <div
+              className="mx-4 sm:mx-5 mt-4 mb-1 rounded-xl px-4 py-3 flex items-center gap-3 border"
+              style={{
+                backgroundColor: ACTION_ORANGE_SOFT,
+                borderColor: ACTION_ORANGE_BORDER,
+              }}
+            >
+              <div className="w-7 h-7 flex items-center justify-center bg-white rounded-lg flex-shrink-0 ring-1 ring-orange-200">
+                <i className="ri-refresh-line text-sm" style={{ color: ACTION_ORANGE_DARK }}></i>
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-extrabold text-emerald-900 leading-snug">
+                <p className="text-xs font-semibold leading-snug" style={{ color: ACTION_ORANGE_DARK }}>
                   Annual Subscription
                 </p>
-                <p className="text-[10px] text-emerald-700 mt-0.5">
+                <p className="text-[11px] text-slate-600 mt-0.5">
                   Billed yearly · Cancel anytime from your portal
                 </p>
               </div>
@@ -552,14 +579,14 @@ function SecurePaymentCard({
             <div className="mx-4 sm:mx-5 my-5 space-y-3">
               {couponSlot}
 
-              <div className="border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-col items-center justify-center py-8 px-4 text-center gap-3">
+              <div className="border border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center py-8 px-4 text-center gap-3">
                 {stripeSecretError && !stripeSecretLoading ? (
                   <>
-                    <div className="w-12 h-12 flex items-center justify-center bg-red-50 border border-red-200 rounded-2xl">
+                    <div className="w-12 h-12 flex items-center justify-center bg-red-50 ring-1 ring-red-200 rounded-2xl">
                       <i className="ri-error-warning-line text-red-500 text-xl"></i>
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-red-700">
+                      <p className="text-sm font-semibold text-red-700">
                         Payment setup failed
                       </p>
                       <p className="text-xs text-red-500 mt-1 leading-relaxed max-w-xs">
@@ -569,31 +596,28 @@ function SecurePaymentCard({
                     <button
                       type="button"
                       onClick={onRetryClientSecret}
-                      className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-600 cursor-pointer transition-colors"
+                      className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-xl hover:bg-slate-800 cursor-pointer transition-colors"
                     >
                       <i className="ri-refresh-line"></i>
                       Try Again
                     </button>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-slate-500">
                       Still having trouble?{" "}
-                      <a
-                        href="tel:+14099655885"
-                        className="font-semibold text-orange-500 hover:underline"
-                      >
+                      <a href="tel:+14099655885" className="font-semibold hover:underline" style={{ color: BRAND_GREEN }}>
                         Call 409-965-5885
                       </a>
                     </p>
                   </>
                 ) : (
                   <>
-                    <div className="w-12 h-12 flex items-center justify-center bg-white border border-gray-200 rounded-2xl">
-                      <i className="ri-loader-4-line animate-spin text-orange-500 text-xl"></i>
+                    <div className="w-12 h-12 flex items-center justify-center bg-white ring-1 ring-slate-200 rounded-2xl">
+                      <i className="ri-loader-4-line animate-spin text-xl" style={{ color: ACTION_ORANGE }}></i>
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-gray-600">
+                      <p className="text-sm font-semibold text-slate-700">
                         Loading Secure Checkout
                       </p>
-                      <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                         Setting up your encrypted payment form...
                       </p>
                     </div>
@@ -651,23 +675,204 @@ function SecurePaymentCard({
         </>
       )}
 
-      {/* Footer */}
-      <div className="bg-[#eef2f9] border-t border-[#b8cce4] px-4 sm:px-5 py-3 flex items-center gap-2">
+      {/* Footer — green phone = trust/support */}
+      <div className="bg-slate-50/70 border-t border-slate-100 px-4 sm:px-5 py-3 flex items-center gap-2">
         <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-          <i className="ri-phone-line text-[#1A5C4F] text-sm"></i>
+          <i className="ri-phone-line text-sm" style={{ color: BRAND_GREEN }}></i>
         </div>
-        <p className="text-xs text-gray-600">
+        <p className="text-xs text-slate-600">
           Prefer to call?{" "}
-          <a
-            href="tel:+14099655885"
-            className="font-bold underline cursor-pointer hover:text-[#1A5C4F]"
-          >
+          <a href="tel:+14099655885" className="font-semibold underline cursor-pointer" style={{ color: BRAND_GREEN }}>
             409-965-5885
           </a>{" "}
           — complete by phone.
         </p>
       </div>
     </div>
+  );
+}
+
+// ─── MobileSummarySheet — slide-up order summary on mobile ───────────────────
+
+interface MobileSummarySheetProps {
+  open: boolean;
+  onClose: () => void;
+  priceBeforeDiscount: number;
+  totalPrice: number;
+  couponDiscount: number;
+  selectedPlan: PlanType;
+  basePrice: number;
+  onCTA: () => void;
+}
+
+function MobileSummarySheet({
+  open,
+  onClose,
+  priceBeforeDiscount,
+  totalPrice,
+  couponDiscount,
+  selectedPlan,
+  basePrice,
+  onCTA,
+}: MobileSummarySheetProps) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          className="fixed inset-0 z-[90] bg-slate-950/50 backdrop-blur-[2px] lg:hidden"
+          onClick={onClose}
+          role="dialog"
+          aria-modal="true"
+        >
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-white pt-2.5 pb-1 flex items-center justify-center">
+              <span className="w-10 h-1 rounded-full bg-slate-200"></span>
+            </div>
+
+            <div className="px-5 pt-2 pb-4 flex items-center justify-between border-b border-slate-100">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.2em]">
+                  Order Summary
+                </p>
+                <p className="text-base font-bold text-slate-900 tracking-tight mt-0.5">
+                  Clinical Evaluation + ESA Letter
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={onClose}
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors flex-shrink-0"
+              >
+                <i className="ri-close-line text-base"></i>
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div
+                    className="w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 mt-0.5"
+                    style={{ backgroundColor: BRAND_GREEN_SOFT }}
+                  >
+                    <i className="ri-file-text-line text-base" style={{ color: BRAND_GREEN }}></i>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 leading-snug">
+                      ESA Letter Package
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Licensed provider review
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end flex-shrink-0 mt-0.5">
+                  <span className="text-sm font-bold text-slate-900">
+                    ${priceBeforeDiscount}.00
+                  </span>
+                  {selectedPlan === "subscription" && (
+                    <span className="text-[10px] text-slate-400 line-through">
+                      ${basePrice}.00
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {couponDiscount > 0 && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <i className="ri-price-tag-3-line text-emerald-600 text-sm"></i>
+                    <span className="text-xs font-semibold text-emerald-700">
+                      Discount applied
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold text-emerald-700">
+                    -${couponDiscount.toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.18em] mb-3">
+                  What&apos;s Included
+                </p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+                  {[
+                    { icon: "ri-stethoscope-line", text: "Provider evaluation" },
+                    { icon: "ri-file-text-line", text: "Official ESA letter PDF" },
+                    { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
+                    { icon: "ri-home-heart-line", text: "Fair Housing Act" },
+                  ].map((item) => (
+                    <div key={item.text} className="flex items-center gap-1.5 min-w-0">
+                      <i
+                        className={`${item.icon} text-xs flex-shrink-0`}
+                        style={{ color: BRAND_GREEN }}
+                      ></i>
+                      <span className="text-xs text-slate-700 font-medium truncate">
+                        {item.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                className="rounded-2xl border bg-gradient-to-br from-slate-50 to-slate-100/80 px-4 py-4 flex items-center justify-between gap-3"
+                style={{ borderColor: BRAND_GREEN_BORDER }}
+              >
+                <div className="min-w-0">
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-[0.2em]">
+                    Amount Due Today
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {selectedPlan === "subscription"
+                      ? "Annual renewal · cancel anytime"
+                      : "One-time · no recurring charges"}
+                  </p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  {couponDiscount > 0 && (
+                    <span className="text-xs text-slate-400 line-through block leading-none mb-0.5">
+                      ${priceBeforeDiscount}.00
+                    </span>
+                  )}
+                  <span className="text-[26px] leading-none font-extrabold text-slate-900 tracking-tight">
+                    ${totalPrice}
+                    <span className="text-base font-bold">.00</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t border-slate-100 px-4 py-3 pb-[max(env(safe-area-inset-bottom),12px)]">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onCTA();
+                }}
+                className="w-full py-3.5 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 text-white shadow-[0_10px_24px_-10px_rgba(249,115,22,0.55)]"
+                style={{ backgroundColor: ACTION_ORANGE }}
+              >
+                <i className="ri-lock-2-line text-base"></i>
+                Complete Secure Evaluation
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -703,7 +908,7 @@ export default function Step3Checkout({
     setLocalCoupon(appliedCoupon ?? null);
   }, [appliedCoupon]);
 
-  // ── Coupon popup: show once per session on Step 3, only on first tab switch ──
+  // ── Coupon popup: show once per session on Step 3 ──
   const [showCouponPopup, setShowCouponPopup] = useState(false);
   useEffect(() => {
     try {
@@ -725,13 +930,10 @@ export default function Step3Checkout({
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
   const dismissCouponPopup = () => {
-    try {
-      sessionStorage.setItem(COUPON_POPUP_SESSION_KEY, "1");
-    } catch {
-      // ignore
-    }
     setShowCouponPopup(false);
   };
+
+  const [showMobileSummary, setShowMobileSummary] = useState(false);
 
   const resolvedPetCount = petCount ?? step2.pets?.length ?? 1;
   const basePrice = getOneTimePrice(resolvedPetCount);
@@ -750,13 +952,19 @@ export default function Step3Checkout({
     const nextCoupon =
       discount > 0 && code
         ? {
-          code,
-          discount,
-        }
+            code,
+            discount,
+          }
         : null;
 
     setLocalCoupon(nextCoupon);
     onCouponApplied?.(nextCoupon);
+  };
+
+  const scrollToPayment = () => {
+    const el = document.getElementById(PAYMENT_SECTION_ID);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const subscriptionParams: SubscriptionParams = {
@@ -792,9 +1000,18 @@ export default function Step3Checkout({
     subscriptionParams,
   };
 
+  const cardClass = CARD_SHELL;
+
   return (
-    <div>
-      {showCouponPopup && <CouponPopup onDismiss={dismissCouponPopup} />}
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      className="bg-white pb-28 lg:pb-0"
+    >
+      <AnimatePresence>
+        {showCouponPopup && <CouponPopup onDismiss={dismissCouponPopup} />}
+      </AnimatePresence>
 
       {policyModal && (
         <PolicyModal
@@ -804,71 +1021,96 @@ export default function Step3Checkout({
         />
       )}
 
-      {/* ── Mobile-only compact order summary banner ── */}
-      <div className="lg:hidden mb-4 bg-[#1A5C4F] rounded-2xl px-4 py-3.5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 flex items-center justify-center bg-white/15 rounded-xl flex-shrink-0">
-            <i className="ri-file-text-line text-white text-base"></i>
+      {/* ── Mobile-only compact order summary banner — tap to expand ── */}
+      <div className={`lg:hidden mb-5 ${cardClass}`}>
+        <button
+          type="button"
+          onClick={() => setShowMobileSummary(true)}
+          className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left cursor-pointer active:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0"
+              style={{ backgroundColor: BRAND_GREEN_SOFT }}
+            >
+              <i className="ri-file-text-line text-base" style={{ color: BRAND_GREEN }}></i>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-[0.18em]">
+                ESA Letter Package
+              </p>
+              <p className="text-xs text-slate-700 font-medium mt-0.5 flex items-center gap-1">
+                Tap to view details
+                <i className="ri-arrow-right-s-line text-sm text-slate-400"></i>
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-[10px] text-white/70 font-bold uppercase tracking-wider">
-              ESA Letter Package
+          <div className="flex-shrink-0 text-right">
+            {couponDiscount > 0 && (
+              <p className="text-[10px] text-slate-400 line-through">
+                ${priceBeforeDiscount}.00
+              </p>
+            )}
+            <p className="text-xl font-bold text-slate-900 tracking-tight">
+              ${totalPrice}.00
+            </p>
+            <p className="text-[10px] text-slate-500">
+              {selectedPlan === "subscription" ? "per year" : "one-time"}
             </p>
           </div>
-        </div>
-        <div className="flex-shrink-0 text-right">
-          {couponDiscount > 0 && (
-            <p className="text-[10px] text-white/60 line-through">
-              ${priceBeforeDiscount}.00
-            </p>
-          )}
-          <p className="text-xl font-extrabold text-white">${totalPrice}.00</p>
-          <p className="text-[10px] text-white/60">
-            {selectedPlan === "subscription" ? "per year" : "one-time"}
-          </p>
-        </div>
+        </button>
       </div>
 
       {/* ── Main grid ── */}
-      <div className="flex flex-col lg:grid lg:grid-cols-5 lg:items-start gap-4 lg:gap-8">
-        {/* ════ RIGHT COLUMN (payment) — order-1 = first on mobile ════ */}
+      <div className="flex flex-col lg:grid lg:grid-cols-5 lg:items-start gap-5 lg:gap-8">
+        {/* ════ RIGHT COLUMN (payment) ════ */}
         <div className="order-1 lg:order-2 lg:col-start-4 lg:col-span-2">
-          <div className="lg:sticky lg:top-28 space-y-3 lg:space-y-4">
-            {/* ── Desktop-only order summary (full detail) — TOP of right column ── */}
-            <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden">
-              <div className="bg-[#1A5C4F] px-5 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] text-white/60 font-bold uppercase tracking-wider mb-0.5">
-                      Order Summary
-                    </p>
-                    <p className="text-sm font-extrabold text-white leading-snug">
-                      Clinical Evaluation + ESA Documentation
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 flex items-center justify-center bg-white/15 rounded-xl flex-shrink-0">
-                    <i className="ri-file-text-line text-white text-lg"></i>
-                  </div>
+          <div className="lg:sticky lg:top-28 space-y-4 lg:space-y-5">
+            {/* ── Desktop-only order summary ── */}
+            <div className={`hidden lg:block ${cardClass}`}>
+              <div className="px-5 py-4 flex items-center justify-between gap-3 border-b border-slate-100">
+                <div className="min-w-0">
+                  <SectionLabel>Order Summary</SectionLabel>
+                  <p className="text-base font-bold text-slate-900 leading-snug tracking-tight">
+                    Clinical Evaluation + ESA Documentation
+                  </p>
                 </div>
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full"
+                  style={{
+                    backgroundColor: BRAND_GREEN_SOFT,
+                    color: BRAND_GREEN,
+                  }}
+                >
+                  <i className="ri-shield-check-line text-[11px]"></i>
+                  Secure
+                </span>
               </div>
+
               <div className="px-5 pt-4 pb-4 space-y-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-xl flex-shrink-0 mt-0.5">
-                      <i className="ri-file-text-line text-orange-500 text-base"></i>
+                    <div
+                      className="w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: BRAND_GREEN_SOFT }}
+                    >
+                      <i className="ri-file-text-line text-base" style={{ color: BRAND_GREEN }}></i>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-extrabold text-gray-800 leading-snug">
+                      <p className="text-sm font-semibold text-slate-900 leading-snug">
                         ESA Letter Package
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Licensed provider review
                       </p>
                     </div>
                   </div>
                   <div className="flex flex-col items-end flex-shrink-0 mt-0.5">
-                    <span className="text-sm font-extrabold text-gray-900">
+                    <span className="text-sm font-bold text-slate-900">
                       ${priceBeforeDiscount}.00
                     </span>
                     {selectedPlan === "subscription" && (
-                      <span className="text-[10px] text-gray-400 line-through">
+                      <span className="text-[10px] text-slate-400 line-through">
                         ${basePrice}.00
                       </span>
                     )}
@@ -878,220 +1120,287 @@ export default function Step3Checkout({
                 {couponDiscount > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                        <i className="ri-coupon-3-line text-emerald-500 text-sm"></i>
-                      </div>
+                      <i className="ri-price-tag-3-line text-emerald-600 text-sm"></i>
                       <span className="text-xs font-semibold text-emerald-700">
                         Discount applied
                       </span>
                     </div>
-                    <span className="text-sm font-extrabold text-emerald-600">
+                    <span className="text-sm font-bold text-emerald-700">
                       -${couponDiscount.toFixed(2)}
                     </span>
                   </div>
                 )}
 
-                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                  <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2.5">
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.18em] mb-3">
                     What&apos;s Included
                   </p>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
                     {[
                       { icon: "ri-stethoscope-line", text: "Provider evaluation" },
                       { icon: "ri-file-text-line", text: "Official ESA letter PDF" },
                       { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
                       { icon: "ri-home-heart-line", text: "Fair Housing Act" },
                     ].map((item) => (
-                      <div
-                        key={item.text}
-                        className="flex items-center gap-1.5 min-w-0"
-                      >
-                        <div className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
-                          <i
-                            className={`${item.icon} text-orange-500 text-xs`}
-                          ></i>
-                        </div>
-                        <span className="text-xs text-gray-700 font-bold truncate">
+                      <div key={item.text} className="flex items-center gap-1.5 min-w-0">
+                        <i
+                          className={`${item.icon} text-xs flex-shrink-0`}
+                          style={{ color: BRAND_GREEN }}
+                        ></i>
+                        <span className="text-xs text-slate-700 font-medium truncate">
                           {item.text}
                         </span>
                       </div>
                     ))}
                   </div>
                 </div>
-
               </div>
-              <div className="bg-[#1A5C4F] px-5 py-4 flex items-center justify-between gap-3">
+
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100/80 border-t border-slate-200/70 px-5 py-5 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[10px] text-white/60 font-bold uppercase tracking-wider">
+                  <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-[0.2em]">
                     Amount Due Today
                   </p>
-                  <p className="text-[10px] text-white/50 mt-0.5">
+                  <p className="text-[11px] text-slate-500 mt-1.5">
                     {selectedPlan === "subscription"
                       ? "Annual renewal · cancel anytime"
                       : "One-time · no recurring charges"}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <span className="text-2xl font-extrabold text-white">
-                    ${totalPrice}.00
+                  {couponDiscount > 0 && (
+                    <span className="text-xs text-slate-400 line-through block leading-none mb-0.5">
+                      ${priceBeforeDiscount}.00
+                    </span>
+                  )}
+                  <span className="text-[30px] leading-none font-extrabold text-slate-900 tracking-tight">
+                    ${totalPrice}
+                    <span className="text-lg font-bold">.00</span>
                   </span>
                   {selectedPlan === "subscription" && (
-                    <p className="text-[10px] text-white/60 mt-0.5">per year</p>
+                    <p className="text-[10px] text-slate-500 mt-1.5">per year</p>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* ── Plan Toggle ── */}
-            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  Choose Your Plan
-                </p>
-                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+            {/* ── Plan Toggle ── ORANGE = action ── */}
+            <div className={cardClass}>
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <SectionLabel>Choose Your Plan</SectionLabel>
+                <span
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
+                  style={{
+                    backgroundColor: ACTION_ORANGE_SOFT,
+                    color: ACTION_ORANGE_DARK,
+                  }}
+                >
                   Save ${basePrice - subPrice}/yr
                 </span>
               </div>
-              <div className="p-3 space-y-2">
-                <button
+              <div className="p-3 space-y-2.5">
+                <motion.button
                   type="button"
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.992 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                   onClick={() => onChange({ ...data, plan: "subscription" })}
-                  className={`w-full text-left rounded-xl border-2 px-3 py-3 transition-all cursor-pointer ${selectedPlan === "subscription"
-                      ? "border-orange-400 bg-[#FFF7ED]"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
+                  className={`relative w-full text-left rounded-xl px-4 py-3.5 transition-all cursor-pointer border-2 ${
+                    selectedPlan === "subscription"
+                      ? ""
+                      : "bg-white hover:border-slate-300 border-slate-200 hover:shadow-[0_6px_16px_-10px_rgba(15,23,42,0.18)]"
+                  }`}
+                  style={
+                    selectedPlan === "subscription"
+                      ? {
+                          borderColor: ACTION_ORANGE,
+                          boxShadow: `0 0 0 4px ${ACTION_ORANGE_SOFT}, 0 10px 24px -14px rgba(249,115,22,0.35)`,
+                          backgroundColor: "#FFFBF5",
+                        }
+                      : undefined
+                  }
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selectedPlan === "subscription"
-                            ? "border-orange-500"
-                            : "border-gray-300"
-                          }`}
+                        className="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
+                        style={{
+                          borderColor:
+                            selectedPlan === "subscription" ? ACTION_ORANGE : "#CBD5E1",
+                          backgroundColor:
+                            selectedPlan === "subscription" ? ACTION_ORANGE : "transparent",
+                        }}
                       >
                         {selectedPlan === "subscription" && (
-                          <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                          <i className="ri-check-line text-white text-[11px] font-bold"></i>
                         )}
                       </div>
                       <div className="min-w-0">
-                        <span className="text-sm font-extrabold text-gray-800 block">
+                        <span className="text-[15px] font-bold text-slate-900 block leading-tight">
                           Subscribe &amp; Save
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-[11px] text-slate-500 mt-0.5 block">
                           Auto-renews yearly · Cancel anytime
                         </span>
                       </div>
                     </div>
                     <div className="flex-shrink-0 text-right">
-                      <span className="text-xs bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded-full block mb-0.5 whitespace-nowrap">
-                        BEST VALUE
+                      <span
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full block mb-1 whitespace-nowrap uppercase tracking-wider"
+                        style={{
+                          backgroundColor: ACTION_ORANGE,
+                          color: "white",
+                        }}
+                      >
+                        Recommended
                       </span>
-                      <span className="text-sm font-extrabold text-orange-500">
-                        ${subPrice}.00
+                      <span className="text-base font-extrabold text-slate-900">
+                        ${subPrice}
+                        <span className="text-xs font-bold">.00</span>
                       </span>
                     </div>
                   </div>
-                </button>
+                </motion.button>
 
-                <button
+                <motion.button
                   type="button"
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.992 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                   onClick={() => onChange({ ...data, plan: "one-time" })}
-                  className={`w-full text-left rounded-xl border-2 px-3 py-3 transition-all cursor-pointer ${selectedPlan === "one-time"
-                      ? "border-orange-400 bg-[#FFF7ED]"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
+                  className={`relative w-full text-left rounded-xl px-4 py-3.5 transition-all cursor-pointer border-2 ${
+                    selectedPlan === "one-time"
+                      ? ""
+                      : "bg-white hover:border-slate-300 border-slate-200 hover:shadow-[0_6px_16px_-10px_rgba(15,23,42,0.18)]"
+                  }`}
+                  style={
+                    selectedPlan === "one-time"
+                      ? {
+                          borderColor: ACTION_ORANGE,
+                          boxShadow: `0 0 0 4px ${ACTION_ORANGE_SOFT}, 0 10px 24px -14px rgba(249,115,22,0.35)`,
+                          backgroundColor: "#FFFBF5",
+                        }
+                      : undefined
+                  }
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${selectedPlan === "one-time"
-                            ? "border-orange-500"
-                            : "border-gray-300"
-                          }`}
+                        className="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
+                        style={{
+                          borderColor:
+                            selectedPlan === "one-time" ? ACTION_ORANGE : "#CBD5E1",
+                          backgroundColor:
+                            selectedPlan === "one-time" ? ACTION_ORANGE : "transparent",
+                        }}
                       >
                         {selectedPlan === "one-time" && (
-                          <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                          <i className="ri-check-line text-white text-[11px] font-bold"></i>
                         )}
                       </div>
                       <div className="min-w-0">
-                        <span className="text-sm font-extrabold text-gray-800 block">
+                        <span className="text-[15px] font-bold text-slate-900 block leading-tight">
                           One-time Purchase
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-[11px] text-slate-500 mt-0.5 block">
                           Single payment · Klarna available
                         </span>
                       </div>
                     </div>
                     <div className="flex-shrink-0 text-right">
-                      <span className="text-sm font-extrabold text-gray-900">
-                        ${basePrice}.00
+                      <span className="text-base font-extrabold text-slate-900">
+                        ${basePrice}
+                        <span className="text-xs font-bold">.00</span>
                       </span>
                     </div>
                   </div>
-                </button>
+                </motion.button>
               </div>
             </div>
 
             <SecurePaymentCard {...paymentCardProps} />
 
-            {/* Trust indicators */}
-            <div className="flex items-center justify-center gap-2.5 flex-wrap px-2">
-              <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                <i className="ri-lock-2-fill text-gray-300 text-xs"></i>
-                256-bit SSL
-              </span>
-              <span className="text-gray-200 text-xs">·</span>
-              <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                <i className="ri-shield-check-line text-gray-300 text-xs"></i>
-                HIPAA Compliant
-              </span>
-              <span className="text-gray-200 text-xs">·</span>
-              <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                <i className="ri-user-star-line text-gray-300 text-xs"></i>
-                State-Licensed
-              </span>
+            {/* Trust indicators — GREEN */}
+            <div className={`${cardClass} px-3 py-3.5`}>
+              <div className="grid grid-cols-3 gap-1 text-center">
+                <div className="flex flex-col items-center gap-1.5">
+                  <div
+                    className="w-8 h-8 flex items-center justify-center rounded-lg"
+                    style={{ backgroundColor: BRAND_GREEN_SOFT }}
+                  >
+                    <i className="ri-lock-2-line text-sm" style={{ color: BRAND_GREEN }}></i>
+                  </div>
+                  <span className="text-[10px] text-slate-700 font-semibold">
+                    256-bit SSL
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-1.5 border-x border-slate-100">
+                  <div
+                    className="w-8 h-8 flex items-center justify-center rounded-lg"
+                    style={{ backgroundColor: BRAND_GREEN_SOFT }}
+                  >
+                    <i className="ri-shield-check-line text-sm" style={{ color: BRAND_GREEN }}></i>
+                  </div>
+                  <span className="text-[10px] text-slate-700 font-semibold">
+                    HIPAA-Compliant
+                  </span>
+                </div>
+                <div className="flex flex-col items-center gap-1.5">
+                  <div
+                    className="w-8 h-8 flex items-center justify-center rounded-lg"
+                    style={{ backgroundColor: BRAND_GREEN_SOFT }}
+                  >
+                    <i className="ri-user-star-line text-sm" style={{ color: BRAND_GREEN }}></i>
+                  </div>
+                  <span className="text-[10px] text-slate-700 font-semibold">
+                    State-Licensed
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* ════ LEFT COLUMN (trust/content) ════ */}
-        <div className="order-2 lg:order-1 lg:col-start-1 lg:col-span-3 flex flex-col gap-4 lg:gap-5">
-          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            <div className="bg-[#1A5C4F] px-4 sm:px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 flex items-center justify-center bg-white/15 rounded-xl flex-shrink-0">
-                  <i className="ri-shield-check-fill text-white text-lg"></i>
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-extrabold text-white leading-snug">
-                    You Only Pay for a Valid ESA Letter — Guaranteed
-                  </h3>
-                  <p className="text-[11px] text-white/70 mt-0.5">
-                    100% money-back if you don&apos;t qualify
-                  </p>
-                </div>
+        <div className="order-2 lg:order-1 lg:col-start-1 lg:col-span-3 flex flex-col gap-5 lg:gap-6">
+          {/* Trust card — GREEN */}
+          <div className={`${cardClass} relative`}>
+            <div className="px-5 pt-5 pb-4 flex items-start gap-3.5">
+              <div
+                className="w-11 h-11 flex items-center justify-center rounded-xl flex-shrink-0"
+                style={{ backgroundColor: BRAND_GREEN_SOFT }}
+              >
+                <i className="ri-stethoscope-line text-xl" style={{ color: BRAND_GREEN }}></i>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 leading-snug tracking-tight">
+                  Reviewed by Licensed Mental Health Professionals
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Every evaluation is completed by a board-licensed provider in your state
+                  and issued in accordance with Fair Housing guidelines.
+                </p>
               </div>
             </div>
-            <div className="px-4 sm:px-5 py-4 border-b border-gray-100">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <i className="ri-verified-badge-line text-orange-500 text-sm"></i>
-                Landlord Verification Included
-              </p>
+
+            <div className="px-5 pb-5">
+              <div className="h-px bg-slate-100 mb-4" />
+              <SectionLabel>Landlord Verification Included</SectionLabel>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {[
-                  { icon: "ri-qr-code-line", text: "Unique Verification ID in every letter" },
+                  { icon: "ri-qr-code-line", text: "Unique Verification ID on every letter" },
                   { icon: "ri-eye-off-line", text: "Landlords verify — no health info disclosed" },
-                  { icon: "ri-user-star-line", text: "Issued by state-licensed professionals" },
-                  { icon: "ri-home-heart-line", text: "Accepted under the Fair Housing Act" },
+                  { icon: "ri-user-star-line", text: "Signed by a state-licensed provider" },
+                  { icon: "ri-home-heart-line", text: "Compliant with the Fair Housing Act" },
                 ].map((item) => (
-                  <div
-                    key={item.text}
-                    className="flex items-center gap-2.5 min-w-0"
-                  >
-                    <div className="w-6 h-6 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-                      <i className={`${item.icon} text-orange-500 text-xs`}></i>
+                  <div key={item.text} className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className="w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0"
+                      style={{ backgroundColor: BRAND_GREEN_SOFT }}
+                    >
+                      <i className={`${item.icon} text-xs`} style={{ color: BRAND_GREEN }}></i>
                     </div>
-                    <span className="text-xs text-gray-700 font-medium leading-snug">
+                    <span className="text-xs text-slate-700 font-medium leading-snug">
                       {item.text}
                     </span>
                   </div>
@@ -1100,23 +1409,20 @@ export default function Step3Checkout({
               <div className="mt-3">
                 <Link
                   to="/ESA-letter-verification"
-                  className="whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-bold text-orange-500 hover:underline cursor-pointer"
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-semibold hover:underline cursor-pointer"
+                  style={{ color: BRAND_GREEN }}
                 >
                   <i className="ri-external-link-line text-xs"></i>
                   How verification works
                 </Link>
               </div>
             </div>
-            <div className="bg-[#eef2f9] border-t border-[#b8cce4] px-4 sm:px-5 py-3 flex items-center gap-2">
-              <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                <i className="ri-phone-line text-[#1A5C4F] text-sm"></i>
-              </div>
-              <p className="text-xs text-gray-600 leading-relaxed">
+
+            <div className="bg-slate-50/70 border-t border-slate-100 px-5 py-3 flex items-center gap-2">
+              <i className="ri-phone-line text-sm" style={{ color: BRAND_GREEN }}></i>
+              <p className="text-xs text-slate-600 leading-relaxed">
                 Prefer to call?{" "}
-                <a
-                  href="tel:+14099655885"
-                  className="font-bold underline cursor-pointer hover:text-[#1A5C4F]"
-                >
+                <a href="tel:+14099655885" className="font-semibold underline cursor-pointer" style={{ color: BRAND_GREEN }}>
                   409-965-5885
                 </a>{" "}
                 — complete your evaluation by phone.
@@ -1124,54 +1430,55 @@ export default function Step3Checkout({
             </div>
           </div>
 
-          <div className="block bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+          {/* Sample letter card */}
+          <div className={`hidden sm:block ${cardClass}`}>
+            <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 border-b border-slate-100">
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-1 flex items-center gap-1">
-                  <i className="ri-award-line text-xs"></i>
-                  What You&apos;ll Receive
-                </p>
-                <p className="text-sm font-extrabold text-gray-900">
+                <SectionLabel>What You&apos;ll Receive</SectionLabel>
+                <p className="text-sm font-bold text-slate-900 tracking-tight">
                   Your Official ESA Letter
                 </p>
               </div>
-              <span className="flex-shrink-0 text-[9px] font-extrabold tracking-widest text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase">
+              <span className="flex-shrink-0 text-[9px] font-semibold tracking-[0.18em] text-slate-500 bg-slate-50 ring-1 ring-slate-200 rounded-full px-2 py-0.5 uppercase">
                 Sample
               </span>
             </div>
-            <div className="w-full bg-gradient-to-b from-gray-100 to-gray-50 border-b border-gray-100 px-4 sm:px-8 py-5 sm:py-6">
-              <div className="rounded-lg overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.10)] ring-1 ring-amber-100 bg-white mx-auto max-w-[520px]">
+            <div className="relative w-full bg-slate-50 px-5 sm:px-8 py-6">
+              <div className="rounded-lg overflow-hidden shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] ring-1 ring-slate-200 bg-white relative">
                 <img
                   src="/images/checkout/esa-sample-letter.svg"
                   alt="Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature"
                   className="w-full h-auto block"
-                  loading="lazy"
                 />
+                <div className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-white/90 backdrop-blur ring-1 ring-slate-200 text-[9px] font-semibold tracking-[0.24em] text-slate-500 uppercase">
+                  Sample
+                </div>
               </div>
             </div>
-            <div className="px-5 py-4">
-              <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+            <div className="px-5 py-4 border-t border-slate-100">
+              <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   {Array.from({ length: 5 }).map((_, i) => (
                     <i key={i} className="ri-star-fill text-amber-400 text-xs"></i>
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 font-medium">
-                  4.9/5 · 2,400+ verified reviews
+                <p className="text-xs text-slate-600 font-medium">
+                  <span className="font-bold text-slate-900">4.9/5</span> · 2,400+ verified reviews
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="sm:hidden bg-white rounded-2xl border border-gray-200 px-4 py-4">
+          {/* Mobile reviews */}
+          <div className={`sm:hidden ${cardClass} px-4 py-4`}>
             <div className="flex items-center gap-3 mb-3">
               <div className="flex items-center gap-0.5">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <i key={i} className="ri-star-fill text-amber-400 text-sm"></i>
                 ))}
               </div>
-              <p className="text-sm font-bold text-gray-800">4.9/5</p>
-              <p className="text-xs text-gray-400">· 2,400+ verified reviews</p>
+              <p className="text-sm font-bold text-slate-900">4.9/5</p>
+              <p className="text-xs text-slate-500">· 2,400+ verified reviews</p>
             </div>
             <div className="space-y-2.5">
               {[
@@ -1191,22 +1498,19 @@ export default function Step3Checkout({
                   text: "Finally found a service I can trust. Completely changed my housing situation.",
                 },
               ].map((r) => (
-                <div key={r.name} className="bg-orange-50 rounded-xl px-3 py-2.5">
+                <div key={r.name} className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="flex items-center gap-0.5">
                       {Array.from({ length: 5 }).map((_, i) => (
-                        <i
-                          key={i}
-                          className="ri-star-fill text-amber-400 text-[10px]"
-                        ></i>
+                        <i key={i} className="ri-star-fill text-amber-400 text-[10px]"></i>
                       ))}
                     </div>
-                    <span className="text-xs font-bold text-gray-700">
+                    <span className="text-xs font-semibold text-slate-700">
                       {r.name}
                     </span>
-                    <span className="text-[10px] text-gray-400">{r.state}</span>
+                    <span className="text-[10px] text-slate-400">{r.state}</span>
                   </div>
-                  <p className="text-xs text-gray-600 leading-relaxed">
+                  <p className="text-xs text-slate-600 leading-relaxed">
                     &ldquo;{r.text}&rdquo;
                   </p>
                 </div>
@@ -1217,66 +1521,63 @@ export default function Step3Checkout({
       </div>
 
       {/* ── What Happens Next ── */}
-      <div className="mt-8 sm:mt-14">
-        <div className="text-center mb-6 sm:mb-8">
+      <div className="mt-12 sm:mt-16">
+        <div className="text-center mb-8 sm:mb-10">
           <SectionLabel>After Checkout</SectionLabel>
-          <h3 className="text-lg sm:text-xl font-extrabold text-gray-900">
+          <h3 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
             What Happens Next
           </h3>
-          <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto leading-relaxed px-4">
+          <p className="text-sm text-slate-500 mt-2 max-w-md mx-auto leading-relaxed px-4">
             Here&apos;s exactly what happens from submission to your door.
           </p>
         </div>
         <div className="relative">
-          <div className="hidden lg:block absolute top-[38px] left-[calc(12.5%-18px)] right-[calc(12.5%-18px)] h-px bg-gray-200 z-0" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-4">
+          <div className="hidden lg:block absolute top-[28px] left-[calc(12.5%+4px)] right-[calc(12.5%+4px)] h-[2px] z-0 bg-slate-200" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-4">
             {[
               {
                 num: "01",
                 icon: "ri-file-check-line",
-                color: "bg-amber-500",
                 title: "Assessment Submitted",
                 desc: "Your evaluation answers are immediately available to a licensed provider in your state.",
               },
               {
                 num: "02",
                 icon: "ri-stethoscope-line",
-                color: "bg-orange-500",
                 title: "Licensed Provider Review",
                 desc: "A board-licensed mental health professional evaluates your case within your chosen delivery window.",
               },
               {
                 num: "03",
                 icon: "ri-mail-check-line",
-                color: "bg-orange-500",
                 title: "ESA Letter Delivered",
                 desc: "Your signed, official ESA letter is emailed as a professional PDF document — ready to use.",
               },
               {
                 num: "04",
                 icon: "ri-home-heart-line",
-                color: "bg-emerald-500",
                 title: "Use for Housing",
                 desc: "Present your letter with full Fair Housing Act protection for rentals, vacation homes, or college housing.",
               },
             ].map((step) => (
               <div
                 key={step.num}
-                className="flex lg:flex-col items-start lg:items-center gap-3 lg:gap-0 relative z-10"
+                className="flex lg:flex-col items-start lg:items-center gap-3.5 lg:gap-0 relative z-10"
               >
-                <div
-                  className={`w-12 h-12 flex-shrink-0 flex items-center justify-center ${step.color} rounded-2xl lg:mb-4`}
-                >
-                  <i className={`${step.icon} text-white text-lg`}></i>
+                <div className="w-14 h-14 flex-shrink-0 flex items-center justify-center rounded-2xl lg:mb-4 ring-[3px] ring-white shadow-[0_10px_24px_-12px_rgba(15,23,42,0.25)] relative bg-white border border-slate-200">
+                  <i className={`${step.icon} text-xl`} style={{ color: BRAND_GREEN }}></i>
+                  <span
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full text-[9px] font-bold text-white"
+                    style={{ backgroundColor: ACTION_ORANGE }}
+                  >
+                    {step.num.replace("0", "")}
+                  </span>
                 </div>
-                <div className="lg:text-center min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5 lg:justify-center flex-wrap">
-                    <span className="text-[10px] font-extrabold text-gray-300">
-                      {step.num}
-                    </span>
-                    <p className="text-sm font-bold text-gray-900">{step.title}</p>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">
+                <div className="lg:text-center min-w-0 flex-1 lg:flex-none">
+                  <p className="text-sm font-bold text-slate-900 leading-snug mb-1">
+                    {step.title}
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
                     {step.desc}
                   </p>
                 </div>
@@ -1287,16 +1588,71 @@ export default function Step3Checkout({
       </div>
 
       {/* Back button */}
-      <div className="mt-8 sm:mt-10">
+      <div className="mt-10">
         <button
           type="button"
           onClick={onBack}
-          className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-orange-50 border border-orange-200 text-orange-600 font-bold text-sm rounded-lg hover:bg-orange-100 hover:border-orange-300 transition-colors cursor-pointer"
+          className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-semibold text-sm rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors cursor-pointer"
         >
           <i className="ri-arrow-left-line"></i>
           Back to Step 2
         </button>
       </div>
-    </div>
+
+      {/* ── Mobile slide-up order summary sheet ── */}
+      <MobileSummarySheet
+        open={showMobileSummary}
+        onClose={() => setShowMobileSummary(false)}
+        priceBeforeDiscount={priceBeforeDiscount}
+        totalPrice={totalPrice}
+        couponDiscount={couponDiscount}
+        selectedPlan={selectedPlan}
+        basePrice={basePrice}
+        onCTA={scrollToPayment}
+      />
+
+      {/* ── STICKY MOBILE BOTTOM BAR ── CRITICAL for conversion ── */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white border-t border-slate-200 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)]"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowMobileSummary(true)}
+            className="flex-shrink-0 text-left cursor-pointer active:opacity-70 transition-opacity"
+            aria-label="View order summary"
+          >
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.18em] leading-none">
+              Total
+            </p>
+            <p className="flex items-baseline gap-1 mt-1 leading-none">
+              {couponDiscount > 0 && (
+                <span className="text-[11px] text-slate-400 line-through">
+                  ${priceBeforeDiscount}
+                </span>
+              )}
+              <span className="text-xl font-extrabold text-slate-900 tracking-tight">
+                ${totalPrice}
+              </span>
+              <i className="ri-arrow-up-s-line text-slate-400 text-sm"></i>
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={scrollToPayment}
+            className="flex-1 min-w-0 py-3.5 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 text-white tracking-tight transition-all active:scale-[0.98]"
+            style={{
+              backgroundColor: ACTION_ORANGE,
+              boxShadow: "0 10px 24px -10px rgba(249,115,22,0.55), 0 2px 6px -2px rgba(249,115,22,0.3)",
+            }}
+          >
+            <i className="ri-lock-2-line text-base"></i>
+            <span className="truncate">Complete Secure Evaluation</span>
+          </button>
+        </div>
+      </div>
+    </motion.div>
   );
 }

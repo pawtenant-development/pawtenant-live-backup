@@ -50,7 +50,7 @@ function ProcessingOverlay() {
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl px-8 py-10 flex flex-col items-center gap-4 shadow-2xl">
-        <div className="w-12 h-12 border-4 border-gray-100 border-t-orange-400 rounded-full animate-spin" />
+        <div className="w-12 h-12 border-4 border-gray-100 border-t-[#1A5C4F] rounded-full animate-spin" />
         <p className="text-sm font-bold text-gray-700">Processing Payment...</p>
       </div>
     </div>,
@@ -216,7 +216,7 @@ export default function StripePaymentForm({
     const hasError = (submitAttempted && !f.complete) || !!f.error;
     return hasError
       ? "border-red-400 focus-within:border-red-400 bg-red-50/30"
-      : "border-gray-200 focus-within:border-orange-400 bg-white";
+      : "border-gray-200 focus-within:border-[#F97316] bg-white";
   };
 
   const getFieldErrorMsg = (key: "number" | "expiry" | "cvc") => {
@@ -347,7 +347,7 @@ export default function StripePaymentForm({
       {/* ── Agreement checkbox ── */}
       <div className="px-4 sm:px-5 pb-4">
         <label
-          className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-orange-200 transition-colors ${
+          className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-[#CFE2DC] transition-colors ${
             agreedError ? "border-red-300 bg-red-50" : "bg-gray-50 border-gray-200"
           }`}
         >
@@ -358,30 +358,30 @@ export default function StripePaymentForm({
               setAgreed(e.target.checked);
               if (e.target.checked) setAgreedError(false);
             }}
-            className="mt-0.5 accent-orange-400 flex-shrink-0 cursor-pointer"
+            className="mt-0.5 accent-[#1A5C4F] flex-shrink-0 cursor-pointer"
           />
           <span className="text-xs text-gray-600 leading-relaxed">
             I agree to the{" "}
             <button
               type="button"
-              onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Terms of Use" })}
-              className="text-orange-500 font-semibold hover:underline cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/terms-of-use", title: "Terms of Use" }); }}
+              className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
             >
               Terms of Use
             </button>
             ,{" "}
             <button
               type="button"
-              onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Informed Consent" })}
-              className="text-orange-500 font-semibold hover:underline cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/terms-of-use", title: "Informed Consent" }); }}
+              className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
             >
               Informed Consent
             </button>
             , and{" "}
             <button
               type="button"
-              onClick={() => setPolicyModal({ url: "/privacy-policy", title: "HIPAA Acknowledgment" })}
-              className="text-orange-500 font-semibold hover:underline cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/privacy-policy", title: "HIPAA Acknowledgment" }); }}
+              className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
             >
               HIPAA Acknowledgment
             </button>
@@ -402,10 +402,10 @@ export default function StripePaymentForm({
           type="button"
           onClick={handlePay}
           disabled={!canSubmit}
-          className={`whitespace-nowrap w-full py-4 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-colors ${
+          className={`whitespace-nowrap w-full py-4 sm:py-[18px] text-[15px] sm:text-base font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-all duration-200 tracking-tight ${
             canSubmit
-              ? "bg-orange-400 text-black hover:bg-orange-500 cursor-pointer"
-              : "bg-orange-50 border-2 border-dashed border-orange-200 text-orange-300 cursor-not-allowed select-none"
+              ? "bg-[#F97316] text-white hover:bg-[#EA580C] hover:-translate-y-[1px] shadow-[0_10px_28px_-10px_rgba(249,115,22,0.55),0_2px_6px_-2px_rgba(249,115,22,0.25)] hover:shadow-[0_14px_34px_-10px_rgba(249,115,22,0.65),0_3px_8px_-2px_rgba(249,115,22,0.3)] cursor-pointer"
+              : "bg-slate-100 border-2 border-dashed border-slate-200 text-slate-400 cursor-not-allowed select-none"
           }`}
         >
           {processing ? (

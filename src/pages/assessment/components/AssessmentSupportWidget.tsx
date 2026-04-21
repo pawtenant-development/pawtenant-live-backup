@@ -26,14 +26,14 @@ export default function AssessmentSupportWidget({ currentStep }: AssessmentSuppo
         <div className="w-72 bg-white rounded-2xl border border-gray-200 overflow-hidden mb-1 animate-fade-in"
           style={{ boxShadow: "0 4px 24px rgba(0,0,0,0.10)" }}>
           {/* Header */}
-          <div className="bg-orange-500 px-4 py-3 flex items-center justify-between">
+          <div className="bg-[#1A5C4F] px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 flex items-center justify-center bg-white/20 rounded-full flex-shrink-0">
                 <i className="ri-customer-service-2-line text-white text-base"></i>
               </div>
               <div>
                 <p className="text-sm font-extrabold text-white leading-tight">We're here to help</p>
-                <p className="text-xs text-orange-100">Usually reply in a few minutes</p>
+                <p className="text-xs text-white/80">Usually reply in a few minutes</p>
               </div>
             </div>
             <button
@@ -62,14 +62,14 @@ export default function AssessmentSupportWidget({ currentStep }: AssessmentSuppo
             {/* Phone */}
             <a
               href="tel:+14099655885"
-              className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-orange-200 hover:bg-orange-50 transition-all cursor-pointer group"
+              className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-[#CFE2DC] hover:bg-[#E8F1EE] transition-all cursor-pointer group"
             >
-              <div className="w-9 h-9 flex items-center justify-center bg-orange-100 rounded-full flex-shrink-0 group-hover:bg-orange-200 transition-colors">
-                <i className="ri-phone-line text-orange-500 text-base"></i>
+              <div className="w-9 h-9 flex items-center justify-center bg-[#E8F1EE] rounded-full flex-shrink-0 group-hover:bg-[#CFE2DC] transition-colors">
+                <i className="ri-phone-line text-[#1A5C4F] text-base"></i>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-gray-900">Call Us</p>
-                <p className="text-sm font-extrabold text-orange-500">409-965-5885</p>
+                <p className="text-sm font-extrabold text-[#1A5C4F]">409-965-5885</p>
                 <p className="text-xs text-gray-400">Mon–Sat, 9am–7pm CT</p>
               </div>
               <div className="w-5 h-5 flex items-center justify-center text-gray-300 ml-auto flex-shrink-0">
@@ -80,10 +80,10 @@ export default function AssessmentSupportWidget({ currentStep }: AssessmentSuppo
             {/* Email */}
             <a
               href="mailto:support@pawtenant.com"
-              className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-orange-200 hover:bg-orange-50 transition-all cursor-pointer group"
+              className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-[#CFE2DC] hover:bg-[#E8F1EE] transition-all cursor-pointer group"
             >
-              <div className="w-9 h-9 flex items-center justify-center bg-orange-100 rounded-full flex-shrink-0 group-hover:bg-orange-200 transition-colors">
-                <i className="ri-mail-line text-orange-500 text-base"></i>
+              <div className="w-9 h-9 flex items-center justify-center bg-[#E8F1EE] rounded-full flex-shrink-0 group-hover:bg-[#CFE2DC] transition-colors">
+                <i className="ri-mail-line text-[#1A5C4F] text-base"></i>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-gray-900">Email Support</p>
@@ -100,10 +100,10 @@ export default function AssessmentSupportWidget({ currentStep }: AssessmentSuppo
               href="/faqs"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-orange-200 hover:bg-orange-50 transition-all cursor-pointer group"
+              className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-gray-100 bg-gray-50 hover:border-[#CFE2DC] hover:bg-[#E8F1EE] transition-all cursor-pointer group"
             >
-              <div className="w-9 h-9 flex items-center justify-center bg-orange-100 rounded-full flex-shrink-0 group-hover:bg-orange-200 transition-colors">
-                <i className="ri-question-line text-orange-500 text-base"></i>
+              <div className="w-9 h-9 flex items-center justify-center bg-[#E8F1EE] rounded-full flex-shrink-0 group-hover:bg-[#CFE2DC] transition-colors">
+                <i className="ri-question-line text-[#1A5C4F] text-base"></i>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-gray-900">Browse FAQs</p>
@@ -132,14 +132,14 @@ export default function AssessmentSupportWidget({ currentStep }: AssessmentSuppo
         className={`whitespace-nowrap relative flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm text-white transition-all duration-200 cursor-pointer ${
           open
             ? "bg-gray-700 hover:bg-gray-800"
-            : "bg-orange-500 hover:bg-orange-600"
+            : "bg-[#1A5C4F] hover:bg-[#14493E]"
         }`}
-        style={{ boxShadow: "0 4px 18px rgba(249,115,22,0.35)" }}
+        style={{ boxShadow: "0 4px 18px rgba(26,92,79,0.35)" }}
         aria-label="Contact support"
       >
         {/* Pulse ring — only on checkout step when closed */}
         {isCheckout && !open && (
-          <span className="absolute inset-0 rounded-full animate-ping bg-orange-400 opacity-30" />
+          <span className="absolute inset-0 rounded-full animate-ping bg-[#1A5C4F] opacity-25" />
         )}
         <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 relative z-10">
           <i className={open ? "ri-close-line text-base" : "ri-customer-service-2-line text-base"}></i>

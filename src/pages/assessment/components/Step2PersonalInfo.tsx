@@ -48,7 +48,7 @@ function Field({ label, required, error, errorMsg, hint, children }: FieldProps)
     <div>
       <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">
         {label}
-        {required && <span className="text-orange-500 ml-0.5">*</span>}
+        {required && <span className="text-[#F97316] ml-0.5">*</span>}
         {!required && <span className="text-gray-400 font-normal ml-1 lowercase">(optional)</span>}
       </label>
       {hint && <p className="text-xs text-gray-400 mb-1.5 italic">{hint}</p>}
@@ -72,7 +72,7 @@ function formatPhone(raw: string): string {
 }
 
 const inputClass =
-  "w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-orange-400 transition-colors text-gray-800";
+  "w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-[#F97316] transition-colors text-gray-800";
 const errorInputClass =
   "w-full px-4 py-2.5 text-sm border border-red-400 rounded-lg bg-white focus:outline-none focus:border-red-400 transition-colors text-gray-800";
 
@@ -191,7 +191,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
       {/* Personal Info */}
       <div className="bg-white rounded-xl border border-gray-100 p-6 mb-5">
         <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
-          <span className="w-6 h-6 flex items-center justify-center bg-orange-500 rounded-full text-white text-xs">
+          <span className="w-6 h-6 flex items-center justify-center bg-[#F97316] rounded-full text-white text-xs">
             <i className="ri-user-line"></i>
           </span>
           Personal Details
@@ -296,7 +296,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
       <div className="bg-white rounded-xl border border-gray-100 p-6">
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between mb-5">
           <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <span className="w-6 h-6 flex items-center justify-center bg-orange-500 rounded-full text-white text-xs flex-shrink-0">
+            <span className="w-6 h-6 flex items-center justify-center bg-[#F97316] rounded-full text-white text-xs flex-shrink-0">
               <i className="ri-heart-line"></i>
             </span>
             {isPSD ? "Your Psychiatric Service Dog" : "Pet Information"}
@@ -305,7 +305,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
             <button
               type="button"
               onClick={addPet}
-              className="whitespace-nowrap self-start sm:self-auto inline-flex items-center gap-1.5 text-xs font-bold text-white bg-orange-500 border border-orange-500 px-3 py-1.5 rounded-lg hover:bg-orange-600 transition-colors cursor-pointer"
+              className="whitespace-nowrap self-start sm:self-auto inline-flex items-center gap-1.5 text-xs font-bold text-white bg-[#F97316] border border-[#F97316] px-3 py-1.5 rounded-lg hover:bg-[#EA580C] transition-colors cursor-pointer"
             >
               <i className="ri-add-line"></i>
               Add Another Pet
@@ -459,7 +459,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
         <button
           type="button"
           onClick={handleNext}
-          className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-orange-500 text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-orange-600 active:bg-orange-700 transition-colors cursor-pointer w-full sm:w-auto"
+          className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-[#F97316] text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-[#EA580C] active:bg-[#C2410C] transition-colors cursor-pointer w-full sm:w-auto shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
         >
           Continue to Checkout
           <i className="ri-arrow-right-line"></i>

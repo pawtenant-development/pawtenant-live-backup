@@ -71,8 +71,8 @@ function RadioGroup({ name, value, options, onChange }: RadioGroupProps) {
           onClick={() => onChange(opt.value)}
           className={`text-left px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all duration-150 cursor-pointer ${
             value === opt.value
-              ? "border-orange-500 bg-orange-50 text-orange-700"
-              : "border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:bg-orange-50/40"
+              ? "border-[#F97316] bg-[#FFF7ED] text-[#F97316]"
+              : "border-gray-200 bg-white text-gray-700 hover:border-[#F97316]/60 hover:bg-[#FFF7ED]/50"
           }`}
           aria-pressed={value === opt.value}
           aria-label={`${name}: ${opt.label}`}
@@ -80,7 +80,7 @@ function RadioGroup({ name, value, options, onChange }: RadioGroupProps) {
           <span className="flex items-start gap-2">
             <span
               className={`w-4 h-4 flex-shrink-0 mt-0.5 rounded-full border-2 flex items-center justify-center ${
-                value === opt.value ? "border-orange-500 bg-orange-500" : "border-gray-300"
+                value === opt.value ? "border-[#F97316] bg-[#F97316]" : "border-gray-300"
               }`}
             >
               {value === opt.value && (
@@ -116,14 +116,14 @@ function CheckboxGroup({ values, options, onChange }: CheckboxGroupProps) {
             onClick={() => toggle(opt)}
             className={`text-left px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all duration-150 cursor-pointer ${
               checked
-                ? "border-orange-500 bg-orange-50 text-orange-700"
-                : "border-gray-200 bg-white text-gray-700 hover:border-orange-300 hover:bg-orange-50/40"
+                ? "border-[#F97316] bg-[#FFF7ED] text-[#F97316]"
+                : "border-gray-200 bg-white text-gray-700 hover:border-[#F97316]/60 hover:bg-[#FFF7ED]/50"
             }`}
           >
             <span className="flex items-center gap-2">
               <span
                 className={`w-4 h-4 flex-shrink-0 rounded flex items-center justify-center border-2 ${
-                  checked ? "border-orange-500 bg-orange-500" : "border-gray-300"
+                  checked ? "border-[#F97316] bg-[#F97316]" : "border-gray-300"
                 }`}
               >
                 {checked && <i className="ri-check-line text-white text-xs leading-none"></i>}
@@ -150,11 +150,11 @@ function QuestionCard({ number, question, required, hint, hasError, children }: 
   return (
     <div className={`bg-white rounded-xl border p-4 sm:p-6 transition-all ${hasError ? "border-red-300 ring-2 ring-red-200" : "border-gray-200"}`}>
       <p className="text-sm font-bold text-gray-900 mb-1 leading-snug">
-        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange-500 text-white text-xs font-bold mr-2 flex-shrink-0">
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F97316] text-white text-xs font-bold mr-2 flex-shrink-0">
           {number}
         </span>
         {question}
-        {required && <span className="text-orange-500 ml-1">*</span>}
+        {required && <span className="text-[#F97316] ml-1">*</span>}
       </p>
       {hint && <p className="text-xs text-gray-400 mb-3 sm:mb-4 ml-8">{hint}</p>}
       {!hint && <div className="mb-3 sm:mb-4" />}
@@ -233,22 +233,22 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
                 ? `${answeredCount} of ${totalRequired} questions answered`
                 : "All questions answered — ready to continue!"}
             </span>
-            <span className={`text-xs font-bold ${pct === 100 ? "text-green-500" : "text-orange-500"}`}>
+            <span className={`text-xs font-bold ${pct === 100 ? "text-emerald-600" : "text-[#F97316]"}`}>
               {pct}%
             </span>
           </div>
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${pct === 100 ? "bg-green-500" : "bg-orange-500"}`}
+              className={`h-full rounded-full transition-all duration-500 ${pct === 100 ? "bg-green-500" : "bg-[#F97316]"}`}
               style={{ width: `${Math.max(pct, 2)}%` }}
             />
           </div>
         </div>
-        <div className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full ${pct === 100 ? "bg-green-100" : "bg-orange-50"}`}>
+        <div className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full ${pct === 100 ? "bg-green-100" : "bg-[#FFF7ED]"}`}>
           {pct === 100 ? (
             <i className="ri-checkbox-circle-fill text-green-500 text-lg"></i>
           ) : (
-            <span className={`text-sm font-extrabold ${answeredCount > 0 ? "text-orange-500" : "text-gray-400"}`}>
+            <span className={`text-sm font-extrabold ${answeredCount > 0 ? "text-[#F97316]" : "text-gray-400"}`}>
               {answeredCount}/{totalRequired}
             </span>
           )}
@@ -422,7 +422,7 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
                 value={data.medicationDetails}
                 onChange={(e) => update("medicationDetails", e.target.value)}
                 placeholder="e.g., Sertraline (Zoloft), Escitalopram (Lexapro), Buspirone..."
-                className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#F97316] transition-colors"
               />
             </div>
           )}
@@ -456,7 +456,7 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
                 value={data.specificDiagnosis}
                 onChange={(e) => update("specificDiagnosis", e.target.value)}
                 placeholder="e.g., Generalized Anxiety Disorder, Major Depressive Disorder, Adjustment Disorder..."
-                className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#F97316] transition-colors"
               />
             </div>
           )}
@@ -490,7 +490,7 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
                 value={data.treatmentDetails}
                 onChange={(e) => update("treatmentDetails", e.target.value)}
                 placeholder="e.g., Weekly individual therapy with a CBT therapist, Group therapy for anxiety..."
-                className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#F97316] transition-colors"
               />
             </div>
           )}
@@ -511,7 +511,7 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
             rows={5}
             maxLength={1000}
             className={`w-full px-4 py-3 rounded-lg border-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none transition-colors resize-none ${
-              hasErr("symptomDescription") ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-orange-400"
+              hasErr("symptomDescription") ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-[#F97316]"
             }`}
           />
           <div className="flex items-center justify-between mt-1.5">
@@ -551,7 +551,7 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
         <button
           type="button"
           onClick={handleNext}
-          className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-orange-500 text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-orange-600 active:bg-orange-700 transition-colors cursor-pointer"
+          className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-[#F97316] text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-[#EA580C] active:bg-[#C2410C] transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
         >
           Continue to Your Information
           <i className="ri-arrow-right-line"></i>

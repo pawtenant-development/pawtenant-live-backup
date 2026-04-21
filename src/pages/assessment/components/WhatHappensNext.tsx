@@ -5,9 +5,9 @@ const TIMELINE = [
     title: "Assessment Submitted",
     subtitle: "Right now",
     desc: "Your confidential health screening is securely submitted to our licensed network.",
-    color: "text-orange-500",
-    bgColor: "bg-orange-100",
-    accent: "border-orange-200",
+    color: "text-[#1A5C4F]",
+    bgColor: "bg-[#E8F1EE]",
+    accent: "border-[#CFE2DC]",
   },
   {
     step: "02",
@@ -35,9 +35,9 @@ const TIMELINE = [
     title: "Present to Housing & Live Freely",
     subtitle: "Same day you receive it",
     desc: "Hand your letter to any landlord or housing provider. Under the Fair Housing Act, they must allow your emotional support animal — no pet deposits, no extra fees.",
-    color: "text-orange-500",
-    bgColor: "bg-orange-100",
-    accent: "border-orange-200",
+    color: "text-[#1A5C4F]",
+    bgColor: "bg-[#E8F1EE]",
+    accent: "border-[#CFE2DC]",
   },
 ];
 
@@ -50,7 +50,7 @@ export default function WhatHappensNext() {
       <div className="text-center mt-6">
         <div className="inline-flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-4 py-2">
           <div className="w-4 h-4 flex items-center justify-center">
-            <i className="ri-shield-check-line text-orange-400"></i>
+            <i className="ri-shield-check-line text-[#1A5C4F]"></i>
           </div>
           Your letter is valid nationwide and legally enforceable under the Fair Housing Act
         </div>

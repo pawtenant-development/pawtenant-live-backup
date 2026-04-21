@@ -37,7 +37,7 @@ function ProcessingOverlay() {
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl px-8 py-10 flex flex-col items-center gap-4 shadow-2xl">
-        <div className="w-12 h-12 border-4 border-gray-100 border-t-orange-400 rounded-full animate-spin" />
+        <div className="w-12 h-12 border-4 border-gray-100 border-t-[#1A5C4F] rounded-full animate-spin" />
         <p className="text-sm font-bold text-gray-700">Generating Payment Link...</p>
       </div>
     </div>,
@@ -212,7 +212,7 @@ export default function QRPaymentTab({
         {/* Agreement checkbox - must be checked before showing QR */}
         {!agreed ? (
           <label
-            className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-orange-200 transition-colors ${
+            className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-[#CFE2DC] transition-colors ${
               agreedError ? "border-red-300 bg-red-50" : "bg-gray-50 border-gray-200"
             }`}
           >
@@ -223,14 +223,14 @@ export default function QRPaymentTab({
                 setAgreed(e.target.checked);
                 if (e.target.checked) setAgreedError(false);
               }}
-              className="mt-0.5 accent-orange-400 flex-shrink-0 cursor-pointer"
+              className="mt-0.5 accent-[#1A5C4F] flex-shrink-0 cursor-pointer"
             />
             <span className="text-xs text-gray-600 leading-relaxed">
               I agree to the{" "}
               <button
                 type="button"
                 onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Terms of Use" })}
-                className="text-orange-500 font-semibold hover:underline cursor-pointer"
+                className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
               >
                 Terms of Use
               </button>
@@ -238,7 +238,7 @@ export default function QRPaymentTab({
               <button
                 type="button"
                 onClick={() => setPolicyModal({ url: "/terms-of-use", title: "Informed Consent" })}
-                className="text-orange-500 font-semibold hover:underline cursor-pointer"
+                className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
               >
                 Informed Consent
               </button>
@@ -246,7 +246,7 @@ export default function QRPaymentTab({
               <button
                 type="button"
                 onClick={() => setPolicyModal({ url: "/privacy-policy", title: "HIPAA Acknowledgment" })}
-                className="text-orange-500 font-semibold hover:underline cursor-pointer"
+                className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
               >
                 HIPAA Acknowledgment
               </button>
@@ -374,7 +374,7 @@ export default function QRPaymentTab({
         {/* Fallback call */}
         <p className="text-[11px] text-center text-gray-400 leading-relaxed">
           Or call us at{" "}
-          <a href="tel:+14099655885" className="font-bold text-orange-500 hover:underline cursor-pointer">
+          <a href="tel:+14099655885" className="font-bold text-[#1A5C4F] hover:underline cursor-pointer">
             409-965-5885
           </a>{" "}
           to complete your order over the phone.

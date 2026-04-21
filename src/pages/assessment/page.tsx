@@ -1162,7 +1162,7 @@ export default function AssessmentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-orange-50">
+    <div className="min-h-screen bg-white">
       <title>Get Your ESA Letter Online — Free Assessment | PawTenant</title>
       <meta name="description" content="Complete our free emotional support animal assessment and get a legitimate ESA letter from a licensed mental health professional. Same-day delivery, HIPAA compliant, 100% money-back guarantee." />
       <meta name="robots" content="index, follow" />
@@ -1191,14 +1191,14 @@ export default function AssessmentPage() {
         {/* Resume loading state */}
         {resumeLoading ? (
           <div className="flex flex-col items-center justify-center py-32">
-            <i className="ri-loader-4-line animate-spin text-4xl text-orange-500 mb-4"></i>
+            <i className="ri-loader-4-line animate-spin text-4xl text-[#1A5C4F] mb-4"></i>
             <p className="text-base font-bold text-gray-700 mb-1">Loading your saved assessment...</p>
             <p className="text-sm text-gray-400 mb-6">This only takes a second.</p>
           </div>
         ) : resumeNotFound ? (
           <div className="flex flex-col items-center justify-center py-20 text-center max-w-md mx-auto">
-            <div className="w-16 h-16 flex items-center justify-center bg-orange-100 rounded-full mb-4">
-              <i className="ri-error-warning-line text-orange-500 text-2xl"></i>
+            <div className="w-16 h-16 flex items-center justify-center bg-[#E8F1EE] rounded-full mb-4">
+              <i className="ri-error-warning-line text-[#1A5C4F] text-2xl"></i>
             </div>
             <h2 className="text-xl font-extrabold text-gray-900 mb-2">Link expired or not found</h2>
             <p className="text-sm text-gray-500 mb-6 max-w-sm">This payment link may have expired or already been used. Enter your email below to receive a new payment link, or start a fresh assessment.</p>
@@ -1219,14 +1219,14 @@ export default function AssessmentPage() {
                       value={resendEmail}
                       onChange={(e) => setResendEmail(e.target.value)}
                       placeholder="your@email.com"
-                      className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 transition-colors"
+                      className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#1A5C4F] transition-colors"
                       onKeyDown={(e) => { if (e.key === "Enter") handleResendLink(); }}
                     />
                     <button
                       type="button"
                       onClick={handleResendLink}
                       disabled={resendState === "sending"}
-                      className="whitespace-nowrap px-4 py-2.5 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 disabled:opacity-60 cursor-pointer transition-colors"
+                      className="whitespace-nowrap px-4 py-2.5 bg-[#1A5C4F] text-white text-sm font-bold rounded-lg hover:bg-[#14493E] disabled:opacity-60 cursor-pointer transition-colors"
                     >
                       {resendState === "sending" ? <i className="ri-loader-4-line animate-spin"></i> : "Send Link"}
                     </button>
@@ -1244,7 +1244,7 @@ export default function AssessmentPage() {
             <button
               type="button"
               onClick={() => { setResumeNotFound(false); setCurrentStep(1); }}
-              className="whitespace-nowrap flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 cursor-pointer transition-colors"
+              className="whitespace-nowrap flex items-center gap-2 px-6 py-3 bg-[#1A5C4F] text-white font-bold rounded-xl hover:bg-[#14493E] cursor-pointer transition-colors"
             >
               <i className="ri-arrow-right-line"></i>Start Fresh Assessment
             </button>
@@ -1253,17 +1253,17 @@ export default function AssessmentPage() {
           <>
             {/* Header */}
             <div className="text-center mb-4">
-              <p className="text-orange-500 text-xs font-bold tracking-widest uppercase mb-2">ESA Assessment</p>
+              <p className="text-[#1A5C4F] text-xs font-bold tracking-[0.22em] uppercase mb-2">ESA Assessment</p>
               {resumeConfirmationId && currentStep === 3 ? (
                 <>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Complete Your Payment</h1>
-                  <div className="mt-3 inline-flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-full px-4 py-2">
-                    <i className="ri-save-3-line text-orange-500 text-sm"></i>
-                    <span className="text-sm font-semibold text-orange-700">Your assessment answers have been restored</span>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Complete Your Payment</h1>
+                  <div className="mt-3 inline-flex items-center gap-2 bg-[#E8F1EE] border border-[#CFE2DC] rounded-full px-4 py-2">
+                    <i className="ri-save-3-line text-[#1A5C4F] text-sm"></i>
+                    <span className="text-sm font-semibold text-[#1A5C4F]">Your assessment answers have been restored</span>
                   </div>
                 </>
               ) : (
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Get Your ESA Letter</h1>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Get Your ESA Letter</h1>
               )}
             </div>
 

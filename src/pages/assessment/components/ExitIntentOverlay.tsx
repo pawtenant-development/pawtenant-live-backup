@@ -86,14 +86,14 @@ export default function ExitIntentOverlay({
       style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
     >
       <div className={`bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transition-all duration-300 ${leaving ? "scale-95 opacity-0" : "scale-100 opacity-100"}`}>
-        <div className="h-1.5 bg-gradient-to-r from-orange-400 to-amber-400" />
+        <div className="h-1.5 bg-gradient-to-r from-[#F97316] to-[#EA580C]" />
 
-        <div className="bg-gradient-to-br from-orange-50 to-amber-50 px-6 py-6 text-center border-b border-orange-100">
+        <div className="bg-gradient-to-br from-[#E8F1EE] to-slate-50 px-6 py-6 text-center border-b border-[#CFE2DC]">
           <div className="relative w-24 h-24 mx-auto mb-4">
             <svg className="w-24 h-24 -rotate-90" viewBox="0 0 96 96">
-              <circle cx="48" cy="48" r="40" fill="none" stroke="#fed7aa" strokeWidth="8" />
+              <circle cx="48" cy="48" r="40" fill="none" stroke="#CFE2DC" strokeWidth="8" />
               <circle
-                cx="48" cy="48" r="40" fill="none" stroke="#f97316" strokeWidth="8"
+                cx="48" cy="48" r="40" fill="none" stroke="#F97316" strokeWidth="8"
                 strokeLinecap="round"
                 strokeDasharray={`${2 * Math.PI * 40}`}
                 strokeDashoffset={`${2 * Math.PI * 40 * (1 - safeProgress / 100)}`}
@@ -101,7 +101,7 @@ export default function ExitIntentOverlay({
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-2xl font-extrabold text-orange-500">{safeProgress}%</span>
+              <span className="text-2xl font-extrabold text-[#F97316]">{safeProgress}%</span>
               <span className="text-xs text-gray-500 font-medium">done</span>
             </div>
           </div>
@@ -119,8 +119,8 @@ export default function ExitIntentOverlay({
           <div className="grid grid-cols-1 gap-2.5 mb-5">
             {BENEFITS.map((b) => (
               <div key={b.text} className="flex items-center gap-3">
-                <div className="w-7 h-7 flex items-center justify-center rounded-full bg-orange-100 flex-shrink-0">
-                  <i className={`${b.icon} text-orange-500 text-sm`}></i>
+                <div className="w-7 h-7 flex items-center justify-center rounded-full bg-[#E8F1EE] flex-shrink-0">
+                  <i className={`${b.icon} text-[#1A5C4F] text-sm`}></i>
                 </div>
                 <span className="text-sm text-gray-700">{b.text}</span>
               </div>
@@ -135,7 +135,7 @@ export default function ExitIntentOverlay({
           <button
             type="button"
             onClick={handleStay}
-            className="whitespace-nowrap w-full py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-sm rounded-xl transition-colors cursor-pointer mb-2.5"
+            className="whitespace-nowrap w-full py-3.5 bg-[#F97316] hover:bg-[#EA580C] text-white font-extrabold text-sm rounded-xl transition-colors cursor-pointer mb-2.5 shadow-[0_10px_28px_-10px_rgba(249,115,22,0.5)]"
           >
             Continue My Application →
           </button>

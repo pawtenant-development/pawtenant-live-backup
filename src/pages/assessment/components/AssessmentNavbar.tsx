@@ -37,24 +37,24 @@ export default function AssessmentNavbar() {
         <div className="hidden sm:flex items-center gap-4">
           <a
             href="tel:+14099655885"
-            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-orange-500 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#1A5C4F] transition-colors cursor-pointer"
           >
             <div className="w-5 h-5 flex items-center justify-center">
-              <i className="ri-phone-line text-orange-500"></i>
+              <i className="ri-phone-line text-[#1A5C4F]"></i>
             </div>
             409-965-5885
           </a>
-          <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 rounded-full px-3 py-1.5">
-            <i className="ri-shield-check-line text-orange-500 text-xs"></i>
-            <span className="text-xs font-semibold text-orange-700">HIPAA Secure</span>
+          <div className="flex items-center gap-1.5 bg-[#E8F1EE] border border-[#CFE2DC] rounded-full px-3 py-1.5">
+            <i className="ri-shield-check-line text-[#1A5C4F] text-xs"></i>
+            <span className="text-xs font-semibold text-[#1A5C4F]">HIPAA Secure</span>
           </div>
         </div>
 
         {/* Mobile right side */}
         <div className="flex sm:hidden items-center gap-2">
-          <div className="flex items-center gap-1 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-1">
-            <i className="ri-shield-check-line text-orange-500 text-xs"></i>
-            <span className="text-xs font-semibold text-orange-700">HIPAA</span>
+          <div className="flex items-center gap-1 bg-[#E8F1EE] border border-[#CFE2DC] rounded-full px-2.5 py-1">
+            <i className="ri-shield-check-line text-[#1A5C4F] text-xs"></i>
+            <span className="text-xs font-semibold text-[#1A5C4F]">HIPAA</span>
           </div>
           <button
             className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
@@ -106,11 +106,11 @@ export default function AssessmentNavbar() {
             <Link
               key={link.href}
               to={link.href}
-              className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors cursor-pointer"
+              className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-[#E8F1EE] hover:text-[#1A5C4F] transition-colors cursor-pointer"
               onClick={() => setMenuOpen(false)}
             >
-              <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
-                <i className={`${link.icon} text-orange-500 text-sm`}></i>
+              <div className="w-8 h-8 flex items-center justify-center bg-[#E8F1EE] rounded-lg flex-shrink-0">
+                <i className={`${link.icon} text-[#1A5C4F] text-sm`}></i>
               </div>
               {link.label}
             </Link>
@@ -120,10 +120,10 @@ export default function AssessmentNavbar() {
 
           <a
             href="tel:+14099655885"
-            className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition-colors cursor-pointer"
+            className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-[#E8F1EE] hover:text-[#1A5C4F] transition-colors cursor-pointer"
           >
-            <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
-              <i className="ri-phone-line text-orange-500 text-sm"></i>
+            <div className="w-8 h-8 flex items-center justify-center bg-[#E8F1EE] rounded-lg flex-shrink-0">
+              <i className="ri-phone-line text-[#1A5C4F] text-sm"></i>
             </div>
             <div>
               <p className="font-semibold text-sm">Call Us</p>
@@ -133,12 +133,12 @@ export default function AssessmentNavbar() {
         </div>
 
         {/* Trust badges */}
-        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-100 bg-orange-50">
+        <div className="flex-shrink-0 px-4 py-4 border-t border-gray-100 bg-[#E8F1EE]">
           <div className="grid grid-cols-3 gap-2">
             {[
-              { icon: "ri-shield-check-line", label: "HIPAA", color: "text-orange-500" },
-              { icon: "ri-award-line", label: "Licensed", color: "text-orange-500" },
-              { icon: "ri-refund-2-line", label: "Guaranteed", color: "text-orange-500" },
+              { icon: "ri-shield-check-line", label: "HIPAA", color: "text-[#1A5C4F]" },
+              { icon: "ri-award-line", label: "Licensed", color: "text-[#1A5C4F]" },
+              { icon: "ri-refund-2-line", label: "Guaranteed", color: "text-[#1A5C4F]" },
             ].map((b) => (
               <div key={b.label} className="flex flex-col items-center gap-1 text-center">
                 <div className="w-6 h-6 flex items-center justify-center">

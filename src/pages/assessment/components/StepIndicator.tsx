@@ -108,9 +108,9 @@ export default function StepIndicator({
                 <div
                   className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full border-2 transition-all duration-300 ${
                     isCompleted
-                      ? "bg-orange-500 border-orange-500 text-white"
+                      ? "bg-[#F97316] border-[#F97316] text-white"
                       : isActive
-                      ? "bg-white border-orange-500 text-orange-500"
+                      ? "bg-white border-[#F97316] text-[#F97316]"
                       : "bg-white border-gray-200 text-gray-400"
                   }`}
                 >
@@ -125,7 +125,7 @@ export default function StepIndicator({
                   <span
                     className={`text-xs font-bold leading-tight ${
                       isActive
-                        ? "text-orange-500"
+                        ? "text-[#F97316]"
                         : isCompleted
                         ? "text-gray-700"
                         : "text-gray-400"
@@ -136,7 +136,7 @@ export default function StepIndicator({
                   </span>
                   <span
                     className={`text-xs leading-none mt-0.5 ${
-                      isActive ? "text-orange-400" : "text-gray-400"
+                      isActive ? "text-[#F97316]" : "text-gray-400"
                     }`}
                   >
                     {isCompleted ? (
@@ -153,7 +153,7 @@ export default function StepIndicator({
                 <div className="mx-2 sm:mx-3 md:mx-5 mb-4 sm:mb-5 flex-shrink-0">
                   <div className="w-8 sm:w-12 md:w-16 h-0.5 bg-gray-200 relative overflow-hidden rounded-full">
                     <div
-                      className="absolute inset-y-0 left-0 bg-orange-500 transition-all duration-500"
+                      className="absolute inset-y-0 left-0 bg-[#F97316] transition-all duration-500"
                       style={{ width: stepNum < currentStep ? "100%" : "0%" }}
                     />
                   </div>
@@ -167,13 +167,13 @@ export default function StepIndicator({
       {/* Overall progress bar */}
       <div className="bg-gray-100 rounded-full h-2 sm:h-2.5 overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-700 ease-out"
+          className="h-full bg-gradient-to-r from-[#F97316] to-[#EA580C] rounded-full transition-all duration-700 ease-out"
           style={{ width: `${Math.max(progress, 3)}%` }}
         />
       </div>
       <div className="flex items-center justify-between mt-1.5">
         <span className="text-xs text-gray-400">Step {currentStep} of 3</span>
-        <span className="text-xs font-bold text-orange-500">{progress}% complete</span>
+        <span className="text-xs font-bold text-[#F97316]">{progress}% complete</span>
       </div>
     </div>
   );

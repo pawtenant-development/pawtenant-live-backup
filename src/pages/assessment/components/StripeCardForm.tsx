@@ -378,7 +378,7 @@ export default function StripeCardForm({
           <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
             Card Number
           </label>
-          <div className="border border-gray-200 rounded-lg bg-white px-3 py-3 focus-within:border-orange-400 transition-colors">
+          <div className="border border-gray-200 rounded-lg bg-white px-3 py-3 focus-within:border-[#F97316] transition-colors">
             <CardNumberElement
               options={CARD_INPUT_OPTIONS}
               onChange={(e) => {
@@ -395,7 +395,7 @@ export default function StripeCardForm({
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
               Expiry Date
             </label>
-            <div className="border border-gray-200 rounded-lg bg-white px-3 py-3 focus-within:border-orange-400 transition-colors">
+            <div className="border border-gray-200 rounded-lg bg-white px-3 py-3 focus-within:border-[#F97316] transition-colors">
               <CardExpiryElement
                 options={CARD_INPUT_OPTIONS}
                 onChange={(e) => setFieldsDone((f) => ({ ...f, expiry: e.complete }))}
@@ -406,7 +406,7 @@ export default function StripeCardForm({
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
               CVC
             </label>
-            <div className="border border-gray-200 rounded-lg bg-white px-3 py-3 focus-within:border-orange-400 transition-colors">
+            <div className="border border-gray-200 rounded-lg bg-white px-3 py-3 focus-within:border-[#F97316] transition-colors">
               <CardCvcElement
                 options={CARD_INPUT_OPTIONS}
                 onChange={(e) => setFieldsDone((f) => ({ ...f, cvc: e.complete }))}
@@ -438,7 +438,7 @@ export default function StripeCardForm({
       {/* ── Agreement checkbox ── */}
       <div className="px-5 pb-4">
         <label
-          className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-orange-200 transition-colors ${termsError ? "border-red-300 bg-red-50" : "bg-gray-50 border-gray-200"
+          className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 hover:border-[#CFE2DC] transition-colors ${termsError ? "border-red-300 bg-red-50" : "bg-gray-50 border-gray-200"
             }`}
         >
           <input
@@ -448,14 +448,14 @@ export default function StripeCardForm({
               setAgreedToTerms(e.target.checked);
               if (e.target.checked) setTermsError(false);
             }}
-            className="mt-0.5 accent-orange-400 flex-shrink-0 cursor-pointer"
+            className="mt-0.5 accent-[#1A5C4F] flex-shrink-0 cursor-pointer"
           />
           <span className="text-xs text-gray-600 leading-relaxed">
             I agree to the{" "}
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/terms-of-use", title: "Terms of Use" }); }}
-              className="text-orange-500 font-semibold hover:underline cursor-pointer"
+              className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
             >
               Terms of Use
             </button>
@@ -463,7 +463,7 @@ export default function StripeCardForm({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/terms-of-use", title: "Informed Consent" }); }}
-              className="text-orange-500 font-semibold hover:underline cursor-pointer"
+              className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
             >
               Informed Consent
             </button>
@@ -471,7 +471,7 @@ export default function StripeCardForm({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); e.preventDefault(); setPolicyModal({ url: "/privacy-policy", title: "HIPAA Acknowledgment" }); }}
-              className="text-orange-500 font-semibold hover:underline cursor-pointer"
+              className="text-[#1A5C4F] font-semibold hover:underline cursor-pointer"
             >
               HIPAA Acknowledgment
             </button>
@@ -491,9 +491,9 @@ export default function StripeCardForm({
           type="button"
           onClick={handlePay}
           disabled={!canSubmit}
-          className={`whitespace-nowrap w-full py-4 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-colors ${canSubmit
-            ? "bg-orange-400 text-white hover:bg-orange-500 cursor-pointer"
-            : "bg-orange-50 border-2 border-dashed border-orange-200 text-orange-300 cursor-not-allowed select-none"
+          className={`whitespace-nowrap w-full py-4 sm:py-[18px] text-[15px] sm:text-base font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-all duration-200 tracking-tight ${canSubmit
+            ? "bg-[#F97316] text-white hover:bg-[#EA580C] hover:-translate-y-[1px] shadow-[0_10px_28px_-10px_rgba(249,115,22,0.55),0_2px_6px_-2px_rgba(249,115,22,0.25)] hover:shadow-[0_14px_34px_-10px_rgba(249,115,22,0.65),0_3px_8px_-2px_rgba(249,115,22,0.3)] cursor-pointer"
+            : "bg-slate-100 border-2 border-dashed border-slate-200 text-slate-400 cursor-not-allowed select-none"
             }`}
         >
           {processing ? (

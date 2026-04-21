@@ -42,8 +42,8 @@ export default function PolicyModal({ url, title, onClose }: PolicyModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 flex items-center justify-center bg-orange-50 rounded-lg">
-              <i className="ri-file-text-line text-orange-500 text-sm"></i>
+            <div className="w-7 h-7 flex items-center justify-center bg-[#E8F1EE] rounded-lg">
+              <i className="ri-file-text-line text-[#1A5C4F] text-sm"></i>
             </div>
             <span className="font-bold text-gray-900 text-sm">{title}</span>
           </div>
@@ -72,7 +72,7 @@ export default function PolicyModal({ url, title, onClose }: PolicyModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="whitespace-nowrap px-5 py-2 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition-colors cursor-pointer"
+            className="whitespace-nowrap px-5 py-2 bg-[#1A5C4F] text-white text-xs font-bold rounded-lg hover:bg-[#14493E] transition-colors cursor-pointer"
           >
             Close &amp; Return to Checkout
           </button>
