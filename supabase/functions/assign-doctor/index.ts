@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logEmailComm } from "../_shared/logEmailComm.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -204,6 +205,32 @@ Deno.serve(async (req: Request) => {
     { type: "provider_assigned_customer", sentAt: now, to: order.email as string, success: customerEmailSent },
     { type: "provider_assigned_provider", sentAt: now, to: normalizedEmail, success: emailSent },
   ]);
+
+  // Primary log → communications (both customer + provider notifications)
+  await logEmailComm({
+    supabase,
+    orderId: order.id as string,
+    confirmationId,
+    to: order.email as string,
+    from: "PawTenant <hello@pawtenant.com>",
+    subject: `Your ${isPSD ? "PSD" : "ESA"} Provider Has Been Assigned — Order ${confirmationId}`,
+    body: null,
+    slug: "provider_assigned_customer",
+    sentBy: "system_assign_doctor",
+    success: customerEmailSent,
+  });
+  await logEmailComm({
+    supabase,
+    orderId: order.id as string,
+    confirmationId,
+    to: normalizedEmail,
+    from: "PawTenant <hello@pawtenant.com>",
+    subject: `New Case Assigned — ${patientName} (${order.state ?? "Unknown"})`,
+    body: null,
+    slug: "provider_assigned_provider",
+    sentBy: "system_assign_doctor",
+    success: emailSent,
+  });
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";

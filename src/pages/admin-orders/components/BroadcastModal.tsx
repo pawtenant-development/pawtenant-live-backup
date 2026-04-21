@@ -471,6 +471,37 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>("all");
 
+  // Load templates from DB (fallback to hardcoded constants)
+  const [dbEmailTemplates, setDbEmailTemplates] = useState<typeof EMAIL_TEMPLATES | null>(null);
+  const [dbSmsTemplates, setDbSmsTemplates] = useState<typeof SMS_TEMPLATES | null>(null);
+  useEffect(() => {
+    supabase
+      .from("email_templates")
+      .select("id, label, \"group\", subject, body, cta_label, cta_url, channel")
+      .order("created_at")
+      .then(({ data, error }) => {
+        if (error || !data || data.length === 0) return;
+        const emailRows = data.filter((r) => !r.channel || r.channel === "email");
+        const smsRows   = data.filter((r) => r.channel === "sms");
+        if (emailRows.length > 0) {
+          setDbEmailTemplates(emailRows.map((r) => ({
+            id: r.id as string, label: r.label as string, group: r.group as string,
+            subject: r.subject as string, body: r.body as string,
+            ctaLabel: r.cta_label as string, ctaUrl: r.cta_url as string,
+          })));
+        }
+        if (smsRows.length > 0) {
+          setDbSmsTemplates(smsRows.map((r) => ({
+            id: r.id as string, label: r.label as string, group: r.group as string,
+            text: r.body as string,
+          })));
+        }
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeEmailTemplates = dbEmailTemplates ?? EMAIL_TEMPLATES;
+  const activeSmsTemplates   = dbSmsTemplates   ?? SMS_TEMPLATES;
+
   // Reset exclusions + filters + batch offset whenever the audience changes
   useEffect(() => {
     setExcludedEmails(new Set());
@@ -706,7 +737,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
   const handleEmailTemplateSelect = (id: string) => {
     setEmailTemplateId(id);
-    const tmpl = EMAIL_TEMPLATES.find((t) => t.id === id);
+    const tmpl = activeEmailTemplates.find((t) => t.id === id);
     if (!tmpl) return;
     if (id !== "custom") {
       setSubject(tmpl.subject);
@@ -718,7 +749,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
   const handleSmsTemplateSelect = (id: string) => {
     setSmsTemplateId(id);
-    const tmpl = SMS_TEMPLATES.find((t) => t.id === id);
+    const tmpl = activeSmsTemplates.find((t) => t.id === id);
     if (tmpl && id !== "custom") setSmsText(tmpl.text);
     else if (id === "custom") setSmsText("");
   };
@@ -1529,7 +1560,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                       <div>
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Template</p>
                         {(() => {
-                          const groups = [...new Set(EMAIL_TEMPLATES.map((t) => t.group))];
+                          const groups = [...new Set(activeEmailTemplates.map((t) => t.group))];
                           return (
                             <div className="space-y-2">
                               {groups.map((grp) => (
@@ -1539,7 +1570,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                     {grp}
                                   </p>
                                   <div className="flex flex-wrap gap-1.5">
-                                    {EMAIL_TEMPLATES.filter((t) => t.group === grp).map((t) => (
+                                    {activeEmailTemplates.filter((t) => t.group === grp).map((t) => (
                                       <button key={t.id} type="button"
                                         onClick={() => handleEmailTemplateSelect(t.id)}
                                         className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
@@ -1736,7 +1767,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                       <div>
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Template</p>
                         {(() => {
-                          const groups = [...new Set(SMS_TEMPLATES.map((t) => t.group))];
+                          const groups = [...new Set(activeSmsTemplates.map((t) => t.group))];
                           return (
                             <div className="space-y-2">
                               {groups.map((grp) => (
@@ -1746,7 +1777,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                                     {grp}
                                   </p>
                                   <div className="flex flex-wrap gap-1.5">
-                                    {SMS_TEMPLATES.filter((t) => t.group === grp).map((t) => (
+                                    {activeSmsTemplates.filter((t) => t.group === grp).map((t) => (
                                       <button key={t.id} type="button"
                                         onClick={() => handleSmsTemplateSelect(t.id)}
                                         className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${

@@ -26,35 +26,28 @@ interface CommunicationTabProps {
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
-// ── SMS Templates ──────────────────────────────────────────────────────────
-const SMS_TEMPLATES = [
-  { label: "Order Confirmed",       icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]",  bg: "bg-[#e8f0f9] border-[#b8cce4] hover:border-[#3b6ea5]",   getMessage: (fn: string, id: string) => `Hi ${fn}, your ESA consultation with PawTenant is confirmed! Your Order ID is ${id}. Track your order anytime at pawtenant.com/my-orders` },
-  { label: "Documents Ready",       icon: "ri-file-check-line",      color: "text-amber-700",  bg: "bg-amber-50 border-amber-200 hover:border-amber-400",       getMessage: (fn: string) => `Hi ${fn}, great news! Your ESA letter is ready. Log in to download your documents at pawtenant.com/my-orders` },
-  { label: "Under Review",          icon: "ri-search-eye-line",      color: "text-sky-700",    bg: "bg-sky-50 border-sky-200 hover:border-sky-400",             getMessage: (fn: string) => `Hi ${fn}, your ESA assessment is under review by our licensed provider. We\'ll notify you as soon as it\'s complete, usually within 24 hours.` },
-  { label: "Finish Your ESA Letter",icon: "ri-mail-send-line",       color: "text-orange-600", bg: "bg-orange-50 border-orange-200 hover:border-orange-400",    getMessage: (fn: string, id: string) => `Hi ${fn}, you\'re one step away from your ESA letter! Complete your order here: pawtenant.com/assessment?resume=${id}` },
-  { label: "Still Thinking?",       icon: "ri-lightbulb-line",       color: "text-amber-700",  bg: "bg-amber-50 border-amber-200 hover:border-amber-400",       getMessage: (fn: string, id: string) => `Hi ${fn}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment?resume=${id}` },
-  { label: "Consultation Booked",   icon: "ri-calendar-check-line",  color: "text-violet-700", bg: "bg-violet-50 border-violet-200 hover:border-violet-400",    getMessage: (fn: string, id: string) => `Hi ${fn}, your provider consultation with PawTenant is confirmed! Complete your payment to lock in your spot: pawtenant.com/assessment?resume=${id}` },
-  { label: "Need More Info",        icon: "ri-information-line",     color: "text-violet-700", bg: "bg-violet-50 border-violet-200 hover:border-violet-400",    getMessage: (fn: string) => `Hi ${fn}, we need a bit more information to complete your ESA assessment. Please reply here or call us and we\'ll get you sorted quickly!` },
-  { label: "Follow Up",             icon: "ri-chat-check-line",      color: "text-gray-600",   bg: "bg-gray-50 border-gray-200 hover:border-gray-400",          getMessage: (fn: string) => `Hi ${fn}, just checking in on your ESA order. Is there anything we can help you with?` },
-  { label: "Refund Processed",      icon: "ri-refund-line",          color: "text-red-600",    bg: "bg-red-50 border-red-200 hover:border-red-400",             getMessage: (fn: string) => `Hi ${fn}, your refund has been processed and should appear in your account within 3-5 business days. Thank you for your patience.` },
-];
+// ── SMS Templates ─────────────────────────────────────────────────────────
+// Loaded from email_templates table (channel='sms'). DB is the single source of truth.
+type SmsTemplateEntry = { label: string; icon: string; color: string; bg: string; getMessage: (fn: string, id: string) => string };
 
-// ── Email template groups ──────────────────────────────────────────────────
-interface EmailOption { value: string; label: string; desc: string; badge?: string; badgeColor?: string; }
-const EMAIL_OPTION_GROUPS: { group: string; icon: string; options: EmailOption[] }[] = [
-  { group: "Order Updates", icon: "ri-file-list-3-line", options: [
-    { value: "order_confirmation", label: "Resend Order Confirmation", desc: "Resends the initial order confirmation + payment receipt email", badge: "Transactional", badgeColor: "bg-[#e8f0f9] text-[#3b6ea5]" },
-    { value: "under-review",       label: "Under Review Update",       desc: "Lets the customer know their case is being reviewed",           badge: "Status",        badgeColor: "bg-sky-50 text-sky-700" },
-    { value: "completed",          label: "Completed Update",          desc: "Notifies the customer their order is done",                     badge: "Status",        badgeColor: "bg-emerald-50 text-emerald-700" },
-    { value: "letter_ready",       label: "Resend Documents Email",    desc: "Re-sends the letter/documents email to the customer",           badge: "Documents",     badgeColor: "bg-amber-50 text-amber-700" },
-  ]},
-  { group: "Lead Recovery", icon: "ri-user-follow-line", options: [
-    { value: "checkout_recovery",    label: "Abandoned Checkout Recovery",    desc: "Remind them to complete their ESA/PSD assessment payment", badge: "Recovery",  badgeColor: "bg-orange-50 text-orange-600" },
-    { value: "followup_lead",        label: "Lead Follow-up",                 desc: "Still thinking? Nudge them to get their ESA letter today", badge: "Follow-up", badgeColor: "bg-amber-50 text-amber-700" },
-    { value: "consultation_booking", label: "Confirm Provider Consultation",  desc: "Confirm their upcoming consultation booking",              badge: "Booking",   badgeColor: "bg-violet-50 text-violet-700" },
-  ]},
-];
-const ALL_EMAIL_OPTIONS: EmailOption[] = EMAIL_OPTION_GROUPS.flatMap((g) => g.options);
+function groupStyleForSms(group: string): { icon: string; color: string; bg: string } {
+  if (group === "Lead Recovery") return { icon: "ri-mail-send-line", color: "text-orange-600", bg: "bg-orange-50 border-orange-200 hover:border-orange-400" };
+  if (group === "General") return { icon: "ri-chat-check-line", color: "text-gray-600", bg: "bg-gray-50 border-gray-200 hover:border-gray-400" };
+  return { icon: "ri-message-3-line", color: "text-[#3b6ea5]", bg: "bg-[#e8f0f9] border-[#b8cce4] hover:border-[#3b6ea5]" };
+}
+
+// ── Email templates ────────────────────────────────────────────────────────
+// Loaded entirely from email_templates (channel='email'). DB is the single source of truth.
+// Each row's `slug` is the value, `group` becomes the section heading.
+interface EmailTemplate { slug: string; label: string; group: string; subject: string; }
+
+function groupIconFor(group: string): string {
+  const g = group.toLowerCase();
+  if (g.includes("recovery") || g.includes("lead")) return "ri-user-follow-line";
+  if (g.includes("sequence")) return "ri-time-line";
+  if (g.includes("transactional") || g.includes("status")) return "ri-file-list-3-line";
+  return "ri-database-2-line";
+}
 
 // ── Unified log entry ──────────────────────────────────────────────────────
 interface UnifiedLogEntry {
@@ -181,45 +174,118 @@ export default function CommunicationTab({
 }: CommunicationTabProps) {
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [smsText, setSmsText] = useState("");
+  const [dbSmsTemplates, setDbSmsTemplates] = useState<SmsTemplateEntry[] | null>(null);
+  const [dbEmailTemplates, setDbEmailTemplates] = useState<EmailTemplate[] | null>(null);
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState("");
   const [calling, setCalling] = useState(false);
   const [callMsg, setCallMsg] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
-  const [emailType, setEmailType] = useState("under-review");
-  const [doctorNote, setDoctorNote] = useState("");
+  const [emailType, setEmailType] = useState<string>("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailMsg, setEmailMsg] = useState("");
   const [commLogs, setCommLogs] = useState<UnifiedLogEntry[]>([]);
   const [loadingComms, setLoadingComms] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  // Load SMS templates from DB on mount; fallback to hardcoded if empty
+  useEffect(() => {
+    supabase
+      .from("email_templates")
+      .select("id, label, group, body")
+      .eq("channel", "sms")
+      .order("created_at")
+      .then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          const mapped: SmsTemplateEntry[] = data.map((r) => {
+            const style = groupStyleForSms(r.group as string);
+            const body = r.body as string;
+            return {
+              label: r.label as string,
+              ...style,
+              getMessage: (fn: string, id: string) =>
+                body.replace(/\{name\}/g, fn).replace(/\{order_id\}/g, id),
+            };
+          });
+          setDbSmsTemplates(mapped);
+        }
+      });
+  }, []);
+
+  const SMS_TEMPLATES = dbSmsTemplates ?? [];
+
+  // Load ALL email templates from DB (single source of truth — no hardcoded options)
+  useEffect(() => {
+    supabase
+      .from("email_templates")
+      .select("slug, label, group, subject, archived, channel")
+      .eq("channel", "email")
+      .order("group")
+      .order("created_at")
+      .then(({ data, error }) => {
+        if (error || !data) { setDbEmailTemplates([]); return; }
+        const templates: EmailTemplate[] = data
+          .filter((r) => r.slug && !r.archived)
+          .map((r) => ({
+            slug: r.slug as string,
+            label: (r.label as string) || (r.slug as string),
+            group: (r.group as string) || "Custom",
+            subject: (r.subject as string) || "",
+          }));
+        setDbEmailTemplates(templates);
+        if (templates.length > 0) {
+          setEmailType((cur) => cur || templates[0].slug);
+        }
+      });
+  }, []);
+
   const firstName = patientName.split(" ")[0] || "there";
   const isPsd = letterType === "psd" || confirmationId.includes("-PSD");
-  const resumeUrl = `https://www.pawtenant.com/${isPsd ? "psd-assessment" : "assessment"}?resume=${encodeURIComponent(confirmationId)}`;
-  const isRecoveryType = ["checkout_recovery", "followup_lead", "consultation_booking"].includes(emailType);
-  const selectedEmailOption = ALL_EMAIL_OPTIONS.find((o) => o.value === emailType);
+  const siteOrigin = typeof window !== "undefined" ? window.location.origin : "https://www.pawtenant.com";
+  const resumeUrl = `${siteOrigin}/${isPsd ? "psd-assessment" : "assessment"}?resume=${encodeURIComponent(confirmationId)}`;
 
-  // ── Fetch communications ───────────────────────────────────────────────
+  // Group email templates dynamically by their `group` column
+  const emailGroups: { group: string; icon: string; options: EmailTemplate[] }[] = (() => {
+    const tpls = dbEmailTemplates ?? [];
+    const map = new Map<string, EmailTemplate[]>();
+    tpls.forEach((t) => {
+      const arr = map.get(t.group) ?? [];
+      arr.push(t);
+      map.set(t.group, arr);
+    });
+    return Array.from(map.entries()).map(([group, options]) => ({
+      group, icon: groupIconFor(group), options,
+    }));
+  })();
+
+  const selectedTemplate = (dbEmailTemplates ?? []).find((t) => t.slug === emailType) ?? null;
+  const isRecoveryType = selectedTemplate?.group?.toLowerCase().includes("recovery") ?? false;
+
+  // ── Fetch communications (PRIMARY source of truth — email + sms + calls) ─
   const loadCommLogs = useCallback(async () => {
     if (!orderId) return;
     setLoadingComms(true);
     try {
       const { data } = await supabase
         .from("communications")
-        .select("type, direction, body, phone_to, phone_from, status, created_at, duration_seconds")
+        .select("type, direction, body, phone_to, phone_from, email_to, email_from, subject, slug, template_source, status, created_at, duration_seconds")
         .eq("order_id", orderId)
         .order("created_at", { ascending: true });
-      const entries: UnifiedLogEntry[] = (data ?? []).map((row) => ({
-        type: row.type as string,
-        sentAt: row.created_at as string,
-        to: (row.phone_to as string) ?? email,
-        success: (row.status as string) !== "failed",
-        source: "communications" as const,
-        body: row.body as string | null,
-        direction: row.direction as string | null,
-        duration: row.duration_seconds as number | null,
-      }));
+      const entries: UnifiedLogEntry[] = (data ?? []).map((row) => {
+        const isEmail = (row.type as string) === "email";
+        // For emails, prefer slug as the type (so chat bubble label resolves correctly).
+        const resolvedType = isEmail ? ((row.slug as string) || "email") : (row.type as string);
+        return {
+          type: resolvedType,
+          sentAt: row.created_at as string,
+          to: isEmail ? ((row.email_to as string) ?? email) : ((row.phone_to as string) ?? email),
+          success: (row.status as string) !== "failed",
+          source: "communications" as const,
+          body: row.body as string | null,
+          direction: row.direction as string | null,
+          duration: row.duration_seconds as number | null,
+        };
+      });
       setCommLogs(entries);
     } catch { /* silent */ }
     setLoadingComms(false);
@@ -228,9 +294,18 @@ export default function CommunicationTab({
   useEffect(() => { loadCommLogs(); }, [loadCommLogs]);
 
   // ── Build unified timeline sorted oldest → newest (for chat layout) ────
-  const emailLogEntries: UnifiedLogEntry[] = (emailLog ?? []).map((e) => ({
-    type: e.type, sentAt: e.sentAt, to: e.to, success: e.success, source: "email_log" as const,
-  }));
+  // communications is primary; email_log entries are kept ONLY if not already
+  // represented in communications (same type + same minute).
+  const commsKey = new Set(
+    commLogs
+      .filter((c) => c.source === "communications")
+      .map((c) => `${c.type}|${new Date(c.sentAt).toISOString().slice(0, 16)}`)
+  );
+  const emailLogEntries: UnifiedLogEntry[] = (emailLog ?? [])
+    .filter((e) => !commsKey.has(`${e.type}|${new Date(e.sentAt).toISOString().slice(0, 16)}`))
+    .map((e) => ({
+      type: e.type, sentAt: e.sentAt, to: e.to, success: e.success, source: "email_log" as const,
+    }));
   const allLogs: UnifiedLogEntry[] = [...emailLogEntries, ...commLogs].sort(
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
   );
@@ -290,30 +365,40 @@ export default function CommunicationTab({
   }, [orderId, confirmationId, phone, adminName, loadCommLogs]);
 
   // ── Send Email ─────────────────────────────────────────────────────────
+  // Uniform path: every send routes through `send-templated-email` with the
+  // chosen DB slug. The edge fn renders the template + master layout, sends via
+  // Resend, and logs to `communications` (primary) + `orders.email_log` (backup).
   const handleSendEmail = async () => {
+    if (!emailType) { setEmailMsg("Pick a template"); return; }
     setSendingEmail(true); setEmailMsg("");
     try {
       const token = await getAdminToken();
-      let endpoint = "";
-      let payload: Record<string, unknown> = { confirmationId };
-      if (emailType === "order_confirmation") { endpoint = "resend-confirmation-email"; }
-      else if (emailType === "letter_ready") { endpoint = "notify-patient-letter"; if (doctorNote.trim()) payload.doctorMessage = doctorNote.trim(); }
-      else if (emailType === "checkout_recovery") { endpoint = "send-checkout-recovery"; payload = { confirmationId }; }
-      else if (emailType === "followup_lead") { endpoint = "send-checkout-recovery"; payload = { confirmationId }; }
-      else if (emailType === "consultation_booking") { endpoint = "send-checkout-recovery"; payload = { confirmationId, customMessage: `Your consultation with a licensed ${isPsd ? "PSD" : "ESA"} provider has been confirmed! Please complete your payment to lock in your appointment.` }; }
-      else { endpoint = "notify-order-status"; payload.newStatus = emailType; }
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`, {
+      const isPsdLocal = letterType === "psd" || confirmationId.includes("-PSD");
+      const payload = {
+        slug: emailType,
+        to: email,
+        confirmationId,
+        vars: {
+          name: firstName,
+          first_name: firstName,
+          order_id: confirmationId,
+          confirmation_id: confirmationId,
+          letter_type: isPsdLocal ? "PSD Letter" : "ESA Letter",
+          resume_url: resumeUrl,
+          resume_url_with_promo: resumeUrl,
+          review_url: "https://www.trustpilot.com/review/pawtenant.com",
+          price: price != null ? `$${Number(price).toFixed(2)}` : "",
+        },
+      };
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-templated-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-      const result = await res.json() as { ok?: boolean; emailSent?: boolean; error?: string; skipped?: boolean; reason?: string; to?: string; message?: string };
+      const result = await res.json() as { ok?: boolean; error?: string; skipped?: boolean; reason?: string; message?: string };
       if (result.ok && result.skipped) { setEmailMsg(`Skipped: ${result.reason ?? "already sent"}`); }
-      else if (result.ok) {
-        setEmailMsg("Email sent!");
-        setDoctorNote("");
-        loadCommLogs();
-      } else { setEmailMsg(result.error ?? result.message ?? "Failed to send"); }
+      else if (result.ok) { setEmailMsg("Email sent!"); loadCommLogs(); }
+      else { setEmailMsg(result.error ?? result.message ?? "Failed to send"); }
     } catch { setEmailMsg("Network error"); }
     setSendingEmail(false);
     setTimeout(() => setEmailMsg(""), 5000);
@@ -375,16 +460,26 @@ export default function CommunicationTab({
               <i className={showTemplates ? "ri-arrow-up-s-line text-sm" : "ri-arrow-down-s-line text-sm"}></i>
             </button>
             {showTemplates && (
-              <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
-                {SMS_TEMPLATES.map((tpl) => (
-                  <button key={tpl.label} type="button" disabled={!phone}
-                    onClick={() => { setSmsText(tpl.getMessage(firstName, confirmationId)); setShowTemplates(false); }}
-                    className={`whitespace-nowrap flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${tpl.bg} ${tpl.color}`}>
-                    <i className={`${tpl.icon} text-sm flex-shrink-0`}></i>
-                    <span className="truncate">{tpl.label}</span>
-                  </button>
-                ))}
-              </div>
+              dbSmsTemplates === null ? (
+                <div className="flex items-center justify-center py-3 text-xs text-gray-400">
+                  <i className="ri-loader-4-line animate-spin mr-1.5"></i>Loading templates...
+                </div>
+              ) : SMS_TEMPLATES.length === 0 ? (
+                <div className="px-3 py-3 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-xs text-gray-500 text-center">
+                  No SMS templates yet — add them in <strong>Settings → Communications</strong>.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                  {SMS_TEMPLATES.map((tpl) => (
+                    <button key={tpl.label} type="button" disabled={!phone}
+                      onClick={() => { setSmsText(tpl.getMessage(firstName, confirmationId)); setShowTemplates(false); }}
+                      className={`whitespace-nowrap flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${tpl.bg} ${tpl.color}`}>
+                      <i className={`${tpl.icon} text-sm flex-shrink-0`}></i>
+                      <span className="truncate">{tpl.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )
             )}
             <textarea value={smsText} onChange={(e) => setSmsText(e.target.value.slice(0, 320))} rows={3}
               placeholder={`Message to ${firstName}...`} disabled={!phone}
@@ -404,56 +499,60 @@ export default function CommunicationTab({
           </div>
         )}
 
-        {/* ── Email Panel ── */}
+        {/* ── Email Panel (DB-driven — single source of truth: email_templates) ── */}
         {activePanel === "email" && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
             <p className="text-xs text-amber-600/70 font-mono truncate">{email}</p>
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-              {EMAIL_OPTION_GROUPS.map((group) => (
-                <div key={group.group}>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1 mb-1 px-0.5">
-                    <i className={`${group.icon} text-xs`}></i>{group.group}
-                  </p>
-                  {group.options.map((opt) => {
-                    const isDisabled = opt.value === "letter_ready" && !hasDocuments;
-                    return (
-                      <label key={opt.value}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors mb-1 ${emailType === opt.value ? "bg-white border-amber-400" : "bg-amber-50/50 border-transparent hover:border-amber-200"} ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}>
-                        <input type="radio" name="emailType" value={opt.value} checked={emailType === opt.value}
-                          onChange={() => setEmailType(opt.value)} disabled={isDisabled}
-                          className="mt-0.5 accent-amber-500 cursor-pointer flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-xs font-bold text-gray-700 leading-none">{opt.label}</p>
-                            {opt.badge && <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${opt.badgeColor}`}>{opt.badge}</span>}
-                          </div>
-                          <p className="text-xs text-gray-400 leading-snug mt-0.5">{opt.desc}</p>
-                        </div>
-                      </label>
-                    );
-                  })}
+              {dbEmailTemplates === null ? (
+                <div className="flex items-center justify-center py-3 text-xs text-gray-400">
+                  <i className="ri-loader-4-line animate-spin mr-1.5"></i>Loading templates...
                 </div>
-              ))}
+              ) : emailGroups.length === 0 ? (
+                <div className="px-3 py-3 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-xs text-gray-500 text-center">
+                  No email templates yet — add them in <strong>Settings → Communications</strong>.
+                </div>
+              ) : (
+                emailGroups.map((group) => (
+                  <div key={group.group}>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1 mb-1 px-0.5">
+                      <i className={`${group.icon} text-xs`}></i>{group.group}
+                    </p>
+                    {group.options.map((opt) => {
+                      const isDisabled = opt.slug === "letter_ready" && !hasDocuments;
+                      return (
+                        <label key={opt.slug}
+                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors mb-1 ${emailType === opt.slug ? "bg-white border-amber-400" : "bg-amber-50/50 border-transparent hover:border-amber-200"} ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}>
+                          <input type="radio" name="emailType" value={opt.slug} checked={emailType === opt.slug}
+                            onChange={() => setEmailType(opt.slug)} disabled={isDisabled}
+                            className="mt-0.5 accent-amber-500 cursor-pointer flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-gray-700 leading-none">{opt.label}</p>
+                            {opt.subject && <p className="text-xs text-gray-400 leading-snug mt-0.5 truncate">{opt.subject}</p>}
+                            <p className="text-[10px] text-gray-300 mt-0.5 font-mono">slug: {opt.slug}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
             </div>
-            {emailType === "letter_ready" && (
-              <textarea value={doctorNote} onChange={(e) => setDoctorNote(e.target.value.slice(0, 300))} rows={2}
-                placeholder="Optional personal note from provider..."
-                className="w-full px-3 py-2 border border-amber-200 rounded-lg text-xs bg-white focus:outline-none focus:border-amber-400 resize-none" />
-            )}
             {isRecoveryType && (
               <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
                 <i className="ri-cursor-line text-orange-500 text-sm flex-shrink-0 mt-0.5"></i>
                 <p className="text-xs text-orange-700 leading-relaxed">
-                  Email includes a <strong>CTA button</strong> linking to: <span className="font-mono text-[10px] break-all">{resumeUrl}</span>
+                  Recovery emails resolve <code>{`{resume_url}`}</code> to: <span className="font-mono text-[10px] break-all">{resumeUrl}</span>
                 </p>
               </div>
             )}
             <div className="flex items-center gap-2">
-              <button type="button" onClick={handleSendEmail} disabled={sendingEmail || (emailType === "letter_ready" && !hasDocuments)}
+              <button type="button" onClick={handleSendEmail}
+                disabled={sendingEmail || !emailType || (emailType === "letter_ready" && !hasDocuments)}
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-500 text-white text-sm font-bold rounded-lg hover:bg-amber-600 disabled:opacity-50 cursor-pointer transition-colors">
                 {sendingEmail ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send Email</>}
               </button>
-              {selectedEmailOption && <p className="text-xs text-gray-400 italic">→ {email}</p>}
+              {selectedTemplate && <p className="text-xs text-gray-400 italic">→ {email}</p>}
             </div>
             {emailMsg && (
               <p className={`text-xs font-semibold flex items-center gap-1 ${emailMsg.includes("sent") || emailMsg.includes("Sent") ? "text-amber-700" : emailMsg.includes("Skipped") ? "text-gray-500" : "text-red-500"}`}>

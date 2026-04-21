@@ -1,11 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logEmailComm } from "../_shared/logEmailComm.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
-const SITE_URL = "https://www.pawtenant.com";
+const SITE_URL = Deno.env.get("SITE_URL") ?? "https://www.pawtenant.com";
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
@@ -201,6 +202,69 @@ function buildRecoveryEmail(
   return baseLayout(hasDiscount ? "Limited Time Offer" : "Incomplete Application", heading, subheading, body);
 }
 
+interface DbTemplate {
+  subject: string;
+  body: string;
+  cta_label: string;
+  cta_url: string;
+}
+
+async function loadTemplate(
+  supabase: ReturnType<typeof createClient>,
+  slug: string,
+): Promise<DbTemplate | null> {
+  const { data, error } = await supabase
+    .from("email_templates")
+    .select("subject, body, cta_label, cta_url")
+    .eq("slug", slug)
+    .eq("channel", "email")
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as DbTemplate;
+}
+
+async function loadMasterLayout(
+  supabase: ReturnType<typeof createClient>,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("comms_settings")
+    .select("value")
+    .eq("key", "email_layout_html")
+    .maybeSingle();
+  const val = (data?.value as string | null) ?? null;
+  if (val && val.includes("{{content}}")) return val;
+  return null;
+}
+
+function buildEmailFromDbTemplate(
+  tmpl: DbTemplate,
+  vars: Record<string, string>,
+  badge: string,
+  subheading: string,
+  masterLayout?: string | null,
+): string {
+  const sub = (s: string) =>
+    s.replace(/\{(\w+)\}/g, (_, k) => escapeHtml(vars[k] ?? ""));
+
+  const bodyHtml = sub(tmpl.body)
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+    .map((line) => `<p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;">${line}</p>`)
+    .join("");
+
+  const ctaUrl = sub(tmpl.cta_url);
+  const ctaText = sub(tmpl.cta_label) || "Complete My Order";
+  const heading = sub(tmpl.subject);
+
+  const bodyContent = `${bodyHtml}${ctaButton(ctaUrl, ctaText)}
+    <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">
+      Have questions? Reply to this email or call us at <strong style="color:#374151;">(409) 965-5885</strong>. This link expires in 7 days.
+    </p>`;
+
+  if (masterLayout) return masterLayout.replace("{{content}}", bodyContent);
+  return baseLayout(badge, heading, subheading, bodyContent);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -267,29 +331,77 @@ serve(async (req) => {
       }
     }
 
+    const hasDiscount = !!(discountCode && discountCode.length > 0);
     const assessmentPath = isPsd ? "psd-assessment" : "assessment";
     const resumeLink = `${SITE_URL}/${assessmentPath}?resume=${encodeURIComponent(confirmationId)}`;
+    const resumeWithPromo = hasDiscount
+      ? `${resumeLink}&promo=${encodeURIComponent(discountCode!.trim())}`
+      : resumeLink;
     const orderTotal = price != null ? `$${Number(price).toFixed(2)}` : "Varies by plan";
     const letterLabel = isPsd ? "PSD Letter" : "ESA Letter";
 
-    const hasDiscount = !!(discountCode && discountCode.length > 0);
     const discountLabel = hasDiscount
       ? (discountPercent > 0 ? `${discountPercent}%` : discountFixed > 0 ? `$${discountFixed}` : "")
       : "";
 
-    const subject = hasDiscount
-      ? `Your ${letterLabel}${discountLabel ? ` + Exclusive ${discountLabel} Discount` : " + Exclusive Discount"} Inside — Order ${confirmationId}`
-      : `Complete Your ${letterLabel} Consultation — Order ${confirmationId}`;
+    // DB-first template lookup
+    const dbSlug = hasDiscount ? "checkout_recovery_discount" : "checkout_recovery";
+    const dbTemplate = await loadTemplate(supabase, dbSlug);
+    const masterLayout = await loadMasterLayout(supabase);
+
+    let html: string;
+    let subject: string;
+
+    if (dbTemplate) {
+      const discountSavings = discountPercent > 0
+        ? `${discountPercent}% OFF`
+        : discountFixed > 0
+          ? `$${discountFixed} OFF`
+          : "Exclusive Discount";
+
+      const vars: Record<string, string> = {
+        name: firstName || "there",
+        letter_type: letterLabel,
+        resume_url: resumeLink,
+        resume_url_with_promo: resumeWithPromo,
+        order_id: confirmationId,
+        order_total: orderTotal,
+        discount_code: discountCode ?? "",
+        discount_savings: discountSavings,
+      };
+
+      subject = dbTemplate.subject.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+      html = buildEmailFromDbTemplate(
+        dbTemplate,
+        vars,
+        hasDiscount ? "Limited Time Offer" : "Incomplete Application",
+        hasDiscount
+          ? "Exclusive discount inside — your assessment answers are saved"
+          : "Your assessment answers have been saved — pick up where you left off",
+        masterLayout,
+      );
+    } else {
+      // Fallback to rich hardcoded builder
+      subject = hasDiscount
+        ? `Your ${letterLabel}${discountLabel ? ` + Exclusive ${discountLabel} Discount` : " + Exclusive Discount"} Inside — Order ${confirmationId}`
+        : `Complete Your ${letterLabel} Consultation — Order ${confirmationId}`;
+
+      html = buildRecoveryEmail(
+        firstName,
+        resumeLink,
+        orderTotal,
+        isPsd,
+        discountCode,
+        discountPercent,
+        discountFixed,
+        body.customMessage,
+      );
+    }
 
     const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: [email],
-        subject,
-        html: buildRecoveryEmail(firstName, resumeLink, orderTotal, isPsd, discountCode, discountPercent, discountFixed, body.customMessage),
-      }),
+      body: JSON.stringify({ from: FROM_EMAIL, to: [email], subject, html }),
     });
 
     const emailResult = await emailRes.json() as { id?: string; error?: string };
@@ -305,11 +417,26 @@ serve(async (req) => {
       success: true,
       discountCode: discountCode ?? null,
       letterType: isPsd ? "psd" : "esa",
+      templateSource: dbTemplate ? "db" : "hardcoded",
     };
     await supabase
       .from("orders")
       .update({ email_log: [...existingLog, newEntry] })
       .eq("confirmation_id", confirmationId);
+
+    // Primary log → communications
+    await logEmailComm({
+      supabase,
+      confirmationId,
+      to: email,
+      from: FROM_EMAIL,
+      subject,
+      body: hasDiscount ? `Discount code: ${discountCode}` : null,
+      slug: dbSlug,
+      templateSource: dbTemplate ? "db" : "hardcoded",
+      sentBy: "admin_checkout_recovery",
+      success: true,
+    });
 
     return new Response(
       JSON.stringify({
@@ -319,6 +446,7 @@ serve(async (req) => {
         sentTo: email,
         hasDiscount,
         letterType: isPsd ? "psd" : "esa",
+        templateSource: dbTemplate ? "db" : "hardcoded",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

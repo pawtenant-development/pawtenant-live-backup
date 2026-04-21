@@ -639,7 +639,7 @@ function GoogleSheetsSyncPanel({ supabaseUrl }: { supabaseUrl: string }) {
   );
 }
 
-// ── Email Templates Preview ──────────────────────────────────────────────────
+// ── Communications Templates Hub ─────────────────────────────────────────────
 
 interface EmailTemplate {
   id: string;
@@ -649,6 +649,13 @@ interface EmailTemplate {
   body: string;
   ctaLabel: string;
   ctaUrl: string;
+}
+
+interface SmsTemplate {
+  id: string;
+  label: string;
+  group: string;
+  body: string;
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
@@ -801,9 +808,176 @@ Separate paragraphs with a blank line.`,
   ctaUrl: "https://pawtenant.com",
 };
 
-function EmailTemplatesPreview() {
-  const [templates, setTemplates] = useState<EmailTemplate[]>(DEFAULT_TEMPLATES);
-  const [selectedId, setSelectedId] = useState(DEFAULT_TEMPLATES[0].id);
+const DEFAULT_SMS_TEMPLATES: SmsTemplate[] = [
+  { id: "sms_order_confirmed",     label: "Order Confirmed",        group: "Transactional", body: "Hi {name}, your ESA consultation with PawTenant is confirmed! Your Order ID is {order_id}. Track your order anytime at pawtenant.com/my-orders" },
+  { id: "sms_documents_ready",     label: "Documents Ready",        group: "Transactional", body: "Hi {name}, great news! Your ESA letter is ready. Log in to download your documents at pawtenant.com/my-orders" },
+  { id: "sms_under_review",        label: "Under Review",           group: "Transactional", body: "Hi {name}, your ESA assessment is under review by our licensed provider. We'll notify you as soon as it's complete, usually within 24 hours." },
+  { id: "sms_finish_esa",          label: "Finish Your ESA Letter", group: "Lead Recovery",  body: "Hi {name}, you're one step away from your ESA letter! Complete your order here: pawtenant.com/assessment?resume={order_id}" },
+  { id: "sms_still_thinking",      label: "Still Thinking?",        group: "Lead Recovery",  body: "Hi {name}, still thinking about your ESA letter? Get it today and avoid housing issues. Complete here: pawtenant.com/assessment?resume={order_id}" },
+  { id: "sms_consultation_booked", label: "Consultation Booked",    group: "Lead Recovery",  body: "Hi {name}, your provider consultation with PawTenant is confirmed! Complete your payment to lock in your spot: pawtenant.com/assessment?resume={order_id}" },
+  { id: "sms_need_more_info",      label: "Need More Info",          group: "Transactional", body: "Hi {name}, we need a bit more information to complete your ESA assessment. Please reply here or call us and we'll get you sorted quickly!" },
+  { id: "sms_follow_up",           label: "Follow Up",              group: "General",        body: "Hi {name}, just checking in on your ESA order. Is there anything we can help you with?" },
+  { id: "sms_refund_processed",    label: "Refund Processed",       group: "Transactional", body: "Hi {name}, your refund has been processed and should appear in your account within 3-5 business days. Thank you for your patience." },
+];
+
+const DEFAULT_MASTER_LAYOUT = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
+      <tr><td style="background:#4a9e8a;padding:24px;text-align:center;color:#ffffff;">
+        <h1 style="margin:0;font-size:22px;font-weight:800;">PawTenant</h1>
+      </td></tr>
+      <tr><td style="padding:32px;">{{content}}</td></tr>
+      <tr><td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
+        <p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Consultation</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table></body></html>`;
+
+const SAMPLE_CONTENT = `<p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;">Hi <strong>Jane</strong>,</p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;">This is how your template body looks inside the master layout.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;"><tr><td align="center">
+  <a href="#" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Sample CTA &rarr;</a>
+</td></tr></table>`;
+
+function MasterEmailLayoutPanel() {
+  const [html, setHtml] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<"rendered" | "raw">("rendered");
+  const [status, setStatus] = useState<string>("");
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("comms_settings")
+        .select("value")
+        .eq("key", "email_layout_html")
+        .maybeSingle();
+      setHtml((data?.value as string | null) ?? "");
+      setLoading(false);
+    })();
+  }, []);
+
+  const effective = html || DEFAULT_MASTER_LAYOUT;
+  const hasPlaceholder = effective.includes("{{content}}");
+  const previewHtml = effective.replace("{{content}}", SAMPLE_CONTENT);
+
+  const save = async () => {
+    if (html && !html.includes("{{content}}")) {
+      setStatus("ERROR: must include {{content}} placeholder");
+      return;
+    }
+    setSaving(true);
+    setStatus("");
+    const { error } = await supabase
+      .from("comms_settings")
+      .upsert({ key: "email_layout_html", value: html || null, updated_at: new Date().toISOString() });
+    setSaving(false);
+    setStatus(error ? `ERROR: ${error.message}` : "Saved.");
+    setTimeout(() => setStatus(""), 3000);
+  };
+
+  const resetDefault = () => {
+    setHtml("");
+    setStatus("Reverted to built-in default (not yet saved).");
+  };
+
+  const loadDefaultIntoEditor = () => {
+    setHtml(DEFAULT_MASTER_LAYOUT);
+    setStatus("Default loaded into editor (not yet saved).");
+  };
+
+  if (loading) return <div className="text-sm text-gray-500">Loading…</div>;
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-gray-600">
+        This HTML wraps every DB-driven email (sequences, checkout recovery, review request, broadcast, order-modal custom templates).
+        Use <code className="px-1 rounded bg-gray-100">{"{{content}}"}</code> where the body of each email should appear.
+        Leave empty to use each function&apos;s built-in layout.
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="px-3 py-1.5 rounded-md bg-[#3b6ea5] text-white text-xs font-semibold disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save Layout"}
+        </button>
+        <button
+          type="button"
+          onClick={loadDefaultIntoEditor}
+          className="px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 text-xs font-semibold"
+        >
+          Load Default Into Editor
+        </button>
+        <button
+          type="button"
+          onClick={resetDefault}
+          className="px-3 py-1.5 rounded-md bg-red-50 text-red-700 text-xs font-semibold"
+        >
+          Clear (Use Fallback)
+        </button>
+        {status && <span className={`text-xs ${status.startsWith("ERROR") ? "text-red-600" : "text-green-700"}`}>{status}</span>}
+        {!hasPlaceholder && <span className="text-xs text-red-600">Missing {"{{content}}"} placeholder</span>}
+      </div>
+
+      <textarea
+        value={html}
+        onChange={(e) => setHtml(e.target.value)}
+        rows={14}
+        className="w-full border border-gray-300 rounded-md px-3 py-2 text-xs font-mono"
+        placeholder="Leave empty to use built-in layout. Must include {{content}} placeholder."
+      />
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-gray-700">Preview:</span>
+        <button
+          type="button"
+          onClick={() => setViewMode("rendered")}
+          className={`px-2 py-1 rounded text-xs ${viewMode === "rendered" ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-700"}`}
+        >
+          Rendered
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("raw")}
+          className={`px-2 py-1 rounded text-xs ${viewMode === "raw" ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-700"}`}
+        >
+          Raw HTML
+        </button>
+      </div>
+
+      {viewMode === "rendered" ? (
+        <iframe
+          title="Master layout preview"
+          srcDoc={previewHtml}
+          className="w-full h-[520px] border border-gray-200 rounded-md bg-white"
+        />
+      ) : (
+        <pre className="w-full max-h-[520px] overflow-auto border border-gray-200 rounded-md p-3 text-[11px] font-mono bg-gray-50 whitespace-pre-wrap break-all">
+          {previewHtml}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function CommsTemplatesPanel() {
+  const [activeChannel, setActiveChannel] = useState<"email" | "sms">("email");
+  // Email state
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(DEFAULT_TEMPLATES);
+  const [selectedEmailId, setSelectedEmailId] = useState(DEFAULT_TEMPLATES[0].id);
+  // SMS state
+  const [smsTemplates, setSmsTemplates] = useState<SmsTemplate[]>(DEFAULT_SMS_TEMPLATES);
+  const [selectedSmsId, setSelectedSmsId] = useState(DEFAULT_SMS_TEMPLATES[0].id);
+  // Shared state
   const [previewName, setPreviewName] = useState("Jane");
   const [showRaw, setShowRaw] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -816,7 +990,7 @@ function EmailTemplatesPreview() {
   const [dbLoaded, setDbLoaded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Load saved templates from DB on mount
+  // Load all templates from DB on mount, split by channel
   useEffect(() => {
     const load = async () => {
       const { data, error } = await supabase
@@ -824,20 +998,25 @@ function EmailTemplatesPreview() {
         .select("*")
         .order("created_at");
       if (!error && data && data.length > 0) {
-        const mapped: EmailTemplate[] = data.map((r: {
-          id: string; label: string; group: string; subject: string;
-          body: string; cta_label: string; cta_url: string;
-        }) => ({
-          id: r.id,
-          label: r.label,
-          group: r.group,
-          subject: r.subject,
-          body: r.body,
-          ctaLabel: r.cta_label,
-          ctaUrl: r.cta_url,
-        }));
-        setTemplates(mapped);
-        setSelectedId(mapped[0].id);
+        const emailRows = data.filter((r) => !r.channel || r.channel === "email");
+        const smsRows   = data.filter((r) => r.channel === "sms");
+        if (emailRows.length > 0) {
+          const mapped: EmailTemplate[] = emailRows.map((r) => ({
+            id: r.id as string, label: r.label as string, group: r.group as string,
+            subject: r.subject as string, body: r.body as string,
+            ctaLabel: r.cta_label as string, ctaUrl: r.cta_url as string,
+          }));
+          setEmailTemplates(mapped);
+          setSelectedEmailId(mapped[0].id);
+        }
+        if (smsRows.length > 0) {
+          const mapped: SmsTemplate[] = smsRows.map((r) => ({
+            id: r.id as string, label: r.label as string, group: r.group as string,
+            body: r.body as string,
+          }));
+          setSmsTemplates(mapped);
+          setSelectedSmsId(mapped[0].id);
+        }
       }
       setDbLoaded(true);
     };
@@ -848,26 +1027,25 @@ function EmailTemplatesPreview() {
     setSaving(true);
     setSaveStatus("idle");
     try {
-      const rows = templates.map((t) => ({
-        id: t.id,
-        label: t.label,
-        group: t.group,
-        subject: t.subject,
-        body: t.body,
-        cta_label: t.ctaLabel,
-        cta_url: t.ctaUrl,
-        updated_at: new Date().toISOString(),
+      const emailRows = emailTemplates.map((t) => ({
+        id: t.id, label: t.label, group: t.group, subject: t.subject,
+        body: t.body, cta_label: t.ctaLabel, cta_url: t.ctaUrl,
+        channel: "email", updated_at: new Date().toISOString(),
       }));
-      // Upsert all templates
+      const smsRows = smsTemplates.map((t) => ({
+        id: t.id, label: t.label, group: t.group, subject: "",
+        body: t.body, cta_label: "", cta_url: "",
+        channel: "sms", updated_at: new Date().toISOString(),
+      }));
       const { error } = await supabase
         .from("email_templates")
-        .upsert(rows, { onConflict: "id" });
-      // Delete any DB rows not in current templates (handles deletions)
-      const currentIds = templates.map((t) => t.id);
-      await supabase
-        .from("email_templates")
-        .delete()
-        .not("id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`);
+        .upsert([...emailRows, ...smsRows], { onConflict: "id" });
+      // Delete orphaned email rows
+      const emailIds = emailTemplates.map((t) => `"${t.id}"`).join(",");
+      if (emailIds) await supabase.from("email_templates").delete().eq("channel", "email").not("id", "in", `(${emailIds})`);
+      // Delete orphaned SMS rows
+      const smsIds = smsTemplates.map((t) => `"${t.id}"`).join(",");
+      if (smsIds) await supabase.from("email_templates").delete().eq("channel", "sms").not("id", "in", `(${smsIds})`);
       if (error) throw error;
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 3000);
@@ -879,35 +1057,44 @@ function EmailTemplatesPreview() {
     }
   };
 
-  const selected = templates.find((t) => t.id === selectedId) ?? templates[0];
+  const selectedEmail = emailTemplates.find((t) => t.id === selectedEmailId) ?? emailTemplates[0];
+  const emailGroups = [...new Set(emailTemplates.map((t) => t.group))];
+  const updateEmailField = (field: keyof EmailTemplate, value: string) =>
+    setEmailTemplates((prev) => prev.map((t) => t.id === selectedEmailId ? { ...t, [field]: value } : t));
+  const deleteEmailTemplate = (id: string) => {
+    const rem = emailTemplates.filter((t) => t.id !== id);
+    setEmailTemplates(rem);
+    if (selectedEmailId === id) setSelectedEmailId(rem[0]?.id ?? "");
+  };
+
+  const selectedSms = smsTemplates.find((t) => t.id === selectedSmsId) ?? smsTemplates[0];
+  const smsGroups = [...new Set(smsTemplates.map((t) => t.group))];
+  const updateSmsField = (field: keyof SmsTemplate, value: string) =>
+    setSmsTemplates((prev) => prev.map((t) => t.id === selectedSmsId ? { ...t, [field]: value } : t));
+  const deleteSmsTemplate = (id: string) => {
+    const rem = smsTemplates.filter((t) => t.id !== id);
+    setSmsTemplates(rem);
+    if (selectedSmsId === id) setSelectedSmsId(rem[0]?.id ?? "");
+  };
 
   const html = useMemo(
-    () => buildEmailHtml(selected.subject, selected.body, selected.ctaLabel, selected.ctaUrl, previewName),
-    [selected, previewName]
+    () => buildEmailHtml(selectedEmail.subject, selectedEmail.body, selectedEmail.ctaLabel, selectedEmail.ctaUrl, previewName),
+    [selectedEmail, previewName]
   );
-
-  const groups = [...new Set(templates.map((t) => t.group))];
-
-  const updateField = (field: keyof EmailTemplate, value: string) => {
-    setTemplates((prev) =>
-      prev.map((t) => (t.id === selectedId ? { ...t, [field]: value } : t))
-    );
-  };
 
   const addTemplate = () => {
     if (!newLabel.trim()) return;
     const id = `custom_${Date.now()}`;
-    setTemplates((prev) => [...prev, { ...NEW_TEMPLATE_DEFAULTS, id, label: newLabel.trim(), group: newGroup }]);
-    setSelectedId(id);
+    if (activeChannel === "email") {
+      setEmailTemplates((prev) => [...prev, { ...NEW_TEMPLATE_DEFAULTS, id, label: newLabel.trim(), group: newGroup }]);
+      setSelectedEmailId(id);
+    } else {
+      setSmsTemplates((prev) => [...prev, { id, label: newLabel.trim(), group: newGroup, body: "Hi {name}," }]);
+      setSelectedSmsId(id);
+    }
     setAddingNew(false);
     setNewLabel("");
     setEditMode(true);
-  };
-
-  const deleteTemplate = (id: string) => {
-    const remaining = templates.filter((t) => t.id !== id);
-    setTemplates(remaining);
-    if (selectedId === id) setSelectedId(remaining[0]?.id ?? "");
   };
 
   const copyHtml = () => {
@@ -918,19 +1105,20 @@ function EmailTemplatesPreview() {
   };
 
   const resetToDefaults = async () => {
-    setTemplates(DEFAULT_TEMPLATES);
-    setSelectedId(DEFAULT_TEMPLATES[0].id);
+    setEmailTemplates(DEFAULT_TEMPLATES);
+    setSelectedEmailId(DEFAULT_TEMPLATES[0].id);
+    setSmsTemplates(DEFAULT_SMS_TEMPLATES);
+    setSelectedSmsId(DEFAULT_SMS_TEMPLATES[0].id);
     setEditMode(false);
     setShowResetConfirm(false);
-    // Also wipe DB rows so next load gets defaults
     setSaving(true);
-    try {
-      await supabase.from("email_templates").delete().neq("id", "__never__");
-    } catch { /* ignore */ }
+    try { await supabase.from("email_templates").delete().neq("id", "__never__"); } catch { /* ignore */ }
     setSaving(false);
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 2500);
   };
+
+  const totalCount = emailTemplates.length + smsTemplates.length;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -938,312 +1126,326 @@ function EmailTemplatesPreview() {
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
-            <i className="ri-mail-settings-line text-[#3b6ea5] text-lg"></i>
+            <i className="ri-message-2-line text-[#3b6ea5] text-lg"></i>
           </div>
           <div>
-            <h3 className="text-sm font-extrabold text-gray-900">Email Templates</h3>
-            <p className="text-xs text-gray-400">Edit templates, preview rendered output, copy HTML — changes are session-only</p>
+            <h3 className="text-sm font-extrabold text-gray-900">Communications Templates Hub</h3>
+            <p className="text-xs text-gray-400">Manage all email + SMS templates — single source of truth, saved to DB</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => { setAddingNew(true); setEditMode(false); }}
-            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#e8f0f9] text-[#3b6ea5] hover:bg-[#b8cce4] transition-colors cursor-pointer"
-          >
+          <button type="button" onClick={() => { setAddingNew(true); setEditMode(false); }}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#e8f0f9] text-[#3b6ea5] hover:bg-[#b8cce4] transition-colors cursor-pointer">
             <i className="ri-add-line"></i> Add Template
           </button>
-          <button
-            type="button"
-            onClick={() => setEditMode((v) => !v)}
-            className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${editMode ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-          >
+          <button type="button" onClick={() => setEditMode((v) => !v)}
+            className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${editMode ? "bg-[#3b6ea5] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
             <i className={editMode ? "ri-eye-line" : "ri-edit-line"}></i>
             {editMode ? "Preview Mode" : "Edit Mode"}
           </button>
-          <button
-            type="button"
-            onClick={() => setShowResetConfirm(true)}
-            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
-            title="Reset all templates back to factory defaults"
-          >
+          <button type="button" onClick={() => setShowResetConfirm(true)}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer">
             <i className="ri-refresh-line"></i> Reset Defaults
           </button>
-          <button
-            type="button"
-            onClick={saveAllToDb}
-            disabled={saving || !dbLoaded}
+          <button type="button" onClick={saveAllToDb} disabled={saving || !dbLoaded}
             className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
               saveStatus === "saved" ? "bg-green-100 text-green-700" :
               saveStatus === "error" ? "bg-red-100 text-red-600" :
               "bg-gray-900 text-white hover:bg-gray-700"
-            }`}
-          >
-            {saving ? (
-              <><i className="ri-loader-4-line animate-spin"></i>Saving...</>
-            ) : saveStatus === "saved" ? (
-              <><i className="ri-checkbox-circle-line"></i>Saved to DB</>
-            ) : saveStatus === "error" ? (
-              <><i className="ri-error-warning-line"></i>Save Failed</>
-            ) : (
-              <><i className="ri-save-line"></i>Save to DB</>
-            )}
+            }`}>
+            {saving ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</>
+              : saveStatus === "saved" ? <><i className="ri-checkbox-circle-line"></i>Saved to DB</>
+              : saveStatus === "error" ? <><i className="ri-error-warning-line"></i>Save Failed</>
+              : <><i className="ri-save-line"></i>Save to DB</>}
           </button>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#e8f0f9] text-[#3b6ea5]">
             <span className="w-1.5 h-1.5 rounded-full bg-[#3b6ea5] flex-shrink-0"></span>
-            {templates.length} templates
+            {totalCount} templates
           </span>
         </div>
+      </div>
+
+      {/* Channel switcher */}
+      <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+          <button type="button"
+            onClick={() => { setActiveChannel("email"); setEditMode(false); setAddingNew(false); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${activeChannel === "email" ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            <i className="ri-mail-line text-sm"></i> Email
+            <span className="ml-1 px-1.5 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded-full text-[10px] font-bold">{emailTemplates.length}</span>
+          </button>
+          <button type="button"
+            onClick={() => { setActiveChannel("sms"); setEditMode(false); setAddingNew(false); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${activeChannel === "sms" ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            <i className="ri-message-3-line text-sm"></i> SMS
+            <span className="ml-1 px-1.5 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded-full text-[10px] font-bold">{smsTemplates.length}</span>
+          </button>
+        </div>
+        {activeChannel === "sms" && (
+          <p className="text-[10px] text-gray-400">Placeholders: <span className="font-mono bg-gray-100 px-1 rounded">&#123;name&#125;</span> = first name &nbsp; <span className="font-mono bg-gray-100 px-1 rounded">&#123;order_id&#125;</span> = confirmation ID</p>
+        )}
       </div>
 
       {/* Add new template bar */}
       {addingNew && (
         <div className="px-5 py-3 bg-[#e8f0f9] border-b border-[#b8cce4] flex items-center gap-3 flex-wrap">
-          <input
-            type="text"
-            value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)}
-            placeholder="Template name..."
-            className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white w-48"
-            autoFocus
-          />
-          <select
-            value={newGroup}
-            onChange={(e) => setNewGroup(e.target.value)}
-            className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
-          >
-            <option>Transactional</option>
-            <option>Marketing</option>
-            <option>Broadcast</option>
+          <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="Template name..." autoFocus
+            className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white w-48" />
+          <select value={newGroup} onChange={(e) => setNewGroup(e.target.value)}
+            className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
+            {activeChannel === "email"
+              ? <><option>Transactional</option><option>Marketing</option><option>Broadcast</option></>
+              : <><option>Transactional</option><option>Lead Recovery</option><option>General</option></>}
           </select>
           <button type="button" onClick={addTemplate} className="whitespace-nowrap px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] transition-colors cursor-pointer">Create</button>
           <button type="button" onClick={() => setAddingNew(false)} className="whitespace-nowrap px-3 py-1.5 bg-white text-gray-600 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row" style={{ minHeight: "560px" }}>
-        {/* Left: template picker */}
-        <div className="w-full lg:w-60 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4">
-          {/* Preview name */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Preview As</label>
-            <input
-              type="text"
-              value={previewName}
-              onChange={(e) => setPreviewName(e.target.value || "Jane")}
-              placeholder="Jane"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
-            />
-            <p className="text-[10px] text-gray-400 mt-1">Replaces &#123;name&#125; in preview</p>
-          </div>
-
-          {/* Template list grouped */}
-          <div className="space-y-3">
-            {groups.map((grp) => (
-              <div key={grp}>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <i className={`text-xs ${grp === "Transactional" ? "ri-mail-check-line text-[#3b6ea5]" : grp === "Marketing" ? "ri-megaphone-line text-amber-500" : "ri-broadcast-line text-violet-500"}`}></i>
-                  {grp}
-                </p>
-                <div className="space-y-1">
-                  {templates.filter((t) => t.group === grp).map((t) => (
-                    <div key={t.id} className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => { setSelectedId(t.id); }}
-                        className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                          selectedId === t.id
-                            ? "bg-[#3b6ea5] text-white"
-                            : "text-gray-600 hover:bg-gray-100"
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                      {editMode && (
-                        <button
-                          type="button"
-                          onClick={() => deleteTemplate(t.id)}
-                          title="Delete template"
-                          className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0"
-                        >
-                          <i className="ri-delete-bin-line text-xs"></i>
+      {/* ── EMAIL CHANNEL ── */}
+      {activeChannel === "email" && (
+        <div className="flex flex-col lg:flex-row" style={{ minHeight: "560px" }}>
+          {/* Left: template picker */}
+          <div className="w-full lg:w-60 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Preview As</label>
+              <input type="text" value={previewName} onChange={(e) => setPreviewName(e.target.value || "Jane")} placeholder="Jane"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
+              <p className="text-[10px] text-gray-400 mt-1">Replaces &#123;name&#125; in preview</p>
+            </div>
+            <div className="space-y-3">
+              {emailGroups.map((grp) => (
+                <div key={grp}>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                    <i className={`text-xs ${grp === "Transactional" ? "ri-mail-check-line text-[#3b6ea5]" : grp === "Marketing" ? "ri-megaphone-line text-amber-500" : "ri-broadcast-line text-violet-500"}`}></i>
+                    {grp}
+                  </p>
+                  <div className="space-y-1">
+                    {emailTemplates.filter((t) => t.group === grp).map((t) => (
+                      <div key={t.id} className="flex items-center gap-1">
+                        <button type="button" onClick={() => setSelectedEmailId(t.id)}
+                          className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${selectedEmailId === t.id ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
+                          {t.label}
                         </button>
-                      )}
-                    </div>
-                  ))}
+                        {editMode && (
+                          <button type="button" onClick={() => deleteEmailTemplate(t.id)} title="Delete"
+                            className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0">
+                            <i className="ri-delete-bin-line text-xs"></i>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {!editMode && (
+              <div className="pt-2 border-t border-gray-200">
+                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                  <button type="button" onClick={() => setShowRaw(false)}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${!showRaw ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500"}`}>Preview</button>
+                  <button type="button" onClick={() => setShowRaw(true)}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${showRaw ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500"}`}>HTML</button>
                 </div>
               </div>
-            ))}
+            )}
           </div>
-
-          {/* View toggle (only in preview mode) */}
-          {!editMode && (
-            <div className="pt-2 border-t border-gray-200">
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setShowRaw(false)}
-                  className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${!showRaw ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500"}`}
-                >
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowRaw(true)}
-                  className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${showRaw ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500"}`}
-                >
-                  HTML
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right: edit or preview pane */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {editMode ? (
-            /* ── Edit Mode ── */
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-[#3b6ea5] flex-shrink-0"></div>
-                <span className="text-xs font-bold text-gray-700">Editing: {selected.label}</span>
-                <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  selected.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" :
-                  selected.group === "Marketing" ? "bg-amber-50 text-amber-700" :
-                  "bg-violet-50 text-violet-700"
-                }`}>{selected.group}</span>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Template Label</label>
-                <input
-                  type="text"
-                  value={selected.label}
-                  onChange={(e) => updateField("label", e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Group</label>
-                <select
-                  value={selected.group}
-                  onChange={(e) => updateField("group", e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
-                >
-                  <option>Transactional</option>
-                  <option>Marketing</option>
-                  <option>Broadcast</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Subject Line</label>
-                <input
-                  type="text"
-                  value={selected.subject}
-                  onChange={(e) => updateField("subject", e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  Body <span className="normal-case font-normal text-gray-400">— use &#123;name&#125; for personalization, blank line = new paragraph</span>
-                </label>
-                <textarea
-                  value={selected.body}
-                  onChange={(e) => updateField("body", e.target.value)}
-                  rows={10}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white font-mono resize-y"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA Button Label</label>
-                  <input
-                    type="text"
-                    value={selected.ctaLabel}
-                    onChange={(e) => updateField("ctaLabel", e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
-                  />
+          {/* Right: edit or preview */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {editMode ? (
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-[#3b6ea5] flex-shrink-0"></div>
+                  <span className="text-xs font-bold text-gray-700">Editing: {selectedEmail.label}</span>
+                  <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedEmail.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" : selectedEmail.group === "Marketing" ? "bg-amber-50 text-amber-700" : "bg-violet-50 text-violet-700"}`}>{selectedEmail.group}</span>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA URL</label>
-                  <input
-                    type="text"
-                    value={selected.ctaUrl}
-                    onChange={(e) => updateField("ctaUrl", e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
-                  />
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Template Label</label>
+                  <input type="text" value={selectedEmail.label} onChange={(e) => updateEmailField("label", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
                 </div>
-              </div>
-
-              <div className="pt-2 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setEditMode(false)}
-                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] transition-colors cursor-pointer"
-                >
-                  <i className="ri-eye-line"></i> Preview Result
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* ── Preview Mode ── */
-            <>
-              {/* Subject bar */}
-              <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center gap-3 flex-wrap">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex-shrink-0">Subject:</span>
-                <span className="text-xs font-semibold text-gray-800 truncate flex-1">{selected.subject}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={copyHtml}
-                    className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
-                  >
-                    <i className={copied ? "ri-check-line text-green-500" : "ri-clipboard-line"}></i>
-                    {copied ? "Copied!" : "Copy HTML"}
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Group</label>
+                  <select value={selectedEmail.group} onChange={(e) => updateEmailField("group", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
+                    <option>Transactional</option><option>Marketing</option><option>Broadcast</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Subject Line</label>
+                  <input type="text" value={selectedEmail.subject} onChange={(e) => updateEmailField("subject", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                    Body <span className="normal-case font-normal text-gray-400">— use &#123;name&#125; for personalization, blank line = new paragraph</span>
+                  </label>
+                  <textarea value={selectedEmail.body} onChange={(e) => updateEmailField("body", e.target.value)}
+                    rows={10} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white font-mono resize-y" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA Button Label</label>
+                    <input type="text" value={selectedEmail.ctaLabel} onChange={(e) => updateEmailField("ctaLabel", e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA URL</label>
+                    <input type="text" value={selectedEmail.ctaUrl} onChange={(e) => updateEmailField("ctaUrl", e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-gray-100">
+                  <button type="button" onClick={() => setEditMode(false)}
+                    className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] transition-colors cursor-pointer">
+                    <i className="ri-eye-line"></i> Preview Result
                   </button>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    selected.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" :
-                    selected.group === "Marketing" ? "bg-amber-50 text-amber-700" :
-                    "bg-violet-50 text-violet-700"
-                  }`}>{selected.group}</span>
                 </div>
               </div>
-
-              {/* Preview notice */}
-              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
-                <i className="ri-information-line text-amber-500 text-xs flex-shrink-0"></i>
-                <p className="text-[11px] text-amber-700 font-semibold">
-                  Preview only — &#123;name&#125; replaced with &ldquo;{previewName}&rdquo; &middot; No email is sent
-                </p>
-              </div>
-
-              {/* Iframe or raw HTML */}
-              {showRaw ? (
-                <div className="flex-1 overflow-auto bg-gray-900 p-4">
-                  <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all leading-relaxed">
-                    {html}
-                  </pre>
+            ) : (
+              <>
+                <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/30 flex items-center gap-3 flex-wrap">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex-shrink-0">Subject:</span>
+                  <span className="text-xs font-semibold text-gray-800 truncate flex-1">{selectedEmail.subject}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button type="button" onClick={copyHtml}
+                      className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer">
+                      <i className={copied ? "ri-check-line text-green-500" : "ri-clipboard-line"}></i>
+                      {copied ? "Copied!" : "Copy HTML"}
+                    </button>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedEmail.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" : selectedEmail.group === "Marketing" ? "bg-amber-50 text-amber-700" : "bg-violet-50 text-violet-700"}`}>{selectedEmail.group}</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="flex-1 bg-[#f3f4f6]" style={{ minHeight: "420px" }}>
-                  <iframe
-                    srcDoc={html}
-                    title={`Email Preview: ${selected.label}`}
-                    className="w-full h-full border-0"
-                    style={{ minHeight: "420px" }}
-                    sandbox="allow-same-origin"
-                  />
+                <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+                  <i className="ri-information-line text-amber-500 text-xs flex-shrink-0"></i>
+                  <p className="text-[11px] text-amber-700 font-semibold">
+                    Preview only — &#123;name&#125; replaced with &ldquo;{previewName}&rdquo; &middot; No email is sent
+                  </p>
                 </div>
-              )}
-            </>
-          )}
+                {showRaw ? (
+                  <div className="flex-1 overflow-auto bg-gray-900 p-4">
+                    <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all leading-relaxed">{html}</pre>
+                  </div>
+                ) : (
+                  <div className="flex-1 bg-[#f3f4f6]" style={{ minHeight: "420px" }}>
+                    <iframe srcDoc={html} title={`Email Preview: ${selectedEmail.label}`}
+                      className="w-full h-full border-0" style={{ minHeight: "420px" }} sandbox="allow-same-origin" />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── SMS CHANNEL ── */}
+      {activeChannel === "sms" && (
+        <div className="flex flex-col lg:flex-row" style={{ minHeight: "480px" }}>
+          {/* Left: SMS template list */}
+          <div className="w-full lg:w-60 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Preview Name</label>
+              <input type="text" value={previewName} onChange={(e) => setPreviewName(e.target.value || "Jane")} placeholder="Jane"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
+            </div>
+            <div className="space-y-3">
+              {smsGroups.map((grp) => (
+                <div key={grp}>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                    <i className={`text-xs ${grp === "Transactional" ? "ri-mail-check-line text-[#3b6ea5]" : grp === "Lead Recovery" ? "ri-user-follow-line text-orange-500" : "ri-chat-3-line text-gray-500"}`}></i>
+                    {grp}
+                  </p>
+                  <div className="space-y-1">
+                    {smsTemplates.filter((t) => t.group === grp).map((t) => (
+                      <div key={t.id} className="flex items-center gap-1">
+                        <button type="button" onClick={() => setSelectedSmsId(t.id)}
+                          className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${selectedSmsId === t.id ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
+                          {t.label}
+                        </button>
+                        {editMode && (
+                          <button type="button" onClick={() => deleteSmsTemplate(t.id)} title="Delete"
+                            className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0">
+                            <i className="ri-delete-bin-line text-xs"></i>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Right: SMS edit/preview */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {editMode ? (
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <i className="ri-message-3-line text-[#3b6ea5] text-sm"></i>
+                  <span className="text-xs font-bold text-gray-700">Editing: {selectedSms?.label}</span>
+                  <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#e8f0f9] text-[#3b6ea5]">{selectedSms?.group}</span>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Template Label</label>
+                  <input type="text" value={selectedSms?.label ?? ""} onChange={(e) => updateSmsField("label", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Group</label>
+                  <select value={selectedSms?.group ?? "Transactional"} onChange={(e) => updateSmsField("group", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
+                    <option>Transactional</option><option>Lead Recovery</option><option>General</option>
+                  </select>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                      Message Body <span className="normal-case font-normal">— &#123;name&#125; = first name, &#123;order_id&#125; = confirmation ID</span>
+                    </label>
+                    <span className={`text-[10px] font-bold ${(selectedSms?.body?.length ?? 0) > 280 ? "text-red-500" : "text-gray-400"}`}>
+                      {selectedSms?.body?.length ?? 0}/320
+                    </span>
+                  </div>
+                  <textarea value={selectedSms?.body ?? ""} onChange={(e) => updateSmsField("body", e.target.value.slice(0, 320))}
+                    rows={6} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white font-mono resize-y" />
+                  <p className="text-[10px] text-gray-400 mt-1">160 chars = 1 SMS segment · 320 chars = 2 segments</p>
+                </div>
+                <div className="pt-2 border-t border-gray-100">
+                  <button type="button" onClick={() => setEditMode(false)}
+                    className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] transition-colors cursor-pointer">
+                    <i className="ri-eye-line"></i> Preview Result
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <i className="ri-message-3-line text-[#3b6ea5] text-sm"></i>
+                  <span className="text-xs font-bold text-gray-700">{selectedSms?.label}</span>
+                  <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#e8f0f9] text-[#3b6ea5]">{selectedSms?.group}</span>
+                </div>
+                <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-2 flex items-center gap-2">
+                  <i className="ri-information-line text-amber-500 text-xs flex-shrink-0"></i>
+                  <p className="text-[11px] text-amber-700 font-semibold">Preview — &#123;name&#125; → &ldquo;{previewName}&rdquo; · &#123;order_id&#125; → PT-XXXX</p>
+                </div>
+                {selectedSms && (
+                  <div className="max-w-xs">
+                    <div className="bg-[#3b6ea5] text-white rounded-2xl rounded-br-sm px-4 py-3">
+                      <p className="text-[10px] font-bold text-white/60 uppercase tracking-wider mb-1.5">SMS Preview</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                        {selectedSms.body.replace(/\{name\}/g, previewName).replace(/\{order_id\}/g, "PT-XXXX")}
+                      </p>
+                      <p className="text-[10px] text-white/50 mt-2 text-right">
+                        {selectedSms.body.length} chars · {Math.ceil(selectedSms.body.length / 160) || 1} segment{selectedSms.body.length > 160 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Reset to Defaults Confirmation Dialog ── */}
       {showResetConfirm && (
@@ -1261,7 +1463,7 @@ function EmailTemplatesPreview() {
             </div>
             <div className="px-5 py-4 space-y-3">
               <p className="text-xs text-gray-600 leading-relaxed">
-                All <strong>{templates.length} current templates</strong> (including any custom ones you&apos;ve added) will be replaced with the original {DEFAULT_TEMPLATES.length} factory defaults. This also clears any saved DB versions.
+                All <strong>{totalCount} current templates</strong> will be replaced with factory defaults. This also clears any saved DB versions.
               </p>
               <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-2">
                 <i className="ri-error-warning-line text-amber-500 text-sm flex-shrink-0"></i>
@@ -1269,18 +1471,12 @@ function EmailTemplatesPreview() {
               </div>
             </div>
             <div className="flex items-center gap-2 px-5 py-4 bg-gray-50 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(false)}
-                className="whitespace-nowrap flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-white transition-colors"
-              >
+              <button type="button" onClick={() => setShowResetConfirm(false)}
+                className="whitespace-nowrap flex-1 px-4 py-2 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-white transition-colors">
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={resetToDefaults}
-                className="whitespace-nowrap flex-1 px-4 py-2 bg-red-500 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-600 transition-colors"
-              >
+              <button type="button" onClick={resetToDefaults}
+                className="whitespace-nowrap flex-1 px-4 py-2 bg-red-500 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-600 transition-colors">
                 Yes, Reset All
               </button>
             </div>
@@ -3136,9 +3332,14 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         <AdminNotificationPrefsPanel />
       </AccordionSection>
 
-      {/* ── Email Templates Preview ── */}
-      <AccordionSection title="Email Templates Preview" subtitle="Visually QA every email template — no send required" icon="ri-eye-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
-        <EmailTemplatesPreview />
+      {/* ── Master Email Layout ── */}
+      <AccordionSection title="Master Email Layout" subtitle="Editable HTML shell wrapping every template — use {{content}} placeholder" icon="ri-layout-2-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
+        <MasterEmailLayoutPanel />
+      </AccordionSection>
+
+      {/* ── Communications Templates Hub ── */}
+      <AccordionSection title="Communications Templates Hub" subtitle="Manage all email + SMS templates — single source of truth" icon="ri-message-2-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
+        <CommsTemplatesPanel />
       </AccordionSection>
 
       {/* ── UTM Campaign Link Generator ── */}

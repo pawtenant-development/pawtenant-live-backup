@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logEmailComm } from "../_shared/logEmailComm.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -284,6 +285,9 @@ Deno.serve(async (req: Request) => {
 
   const confirmationId = body.confirmationId as string | undefined;
   const newStatus = body.newStatus as string | undefined;
+  // force=true bypasses the "already notified" guard — used when admin manually marks completed
+  const force = body.force as boolean | undefined;
+
   if (!confirmationId || !newStatus) return jsonResp({ error: "confirmationId and newStatus are required" }, 400);
 
   if (!["under-review", "completed", "cancelled"].includes(newStatus)) {
@@ -291,12 +295,23 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: order, error: orderErr } = await supabase
-    .from("orders").select("id, confirmation_id, email, first_name, last_name, doctor_name, patient_notification_sent_at")
+    .from("orders").select("id, confirmation_id, email, first_name, last_name, doctor_name, patient_notification_sent_at, email_log")
     .eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return jsonResp({ error: `Order not found: ${confirmationId}` }, 404);
 
-  if (newStatus === "completed" && order.patient_notification_sent_at) {
-    return jsonResp({ ok: true, skipped: true, reason: "Docs already sent — no duplicate completion email" });
+  // For "completed" status: only skip if patient was already notified AND force is not set
+  // This prevents duplicate emails when notify-patient-letter already sent the letter-ready email
+  // BUT allows admin to manually trigger a completion email if the letter email was never sent
+  if (newStatus === "completed" && order.patient_notification_sent_at && !force) {
+    // Check if a letter_ready email was actually sent — if not, send the completed email anyway
+    const emailLog = (order.email_log as EmailLogEntry[]) ?? [];
+    const hasLetterReadyEmail = emailLog.some((e) => e.type === "letter_ready" && e.success);
+    const hasCompletedEmail = emailLog.some((e) => (e.type === "status_completed" || e.type === "letter_ready") && e.success);
+    if (hasCompletedEmail) {
+      return jsonResp({ ok: true, skipped: true, reason: "Completion email already sent — no duplicate" });
+    }
+    // No completion email found in log — send it even though patient_notification_sent_at is set
+    console.log(`[notify-order-status] No completion email found in log for ${confirmationId} — sending now`);
   }
 
   let subject = "";
@@ -330,6 +345,20 @@ Deno.serve(async (req: Request) => {
   });
 
   await appendEmailLog(supabase, confirmationId, { type: emailType, sentAt: new Date().toISOString(), to: order.email, success: customerEmailSent });
+
+  // Primary log → communications
+  await logEmailComm({
+    supabase,
+    orderId: order.id as string,
+    confirmationId,
+    to: order.email,
+    from: FROM_ADDRESS,
+    subject,
+    body: null,
+    slug: emailType,
+    sentBy: "admin_status_change",
+    success: customerEmailSent,
+  });
 
   if (adminNotifKey) {
     const { enabled: adminEnabled, recipients: adminRecipients } = await getAdminRecipients(adminNotifKey);

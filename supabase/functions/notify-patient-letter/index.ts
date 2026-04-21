@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { logEmailComm } from "../_shared/logEmailComm.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
@@ -20,18 +21,35 @@ const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#4a7fb5";
 
-async function sendViaResend(opts: { to: string; subject: string; html: string }): Promise<boolean> {
+async function sendViaResend(opts: { to: string; subject: string; html: string }): Promise<{ success: boolean; error?: string; resendId?: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
-  if (!apiKey) { console.error("[notify-patient-letter] RESEND_API_KEY not set"); return false; }
+  if (!apiKey) {
+    const msg = "RESEND_API_KEY environment variable is not set in Supabase secrets";
+    console.error("[notify-patient-letter]", msg);
+    return { success: false, error: msg };
+  }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html }),
     });
-    if (!res.ok) { const errBody = await res.text(); console.error(`[notify-patient-letter] Resend error ${res.status}: ${errBody}`); return false; }
-    return true;
-  } catch (err) { console.error("[notify-patient-letter] Resend fetch error:", err); return false; }
+    if (!res.ok) {
+      const errBody = await res.text();
+      let parsed: { message?: string; name?: string } = {};
+      try { parsed = JSON.parse(errBody); } catch { /* ignore */ }
+      const detail = parsed.message ?? errBody.slice(0, 300);
+      const msg = `Resend API error ${res.status}: ${detail}`;
+      console.error(`[notify-patient-letter] ${msg}`);
+      return { success: false, error: msg };
+    }
+    const data = await res.json() as { id?: string };
+    return { success: true, resendId: data.id };
+  } catch (err) {
+    const msg = err instanceof Error ? `Network error calling Resend: ${err.message}` : "Unknown network error calling Resend";
+    console.error("[notify-patient-letter]", msg);
+    return { success: false, error: msg };
+  }
 }
 
 function escapeHtml(value = "") {
@@ -230,8 +248,10 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !user) { console.error("[notify-patient-letter] Auth failed:", authErr?.message ?? "no user"); return jsonResp({ error: "Unauthorized" }, 401); }
     userId = user.id;
-    const { data: callerProfile } = await supabase.from("doctor_profiles").select("is_admin, role").eq("user_id", userId).maybeSingle();
-    isAdmin = callerProfile?.is_admin === true || ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "");
+    const { data: callerProfile } = await supabase.from("doctor_profiles").select("is_admin, role, email").eq("user_id", userId).maybeSingle();
+    isAdmin = callerProfile?.is_admin === true
+      || ["owner", "admin_manager", "support"].includes(callerProfile?.role ?? "")
+      || (callerProfile?.email ?? "").endsWith("@pawtenant.com");
   }
 
   let body: Record<string, unknown>;
@@ -267,7 +287,7 @@ Deno.serve(async (req: Request) => {
   } catch (err) { console.warn("[notify-patient-letter] order_documents exception:", err); }
 
   const totalDocCount = (order.signed_letter_url ? 1 : 0) + docs.filter((d) => d.file_url !== order.signed_letter_url).length;
-  if (!order.signed_letter_url && docs.length === 0) return jsonResp({ error: "No documents available to send for this order" }, 400);
+  if (!order.signed_letter_url && docs.length === 0) return jsonResp({ error: "No documents available to send for this order. Provider must upload a letter first." }, 400);
 
   const { error: updateErr } = await supabase.from("orders").update({ patient_notification_sent_at: new Date().toISOString(), doctor_status: "patient_notified", status: "completed" }).eq("confirmation_id", confirmationId);
   if (updateErr) { console.error("[notify-patient-letter] Order update error:", updateErr.message); return jsonResp({ error: `Failed to update order: ${updateErr.message}` }, 500); }
@@ -299,12 +319,36 @@ Deno.serve(async (req: Request) => {
   const docCount = allDocs.length;
   const subjectSuffix = docCount > 1 ? ` (${docCount} documents)` : "";
   const html = buildDocumentsReadyEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name ?? "Your Provider", doctorMessage: doctorMessage?.trim() || null, letterId }, allDocs);
-  const emailSent = await sendViaResend({ to: order.email, subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`, html });
+
+  const sendResult = await sendViaResend({ to: order.email, subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`, html });
+  const emailSent = sendResult.success;
 
   await appendEmailLog(supabase, confirmationId, { type: "letter_ready", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
+
+  // Primary log → communications
+  await logEmailComm({
+    supabase,
+    orderId: order.id as string,
+    confirmationId,
+    to: order.email,
+    from: FROM_ADDRESS,
+    subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`,
+    body: doctorMessage?.trim() || null,
+    slug: "letter_ready",
+    sentBy: "provider_notify_patient",
+    success: emailSent,
+  });
   if (emailSent && docs.length > 0) { await supabase.from("order_documents").update({ sent_to_customer: true }).in("id", docs.filter((d) => d.file_url !== order.signed_letter_url).map((d) => d.id)); }
+
+  // If email failed, revert the patient_notification_sent_at so admin can retry cleanly
+  if (!emailSent) {
+    await supabase.from("orders").update({ patient_notification_sent_at: null }).eq("confirmation_id", confirmationId);
+    const errMsg = sendResult.error ?? "Email delivery failed — check Resend API key and domain verification in Supabase secrets";
+    console.error(`[notify-patient-letter] Email send failed for ${confirmationId}: ${errMsg}`);
+    return jsonResp({ ok: false, error: errMsg }, 500);
+  }
 
   fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` }, body: JSON.stringify({ webhookType: "main", event: "documents_ready_for_patient", email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "", phone: (order.phone as string) ?? "", confirmationId, patientName, patientState: order.state ?? "", documentsCount: totalDocCount, notifiedAt: new Date().toISOString(), leadStatus: "Documents Ready — Patient Notified", tags: ["Documents Ready", "Patient Notified"] }) }).catch(() => {});
 
-  return jsonResp({ ok: true, message: `Patient notified for order ${confirmationId}`, confirmationId, patientEmail: order.email, docsEmailed: totalDocCount, emailSent, earningsCreated, letterId, verificationIncluded: !!letterId });
+  return jsonResp({ ok: true, message: `Patient notified for order ${confirmationId}`, confirmationId, patientEmail: order.email, docsEmailed: totalDocCount, emailSent, earningsCreated, letterId, verificationIncluded: !!letterId, resendId: sendResult.resendId });
 });
