@@ -50,8 +50,12 @@ function groupIconFor(group: string): string {
 }
 
 // ── Unified log entry ──────────────────────────────────────────────────────
+// `type` is the RESOLVED type used for label lookup (slug for emails).
+// `rawType` is the ORIGINAL DB row type ("email", "sms_outbound", "call_inbound", …)
+// and is the ONLY trusted source for channel routing in getChatConfig.
 interface UnifiedLogEntry {
   type: string;
+  rawType: string;
   sentAt: string;
   to: string;
   success: boolean;
@@ -91,12 +95,14 @@ function getChatConfig(entry: UnifiedLogEntry): {
   bubbleClass: string;
   headerClass: string;
 } {
-  const t = entry.type;
+  const t = entry.type;       // resolved type (slug for emails)
+  const rt = entry.rawType;   // original DB row.type — trusted for channel routing
   const dir = entry.direction;
 
-  // Calls
-  if (t === "call" || t === "call_inbound") {
-    const isOut = t === "call" || dir === "outbound";
+  // Calls — key off the ORIGINAL row type so email rows (rt === "email")
+  // can never leak into the call branch via a remapped slug.
+  if (rt === "call_outbound" || rt === "call_inbound" || t === "call" || t === "call_inbound") {
+    const isOut = rt === "call_outbound" || t === "call" || dir === "outbound";
     return {
       isOutbound: isOut,
       channel: "call",
@@ -107,9 +113,12 @@ function getChatConfig(entry: UnifiedLogEntry): {
     };
   }
 
-  // SMS
-  if (t === "sms" || t === "sms_inbound" || (entry.source === "communications" && (dir === "inbound" || dir === "outbound") && t !== "email")) {
-    const isOut = t === "sms" || dir === "outbound";
+  // SMS — STRICT match on true SMS rows only. The previous broad fallback
+  // (`source === "communications" && dir outbound/inbound && t !== "email"`)
+  // swallowed email rows whose type had been remapped to their slug, causing
+  // raw email HTML to render in the SMS bubble.
+  if (rt === "sms_outbound" || rt === "sms_inbound") {
+    const isOut = rt === "sms_outbound" || dir === "outbound";
     return {
       isOutbound: isOut,
       channel: "sms",
@@ -308,13 +317,16 @@ export default function CommunicationTab({
         return;
       }
       const entries: UnifiedLogEntry[] = (data ?? []).map((row) => {
-        const isEmail = (row.type as string) === "email";
-        // For emails, prefer slug as the type (so chat bubble label resolves correctly).
-        const resolvedType = isEmail ? ((row.slug as string) || "email") : (row.type as string);
+        const rawType = (row.type as string) ?? "";
+        const isEmail = rawType === "email";
+        // For emails, prefer slug as the type (so chat bubble LABEL resolves correctly).
+        // rawType is preserved separately so channel ROUTING stays trustworthy.
+        const resolvedType = isEmail ? ((row.slug as string) || "email") : rawType;
         // Recipient fallback: email_to → phone_to (legacy rows) → prop email.
         const emailAddr = (row.email_to as string) || (row.phone_to as string) || email;
         return {
           type: resolvedType,
+          rawType,
           sentAt: row.created_at as string,
           to: isEmail ? emailAddr : ((row.phone_to as string) ?? email),
           success: (row.status as string) !== "failed",
@@ -348,7 +360,7 @@ export default function CommunicationTab({
   const emailLogEntries: UnifiedLogEntry[] = (emailLog ?? [])
     .filter((e) => !commsKey.has(`${e.type}|${new Date(e.sentAt).toISOString().slice(0, 16)}`))
     .map((e) => ({
-      type: e.type, sentAt: e.sentAt, to: e.to, success: e.success, source: "email_log" as const,
+      type: e.type, rawType: "email", sentAt: e.sentAt, to: e.to, success: e.success, source: "email_log" as const,
     }));
   const allLogs: UnifiedLogEntry[] = [...emailLogEntries, ...commLogs].sort(
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
