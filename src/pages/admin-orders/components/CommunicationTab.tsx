@@ -57,8 +57,29 @@ interface UnifiedLogEntry {
   success: boolean;
   source: "email_log" | "communications";
   body?: string | null;
+  subject?: string | null;
+  slug?: string | null;
   direction?: string | null;
   duration?: number | null;
+}
+
+// Strip HTML tags + collapse whitespace for a readable preview snippet.
+function toPreview(raw: string | null | undefined, max = 140): string {
+  if (!raw) return "";
+  const text = String(raw)
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= max) return text;
+  return text.slice(0, max).trimEnd() + "…";
 }
 
 // ── Chat bubble config ─────────────────────────────────────────────────────
@@ -186,6 +207,7 @@ export default function CommunicationTab({
   const [emailMsg, setEmailMsg] = useState("");
   const [commLogs, setCommLogs] = useState<UnifiedLogEntry[]>([]);
   const [loadingComms, setLoadingComms] = useState(false);
+  const [commError, setCommError] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Load SMS templates from DB on mount; fallback to hardcoded if empty
@@ -262,34 +284,56 @@ export default function CommunicationTab({
   const isRecoveryType = selectedTemplate?.group?.toLowerCase().includes("recovery") ?? false;
 
   // ── Fetch communications (PRIMARY source of truth — email + sms + calls) ─
+  // Match rows by order_id OR confirmation_id — some legacy rows only carry
+  // confirmation_id (older auto-sequence runs wrote confirmation_id but not
+  // order_id). Errors are surfaced to the UI, not swallowed.
   const loadCommLogs = useCallback(async () => {
-    if (!orderId) return;
+    if (!orderId && !confirmationId) return;
     setLoadingComms(true);
+    setCommError(null);
     try {
-      const { data } = await supabase
+      const filters: string[] = [];
+      if (orderId)        filters.push(`order_id.eq.${orderId}`);
+      if (confirmationId) filters.push(`confirmation_id.eq.${confirmationId}`);
+      const { data, error } = await supabase
         .from("communications")
         .select("type, direction, body, phone_to, phone_from, email_to, email_from, subject, slug, template_source, status, created_at, duration_seconds")
-        .eq("order_id", orderId)
+        .or(filters.join(","))
         .order("created_at", { ascending: true });
+      if (error) {
+        console.error("[CommunicationTab] loadCommLogs error:", error);
+        setCommError(error.message || "Failed to load communications");
+        setCommLogs([]);
+        setLoadingComms(false);
+        return;
+      }
       const entries: UnifiedLogEntry[] = (data ?? []).map((row) => {
         const isEmail = (row.type as string) === "email";
         // For emails, prefer slug as the type (so chat bubble label resolves correctly).
         const resolvedType = isEmail ? ((row.slug as string) || "email") : (row.type as string);
+        // Recipient fallback: email_to → phone_to (legacy rows) → prop email.
+        const emailAddr = (row.email_to as string) || (row.phone_to as string) || email;
         return {
           type: resolvedType,
           sentAt: row.created_at as string,
-          to: isEmail ? ((row.email_to as string) ?? email) : ((row.phone_to as string) ?? email),
+          to: isEmail ? emailAddr : ((row.phone_to as string) ?? email),
           success: (row.status as string) !== "failed",
           source: "communications" as const,
           body: row.body as string | null,
+          subject: row.subject as string | null,
+          slug: row.slug as string | null,
           direction: row.direction as string | null,
           duration: row.duration_seconds as number | null,
         };
       });
       setCommLogs(entries);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error("[CommunicationTab] loadCommLogs exception:", err);
+      setCommError(err instanceof Error ? err.message : "Network error");
+      setCommLogs([]);
+    }
     setLoadingComms(false);
-  }, [orderId, email]);
+  }, [orderId, confirmationId, email]);
 
   useEffect(() => { loadCommLogs(); }, [loadCommLogs]);
 
@@ -599,6 +643,18 @@ export default function CommunicationTab({
           <div className="flex items-center justify-center py-16">
             <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
           </div>
+        ) : commError && allLogs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+            <div className="w-14 h-14 flex items-center justify-center bg-red-50 rounded-full border border-red-200 mb-3">
+              <i className="ri-error-warning-line text-red-400 text-2xl"></i>
+            </div>
+            <p className="text-sm font-bold text-red-600">Failed to load communications</p>
+            <p className="text-xs text-red-500 mt-1 font-mono break-all max-w-sm">{commError}</p>
+            <button type="button" onClick={loadCommLogs}
+              className="mt-4 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-xs font-semibold text-red-600 rounded-lg hover:bg-red-50 cursor-pointer transition-colors">
+              <i className="ri-refresh-line text-xs"></i>Retry
+            </button>
+          </div>
         ) : allLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center px-6">
             <div className="w-14 h-14 flex items-center justify-center bg-white rounded-full border border-gray-200 mb-3">
@@ -678,6 +734,26 @@ export default function CommunicationTab({
 
                   // ── Email bubble (always outbound from PawTenant) ─────────
                   const isPrePayment = entry.type === "checkout_recovery" || entry.type.startsWith("seq_") || entry.type === "followup_lead";
+                  const fallbackBlurb =
+                    entry.type === "order_confirmation" ? "Order confirmation + payment receipt sent to customer." :
+                    (entry.type === "under-review" || entry.type === "status_under_review") ? "Customer notified their case is under review by a licensed provider." :
+                    (entry.type === "completed" || entry.type === "status_completed") ? "Customer notified their order is complete." :
+                    entry.type === "letter_ready" ? "Documents ready email sent — customer can now download their letter." :
+                    entry.type === "checkout_recovery" ? "Abandoned checkout recovery email with resume link sent." :
+                    entry.type === "followup_lead" ? "Lead follow-up nudge email sent." :
+                    entry.type === "consultation_booking" ? "Consultation booking confirmation email sent." :
+                    entry.type === "seq_30min" ? "Automated 30-minute follow-up sequence email sent." :
+                    entry.type === "seq_24h" ? "Automated 24-hour follow-up sequence email sent." :
+                    entry.type === "seq_3day" ? "Automated 3-day follow-up sequence email sent." :
+                    entry.type === "refund" ? "Refund confirmation email sent to customer." :
+                    entry.type === "cancelled" ? "Cancellation notice sent to customer." :
+                    entry.type === "provider_assigned_customer" ? "Customer notified that a provider has been assigned." :
+                    entry.type === "provider_assigned_provider" ? "Provider notified of new case assignment." :
+                    "Email sent to customer.";
+                  const preview = toPreview(entry.body, 160);
+                  const subjectLine = (entry.subject ?? "").trim();
+                  const primaryLine = subjectLine || cfg.label;
+                  const secondaryLine = preview || fallbackBlurb;
                   return (
                     <div key={idx} className="flex justify-end mb-2">
                       <div className="max-w-[78%] flex flex-col items-end">
@@ -687,7 +763,7 @@ export default function CommunicationTab({
                             <i className="ri-mail-send-line text-amber-600 text-sm flex-shrink-0"></i>
                             <div className="flex-1 min-w-0">
                               <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Email</span>
-                              <span className="text-[10px] text-amber-600/70 ml-2">→ {entry.to}</span>
+                              <span className="text-[10px] text-amber-600/70 ml-2 truncate">→ {entry.to}</span>
                             </div>
                             {isPrePayment && (
                               <span className="text-[9px] font-bold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">Pre-payment</span>
@@ -700,24 +776,15 @@ export default function CommunicationTab({
                           </div>
                           {/* Email body */}
                           <div className="px-3.5 py-2.5">
-                            <p className="text-xs font-bold text-gray-800 leading-tight">{cfg.label}</p>
-                            <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                              {entry.type === "order_confirmation" && "Order confirmation + payment receipt sent to customer."}
-                              {(entry.type === "under-review" || entry.type === "status_under_review") && "Customer notified their case is under review by a licensed provider."}
-                              {(entry.type === "completed" || entry.type === "status_completed") && "Customer notified their order is complete."}
-                              {entry.type === "letter_ready" && "Documents ready email sent — customer can now download their letter."}
-                              {entry.type === "checkout_recovery" && "Abandoned checkout recovery email with resume link sent."}
-                              {entry.type === "followup_lead" && "Lead follow-up nudge email sent."}
-                              {entry.type === "consultation_booking" && "Consultation booking confirmation email sent."}
-                              {entry.type === "seq_30min" && "Automated 30-minute follow-up sequence email sent."}
-                              {entry.type === "seq_24h" && "Automated 24-hour follow-up sequence email sent."}
-                              {entry.type === "seq_3day" && "Automated 3-day follow-up sequence email sent."}
-                              {entry.type === "refund" && "Refund confirmation email sent to customer."}
-                              {entry.type === "cancelled" && "Cancellation notice sent to customer."}
-                              {entry.type === "provider_assigned_customer" && "Customer notified that a provider has been assigned."}
-                              {entry.type === "provider_assigned_provider" && "Provider notified of new case assignment."}
-                              {!["order_confirmation","under-review","status_under_review","completed","status_completed","letter_ready","checkout_recovery","followup_lead","consultation_booking","seq_30min","seq_24h","seq_3day","refund","cancelled","provider_assigned_customer","provider_assigned_provider"].includes(entry.type) && "Email sent to customer."}
+                            <p className="text-xs font-bold text-gray-800 leading-snug">{primaryLine}</p>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-3">
+                              {secondaryLine}
                             </p>
+                            {subjectLine && (
+                              <p className="text-[10px] text-amber-700/70 mt-1.5 font-semibold uppercase tracking-wider">
+                                {cfg.label}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <span className="text-[10px] mt-1 px-1 text-gray-400 text-right">

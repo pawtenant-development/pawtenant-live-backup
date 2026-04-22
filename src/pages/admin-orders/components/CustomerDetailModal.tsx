@@ -37,6 +37,7 @@ interface Order {
   ghl_synced_at: string | null;
   ghl_sync_error: string | null;
   user_id: string | null;
+  payment_intent_id: string | null;
   documents?: OrderDocument[];
 }
 
@@ -121,6 +122,12 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
   const [emailSending, setEmailSending] = useState<string | null>(null);
   const [emailMsg, setEmailMsg] = useState<Record<string, { ok: boolean; msg: string }>>({});
 
+  // Customer portal reset / welcome
+  const [resetSending, setResetSending] = useState(false);
+  const [resetMsg, setResetMsg] = useState<{ ok: boolean; msg: string; link?: string } | null>(null);
+  const [welcomeSending, setWelcomeSending] = useState(false);
+  const [welcomeMsg, setWelcomeMsg] = useState<{ ok: boolean; msg: string; link?: string } | null>(null);
+
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
   useEffect(() => {
@@ -133,7 +140,7 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
       setLoading(true);
       const { data: ordersData } = await supabase
         .from("orders")
-        .select("id, confirmation_id, email, first_name, last_name, phone, state, plan_type, delivery_speed, selected_provider, price, status, doctor_status, doctor_name, doctor_email, letter_url, signed_letter_url, patient_notification_sent_at, assessment_answers, created_at, ghl_synced_at, ghl_sync_error, user_id")
+        .select("id, confirmation_id, email, first_name, last_name, phone, state, plan_type, delivery_speed, selected_provider, price, status, doctor_status, doctor_name, doctor_email, letter_url, signed_letter_url, patient_notification_sent_at, assessment_answers, created_at, ghl_synced_at, ghl_sync_error, user_id, payment_intent_id")
         .eq("email", email)
         .order("created_at", { ascending: false });
 
@@ -214,6 +221,56 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
     setTimeout(() => setGhlMsg((prev) => { const n = { ...prev }; delete n[order.confirmation_id]; return n; }), 5000);
   };
 
+  const handleSendPortalReset = async () => {
+    setResetSending(true);
+    setResetMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const firstName = fullName.split(" ")[0] || "there";
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-customer-password-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email, first_name: firstName, action: "reset" }),
+      });
+      const result = await res.json() as { ok: boolean; message?: string; error?: string; action_link?: string; account_created?: boolean; email_sent?: boolean };
+      if (result.ok) {
+        setResetMsg({ ok: true, msg: result.message ?? "Reset email sent!", link: result.email_sent ? undefined : result.action_link });
+        if (result.account_created) setPortalStatus("exists");
+      } else {
+        setResetMsg({ ok: false, msg: result.error ?? "Failed to send reset email." });
+      }
+    } catch {
+      setResetMsg({ ok: false, msg: "Network error — please try again." });
+    }
+    setResetSending(false);
+  };
+
+  const handleResendWelcomeEmail = async () => {
+    setWelcomeSending(true);
+    setWelcomeMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const firstName = fullName.split(" ")[0] || "there";
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-customer-password-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email, first_name: firstName, action: "welcome" }),
+      });
+      const result = await res.json() as { ok: boolean; message?: string; error?: string; action_link?: string; account_created?: boolean; email_sent?: boolean };
+      if (result.ok) {
+        setWelcomeMsg({ ok: true, msg: result.message ?? "Welcome email sent!", link: result.email_sent ? undefined : result.action_link });
+        if (result.account_created) setPortalStatus("exists");
+      } else {
+        setWelcomeMsg({ ok: false, msg: result.error ?? "Failed to send welcome email." });
+      }
+    } catch {
+      setWelcomeMsg({ ok: false, msg: "Network error — please try again." });
+    }
+    setWelcomeSending(false);
+  };
+
   const handleResendEmail = async (order: Order) => {
     if (!order.letter_url) {
       setEmailMsg((prev) => ({ ...prev, [order.confirmation_id]: { ok: false, msg: "No letter URL yet" } }));
@@ -253,7 +310,8 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
   const activeNotes = activeOrderId ? (notes[activeOrderId] ?? []) : [];
   const activeNotifs = activeOrderId ? (notifications[activeOrderId] ?? []) : [];
 
-  const totalSpent = orders.reduce((s, o) => s + (o.price ?? 0), 0);
+  // Only count orders that were actually paid (have a payment_intent_id)
+  const totalSpent = orders.filter((o) => !!o.payment_intent_id).reduce((s, o) => s + (o.price ?? 0), 0);
   const initials = fullName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 
   return (
@@ -415,6 +473,44 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                       </span>
                     )}
 
+                    {/* View as Customer — opens real portal pre-filtered to this customer */}
+                    <a
+                      href={`/my-orders?preview_email=${encodeURIComponent(email)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Open customer portal view for ${email}`}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-orange-200 bg-orange-50 text-orange-700 text-xs font-semibold rounded-lg hover:bg-orange-100 cursor-pointer transition-colors"
+                    >
+                      <i className="ri-eye-line"></i>View as Customer
+                    </a>
+
+                    {/* Resend Portal Welcome Email — for customers who never received it */}
+                    <button
+                      type="button"
+                      onClick={handleResendWelcomeEmail}
+                      disabled={welcomeSending}
+                      title="Re-sends the original portal welcome email with login instructions"
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-sky-200 bg-sky-50 text-sky-700 text-xs font-semibold rounded-lg hover:bg-sky-100 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      {welcomeSending
+                        ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                        : <><i className="ri-mail-open-line"></i>Resend Welcome Email</>}
+                    </button>
+
+                    {/* Send Portal Access / Password Reset */}
+                    <button
+                      type="button"
+                      onClick={handleSendPortalReset}
+                      disabled={resetSending}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-lg hover:bg-emerald-100 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      {resetSending
+                        ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                        : portalStatus === "not_found"
+                          ? <><i className="ri-user-add-line"></i>Send Portal Access</>
+                          : <><i className="ri-lock-password-line"></i>Send Password Reset</>}
+                    </button>
+
                     {portalStatus === "not_found" && (
                       <button
                         type="button"
@@ -423,6 +519,50 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                       >
                         <i className="ri-link"></i>Copy Portal URL
                       </button>
+                    )}
+
+                    {/* Welcome email feedback */}
+                    {welcomeMsg && (
+                      <div className={`flex flex-col gap-1 ${welcomeMsg.ok ? "text-sky-700" : "text-red-500"}`}>
+                        <p className="text-xs flex items-center gap-1">
+                          <i className={welcomeMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                          {welcomeMsg.msg}
+                        </p>
+                        {welcomeMsg.link && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-gray-500">Fallback link:</span>
+                            <button
+                              type="button"
+                              onClick={() => { navigator.clipboard.writeText(welcomeMsg.link!); }}
+                              className="whitespace-nowrap text-xs text-[#3b6ea5] underline cursor-pointer hover:text-[#2d5a8e]"
+                            >
+                              Copy link
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Portal reset feedback */}
+                    {resetMsg && (
+                      <div className={`flex flex-col gap-1 ${resetMsg.ok ? "text-emerald-700" : "text-red-500"}`}>
+                        <p className="text-xs flex items-center gap-1">
+                          <i className={resetMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+                          {resetMsg.msg}
+                        </p>
+                        {resetMsg.link && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-gray-500">Fallback link:</span>
+                            <button
+                              type="button"
+                              onClick={() => { navigator.clipboard.writeText(resetMsg.link!); }}
+                              className="whitespace-nowrap text-xs text-[#3b6ea5] underline cursor-pointer hover:text-[#2d5a8e]"
+                            >
+                              Copy link
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
 
                     {/* Feedback messages */}

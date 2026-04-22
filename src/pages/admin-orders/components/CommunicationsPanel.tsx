@@ -21,14 +21,35 @@ interface CommEntry {
 
 interface EmailFlatEntry {
   id: string;
-  order_id: string;
+  order_id: string | null;
   confirmation_id: string;
-  type: string;
+  type: string;          // slug (preferred) or legacy type
+  subject: string | null;
+  body: string | null;
   to: string;
   success: boolean;
   created_at: string;
   customer_name: string;
   customer_email: string;
+}
+
+// Strip HTML + collapse whitespace for table preview.
+function toPreview(raw: string | null | undefined, max = 120): string {
+  if (!raw) return "";
+  const text = String(raw)
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= max) return text;
+  return text.slice(0, max).trimEnd() + "…";
 }
 
 interface Order {
@@ -115,35 +136,31 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
   const orderMap = new Map<string, Order>();
   orders.forEach((o) => orderMap.set(o.id, o));
 
-  // ── Fetch emails from all orders' email_log ────────────────────────────────
+  // ── Fetch emails from communications (PRIMARY source of truth) ────────────
+  // Customer name/email are resolved at render time via orderMap, so this fetch
+  // is decoupled from the `orders` prop — avoids re-fetches when parent re-renders.
   const loadEmails = useCallback(async () => {
     setLoadingEmails(true);
     const { data } = await supabase
-      .from("orders")
-      .select("id, confirmation_id, first_name, last_name, email, email_log")
-      .not("email_log", "is", null)
+      .from("communications")
+      .select("id, order_id, confirmation_id, type, slug, subject, body, email_to, status, created_at")
+      .eq("type", "email")
       .order("created_at", { ascending: false })
       .limit(300);
 
-    const flat: EmailFlatEntry[] = [];
-    for (const row of data ?? []) {
-      const log = (row.email_log ?? []) as Array<{ type: string; sentAt: string; to: string; success: boolean }>;
-      const name = [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email;
-      for (const entry of log) {
-        flat.push({
-          id: `${row.id}-${entry.type}-${entry.sentAt}`,
-          order_id: row.id,
-          confirmation_id: row.confirmation_id,
-          type: entry.type,
-          to: entry.to,
-          success: entry.success,
-          created_at: entry.sentAt,
-          customer_name: name,
-          customer_email: row.email,
-        });
-      }
-    }
-    flat.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const flat: EmailFlatEntry[] = (data ?? []).map((row) => ({
+      id: row.id as string,
+      order_id: (row.order_id as string | null) ?? null,
+      confirmation_id: (row.confirmation_id as string) ?? "",
+      type: ((row.slug as string) || (row.type as string)) ?? "email",
+      subject: (row.subject as string) ?? null,
+      body: (row.body as string) ?? null,
+      to: (row.email_to as string) ?? "",
+      success: (row.status as string) !== "failed",
+      created_at: row.created_at as string,
+      customer_name: "",   // resolved at render via orderMap
+      customer_email: "",  // resolved at render via orderMap
+    }));
     setEmailEntries(flat);
     setLoadingEmails(false);
   }, []);
@@ -230,17 +247,23 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
     );
   });
 
-  // Client-side search filter for emails
+  // Client-side search filter for emails (resolve name from orderMap at filter time)
   const filteredEmails = emailEntries.filter((e) => {
     const matchesType = emailTypeFilter === "all" || e.type === emailTypeFilter;
     if (!matchesType) return false;
     if (!search) return true;
     const q = search.toLowerCase();
+    const order = e.order_id ? orderMap.get(e.order_id) : null;
+    const name = order
+      ? [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email
+      : "";
     return (
-      e.customer_name.toLowerCase().includes(q) ||
-      e.customer_email.toLowerCase().includes(q) ||
+      name.toLowerCase().includes(q) ||
+      (order?.email ?? "").toLowerCase().includes(q) ||
       e.confirmation_id.toLowerCase().includes(q) ||
       e.to.toLowerCase().includes(q) ||
+      (e.subject ?? "").toLowerCase().includes(q) ||
+      (e.body ?? "").toLowerCase().includes(q) ||
       (EMAIL_TYPE_LABEL[e.type]?.label ?? e.type).toLowerCase().includes(q)
     );
   });
@@ -541,41 +564,60 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
               </div>
             ) : (
               <>
-                <div className="hidden md:grid grid-cols-[28px_160px_1fr_170px_90px_80px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                <div className="hidden md:grid grid-cols-[28px_150px_1fr_150px_90px_80px] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
                   <span></span>
-                  <span>Email Type</span>
+                  <span>Type</span>
+                  <span>Subject / Preview</span>
                   <span>Customer</span>
-                  <span>Sent To</span>
                   <span>Status</span>
                   <span>Time</span>
                 </div>
                 <div className="divide-y divide-gray-100">
                   {filteredEmails.map((entry) => {
-                    const cfg = EMAIL_TYPE_LABEL[entry.type] ?? { label: entry.type, icon: "ri-mail-line", color: "text-gray-500", bg: "bg-gray-50 border-gray-200" };
-                    const order = orderMap.get(entry.order_id);
+                    const cfg = EMAIL_TYPE_LABEL[entry.type] ?? { label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), icon: "ri-mail-line", color: "text-gray-500", bg: "bg-gray-50 border-gray-200" };
+                    const order = entry.order_id ? orderMap.get(entry.order_id) : null;
+                    const resolvedName = order
+                      ? ([order.first_name, order.last_name].filter(Boolean).join(" ") || order.email)
+                      : (entry.to || "Unknown");
+                    const subject = (entry.subject ?? "").trim();
+                    const preview = toPreview(entry.body, 140);
 
                     return (
                       <div key={entry.id}
-                        className="grid grid-cols-1 md:grid-cols-[28px_160px_1fr_170px_90px_80px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors">
+                        className="grid grid-cols-1 md:grid-cols-[28px_150px_1fr_150px_90px_80px] gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors">
                         <div className="hidden md:flex items-center justify-center">
                           <div className={`w-2 h-2 rounded-full ${entry.success ? "bg-[#3b6ea5]" : "bg-red-500"}`}></div>
                         </div>
                         <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border w-fit ${cfg.bg} ${cfg.color}`}>
                           <i className={`${cfg.icon} text-sm`}></i>
-                          {cfg.label}
+                          <span className="truncate max-w-[110px]">{cfg.label}</span>
                         </div>
+                        {/* Subject + preview + sent-to */}
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-800 truncate" title={subject || cfg.label}>
+                            {subject || cfg.label}
+                          </p>
+                          {preview ? (
+                            <p className="text-xs text-gray-500 truncate mt-0.5" title={preview}>{preview}</p>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic truncate mt-0.5">No preview available</p>
+                          )}
+                          <p className="text-[10px] text-gray-400 font-mono truncate mt-0.5">→ {entry.to}</p>
+                        </div>
+                        {/* Customer */}
                         {order ? (
                           <button type="button" onClick={() => onViewOrder(order)} className="text-left group cursor-pointer min-w-0">
-                            <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#3b6ea5] transition-colors">{entry.customer_name}</p>
+                            <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#3b6ea5] transition-colors">{resolvedName}</p>
                             <p className="text-xs text-gray-400 font-mono truncate">{entry.confirmation_id}</p>
                           </button>
                         ) : (
                           <div className="min-w-0">
-                            <p className="text-xs font-bold text-gray-800 truncate">{entry.customer_name}</p>
-                            <p className="text-xs text-gray-400 font-mono truncate">{entry.confirmation_id}</p>
+                            <p className="text-xs font-bold text-gray-800 truncate">{resolvedName}</p>
+                            {entry.confirmation_id && (
+                              <p className="text-xs text-gray-400 font-mono truncate">{entry.confirmation_id}</p>
+                            )}
                           </div>
                         )}
-                        <p className="text-xs text-gray-500 truncate font-mono">{entry.to}</p>
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold w-fit ${entry.success ? "bg-[#e8f0f9] text-[#3b6ea5]" : "bg-red-50 text-red-600"}`}>
                           <i className={entry.success ? "ri-checkbox-circle-fill" : "ri-close-circle-fill"} style={{ fontSize: "10px" }}></i>
                           {entry.success ? "Sent" : "Failed"}

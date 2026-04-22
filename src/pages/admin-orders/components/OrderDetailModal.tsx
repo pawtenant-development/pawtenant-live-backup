@@ -3205,19 +3205,6 @@ export default function OrderDetailModal({
                         <i className="ri-settings-3-line"></i>Order Management
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {/* Resend Confirmation */}
-                        <button
-                          type="button"
-                          onClick={handleResendConfirmation}
-                          disabled={confirmResending}
-                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-600 bg-orange-50/40 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-60"
-                        >
-                          {confirmResending
-                            ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
-                            : <><i className="ri-mail-check-line"></i>Resend Confirmation</>
-                          }
-                        </button>
-
                         {/* Mark Under Review */}
                         <button
                           type="button"
@@ -3227,8 +3214,6 @@ export default function OrderDetailModal({
                         >
                           <i className="ri-eye-line"></i>Mark Under Review
                         </button>
-
-
                       </div>
                     </div>
                     )}
@@ -3277,34 +3262,6 @@ export default function OrderDetailModal({
                           );
                         })()}
 
-                        {/* Resend Patient Email — only when provider has docs */}
-                        {(() => {
-                          const hasDoc = hasProviderDocs;
-                          return (
-                            <div className="relative group">
-                              <button
-                                type="button"
-                                onClick={handleResendEmail}
-                                disabled={emailSending || !hasDoc}
-                                className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-semibold transition-colors ${
-                                  hasDoc
-                                    ? "border-violet-200 text-violet-700 hover:bg-violet-50 cursor-pointer"
-                                    : "border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed opacity-60"
-                                } disabled:opacity-60`}
-                              >
-                                {emailSending
-                                  ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
-                                  : <><i className="ri-mail-send-line"></i>Resend Patient Email{!hasDoc && <i className="ri-lock-2-line text-xs ml-1"></i>}</>
-                                }
-                              </button>
-                              {!hasDoc && (
-                                <div className="absolute bottom-full left-0 mb-1.5 w-56 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
-                                  Provider must upload completed letter before sending patient notification
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
                       </div>
                     </div>
 
@@ -3937,89 +3894,24 @@ export default function OrderDetailModal({
                     </div>
                   )}
 
-                  {/* ── Email Notification History ── */}
-                  {(() => {
-                    const emailLog = order.email_log ?? [];
-                    const docRelatedEmails = emailLog.filter((e) =>
-                      e.type === "letter_ready" ||
-                      e.type === "order_confirmation" ||
-                      e.type === "status_completed" ||
-                      e.type === "payment_receipt"
-                    );
-                    return (
-                      <div className="mt-2">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-lg">
-                              <i className="ri-mail-check-line text-[#3b6ea5] text-sm"></i>
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-gray-700">Email Notification History</p>
-                              <p className="text-xs text-gray-400">Emails sent to this customer for this order</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={loadEmailLog}
-                            disabled={emailLogLoading}
-                            className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-gray-500 text-xs font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
-                          >
-                            <i className={emailLogLoading ? "ri-loader-4-line animate-spin" : "ri-refresh-line"}></i>
-                            {emailLogLoading ? "..." : "Refresh"}
-                          </button>
-                        </div>
-
-                        {emailLog.length === 0 ? (
-                          <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl px-4 py-5 text-center">
-                            <p className="text-xs text-gray-400">No emails logged yet for this order.</p>
-                          </div>
-                        ) : (
-                          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-                            {emailLog.map((entry, idx) => {
-                              const cfg = EMAIL_TYPE_CONFIG[entry.type] ?? {
-                                label: entry.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-                                icon: "ri-mail-line",
-                                color: "text-gray-600 bg-gray-50 border-gray-200",
-                                failColor: "text-red-600 bg-red-50 border-red-200",
-                              };
-                              const isDocEmail = docRelatedEmails.some((e) => e.sentAt === entry.sentAt && e.type === entry.type);
-                              return (
-                                <div
-                                  key={idx}
-                                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 ${!entry.success ? "bg-red-50/30" : isDocEmail ? "bg-[#f8fffe]" : ""}`}
-                                >
-                                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${entry.success ? (isDocEmail ? "bg-[#dbeafe]" : "bg-gray-100") : "bg-red-100"}`}>
-                                    <i className={`${entry.success ? cfg.icon : "ri-mail-close-line"} ${entry.success ? (isDocEmail ? "text-[#3b6ea5]" : "text-gray-500") : "text-red-500"} text-xs`}></i>
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-semibold text-gray-800 truncate">{cfg.label}</p>
-                                    <p className="text-xs text-gray-400">{fmtEmailTime(entry.sentAt)} → {entry.to}</p>
-                                  </div>
-                                  <div className="flex items-center gap-2 flex-shrink-0">
-                                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${entry.success ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
-                                      {entry.success
-                                        ? <><i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>Delivered</>
-                                        : <><i className="ri-close-circle-fill" style={{ fontSize: "9px" }}></i>Failed</>
-                                      }
-                                    </span>
-                                    <a
-                                      href="https://resend.com/emails"
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      title="View in Resend dashboard"
-                                      className="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-violet-500 transition-colors cursor-pointer"
-                                    >
-                                      <i className="ri-external-link-line text-xs"></i>
-                                    </a>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                  {/* Email history lives in the Comms tab — single source of truth */}
+                  <div className="mt-2 flex items-center justify-between gap-3 px-4 py-3 bg-[#f8fafc] border border-gray-100 rounded-xl">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0">
+                        <i className="ri-chat-3-line text-[#3b6ea5] text-sm"></i>
                       </div>
-                    );
-                  })()}
+                      <p className="text-xs text-gray-500 truncate">
+                        Email &amp; SMS history moved to the <strong className="text-gray-700">Comms</strong> tab.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSection("comms")}
+                      className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-white cursor-pointer transition-colors"
+                    >
+                      <i className="ri-arrow-right-line"></i>Open Comms
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

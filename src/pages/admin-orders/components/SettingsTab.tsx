@@ -989,6 +989,24 @@ function CommsTemplatesPanel() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
   const [dbLoaded, setDbLoaded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // Test send state
+  const [testEmail, setTestEmail] = useState("");
+  const [testSending, setTestSending] = useState(false);
+  const [testStatus, setTestStatus] = useState<"idle" | "sent" | "error">("idle");
+  const [testError, setTestError] = useState("");
+  const [testCooldown, setTestCooldown] = useState(0);
+
+  // Tick cooldown down each second; reset status to idle when it hits 0
+  useEffect(() => {
+    if (testCooldown <= 0) return;
+    const t = setTimeout(() => {
+      setTestCooldown((c) => {
+        if (c <= 1) { setTestStatus("idle"); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [testCooldown]);
 
   // Load all templates from DB on mount, split by channel
   useEffect(() => {
@@ -1102,6 +1120,43 @@ function CommsTemplatesPanel() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleSendTest = async () => {
+    const email = testEmail.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setTestError("Enter a valid email address");
+      setTestStatus("error");
+      return;
+    }
+    setTestSending(true);
+    setTestStatus("idle");
+    setTestError("");
+    try {
+      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-template-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          to: email,
+          subject: selectedEmail.subject,
+          html,
+          template_id: selectedEmail.id,
+          template_label: selectedEmail.label,
+        }),
+      });
+      const data = await res.json() as { ok: boolean; error?: string };
+      if (!data.ok) throw new Error(data.error ?? "Send failed");
+      setTestStatus("sent");
+      setTestCooldown(10);
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : "Unknown error");
+      setTestStatus("error");
+      setTimeout(() => setTestStatus("idle"), 6000);
+    } finally {
+      setTestSending(false);
+    }
   };
 
   const resetToDefaults = async () => {
@@ -1323,6 +1378,46 @@ function CommsTemplatesPanel() {
                     Preview only — &#123;name&#125; replaced with &ldquo;{previewName}&rdquo; &middot; No email is sent
                   </p>
                 </div>
+
+                {/* ── Test Send ── */}
+                <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/40 flex items-center gap-2 flex-wrap">
+                  <i className="ri-send-plane-line text-[#3b6ea5] text-sm flex-shrink-0"></i>
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex-shrink-0">Test Send</span>
+                  <input
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => { setTestEmail(e.target.value); setTestStatus("idle"); setTestError(""); }}
+                    placeholder="admin@example.com"
+                    className="flex-1 min-w-0 max-w-[220px] px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendTest}
+                    disabled={testSending || !testEmail.trim() || testCooldown > 0}
+                    className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
+                      testStatus === "sent" ? "bg-green-100 text-green-700" :
+                      testStatus === "error" ? "bg-red-100 text-red-600" :
+                      "bg-[#3b6ea5] text-white hover:bg-[#2d5a8e]"
+                    }`}
+                  >
+                    {testSending
+                      ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                      : testStatus === "sent"
+                        ? <><i className="ri-checkbox-circle-line"></i>Sent!</>
+                        : testStatus === "error"
+                          ? <><i className="ri-error-warning-line"></i>Failed</>
+                          : <><i className="ri-send-plane-line"></i>Send Test</>}
+                  </button>
+                  {testStatus === "error" && testError && (
+                    <span className="text-[10px] text-red-500 font-semibold truncate max-w-[200px]">{testError}</span>
+                  )}
+                  {testStatus === "sent" && (
+                    <span className="text-[10px] text-green-600 font-semibold">
+                      Sent.{testCooldown > 0 ? ` You can send again in ${testCooldown}s` : ""}
+                    </span>
+                  )}
+                </div>
+
                 {showRaw ? (
                   <div className="flex-1 overflow-auto bg-gray-900 p-4">
                     <pre className="text-[10px] text-green-400 font-mono whitespace-pre-wrap break-all leading-relaxed">{html}</pre>
