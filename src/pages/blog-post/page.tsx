@@ -7,7 +7,7 @@ import { blogPostsExtended } from "../../mocks/blogPostsExtended";
 import { blogPostsExtended2 } from "../../mocks/blogPostsExtended2";
 import { blogPostsVerification } from "../../mocks/blogPostsVerification";
 import { usStates } from "../../mocks/states";
-import { detectStateFromSlug } from "../../mocks/stateBlogMap";
+import { detectStateFromSlug, STATE_BLOG_MAP } from "../../mocks/stateBlogMap";
 
 const allBlogPosts: BlogPost[] = [...blogPostsVerification, ...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
 
@@ -107,6 +107,63 @@ const sidebarStateLinks = [
   { label: "ESA Letter Kentucky", to: "/esa-letter/kentucky" },
   { label: "ESA Letter Washington DC", to: "/esa-letter/washington-dc" },
 ];
+
+// ── Related States resolver ──────────────────────────────────────────────────
+// Returns up to 6 states relevant to the current blog post.
+// Priority: 1) the post's own state cluster, 2) states mentioned in the post title/tags,
+// 3) geographically adjacent states from the same region.
+const REGION_GROUPS: Record<string, string[]> = {
+  northeast: ["new-york", "new-jersey", "connecticut", "massachusetts", "rhode-island", "vermont", "new-hampshire", "maine", "delaware", "pennsylvania", "maryland", "washington-dc"],
+  southeast: ["florida", "georgia", "north-carolina", "south-carolina", "virginia", "tennessee", "alabama", "mississippi", "kentucky", "west-virginia", "louisiana", "arkansas"],
+  midwest: ["illinois", "ohio", "michigan", "indiana", "wisconsin", "minnesota", "iowa", "missouri", "kansas", "nebraska", "north-dakota", "south-dakota"],
+  southwest: ["texas", "arizona", "new-mexico", "oklahoma", "nevada"],
+  west: ["california", "washington", "oregon", "colorado", "utah", "idaho", "montana", "wyoming", "alaska", "hawaii"],
+};
+
+function getRelatedStates(postSlug: string, postTags: string[], postTitle: string, primaryStateSlug?: string): Array<{ slug: string; name: string }> {
+  const seen = new Set<string>();
+  const results: Array<{ slug: string; name: string }> = [];
+
+  const addState = (slug: string) => {
+    if (seen.has(slug)) return;
+    const state = usStates.find((s) => s.slug === slug);
+    if (!state) return;
+    seen.add(slug);
+    results.push({ slug, name: state.name });
+  };
+
+  // 1. Primary state first
+  if (primaryStateSlug) addState(primaryStateSlug);
+
+  // 2. States mentioned in tags or title
+  const searchText = `${postTitle} ${postTags.join(" ")}`.toLowerCase();
+  for (const s of usStates) {
+    if (searchText.includes(s.name.toLowerCase()) || searchText.includes(s.slug)) {
+      addState(s.slug);
+    }
+  }
+
+  // 3. Fill remaining slots with regional neighbors
+  if (primaryStateSlug) {
+    const region = Object.entries(REGION_GROUPS).find(([, slugs]) => slugs.includes(primaryStateSlug));
+    if (region) {
+      for (const slug of region[1]) {
+        if (results.length >= 6) break;
+        addState(slug);
+      }
+    }
+  }
+
+  // 4. If still under 6, pull from states that have blog map entries
+  if (results.length < 6) {
+    for (const entry of STATE_BLOG_MAP) {
+      if (results.length >= 6) break;
+      addState(entry.stateSlug);
+    }
+  }
+
+  return results.slice(0, 6);
+}
 
 function InArticleCTA({ isPSD = false }: { isPSD?: boolean }) {
   return (
@@ -353,6 +410,52 @@ export default function BlogPostPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Related States — two-way internal linking loop */}
+              {(() => {
+                const relatedStates = getRelatedStates(
+                  slug || "",
+                  post.tags,
+                  post.title,
+                  stateEntry?.stateSlug
+                );
+                if (relatedStates.length === 0) return null;
+                return (
+                  <div className="mt-10 pt-8 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900">
+                          <a href="/explore-esa-letters-all-states" className="hover:text-orange-600 transition-colors">
+                            ESA Letters by State
+                          </a>
+                        </h4>
+                        <p className="text-xs text-gray-400 mt-0.5">Get state-specific ESA housing guidance</p>
+                      </div>
+                      <Link
+                        to="/explore-esa-letters-all-states"
+                        className="whitespace-nowrap text-xs text-orange-500 hover:text-orange-700 font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        All states
+                        <i className="ri-arrow-right-s-line"></i>
+                      </Link>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {relatedStates.map((s) => (
+                        <Link
+                          key={s.slug}
+                          to={`/esa-letter/${s.slug}`}
+                          className="group flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-100 bg-[#fdf8f3] hover:border-orange-200 hover:bg-orange-50 transition-colors cursor-pointer"
+                        >
+                          <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                            <i className="ri-map-pin-2-line text-orange-400 text-sm group-hover:text-orange-500"></i>
+                          </div>
+                          <span className="text-xs font-medium text-gray-700 group-hover:text-orange-700 leading-tight">{s.name}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Cross-link CTA to verifiable-esa-letters */}
               {'ctaLink' in post && post.ctaLink && (

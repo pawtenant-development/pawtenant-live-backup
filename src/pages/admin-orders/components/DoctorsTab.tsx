@@ -342,17 +342,13 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-base font-extrabold text-gray-900">Provider Roster</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Click &quot;Manage&quot; on any provider to view details and take actions.</p>
+          <p className="text-xs text-gray-500 mt-0.5">Providers are added via application approval. Click &quot;Manage&quot; to view details.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleExportCSV} disabled={doctors.length === 0}
             title="Export provider roster with NPI numbers and state license numbers"
             className="whitespace-nowrap flex items-center gap-2 px-3 py-2 border border-[#3b6ea5] text-[#3b6ea5] bg-[#e8f0f9] text-sm font-bold rounded-xl hover:bg-[#dbeafe] disabled:opacity-50 cursor-pointer transition-colors">
             <i className="ri-download-2-line"></i><span className="hidden sm:inline">Export NPI + Licenses</span>
-          </button>
-          <button type="button" onClick={() => setShowCreate(true)}
-            className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-xl hover:bg-[#2d5a8e] cursor-pointer transition-colors">
-            <i className="ri-user-add-line"></i>Add Provider
           </button>
         </div>
       </div>

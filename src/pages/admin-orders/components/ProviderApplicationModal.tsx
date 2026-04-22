@@ -7,6 +7,7 @@ interface ProviderApplication {
   last_name: string;
   email: string;
   phone: string | null;
+  npi: string | null;
   license_types: string | null;
   license_number: string | null;
   license_state: string | null;
@@ -40,19 +41,6 @@ const STATE_NAME_TO_CODE: Record<string, string> = {
   "Washington DC":"DC","District of Columbia":"DC",
 };
 
-const STATE_CODE_TO_NAME: Record<string, string> = {
-  AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",
-  CO:"Colorado",CT:"Connecticut",DC:"Washington DC",DE:"Delaware",FL:"Florida",
-  GA:"Georgia",HI:"Hawaii",IA:"Iowa",ID:"Idaho",IL:"Illinois",IN:"Indiana",
-  KS:"Kansas",KY:"Kentucky",LA:"Louisiana",MA:"Massachusetts",MD:"Maryland",
-  ME:"Maine",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",
-  MT:"Montana",NC:"North Carolina",ND:"North Dakota",NE:"Nebraska",NH:"New Hampshire",
-  NJ:"New Jersey",NM:"New Mexico",NV:"Nevada",NY:"New York",OH:"Ohio",
-  OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",
-  SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VA:"Virginia",
-  VT:"Vermont",WA:"Washington",WI:"Wisconsin",WV:"West Virginia",WY:"Wyoming",
-};
-
 const ALL_STATE_CODES = [
   "AL","AK","AZ","AR","CA","CO","CT","DC","DE","FL","GA","HI","IA","ID","IL","IN",
   "KS","KY","LA","MA","MD","ME","MI","MN","MS","MO","MT","NC","ND","NE","NH","NJ",
@@ -70,22 +58,6 @@ function parseStatesToCodes(licenseState: string | null, additionalStates: strin
   if (licenseState) addName(licenseState);
   if (additionalStates) additionalStates.split(",").forEach(addName);
   return Array.from(codes);
-}
-
-function generateHighlights(licenseTypes: string | null, specializations: string | null): string[] {
-  const highlights: string[] = [];
-  if (licenseTypes) {
-    const first = licenseTypes.split(",")[0]?.trim();
-    const match = first?.match(/\(([^)]+)\)/);
-    if (match) highlights.push(match[1]);
-    else if (first) highlights.push(first.split(" ").slice(-1)[0] ?? first);
-  }
-  if (specializations) {
-    const specs = specializations.split(",").slice(0, 2).map((s) => s.trim());
-    highlights.push(...specs);
-  }
-  highlights.push("ESA Letters", "Telehealth Evaluations");
-  return highlights.slice(0, 5);
 }
 
 interface Props {
@@ -131,51 +103,40 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
     setError("");
     setProcessing(true);
 
-    const slug = `${application.first_name.toLowerCase().replace(/\s+/g,"-")}-${application.last_name.toLowerCase().replace(/\s+/g,"-")}-${application.id.substring(0,6)}`;
-    const highlights = generateHighlights(application.license_types, application.specializations);
-    const statesArray = Array.from(selectedStates); // codes like ["CA", "TX"]
-    // Convert codes to full names for doctor_contacts (consistent with CreateDoctorModal)
-    const statesFullNames = statesArray.map((code) => STATE_CODE_TO_NAME[code] ?? code);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("approve-provider-application", {
+        body: { applicationId: application.id },
+      });
 
-    const [providerRes, contactRes, appRes] = await Promise.all([
-      supabase.from("approved_providers").insert({
-        application_id: application.id,
-        slug,
-        full_name: approvalForm.full_name,
-        title: approvalForm.title || null,
-        role: approvalForm.role || null,
-        bio: approvalForm.bio || null,
-        email: application.email,
-        phone: application.phone ?? null,
-        photo_url: approvalForm.photo_url || null,
-        states: statesArray,
-        highlights,
-        verification_url: approvalForm.verification_url || null,
-        is_active: true,
-      }),
-      supabase.from("doctor_contacts").insert({
-        full_name: approvalForm.full_name,
-        email: application.email,
-        phone: application.phone ?? null,
-        licensed_states: statesFullNames,
-        is_active: true,
-        photo_url: approvalForm.photo_url || null,
-      }),
-      supabase.from("provider_applications").update({
-        status: "approved",
-        reviewed_at: new Date().toISOString(),
-      }).eq("id", application.id),
-    ]);
+      setProcessing(false);
 
-    setProcessing(false);
+      if (fnErr) {
+        setError(`Approval failed: ${fnErr.message}`);
+        return;
+      }
 
-    if (providerRes.error || contactRes.error || appRes.error) {
-      const msg = providerRes.error?.message ?? contactRes.error?.message ?? appRes.error?.message ?? "Unknown error";
-      setError(`Approval failed: ${msg}`);
-      return;
+      const result = (data ?? null) as {
+        ok?: boolean;
+        error?: string;
+        already_existed?: boolean;
+        welcome_email_sent?: boolean;
+      } | null;
+
+      if (!result || result.ok === false) {
+        setError(`Approval failed: ${result?.error ?? "Unknown error"}`);
+        return;
+      }
+
+      const name = approvalForm.full_name;
+      const msg = result.already_existed
+        ? `${name} already had a provider account — invite email resent.`
+        : `${name} approved. Provider account created${result.welcome_email_sent === false ? "" : " and invite email sent"}.`;
+      onDone(msg);
+    } catch (err) {
+      setProcessing(false);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`Approval failed: ${message}`);
     }
-
-    onDone(`${approvalForm.full_name} approved and added to the provider network!`);
   };
 
   const handleReject = async () => {
@@ -195,6 +156,15 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
       <span className="text-xs text-gray-700 font-medium text-right flex-1">{value}</span>
     </div>
   ) : null;
+
+  const fieldAlways = (label: string, value: string | null | undefined, fallback = "Not provided") => (
+    <div className="flex items-start justify-between gap-4 py-2 border-b border-gray-50 last:border-b-0">
+      <span className="text-xs text-gray-400 flex-shrink-0 w-36">{label}</span>
+      <span className={`text-xs text-right flex-1 ${value ? "text-gray-700 font-medium" : "text-gray-400 italic"}`}>
+        {value || fallback}
+      </span>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -241,6 +211,7 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
                 {field("Phone", application.phone)}
                 {field("License Type(s)", application.license_types)}
                 {field("License #", application.license_number)}
+                {fieldAlways("NPI #", application.npi)}
                 {field("Primary State", application.license_state)}
                 {field("Additional States", application.additional_states)}
                 {field("Experience", application.years_experience)}

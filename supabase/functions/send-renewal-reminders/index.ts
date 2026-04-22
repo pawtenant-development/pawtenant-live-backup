@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/reserveEmailSend.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -10,6 +11,11 @@ const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e6353
 const HEADER_BG = "#4a9e8a";
 const ACCENT = "#1a5c4f";
 const ORANGE = "#f97316";
+
+const RENEWAL_SLUG = "renewal_30day";
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
+const SOFT_TIME_BUDGET_MS = 50_000; // edge function soft cap — stop before hard timeout
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -158,62 +164,182 @@ function buildRenewalReminderEmail(firstName: string, expiryDate: string, daysLe
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const startedAt = Date.now();
+
   try {
+    // ── Parse optional JSON body ────────────────────────────────────────────
+    let dryRun = false;
+    let limit = DEFAULT_LIMIT;
+    if (req.method === "POST") {
+      try {
+        const body = await req.json() as { dry_run?: boolean; limit?: number };
+        if (typeof body.dry_run === "boolean") dryRun = body.dry_run;
+        if (typeof body.limit === "number" && body.limit > 0) {
+          limit = Math.min(Math.floor(body.limit), MAX_LIMIT);
+        }
+      } catch { /* empty body → defaults */ }
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Eligibility window: letter sent 330–340 days ago (10-day buffer) ────
+    const now = Date.now();
+    const windowStart = new Date(now - 340 * 24 * 60 * 60 * 1000).toISOString(); // oldest eligible
+    const windowEnd = new Date(now - 330 * 24 * 60 * 60 * 1000).toISOString();   // newest eligible
 
     const { data: orders, error } = await supabase
       .from("orders")
       .select("id, email, first_name, last_name, patient_notification_sent_at, email_log, plan_type")
       .eq("status", "completed")
       .not("patient_notification_sent_at", "is", null)
-      .gte("patient_notification_sent_at", new Date(Date.now() - 336 * 24 * 60 * 60 * 1000).toISOString())
-      .lte("patient_notification_sent_at", new Date(Date.now() - 334 * 24 * 60 * 60 * 1000).toISOString());
+      .gte("patient_notification_sent_at", windowStart)
+      .lte("patient_notification_sent_at", windowEnd)
+      .limit(limit);
 
     if (error) throw new Error(`DB query error: ${error.message}`);
 
-    if (!orders || orders.length === 0) {
-      return new Response(JSON.stringify({ ok: true, message: "No renewal reminders to send today", sent: 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const eligible = (orders ?? []) as Order[];
+
+    // ── Dry run short-circuit ───────────────────────────────────────────────
+    if (dryRun) {
+      return new Response(JSON.stringify({
+        ok: true,
+        dry_run: true,
+        processed: eligible.length,
+        sent: 0,
+        skipped: 0,
+        errors: 0,
+        eligible: eligible.map((o) => ({
+          id: o.id,
+          email: o.email,
+          first_name: o.first_name,
+          patient_notification_sent_at: o.patient_notification_sent_at,
+        })),
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (eligible.length === 0) {
+      return new Response(JSON.stringify({
+        ok: true,
+        dry_run: false,
+        processed: 0, sent: 0, skipped: 0, errors: 0,
+        message: "No renewal reminders to send",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    let processed = 0;
+    let sent = 0;
+    let skipped = 0;
+    let errors = 0;
     const results: { email: string; status: string; error?: string }[] = [];
 
-    for (const order of orders as Order[]) {
-      try {
-        const emailLog = (order.email_log as Array<{ type: string }>) ?? [];
-        const alreadySent = emailLog.some((entry) => entry.type === "renewal_reminder_30day");
-        if (alreadySent) { results.push({ email: order.email, status: "skipped_already_sent" }); continue; }
+    for (const order of eligible) {
+      // Soft time guard — stop processing if close to edge function timeout.
+      if (Date.now() - startedAt > SOFT_TIME_BUDGET_MS) {
+        console.warn(`[send-renewal-reminders] time budget exceeded, stopping after ${processed} of ${eligible.length}`);
+        break;
+      }
+      if (processed >= limit) break;
 
+      processed++;
+
+      try {
+        if (!order.email) {
+          skipped++;
+          continue;
+        }
+
+        // ── Compute email content before reservation ────────────────────────
         const letterSentDate = new Date(order.patient_notification_sent_at);
         const expiryDate = new Date(letterSentDate.getTime() + 365 * 24 * 60 * 60 * 1000);
-        const daysLeft = Math.round((expiryDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+        const daysLeft = Math.max(0, Math.round((expiryDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
         const formattedExpiry = expiryDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
         const displayName = order.first_name?.trim() || "there";
+        const subject = `Your ESA Letter Expires in ${daysLeft} Days — Renew Now`;
+        const html = buildRenewalReminderEmail(displayName, formattedExpiry, daysLeft);
 
+        // ── Phase 1: reserve dedupe_key (atomic, DB-level block) ────────────
+        const dedupeKey = `${order.id}:${RENEWAL_SLUG}`;
+        const reservation = await reserveEmailSend({
+          supabase,
+          orderId: order.id,
+          to: order.email,
+          from: FROM_EMAIL,
+          subject,
+          slug: RENEWAL_SLUG,
+          dedupeKey,
+          templateSource: "hardcoded",
+          sentBy: "cron:send-renewal-reminders",
+        });
+
+        if (!reservation.proceed) {
+          skipped++;
+          results.push({ email: order.email, status: "skipped_duplicate" });
+          continue;
+        }
+
+        // ── Phase 2: send via Resend ────────────────────────────────────────
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ from: FROM_EMAIL, to: [order.email], subject: `Your ESA Letter Expires in ${daysLeft} Days — Renew Now`, html: buildRenewalReminderEmail(displayName, formattedExpiry, daysLeft) }),
+          body: JSON.stringify({ from: FROM_EMAIL, to: [order.email], subject, html }),
         });
 
-        const emailResult = await emailRes.json() as { id?: string; error?: string };
-        if (!emailRes.ok || emailResult.error) throw new Error(emailResult.error ?? "Resend send failed");
+        const emailResult = await emailRes.json() as { id?: string; error?: string | Record<string, unknown> };
+        const sendOk = emailRes.ok && !emailResult.error;
+        const errMsg = !sendOk
+          ? (typeof emailResult.error === "string" ? emailResult.error : JSON.stringify(emailResult.error ?? `Resend ${emailRes.status}`))
+          : null;
 
-        const newLogEntry = { type: "renewal_reminder_30day", sentAt: new Date().toISOString(), to: order.email, daysLeft, expiryDate: expiryDate.toISOString(), messageId: emailResult.id, success: true };
+        // ── Phase 3: finalize communications row ───────────────────────────
+        await finalizeEmailSend(supabase, reservation.rowId, {
+          success: sendOk,
+          body: sendOk ? `[renewal_30day] ${subject}` : null,
+          resendId: emailResult.id ?? null,
+          errorMessage: errMsg,
+        });
+
+        if (!sendOk) throw new Error(errMsg ?? "Resend send failed");
+
+        // ── Back-compat: append to orders.email_log ────────────────────────
+        const emailLog = (order.email_log as Array<Record<string, unknown>>) ?? [];
+        const newLogEntry = {
+          type: "renewal_reminder_30day",
+          sentAt: new Date().toISOString(),
+          to: order.email,
+          daysLeft,
+          expiryDate: expiryDate.toISOString(),
+          messageId: emailResult.id,
+          success: true,
+        };
         await supabase.from("orders").update({ email_log: [...emailLog, newLogEntry] }).eq("id", order.id);
+
+        sent++;
         results.push({ email: order.email, status: "sent" });
       } catch (err: unknown) {
+        errors++;
         const msg = err instanceof Error ? err.message : "Unknown error";
+        console.error(`[send-renewal-reminders] order=${order.id} failed:`, msg);
         results.push({ email: order.email, status: "failed", error: msg });
+        // continue loop — never fail the whole batch on one order
       }
     }
 
-    const sentCount = results.filter((r) => r.status === "sent").length;
-    const skippedCount = results.filter((r) => r.status === "skipped_already_sent").length;
-    const failedCount = results.filter((r) => r.status === "failed").length;
-
-    return new Response(JSON.stringify({ ok: true, summary: { sent: sentCount, skipped: skippedCount, failed: failedCount }, results }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({
+      ok: true,
+      dry_run: false,
+      processed,
+      sent,
+      skipped,
+      errors,
+      results,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new Response(JSON.stringify({ ok: false, error: message }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 });
+    console.error("[send-renewal-reminders] fatal:", message);
+    return new Response(JSON.stringify({ ok: false, error: message, processed: 0, sent: 0, skipped: 0, errors: 1 }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+    });
   }
 });

@@ -14,11 +14,23 @@ export default function DoctorsSection() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // Merge static + dynamic, filter deactivated
-  const allDoctors: Doctor[] = [
-    ...DOCTORS.filter((d) => !deactivated.has(d.email.toLowerCase())),
-    ...dynamicDoctors.filter((d) => !deactivated.has(d.email.toLowerCase())),
-  ];
+  const byEmail = new Map<string, Doctor>();
+
+  for (const d of DOCTORS) {
+    const key = d.email.trim().toLowerCase();
+    if (!byEmail.has(key)) {
+      byEmail.set(key, d);
+    }
+  }
+
+  for (const d of dynamicDoctors) {
+    const key = d.email.trim().toLowerCase();
+    byEmail.set(key, d); // DB overrides static
+  }
+
+  const allDoctors: Doctor[] = Array.from(byEmail.values()).filter(
+    (d) => !deactivated.has(d.email.trim().toLowerCase())
+  );
 
   const checkScroll = () => {
     const el = scrollRef.current;

@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -12,9 +13,7 @@ const FALLBACK_INTERNAL_EMAIL = "eservices.dm@gmail.com";
 const COMPANY_NAME = "PawTenant";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
-const SITE_URL = Deno.env.get("SITE_URL") ?? `https://${COMPANY_DOMAIN}`;
-const PORTAL_URL = `${SITE_URL}/my-orders`;
-const ADMIN_ORDERS_URL = `${SITE_URL}/admin-orders`;
+const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 
@@ -47,7 +46,7 @@ async function getAdminNotifRecipients(notificationKey: string): Promise<{ enabl
   }
 }
 
-async function sendViaResend(opts: { to: string; subject: string; html: string; tags?: Array<{ name: string; value: string }>; }): Promise<{ sent: boolean; error?: string }> {
+async function sendViaResend(opts: { to: string; subject: string; html: string; tags?: Array<{ name: string; value: string }>; }): Promise<{ sent: boolean; error?: string; resendId?: string | null }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) return { sent: false, error: "RESEND_API_KEY not set" };
   try {
@@ -57,30 +56,21 @@ async function sendViaResend(opts: { to: string; subject: string; html: string; 
       body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html, ...(opts.tags ? { tags: opts.tags } : {}) }),
     });
     if (!res.ok) { const errBody = await res.text(); return { sent: false, error: `Resend ${res.status}: ${errBody}` }; }
-    return { sent: true };
+    const body = await res.json().catch(() => ({} as Record<string, unknown>));
+    return { sent: true, resendId: (body as { id?: string }).id ?? null };
   } catch (err) { return { sent: false, error: err instanceof Error ? err.message : String(err) }; }
-}
-
-// Send to multiple recipients — returns true if at least one succeeded
-async function sendViaResendMulti(opts: { to: string[]; subject: string; html: string; tags?: Array<{ name: string; value: string }>; }): Promise<{ sent: boolean; sentCount: number; error?: string }> {
-  if (opts.to.length === 0) return { sent: false, sentCount: 0, error: "No recipients" };
-  const results = await Promise.allSettled(
-    opts.to.map((recipient) => sendViaResend({ ...opts, to: recipient }))
-  );
-  const sentCount = results.filter((r) => r.status === "fulfilled" && r.value.sent).length;
-  return { sent: sentCount > 0, sentCount };
 }
 
 function buildPaymentReceiptHtml(opts: { firstName: string; confirmationId: string; amountFormatted: string; paymentIntentId: string; paymentMethod: string; receiptUrl: string; paidAt: string; }): string {
   const methodLabel: Record<string, string> = { card: "Credit / Debit Card", klarna: "Klarna (Pay in 4)", qr: "QR Code / Mobile Pay", subscription: "Subscription (Annual)" };
   const method = methodLabel[opts.paymentMethod] ?? opts.paymentMethod ?? "Card";
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:560px;width:100%;"><tr><td style="background:#0f172a;padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" width="140" alt="${COMPANY_NAME}" style="display:block;margin:0 auto 12px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.12);color:#94a3b8;padding:4px 14px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px;">PAYMENT RECEIPT</div><p style="margin:0;font-size:40px;font-weight:900;color:#ffffff;letter-spacing:-0.02em;">${opts.amountFormatted}</p><p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">Payment received &mdash; ${opts.paidAt}</p></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.6;">Hi <strong>${opts.firstName || "there"}</strong>, thank you! Your payment has been processed successfully and your ESA consultation is now active.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 14px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Transaction Details</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;width:150px;vertical-align:top;border-bottom:1px solid #f1f5f9;">Amount Charged</td><td style="padding:7px 0;font-size:14px;font-weight:800;color:#0f172a;border-bottom:1px solid #f1f5f9;">${opts.amountFormatted}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;border-bottom:1px solid #f1f5f9;">Order ID</td><td style="padding:7px 0;font-size:13px;font-weight:600;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;">${opts.confirmationId}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;border-bottom:1px solid #f1f5f9;">Payment Method</td><td style="padding:7px 0;font-size:13px;font-weight:600;color:#1e293b;border-bottom:1px solid #f1f5f9;">${method}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;border-bottom:1px solid #f1f5f9;">Transaction ID</td><td style="padding:7px 0;font-size:11px;font-weight:500;color:#6b7280;font-family:monospace;border-bottom:1px solid #f1f5f9;">${opts.paymentIntentId}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;">Status</td><td style="padding:7px 0;"><span style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#15803d;font-size:12px;font-weight:700;padding:3px 10px;border-radius:99px;">&#10003; Paid</span></td></tr></table></td></tr></table><table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td style="padding-right:8px;width:50%;"><a href="${PORTAL_URL}" style="display:block;text-align:center;background:#1a5c4f;color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;padding:12px 16px;border-radius:8px;">Track My Order &rarr;</a></td><td style="padding-left:8px;width:50%;">${opts.receiptUrl ? `<a href="${opts.receiptUrl}" style="display:block;text-align:center;background:#f8fafc;color:#374151;font-size:13px;font-weight:700;text-decoration:none;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;">Stripe Receipt &rarr;</a>` : `<span style="display:block;text-align:center;background:#f8fafc;color:#94a3b8;font-size:13px;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;">Receipt Loading</span>`}</td></tr></table><p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;text-align:center;">Keep this email as your payment record. If you have questions, reply here or email <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p></td></tr><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #f1f5f9;background:#f8fafc;"><p style="margin:0;font-size:11px;color:#9ca3af;">${COMPANY_NAME} &nbsp;&middot;&nbsp; ESA Consultation &nbsp;&middot;&nbsp; <a href="${SITE_URL}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p></td></tr></table></td></tr></table></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:560px;width:100%;"><tr><td style="background:#0f172a;padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" width="140" alt="${COMPANY_NAME}" style="display:block;margin:0 auto 12px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.12);color:#94a3b8;padding:4px 14px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px;">PAYMENT RECEIPT</div><p style="margin:0;font-size:40px;font-weight:900;color:#ffffff;letter-spacing:-0.02em;">${opts.amountFormatted}</p><p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">Payment received &mdash; ${opts.paidAt}</p></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.6;">Hi <strong>${opts.firstName || "there"}</strong>, thank you! Your payment has been processed successfully and your ESA consultation is now active.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 14px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Transaction Details</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;width:150px;vertical-align:top;border-bottom:1px solid #f1f5f9;">Amount Charged</td><td style="padding:7px 0;font-size:14px;font-weight:800;color:#0f172a;border-bottom:1px solid #f1f5f9;">${opts.amountFormatted}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;border-bottom:1px solid #f1f5f9;">Order ID</td><td style="padding:7px 0;font-size:13px;font-weight:600;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;">${opts.confirmationId}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;border-bottom:1px solid #f1f5f9;">Payment Method</td><td style="padding:7px 0;font-size:13px;font-weight:600;color:#1e293b;border-bottom:1px solid #f1f5f9;">${method}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;border-bottom:1px solid #f1f5f9;">Transaction ID</td><td style="padding:7px 0;font-size:11px;font-weight:500;color:#6b7280;font-family:monospace;border-bottom:1px solid #f1f5f9;">${opts.paymentIntentId}</td></tr><tr><td style="padding:7px 0;font-size:13px;color:#6b7280;vertical-align:top;">Status</td><td style="padding:7px 0;"><span style="display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#15803d;font-size:12px;font-weight:700;padding:3px 10px;border-radius:99px;">&#10003; Paid</span></td></tr></table></td></tr></table><table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr><td style="padding-right:8px;width:50%;"><a href="${PORTAL_URL}" style="display:block;text-align:center;background:#1a5c4f;color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;padding:12px 16px;border-radius:8px;">Track My Order &rarr;</a></td><td style="padding-left:8px;width:50%;">${opts.receiptUrl ? `<a href="${opts.receiptUrl}" style="display:block;text-align:center;background:#f8fafc;color:#374151;font-size:13px;font-weight:700;text-decoration:none;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;">Stripe Receipt &rarr;</a>` : `<span style="display:block;text-align:center;background:#f8fafc;color:#94a3b8;font-size:13px;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;">Receipt Loading</span>`}</td></tr></table><p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;text-align:center;">Keep this email as your payment record. If you have questions, reply here or email <a href="mailto:${SUPPORT_EMAIL}" style="color:#1a5c4f;text-decoration:none;">${SUPPORT_EMAIL}</a></p></td></tr><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #f1f5f9;background:#f8fafc;"><p style="margin:0;font-size:11px;color:#9ca3af;">${COMPANY_NAME} &nbsp;&middot;&nbsp; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p></td></tr></table></td></tr></table></body></html>`;
 }
 
 function buildInternalNotificationHtml(opts: { confirmationId: string; firstName: string; lastName: string; email: string; phone: string; state: string; letterType: string; planType: string; deliverySpeed: string; amount: number; paymentIntentId: string; checkoutSessionId?: string; paymentMethod: string; doctorName: string | null; timestamp: string; matchedBy?: string; }): string {
   const rows = [["Order ID", opts.confirmationId], ["Customer Name", `${opts.firstName} ${opts.lastName}`.trim() || "—"], ["Email", opts.email], ["Phone", opts.phone || "—"], ["State", opts.state || "—"], ["Service Type", opts.letterType === "psd" ? "PSD Letter" : "ESA Letter"], ["Plan", opts.planType || "One-Time Purchase"], ["Delivery Speed", opts.deliverySpeed === "2-3days" ? "Standard (2-3 days)" : "Priority (24h)"], ["Amount Paid", `$${opts.amount.toFixed(2)}`], ["Payment Status", "PAID"], ["Payment Method", opts.paymentMethod || "card"], ["Stripe PI ID", opts.paymentIntentId], ...(opts.checkoutSessionId ? [["Checkout Session ID", opts.checkoutSessionId]] : []), ["Provider", opts.doctorName || "Not assigned yet"], ["Matched By", opts.matchedBy || "confirmation_id"], ["Timestamp", opts.timestamp]];
   const rowsHtml = rows.map(([label, value]) => `<tr><td style="padding:8px 12px;font-size:13px;color:#6b7280;width:180px;border-bottom:1px solid #f3f4f6;vertical-align:top;font-weight:600;">${label}</td><td style="padding:8px 12px;font-size:13px;color:#111827;border-bottom:1px solid #f3f4f6;font-weight:500;">${value}</td></tr>`).join("");
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;"><tr><td style="background:#1a5c4f;padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" width="160" alt="PawTenant" style="display:block;margin:0 auto 14px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.2);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">NEW PAID ORDER</div><h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;">Order Received &amp; Paid</h1></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 20px;font-size:14px;color:#374151;">A new paid order has been received. Review and assign a provider from the admin portal.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:24px;">${rowsHtml}</table><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><a href="${ADMIN_ORDERS_URL}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 32px;border-radius:8px;">Open Admin Portal &rarr;</a></td></tr></table></td></tr><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant Internal Notification &mdash; <a href="${SITE_URL}" style="color:#1a5c4f;text-decoration:none;">pawtenant.com</a></p></td></tr></table></td></tr></table></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;"><tr><td style="background:#1a5c4f;padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" width="160" alt="PawTenant" style="display:block;margin:0 auto 14px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.2);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">NEW PAID ORDER</div><h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;">Order Received &amp; Paid</h1></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 20px;font-size:14px;color:#374151;">A new paid order has been received. Review and assign a provider from the admin portal.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:24px;">${rowsHtml}</table><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><a href="https://pawtenant.com/admin-orders" style="display:inline-block;background:#f97316;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 32px;border-radius:8px;">Open Admin Portal &rarr;</a></td></tr></table></td></tr><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant Internal Notification &mdash; <a href="https://pawtenant.com" style="color:#1a5c4f;text-decoration:none;">pawtenant.com</a></p></td></tr></table></td></tr></table></body></html>`;
 }
 
 // ── Fire GHL payment_confirmed event ─────────────────────────────────────────
@@ -156,17 +146,6 @@ function schedulePostPaymentTriggers(confirmationId: string, order?: Record<stri
     if (order && typeof amountDollars === "number") {
       triggerGhlPaymentConfirmed(order, amountDollars).catch(() => { });
     }
-  }
-}
-
-function runInBg(fn: () => Promise<unknown>): void {
-  const p = fn().catch((err: unknown) => {
-    console.warn("[stripe-webhook] bg task error:", err instanceof Error ? err.message : String(err));
-  });
-  // @ts-ignore
-  if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
-    // @ts-ignore
-    EdgeRuntime.waitUntil(p);
   }
 }
 
@@ -263,11 +242,6 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── markOrderProcessing ───────────────────────────────────────────────────
-  // letter_url is intentionally never set here — only provider uploads set it.
-  //
-  // couponCode and couponDiscount are sourced exclusively from Stripe PI metadata
-  // (stamped there by create-payment-intent at payment-creation / update-amount
-  // time). No frontend value is trusted for these fields.
   async function markOrderProcessing(
     confirmationId: string,
     paymentIntentId: string,
@@ -285,7 +259,6 @@ Deno.serve(async (req: Request) => {
       paid_at: new Date().toISOString(),
       payment_failed_at: null,
       payment_failure_reason: null,
-      // letter_url intentionally omitted — only provider uploads set this field
     };
     if (checkoutSessionId) payload.checkout_session_id = checkoutSessionId;
     if (couponCode) payload.coupon_code = couponCode;
@@ -323,50 +296,135 @@ Deno.serve(async (req: Request) => {
     return "";
   }
 
+  // ── sendPostPaymentEmails ─────────────────────────────────────────────────
+  // Uses atomic reserveEmailSend on the `communications` table to guarantee
+  // dedupe across concurrent PI-succeeded + checkout.session.completed events.
+  // Dedupe keys:
+  //   payment_receipt:        `{confirmationId}:payment_receipt`
+  //   internal_notification:  `{confirmationId}:admin_new_paid_order:{adminRecipient}`
+  // Order confirmation is delegated to resend-confirmation-email, which owns
+  // its own dedupe on `{confirmationId}:order_confirmation`.
   async function sendPostPaymentEmails(order: Record<string, unknown>, paymentIntentId: string, amountDollars: number, matchedBy = "confirmation_id", checkoutSessionId?: string) {
     const confirmationId = order.confirmation_id as string;
     const email = order.email as string;
     if (!email || !confirmationId) { console.warn("[stripe-webhook] sendPostPaymentEmails: missing email or confirmationId"); return; }
-    const existingLog: EmailLogEntry[] = (order.email_log as EmailLogEntry[]) ?? [];
-    const alreadySentConfirmation = existingLog.some((e) => e.type === "order_confirmation" && e.success === true);
-    const alreadySentReceipt = existingLog.some((e) => e.type === "payment_receipt" && e.success === true);
-    const alreadySentInternal = existingLog.some((e) => e.type === "internal_notification" && e.success === true);
+    const orderId = (order.id as string) ?? null;
     const newLogEntries: EmailLogEntry[] = [];
     const now = new Date().toISOString();
 
-    if (!alreadySentConfirmation) {
-      try {
-        const confRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/resend-confirmation-email`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` }, body: JSON.stringify({ confirmationId }) });
-        const confData = await confRes.json() as { ok: boolean; emailSent?: boolean; skipped?: boolean; error?: string };
-        if (confData.ok && confData.emailSent) { console.info(`[stripe-webhook] ✓ Order confirmation sent to ${email}`); }
-        else if (confData.skipped) { console.info(`[stripe-webhook] Order confirmation already sent — skipped`); }
-        else { console.warn(`[stripe-webhook] Order confirmation failed: ${confData.error}`); newLogEntries.push({ type: "order_confirmation_webhook_trigger", sentAt: now, to: email, success: false, error: confData.error }); }
-      } catch (err) { console.error("[stripe-webhook] Order confirmation fetch error:", err); }
+    // 1) Order confirmation — delegated to resend-confirmation-email.
+    //    That function performs its own dedupe via reserveEmailSend, so it's safe
+    //    to call on every webhook event.
+    try {
+      const confRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/resend-confirmation-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+        body: JSON.stringify({ confirmationId }),
+      });
+      const confData = await confRes.json() as { ok: boolean; emailSent?: boolean; skipped?: boolean; error?: string };
+      if (confData.ok && confData.emailSent) { console.info(`[stripe-webhook] ✓ Order confirmation sent to ${email}`); }
+      else if (confData.skipped) { console.info(`[stripe-webhook] Order confirmation already sent — skipped`); }
+      else { console.warn(`[stripe-webhook] Order confirmation failed: ${confData.error}`); newLogEntries.push({ type: "order_confirmation_webhook_trigger", sentAt: now, to: email, success: false, error: confData.error }); }
+    } catch (err) { console.error("[stripe-webhook] Order confirmation fetch error:", err); }
+
+    // 2) Payment receipt — atomic reserve before sending.
+    {
+      const reserve = await reserveEmailSend({
+        supabase,
+        orderId,
+        confirmationId,
+        to: email,
+        from: FROM_ADDRESS,
+        subject: `Payment Receipt — $${amountDollars.toFixed(2)} — ${COMPANY_NAME}`,
+        slug: "payment_receipt",
+        templateSource: "hardcoded",
+        sentBy: "stripe_webhook",
+      });
+      if (!reserve.proceed) {
+        console.info(`[stripe-webhook] payment_receipt DEDUPED for ${confirmationId} (key=${reserve.dedupeKey})`);
+      } else {
+        try {
+          const receiptUrl = await getReceiptUrl(paymentIntentId);
+          const paidAtRaw = (order.paid_at as string) ?? now;
+          const paidAtFormatted = new Date(paidAtRaw).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+          const receiptHtml = buildPaymentReceiptHtml({ firstName: (order.first_name as string) || "", confirmationId, amountFormatted: `$${amountDollars.toFixed(2)}`, paymentIntentId, paymentMethod: (order.payment_method as string) || "card", receiptUrl, paidAt: paidAtFormatted });
+          const receiptResult = await sendViaResend({ to: email, subject: `Payment Receipt — $${amountDollars.toFixed(2)} — ${COMPANY_NAME}`, html: receiptHtml, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "payment_receipt" }] });
+          await finalizeEmailSend(supabase, reserve.rowId, {
+            success: receiptResult.sent,
+            body: receiptHtml,
+            resendId: receiptResult.resendId ?? null,
+            errorMessage: receiptResult.error ?? null,
+          });
+          newLogEntries.push({ type: "payment_receipt", sentAt: now, to: email, success: receiptResult.sent, ...(receiptResult.error && !receiptResult.sent ? { error: receiptResult.error } : {}) });
+          if (receiptResult.sent) { console.info(`[stripe-webhook] ✓ Payment receipt sent to ${email} for ${confirmationId}`); }
+          else { console.warn(`[stripe-webhook] Payment receipt failed for ${confirmationId}: ${receiptResult.error}`); }
+        } catch (err) {
+          console.error("[stripe-webhook] Payment receipt error:", err);
+          await finalizeEmailSend(supabase, reserve.rowId, { success: false, errorMessage: err instanceof Error ? err.message : String(err) });
+        }
+      }
     }
 
-    if (!alreadySentReceipt) {
-      try {
-        const receiptUrl = await getReceiptUrl(paymentIntentId);
-        const paidAtRaw = (order.paid_at as string) ?? now;
-        const paidAtFormatted = new Date(paidAtRaw).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-        const receiptHtml = buildPaymentReceiptHtml({ firstName: (order.first_name as string) || "", confirmationId, amountFormatted: `$${amountDollars.toFixed(2)}`, paymentIntentId, paymentMethod: (order.payment_method as string) || "card", receiptUrl, paidAt: paidAtFormatted });
-        const receiptResult = await sendViaResend({ to: email, subject: `Payment Receipt — $${amountDollars.toFixed(2)} — ${COMPANY_NAME}`, html: receiptHtml, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "payment_receipt" }] });
-        newLogEntries.push({ type: "payment_receipt", sentAt: now, to: email, success: receiptResult.sent, ...(receiptResult.error && !receiptResult.sent ? { error: receiptResult.error } : {}) });
-        if (receiptResult.sent) { console.info(`[stripe-webhook] ✓ Payment receipt sent to ${email} for ${confirmationId}`); }
-        else { console.warn(`[stripe-webhook] Payment receipt failed for ${confirmationId}: ${receiptResult.error}`); }
-      } catch (err) { console.error("[stripe-webhook] Payment receipt error:", err); }
-    }
-
-    if (!alreadySentInternal) {
+    // 3) Internal admin notifications — per-recipient dedupe via fan-out.
+    {
       const { enabled: notifEnabled, recipients: internalRecipients } = await getAdminNotifRecipients("new_paid_order");
-      if (notifEnabled && internalRecipients.length > 0) {
-        const internalHtml = buildInternalNotificationHtml({ confirmationId, firstName: (order.first_name as string) ?? "", lastName: (order.last_name as string) ?? "", email, phone: (order.phone as string) ?? "", state: (order.state as string) ?? "", letterType: (order.letter_type as string) ?? "esa", planType: (order.plan_type as string) ?? "One-Time Purchase", deliverySpeed: (order.delivery_speed as string) ?? "2-3days", amount: amountDollars, paymentIntentId, checkoutSessionId: checkoutSessionId ?? (order.checkout_session_id as string | undefined), paymentMethod: (order.payment_method as string) ?? "card", doctorName: (order.doctor_name as string | null) ?? null, timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET", matchedBy });
-        const internalResult = await sendViaResendMulti({ to: internalRecipients, subject: `[PawTenant] New Paid Order — ${confirmationId}${matchedBy !== "confirmation_id" ? " [FALLBACK MATCH]" : ""}`, html: internalHtml, tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "internal_notification" }] });
-        internalRecipients.forEach((recipient) => {
-          newLogEntries.push({ type: "internal_notification", sentAt: now, to: recipient, success: internalResult.sent });
-        });
-      } else if (!notifEnabled) {
+      if (!notifEnabled) {
         console.info(`[stripe-webhook] new_paid_order notification is disabled — skipping internal email for ${confirmationId}`);
+      } else if (internalRecipients.length === 0) {
+        console.info(`[stripe-webhook] no admin recipients configured — skipping internal email for ${confirmationId}`);
+      } else {
+        const internalHtml = buildInternalNotificationHtml({
+          confirmationId,
+          firstName: (order.first_name as string) ?? "",
+          lastName: (order.last_name as string) ?? "",
+          email,
+          phone: (order.phone as string) ?? "",
+          state: (order.state as string) ?? "",
+          letterType: (order.letter_type as string) ?? "esa",
+          planType: (order.plan_type as string) ?? "One-Time Purchase",
+          deliverySpeed: (order.delivery_speed as string) ?? "2-3days",
+          amount: amountDollars,
+          paymentIntentId,
+          checkoutSessionId: checkoutSessionId ?? (order.checkout_session_id as string | undefined),
+          paymentMethod: (order.payment_method as string) ?? "card",
+          doctorName: (order.doctor_name as string | null) ?? null,
+          timestamp: new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET",
+          matchedBy,
+        });
+        const subject = `[PawTenant] New Paid Order — ${confirmationId}${matchedBy !== "confirmation_id" ? " [FALLBACK MATCH]" : ""}`;
+
+        for (const recipient of internalRecipients) {
+          const reserve = await reserveEmailSend({
+            supabase,
+            orderId,
+            confirmationId,
+            to: recipient,
+            from: FROM_ADDRESS,
+            subject,
+            slug: "internal_notification",
+            recipient,
+            extra: "new_paid_order",
+            templateSource: "hardcoded",
+            sentBy: "stripe_webhook",
+          });
+          if (!reserve.proceed) {
+            console.info(`[stripe-webhook] internal_notification DEDUPED for ${confirmationId} -> ${recipient} (key=${reserve.dedupeKey})`);
+            continue;
+          }
+          const result = await sendViaResend({
+            to: recipient,
+            subject,
+            html: internalHtml,
+            tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: "internal_notification" }],
+          });
+          await finalizeEmailSend(supabase, reserve.rowId, {
+            success: result.sent,
+            body: internalHtml,
+            resendId: result.resendId ?? null,
+            errorMessage: result.error ?? null,
+          });
+          newLogEntries.push({ type: "internal_notification", sentAt: now, to: recipient, success: result.sent, ...(result.error && !result.sent ? { error: result.error } : {}) });
+        }
       }
     }
 
@@ -382,10 +440,6 @@ Deno.serve(async (req: Request) => {
     const emailFromMeta = pi.metadata?.email ?? pi.receipt_email;
     const sessionIdFromMeta = pi.metadata?.checkout_session_id;
 
-    // Extract coupon details stamped into PI metadata by create-payment-intent.
-    // coupon_code and coupon_discount_cents are written there at payment-creation
-    // time (update_amount for one-time payments, PI metadata patch for
-    // subscriptions). The webhook never trusts any frontend-supplied value.
     const couponCodeFromMeta = (pi.metadata?.coupon_code as string) || null;
     const couponDiscountDollars = pi.metadata?.coupon_discount_cents
       ? Math.round(Number(pi.metadata.coupon_discount_cents)) / 100
@@ -401,7 +455,6 @@ Deno.serve(async (req: Request) => {
     const confirmationId = order.confirmation_id as string;
     const amt = Math.round((pi.amount_received ?? 0) / 100);
 
-    // Log successful payment attempt
     await logPaymentAttempt({
       confirmationId,
       orderId: order.id as string,
@@ -416,7 +469,6 @@ Deno.serve(async (req: Request) => {
 
     if ((order.status as string) === "processing" && (order.payment_intent_id as string) === pi.id) {
       console.info(`[stripe-webhook] ${confirmationId} already processing — idempotent. Firing triggers anyway.`);
-      // Backfill coupon fields if they weren't saved on the first pass
       const idempotentPatch: Record<string, unknown> = {};
       if (sessionIdFromMeta && !order.checkout_session_id) idempotentPatch.checkout_session_id = sessionIdFromMeta;
       if (couponCodeFromMeta && !order.coupon_code) idempotentPatch.coupon_code = couponCodeFromMeta;
@@ -424,7 +476,7 @@ Deno.serve(async (req: Request) => {
       if (Object.keys(idempotentPatch).length > 0) {
         await supabase.from("orders").update(idempotentPatch).eq("confirmation_id", confirmationId);
       }
-      runInBg(() => sendPostPaymentEmails(order, pi.id, amt, matchedBy, sessionIdFromMeta));
+      await sendPostPaymentEmails(order, pi.id, amt, matchedBy, sessionIdFromMeta);
       schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true, matchedBy });
     }
@@ -436,10 +488,8 @@ Deno.serve(async (req: Request) => {
     if (updated) {
       const freshOrder = await findOrderByConfId(confirmationId);
       if (freshOrder?.id) {
-        runInBg(async () => {
-          await logStatus(freshOrder.id, confirmationId, "processing", `Payment confirmed via Stripe. PI: ${pi.id}. Amount: $${amt}. Matched by: ${matchedBy}${couponCodeFromMeta ? `. Coupon: ${couponCodeFromMeta} (-$${couponDiscountDollars?.toFixed(2)})` : ""}`);
-          await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, pi.id, amt, matchedBy, sessionIdFromMeta);
-        });
+        await logStatus(freshOrder.id, confirmationId, "processing", `Payment confirmed via Stripe. PI: ${pi.id}. Amount: $${amt}. Matched by: ${matchedBy}${couponCodeFromMeta ? `. Coupon: ${couponCodeFromMeta} (-$${couponDiscountDollars?.toFixed(2)})` : ""}`);
+        await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, pi.id, amt, matchedBy, sessionIdFromMeta);
         schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
       }
     }
@@ -587,17 +637,15 @@ Deno.serve(async (req: Request) => {
 
     if ((order.status as string) === "processing") {
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
-      runInBg(() => sendPostPaymentEmails(order, piId, amt, matchedBy, session.id));
+      await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true, matchedBy });
     }
     await markOrderProcessing(confirmationId, piId, amt, mode, session.id);
     const freshOrder = await findOrderByConfId(confirmationId);
     if (freshOrder?.id) {
-      runInBg(async () => {
-        await logStatus(freshOrder.id, confirmationId, "processing", `Checkout session ${session.id} completed. PI: ${piId}. Amount: $${amt}. Matched by: ${matchedBy}`);
-        await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);
-      });
+      await logStatus(freshOrder.id, confirmationId, "processing", `Checkout session ${session.id} completed. PI: ${piId}. Amount: $${amt}. Matched by: ${matchedBy}`);
+      await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
     }
     return json({ ok: true, type: t, confirmationId, amount: amt, isSubscription, matchedBy, checkoutSessionId: session.id });
@@ -630,14 +678,14 @@ Deno.serve(async (req: Request) => {
 
     if ((order.status as string) === "processing") {
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
-      runInBg(() => sendPostPaymentEmails(order, piId, amt, matchedBy, session.id));
+      await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true });
     }
     await markOrderProcessing(confirmationId, piId, amt, session.metadata?.payment_mode ?? "klarna", session.id);
     const freshOrder = await findOrderByConfId(confirmationId);
     if (freshOrder) {
-      runInBg(() => sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id));
+      await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, freshOrder as unknown as Record<string, unknown>, amt);
     }
     return json({ ok: true, type: t, confirmationId, amount: amt });

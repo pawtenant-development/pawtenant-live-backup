@@ -1,6 +1,6 @@
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -188,8 +188,32 @@ Deno.serve(async (req: Request) => {
   if (!email) return json({ ok: false, error: "Order has no email address" }, 400);
 
   const currentLog: EmailLogEntry[] = (order.email_log as EmailLogEntry[]) ?? [];
-  const alreadySent = currentLog.some((e) => e.type === "order_confirmation" && e.success === true);
-  if (alreadySent && !force) return json({ ok: true, emailSent: false, skipped: true, reason: "Confirmation email already sent", to: email });
+  const alreadySentLegacy = currentLog.some((e) => e.type === "order_confirmation" && e.success === true);
+  if (alreadySentLegacy && !force) return json({ ok: true, emailSent: false, skipped: true, reason: "Confirmation email already sent (email_log)", to: email });
+
+  // Atomic reservation against communications table — blocks duplicate sends
+  // across concurrent stripe-webhook events (PI succeeded + checkout completed).
+  // When `force=true` the caller has explicitly requested a re-send, so we
+  // bypass reservation entirely and allow a new row.
+  let reserveRowId: string | null | undefined = null;
+  if (!force) {
+    const reserve = await reserveEmailSend({
+      supabase,
+      orderId: order.id as string,
+      confirmationId,
+      to: email,
+      from: FROM_ADDRESS,
+      subject: `Order Confirmed — ${confirmationId}`,
+      slug: "order_confirmation",
+      templateSource: "hardcoded",
+      sentBy: "resend_confirmation_email",
+    });
+    if (!reserve.proceed) {
+      console.info(`[resend-confirmation] DEDUPED for ${confirmationId} (key=${reserve.dedupeKey})`);
+      return json({ ok: true, emailSent: false, skipped: true, reason: "Confirmation email already reserved/sent (communications)", to: email, dedupeKey: reserve.dedupeKey });
+    }
+    reserveRowId = reserve.rowId;
+  }
 
   let receiptUrl = "";
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
@@ -244,19 +268,38 @@ Deno.serve(async (req: Request) => {
   };
   await supabase.from("orders").update({ email_log: [...currentLog, newEntry] }).eq("confirmation_id", confirmationId);
 
-  // Primary log → communications (single source of truth for the unified Comms timeline)
-  await logEmailComm({
-    supabase,
-    orderId: order.id as string,
-    confirmationId,
-    to: email,
-    from: FROM_ADDRESS,
-    subject: `Order Confirmed — ${confirmationId}`,
-    body: null,
-    slug: "order_confirmation",
-    sentBy: "admin_resend_confirmation",
-    success: result.sent,
-  });
+  // Finalize reserved row (status=sent/failed, body + resend id).
+  // When force=true there is no reserved row — fall back to a direct insert so
+  // the send still shows up in the comms timeline.
+  if (reserveRowId) {
+    await finalizeEmailSend(supabase, reserveRowId, {
+      success: result.sent,
+      body: html,
+      resendId: result.resendId ?? null,
+      errorMessage: result.error ?? null,
+    });
+  } else if (force) {
+    try {
+      await supabase.from("communications").insert({
+        order_id: order.id as string,
+        confirmation_id: confirmationId,
+        type: "email",
+        direction: "outbound",
+        body: html,
+        email_to: email,
+        email_from: FROM_ADDRESS,
+        subject: `Order Confirmed — ${confirmationId}`,
+        slug: "order_confirmation",
+        template_source: "hardcoded",
+        status: result.sent ? "sent" : "failed",
+        sent_by: "admin_resend_confirmation_force",
+        twilio_sid: result.resendId ?? null,
+        dedupe_key: null,
+      });
+    } catch (err) {
+      console.warn("[resend-confirmation] force-send comms insert failed", err);
+    }
+  }
 
   if (!result.sent) return json({ ok: false, error: `Failed after 3 attempts: ${result.error}` }, 500);
 

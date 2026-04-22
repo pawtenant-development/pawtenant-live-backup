@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
@@ -289,8 +289,32 @@ Deno.serve(async (req: Request) => {
   const totalDocCount = (order.signed_letter_url ? 1 : 0) + docs.filter((d) => d.file_url !== order.signed_letter_url).length;
   if (!order.signed_letter_url && docs.length === 0) return jsonResp({ error: "No documents available to send for this order. Provider must upload a letter first." }, 400);
 
+  // Atomic dedupe reservation — blocks concurrent notify calls BEFORE we
+  // flip doctor_status or send the email. If another request (or a retry)
+  // already claimed `{confirmationId}:letter_ready`, we skip cleanly.
+  const subjectSuffixPre = totalDocCount > 1 ? ` (${totalDocCount} documents)` : "";
+  const reserve = await reserveEmailSend({
+    supabase,
+    orderId: order.id as string,
+    confirmationId,
+    to: order.email,
+    from: FROM_ADDRESS,
+    subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffixPre}`,
+    slug: "letter_ready",
+    templateSource: "hardcoded",
+    sentBy: "provider_notify_patient",
+  });
+  if (!reserve.proceed) {
+    console.info(`[notify-patient-letter] DEDUPED for ${confirmationId} (key=${reserve.dedupeKey})`);
+    return jsonResp({ ok: true, message: "letter_ready already sent (dedupe)", confirmationId, skipped: true, dedupeKey: reserve.dedupeKey });
+  }
+
   const { error: updateErr } = await supabase.from("orders").update({ patient_notification_sent_at: new Date().toISOString(), doctor_status: "patient_notified", status: "completed" }).eq("confirmation_id", confirmationId);
-  if (updateErr) { console.error("[notify-patient-letter] Order update error:", updateErr.message); return jsonResp({ error: `Failed to update order: ${updateErr.message}` }, 500); }
+  if (updateErr) {
+    console.error("[notify-patient-letter] Order update error:", updateErr.message);
+    await finalizeEmailSend(supabase, reserve.rowId, { success: false, errorMessage: `order update failed: ${updateErr.message}` });
+    return jsonResp({ error: `Failed to update order: ${updateErr.message}` }, 500);
+  }
 
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || order.email;
   const resolvedDoctorUserId = order.doctor_user_id ?? userId;
@@ -318,31 +342,32 @@ Deno.serve(async (req: Request) => {
   const letterId = (order.letter_id as string | null) ?? null;
   const docCount = allDocs.length;
   const subjectSuffix = docCount > 1 ? ` (${docCount} documents)` : "";
+  const subject = `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`;
   const html = buildDocumentsReadyEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name ?? "Your Provider", doctorMessage: doctorMessage?.trim() || null, letterId }, allDocs);
 
-  const sendResult = await sendViaResend({ to: order.email, subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`, html });
+  const sendResult = await sendViaResend({ to: order.email, subject, html });
   const emailSent = sendResult.success;
+
+  await finalizeEmailSend(supabase, reserve.rowId, {
+    success: emailSent,
+    body: html,
+    resendId: sendResult.resendId ?? null,
+    errorMessage: sendResult.error ?? null,
+  });
 
   await appendEmailLog(supabase, confirmationId, { type: "letter_ready", sentAt: new Date().toISOString(), to: order.email, success: emailSent });
 
-  // Primary log → communications
-  await logEmailComm({
-    supabase,
-    orderId: order.id as string,
-    confirmationId,
-    to: order.email,
-    from: FROM_ADDRESS,
-    subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`,
-    body: doctorMessage?.trim() || null,
-    slug: "letter_ready",
-    sentBy: "provider_notify_patient",
-    success: emailSent,
-  });
   if (emailSent && docs.length > 0) { await supabase.from("order_documents").update({ sent_to_customer: true }).in("id", docs.filter((d) => d.file_url !== order.signed_letter_url).map((d) => d.id)); }
 
-  // If email failed, revert the patient_notification_sent_at so admin can retry cleanly
+  // If email failed, revert the patient_notification_sent_at so admin can retry cleanly.
+  // The reserved communications row is already marked "failed" via finalizeEmailSend,
+  // but that row's dedupe_key would still block a retry — so we also DELETE the
+  // failed reservation so the next call can reserve again with the same key.
   if (!emailSent) {
     await supabase.from("orders").update({ patient_notification_sent_at: null }).eq("confirmation_id", confirmationId);
+    if (reserve.rowId) {
+      await supabase.from("communications").delete().eq("id", reserve.rowId);
+    }
     const errMsg = sendResult.error ?? "Email delivery failed — check Resend API key and domain verification in Supabase secrets";
     console.error(`[notify-patient-letter] Email send failed for ${confirmationId}: ${errMsg}`);
     return jsonResp({ ok: false, error: errMsg }, 500);

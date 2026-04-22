@@ -9,6 +9,7 @@ import ScrollToTop from "./components/feature/ScrollToTop";
 import ScrollTopButton from "./components/feature/ScrollTopButton";
 import CookieBanner from "./components/feature/CookieBanner";
 import FloatingCTA from "./components/feature/FloatingCTA";
+import MobileChatButton from "./components/feature/MobileChatButton";
 import USResidentsBanner from "./components/feature/USResidentsBanner";
 import ErrorBoundary from "./components/feature/ErrorBoundary";
 import { supabase } from "./lib/supabaseClient";
@@ -328,8 +329,9 @@ function TawkVisibility() {
       const api = getTawkAPI();
 
       if (api?.hideWidget && api?.showWidget) {
-        // Show Tawk on all breakpoints — mobile + desktop
-        api.showWidget();
+        if (window.innerWidth >= 768) {
+          api.showWidget();
+        }
         // ── SPA page tracking: notify Tawk of the current route ──────────
         try {
           sendTawkPageView(pathname);
@@ -414,6 +416,7 @@ function App() {
             <CookieBanner />
             <USResidentsBanner />
             <ConditionalFloatingCTA />
+            <MobileChatButton />
           </BrowserRouter>
         </GeoGate>
       </I18nextProvider>

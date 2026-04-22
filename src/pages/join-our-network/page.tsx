@@ -132,6 +132,7 @@ export default function JoinOurNetworkPage() {
   const [headshotPreview, setHeadshotPreview] = useState<string | null>(null);
   const [documentFiles, setDocumentFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const applicationSectionRef = useRef<HTMLElement>(null);
 
@@ -147,6 +148,15 @@ export default function JoinOurNetworkPage() {
 
   const toggleLicense = (license: string) => {
     setSelectedLicenses((prev) => prev.includes(license) ? prev.filter((l) => l !== license) : [...prev, license]);
+  };
+
+  const clearFieldError = (name: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[name]) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
   };
 
   const handleHeadshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -179,9 +189,47 @@ export default function JoinOurNetworkPage() {
     return data.publicUrl;
   };
 
+  const validateRequiredFields = (form: HTMLFormElement): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    const fd = new FormData(form);
+    const firstName = ((fd.get("firstName") as string) ?? "").trim();
+    const lastName = ((fd.get("lastName") as string) ?? "").trim();
+    const email = ((fd.get("email") as string) ?? "").trim();
+    const phoneRaw = ((fd.get("phone") as string) ?? "").trim();
+    const npi = ((fd.get("npi") as string) ?? "").trim();
+    const licenseState = ((fd.get("licenseState") as string) ?? "").trim();
+    const licenseNumber = ((fd.get("licenseNumber") as string) ?? "").trim();
+
+    if (firstName.length < 1) errors.firstName = "First name is required.";
+    if (lastName.length < 1) errors.lastName = "Last name is required.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Enter a valid email address.";
+    const phoneDigits = phoneRaw.replace(/\D/g, "");
+    if (phoneDigits.length < 10) errors.phone = "Enter a valid phone number (at least 10 digits).";
+    if (!/^\d{10}$/.test(npi)) errors.npi = "NPI must be exactly 10 digits.";
+    if (!licenseState) errors.licenseState = "Please select your primary licensed state.";
+    if (licenseNumber.length < 1) errors.licenseNumber = "License number is required.";
+    return errors;
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
+
+    const errors = validateRequiredFields(form);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      const firstKey = Object.keys(errors)[0];
+      const el = form.querySelector(`[name='${firstKey}']`) as HTMLElement | null;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (typeof (el as HTMLInputElement).focus === "function") {
+          (el as HTMLInputElement).focus({ preventScroll: true });
+        }
+      }
+      return;
+    }
+    setFieldErrors({});
+
     const textarea = form.querySelector("textarea[name='bio']") as HTMLTextAreaElement;
     if (textarea && textarea.value.length > 500) {
       setBioError("Bio must be 500 characters or less. Please shorten your message.");
@@ -218,6 +266,7 @@ export default function JoinOurNetworkPage() {
       last_name: (formData.get("lastName") as string) ?? "",
       email: (formData.get("email") as string) ?? "",
       phone: (formData.get("phone") as string) || null,
+      npi: (formData.get("npi") as string) || null,
       license_types: selectedLicenses.join(", ") || null,
       license_number: (formData.get("licenseNumber") as string) || null,
       license_state: (formData.get("licenseState") as string) || null,
@@ -242,6 +291,7 @@ export default function JoinOurNetworkPage() {
       lastName: appPayload.last_name,
       email: appPayload.email,
       phone: appPayload.phone ?? "",
+      npi: appPayload.npi ?? "",
       licenseTypes: appPayload.license_types ?? "",
       licenseNumber: appPayload.license_number ?? "",
       licenseState: appPayload.license_state ?? "",
@@ -264,6 +314,7 @@ export default function JoinOurNetworkPage() {
       lastName: appPayload.last_name,
       email: appPayload.email,
       phone: appPayload.phone ?? undefined,
+      npi: appPayload.npi ?? undefined,
       licenseTypes: appPayload.license_types ?? undefined,
       licenseNumber: appPayload.license_number ?? undefined,
       licenseState: appPayload.license_state ?? undefined,
@@ -318,6 +369,18 @@ export default function JoinOurNetworkPage() {
       "acceptedAnswer": { "@type": "Answer", "text": f.a },
     })),
   });
+
+  const inputBase = "w-full border rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none transition-colors";
+  const inputOk = "border-gray-200 focus:border-orange-400";
+  const inputBad = "border-red-400 focus:border-red-500";
+  const selectBase = "w-full border rounded-md px-3 py-2.5 text-sm text-gray-900 focus:outline-none transition-colors cursor-pointer";
+
+  const FieldError = ({ name }: { name: string }) =>
+    fieldErrors[name] ? (
+      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+        <i className="ri-error-warning-line"></i> {fieldErrors[name]}
+      </p>
+    ) : null;
 
   return (
     <main>
@@ -498,7 +561,7 @@ export default function JoinOurNetworkPage() {
               </div>
             </div>
           ) : (
-            <form data-readdy-form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-orange-100 p-8 space-y-8">
+            <form data-readdy-form onSubmit={handleSubmit} noValidate className="bg-white rounded-2xl border border-orange-100 p-8 space-y-8">
               {/* Section 1 — Personal Info */}
               <div>
                 <h3 className="text-sm font-bold text-gray-900 mb-5 pb-3 border-b border-gray-100 flex items-center gap-2">
@@ -515,8 +578,10 @@ export default function JoinOurNetworkPage() {
                       name="firstName"
                       required
                       placeholder="Jane"
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                      onChange={() => clearFieldError("firstName")}
+                      className={`${inputBase} ${fieldErrors.firstName ? inputBad : inputOk}`}
                     />
+                    <FieldError name="firstName" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Last Name <span className="text-red-400">*</span></label>
@@ -525,8 +590,10 @@ export default function JoinOurNetworkPage() {
                       name="lastName"
                       required
                       placeholder="Smith"
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                      onChange={() => clearFieldError("lastName")}
+                      className={`${inputBase} ${fieldErrors.lastName ? inputBad : inputOk}`}
                     />
+                    <FieldError name="lastName" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address <span className="text-red-400">*</span></label>
@@ -535,8 +602,10 @@ export default function JoinOurNetworkPage() {
                       name="email"
                       required
                       placeholder="jane@example.com"
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                      onChange={() => clearFieldError("email")}
+                      className={`${inputBase} ${fieldErrors.email ? inputBad : inputOk}`}
                     />
+                    <FieldError name="email" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Phone Number <span className="text-red-400">*</span></label>
@@ -545,8 +614,10 @@ export default function JoinOurNetworkPage() {
                       name="phone"
                       required
                       placeholder="(555) 000-0000"
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                      onChange={() => clearFieldError("phone")}
+                      className={`${inputBase} ${fieldErrors.phone ? inputBad : inputOk}`}
                     />
+                    <FieldError name="phone" />
                   </div>
                 </div>
               </div>
@@ -593,8 +664,10 @@ export default function JoinOurNetworkPage() {
                       name="licenseNumber"
                       required
                       placeholder="e.g. LCSW-12345"
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                      onChange={() => clearFieldError("licenseNumber")}
+                      className={`${inputBase} ${fieldErrors.licenseNumber ? inputBad : inputOk}`}
                     />
+                    <FieldError name="licenseNumber" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Years of Experience <span className="text-red-400">*</span></label>
@@ -602,7 +675,7 @@ export default function JoinOurNetworkPage() {
                       name="yearsExperience"
                       required
                       defaultValue=""
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-400 transition-colors cursor-pointer"
+                      className={`${selectBase} ${inputOk}`}
                     >
                       <option value="" disabled>Select...</option>
                       <option value="Less than 1 year">Less than 1 year</option>
@@ -612,17 +685,36 @@ export default function JoinOurNetworkPage() {
                       <option value="10+ years">10+ years</option>
                     </select>
                   </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      NPI Number <span className="text-red-400">*</span>
+                      <span className="font-normal text-gray-400 ml-1">(10-digit National Provider Identifier)</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="npi"
+                      required
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="e.g. 1234567890"
+                      onChange={() => clearFieldError("npi")}
+                      className={`${inputBase} ${fieldErrors.npi ? inputBad : inputOk}`}
+                    />
+                    <FieldError name="npi" />
+                  </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Licensed State (Primary) <span className="text-red-400">*</span></label>
                     <select
                       name="licenseState"
                       required
                       defaultValue=""
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-400 transition-colors cursor-pointer"
+                      onChange={() => clearFieldError("licenseState")}
+                      className={`${selectBase} ${fieldErrors.licenseState ? inputBad : inputOk}`}
                     >
                       <option value="" disabled>Select state...</option>
                       {usStates.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
+                    <FieldError name="licenseState" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Additional Licensed States</label>
@@ -630,7 +722,7 @@ export default function JoinOurNetworkPage() {
                       type="text"
                       name="additionalStates"
                       placeholder="e.g. New York, Florida"
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                      className={`${inputBase} ${inputOk}`}
                     />
                   </div>
                   <div className="col-span-2">
@@ -639,7 +731,7 @@ export default function JoinOurNetworkPage() {
                       type="text"
                       name="practiceName"
                       placeholder="e.g. Serenity Counseling Group"
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-orange-400 transition-colors"
+                      className={`${inputBase} ${inputOk}`}
                     />
                   </div>
                   <div className="col-span-2">
@@ -648,7 +740,7 @@ export default function JoinOurNetworkPage() {
                       name="practiceType"
                       required
                       defaultValue=""
-                      className="w-full border border-gray-200 rounded-md px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-orange-400 transition-colors cursor-pointer"
+                      className={`${selectBase} ${inputOk}`}
                     >
                       <option value="" disabled>Select practice type...</option>
                       {practiceTypes.map((pt) => <option key={pt} value={pt}>{pt}</option>)}

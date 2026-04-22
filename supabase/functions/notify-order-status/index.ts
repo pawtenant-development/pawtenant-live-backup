@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -21,7 +21,6 @@ const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#4a7fb5";
 
-// ── Recipient routing ────────────────────────────────────────────────────────
 async function getAdminRecipients(notificationKey: string): Promise<{ enabled: boolean; recipients: string[] }> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -44,18 +43,19 @@ async function getAdminRecipients(notificationKey: string): Promise<{ enabled: b
 async function sendViaResend(opts: {
   to: string; subject: string; html: string;
   tags?: Array<{ name: string; value: string }>;
-}): Promise<boolean> {
+}): Promise<{ sent: boolean; resendId?: string; error?: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
-  if (!apiKey) { console.error("[notify-order-status] RESEND_API_KEY secret is not set"); return false; }
+  if (!apiKey) { console.error("[notify-order-status] RESEND_API_KEY secret is not set"); return { sent: false, error: "RESEND_API_KEY not set" }; }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html, ...(opts.tags ? { tags: opts.tags } : {}) }),
     });
-    if (!res.ok) { const errBody = await res.text(); console.error(`[notify-order-status] Resend error ${res.status}: ${errBody}`); return false; }
-    return true;
-  } catch (err) { console.error("[notify-order-status] Resend fetch error:", err); return false; }
+    if (!res.ok) { const errBody = await res.text(); console.error(`[notify-order-status] Resend error ${res.status}: ${errBody}`); return { sent: false, error: `Resend ${res.status}: ${errBody.slice(0, 200)}` }; }
+    const data = await res.json().catch(() => ({})) as { id?: string };
+    return { sent: true, resendId: data?.id };
+  } catch (err) { console.error("[notify-order-status] Resend fetch error:", err); return { sent: false, error: err instanceof Error ? err.message : String(err) }; }
 }
 
 function escapeHtml(value = "") {
@@ -285,7 +285,9 @@ Deno.serve(async (req: Request) => {
 
   const confirmationId = body.confirmationId as string | undefined;
   const newStatus = body.newStatus as string | undefined;
-  // force=true bypasses the "already notified" guard — used when admin manually marks completed
+  // force=true asks to bypass the legacy email_log guard — the DB dedupe_key
+  // still blocks a second send for the same (confirmation_id, status_*) pair.
+  // To force a genuine re-send, admins must issue a refund / new transition.
   const force = body.force as boolean | undefined;
 
   if (!confirmationId || !newStatus) return jsonResp({ error: "confirmationId and newStatus are required" }, 400);
@@ -299,18 +301,15 @@ Deno.serve(async (req: Request) => {
     .eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return jsonResp({ error: `Order not found: ${confirmationId}` }, 404);
 
-  // For "completed" status: only skip if patient was already notified AND force is not set
-  // This prevents duplicate emails when notify-patient-letter already sent the letter-ready email
-  // BUT allows admin to manually trigger a completion email if the letter email was never sent
+  // For "completed" status: respect the provider-path email_log guard (letter_ready
+  // was already sent by notify-patient-letter) unless force is set. The DB-level
+  // dedupe_key below will still block any duplicates.
   if (newStatus === "completed" && order.patient_notification_sent_at && !force) {
-    // Check if a letter_ready email was actually sent — if not, send the completed email anyway
     const emailLog = (order.email_log as EmailLogEntry[]) ?? [];
-    const hasLetterReadyEmail = emailLog.some((e) => e.type === "letter_ready" && e.success);
     const hasCompletedEmail = emailLog.some((e) => (e.type === "status_completed" || e.type === "letter_ready") && e.success);
     if (hasCompletedEmail) {
       return jsonResp({ ok: true, skipped: true, reason: "Completion email already sent — no duplicate" });
     }
-    // No completion email found in log — send it even though patient_notification_sent_at is set
     console.log(`[notify-order-status] No completion email found in log for ${confirmationId} — sending now`);
   }
 
@@ -339,27 +338,39 @@ Deno.serve(async (req: Request) => {
     adminNotifKey = "order_cancelled";
   }
 
-  const customerEmailSent = await sendViaResend({
-    to: order.email, subject, html: customerHtml,
-    tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: emailType }],
-  });
-
-  await appendEmailLog(supabase, confirmationId, { type: emailType, sentAt: new Date().toISOString(), to: order.email, success: customerEmailSent });
-
-  // Primary log → communications
-  await logEmailComm({
+  // ── Customer email: reserve dedupe_key BEFORE sending ────────────────────
+  // Key = {confirmation_id}:{emailType} → exactly one customer email per
+  // status transition across the entire system.
+  const customerReservation = await reserveEmailSend({
     supabase,
     orderId: order.id as string,
     confirmationId,
     to: order.email,
     from: FROM_ADDRESS,
     subject,
-    body: null,
     slug: emailType,
     sentBy: "admin_status_change",
-    success: customerEmailSent,
   });
 
+  let customerEmailSent = false;
+  let customerResendId: string | undefined;
+
+  if (!customerReservation.proceed) {
+    console.log(`[notify-order-status] SKIP customer email ${emailType} for ${confirmationId} — dedupe`);
+  } else {
+    const r = await sendViaResend({
+      to: order.email, subject, html: customerHtml,
+      tags: [{ name: "confirmation_id", value: confirmationId }, { name: "email_type", value: emailType }],
+    });
+    customerEmailSent = r.sent;
+    customerResendId = r.resendId;
+    await finalizeEmailSend(supabase, customerReservation.rowId, {
+      success: r.sent, body: null, resendId: r.resendId ?? null, errorMessage: r.error ?? null,
+    });
+    await appendEmailLog(supabase, confirmationId, { type: emailType, sentAt: new Date().toISOString(), to: order.email, success: r.sent });
+  }
+
+  // ── Admin notifications: reserve per recipient ──────────────────────────
   if (adminNotifKey) {
     const { enabled: adminEnabled, recipients: adminRecipients } = await getAdminRecipients(adminNotifKey);
     if (adminEnabled && adminRecipients.length > 0) {
@@ -371,11 +382,38 @@ Deno.serve(async (req: Request) => {
         doctorName: order.doctor_name,
       });
       const adminSubject = `[Admin] Order ${newStatus === "completed" ? "Completed" : newStatus === "cancelled" ? "Cancelled" : "Under Review"} — ${confirmationId}`;
-      await Promise.all(
-        adminRecipients.map((email) => sendViaResend({ to: email, subject: adminSubject, html: adminHtml }))
-      );
+      const adminSlug = `admin_${emailType}`;
+
+      await Promise.all(adminRecipients.map(async (adminEmail) => {
+        const res = await reserveEmailSend({
+          supabase,
+          orderId: order.id as string,
+          confirmationId,
+          to: adminEmail,
+          from: FROM_ADDRESS,
+          subject: adminSubject,
+          slug: adminSlug,
+          recipient: adminEmail,
+          sentBy: "admin_status_change_notif",
+        });
+        if (!res.proceed) {
+          console.log(`[notify-order-status] SKIP admin email ${adminSlug}→${adminEmail} for ${confirmationId} — dedupe`);
+          return;
+        }
+        const r = await sendViaResend({ to: adminEmail, subject: adminSubject, html: adminHtml });
+        await finalizeEmailSend(supabase, res.rowId, {
+          success: r.sent, body: null, resendId: r.resendId ?? null, errorMessage: r.error ?? null,
+        });
+      }));
     }
   }
 
-  return jsonResp({ ok: true, emailSent: customerEmailSent, status: newStatus, confirmationId });
+  return jsonResp({
+    ok: true,
+    emailSent: customerEmailSent,
+    status: newStatus,
+    confirmationId,
+    skippedDuplicate: customerReservation.proceed === false,
+    resendId: customerResendId,
+  });
 });

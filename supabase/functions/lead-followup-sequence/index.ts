@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +46,7 @@ function unsubscribeFooter(orderId: string): string {
     </td></tr>`;
 }
 
-async function sendEmail(to: string, subject: string, html: string): Promise<{ sent: boolean; resend_id?: string }> {
+async function sendEmail(to: string, subject: string, html: string): Promise<{ sent: boolean; resend_id?: string; error?: string }> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -54,13 +55,12 @@ async function sendEmail(to: string, subject: string, html: string): Promise<{ s
   if (!res.ok) {
     const errText = await res.text();
     console.error("[lead-followup-sequence] Resend error:", res.status, errText);
-    return { sent: false };
+    return { sent: false, error: `Resend ${res.status}: ${errText.slice(0, 200)}` };
   }
   const data = await res.json() as { id?: string };
   return { sent: true, resend_id: data.id };
 }
 
-// ── Write audit log entry ─────────────────────────────────────────────────────
 async function writeAuditLog(
   supabase: ReturnType<typeof createClient>,
   opts: {
@@ -80,36 +80,6 @@ async function writeAuditLog(
     metadata: opts.metadata ?? null,
   });
   if (error) console.error("[lead-followup-sequence] audit_log insert error:", error.message);
-}
-
-// ── Write to communications table so it shows in order comms tab ─────────────
-async function writeCommLog(
-  supabase: ReturnType<typeof createClient>,
-  opts: {
-    order_id: string;
-    confirmation_id: string;
-    subject: string;
-    step: string;
-    email: string;
-    resend_id?: string;
-  }
-) {
-  const { error } = await supabase.from("communications").insert({
-    order_id: opts.order_id,
-    confirmation_id: opts.confirmation_id,
-    type: "email",
-    direction: "outbound",
-    body: `[Auto-Sequence] ${opts.subject}`,
-    phone_to: opts.email,
-    status: "sent",
-    sent_by: `Auto-Sequence (${opts.step})`,
-    twilio_sid: opts.resend_id ?? null,
-  });
-  if (error) {
-    console.error("[lead-followup-sequence] communications insert error:", error.message, "order_id:", opts.order_id);
-  } else {
-    console.log("[lead-followup-sequence] comm log written for order:", opts.order_id, "step:", opts.step);
-  }
 }
 
 function baseLayout(badge: string, heading: string, subheading: string, bodyHtml: string, orderId: string): string {
@@ -135,6 +105,64 @@ function ctaBtn(url: string, text: string, color = "#f97316") {
   return `<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td align="center">
     <a href="${escapeHtml(url)}" style="display:inline-block;background:${color};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">${text} &rarr;</a>
   </td></tr></table>`;
+}
+
+async function loadSeqTemplate(
+  supabase: ReturnType<typeof createClient>,
+  slug: string
+): Promise<{ subject: string; body: string; ctaLabel: string; ctaUrl: string } | null> {
+  const { data, error } = await supabase
+    .from("email_templates")
+    .select("subject, body, cta_label, cta_url")
+    .eq("slug", slug)
+    .eq("channel", "email")
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    subject: data.subject as string,
+    body: data.body as string,
+    ctaLabel: data.cta_label as string,
+    ctaUrl: data.cta_url as string,
+  };
+}
+
+async function loadMasterLayout(
+  supabase: ReturnType<typeof createClient>
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("comms_settings")
+    .select("value")
+    .eq("key", "email_layout_html")
+    .maybeSingle();
+  const val = (data?.value as string | null) ?? null;
+  if (val && val.includes("{{content}}")) return val;
+  return null;
+}
+
+function buildEmailFromTemplate(
+  tmpl: { subject: string; body: string; ctaLabel: string; ctaUrl: string },
+  vars: { name: string; letter_type: string; resume_url: string; discount_code?: string },
+  badge: string, heading: string, subheading: string, orderId: string,
+  masterLayout?: string | null,
+): string {
+  const sub = (s: string) =>
+    s.replace(/\{name\}/g, escapeHtml(vars.name))
+     .replace(/\{letter_type\}/g, vars.letter_type)
+     .replace(/\{resume_url\}/g, vars.resume_url)
+     .replace(/\{discount_code\}/g, vars.discount_code ?? DISCOUNT_CODE)
+     .replace(/\{resume_url_with_promo\}/g, `${vars.resume_url}&promo=${encodeURIComponent(vars.discount_code ?? DISCOUNT_CODE)}`);
+  const processedBody = sub(tmpl.body);
+  const paragraphs = processedBody
+    .split("\n\n")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">${p.replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+  const ctaUrl = sub(tmpl.ctaUrl);
+  const ctaLbl = sub(tmpl.ctaLabel);
+  const bodyHtml = `${paragraphs}${ctaUrl ? ctaBtn(ctaUrl, ctaLbl) : ""}`;
+  if (masterLayout) return masterLayout.replace("{{content}}", bodyHtml);
+  return baseLayout(badge, heading, subheading, bodyHtml, orderId);
 }
 
 function build30MinEmail(firstName: string, resumeLink: string, letterType: string, orderId: string): string {
@@ -229,6 +257,62 @@ function buildUnsubscribePage(success: boolean, email = ""): string {
 </body></html>`;
 }
 
+// ── Send one step with strict DB-level dedupe ────────────────────────────────
+// Reserves a row in `communications` keyed on `seq:{orderId}:{step}` BEFORE
+// hitting Resend. If another concurrent cron run already reserved the same
+// key, the UNIQUE index rejects the insert and we skip — no second email.
+async function sendSequenceStep(
+  supabase: ReturnType<typeof createClient>,
+  opts: {
+    step: "seq_30min" | "seq_24h" | "seq_3day";
+    orderId: string;
+    confirmationId: string;
+    email: string;
+    subject: string;
+    html: string;
+    stampColumn: "seq_30min_sent_at" | "seq_24h_sent_at" | "seq_3day_sent_at";
+    templateSource: "db" | "hardcoded";
+  },
+): Promise<{ sent: boolean; skipped: boolean; reason?: string; resendId?: string }> {
+  // Phase 1: reserve dedupe_key — atomic per (orderId, step).
+  const reservation = await reserveEmailSend({
+    supabase,
+    orderId: opts.orderId,
+    confirmationId: opts.confirmationId,
+    to: opts.email,
+    from: FROM_EMAIL,
+    subject: opts.subject,
+    slug: opts.step,
+    templateSource: opts.templateSource,
+    sentBy: `auto_sequence:${opts.step}`,
+  });
+
+  if (!reservation.proceed) {
+    console.log(`[lead-followup-sequence] SKIP ${opts.step} for order ${opts.orderId} — already sent (dedupe)`);
+    // Still stamp the order so the expensive dedupe-lookup path is short-circuited next run.
+    await supabase.from("orders").update({ [opts.stampColumn]: new Date().toISOString() }).eq("id", opts.orderId);
+    return { sent: false, skipped: true, reason: "duplicate" };
+  }
+
+  // Phase 2: mark the order stamp BEFORE sending. Combined with the DB
+  // reservation above, this ensures even if the cron re-fires, the next pass
+  // sees the stamp and skips the template build entirely.
+  await supabase.from("orders").update({ [opts.stampColumn]: new Date().toISOString() }).eq("id", opts.orderId);
+
+  // Phase 3: send via Resend.
+  const { sent, resend_id, error } = await sendEmail(opts.email, opts.subject, opts.html);
+
+  // Phase 4: finalize the reserved row — status becomes "sent" or "failed".
+  await finalizeEmailSend(supabase, reservation.rowId, {
+    success: sent,
+    body: `[Auto-Sequence ${opts.step}] ${opts.subject}`,
+    resendId: resend_id ?? null,
+    errorMessage: error ?? null,
+  });
+
+  return { sent, skipped: false, resendId: resend_id };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -303,7 +387,9 @@ Deno.serve(async (req: Request) => {
 
     if (error) return json({ ok: false, error: error.message }, 500);
 
-    const results = { step1_30min: 0, step2_24h: 0, step3_3day: 0, skipped: 0, opted_out: 0, expired: 0 };
+    const results = { step1_30min: 0, step2_24h: 0, step3_3day: 0, skipped: 0, opted_out: 0, expired: 0, dedup_skipped: 0 };
+
+    const masterLayout = await loadMasterLayout(supabase);
 
     for (const lead of (leads ?? [])) {
       if (lead.payment_intent_id || lead.paid_at || lead.status === "completed") { results.skipped++; continue; }
@@ -326,51 +412,78 @@ Deno.serve(async (req: Request) => {
       const confirmationId = lead.confirmation_id as string;
 
       if (ageMin >= 30 && !lead.seq_30min_sent_at) {
-        const subject = `Complete Your ${letterType === "psd" ? "PSD" : "ESA"} Letter — Your answers are saved`;
-        const { sent, resend_id } = await sendEmail(email, subject, build30MinEmail(firstName, resumeLink, letterType, orderId));
-        await supabase.from("orders").update({ seq_30min_sent_at: now.toISOString() }).eq("id", orderId);
-        if (sent) {
-          await writeCommLog(supabase, { order_id: orderId, confirmation_id: confirmationId, subject, step: "30min", email, resend_id });
-        }
+        const dbTmpl30 = await loadSeqTemplate(supabase, "seq_30min");
+        const label = letterType === "psd" ? "PSD Letter" : "ESA Letter";
+        const subject = dbTmpl30
+          ? dbTmpl30.subject.replace(/\{letter_type\}/g, label)
+          : `Complete Your ${letterType === "psd" ? "PSD" : "ESA"} Letter — Your answers are saved`;
+        const html30 = dbTmpl30
+          ? buildEmailFromTemplate(dbTmpl30, { name: firstName, letter_type: label, resume_url: resumeLink }, "Incomplete Application", `Your ${label} is waiting!`, "Your assessment answers have been saved — pick up where you left off", orderId, masterLayout)
+          : build30MinEmail(firstName, resumeLink, letterType, orderId);
+
+        const r = await sendSequenceStep(supabase, {
+          step: "seq_30min", orderId, confirmationId, email, subject, html: html30,
+          stampColumn: "seq_30min_sent_at", templateSource: dbTmpl30 ? "db" : "hardcoded",
+        });
+        if (r.skipped) { results.dedup_skipped++; continue; }
+
         await writeAuditLog(supabase, {
           action: "seq_30min_sent",
           description: `30-min follow-up sent to ${email} (${confirmationId})`,
           object_id: confirmationId,
-          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: sent, step: "30min" },
+          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: r.sent, step: "30min" },
         });
         results.step1_30min++;
         continue;
       }
 
       if (ageHours >= 24 && !lead.seq_24h_sent_at) {
-        const subject = `Still thinking? Get your ${letterType === "psd" ? "PSD" : "ESA"} letter today and avoid housing issues.`;
-        const { sent, resend_id } = await sendEmail(email, subject, build24hEmail(firstName, resumeLink, letterType, orderId));
-        await supabase.from("orders").update({ seq_24h_sent_at: now.toISOString() }).eq("id", orderId);
-        if (sent) {
-          await writeCommLog(supabase, { order_id: orderId, confirmation_id: confirmationId, subject, step: "24h", email, resend_id });
-        }
+        const dbTmpl24 = await loadSeqTemplate(supabase, "seq_24h");
+        const label24 = letterType === "psd" ? "PSD Letter" : "ESA Letter";
+        const subject = dbTmpl24
+          ? dbTmpl24.subject.replace(/\{letter_type\}/g, label24)
+          : `Still thinking? Get your ${letterType === "psd" ? "PSD" : "ESA"} letter today and avoid housing issues.`;
+        const html24 = dbTmpl24
+          ? buildEmailFromTemplate(dbTmpl24, { name: firstName, letter_type: label24, resume_url: resumeLink }, "Still Thinking?", "Get your ESA letter today and avoid housing issues.", "Your assessment is saved — complete checkout in under 2 minutes", orderId, masterLayout)
+          : build24hEmail(firstName, resumeLink, letterType, orderId);
+
+        const r = await sendSequenceStep(supabase, {
+          step: "seq_24h", orderId, confirmationId, email, subject, html: html24,
+          stampColumn: "seq_24h_sent_at", templateSource: dbTmpl24 ? "db" : "hardcoded",
+        });
+        if (r.skipped) { results.dedup_skipped++; continue; }
+
         await writeAuditLog(supabase, {
           action: "seq_24h_sent",
           description: `24-hour follow-up sent to ${email} (${confirmationId})`,
           object_id: confirmationId,
-          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: sent, step: "24h" },
+          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: r.sent, step: "24h" },
         });
         results.step2_24h++;
         continue;
       }
 
       if (ageDays >= 3 && !lead.seq_3day_sent_at) {
-        const subject = `Here's $20 off your ${letterType === "psd" ? "PSD" : "ESA"} letter (limited time) — Discount code: ${DISCOUNT_CODE}`;
-        const { sent, resend_id } = await sendEmail(email, subject, build3DayEmail(firstName, resumeLink, letterType, orderId));
-        await supabase.from("orders").update({ seq_3day_sent_at: now.toISOString() }).eq("id", orderId);
-        if (sent) {
-          await writeCommLog(supabase, { order_id: orderId, confirmation_id: confirmationId, subject, step: "3day", email, resend_id });
-        }
+        const dbTmpl3d = await loadSeqTemplate(supabase, "seq_3day");
+        const label3d = letterType === "psd" ? "PSD Letter" : "ESA Letter";
+        const subject = dbTmpl3d
+          ? dbTmpl3d.subject.replace(/\{letter_type\}/g, label3d).replace(/\{discount_code\}/g, DISCOUNT_CODE)
+          : `Here's $20 off your ${letterType === "psd" ? "PSD" : "ESA"} letter (limited time) — Discount code: ${DISCOUNT_CODE}`;
+        const html3d = dbTmpl3d
+          ? buildEmailFromTemplate(dbTmpl3d, { name: firstName, letter_type: label3d, resume_url: resumeLink, discount_code: DISCOUNT_CODE }, "Limited Time Offer", `Here's $20 off your ${label3d}!`, "Exclusive discount — expires in 48 hours", orderId, masterLayout)
+          : build3DayEmail(firstName, resumeLink, letterType, orderId);
+
+        const r = await sendSequenceStep(supabase, {
+          step: "seq_3day", orderId, confirmationId, email, subject, html: html3d,
+          stampColumn: "seq_3day_sent_at", templateSource: dbTmpl3d ? "db" : "hardcoded",
+        });
+        if (r.skipped) { results.dedup_skipped++; continue; }
+
         await writeAuditLog(supabase, {
           action: "seq_3day_sent",
           description: `3-day follow-up + $20 discount sent to ${email} (${confirmationId})`,
           object_id: confirmationId,
-          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: sent, step: "3day", discount_code: DISCOUNT_CODE },
+          metadata: { order_id: orderId, email, letter_type: letterType, email_sent: r.sent, step: "3day", discount_code: DISCOUNT_CODE },
         });
         results.step3_3day++;
         continue;
@@ -379,12 +492,11 @@ Deno.serve(async (req: Request) => {
       results.skipped++;
     }
 
-    // Write a summary audit log for the run
     const totalFired = results.step1_30min + results.step2_24h + results.step3_3day;
-    if (totalFired > 0) {
+    if (totalFired > 0 || results.dedup_skipped > 0) {
       await writeAuditLog(supabase, {
         action: "seq_run_complete",
-        description: `Sequence run: ${totalFired} email(s) sent — 30min: ${results.step1_30min}, 24h: ${results.step2_24h}, 3day: ${results.step3_3day}`,
+        description: `Sequence run: ${totalFired} sent, ${results.dedup_skipped} dedup-skipped — 30min: ${results.step1_30min}, 24h: ${results.step2_24h}, 3day: ${results.step3_3day}`,
         object_id: "system",
         metadata: { ...results, total_leads: leads?.length ?? 0 },
       });
