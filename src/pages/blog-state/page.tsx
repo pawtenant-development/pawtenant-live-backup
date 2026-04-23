@@ -414,7 +414,7 @@ export default function BlogStatePage() {
               to={withAttribution("/assessment")}
               className="whitespace-nowrap inline-block px-8 py-3.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
-              Get My ESA Letter — Starting at $100
+              Get My ESA Letter — Starting at $99
             </Link>
             <Link
               to={`/esa-letter/${stateSlug}`}

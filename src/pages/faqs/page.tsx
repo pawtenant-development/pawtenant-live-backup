@@ -25,7 +25,7 @@ const faqCategories = [
       { q: "Who can write a legitimate ESA letter?", a: "Only licensed mental health professionals can write valid ESA letters. This includes licensed psychologists (PhD/PsyD), licensed clinical social workers (LCSW), licensed professional counselors (LPC), licensed marriage and family therapists (LMFT), and psychiatrists (MD). The professional must be licensed in the state where they practice." },
       { q: "How long is an ESA letter valid?", a: "Most ESA letters are valid for 12 months (1 year). Many landlords, property managers, and universities require annual renewal with updated documentation. PawTenant makes renewal quick and affordable." },
       { q: "Can I get an ESA letter online?", a: "Yes — as long as it comes from a legitimate licensed professional who conducts a real assessment. PawTenant connects you with licensed mental health professionals via secure video consultation. Beware of services that generate letters automatically without a real assessment, as these are not legally valid." },
-      { q: "How much does an ESA letter cost?", a: "PawTenant's ESA letters start at $90 for Standard (2-3 business days) and $115 for Priority (within 24 hours). An Annual Subscription plan is also available at $100/year. All plans include a consultation with a licensed mental health professional and a fully compliant ESA letter with a 100% money-back guarantee." },
+      { q: "How much does an ESA letter cost?", a: "PawTenant's ESA letter is $110 as a one-time purchase (delivered within 24 hours) or $99/year with our Annual Subscription, which auto-renews so you never lose housing protection. All plans include a consultation with a licensed mental health professional and a fully compliant ESA letter with a 100% money-back guarantee." },
       { q: "What if my landlord doesn't accept my ESA letter?", a: "If your ESA letter meets all legal requirements and your landlord still refuses, this may be a Fair Housing Act violation. PawTenant offers guidance in these situations and you may also file a complaint with HUD (Department of Housing and Urban Development) or your state's fair housing office. PawTenant's money-back guarantee covers situations where our letter is legitimately rejected." }
     ]
   },
@@ -233,7 +233,7 @@ export default function FAQsPage() {
               to="/assessment"
               className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
-              <i className="ri-heart-line"></i>Get My ESA Letter — from $90
+              <i className="ri-heart-line"></i>Get My ESA Letter — from $99
             </Link>
             <Link
               to="/psd-assessment"

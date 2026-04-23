@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
+import { ESA_PRICE_LABELS } from "@/config/pricing";
 
 const pricingPlans = [
   {
-    label: "Standard Delivery",
-    sublabel: "2–3 Business Days",
-    price: "$100",
+    label: "One-Time ESA Letter",
+    sublabel: "Delivered Within 24 Hours",
+    price: ESA_PRICE_LABELS.oneTime,
     period: "one-time",
     highlight: false,
     cta: "Get Your Official ESA Letter",
@@ -15,23 +16,6 @@ const pricingPlans = [
       "Full mental health evaluation",
       "Licensed clinician letter",
       "NPI & license number included",
-      "Valid for housing nationwide",
-      "Digital delivery within 2–3 days",
-      "100% money-back guarantee",
-    ],
-  },
-  {
-    label: "Priority Delivery",
-    sublabel: "Within 24 Hours",
-    price: "$115",
-    period: "one-time",
-    highlight: true,
-    cta: "Get Your Official ESA Letter",
-    features: [
-      "Full mental health evaluation",
-      "Licensed clinician letter",
-      "NPI & license number included",
-      "Same-day priority processing",
       "Valid for housing nationwide",
       "Digital delivery within 24 hours",
       "100% money-back guarantee",
@@ -40,9 +24,9 @@ const pricingPlans = [
   {
     label: "Annual Subscription",
     sublabel: "Per Year — Auto-Renews",
-    price: "$90",
+    price: ESA_PRICE_LABELS.subscription,
     period: "/year",
-    highlight: false,
+    highlight: true,
     cta: "Get Your Official ESA Letter",
     features: [
       "Full mental health evaluation",
@@ -50,6 +34,7 @@ const pricingPlans = [
       "NPI & license number included",
       "Valid for housing nationwide",
       "Annual renewal — renews automatically",
+      "Save $11 vs. one-time every year",
       "100% money-back guarantee",
     ],
   },
@@ -78,7 +63,7 @@ const whyChoose = [
   },
   {
     title: "Optimal Pricing without Compromises",
-    desc: "At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at just $100. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.",
+    desc: "At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at just $99/year. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.",
     icon: "ri-hand-heart-line",
   },
   {
@@ -192,7 +177,7 @@ export default function ESALetterCostPage() {
               Our ESA letters cover all your housing arrangements, from rentals and vacation homes to college dorms. Our licensed medical professionals ensure compliance, legal enforcement, and authenticity in providing ESA letters.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto items-stretch">
             {pricingPlans.map((plan) => (
               <div
                 key={plan.label}
