@@ -9,7 +9,7 @@ const comparisonRows = [
   { feature: "Airline Travel", service: "In-cabin access under ACAA", therapy: "Treated as pet", esa: "Treated as pet since 2021" },
   { feature: "Documentation", service: "Task training verification", therapy: "Handler & animal certification", esa: "ESA letter from licensed LMHP" },
   { feature: "Primary Purpose", service: "Perform tasks for handler's disability", therapy: "Comfort multiple people in clinical settings", esa: "Emotional support for one individual" },
-  { feature: "Cost", service: "High (professional training)", therapy: "Moderate (certification)", esa: "Affordable ($100 with PawTenant)" }
+  { feature: "Cost", service: "High (professional training)", therapy: "Moderate (certification)", esa: "Affordable ($99/year with PawTenant)" }
 ];
 
 const faqs = [

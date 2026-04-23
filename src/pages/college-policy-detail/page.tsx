@@ -240,7 +240,7 @@ export default function CollegePolicyDetailPage() {
                   to="/assessment"
                   className="whitespace-nowrap block w-full py-2.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-center"
                 >
-                  Get Started — From $100
+                  Get Started — From $99
                 </Link>
                 <p className="text-xs text-gray-500 mt-2">100% money-back guarantee</p>
               </div>

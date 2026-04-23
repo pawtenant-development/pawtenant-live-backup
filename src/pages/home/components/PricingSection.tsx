@@ -1,14 +1,16 @@
 import { Link } from "react-router-dom";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
+import { ESA_PRICE_LABELS } from "@/config/pricing";
 
 const plans = [
   {
-    name: "Standard Delivery",
-    price: "$100",
-    sub: "2–3 Business Days",
+    name: "One-Time ESA Letter",
+    price: ESA_PRICE_LABELS.oneTime,
+    sub: "Delivered Within 24 Hours",
     popular: false,
     badge: null,
     highlight: false,
+    isSubscription: false,
     features: [
       "Official ESA Letter from Licensed LMHP",
       "Fair Housing Act (FHA) Compliant",
@@ -16,32 +18,16 @@ const plans = [
       "PDF Delivery via Email",
       "Valid for 1 Year",
       "Landlord Verification Support",
-    ],
-  },
-  {
-    name: "Priority Delivery",
-    price: "$115",
-    sub: "Within 24 Hours",
-    popular: true,
-    badge: "Most Popular",
-    highlight: true,
-    features: [
-      "Official ESA Letter from Licensed LMHP",
-      "Fair Housing Act (FHA) Compliant",
-      "Licensed Professional Signature & NPI",
-      "PDF Delivery via Email",
-      "Valid for 1 Year",
-      "Landlord Verification Support",
-      "Same-Day Priority Processing",
     ],
   },
   {
     name: "Annual Subscription",
-    price: "$90",
+    price: ESA_PRICE_LABELS.subscription,
     sub: "Per Year — Auto-Renews",
-    popular: false,
+    popular: true,
     badge: "Best Value",
-    highlight: false,
+    highlight: true,
+    isSubscription: true,
     features: [
       "Official ESA Letter from Licensed LMHP",
       "Fair Housing Act (FHA) Compliant",
@@ -49,6 +35,7 @@ const plans = [
       "PDF Delivery via Email",
       "Valid for 1 Year — Renews Automatically",
       "Landlord Verification Support",
+      "Save $11 vs. one-time every year",
     ],
   },
 ];
@@ -66,7 +53,7 @@ export default function PricingSection() {
             Simple <span className="text-orange-500">Pricing</span> — No Hidden Fees
           </h2>
           <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
-            Choose your delivery speed. All packages include a full, legally valid ESA letter from a licensed mental health professional.
+            Choose the plan that fits. Every letter is legally valid and signed by a licensed mental health professional.
           </p>
         </div>
 
@@ -76,7 +63,7 @@ export default function PricingSection() {
             { icon: "ri-shield-check-fill", text: "Money-back if not approved" },
             { icon: "ri-award-fill", text: "Licensed professionals only" },
             { icon: "ri-lock-fill", text: "HIPAA secure" },
-            { icon: "ri-timer-flash-fill", text: "Same-day available" },
+            { icon: "ri-timer-flash-fill", text: "24-hour delivery" },
           ].map((b) => (
             <div key={b.text} className="flex items-center gap-1.5 bg-white border border-orange-100 rounded-full px-4 py-2">
               <i className={`${b.icon} text-orange-500 text-sm`}></i>
@@ -85,7 +72,7 @@ export default function PricingSection() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto items-start">
           {plans.map((plan) => (
             <div
               key={plan.name}
@@ -111,7 +98,7 @@ export default function PricingSection() {
                 <div className="flex items-end gap-1">
                   <span className={`text-4xl font-extrabold ${plan.highlight ? "text-white" : "text-gray-900"}`}>{plan.price}</span>
                   <span className={`text-sm mb-1.5 ${plan.highlight ? "text-orange-100" : "text-gray-400"}`}>
-                    {plan.name === "Annual Subscription" ? "/year" : "one-time"}
+                    {plan.isSubscription ? ESA_PRICE_LABELS.subscriptionSuffix : ESA_PRICE_LABELS.oneTimeSuffix}
                   </span>
                 </div>
               </div>
@@ -140,7 +127,7 @@ export default function PricingSection() {
                       : "border-2 border-orange-500 text-orange-500 hover:bg-orange-50"
                   }`}
                 >
-                  Get Started — {plan.price}
+                  Get Started — {plan.price}{plan.isSubscription ? ESA_PRICE_LABELS.subscriptionSuffix : ""}
                 </Link>
                 {plan.highlight && (
                   <p className="text-center text-xs text-gray-400 mt-2 flex items-center justify-center gap-1">

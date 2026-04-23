@@ -182,7 +182,7 @@ export default function CollegePetPolicyPage() {
               to="/assessment"
               className="whitespace-nowrap inline-block px-8 py-3.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
-              Start My ESA Letter — From $100
+              Start My ESA Letter — From $99
             </Link>
             <p className="text-xs text-gray-400 mt-2">100% money-back guarantee if not approved</p>
           </div>

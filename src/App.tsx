@@ -12,6 +12,7 @@ import FloatingCTA from "./components/feature/FloatingCTA";
 import MobileChatButton from "./components/feature/MobileChatButton";
 import USResidentsBanner from "./components/feature/USResidentsBanner";
 import ErrorBoundary from "./components/feature/ErrorBoundary";
+import SEOManager from "./components/feature/SEOManager";
 import { supabase } from "./lib/supabaseClient";
 import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
@@ -407,6 +408,7 @@ function App() {
         <GeoGate>
           <BrowserRouter basename={__BASE_PATH__}>
             <MetaPageView />
+            <SEOManager />
             <ScrollToTop />
             <UTMCapture />
             <AuthHandler />

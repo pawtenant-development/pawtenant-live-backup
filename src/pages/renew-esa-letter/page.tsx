@@ -9,9 +9,9 @@ import { useAttributionParams } from "@/hooks/useAttributionParams";
 const renewalPlans = [
   {
     name: "1 Pet",
-    oneTime: "$100",
-    annual: "$90",
-    annualSavings: "Save $10/yr",
+    oneTime: "$110",
+    annual: "$99",
+    annualSavings: "Save $11/yr",
     pets: "Renew for 1 emotional support animal",
     popular: false,
     features: [
@@ -30,9 +30,9 @@ const renewalPlans = [
   },
   {
     name: "2 Pets",
-    oneTime: "$115",
-    annual: "$105",
-    annualSavings: "Save $21/yr",
+    oneTime: "$135",
+    annual: "$119",
+    annualSavings: "Save $16/yr",
     pets: "Renew for up to 2 emotional support animals",
     popular: true,
     features: [
@@ -52,9 +52,9 @@ const renewalPlans = [
   },
   {
     name: "3 Pets",
-    oneTime: "$135",
-    annual: "$120",
-    annualSavings: "Save $26/yr",
+    oneTime: "$160",
+    annual: "$139",
+    annualSavings: "Save $21/yr",
     pets: "Renew for up to 3 emotional support animals",
     popular: false,
     features: [
@@ -196,16 +196,16 @@ export default function RenewESALetterPage() {
   return (
     <main>
       <title>Renew Your ESA Letter in 2026 — Fast &amp; FHA-Compliant | PawTenant</title>
-      <meta name="description" content="ESA letters expire after 12 months. Renew your emotional support animal letter with a licensed therapist in 2026. Same-day delivery, 100% money-back guarantee. From $100." />
+      <meta name="description" content="ESA letters expire after 12 months. Renew your emotional support animal letter with a licensed therapist in 2026. Same-day delivery, 100% money-back guarantee. From $99." />
       <meta name="keywords" content="renew ESA letter, ESA letter renewal, emotional support animal letter renewal, expired ESA letter, ESA letter 2026 renewal" />
       <link rel="canonical" href="https://www.pawtenant.com/renew-esa-letter" />
       <meta property="og:title" content="Renew Your ESA Letter 2026 — Fast, Legal &amp; FHA-Compliant | PawTenant" />
-      <meta property="og:description" content="Keep your ESA housing rights active. Renew your emotional support animal letter with a licensed mental health professional. From $100, delivered within 24 hours." />
+      <meta property="og:description" content="Keep your ESA housing rights active. Renew your emotional support animal letter with a licensed mental health professional. From $99, delivered within 24 hours." />
       <meta property="og:url" content="https://www.pawtenant.com/renew-esa-letter" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Renew Your ESA Letter 2026 — Stay Protected | PawTenant" />
-      <meta name="twitter:description" content="ESA letters expire after 12 months. Renew with a licensed therapist from $100. Same-day delivery, FHA-compliant, 100% money-back guarantee." />
+      <meta name="twitter:description" content="ESA letters expire after 12 months. Renew with a licensed therapist from $99. Same-day delivery, FHA-compliant, 100% money-back guarantee." />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: schemaFaqData }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serviceSchema }} />
 
@@ -258,7 +258,7 @@ export default function RenewESALetterPage() {
                   className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
                 >
                   <i className="ri-refresh-line"></i>
-                  Renew My ESA Letter — From $100
+                  Renew My ESA Letter — From $99
                 </button>
                 <a
                   href="#how-it-works"
@@ -508,7 +508,7 @@ export default function RenewESALetterPage() {
                 className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
               >
                 <i className="ri-loop-right-line"></i>
-                Start Annual Subscription — From $90/yr
+                Start Annual Subscription — From $99/yr
               </button>
               <p className="text-white/40 text-xs mt-3">Cancel anytime &nbsp;·&nbsp; No contracts &nbsp;·&nbsp; 100% money-back guarantee</p>
             </div>
@@ -524,7 +524,7 @@ export default function RenewESALetterPage() {
                       <p className="text-white/50 text-xs">Pay each time you remember</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-white text-xl font-bold">$100</p>
+                      <p className="text-white text-xl font-bold">$110</p>
                       <p className="text-white/40 text-xs">per renewal</p>
                     </div>
                   </div>
@@ -537,7 +537,7 @@ export default function RenewESALetterPage() {
                       <p className="text-orange-300 text-xs">Auto-renew, never miss a deadline</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-orange-400 text-xl font-bold">$90</p>
+                      <p className="text-orange-400 text-xl font-bold">$99</p>
                       <p className="text-white/40 text-xs">per year</p>
                     </div>
                   </div>
@@ -545,7 +545,7 @@ export default function RenewESALetterPage() {
                     <div className="w-4 h-4 flex items-center justify-center">
                       <i className="ri-arrow-down-line text-orange-400 text-xs"></i>
                     </div>
-                    <p className="text-orange-400 text-xs font-bold">Save $21 every year with a subscription</p>
+                    <p className="text-orange-400 text-xs font-bold">Save $11 every year with a subscription</p>
                   </div>
                 </div>
               </div>
@@ -554,7 +554,7 @@ export default function RenewESALetterPage() {
                 <div className="space-y-3">
                   {[
                     { name: "Lisa K., Florida", text: "Set it and forget it — my letter is always current and my landlord never has to ask twice." },
-                    { name: "DeShawn P., Georgia", text: "Saved $20 and never had to worry about it expiring during my lease renewal. Worth it." },
+                    { name: "DeShawn P., Georgia", text: "Saved money every year and never had to worry about it expiring during my lease renewal. Worth it." },
                   ].map((t) => (
                     <div key={t.name} className="border-l-2 border-orange-500/40 pl-3">
                       <p className="text-white/70 text-xs italic leading-relaxed">&ldquo;{t.text}&rdquo;</p>
@@ -591,7 +591,7 @@ export default function RenewESALetterPage() {
               >
                 Annual Subscription
                 {billingCycle !== "annual" && (
-                  <span className="bg-orange-100 text-orange-600 text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Save up to 21%</span>
+                  <span className="bg-orange-100 text-orange-600 text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Save up to 13%</span>
                 )}
               </button>
             </div>
@@ -603,7 +603,7 @@ export default function RenewESALetterPage() {
                   <i className="ri-price-tag-3-fill text-green-600 text-base"></i>
                 </div>
                 <span className="text-green-700 text-xs font-semibold">
-                  You&apos;re saving vs. one-time — <strong>$10–$26/yr</strong> depending on your plan. Plus auto-renewal so you never lose protection.
+                  You&apos;re saving vs. one-time — <strong>$11–$21/yr</strong> depending on your plan. Plus auto-renewal so you never lose protection.
                 </span>
               </div>
             ) : (
@@ -612,7 +612,7 @@ export default function RenewESALetterPage() {
                   <i className="ri-loop-right-line text-orange-500 text-base"></i>
                 </div>
                 <span className="text-orange-700 text-xs font-semibold">
-                  Switch to Annual and save <strong>$10–$26/yr</strong> — plus never worry about your letter expiring again.
+                  Switch to Annual and save <strong>$11–$21/yr</strong> — plus never worry about your letter expiring again.
                 </span>
                 <span className="text-orange-500 text-xs font-bold underline whitespace-nowrap">Switch →</span>
               </div>
@@ -868,7 +868,7 @@ export default function RenewESALetterPage() {
             className="whitespace-nowrap inline-flex items-center gap-2 px-10 py-4 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
             <i className="ri-refresh-line"></i>
-            Renew My ESA Letter — From $100
+            Renew My ESA Letter — From $99
           </button>
           <p className="text-xs text-gray-400 mt-4">100% money-back guarantee &nbsp;·&nbsp; Same-day delivery &nbsp;·&nbsp; Licensed therapists</p>
         </div>

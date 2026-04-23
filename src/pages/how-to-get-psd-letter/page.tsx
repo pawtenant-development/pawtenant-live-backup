@@ -44,7 +44,7 @@ const comparisonRows = [
   { category: "Housing Protection", psd: "Full protection under FHA", esa: "Full protection under FHA" },
   { category: "Airline Travel", psd: "Yes — allowed in cabin under ACAA rules", esa: "No longer required after 2021 DOT rule" },
   { category: "Letter Required", psd: "PSD letter from licensed mental health professional", esa: "ESA letter from licensed mental health professional" },
-  { category: "Cost", psd: "Similar to ESA letter evaluation", esa: "Typically $100–$200" },
+  { category: "Cost", psd: "Similar to ESA letter evaluation", esa: "From $99/year with PawTenant" },
 ];
 
 const psdTasks = [

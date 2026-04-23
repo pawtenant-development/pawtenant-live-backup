@@ -611,13 +611,13 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
             <p className="text-xs font-bold text-gray-800 mb-0.5">One-Time Renewal</p>
-            <p className="text-xl font-extrabold text-gray-900">$90<span className="text-sm font-semibold text-gray-500">.00</span></p>
+            <p className="text-xl font-extrabold text-gray-900">$110<span className="text-sm font-semibold text-gray-500">.00</span></p>
             <p className="text-xs text-gray-500 mt-0.5">Same-day turnaround available</p>
           </div>
           <div className="bg-[#FFF7ED] rounded-lg p-3 border border-orange-300 relative">
             <span className="absolute -top-2 left-3 bg-orange-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
             <p className="text-xs font-bold text-orange-700 mb-0.5">Subscribe &amp; Save</p>
-            <p className="text-xl font-extrabold text-orange-500">$100<span className="text-sm font-semibold">/yr</span></p>
+            <p className="text-xl font-extrabold text-orange-500">$99<span className="text-sm font-semibold">/yr</span></p>
             <p className="text-xs text-orange-600 mt-0.5">Auto-renews · Never lose coverage</p>
           </div>
         </div>
