@@ -1,6 +1,6 @@
 // AdminSidebar — Fixed vertical navigation with collapsible icon-only mode
 type TabKey =
-  | "dashboard" | "orders" | "analytics" | "comms" | "chats" | "customers" | "doctors"
+  | "dashboard" | "orders" | "analytics" | "comms" | "chats" | "contacts" | "customers" | "doctors"
   | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
 
 interface AdminSidebarProps {
@@ -9,6 +9,7 @@ interface AdminSidebarProps {
   visibleTabs: TabKey[];
   totalUnassigned: number;
   unreadCommsCount: number;
+  unreadContactsCount?: number;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -19,6 +20,7 @@ const TAB_CONFIG: { key: TabKey; label: string; icon: string }[] = [
   { key: "analytics",  label: "Analytics",  icon: "ri-bar-chart-2-line" },
   { key: "comms",      label: "Comms",      icon: "ri-message-3-line" },
   { key: "chats",      label: "Chats",      icon: "ri-chat-3-line" },
+  { key: "contacts",   label: "Contacts",   icon: "ri-mail-line" },
   { key: "customers", label: "Customers",      icon: "ri-group-line" },
   { key: "doctors",   label: "Providers",      icon: "ri-stethoscope-line" },
   { key: "earnings",  label: "Earnings",       icon: "ri-money-dollar-circle-line" },
@@ -38,12 +40,15 @@ export default function AdminSidebar({
   visibleTabs,
   totalUnassigned,
   unreadCommsCount,
+  unreadContactsCount,
   collapsed,
   onToggleCollapse,
 }: AdminSidebarProps) {
   const getBadge = (key: TabKey): number => {
     if (key === "orders" && totalUnassigned > 0) return totalUnassigned;
     if (key === "comms" && unreadCommsCount > 0) return unreadCommsCount;
+    if (key === "contacts" && (unreadContactsCount ?? 0) > 0)
+      return unreadContactsCount ?? 0;
     return 0;
   };
 

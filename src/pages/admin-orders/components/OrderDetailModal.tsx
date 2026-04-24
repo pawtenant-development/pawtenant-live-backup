@@ -9,6 +9,7 @@ import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
 import PSDAssessmentView from "./PSDAssessmentView";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
 import PaymentHistoryTab from "./PaymentHistoryTab";
+import { canDelete } from "../../../lib/adminPermissions";
 import {
   LOGO_URL as ASSESSMENT_LOGO,
   STATE_NAMES,
@@ -1289,6 +1290,9 @@ export default function OrderDetailModal({
   };
 
   const handleDeleteDoc = async (docId: string) => {
+    if (!canDelete(adminProfile.role)) {
+      return;
+    }
     await supabase.from("order_documents").delete().eq("id", docId);
     loadOrderDocs();
   };
@@ -1617,6 +1621,10 @@ export default function OrderDetailModal({
   };
 
   const handleDeleteOrder = async () => {
+    if (!canDelete(adminProfile.role)) {
+      setDeleteOrderMsg("Admin access required to permanently delete orders.");
+      return;
+    }
     setDeletingOrder(true);
     setDeleteOrderMsg("");
     try {
@@ -1731,6 +1739,8 @@ export default function OrderDetailModal({
   // ── Role restriction state ──
   const isFinanceRole = adminProfile.role === "finance";
   const isSupportRole = adminProfile.role === "support";
+  // Only owner / admin_manager may permanently delete orders / documents / remove providers.
+  const canPerformDelete = canDelete(adminProfile.role);
   const [showRefundApproval, setShowRefundApproval] = useState(false);
   const [showDeleteApproval, setShowDeleteApproval] = useState(false);
 
@@ -3415,8 +3425,8 @@ export default function OrderDetailModal({
                 <p className="text-xs font-bold text-red-400 uppercase tracking-widest mb-3 flex items-center gap-1">
                   <i className="ri-skull-line"></i>Danger Zone
                 </p>
-                {(isFinanceRole || isSupportRole) ? (
-                  /* Finance / Support role — locked delete with approval request */
+                {!canPerformDelete ? (
+                  /* Non-admin role — locked delete. Finance/Support can request approval. */
                   <div className="space-y-2">
                     <div className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-xl p-3">
                       <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
@@ -3424,20 +3434,24 @@ export default function OrderDetailModal({
                       </div>
                       <div className="flex-1">
                         <p className="text-xs font-bold text-orange-800">
-                          Delete Restricted — {isFinanceRole ? "Finance" : "Support"} Role
+                          Delete Restricted — Admin access required
                         </p>
                         <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
                           {isFinanceRole
                             ? "Finance users cannot permanently delete orders. You can request approval from an Owner or Admin Manager."
-                            : "Support users cannot permanently delete individual orders. You can request approval from an Owner or Admin Manager."}
+                            : isSupportRole
+                            ? "Support users cannot permanently delete individual orders. You can request approval from an Owner or Admin Manager."
+                            : "Only Owner or Admin Manager can permanently delete orders."}
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => setShowDeleteApproval(true)}
-                          className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
-                        >
-                          <i className="ri-send-plane-line"></i>Request Delete Approval
-                        </button>
+                        {(isFinanceRole || isSupportRole) && (
+                          <button
+                            type="button"
+                            onClick={() => setShowDeleteApproval(true)}
+                            className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
+                          >
+                            <i className="ri-send-plane-line"></i>Request Delete Approval
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3813,10 +3827,12 @@ export default function OrderDetailModal({
                                 <i className="ri-file-line text-xs"></i>Original
                               </a>
                             )}
-                            <button type="button" onClick={() => handleDeleteDoc(doc.id)}
-                              className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 cursor-pointer transition-colors">
-                              <i className="ri-delete-bin-line text-sm"></i>
-                            </button>
+                            {canPerformDelete && (
+                              <button type="button" onClick={() => handleDeleteDoc(doc.id)}
+                                className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 cursor-pointer transition-colors">
+                                <i className="ri-delete-bin-line text-sm"></i>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

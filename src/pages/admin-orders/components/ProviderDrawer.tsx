@@ -65,9 +65,10 @@ interface ProviderDrawerProps {
   onRefresh: () => void;
   onOpenStates: (doc: DoctorRow) => void;
   onDelete: (doc: DoctorRow) => void;
+  canDeleteProviders?: boolean;
 }
 
-export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefresh, onOpenStates, onDelete }: ProviderDrawerProps) {
+export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefresh, onOpenStates, onDelete, canDeleteProviders = true }: ProviderDrawerProps) {
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
   const [activeTab, setActiveTab] = useState<"overview" | "notes" | "portal">("overview");
@@ -923,16 +924,30 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                     })}
                   </div>
 
-                  <button type="button" onClick={() => onDelete(doc)}
-                    className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-red-200 text-left hover:bg-red-50 cursor-pointer transition-colors">
-                    <div className="w-7 h-7 flex items-center justify-center bg-red-50 rounded-lg flex-shrink-0">
-                      <i className="ri-delete-bin-6-line text-red-500 text-sm"></i>
+                  {canDeleteProviders ? (
+                    <button type="button" onClick={() => onDelete(doc)}
+                      className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-red-200 text-left hover:bg-red-50 cursor-pointer transition-colors">
+                      <div className="w-7 h-7 flex items-center justify-center bg-red-50 rounded-lg flex-shrink-0">
+                        <i className="ri-delete-bin-6-line text-red-500 text-sm"></i>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-red-700">Delete Provider</p>
+                        <p className="text-xs text-gray-400">Permanently removes account — past orders preserved</p>
+                      </div>
+                    </button>
+                  ) : (
+                    <div
+                      title="Admin access required"
+                      className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-left opacity-60 cursor-not-allowed">
+                      <div className="w-7 h-7 flex items-center justify-center bg-gray-100 rounded-lg flex-shrink-0">
+                        <i className="ri-lock-line text-gray-400 text-sm"></i>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-500">Delete Provider</p>
+                        <p className="text-xs text-gray-400">Admin access required</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-red-700">Delete Provider</p>
-                      <p className="text-xs text-gray-400">Permanently removes account — past orders preserved</p>
-                    </div>
-                  </button>
+                  )}
                 </div>
               </div>
             )}

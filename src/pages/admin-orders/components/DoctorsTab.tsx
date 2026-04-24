@@ -6,6 +6,7 @@ import EditStatesModal from "./EditStatesModal";
 import DeleteProviderModal from "./DeleteProviderModal";
 import ProviderApplicationModal from "./ProviderApplicationModal";
 import ProviderDrawer from "./ProviderDrawer";
+import { canDelete, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
 
 type AvailabilityStatus = "active" | "at_capacity" | "inactive";
 
@@ -16,6 +17,8 @@ interface DoctorProfile {
   availability_status: AvailabilityStatus | null;
   licensed_states: string[] | null; per_order_rate: number | null;
   role: string | null; created_at: string; photo_url?: string;
+  lifecycle_status?: string | null;
+  is_published?: boolean | null;
 }
 interface DoctorContact {
   id: string; full_name: string; email: string; phone: string | null;
@@ -42,6 +45,20 @@ interface PendingApplication {
 
 const NON_PROVIDER_ROLES = new Set(["owner", "admin_manager", "support", "finance", "read_only"]);
 
+// Phase 3 Step 1 — read-only badge mapping for lifecycle_status. No behavior, display only.
+const LIFECYCLE_BADGE: Record<string, { label: string; cls: string }> = {
+  active:         { label: "Active",         cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  approved:       { label: "Approved",       cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  pending_setup:  { label: "Pending Setup",  cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  inactive:       { label: "Inactive",       cls: "bg-gray-100 text-gray-500 border-gray-200" },
+  paused:         { label: "Paused",         cls: "bg-gray-100 text-gray-500 border-gray-200" },
+};
+const lifecycleBadge = (raw: string | null | undefined) => {
+  if (!raw) return null;
+  const key = raw.toLowerCase();
+  return LIFECYCLE_BADGE[key] ?? { label: raw, cls: "bg-gray-100 text-gray-500 border-gray-200" };
+};
+
 export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () => void }) {
   const [doctors, setDoctors] = useState<DoctorRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +73,9 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
   const [pendingSetupIds, setPendingSetupIds] = useState<Set<string>>(new Set());
   const [selectedDoc, setSelectedDoc] = useState<DoctorRow | null>(null);
   const [togglingEmail, setTogglingEmail] = useState<string | null>(null);
+  const [publishingEmail, setPublishingEmail] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const canDeleteProviders = canDelete(currentRole);
 
   // ── Filter / search state ──
   const [searchQuery, setSearchQuery] = useState("");
@@ -121,7 +141,19 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
     }
   };
 
-  useEffect(() => { loadData(); loadPendingApps(); }, []);
+  useEffect(() => {
+    loadData();
+    loadPendingApps();
+    // Capture the current user's role so destructive actions can be gated.
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from("doctor_profiles").select("role").eq("user_id", user.id).maybeSingle()
+        .then(({ data }) => {
+          const r = (data as { role: string | null } | null)?.role ?? null;
+          setCurrentRole(r);
+        });
+    });
+  }, []);
 
   // Sync selectedDoc state after data refresh so drawer shows updated info
   const handleRefresh = async () => {
@@ -165,19 +197,52 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
     }
   };
 
+  // Phase 4 — Availability toggle controls ASSIGNMENT ONLY.
+  // Public website visibility lives on the publish toggle (handlePublishToggle).
+  // Therefore this no longer writes to approved_providers.is_active.
   const handleQuickToggle = async (doc: DoctorRow) => {
     setTogglingEmail(doc.email);
-    const newActive = !(doc.profile ? doc.profile.is_active !== false : doc.contact?.is_active !== false);
-    const updates: Promise<unknown>[] = [supabase.from("approved_providers").update({ is_active: newActive }).eq("email", doc.email)];
-    if (doc.profile) updates.push(supabase.from("doctor_profiles").update({ is_active: newActive }).eq("id", doc.profile.id));
-    if (doc.contact) updates.push(supabase.from("doctor_contacts").update({ is_active: newActive }).eq("id", doc.contact.id));
-    await Promise.all(updates);
+    // Derive from the same visible state the UI renders (availability_status first, is_active fallback)
+    // so the toggle always flips from what the admin actually sees.
+    const currentAvail: AvailabilityStatus = (doc.profile?.availability_status ?? doc.contact?.availability_status ?? (doc.profile?.is_active !== false ? "active" : "inactive")) as AvailabilityStatus;
+    const newActive = currentAvail === "inactive";
+    const newAvailability: AvailabilityStatus = newActive ? "active" : "inactive";
+    const updates: Promise<{ error: { message: string } | null }>[] = [];
+    if (doc.profile) updates.push(supabase.from("doctor_profiles").update({ is_active: newActive, availability_status: newAvailability }).eq("id", doc.profile.id));
+    if (doc.contact) updates.push(supabase.from("doctor_contacts").update({ is_active: newActive, availability_status: newAvailability }).eq("id", doc.contact.id));
+    const results = await Promise.all(updates);
     setTogglingEmail(null);
-    showToast(newActive ? `${doc.name} reactivated.` : `${doc.name} deactivated — hidden from website.`);
+    const anyErr = results.find((r) => r.error);
+    if (anyErr?.error) { showToast(`Update failed: ${anyErr.error.message}`); return; }
+    showToast(newActive ? `${doc.name} reactivated for assignment.` : `${doc.name} paused — no new cases will be assigned.`);
+    loadData();
+  };
+
+  // Phase 4 Step 2 — Publish/Unpublish control. Writes doctor_profiles.is_published
+  // and mirrors to approved_providers.is_active so the homepage stays in sync until
+  // the homepage query is migrated to is_published (a later step).
+  const handlePublishToggle = async (doc: DoctorRow) => {
+    if (!doc.profile) return;
+    setPublishingEmail(doc.email);
+    const newPublished = !(doc.profile.is_published === true);
+    const updates: Promise<{ error: { message: string } | null }>[] = [
+      supabase.from("doctor_profiles").update({ is_published: newPublished }).eq("id", doc.profile.id),
+      supabase.from("approved_providers").update({ is_active: newPublished }).eq("email", doc.email),
+    ];
+    const results = await Promise.all(updates);
+    setPublishingEmail(null);
+    const anyErr = results.find((r) => r.error);
+    if (anyErr?.error) { showToast(`Publish update failed: ${anyErr.error.message}`); return; }
+    showToast(newPublished ? `${doc.name} published — now visible on website.` : `${doc.name} unpublished — hidden from website.`);
     loadData();
   };
 
   const handleDeleteProvider = async (doc: DoctorRow) => {
+    if (!canDelete(currentRole)) {
+      showToast(ADMIN_REQUIRED_LABEL);
+      setDeleteDoc(null);
+      return;
+    }
     const deletes: Promise<{ error: { message: string } | null }>[] = [];
     if (doc.profile) deletes.push(supabase.from("doctor_profiles").delete().eq("id", doc.profile.id));
     if (doc.contact) deletes.push(supabase.from("doctor_contacts").delete().eq("id", doc.contact.id));
@@ -427,9 +492,14 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
             const isContactOnly = !doc.profile && !!doc.contact;
             const isPendingSetup = !!doc.profile && pendingSetupIds.has(doc.profile.user_id);
             const isToggling = togglingEmail === doc.email;
+            const isPublishing = publishingEmail === doc.email;
             const currentRate = doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null;
             const isSelected = selectedDoc?.email === doc.email;
             const photoUrl = doc.profile?.photo_url ?? doc.contact?.photo_url ?? "";
+            // Phase 3 Step 1 — read-only Phase 2 column display
+            const lifecycle = lifecycleBadge(doc.profile?.lifecycle_status);
+            const showPublishBadge = !!doc.profile;
+            const isPublished = doc.profile?.is_published === true;
 
             return (
               <div key={doc.email} className={`bg-white rounded-xl border transition-colors ${isSelected ? "border-[#3b6ea5] ring-1 ring-[#3b6ea5]/20" : "border-gray-200 hover:border-gray-300"}`}>
@@ -452,6 +522,22 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
                       {availStatus === "at_capacity" && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded hidden sm:inline">At Capacity</span>}
                       {isPendingSetup && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded hidden sm:inline">Pending setup</span>}
                       {isContactOnly && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-xs font-bold rounded hidden sm:inline">No Portal</span>}
+                      {lifecycle && (
+                        <span
+                          title={`lifecycle_status: ${doc.profile?.lifecycle_status ?? ""}`}
+                          className={`px-1.5 py-0.5 text-xs font-bold rounded border hidden sm:inline ${lifecycle.cls}`}
+                        >
+                          {lifecycle.label}
+                        </span>
+                      )}
+                      {showPublishBadge && (
+                        <span
+                          title={`is_published: ${isPublished ? "true" : "false"}`}
+                          className={`px-1.5 py-0.5 text-xs font-bold rounded border hidden sm:inline ${isPublished ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}
+                        >
+                          {isPublished ? "Published" : "Unpublished"}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-400 truncate">{doc.email}</p>
                   </div>
@@ -475,12 +561,21 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
                     )}
                   </div>
 
-                  {/* Quick toggle */}
+                  {/* Availability toggle — controls assignment only */}
                   <button type="button" onClick={() => handleQuickToggle(doc)} disabled={isToggling}
-                    title={isActive ? "Deactivate" : "Activate"}
+                    title={isActive ? "Deactivate (pause assignments)" : "Activate (resume assignments)"}
                     className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${isActive ? "bg-[#3b6ea5]" : "bg-gray-300"}`}>
                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${isActive ? "translate-x-4" : "translate-x-0.5"}`}></div>
                   </button>
+
+                  {/* Publish toggle — controls public website visibility (only for providers with a profile) */}
+                  {doc.profile && (
+                    <button type="button" onClick={() => handlePublishToggle(doc)} disabled={isPublishing}
+                      title={isPublished ? "Unpublish (hide from website)" : "Publish (show on website)"}
+                      className={`w-9 h-5 rounded-full relative transition-colors cursor-pointer disabled:opacity-50 flex-shrink-0 ${isPublished ? "bg-emerald-500" : "bg-gray-300"}`}>
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${isPublished ? "translate-x-4" : "translate-x-0.5"}`}></div>
+                    </button>
+                  )}
 
                   {/* Manage button */}
                   <button type="button" onClick={() => setSelectedDoc(isSelected ? null : doc)}
@@ -529,6 +624,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
         onRefresh={handleRefresh}
         onOpenStates={(doc) => { setStatesModalDoc(doc); }}
         onDelete={(doc) => setDeleteDoc(doc)}
+        canDeleteProviders={canDeleteProviders}
       />
     </div>
   );

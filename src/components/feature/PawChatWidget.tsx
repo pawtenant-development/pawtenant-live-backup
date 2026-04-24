@@ -16,6 +16,14 @@
  *     whether or not identity is captured.
  *   - Once submitted, identity is persisted via the update_chat_visitor_identity
  *     RPC (SECURITY DEFINER — scoped to the caller's provider_session_id).
+ *
+ * File attachments (phase 9):
+ *   - Paperclip button next to the send button opens the OS file picker.
+ *   - Allowed types: jpg, png, webp, pdf, doc, docx. Max 10 MB.
+ *   - Upload flows through /functions/v1/chat-attachment-upload; a new
+ *     chats row + chat_attachments row are created server-side.
+ *   - Attachments render beneath their bubble (image thumbs inline, other
+ *     file types as a download chip).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +31,14 @@ import { useLocation } from "react-router-dom";
 import { usePawChatThread } from "../../hooks/usePawChatThread";
 import { supabase } from "../../lib/supabaseClient";
 import { markChatOpened, markFirstMessage } from "../../lib/visitorSession";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  formatBytes,
+  isValidChatAttachment,
+  type VisitorAttachment,
+} from "../../lib/chatAttachments";
+import ChatAttachmentView from "./ChatAttachmentView";
 
 const HIDDEN_ROUTE_PREFIXES = [
   "/admin",
@@ -41,7 +57,6 @@ const HIDDEN_ROUTE_PREFIXES = [
 const CHAT_FONT =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
-// PawTenant brand palette
 const BRAND_PRIMARY     = "#FF6A2B";
 const BRAND_PRIMARY_DK  = "#e85a1e";
 const BRAND_SOFT        = "#FFE6DB";
@@ -50,7 +65,7 @@ const TEXT_DARK         = "#1F2937";
 const BORDER_LIGHT      = "#E5E7EB";
 
 const PROVIDER = "pawtenant";
-const IDENTITY_STATUS_KEY = "__pt_chat_identity_status"; // 'saved' | 'skipped'
+const IDENTITY_STATUS_KEY = "__pt_chat_identity_status";
 const IDENTITY_NAME_KEY   = "__pt_chat_identity_name";
 const IDENTITY_EMAIL_KEY  = "__pt_chat_identity_email";
 
@@ -83,10 +98,20 @@ function writeIdentityCache(name: string, email: string) {
   }
 }
 
+function readIdentityCache(): { name: string; email: string } {
+  try {
+    return {
+      name: sessionStorage.getItem(IDENTITY_NAME_KEY) ?? "",
+      email: sessionStorage.getItem(IDENTITY_EMAIL_KEY) ?? "",
+    };
+  } catch {
+    return { name: "", email: "" };
+  }
+}
+
 function isValidEmail(v: string): boolean {
   const s = v.trim();
   if (!s) return false;
-  // minimal sanity check — server applies its own normalization
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
@@ -95,14 +120,25 @@ export default function PawChatWidget() {
   const isHidden = HIDDEN_ROUTE_PREFIXES.some((p) => pathname.startsWith(p));
 
   const [open, setOpen] = useState(false);
-  const { sessionId, messages, sending, error, hasUnread, sendReply, markSeen, maxLen } =
-    usePawChatThread(open);
+  const {
+    sessionId,
+    messages,
+    attachmentsByMessage,
+    sending,
+    uploading,
+    error,
+    hasUnread,
+    sendReply,
+    sendAttachment,
+    markSeen,
+    maxLen,
+  } = usePawChatThread(open);
 
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Identity capture state
   const [identityStatus, setIdentityStatus] = useState<IdentityStatus>(() =>
     readIdentityStatus(),
   );
@@ -110,8 +146,8 @@ export default function PawChatWidget() {
   const [emailInput, setEmailInput] = useState("");
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
-  // Visitor has sent at least one message during this mount.
   const hasVisitorMessage = useMemo(
     () => messages.some((m) => (m.sender ?? "visitor").toLowerCase() === "visitor"),
     [messages],
@@ -120,14 +156,12 @@ export default function PawChatWidget() {
   const showIdentityPrompt =
     open && identityStatus === "pending" && hasVisitorMessage;
 
-  // Auto-scroll to bottom on new messages / on open / when prompt appears.
   useEffect(() => {
     if (!open) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, open, showIdentityPrompt]);
+  }, [messages, attachmentsByMessage, open, showIdentityPrompt]);
 
-  // When opened: clear unread + focus input.
   useEffect(() => {
     if (!open) return;
     markSeen();
@@ -137,7 +171,7 @@ export default function PawChatWidget() {
 
   if (isHidden) return null;
 
-  const canSend = input.trim().length > 0 && !sending;
+  const canSend = input.trim().length > 0 && !sending && !uploading;
 
   async function handleSend() {
     if (!canSend) return;
@@ -146,6 +180,30 @@ export default function PawChatWidget() {
     markFirstMessage();
     await sendReply(text);
     inputRef.current?.focus();
+  }
+
+  function triggerFilePicker() {
+    if (uploading || sending) return;
+    setAttachmentError(null);
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const err = isValidChatAttachment(file);
+    if (err) {
+      setAttachmentError(err);
+      return;
+    }
+    setAttachmentError(null);
+    markFirstMessage();
+    const id = readIdentityCache();
+    await sendAttachment(file, {
+      email: id.email || null,
+      name: id.name || null,
+    });
   }
 
   async function handleSubmitIdentity(e: React.FormEvent) {
@@ -190,6 +248,8 @@ export default function PawChatWidget() {
     setIdentityStatus("skipped");
   }
 
+  const maxMb = Math.floor(CHAT_ATTACHMENT_MAX_BYTES / 1024 / 1024);
+
   return (
     <>
       {!open && (
@@ -223,7 +283,7 @@ export default function PawChatWidget() {
           className="fixed right-4 bottom-[90px] md:bottom-5 z-50 rounded-2xl shadow-2xl flex flex-col"
           style={{
             width: "min(360px, calc(100vw - 32px))",
-            height: "min(520px, calc(100vh - 120px))",
+            height: "min(540px, calc(100vh - 120px))",
             border: `1px solid ${BORDER_LIGHT}`,
             overflow: "hidden",
             fontFamily: CHAT_FONT,
@@ -289,6 +349,7 @@ export default function PawChatWidget() {
                     sender={m.sender}
                     message={m.message}
                     pending={typeof m.id === "string" && m.id.startsWith("temp-")}
+                    attachments={attachmentsByMessage[m.id] ?? []}
                   />
                 ))}
               </div>
@@ -409,6 +470,15 @@ export default function PawChatWidget() {
             className="bg-white"
             style={{ borderTop: `1px solid ${BORDER_LIGHT}` }}
           >
+            {uploading && (
+              <div
+                className="px-3 py-2 flex items-center gap-2 text-[11px] font-semibold"
+                style={{ backgroundColor: BRAND_SOFT, color: BRAND_PRIMARY_DK }}
+              >
+                <i className="ri-loader-4-line animate-spin" />
+                Uploading attachment…
+              </div>
+            )}
             <div className="px-3 pt-3 pb-2">
               <textarea
                 ref={inputRef}
@@ -440,9 +510,40 @@ export default function PawChatWidget() {
               />
             </div>
             <div className="flex items-center justify-between gap-2 px-3 pb-3">
-              <span className="text-[10px] text-gray-400 font-medium">
-                Enter to send · Shift+Enter for new line
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={triggerFilePicker}
+                  disabled={uploading || sending}
+                  title={`Attach file (max ${maxMb} MB)`}
+                  aria-label="Attach file"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: BORDER_LIGHT,
+                    color: TEXT_DARK,
+                    backgroundColor: "#ffffff",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!e.currentTarget.disabled)
+                      e.currentTarget.style.backgroundColor = PANEL_BG;
+                  }}
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.backgroundColor = "#ffffff")
+                  }
+                >
+                  <i className="ri-attachment-2 text-base" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={CHAT_ATTACHMENT_ACCEPT}
+                  onChange={handleFileChange}
+                  style={{ display: "none" }}
+                />
+                <span className="text-[10px] text-gray-400 font-medium">
+                  Enter to send · Shift+Enter for new line
+                </span>
+              </div>
               <button
                 type="submit"
                 disabled={!canSend}
@@ -463,6 +564,14 @@ export default function PawChatWidget() {
               </button>
             </div>
           </form>
+          {attachmentError && (
+            <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-start gap-2">
+              <i className="ri-error-warning-line text-red-600 text-xs mt-0.5" />
+              <p className="text-[11px] text-red-700 font-semibold">
+                {attachmentError} (max {maxMb} MB — {formatBytes(CHAT_ATTACHMENT_MAX_BYTES)})
+              </p>
+            </div>
+          )}
           {error && (
             <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-start gap-2">
               <i className="ri-error-warning-line text-red-600 text-xs mt-0.5" />
@@ -479,10 +588,12 @@ function Bubble({
   sender,
   message,
   pending,
+  attachments,
 }: {
   sender: string | null;
   message: string;
   pending: boolean;
+  attachments: VisitorAttachment[];
 }) {
   const role = (sender ?? "visitor").toLowerCase();
   if (role === "system") {
@@ -506,7 +617,9 @@ function Bubble({
         border: `1px solid ${BORDER_LIGHT}`,
       };
   return (
-    <div className={`flex ${isSelf ? "justify-end" : "justify-start"}`}>
+    <div
+      className={`flex flex-col ${isSelf ? "items-end" : "items-start"} gap-1`}
+    >
       <div
         className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words shadow-sm ${
           pending ? "opacity-60" : ""
@@ -519,6 +632,13 @@ function Bubble({
       >
         {message}
       </div>
+      {attachments.length > 0 && (
+        <ChatAttachmentView
+          attachments={attachments}
+          align={isSelf ? "right" : "left"}
+          variant={isSelf ? "dark" : "light"}
+        />
+      )}
     </div>
   );
 }

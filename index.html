@@ -2,6 +2,7 @@
 <html lang="en-US">
   <head>
     <meta charset="UTF-8" />
+
     <link rel="icon" type="image/png" href="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/6e37e8c9-809c-4d69-8421-96689959e310_Favicon-02.png?v=3e7d245d886406c510e9428eba87315a" />
     <link rel="apple-touch-icon" href="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/6e37e8c9-809c-4d69-8421-96689959e310_Favicon-02.png?v=3e7d245d886406c510e9428eba87315a" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=5.0" />
@@ -166,10 +167,6 @@
     }
     </script>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <!-- TRACKING TAGS — Replace XXXXXXXXXX with your real IDs    -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
-
     <!-- Hero Image Preload for LCP — Desktop + Mobile -->
     <link rel="preload" as="image" href="https://readdy.ai/api/search-image?query=warm%20cozy%20living%20room%20with%20a%20happy%20woman%20sitting%20on%20sofa%20using%20laptop%20while%20her%20golden%20retriever%20dog%20rests%20beside%20her%2C%20soft%20morning%20light%2C%20home%20interior%20with%20plants%2C%20natural%20warm%20tones%2C%20lifestyle%20photography%2C%20shallow%20depth%20of%20field%2C%20professional%20photography&width=1440&height=900&seq=hero001&orientation=landscape" media="(min-width: 768px)" fetchpriority="high" />
     <link rel="preload" as="image" href="https://readdy.ai/api/search-image?query=warm%20cozy%20living%20room%20with%20a%20happy%20smiling%20woman%20sitting%20on%20sofa%20and%20her%20golden%20retriever%20dog%20sitting%20right%20next%20to%20her%20both%20clearly%20visible%20in%20frame%2C%20soft%20morning%20light%2C%20home%20interior%2C%20natural%20warm%20tones%2C%20lifestyle%20photography%2C%20professional%20photography%2C%20wide%20shot%20showing%20both%20subjects%20equally&width=600&height=900&seq=hero-mobile-v2&orientation=portrait" media="(max-width: 767px)" fetchpriority="high" imagesizes="100vw" />
@@ -249,6 +246,54 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- Visitor Geo Bootstrap — runs strictly AFTER window.load event.     -->
+    <!-- Populates sessionStorage.pt_geo so chat capture can attach         -->
+    <!-- location on subsequent visitor messages.                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <script type="text/javascript">
+      (function() {
+        function runGeoFetch() {
+          try {
+            var KEY = 'pt_geo';
+            var existing = sessionStorage.getItem(KEY);
+            if (existing) {
+              try {
+                var parsed = JSON.parse(existing);
+                if (parsed && (parsed.country_code || parsed.country)) return;
+              } catch (e) {}
+            }
+            fetch('https://ipwho.is/?fields=success,country,country_code,region,region_code,city,latitude,longitude,timezone,ip', { method: 'GET' })
+              .then(function(r) { return r && r.ok ? r.json() : null; })
+              .then(function(d) {
+                if (!d || d.success === false) return;
+                var geo = {
+                  country: d.country || null,
+                  country_code: d.country_code || null,
+                  region: d.region || null,
+                  region_code: d.region_code || null,
+                  city: d.city || null,
+                  latitude: typeof d.latitude === 'number' ? d.latitude : null,
+                  longitude: typeof d.longitude === 'number' ? d.longitude : null,
+                  timezone: (d.timezone && d.timezone.id) || null,
+                  ip: d.ip || null,
+                  source: 'ipwho.is',
+                  fetched_at: new Date().toISOString()
+                };
+                try { sessionStorage.setItem(KEY, JSON.stringify(geo)); } catch (e) {}
+              })
+              .catch(function() { /* silent */ });
+          } catch (e) { /* silent */ }
+        }
+
+        if (document.readyState === 'complete') {
+          setTimeout(runGeoFetch, 0);
+        } else {
+          window.addEventListener('load', function() { setTimeout(runGeoFetch, 0); });
+        }
+      })();
+    </script>
+
     <!-- Readdy AI Agent Widget -->
     <script
       src="https://readdy.ai/api/public/assistant/widget?projectId=dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491"
@@ -298,6 +343,5 @@
         }
       })();
     </script>
-
   </body>
 </html>

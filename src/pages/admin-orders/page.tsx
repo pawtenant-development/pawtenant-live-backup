@@ -6,6 +6,7 @@ import CreateDoctorModal from "./components/CreateDoctorModal";
 import EarningsPanel from "./components/EarningsPanel";
 import CustomersTab from "./components/CustomersTab";
 import ChatsTab from "./components/ChatsTab";
+import ContactRequestsTab from "./components/ContactRequestsTab";
 import TeamTab from "./components/TeamTab";
 import PaymentsTab from "./components/PaymentsTab";
 import ChangePasswordModal from "./components/ChangePasswordModal";
@@ -232,9 +233,9 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
 
 // ─── Role-based tab visibility ─────────────────────────────────────────────
 
-type TabKey = "dashboard" | "orders" | "analytics" | "comms" | "chats" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
+type TabKey = "dashboard" | "orders" | "analytics" | "comms" | "chats" | "contacts" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
 
-const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "comms", "chats", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
+const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
 
 function getVisibleTabs(role: string | null, customTabAccess?: string[] | null): TabKey[] {
   // Custom tab access overrides role defaults — use it if set
@@ -246,11 +247,11 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
     case "admin_manager":
       return ALL_TABS;
     case "support":
-      return ["dashboard", "orders", "analytics", "comms", "chats", "customers", "doctors", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "doctors", "audit", "health"];
     case "finance":
-      return ["dashboard", "orders", "analytics", "comms", "chats", "customers", "payments", "earnings", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "payments", "earnings", "audit", "health"];
     case "read_only":
-      return ["dashboard", "orders", "analytics", "comms", "chats", "customers", "doctors", "payments", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "doctors", "payments", "audit", "health"];
     default:
       return ALL_TABS;
   }
@@ -445,6 +446,31 @@ export default function AdminOrdersPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [syncTick, setSyncTick] = useState(0);
   const [unreadCommsCount, setUnreadCommsCount] = useState(0);
+  const [unreadContactsCount, setUnreadContactsCount] = useState(0);
+
+  // Poll contact_submissions for "new" count to badge the sidebar.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { count, error: qErr } = await supabase
+          .from("contact_submissions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "new");
+        if (!cancelled && !qErr) {
+          setUnreadContactsCount(count ?? 0);
+        }
+      } catch {
+        // silent
+      }
+    };
+    void load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   // ── Sidebar collapse (persisted) ─────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -1316,6 +1342,25 @@ export default function AdminOrdersPage() {
     load();
   }, [navigate, supabaseUrl, loadOrderData]);
 
+  // ── Enforce tab access from URL ─────────────────────────────────────────
+  // Direct URL access (e.g. /admin-orders?tab=chats) must be blocked if the
+  // user's role/custom_tab_access does not include that tab. Dashboard is
+  // always allowed as the safe fallback.
+  useEffect(() => {
+    if (!adminProfile) return;
+    const visible = getVisibleTabs(adminProfile.role ?? null, adminProfile.custom_tab_access);
+    if (activeTab === "dashboard") return;
+    if (!visible.includes(activeTab)) {
+      const fallback: TabKey = visible[0] ?? "dashboard";
+      const params = new URLSearchParams(location.search);
+      if (fallback === "dashboard") params.delete("tab");
+      else params.set("tab", fallback);
+      const qs = params.toString();
+      navigate(`/admin-orders${qs ? `?${qs}` : ""}`, { replace: true });
+      setActiveTabState(fallback);
+    }
+  }, [adminProfile, activeTab, location.search, navigate]);
+
   // ── Finance Orders tab access state ──
   // Finance users must request approval before seeing the full orders list
   const [financeOrdersAccessGranted, setFinanceOrdersAccessGranted] = useState(false);
@@ -1432,6 +1477,15 @@ export default function AdminOrdersPage() {
       setTimeout(() => setBulkMsg(""), 6000);
     }
   }, [orders, supabaseUrl, anonKey, doctorContacts]);
+
+  // Synchronous visible-tabs list used for both the sidebar and render-side
+  // guarding. Until the admin profile loads, fall back to ALL_TABS so the UI
+  // doesn't bounce around; the auth effect handles the case where the user
+  // isn't an admin at all (it redirects to /admin-login).
+  const visibleTabsForRender: TabKey[] = adminProfile
+    ? getVisibleTabs(adminProfile.role ?? null, adminProfile.custom_tab_access)
+    : ALL_TABS;
+  const isTabVisible = (tab: TabKey) => tab === "dashboard" || visibleTabsForRender.includes(tab);
 
   return (
     <div className="min-h-screen bg-[#f0f4f8]">
@@ -1558,9 +1612,10 @@ export default function AdminOrdersPage() {
       <AdminSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        visibleTabs={getVisibleTabs(adminProfile?.role ?? null, adminProfile?.custom_tab_access)}
+        visibleTabs={visibleTabsForRender}
         totalUnassigned={totalUnassigned}
         unreadCommsCount={unreadCommsCount}
+        unreadContactsCount={unreadContactsCount}
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleSidebarToggle}
       />
@@ -1574,6 +1629,7 @@ export default function AdminOrdersPage() {
              activeTab === "analytics" ? "Analytics" :
              activeTab === "comms" ? "Communications" :
              activeTab === "chats" ? "Chats" :
+             activeTab === "contacts" ? "Contacts" :
              activeTab === "customers" ? "Customers" :
              activeTab === "doctors" ? "Providers" :
              activeTab === "earnings" ? "Earnings" :
@@ -2273,13 +2329,15 @@ export default function AdminOrdersPage() {
           </>
         )}
 
-        {/* ── CUSTOMERS TAB ── */}
-        {activeTab === "chats" && <ChatsTab />}
+        {/* ── CHATS / CONTACTS / CUSTOMERS ── */}
+        {activeTab === "chats" && isTabVisible("chats") && <ChatsTab />}
 
-        {activeTab === "customers" && <CustomersTab />}
+        {activeTab === "contacts" && isTabVisible("contacts") && <ContactRequestsTab />}
+
+        {activeTab === "customers" && isTabVisible("customers") && <CustomersTab />}
 
         {/* ── DOCTORS TAB ── */}
-        {activeTab === "doctors" && <DoctorsTab onProviderAdded={loadOrderData} />}
+        {activeTab === "doctors" && isTabVisible("doctors") && <DoctorsTab onProviderAdded={loadOrderData} />}
 
         {/* ── EARNINGS TAB ── */}
         {activeTab === "earnings" && (
@@ -2293,10 +2351,10 @@ export default function AdminOrdersPage() {
         )}
 
         {/* ── PAYMENTS TAB ── */}
-        {activeTab === "payments" && <PaymentsTab />}
+        {activeTab === "payments" && isTabVisible("payments") && <PaymentsTab />}
 
         {/* ── TEAM TAB ── */}
-        {activeTab === "team" && <TeamTab />}
+        {activeTab === "team" && isTabVisible("team") && <TeamTab />}
 
         {/* ── AUDIT LOG TAB ── */}
         {activeTab === "audit" && (

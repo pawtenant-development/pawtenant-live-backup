@@ -118,7 +118,7 @@ function EarningRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <p className="text-sm font-bold text-gray-900">{earning.doctor_name ?? "Unknown Doctor"}</p>
+              <p className="text-sm font-bold text-gray-900">{earning.doctor_name ?? "Unknown Provider"}</p>
               <p className="text-xs text-gray-400">{earning.doctor_email ?? ""}</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -156,7 +156,7 @@ function EarningRow({
             <div className="flex items-center gap-1.5 text-xs">
               <i className="ri-money-dollar-circle-line text-[#3b6ea5]"></i>
               <span className={`font-bold ${earning.doctor_amount != null ? "text-[#3b6ea5]" : "text-gray-400"}`}>
-                Doctor gets: {earning.doctor_amount != null ? `$${earning.doctor_amount}` : "Not set"}
+                Provider gets: {earning.doctor_amount != null ? `$${earning.doctor_amount}` : "Not set"}
               </span>
             </div>
           </div>
@@ -260,7 +260,7 @@ function EarningRow({
         {editing && (
           <div className="flex items-center gap-3 flex-wrap w-full">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-600 font-semibold whitespace-nowrap">Doctor payout: $</span>
+              <span className="text-xs text-gray-600 font-semibold whitespace-nowrap">Provider payout: $</span>
               <input
                 type="number"
                 value={amount}
@@ -305,7 +305,7 @@ function EarningRow({
 }
 
 function exportToCSV(rows: Earning[], filename: string) {
-  const headers = ["Confirmation ID", "Doctor", "Patient Name", "State", "Order Amount", "Doctor Amount", "Status", "Paid Date", "Payment Reference", "Notes"];
+  const headers = ["Confirmation ID", "Provider", "Patient Name", "State", "Order Amount", "Provider Amount", "Status", "Paid Date", "Payment Reference", "Notes"];
   const escape = (v: string | number | null) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csvRows = rows.map((e) => [
     e.confirmation_id,
@@ -585,7 +585,7 @@ export default function EarningsPanel() {
             onChange={(e) => { setFilterDoctor(e.target.value); setSelectedIds(new Set()); }}
             className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-[#3b6ea5] cursor-pointer"
           >
-            <option value="all">All Doctors</option>
+            <option value="all">All Providers</option>
             {doctors.map((d) => <option key={d.user_id} value={d.user_id}>{d.full_name}</option>)}
           </select>
         </div>
@@ -596,7 +596,7 @@ export default function EarningsPanel() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search doctor, patient, order ID..."
+              placeholder="Search provider, patient, order ID..."
               className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
             />
           </div>
@@ -686,7 +686,7 @@ export default function EarningsPanel() {
           </p>
           <p className="text-xs text-gray-400">
             {earnings.length === 0
-              ? "Records are created automatically when a doctor sends a case for patient review."
+              ? "Records are created automatically when a provider sends a case for patient review."
               : "Try changing your filters."}
           </p>
         </div>
@@ -753,7 +753,7 @@ export default function EarningsPanel() {
           {doctors.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-5 mb-5">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">By Doctor</p>
+                <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">By Provider</p>
                 <button
                   type="button"
                   onClick={() => exportToCSV(earnings, "all-earnings.csv")}

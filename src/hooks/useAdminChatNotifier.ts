@@ -59,6 +59,14 @@ export interface ChatSession {
   external_metadata: Record<string, unknown> | null;
   /** FK to orders.id when the visitor's email matches a known order. */
   matched_order_id: string | null;
+  /** Assignment (Phase 8). null = unassigned. */
+  assigned_admin_id: string | null;
+  assigned_admin_email: string | null;
+  assigned_admin_name: string | null;
+  first_handled_at: string | null;
+  last_handled_at: string | null;
+  resolved_at: string | null;
+  resolved_by_admin_id: string | null;
 }
 
 export type NotifPermission = "default" | "granted" | "denied" | "unsupported";
@@ -445,7 +453,7 @@ export function useAdminChatNotifier(
         const { data, error: qErr } = await supabase
           .from("chat_sessions")
           .select(
-            "id, email, name, visitor_name, visitor_email, status, provider, last_message_at, last_message_preview, unread_count, last_viewed_at, created_at, external_metadata, matched_order_id",
+            "id, email, name, visitor_name, visitor_email, status, provider, last_message_at, last_message_preview, unread_count, last_viewed_at, created_at, external_metadata, matched_order_id, assigned_admin_id, assigned_admin_email, assigned_admin_name, first_handled_at, last_handled_at, resolved_at, resolved_by_admin_id",
           )
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })

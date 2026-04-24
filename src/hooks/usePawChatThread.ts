@@ -13,13 +13,12 @@
  *
  * Read path:
  *   - supabase.rpc('get_visitor_chat_thread', { p_provider, p_provider_session_id })
+ *   - supabase.rpc('get_visitor_chat_attachments', ...) for attachment rows.
  *   - Poll: 4s while panel is open, 15s while closed.
  *
  * Write path:
  *   - sendChatMessage() → /functions/v1/capture-chat (already live).
- *
- * Intentionally NO realtime subscribe / typing indicators / attachments.
- * V1 must stay tiny.
+ *   - sendAttachment()  → /functions/v1/chat-attachment-upload.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -27,6 +26,11 @@ import { useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { sendChatMessage } from "../lib/captureChat";
 import { buildChannel, getAttribution } from "../lib/attributionStore";
+import {
+  fetchVisitorAttachments,
+  uploadChatAttachment,
+  type VisitorAttachment,
+} from "../lib/chatAttachments";
 
 export interface VisitorChatMessage {
   id: string;
@@ -44,12 +48,8 @@ const SIGNATURE_KEY   = "__pt_chat_attribution_sig";
 const LAST_SEEN_KEY   = "__pt_chat_last_seen_agent_ts";
 const MAX_LEN         = 2000;
 
-// URL params that represent a "fresh campaign touch" — their presence is
-// the gate for rotating the chat session. Plain page navigation never
-// contains any of these unless a new ad/campaign link was clicked.
 const CAMPAIGN_TOUCH_PARAMS = ["utm_source", "gclid", "fbclid", "gbraid", "wbraid"] as const;
 
-// ── sessionStorage helpers (swallow all errors — must never break chat) ──────
 function safeSSGet(key: string): string | null {
   try {
     if (typeof sessionStorage === "undefined") return null;
@@ -90,12 +90,6 @@ function urlHasFreshCampaignTouch(): boolean {
   }
 }
 
-/**
- * Lightweight attribution signature used to detect campaign-touch changes.
- * Uses URL-first values (so the signature reflects the CURRENT touch even
- * if captureFromUrl hasn't yet written it to storage), falling back to
- * stored attribution for values not present in the URL.
- */
 function buildAttributionSignature(): string {
   try {
     const a = getAttribution();
@@ -115,17 +109,6 @@ function buildAttributionSignature(): string {
   }
 }
 
-/**
- * Returns the provider_session_id that matches the CURRENT attribution.
- *
- * Rotates (mints new id + clears last-seen) only when ALL are true:
- *   1. there is an existing session in sessionStorage
- *   2. the stored attribution signature differs from the current one
- *   3. the current URL carries a fresh campaign touch
- *
- * Otherwise keeps the existing session (or creates the first one).
- * Back-fills the signature for sessions that pre-date this feature.
- */
 function ensureSessionForCurrentAttribution(): string {
   const existing   = safeSSGet(SESSION_KEY);
   const currentSig = buildAttributionSignature();
@@ -149,7 +132,6 @@ function ensureSessionForCurrentAttribution(): string {
     return id;
   }
 
-  // Back-fill signature for sessions that existed before this feature shipped.
   if (currentSig && !storedSig) {
     safeSSSet(SIGNATURE_KEY, currentSig);
   }
@@ -167,10 +149,13 @@ function writeLastSeen(ts: string): void {
 export interface UsePawChatThreadResult {
   sessionId: string;
   messages: VisitorChatMessage[];
+  attachmentsByMessage: Record<string, VisitorAttachment[]>;
   sending: boolean;
+  uploading: boolean;
   error: string | null;
   hasUnread: boolean;
   sendReply: (text: string) => Promise<void>;
+  sendAttachment: (file: File, identity?: { email?: string | null; name?: string | null }) => Promise<void>;
   markSeen: () => void;
   maxLen: number;
 }
@@ -179,7 +164,9 @@ export function usePawChatThread(isOpen: boolean): UsePawChatThreadResult {
   const location = useLocation();
   const [sessionId, setSessionId] = useState<string>(() => ensureSessionForCurrentAttribution());
   const [messages, setMessages] = useState<VisitorChatMessage[]>([]);
+  const [attachments, setAttachments] = useState<VisitorAttachment[]>([]);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasUnread, setHasUnread] = useState(false);
 
@@ -191,13 +178,12 @@ export function usePawChatThread(isOpen: boolean): UsePawChatThreadResult {
     };
   }, []);
 
-  // Re-evaluate session on URL change. Only rotates when the attribution
-  // signature changed AND a fresh campaign touch is present in the URL.
   useEffect(() => {
     const nextId = ensureSessionForCurrentAttribution();
     if (nextId !== sessionId) {
       setSessionId(nextId);
       setMessages([]);
+      setAttachments([]);
       setHasUnread(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -205,23 +191,29 @@ export function usePawChatThread(isOpen: boolean): UsePawChatThreadResult {
 
   const load = useCallback(async () => {
     try {
-      const { data, error: rpcErr } = await supabase.rpc(
-        "get_visitor_chat_thread",
-        {
+      const [threadRes, attachRes] = await Promise.all([
+        supabase.rpc("get_visitor_chat_thread", {
           p_provider: PROVIDER,
           p_provider_session_id: sessionId,
-        },
-      );
+        }),
+        fetchVisitorAttachments(PROVIDER, sessionId).catch(() => []),
+      ]);
       if (!mountedRef.current) return;
-      if (rpcErr) {
-        setError(rpcErr.message);
+      if (threadRes.error) {
+        setError(threadRes.error.message);
         return;
       }
-      const rows = (data ?? []) as VisitorChatMessage[];
+      const rows = (threadRes.data ?? []) as VisitorChatMessage[];
       setMessages((prev) => {
         const prevJson = JSON.stringify(prev);
         const nextJson = JSON.stringify(rows);
         return prevJson === nextJson ? prev : rows;
+      });
+      const atts = (attachRes as VisitorAttachment[]) ?? [];
+      setAttachments((prev) => {
+        const prevJson = JSON.stringify(prev);
+        const nextJson = JSON.stringify(atts);
+        return prevJson === nextJson ? prev : atts;
       });
       const lastSeen = readLastSeen();
       const lastAgent = [...rows].reverse().find((m) => m.sender === "agent");
@@ -277,7 +269,6 @@ export function usePawChatThread(isOpen: boolean): UsePawChatThreadResult {
           provider: PROVIDER,
           provider_session_id: sessionId,
         });
-        // Poll shortly after so the server row replaces the optimistic temp row.
         window.setTimeout(() => void load(), 900);
       } catch (e) {
         setError((e as Error)?.message ?? "Send failed");
@@ -288,13 +279,53 @@ export function usePawChatThread(isOpen: boolean): UsePawChatThreadResult {
     [sessionId, sending, load],
   );
 
+  const sendAttachment = useCallback(
+    async (
+      file: File,
+      identity?: { email?: string | null; name?: string | null },
+    ) => {
+      if (uploading) return;
+      setUploading(true);
+      setError(null);
+      try {
+        await uploadChatAttachment({
+          file,
+          provider: PROVIDER,
+          providerSessionId: sessionId,
+          email: identity?.email ?? null,
+          name: identity?.name ?? null,
+          sender: "visitor",
+        });
+        await load();
+      } catch (e) {
+        setError((e as Error)?.message ?? "Upload failed");
+      } finally {
+        if (mountedRef.current) setUploading(false);
+      }
+    },
+    [sessionId, uploading, load],
+  );
+
+  const attachmentsByMessage = attachments.reduce<Record<string, VisitorAttachment[]>>(
+    (acc, a) => {
+      const key = a.chat_message_id ?? "";
+      if (!key) return acc;
+      (acc[key] ??= []).push(a);
+      return acc;
+    },
+    {},
+  );
+
   return {
     sessionId,
     messages,
+    attachmentsByMessage,
     sending,
+    uploading,
     error,
     hasUnread,
     sendReply,
+    sendAttachment,
     markSeen,
     maxLen: MAX_LEN,
   };

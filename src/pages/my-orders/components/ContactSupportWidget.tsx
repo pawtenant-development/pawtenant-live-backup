@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { submitContactRequest } from "../../../lib/contactSubmit";
 
 interface Order {
   id: string;
@@ -65,23 +66,27 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
     setError("");
     setSending(true);
 
-    const body = new URLSearchParams({
-      email: userEmail,
-      name: userName,
-      order_reference: selectedOrder,
-      subject: SUBJECT_OPTIONS.find((o) => o.value === subject)?.label ?? subject,
-      message: message.trim(),
-    });
+    const subjectLabel = SUBJECT_OPTIONS.find((o) => o.value === subject)?.label ?? subject;
 
     try {
-      await fetch("https://readdy.ai/api/form/d70qo532m2156g4s722g", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
+      await submitContactRequest({
+        name: userName,
+        email: userEmail,
+        phone: null,
+        subject: subjectLabel,
+        message: message.trim(),
+        source_page: "/my-orders",
+        metadata: {
+          order_reference: selectedOrder,
+          lead_source: "My Orders Support Widget",
+        },
       });
       setSent(true);
-    } catch {
-      setError("Something went wrong. Please email us at hello@pawtenant.com.");
+    } catch (err) {
+      setError(
+        (err as Error)?.message ||
+          "Something went wrong. Please email us at hello@pawtenant.com.",
+      );
     } finally {
       setSending(false);
     }
@@ -161,7 +166,6 @@ export default function ContactSupportWidget({ userEmail, userName, orders, exte
                 </div>
               ) : (
                 <form
-                  data-readdy-form
                   onSubmit={handleSubmit}
                   className="px-5 py-5 space-y-4"
                 >

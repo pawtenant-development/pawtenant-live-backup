@@ -197,7 +197,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
                     type="email"
                     value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    placeholder="doctor@example.com"
+                    placeholder="provider@example.com"
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]"
                   />
                 </div>

@@ -66,11 +66,11 @@ export default function AboutUsPage() {
   return (
     <main>
       <title>About PawTenant | Our Network of Licensed Professionals</title>
-      <meta name="description" content="Meet the network of licensed therapists and doctors at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
-      <meta name="keywords" content="about pawtenant, licensed ESA doctors, clinical integrity, ESA letter providers" />
+      <meta name="description" content="Meet the network of licensed mental health providers at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
+      <meta name="keywords" content="about pawtenant, licensed ESA providers, clinical integrity, ESA letter providers" />
       <link rel="canonical" href="https://www.pawtenant.com/about-us" />
       <meta property="og:title" content="About PawTenant | Our Network of Licensed Professionals" />
-      <meta property="og:description" content="Meet the network of licensed therapists and doctors at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
+      <meta property="og:description" content="Meet the network of licensed mental health providers at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
       <meta property="og:url" content="https://www.pawtenant.com/about-us" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />

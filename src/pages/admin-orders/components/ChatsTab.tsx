@@ -25,10 +25,31 @@
 //   user_agent). Safe optional chaining everywhere — metadata may be null.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { getAdminIdentity } from "../../../lib/adminIdentity";
 import {
   useAdminChat,
   type ChatSession,
 } from "../../../context/AdminChatContext";
+import ChatAttachmentView from "../../../components/feature/ChatAttachmentView";
+import EditChatIdentityModal from "../../../components/admin/EditChatIdentityModal";
+import {
+  uploadChatAttachment,
+  isValidChatAttachment,
+  CHAT_ATTACHMENT_ACCEPT,
+  CHAT_ATTACHMENT_MAX_BYTES,
+} from "../../../lib/chatAttachments";
+
+interface ChatAttachmentRow {
+  id: string;
+  chat_session_id: string;
+  chat_message_id: string | null;
+  uploaded_by: string;
+  file_name: string;
+  file_path: string;
+  file_type: string | null;
+  file_size: number | null;
+  created_at: string;
+}
 
 const POLL_INTERVAL_MS     = 5000;
 const MISSED_THRESHOLD_MS  = 5 * 60 * 1000;
@@ -180,6 +201,7 @@ export default function ChatsTab() {
     ctx.selectedSessionId,
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [attachments, setAttachments] = useState<ChatAttachmentRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [orderEmails, setOrderEmails] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -193,7 +215,9 @@ export default function ChatsTab() {
   // Admin reply state.
   const [replyInput, setReplyInput]       = useState("");
   const [replySending, setReplySending]   = useState(false);
+  const [replyUploading, setReplyUploading] = useState(false);
   const [replyError, setReplyError]       = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [pendingReplies, setPendingReplies] = useState<ChatMessage[]>([]);
 
   const messagesReqRef = useRef(0);
@@ -305,28 +329,40 @@ export default function ChatsTab() {
       setMessagesLoading(true);
       setThreadError(null);
       setMessages([]);
+      setAttachments([]);
     }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const { data, error: qErr } = await supabase
-        .from("chats")
-        .select(
-          "id, session_id, sender, email, name, message, created_at, provider, source",
-        )
-        .eq("session_id", sessionId)
-        .order("created_at", { ascending: true })
-        .limit(500)
-        .abortSignal(controller.signal);
+      const [msgRes, attRes] = await Promise.all([
+        supabase
+          .from("chats")
+          .select(
+            "id, session_id, sender, email, name, message, created_at, provider, source",
+          )
+          .eq("session_id", sessionId)
+          .order("created_at", { ascending: true })
+          .limit(500)
+          .abortSignal(controller.signal),
+        supabase
+          .from("chat_attachments")
+          .select(
+            "id, chat_session_id, chat_message_id, uploaded_by, file_name, file_path, file_type, file_size, created_at",
+          )
+          .eq("chat_session_id", sessionId)
+          .order("created_at", { ascending: true })
+          .limit(500)
+          .abortSignal(controller.signal),
+      ]);
 
       if (!isLatest()) return;
-      if (qErr) {
-        if (!background) setThreadError(qErr.message);
+      if (msgRes.error) {
+        if (!background) setThreadError(msgRes.error.message);
         return;
       }
-      const nextMessages = (data ?? []) as ChatMessage[];
+      const nextMessages = (msgRes.data ?? []) as ChatMessage[];
       setMessages((prev) => {
         // Defensive: never let an empty background poll wipe an existing
         // thread. RLS is now in place, but this also guards transient
@@ -335,6 +371,13 @@ export default function ChatsTab() {
         const prevJson = JSON.stringify(prev);
         const nextJson = JSON.stringify(nextMessages);
         return prevJson === nextJson ? prev : nextMessages;
+      });
+      const nextAttachments = (attRes.data ?? []) as ChatAttachmentRow[];
+      setAttachments((prev) => {
+        if (background && nextAttachments.length === 0 && prev.length > 0) return prev;
+        const prevJson = JSON.stringify(prev);
+        const nextJson = JSON.stringify(nextAttachments);
+        return prevJson === nextJson ? prev : nextAttachments;
       });
       if (background) setThreadError(null);
     } catch (e) {
@@ -415,6 +458,28 @@ export default function ChatsTab() {
       });
       if (rpcErr) throw rpcErr;
 
+      // Auto-assign on first admin reply. Never overwrites existing
+      // assignment (p_force=false). Silent on failure — reply already
+      // succeeded, assignment is metadata.
+      void (async () => {
+        try {
+          const current = sessions.find((s) => s.id === sid);
+          if (current?.assigned_admin_id) return;
+          const admin = await getAdminIdentity();
+          if (!admin.id) return;
+          await supabase.rpc("assign_chat_session", {
+            p_session_id:  sid,
+            p_admin_id:    admin.id,
+            p_admin_email: admin.email ?? "",
+            p_admin_name:  admin.name  ?? "",
+            p_force:       false,
+          });
+          ctx.refreshSessions();
+        } catch {
+          // silent
+        }
+      })();
+
       if (!mountedRef.current) return;
       setReplyInput((current) => (current === snapshot ? "" : current));
       await loadMessages(sid, true);
@@ -426,6 +491,50 @@ export default function ChatsTab() {
       setReplyError((e as Error)?.message ?? "Failed to send message");
     } finally {
       if (mountedRef.current) setReplySending(false);
+    }
+  }
+
+  async function sendAttachment(file: File) {
+    if (!selectedId || replyUploading) return;
+    const validationErr = isValidChatAttachment(file);
+    if (validationErr) {
+      setAttachmentError(validationErr);
+      return;
+    }
+    const sid = selectedId;
+    setReplyUploading(true);
+    setAttachmentError(null);
+    try {
+      await uploadChatAttachment({
+        file,
+        sessionId: sid,
+        sender: "agent",
+      });
+
+      void (async () => {
+        try {
+          const current = sessions.find((s) => s.id === sid);
+          if (current?.assigned_admin_id) return;
+          const admin = await getAdminIdentity();
+          if (!admin.id) return;
+          await supabase.rpc("assign_chat_session", {
+            p_session_id:  sid,
+            p_admin_id:    admin.id,
+            p_admin_email: admin.email ?? "",
+            p_admin_name:  admin.name  ?? "",
+            p_force:       false,
+          });
+          ctx.refreshSessions();
+        } catch {
+          // silent
+        }
+      })();
+
+      await loadMessages(sid, true);
+    } catch (e) {
+      setAttachmentError((e as Error)?.message ?? "Upload failed");
+    } finally {
+      if (mountedRef.current) setReplyUploading(false);
     }
   }
 
@@ -441,7 +550,9 @@ export default function ChatsTab() {
   useEffect(() => {
     setReplyInput("");
     setReplySending(false);
+    setReplyUploading(false);
     setReplyError(null);
+    setAttachmentError(null);
     setPendingReplies([]);
   }, [selectedId]);
 
@@ -501,7 +612,8 @@ export default function ChatsTab() {
       if (filter === "open" && !(s.status === "open" && !isMissed(s)))
         return false;
       if (filter === "missed" && !isMissed(s)) return false;
-      if (filter === "closed" && s.status !== "closed") return false;
+      if (filter === "closed" && s.status !== "closed" && s.status !== "resolved")
+        return false;
 
       if (channelFilter !== "all") {
         const { channelKey } = getSessionAttribution(s);
@@ -532,7 +644,9 @@ export default function ChatsTab() {
     () => ({
       open: sessions.filter((s) => s.status === "open" && !isMissed(s)).length,
       missed: sessions.filter((s) => isMissed(s)).length,
-      closed: sessions.filter((s) => s.status === "closed").length,
+      closed: sessions.filter(
+        (s) => s.status === "closed" || s.status === "resolved",
+      ).length,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sessions],
@@ -558,6 +672,16 @@ export default function ChatsTab() {
     );
     return all;
   }, [messages, pendingReplies, selectedId]);
+
+  const attachmentsByMessage = useMemo(() => {
+    const out: Record<string, ChatAttachmentRow[]> = {};
+    for (const a of attachments) {
+      const key = a.chat_message_id ?? "";
+      if (!key) continue;
+      (out[key] ??= []).push(a);
+    }
+    return out;
+  }, [attachments]);
 
   function hasMatchedOrder(s: ChatSession | null): boolean {
     if (!s) return false;
@@ -951,6 +1075,23 @@ export default function ChatsTab() {
                           Closed
                         </span>
                       )}
+                      {s.status === "resolved" && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <i className="ri-check-double-line"></i>
+                          Resolved
+                        </span>
+                      )}
+                      {s.assigned_admin_id && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#eef2ff] text-[#3b3ea5]"
+                          title={`Assigned to ${s.assigned_admin_name || s.assigned_admin_email || "admin"}`}
+                        >
+                          <i className="ri-user-star-line"></i>
+                          {s.assigned_admin_name ||
+                            s.assigned_admin_email ||
+                            "Assigned"}
+                        </span>
+                      )}
                     </div>
                   </button>
                 );
@@ -974,14 +1115,18 @@ export default function ChatsTab() {
             <ThreadView
               session={selectedSession}
               messages={displayedMessages}
+              attachmentsByMessage={attachmentsByMessage}
               loading={messagesLoading}
               error={threadError}
               matchedOrder={hasMatchedOrder(selectedSession)}
               replyInput={replyInput}
               onReplyChange={setReplyInput}
               onSend={sendReply}
+              onSendAttachment={sendAttachment}
               sending={replySending}
+              uploading={replyUploading}
               replyError={replyError}
+              attachmentError={attachmentError}
             />
           )}
         </div>
@@ -1028,28 +1173,51 @@ function FilterSelect({
 function ThreadView({
   session,
   messages,
+  attachmentsByMessage,
   loading,
   error,
   matchedOrder,
   replyInput,
   onReplyChange,
   onSend,
+  onSendAttachment,
   sending,
+  uploading,
   replyError,
+  attachmentError,
 }: {
   session: ChatSession;
   messages: ChatMessage[];
+  attachmentsByMessage: Record<string, ChatAttachmentRow[]>;
   loading: boolean;
   error: string | null;
   matchedOrder: boolean;
   replyInput: string;
   onReplyChange: (v: string) => void;
   onSend: () => void;
+  onSendAttachment: (file: File) => void;
   sending: boolean;
+  uploading: boolean;
   replyError: string | null;
+  attachmentError: string | null;
 }) {
   const identified = !!session.email;
   const canSend = replyInput.trim().length > 0 && !sending;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { mutateSession, refreshSessions } = useAdminChat();
+  const [identityOpen, setIdentityOpen] = useState(false);
+
+  function triggerFilePicker() {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    onSendAttachment(file);
+  }
   const geo = geoFromSession(session);
   const hasGeo = !!geo && (!!geo.city || !!geo.region || !!geo.country);
   const locationLabel = formatGeoLabel(geo);
@@ -1161,13 +1329,23 @@ function ThreadView({
         </div>
       </div>
 
+      <AssignmentBar session={session} />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5 pb-5 border-b border-gray-100">
-        <Meta label="Name" value={session.name || "—"} icon="ri-user-3-line" />
+        <Meta
+          label="Name"
+          value={session.name || "—"}
+          icon="ri-user-3-line"
+          onEdit={() => setIdentityOpen(true)}
+          editTitle="Edit visitor name / email"
+        />
         <Meta
           label="Email"
           value={session.email || "—"}
           icon="ri-mail-line"
           copy={!!session.email}
+          onEdit={() => setIdentityOpen(true)}
+          editTitle="Edit visitor name / email"
         />
         <Meta label="Provider" value={session.provider || "—"} icon="ri-global-line" />
         <Meta
@@ -1197,11 +1375,23 @@ function ThreadView({
       ) : (
         <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1">
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              attachments={attachmentsByMessage[m.id] ?? []}
+            />
           ))}
         </div>
       )}
 
+      {uploading && (
+        <div className="mt-3 mb-1 bg-[#f0f6fc] border border-[#c9dcf0] rounded-lg px-3 py-2 flex items-center gap-2">
+          <i className="ri-loader-4-line animate-spin text-[#3b6ea5] text-sm"></i>
+          <p className="text-xs text-[#1f3a5f] font-semibold">
+            Uploading attachment…
+          </p>
+        </div>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1228,10 +1418,30 @@ function ThreadView({
           className="w-full px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none resize-none bg-white"
           style={{ fontFamily: CHAT_FONT }}
         />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={CHAT_ATTACHMENT_ACCEPT}
+          onChange={handleFileChange}
+          className="hidden"
+        />
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-gray-100 bg-[#f8f7f4]">
-          <span className="text-[10px] text-gray-400 font-medium">
-            Enter to send · Shift+Enter for new line
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={triggerFilePicker}
+              disabled={uploading}
+              title={`Attach file (max ${Math.round(CHAT_ATTACHMENT_MAX_BYTES / (1024 * 1024))}MB)`}
+              className="inline-flex items-center justify-center w-7 h-7 rounded-md text-gray-500 hover:text-[#3b6ea5] hover:bg-white border border-transparent hover:border-gray-200 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <i
+                className={`${uploading ? "ri-loader-4-line animate-spin" : "ri-attachment-2"} text-sm`}
+              ></i>
+            </button>
+            <span className="text-[10px] text-gray-400 font-medium">
+              Enter to send · Shift+Enter for new line
+            </span>
+          </div>
           <button
             type="submit"
             disabled={!canSend}
@@ -1244,17 +1454,41 @@ function ThreadView({
           </button>
         </div>
       </form>
-      {replyError && (
+      {(replyError || attachmentError) && (
         <div className="mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-start gap-2">
           <i className="ri-error-warning-line text-red-600 text-sm mt-0.5"></i>
-          <p className="text-xs text-red-700 font-semibold">{replyError}</p>
+          <p className="text-xs text-red-700 font-semibold">
+            {replyError || attachmentError}
+          </p>
         </div>
       )}
+      <EditChatIdentityModal
+        open={identityOpen}
+        sessionId={session.id}
+        initialName={session.visitor_name ?? session.name ?? null}
+        initialEmail={session.visitor_email ?? session.email ?? null}
+        onClose={() => setIdentityOpen(false)}
+        onSaved={(next) => {
+          mutateSession(session.id, {
+            visitor_name: next.name,
+            visitor_email: next.email,
+            name: next.name,
+            email: next.email,
+          });
+          refreshSessions();
+        }}
+      />
     </div>
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+  message,
+  attachments,
+}: {
+  message: ChatMessage;
+  attachments: ChatAttachmentRow[];
+}) {
   const sender = (message.sender ?? "visitor").toLowerCase();
   const isPending = typeof message.id === "string" && message.id.startsWith("temp-");
   const isSystem = sender === "system";
@@ -1288,6 +1522,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         >
           {message.message}
         </div>
+        {attachments && attachments.length > 0 && (
+          <ChatAttachmentView
+            attachments={attachments}
+            align={isVisitor ? "left" : "right"}
+            variant={isVisitor ? "light" : "dark"}
+          />
+        )}
         <p
           className={`mt-1 text-[10px] text-gray-400 font-medium ${
             isVisitor ? "text-left" : "text-right"
@@ -1302,16 +1543,192 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+function AssignmentBar({ session }: { session: ChatSession }) {
+  const ctx = useAdminChat();
+  const [busy, setBusy] = useState<null | "claim" | "resolve" | "reopen">(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const assignedLabel =
+    session.assigned_admin_name?.trim() ||
+    session.assigned_admin_email?.trim() ||
+    null;
+  const isResolved = session.status === "resolved";
+  const statusLabel = isResolved
+    ? "Resolved"
+    : session.status === "closed"
+      ? "Closed"
+      : "Open";
+  const statusClass = isResolved
+    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+    : session.status === "closed"
+      ? "bg-gray-100 text-gray-500"
+      : "bg-[#e8f0f9] text-[#3b6ea5]";
+
+  async function claim() {
+    if (busy) return;
+    setBusy("claim");
+    setErr(null);
+    try {
+      const admin = await getAdminIdentity();
+      if (!admin.id) throw new Error("Not signed in as admin");
+      const { error } = await supabase.rpc("assign_chat_session", {
+        p_session_id:  session.id,
+        p_admin_id:    admin.id,
+        p_admin_email: admin.email ?? "",
+        p_admin_name:  admin.name  ?? "",
+        p_force:       true,
+      });
+      if (error) throw error;
+      ctx.mutateSession(session.id, {
+        assigned_admin_id:    admin.id,
+        assigned_admin_email: admin.email,
+        assigned_admin_name:  admin.name,
+      });
+      ctx.refreshSessions();
+    } catch (e) {
+      setErr((e as Error)?.message ?? "Failed to assign");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function resolve() {
+    if (busy) return;
+    setBusy("resolve");
+    setErr(null);
+    try {
+      const admin = await getAdminIdentity();
+      const { error } = await supabase.rpc("resolve_chat_session", {
+        p_session_id: session.id,
+        p_admin_id:   admin.id,
+      });
+      if (error) throw error;
+      ctx.mutateSession(session.id, {
+        status:      "resolved",
+        resolved_at: new Date().toISOString(),
+      });
+      ctx.refreshSessions();
+    } catch (e) {
+      setErr((e as Error)?.message ?? "Failed to resolve");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reopen() {
+    if (busy) return;
+    setBusy("reopen");
+    setErr(null);
+    try {
+      const { error } = await supabase.rpc("reopen_chat_session", {
+        p_session_id: session.id,
+      });
+      if (error) throw error;
+      ctx.mutateSession(session.id, {
+        status:      "open",
+        resolved_at: null,
+      });
+      ctx.refreshSessions();
+    } catch (e) {
+      setErr((e as Error)?.message ?? "Failed to reopen");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="mb-4 bg-[#f8f7f4] border border-gray-100 rounded-xl px-3 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span
+          className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-gray-200 text-gray-700"
+          title={
+            assignedLabel
+              ? `Assigned to ${assignedLabel}`
+              : "No admin is assigned yet"
+          }
+        >
+          <i className="ri-user-star-line"></i>
+          {assignedLabel
+            ? `Assigned: ${assignedLabel}`
+            : "Unassigned"}
+        </span>
+        <span
+          className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full ${statusClass}`}
+        >
+          <i
+            className={
+              isResolved
+                ? "ri-check-double-line"
+                : session.status === "closed"
+                  ? "ri-check-line"
+                  : "ri-radio-button-line"
+            }
+          ></i>
+          {statusLabel}
+        </span>
+        {err && (
+          <span className="text-[11px] font-semibold text-red-600">{err}</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={claim}
+          disabled={!!busy}
+          className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:text-[#3b6ea5] hover:border-[#3b6ea5] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+          title="Claim this session"
+        >
+          <i
+            className={`${busy === "claim" ? "ri-loader-4-line animate-spin" : "ri-user-add-line"} text-xs`}
+          ></i>
+          Assign to me
+        </button>
+        {!isResolved ? (
+          <button
+            type="button"
+            onClick={resolve}
+            disabled={!!busy}
+            className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            title="Mark resolved"
+          >
+            <i
+              className={`${busy === "resolve" ? "ri-loader-4-line animate-spin" : "ri-check-double-line"} text-xs`}
+            ></i>
+            Mark resolved
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={reopen}
+            disabled={!!busy}
+            className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            title="Reopen"
+          >
+            <i
+              className={`${busy === "reopen" ? "ri-loader-4-line animate-spin" : "ri-refresh-line"} text-xs`}
+            ></i>
+            Reopen
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Meta({
   label,
   value,
   icon,
   copy,
+  onEdit,
+  editTitle,
 }: {
   label: string;
   value: string;
   icon: string;
   copy?: boolean;
+  onEdit?: () => void;
+  editTitle?: string;
 }) {
   return (
     <div className="bg-[#f8f7f4] rounded-xl px-3 py-2.5 border border-gray-100">
@@ -1326,18 +1743,31 @@ function Meta({
         >
           {value}
         </p>
-        {copy && value !== "—" && (
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(value).catch(() => {});
-            }}
-            title="Copy"
-            className="text-gray-400 hover:text-[#3b6ea5] text-sm cursor-pointer flex-shrink-0"
-          >
-            <i className="ri-file-copy-line"></i>
-          </button>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {copy && value !== "—" && (
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(value).catch(() => {});
+              }}
+              title="Copy"
+              className="text-gray-400 hover:text-[#3b6ea5] text-sm cursor-pointer"
+            >
+              <i className="ri-file-copy-line"></i>
+            </button>
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              title={editTitle ?? "Edit"}
+              aria-label={editTitle ?? "Edit"}
+              className="text-gray-400 hover:text-[#3b6ea5] text-sm cursor-pointer"
+            >
+              <i className="ri-pencil-line"></i>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

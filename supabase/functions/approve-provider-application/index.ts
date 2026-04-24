@@ -1,4 +1,7 @@
 // approve-provider-application — Phase 2 Step 4 + Step 5 (validation fix)
+// + Phase 4 Provider Pipeline fix: also insert into approved_providers so
+// homepage + profile routing can resolve new providers by slug.
+//
 // Converts a pending provider_applications row into a real provider account.
 //
 // Flow:
@@ -7,13 +10,16 @@
 //   3. Normalize email (trim + lowercase).
 //   4. If a doctor_profiles row already exists for that email → regenerate
 //      setup link, resend invite email, mark application approved + link
-//      approved_provider_id, return { already_existed: true }.
+//      approved_provider_id.
 //   5. Otherwise → invite auth user, insert doctor_profiles with lifecycle
 //      defaults + initial license info, link application, send invite.
+//   6. In BOTH paths → ensure an approved_providers row exists (keyed by
+//      email, case-insensitive). Missing row is created with a safe unique
+//      slug. Existing row is left untouched (non-destructive).
 //
 // Reuses the same invite email template/helpers inlined in create-provider so
 // onboarding email stays consistent. No Stripe / orders / tracking touched.
-// approved_providers and doctor_contacts are intentionally NOT modified here.
+// doctor_contacts is intentionally NOT modified here.
 //
 // Step 5 note: handled business-level errors return HTTP 200 with
 // { ok: false, success: false, error } so supabase.functions.invoke surfaces
@@ -73,6 +79,114 @@ function deriveTitle(licenseTypes: string | null): string | null {
   const m = first.match(/\(([^)]+)\)/);
   if (m) return m[1];
   return first || null;
+}
+
+// Turn any human string into a URL-safe slug fragment.
+function slugify(raw: string): string {
+  return raw
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+// Generate a slug that isn't already taken in approved_providers.
+// Tries: name-based → email-prefix → name-based + short suffix.
+async function generateUniqueSlug(
+  adminClient: ReturnType<typeof createClient>,
+  fullName: string,
+  email: string,
+): Promise<string> {
+  const nameSlug = slugify(fullName);
+  const emailSlug = slugify(email.split("@")[0] ?? "");
+  const base = nameSlug || emailSlug || "provider";
+
+  const isTaken = async (s: string): Promise<boolean> => {
+    const { data } = await adminClient
+      .from("approved_providers")
+      .select("id")
+      .eq("slug", s)
+      .maybeSingle();
+    return !!data;
+  };
+
+  if (!(await isTaken(base))) return base;
+  if (emailSlug && emailSlug !== base && !(await isTaken(emailSlug))) return emailSlug;
+
+  // Last resort — append a short random suffix until free.
+  for (let i = 0; i < 5; i++) {
+    const candidate = `${base}-${Math.random().toString(36).slice(2, 7)}`;
+    if (!(await isTaken(candidate))) return candidate;
+  }
+  // Extremely unlikely — fall through with a timestamp suffix.
+  return `${base}-${Date.now().toString(36)}`;
+}
+
+// Ensure an approved_providers row exists for this provider.
+// Keyed by email (case-insensitive). Existing rows are NOT overwritten.
+// Returns { created, slug, error } — failures are non-fatal to the caller.
+async function ensureApprovedProvider(
+  adminClient: ReturnType<typeof createClient>,
+  params: {
+    email: string;
+    fullName: string;
+    title: string | null;
+    bio: string | null;
+    states: string[];
+    photoUrl: string | null;
+    phone: string | null;
+    applicationId: string | null;
+  },
+): Promise<{ created: boolean; slug: string | null; error?: string }> {
+  try {
+    const { data: existing, error: checkErr } = await adminClient
+      .from("approved_providers")
+      .select("id, slug")
+      .ilike("email", params.email)
+      .maybeSingle();
+
+    if (checkErr) {
+      console.warn("[approve-provider-application] approved_providers check failed:", checkErr.message);
+      return { created: false, slug: null, error: checkErr.message };
+    }
+
+    if (existing) {
+      // Row already present — leave untouched.
+      return { created: false, slug: (existing.slug as string) ?? null };
+    }
+
+    const slug = await generateUniqueSlug(adminClient, params.fullName, params.email);
+
+    const { data: inserted, error: insertErr } = await adminClient
+      .from("approved_providers")
+      .insert({
+        application_id: params.applicationId,
+        slug,
+        full_name: params.fullName,
+        email: params.email,
+        title: params.title,
+        bio: params.bio,
+        states: params.states,
+        photo_url: params.photoUrl,
+        phone: params.phone,
+        is_active: true,
+      })
+      .select("slug")
+      .maybeSingle();
+
+    if (insertErr || !inserted) {
+      console.warn("[approve-provider-application] approved_providers insert failed:", insertErr?.message);
+      return { created: false, slug: null, error: insertErr?.message ?? "insert failed" };
+    }
+
+    console.log(`[approve-provider-application] approved_providers row created for ${params.email} (slug=${slug})`);
+    return { created: true, slug: (inserted.slug as string) ?? slug };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn("[approve-provider-application] ensureApprovedProvider threw:", msg);
+    return { created: false, slug: null, error: msg };
+  }
 }
 
 function buildProviderInviteHtml(providerName: string, toEmail: string, setupLink: string): string {
@@ -305,6 +419,19 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Phase 4 pipeline fix — backfill approved_providers for legacy profiles
+      // that were approved before the pipeline included this table.
+      const approvedRes = await ensureApprovedProvider(adminClient, {
+        email: appEmail,
+        fullName: providerName,
+        title,
+        bio,
+        states: licensedStateCodes,
+        photoUrl: headshotUrl,
+        phone,
+        applicationId,
+      });
+
       return jsonResponse({
         ok: true,
         success: true,
@@ -314,7 +441,10 @@ Deno.serve(async (req) => {
         full_name: providerName,
         invite_sent: true,
         welcome_email_sent: emailSent,
-        note: "Existing provider — invite email resent, application linked.",
+        approved_providers_created: approvedRes.created,
+        approved_providers_slug: approvedRes.slug,
+        approved_providers_error: approvedRes.error ?? null,
+        note: "Existing provider — invite email resent, application linked, approved_providers ensured.",
       });
     }
 
@@ -423,6 +553,21 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Phase 4 pipeline fix — create approved_providers row so homepage +
+    // profile routing can resolve this provider by slug. Non-fatal: if this
+    // fails, the provider still exists in doctor_profiles and admin can rerun
+    // approval or run the backfill SQL.
+    const approvedRes = await ensureApprovedProvider(adminClient, {
+      email: appEmail,
+      fullName,
+      title,
+      bio,
+      states: licensedStateCodes,
+      photoUrl: headshotUrl,
+      phone,
+      applicationId,
+    });
+
     // Send invite email (non-fatal if Resend is down — provider row is already
     // created and linked, admin can resend manually).
     const emailSent = await sendProviderInviteEmail(appEmail, fullName, setupLink);
@@ -436,6 +581,9 @@ Deno.serve(async (req) => {
       full_name: fullName,
       invite_sent: true,
       welcome_email_sent: emailSent,
+      approved_providers_created: approvedRes.created,
+      approved_providers_slug: approvedRes.slug,
+      approved_providers_error: approvedRes.error ?? null,
     });
 
   } catch (err) {

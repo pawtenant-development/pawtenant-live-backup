@@ -1,9 +1,9 @@
 import { useState, FormEvent } from "react";
+import { submitContactRequest } from "../../../lib/contactSubmit";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
-const FORM_URL = "https://readdy.ai/api/form/d6t2rg5m9vk3c28i5b7g";
 
 export default function ContactSection() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
@@ -28,15 +28,20 @@ export default function ContactSection() {
     setError("");
     setSubmitting(true);
     try {
-      const params = new URLSearchParams();
-      Object.entries(form).forEach(([k, v]) => params.append(k, v));
-      params.append("smsConsent", String(smsConsent));
-
-      const [, ghlRes] = await Promise.allSettled([
-        fetch(FORM_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: params.toString(),
+      const [ptRes, ghlRes] = await Promise.allSettled([
+        submitContactRequest({
+          name: form.name,
+          email: form.email,
+          phone: form.phone || null,
+          subject: form.subject || null,
+          message: form.message,
+          source_page: "/",
+          metadata: {
+            sms_consent: smsConsent,
+            lead_source: "Homepage Contact Form",
+            landing_url: window.location.href,
+            referrer: document.referrer || "direct",
+          },
         }),
         fetch(GHL_PROXY_URL, {
           method: "POST",
@@ -68,6 +73,11 @@ export default function ContactSection() {
         }),
       ]);
 
+      if (ptRes.status === "rejected") {
+        throw ptRes.reason instanceof Error
+          ? ptRes.reason
+          : new Error("Submission failed");
+      }
       if (ghlRes.status === "rejected") {
         console.warn("GHL proxy failed silently:", ghlRes.reason);
       }
@@ -75,8 +85,11 @@ export default function ContactSection() {
       setSubmitted(true);
       setSmsConsent(false);
       setForm({ name: "", email: "", phone: "", subject: "", message: "" });
-    } catch {
-      setError("Something went wrong. Please try again or email us directly.");
+    } catch (err) {
+      setError(
+        (err as Error)?.message ||
+          "Something went wrong. Please try again or email us directly.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -175,7 +188,7 @@ export default function ContactSection() {
                 </button>
               </div>
             ) : (
-              <form data-readdy-form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <h3 className="text-lg font-bold text-gray-900 mb-5">Contact Us — PawTenant</h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

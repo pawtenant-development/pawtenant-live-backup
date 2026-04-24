@@ -2,8 +2,8 @@ import { useState, FormEvent } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
+import { submitContactRequest } from "../../lib/contactSubmit";
 
-const FORM_URL = "https://readdy.ai/api/form/d6t2rg5m9vk3c28i5b7g";
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 const GHL_PROXY_URL = `${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`;
@@ -60,15 +60,21 @@ export default function ContactUsPage() {
     setError("");
     setSubmitting(true);
     try {
-      const params = new URLSearchParams();
-      Object.entries(form).forEach(([k, v]) => params.append(k, v));
-
-      // Fire both in parallel — Readdy form storage + GHL CRM via proxy
-      const [, ghlRes] = await Promise.allSettled([
-        fetch(FORM_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: params.toString(),
+      // Fire both in parallel — PawTenant admin portal + GHL CRM (legacy)
+      const [ptRes, ghlRes] = await Promise.allSettled([
+        submitContactRequest({
+          name: form.name,
+          email: form.email,
+          phone: form.phone || null,
+          subject: form.subject || null,
+          message: form.message,
+          source_page: "/contact-us",
+          metadata: {
+            sms_consent: smsConsent,
+            lead_source: "Website Contact Form",
+            landing_url: window.location.href,
+            referrer: document.referrer || "direct",
+          },
         }),
         fetch(GHL_PROXY_URL, {
           method: "POST",
@@ -95,14 +101,23 @@ export default function ContactUsPage() {
         }),
       ]);
 
+      // PawTenant admin portal is primary — surface its error if it failed.
+      if (ptRes.status === "rejected") {
+        throw ptRes.reason instanceof Error
+          ? ptRes.reason
+          : new Error("Submission failed");
+      }
       if (ghlRes.status === "rejected") {
         console.warn("GHL proxy failed silently:", ghlRes.reason);
       }
 
       setSubmitted(true);
       setForm({ name: "", email: "", phone: "", subject: "", message: "" });
-    } catch {
-      setError("Something went wrong. Please try again or email us directly.");
+    } catch (err) {
+      setError(
+        (err as Error)?.message ||
+          "Something went wrong. Please try again or email us directly.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -295,7 +310,7 @@ export default function ContactUsPage() {
                   </div>
                 </div>
               ) : (
-                <form data-readdy-form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="mb-6">
                     <h3 className="text-xl font-bold text-gray-900 mb-1">Contact Us — PawTenant</h3>
                     <p className="text-sm text-gray-400">Your message goes directly to hello@pawtenant.com</p>

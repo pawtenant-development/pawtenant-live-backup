@@ -30,11 +30,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
-import { useAdminChat } from "../../context/AdminChatContext";
+import { getAdminIdentity } from "../../lib/adminIdentity";
+import { useAdminChat, type ChatSession } from "../../context/AdminChatContext";
 import {
   useAdminChatThread,
   type ChatMessage,
+  type ChatAttachmentRow,
 } from "../../hooks/useAdminChatThread";
+import ChatAttachmentView from "../feature/ChatAttachmentView";
+import EditChatIdentityModal from "./EditChatIdentityModal";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  CHAT_ATTACHMENT_MAX_BYTES,
+  isValidChatAttachment,
+} from "../../lib/chatAttachments";
 
 const CHAT_FONT =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif';
@@ -71,22 +80,28 @@ function formatOrderStatus(raw: string | null | undefined): string {
 
 export default function MiniChatPanel({ sessionId, onClose }: Props) {
   const navigate = useNavigate();
-  const { setSelectedSessionId, sessions } = useAdminChat();
+  const { setSelectedSessionId, sessions, mutateSession, refreshSessions } =
+    useAdminChat();
   const {
     session,
     displayedMessages,
+    attachmentsByMessage,
     loading,
     error,
     replyInput,
     setReplyInput,
     sendReply,
+    sendAttachment,
     sending,
+    uploading,
     replyError,
     maxReplyLength,
   } = useAdminChatThread(sessionId);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const prevLenRef = useRef<number>(0);
   const prevSessionIdRef = useRef<string | null>(null);
   const prevLastIdRef = useRef<string | null>(null);
@@ -95,6 +110,7 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
   const [newBelowCount, setNewBelowCount] = useState(0);
   const [matchedOrder, setMatchedOrder] =
     useState<MatchedOrderSummary | null>(null);
+  const [identityOpen, setIdentityOpen] = useState(false);
 
   // Unified effect: stick-to-bottom, flash new visitor msg, new-below pill.
   useEffect(() => {
@@ -231,7 +247,27 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
     onClose();
   }
 
-  const canSend = replyInput.trim().length > 0 && !sending;
+  const canSend = replyInput.trim().length > 0 && !sending && !uploading;
+
+  function triggerFilePicker() {
+    if (uploading || sending) return;
+    setAttachmentError(null);
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const err = isValidChatAttachment(file);
+    if (err) {
+      setAttachmentError(err);
+      return;
+    }
+    setAttachmentError(null);
+    await sendAttachment(file);
+    textareaRef.current?.focus();
+  }
 
   // Visitor-provided identity wins over legacy/auto-captured fields.
   const vName  = session?.visitor_name?.trim()  || session?.name?.trim()  || "";
@@ -333,12 +369,23 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
                 </span>
               )}
             </div>
-            <p
-              className="text-sm font-bold text-white truncate leading-tight mt-0.5"
-              title={headerLabel}
-            >
-              {headerLabel}
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <p
+                className="text-sm font-bold text-white truncate leading-tight"
+                title={headerLabel}
+              >
+                {headerLabel}
+              </p>
+              <button
+                type="button"
+                onClick={() => setIdentityOpen(true)}
+                title="Edit visitor name / email"
+                aria-label="Edit visitor identity"
+                className="text-white/70 hover:text-white text-xs leading-none cursor-pointer p-0.5 flex-shrink-0"
+              >
+                <i className="ri-pencil-line"></i>
+              </button>
+            </div>
             {attrLine && (attrLine.channelLabel || attrLine.campaign) && (
               <p
                 className="text-[10px] text-white/70 truncate leading-tight mt-0.5"
@@ -388,6 +435,8 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
           </button>
         </div>
 
+        {session && <MiniAssignmentBar session={session} />}
+
         {/* Messages */}
         <div className="relative flex-1 overflow-hidden">
           <div
@@ -415,6 +464,7 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
                     key={m.id}
                     message={m}
                     flash={m.id === flashId}
+                    attachments={attachmentsByMessage[m.id] ?? []}
                   />
                 ))}
               </div>
@@ -445,6 +495,12 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
           }}
           className="border-t border-gray-100 bg-white"
         >
+          {uploading && (
+            <div className="px-3 py-2 flex items-center gap-2 text-[11px] font-semibold bg-[#eef3f9] text-[#3b6ea5] border-b border-[#d9e4f0]">
+              <i className="ri-loader-4-line animate-spin" />
+              Uploading attachment…
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={replyInput}
@@ -461,9 +517,28 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
             className="w-full px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none resize-none bg-white"
           />
           <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-gray-100 bg-[#f8f7f4]">
-            <span className="text-[10px] text-gray-400 font-medium">
-              Enter to send · Shift+Enter for new line
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={triggerFilePicker}
+                disabled={uploading || sending}
+                title={`Attach file (max ${Math.floor(CHAT_ATTACHMENT_MAX_BYTES / 1024 / 1024)} MB)`}
+                aria-label="Attach file"
+                className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 text-gray-700 hover:text-[#3b6ea5] hover:border-[#3b6ea5] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              >
+                <i className="ri-attachment-2 text-sm" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={CHAT_ATTACHMENT_ACCEPT}
+                onChange={handleFileChange}
+                style={{ display: "none" }}
+              />
+              <span className="text-[10px] text-gray-400 font-medium">
+                Enter to send · Shift+Enter for new line
+              </span>
+            </div>
             <button
               type="submit"
               disabled={!canSend}
@@ -476,6 +551,14 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
             </button>
           </div>
         </form>
+        {attachmentError && (
+          <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-start gap-2">
+            <i className="ri-error-warning-line text-red-600 text-xs mt-0.5"></i>
+            <p className="text-[11px] text-red-700 font-semibold">
+              {attachmentError}
+            </p>
+          </div>
+        )}
         {replyError && (
           <div className="px-3 py-2 bg-red-50 border-t border-red-100 flex items-start gap-2">
             <i className="ri-error-warning-line text-red-600 text-xs mt-0.5"></i>
@@ -485,16 +568,163 @@ export default function MiniChatPanel({ sessionId, onClose }: Props) {
           </div>
         )}
       </div>
+      <EditChatIdentityModal
+        open={identityOpen}
+        sessionId={sessionId}
+        initialName={session?.visitor_name ?? session?.name ?? null}
+        initialEmail={session?.visitor_email ?? session?.email ?? null}
+        onClose={() => setIdentityOpen(false)}
+        onSaved={(next) => {
+          mutateSession(sessionId, {
+            visitor_name: next.name,
+            visitor_email: next.email,
+            name: next.name,
+            email: next.email,
+          });
+          refreshSessions();
+        }}
+      />
     </>
+  );
+}
+
+function MiniAssignmentBar({ session }: { session: ChatSession }) {
+  const [busy, setBusy] = useState<null | "claim" | "resolve" | "reopen">(null);
+  const assignedLabel =
+    session.assigned_admin_name?.trim() ||
+    session.assigned_admin_email?.trim() ||
+    null;
+  const isResolved = session.status === "resolved";
+
+  async function claim() {
+    if (busy) return;
+    setBusy("claim");
+    try {
+      const admin = await getAdminIdentity();
+      if (!admin.id) return;
+      await supabase.rpc("assign_chat_session", {
+        p_session_id:  session.id,
+        p_admin_id:    admin.id,
+        p_admin_email: admin.email ?? "",
+        p_admin_name:  admin.name  ?? "",
+        p_force:       true,
+      });
+    } catch {
+      // silent
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function resolve() {
+    if (busy) return;
+    setBusy("resolve");
+    try {
+      const admin = await getAdminIdentity();
+      await supabase.rpc("resolve_chat_session", {
+        p_session_id: session.id,
+        p_admin_id:   admin.id,
+      });
+    } catch {
+      // silent
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reopen() {
+    if (busy) return;
+    setBusy("reopen");
+    try {
+      await supabase.rpc("reopen_chat_session", {
+        p_session_id: session.id,
+      });
+    } catch {
+      // silent
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="px-3 py-1.5 bg-white border-b border-gray-100 flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span
+          className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+            isResolved
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              : "bg-[#e8f0f9] text-[#3b6ea5]"
+          }`}
+          title={`Status: ${isResolved ? "Resolved" : "Open"}`}
+        >
+          <i
+            className={
+              isResolved ? "ri-check-double-line" : "ri-radio-button-line"
+            }
+          ></i>
+          {isResolved ? "Resolved" : "Open"}
+        </span>
+        <span
+          className="text-[10px] text-gray-500 truncate font-semibold"
+          title={
+            assignedLabel
+              ? `Assigned to ${assignedLabel}`
+              : "No admin assigned"
+          }
+        >
+          {assignedLabel ? `→ ${assignedLabel}` : "Unassigned"}
+        </span>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          type="button"
+          onClick={claim}
+          disabled={!!busy}
+          title="Assign to me"
+          className="text-[9px] font-bold px-1.5 py-1 rounded border border-gray-200 text-gray-700 hover:text-[#3b6ea5] hover:border-[#3b6ea5] disabled:opacity-50 cursor-pointer"
+        >
+          <i
+            className={`${busy === "claim" ? "ri-loader-4-line animate-spin" : "ri-user-add-line"} text-[10px]`}
+          ></i>
+        </button>
+        {!isResolved ? (
+          <button
+            type="button"
+            onClick={resolve}
+            disabled={!!busy}
+            title="Mark resolved"
+            className="text-[9px] font-bold px-1.5 py-1 rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 cursor-pointer"
+          >
+            <i
+              className={`${busy === "resolve" ? "ri-loader-4-line animate-spin" : "ri-check-double-line"} text-[10px]`}
+            ></i>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={reopen}
+            disabled={!!busy}
+            title="Reopen"
+            className="text-[9px] font-bold px-1.5 py-1 rounded border border-amber-200 text-amber-700 hover:bg-amber-50 disabled:opacity-50 cursor-pointer"
+          >
+            <i
+              className={`${busy === "reopen" ? "ri-loader-4-line animate-spin" : "ri-refresh-line"} text-[10px]`}
+            ></i>
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
 function MiniBubble({
   message,
   flash,
+  attachments,
 }: {
   message: ChatMessage;
   flash: boolean;
+  attachments: ChatAttachmentRow[];
 }) {
   const sender = (message.sender ?? "visitor").toLowerCase();
   const isPending =
@@ -511,7 +741,9 @@ function MiniBubble({
   }
   const isVisitor = sender === "visitor";
   return (
-    <div className={`flex ${isVisitor ? "justify-start" : "justify-end"}`}>
+    <div
+      className={`flex flex-col ${isVisitor ? "items-start" : "items-end"} gap-1`}
+    >
       <div
         className={`max-w-[78%] rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words ${
           isVisitor
@@ -522,6 +754,13 @@ function MiniBubble({
       >
         {message.message}
       </div>
+      {attachments.length > 0 && (
+        <ChatAttachmentView
+          attachments={attachments}
+          align={isVisitor ? "left" : "right"}
+          variant={isVisitor ? "light" : "dark"}
+        />
+      )}
     </div>
   );
 }

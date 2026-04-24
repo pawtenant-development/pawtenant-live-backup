@@ -8,11 +8,21 @@
  *
  * ChatsTab is intentionally left unchanged this phase to reduce risk; a
  * future phase may migrate it onto this hook.
+ *
+ * Phase 9: loads chat_attachments for the session and groups them by
+ * chat_message_id so consumers can render attachments alongside bubbles.
+ * Adds sendAttachment() for admin-side file uploads through the same
+ * chat-attachment-upload edge function used by visitors.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAdminChat, type ChatSession } from "../context/AdminChatContext";
+import { getAdminIdentity } from "../lib/adminIdentity";
+import {
+  uploadChatAttachment,
+  type VisitorAttachment,
+} from "../lib/chatAttachments";
 
 export interface ChatMessage {
   id: string;
@@ -26,6 +36,18 @@ export interface ChatMessage {
   source: string | null;
 }
 
+export interface ChatAttachmentRow {
+  id: string;
+  chat_session_id: string;
+  chat_message_id: string | null;
+  uploaded_by: string;
+  file_name: string;
+  file_path: string;
+  file_type: string | null;
+  file_size: number | null;
+  created_at: string;
+}
+
 const POLL_INTERVAL_MS = 5000;
 const MAX_REPLY_LENGTH = 4000;
 
@@ -33,12 +55,15 @@ export interface UseAdminChatThreadResult {
   session: ChatSession | null;
   messages: ChatMessage[];
   displayedMessages: ChatMessage[];
+  attachmentsByMessage: Record<string, ChatAttachmentRow[]>;
   loading: boolean;
   error: string | null;
   replyInput: string;
   setReplyInput: (v: string) => void;
   sendReply: () => Promise<void>;
+  sendAttachment: (file: File) => Promise<void>;
   sending: boolean;
+  uploading: boolean;
   replyError: string | null;
   maxReplyLength: number;
 }
@@ -65,10 +90,12 @@ export function useAdminChatThread(
   );
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [attachments, setAttachments] = useState<ChatAttachmentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [replyInput, setReplyInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [pendingReplies, setPendingReplies] = useState<ChatMessage[]>([]);
 
@@ -93,36 +120,52 @@ export function useAdminChatThread(
         setLoading(true);
         setError(null);
         setMessages([]);
+        setAttachments([]);
       }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const { data, error: qErr } = await supabase
-          .from("chats")
-          .select(
-            "id, session_id, sender, email, name, message, created_at, provider, source",
-          )
-          .eq("session_id", sid)
-          .order("created_at", { ascending: true })
-          .limit(500)
-          .abortSignal(controller.signal);
+        const [msgRes, attRes] = await Promise.all([
+          supabase
+            .from("chats")
+            .select(
+              "id, session_id, sender, email, name, message, created_at, provider, source",
+            )
+            .eq("session_id", sid)
+            .order("created_at", { ascending: true })
+            .limit(500)
+            .abortSignal(controller.signal),
+          supabase
+            .from("chat_attachments")
+            .select(
+              "id, chat_session_id, chat_message_id, uploaded_by, file_name, file_path, file_type, file_size, created_at",
+            )
+            .eq("chat_session_id", sid)
+            .order("created_at", { ascending: true })
+            .limit(500)
+            .abortSignal(controller.signal),
+        ]);
 
         if (!isLatest()) return;
-        if (qErr) {
-          if (!background) setError(qErr.message);
+        if (msgRes.error) {
+          if (!background) setError(msgRes.error.message);
           return;
         }
-        const next = (data ?? []) as ChatMessage[];
+        const next = (msgRes.data ?? []) as ChatMessage[];
         setMessages((prev) => {
-          // Defensive: never let an empty background poll wipe an existing
-          // thread. RLS is now in place, but this also guards transient
-          // network blips / aborted in-flight requests.
           if (background && next.length === 0 && prev.length > 0) return prev;
           const prevJson = JSON.stringify(prev);
           const nextJson = JSON.stringify(next);
           return prevJson === nextJson ? prev : next;
+        });
+        const nextAtt = (attRes.data ?? []) as ChatAttachmentRow[];
+        setAttachments((prev) => {
+          if (background && nextAtt.length === 0 && prev.length > 0) return prev;
+          const prevJson = JSON.stringify(prev);
+          const nextJson = JSON.stringify(nextAtt);
+          return prevJson === nextJson ? prev : nextAtt;
         });
         if (background) setError(null);
       } catch (e) {
@@ -165,7 +208,6 @@ export function useAdminChatThread(
     [ctx],
   );
 
-  // Load thread + reset reply state on session change.
   useEffect(() => {
     markedReadRef.current = null;
     setReplyInput("");
@@ -174,6 +216,7 @@ export function useAdminChatThread(
     setPendingReplies([]);
     if (!sessionId) {
       setMessages([]);
+      setAttachments([]);
       setLoading(false);
       setError(null);
       return;
@@ -182,7 +225,6 @@ export function useAdminChatThread(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Mark read once — when session first becomes available for this sid.
   useEffect(() => {
     if (!sessionId || !session) return;
     if (markedReadRef.current === sessionId) return;
@@ -191,7 +233,6 @@ export function useAdminChatThread(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, session?.id]);
 
-  // Thread poll.
   useEffect(() => {
     if (!sessionId) return;
     const sid = sessionId;
@@ -238,6 +279,24 @@ export function useAdminChatThread(
       });
       if (rpcErr) throw rpcErr;
 
+      void (async () => {
+        try {
+          const current = ctx.sessions.find((s) => s.id === sid);
+          if (current?.assigned_admin_id) return;
+          const admin = await getAdminIdentity();
+          if (!admin.id) return;
+          await supabase.rpc("assign_chat_session", {
+            p_session_id:  sid,
+            p_admin_id:    admin.id,
+            p_admin_email: admin.email ?? "",
+            p_admin_name:  admin.name  ?? "",
+            p_force:       false,
+          });
+        } catch {
+          // silent
+        }
+      })();
+
       if (!mountedRef.current) return;
       setReplyInput((current) => (current === snapshot ? "" : current));
       await loadMessages(sid, true);
@@ -250,7 +309,47 @@ export function useAdminChatThread(
     } finally {
       if (mountedRef.current) setSending(false);
     }
-  }, [sessionId, replyInput, sending, loadMessages]);
+  }, [sessionId, replyInput, sending, loadMessages, ctx.sessions]);
+
+  const sendAttachment = useCallback(
+    async (file: File) => {
+      if (!sessionId || uploading) return;
+      setUploading(true);
+      setReplyError(null);
+      try {
+        await uploadChatAttachment({
+          file,
+          sessionId,
+          sender: "agent",
+        });
+
+        void (async () => {
+          try {
+            const current = ctx.sessions.find((s) => s.id === sessionId);
+            if (current?.assigned_admin_id) return;
+            const admin = await getAdminIdentity();
+            if (!admin.id) return;
+            await supabase.rpc("assign_chat_session", {
+              p_session_id:  sessionId,
+              p_admin_id:    admin.id,
+              p_admin_email: admin.email ?? "",
+              p_admin_name:  admin.name  ?? "",
+              p_force:       false,
+            });
+          } catch {
+            // silent
+          }
+        })();
+
+        await loadMessages(sessionId, true);
+      } catch (e) {
+        setReplyError((e as Error)?.message ?? "Upload failed");
+      } finally {
+        if (mountedRef.current) setUploading(false);
+      }
+    },
+    [sessionId, uploading, loadMessages, ctx.sessions],
+  );
 
   const displayedMessages = useMemo(() => {
     if (pendingReplies.length === 0) return messages;
@@ -264,17 +363,34 @@ export function useAdminChatThread(
     return all;
   }, [messages, pendingReplies, sessionId]);
 
+  const attachmentsByMessage = useMemo(() => {
+    const out: Record<string, ChatAttachmentRow[]> = {};
+    for (const a of attachments) {
+      const key = a.chat_message_id ?? "";
+      if (!key) continue;
+      (out[key] ??= []).push(a);
+    }
+    return out;
+  }, [attachments]);
+
   return {
     session,
     messages,
     displayedMessages,
+    attachmentsByMessage,
     loading,
     error,
     replyInput,
     setReplyInput,
     sendReply,
+    sendAttachment,
     sending,
+    uploading,
     replyError,
     maxReplyLength: MAX_REPLY_LENGTH,
   };
 }
+
+// Re-export VisitorAttachment so components that already pull from this
+// module for attachment types don't need a second import.
+export type { VisitorAttachment };

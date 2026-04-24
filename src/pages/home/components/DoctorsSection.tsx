@@ -1,36 +1,55 @@
 import { useRef, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { DOCTORS } from "../../../mocks/doctors";
-import { useDeactivatedProviderEmails } from "../../../hooks/useActiveProviders";
 import { useDynamicDoctors } from "../../../hooks/useDynamicDoctors";
 import type { Doctor } from "../../../mocks/doctors";
 
 const MAX_STATES_SHOWN = 4;
 
 export default function DoctorsSection() {
-  const { deactivated } = useDeactivatedProviderEmails();
-  const { doctors: dynamicDoctors } = useDynamicDoctors();
+  const { doctors: dynamicDoctors, hasProviderRows } = useDynamicDoctors();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  // Per-card image error tracking — a card with a broken photo URL renders
+  // the neutral initials fallback instead of an empty orange circle.
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
 
   const byEmail = new Map<string, Doctor>();
 
-  for (const d of DOCTORS) {
-    const key = d.email.trim().toLowerCase();
-    if (!byEmail.has(key)) {
-      byEmail.set(key, d);
+  // Phase 4 Step 4 — only seed the static DOCTORS fallback when the DB has no
+  // provider-eligible rows at all. Once any real provider exists in DB, the
+  // homepage is driven entirely by dynamic data (which is already gated by
+  // is_published). This prevents static fallback rows from leaking through
+  // when admins have unpublished every real provider.
+  if (!hasProviderRows) {
+    for (const d of DOCTORS) {
+      const key = d.email.trim().toLowerCase();
+      if (!byEmail.has(key)) {
+        byEmail.set(key, d);
+      }
     }
   }
 
   for (const d of dynamicDoctors) {
     const key = d.email.trim().toLowerCase();
-    byEmail.set(key, d); // DB overrides static
+    byEmail.set(key, d); // DB overrides static (only relevant when fallback is allowed)
   }
 
-  const allDoctors: Doctor[] = Array.from(byEmail.values()).filter(
-    (d) => !deactivated.has(d.email.trim().toLowerCase())
-  );
+  // Homepage visibility rule (Phase 4 final):
+  //   * is_published (enforced in useDynamicDoctors) → shown
+  //   * PUBLIC_HIDDEN_PROVIDER_EMAILS blocklist (enforced in useDynamicDoctors) → hidden
+  //   * is_active / availability → NOT used here (that controls assignment only).
+  const allDoctors: Doctor[] = Array.from(byEmail.values());
+
+  const markImageBroken = (id: string) => {
+    setBrokenImages((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
 
   const checkScroll = () => {
     const el = scrollRef.current;
@@ -102,6 +121,8 @@ export default function DoctorsSection() {
           {allDoctors.map((doctor) => {
             const visibleStates = doctor.states.slice(0, MAX_STATES_SHOWN);
             const extraCount = doctor.states.length - MAX_STATES_SHOWN;
+            const initials = doctor.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+            const hasValidImage = !!doctor.image && !brokenImages.has(doctor.id);
 
             return (
               <div
@@ -109,18 +130,18 @@ export default function DoctorsSection() {
                 className="bg-white rounded-2xl p-6 flex flex-col items-center text-center transition-transform hover:-translate-y-1 duration-200 flex-shrink-0"
                 style={{ minWidth: "288px", maxWidth: "288px" }}
               >
-                {/* Photo */}
+                {/* Photo — real uploaded photo OR neutral initials fallback */}
                 <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-orange-100 mb-4 flex-shrink-0 bg-orange-50 flex items-center justify-center">
-                  {doctor.image ? (
+                  {hasValidImage ? (
                     <img
                       src={doctor.image}
                       alt={doctor.name}
                       className="w-full h-full object-cover object-top"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; (e.currentTarget.parentElement as HTMLElement).setAttribute("data-initials", "true"); }}
+                      onError={() => markImageBroken(doctor.id)}
                     />
                   ) : (
                     <span className="text-2xl font-extrabold text-orange-400 select-none">
-                      {doctor.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
+                      {initials}
                     </span>
                   )}
                 </div>

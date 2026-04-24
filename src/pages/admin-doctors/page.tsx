@@ -91,7 +91,7 @@ export default function AdminDoctorsPage() {
         <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
           <div>
             <p className="text-xs text-[#1a5c4f] font-bold uppercase tracking-widest mb-1">Provider Management</p>
-            <h1 className="text-2xl font-extrabold text-gray-900">Doctor Management</h1>
+            <h1 className="text-2xl font-extrabold text-gray-900">Provider Management</h1>
             <p className="text-sm text-gray-500 mt-1">
               Create accounts, assign licensed states, and manage provider availability.
             </p>
@@ -112,7 +112,7 @@ export default function AdminDoctorsPage() {
             {
               icon: "ri-user-add-line",
               title: "Create Provider Account",
-              desc: "Click \"Add Provider\" to create a new doctor account. They'll receive login credentials by email.",
+              desc: "Click \"Add Provider\" to create a new provider account. They'll receive login credentials by email.",
               color: "bg-[#f0faf7] border-[#c3e8df]",
               textColor: "text-[#1a5c4f]",
             },
@@ -151,7 +151,7 @@ export default function AdminDoctorsPage() {
           </div>
         )}
 
-        {/* Doctor Management Table */}
+        {/* Provider Management Table */}
         <DoctorsTab
           key={refreshKey}
           onProviderAdded={() => {

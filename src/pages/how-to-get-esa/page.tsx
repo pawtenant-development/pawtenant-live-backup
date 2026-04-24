@@ -12,8 +12,8 @@ const steps = [
   },
   {
     num: "02",
-    title: "Consult with a Licensed Physician",
-    desc: "After filling in all necessary documents or forms, you will be connected with a licensed and qualified medical doctor to speak with you one-on-one and evaluate you regarding your potential to qualify for an ESA.",
+    title: "Consult with a Licensed Provider",
+    desc: "After filling in all necessary documents or forms, you will be connected with a licensed mental health provider to speak with you one-on-one and evaluate you regarding your potential to qualify for an ESA.",
     icon: "ri-stethoscope-line",
   },
   {
