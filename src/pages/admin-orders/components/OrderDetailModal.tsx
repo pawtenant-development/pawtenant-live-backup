@@ -877,6 +877,8 @@ export default function OrderDetailModal({
   const [emailMsg, setEmailMsg] = useState("");
   const [confirmResending, setConfirmResending] = useState(false);
   const [confirmResendMsg, setConfirmResendMsg] = useState("");
+  const [portalResetSending, setPortalResetSending] = useState(false);
+  const [portalResetMsg, setPortalResetMsg] = useState("");
   const [discountSending, setDiscountSending] = useState(false);
   const [discountMsg, setDiscountMsg] = useState("");
   const [stripeIdInput, setStripeIdInput] = useState("");
@@ -1215,6 +1217,41 @@ export default function OrderDetailModal({
     }
     setConfirmResending(false);
     setTimeout(() => setConfirmResendMsg(""), 6000);
+  };
+
+  // Send the customer a branded reset/welcome link via the Resend-backed
+  // edge function (bypasses Supabase /recover, which has been failing with
+  // unexpected_failure on the SMTP layer).
+  const handleSendPortalReset = async () => {
+    if (!order.email) return;
+    setPortalResetSending(true);
+    setPortalResetMsg("");
+    try {
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-customer-password-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          email: order.email,
+          first_name: order.first_name ?? "",
+          action: "reset",
+        }),
+      });
+      const result = await res.json() as { ok?: boolean; message?: string; error?: string; email_sent?: boolean };
+      if (result.ok) {
+        setPortalResetMsg(
+          result.email_sent
+            ? `Portal reset email sent to ${order.email}`
+            : (result.message ?? `Reset link generated — email delivery may have failed`),
+        );
+      } else {
+        setPortalResetMsg(result.error ?? "Failed to send portal reset");
+      }
+    } catch {
+      setPortalResetMsg("Network error — please try again");
+    }
+    setPortalResetSending(false);
+    setTimeout(() => setPortalResetMsg(""), 8000);
   };
 
   const loadOrderDocs = useCallback(async () => {
@@ -2173,6 +2210,17 @@ export default function OrderDetailModal({
               >
                 <i className="ri-eye-line text-sm"></i>
                 <span className="hidden sm:inline">Customer View</span>
+              </button>
+              {/* Send Portal Reset — branded reset link via Resend (works around broken Supabase /recover) */}
+              <button
+                type="button"
+                onClick={handleSendPortalReset}
+                disabled={portalResetSending || !order.email}
+                title={`Email a portal reset link to ${order.email}`}
+                className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <i className={`text-sm ${portalResetSending ? "ri-loader-4-line animate-spin" : "ri-key-line"}`}></i>
+                <span className="hidden sm:inline">{portalResetSending ? "Sending..." : "Send Reset"}</span>
               </button>
               {/* Returning-customer actions — only for paid orders */}
               {(order.payment_intent_id || order.paid_at) && (
@@ -3273,9 +3321,9 @@ export default function OrderDetailModal({
                       </div>
                     </div>
 
-                    {(statusMsg || emailMsg || confirmResendMsg || resetMsg) && (
-                      <p className={`text-xs flex items-center gap-1 ${(statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + confirmResendMsg + resetMsg).toLowerCase().includes("error") ? "text-red-500" : "text-[#3b6ea5]"}`}>
-                        <i className="ri-information-line"></i>{statusMsg || emailMsg || confirmResendMsg || resetMsg}
+                    {(statusMsg || emailMsg || confirmResendMsg || resetMsg || portalResetMsg) && (
+                      <p className={`text-xs flex items-center gap-1 ${(statusMsg + emailMsg + confirmResendMsg + resetMsg + portalResetMsg).toLowerCase().includes("fail") || (statusMsg + emailMsg + confirmResendMsg + resetMsg + portalResetMsg).toLowerCase().includes("error") ? "text-red-500" : "text-[#3b6ea5]"}`}>
+                        <i className="ri-information-line"></i>{statusMsg || emailMsg || confirmResendMsg || resetMsg || portalResetMsg}
                       </p>
                     )}
 

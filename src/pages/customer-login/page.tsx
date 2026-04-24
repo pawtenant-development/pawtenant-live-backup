@@ -108,16 +108,33 @@ export default function CustomerLoginPage() {
 
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setLoading(false);
-    if (err) {
-      setError(err.message);
-      return;
+    // Route through the dedicated edge function instead of
+    // supabase.auth.resetPasswordForEmail so delivery goes through Resend
+    // (the Supabase /recover SMTP path was returning unexpected_failure and
+    // leaving paid customers unable to get a reset link).
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/request-customer-password-reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ email: resetEmail.trim().toLowerCase() }),
+      });
+      const json = await res.json() as { ok?: boolean; error?: string };
+      setLoading(false);
+      if (!res.ok || !json.ok) {
+        setError(json.error ?? "Could not send reset link. Please try again or email hello@pawtenant.com.");
+        return;
+      }
+      setResetSent(true);
+    } catch {
+      setLoading(false);
+      setError("Network error — please try again or email hello@pawtenant.com.");
     }
-    setResetSent(true);
   };
 
   return (
