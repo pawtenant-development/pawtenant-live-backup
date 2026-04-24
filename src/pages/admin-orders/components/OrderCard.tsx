@@ -62,7 +62,6 @@ const REF_BADGE: Record<string, { label: string; icon: string; color: string }> 
   "Google Organic":           { label: "Organic",   icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   "TikTok Ads":               { label: "TikTok",    icon: "ri-tiktok-line",          color: "text-gray-900 bg-gray-100 border-gray-300" },
   "Instagram Ads":            { label: "Instagram", icon: "ri-instagram-line",       color: "text-pink-600 bg-pink-50 border-pink-200" },
-  "Twitter / X":              { label: "Twitter/X", icon: "ri-twitter-x-line",       color: "text-gray-800 bg-gray-100 border-gray-300" },
   "YouTube Ads":              { label: "YouTube",   icon: "ri-youtube-line",         color: "text-red-600 bg-red-50 border-red-200" },
   "Email Campaign":           { label: "Email",     icon: "ri-mail-send-line",       color: "text-violet-600 bg-violet-50 border-violet-200" },
   "Referral":                 { label: "Referral",  icon: "ri-share-forward-line",   color: "text-teal-600 bg-teal-50 border-teal-200" },
@@ -82,7 +81,6 @@ function resolveRefBadge(referredBy: string | null): { label: string; icon: stri
   if (lower.includes("google") && lower.includes("organic")) return REF_BADGE["Google Organic"];
   if (lower.includes("google")) return REF_BADGE["Google Ads"];
   if (lower.includes("tiktok")) return REF_BADGE["TikTok Ads"];
-  if (lower.includes("twitter") || lower.includes("/ x")) return REF_BADGE["Twitter / X"];
   if (lower.includes("youtube")) return REF_BADGE["YouTube Ads"];
   if (lower.includes("email")) return REF_BADGE["Email Campaign"];
   if (lower.includes("referral")) return REF_BADGE["Referral"];

@@ -86,14 +86,6 @@ const CHANNEL_MAP: Record<string, ChannelConfig> = {
     borderColor: "border-pink-200",
     chartColor: "#db2777",
   },
-  "Twitter / X": {
-    label: "Twitter / X",
-    icon: "ri-twitter-x-fill",
-    color: "text-gray-800",
-    bgColor: "bg-gray-100",
-    borderColor: "border-gray-300",
-    chartColor: "#374151",
-  },
   "YouTube Ads": {
     label: "YouTube Ads",
     icon: "ri-youtube-fill",
@@ -140,17 +132,17 @@ function resolveChannel(referredBy: string | null): string {
   if (!referredBy) return "Unknown";
   if (CHANNEL_MAP[referredBy]) return referredBy;
   const lower = referredBy.toLowerCase();
+  // Strict hierarchy — no weak twitter/x inference
   if (lower.includes("facebook") || (lower.includes("instagram") && !lower.includes("google"))) return "Facebook / Instagram Ads";
   if (lower.includes("google") && lower.includes("organic")) return "Google Organic";
   if (lower.includes("google")) return "Google Ads";
   if (lower.includes("tiktok")) return "TikTok Ads";
-  if (lower.includes("twitter") || lower.includes("/ x")) return "Twitter / X";
   if (lower.includes("youtube")) return "YouTube Ads";
   if (lower.includes("email")) return "Email Campaign";
   if (lower.includes("referral")) return "Referral";
   if (lower.includes("seo") || lower.includes("organic")) return "Google Organic";
   if (lower.includes("direct")) return "Direct";
-  return referredBy;
+  return "Unknown";
 }
 
 function getChannelConfig(channel: string): ChannelConfig {
@@ -162,6 +154,26 @@ function getChannelConfig(channel: string): ChannelConfig {
     borderColor: "border-gray-200",
     chartColor: "#9ca3af",
   };
+}
+
+// ── Attribution Funnel (canonical channel keys) ───────────────────────────────
+// Uses values written by src/lib/attributionStore.ts → buildChannel()
+// and stored in orders.attribution_json.channel
+//          and chat_sessions.external_metadata.attribution.channel
+const FUNNEL_CHANNELS = [
+  { key: "google_ads",     label: "Google Ads",          icon: "ri-google-fill",           color: "#f97316", bg: "bg-orange-50",  border: "border-orange-200",  text: "text-orange-600" },
+  { key: "facebook_ads",   label: "Facebook / IG Ads",   icon: "ri-facebook-circle-fill",  color: "#1877F2", bg: "bg-blue-50",    border: "border-blue-200",    text: "text-[#1877F2]" },
+  { key: "organic_search", label: "Organic Search",      icon: "ri-search-2-line",         color: "#10b981", bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-600" },
+  { key: "social_organic", label: "Social (Organic)",    icon: "ri-share-forward-fill",    color: "#8b5cf6", bg: "bg-violet-50",  border: "border-violet-200",  text: "text-violet-600" },
+  { key: "direct",         label: "Direct",              icon: "ri-cursor-fill",           color: "#6b7280", bg: "bg-gray-50",    border: "border-gray-200",    text: "text-gray-600" },
+  { key: "other",          label: "Other / Unknown",     icon: "ri-question-line",         color: "#9ca3af", bg: "bg-gray-50",    border: "border-gray-200",    text: "text-gray-400" },
+] as const;
+
+function normalizeCanonicalChannel(raw: unknown): string {
+  if (typeof raw !== "string") return "other";
+  const v = raw.toLowerCase().trim();
+  if (v === "google_ads" || v === "facebook_ads" || v === "organic_search" || v === "social_organic" || v === "direct") return v;
+  return "other";
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -513,7 +525,25 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const [trendGranularity, setTrendGranularity] = useState<"daily" | "weekly">("daily");
   const [csvExporting, setCsvExporting] = useState(false);
   const [reviewLogs, setReviewLogs] = useState<{ object_id: string; action: string; created_at: string }[]>([]);
-  const [analyticsView, setAnalyticsView] = useState<"overview" | "ad_roi" | "google_ads_sync" | "meta_capi" | "backfill">("overview");
+  const [analyticsView, setAnalyticsView] = useState<"overview" | "funnel" | "ad_roi" | "google_ads_sync" | "meta_capi" | "backfill">("overview");
+
+  // ── Attribution Funnel state ─────────────────────────────────────────────
+  interface FunnelOrderRow {
+    id: string;
+    payment_intent_id: string | null;
+    price: number | null;
+    attribution_json: { channel?: string | null } | null;
+    created_at: string;
+  }
+  interface FunnelChatRow {
+    id: string;
+    external_metadata: { attribution?: { channel?: string | null } | null } | null;
+    created_at: string;
+  }
+  const [funnelOrders, setFunnelOrders] = useState<FunnelOrderRow[]>([]);
+  const [funnelChats, setFunnelChats] = useState<FunnelChatRow[]>([]);
+  const [funnelLoading, setFunnelLoading] = useState(false);
+  const [funnelError, setFunnelError] = useState<string | null>(null);
   const PAGE_SIZE = 20;
 
   // ── Fetch review request audit logs ──────────────────────────────────────
@@ -527,6 +557,44 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     }
     fetchReviewLogs();
   }, []);
+
+  // ── Fetch Attribution Funnel data on demand ──────────────────────────────
+  useEffect(() => {
+    if (analyticsView !== "funnel") return;
+    let cancelled = false;
+    setFunnelLoading(true);
+    setFunnelError(null);
+
+    const fromIso = new Date(0).toISOString();
+    const toIso = new Date().toISOString();
+
+    Promise.all([
+      supabase
+        .from("orders")
+        .select("id, payment_intent_id, price, attribution_json, created_at")
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso),
+      supabase
+        .from("chat_sessions")
+        .select("id, external_metadata, created_at")
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso),
+    ])
+      .then(([o, c]) => {
+        if (cancelled) return;
+        if (o.error) setFunnelError(o.error.message);
+        else if (c.error) setFunnelError(c.error.message);
+        setFunnelOrders((o.data ?? []) as FunnelOrderRow[]);
+        setFunnelChats((c.data ?? []) as FunnelChatRow[]);
+      })
+      .finally(() => {
+        if (!cancelled) setFunnelLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [analyticsView]);
 
   // ── Date filtering ────────────────────────────────────────────────────────
   const { from: rangeFrom, to: rangeTo } = useMemo(() => {
@@ -762,6 +830,57 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const dateFromStr = rangeFrom.toISOString().slice(0, 10);
   const dateToStr = rangeTo.toISOString().slice(0, 10);
 
+  // ── Funnel stats (date-range scoped) ──────────────────────────────────────
+  const funnelStats = useMemo(() => {
+    const map: Record<string, { chats: number; leads: number; paid: number; revenue: number }> = {};
+    FUNNEL_CHANNELS.forEach((c) => { map[c.key] = { chats: 0, leads: 0, paid: 0, revenue: 0 }; });
+
+    funnelChats.forEach((ch) => {
+      const d = new Date(ch.created_at);
+      if (d < rangeFrom || d > rangeTo) return;
+      const raw = ch.external_metadata?.attribution?.channel ?? null;
+      map[normalizeCanonicalChannel(raw)].chats++;
+    });
+
+    funnelOrders.forEach((o) => {
+      const d = new Date(o.created_at);
+      if (d < rangeFrom || d > rangeTo) return;
+      const key = normalizeCanonicalChannel(o.attribution_json?.channel ?? null);
+      if (o.payment_intent_id) {
+        map[key].paid++;
+        map[key].revenue += o.price ?? 0;
+      } else {
+        map[key].leads++;
+      }
+    });
+
+    return FUNNEL_CHANNELS.map((c) => {
+      const s = map[c.key];
+      const total = s.leads + s.paid;
+      return {
+        ...c,
+        ...s,
+        total,
+        convRate: total > 0 ? Math.round((s.paid / total) * 100) : 0,
+      };
+    });
+  }, [funnelOrders, funnelChats, rangeFrom, rangeTo]);
+
+  const funnelTotals = useMemo(() => {
+    return funnelStats.reduce(
+      (acc, r) => ({
+        chats: acc.chats + r.chats,
+        leads: acc.leads + r.leads,
+        paid: acc.paid + r.paid,
+        revenue: acc.revenue + r.revenue,
+      }),
+      { chats: 0, leads: 0, paid: 0, revenue: 0 },
+    );
+  }, [funnelStats]);
+
+  const funnelTotalOrders = funnelTotals.leads + funnelTotals.paid;
+  const funnelConvRate = funnelTotalOrders > 0 ? Math.round((funnelTotals.paid / funnelTotalOrders) * 100) : 0;
+
   // ── CSV Export handler ────────────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
     setCsvExporting(true);
@@ -779,6 +898,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
         {[
           { key: "overview",       label: "Analytics Overview", icon: "ri-bar-chart-2-line" },
+          { key: "funnel",         label: "Attribution Funnel", icon: "ri-filter-2-line" },
           { key: "ad_roi",         label: "Ad Spend & ROI",     icon: "ri-advertisement-line" },
           { key: "google_ads_sync",label: "Google Ads Sync",    icon: "ri-google-fill" },
           { key: "meta_capi",      label: "Meta CAPI",          icon: "ri-facebook-fill" },
@@ -795,6 +915,168 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           </button>
         ))}
       </div>
+
+      {/* ── Attribution Funnel view ── */}
+      {analyticsView === "funnel" && (
+        <div className="space-y-5">
+
+          {/* Date preset bar (scoped to funnel) */}
+          <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                {[
+                  { value: "7d", label: "7 Days" },
+                  { value: "30d", label: "30 Days" },
+                  { value: "90d", label: "90 Days" },
+                  { value: "ytd", label: "Year to Date" },
+                  { value: "all", label: "All Time" },
+                  { value: "custom", label: "Custom" },
+                ].map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setDatePreset(p.value)}
+                    className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${datePreset === p.value ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {datePreset === "custom" && (
+                <div className="flex items-center gap-2">
+                  <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
+                  <span className="text-xs text-gray-400">to</span>
+                  <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
+                </div>
+              )}
+              <span className="text-xs text-gray-400 ml-auto">
+                {funnelLoading ? (
+                  <span className="flex items-center gap-1.5"><i className="ri-loader-4-line animate-spin"></i>Loading…</span>
+                ) : (
+                  <>
+                    <strong className="text-gray-700">{funnelChats.length}</strong> chats ·{" "}
+                    <strong className="text-gray-700">{funnelOrders.length}</strong> orders in window
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+
+          {funnelError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 text-xs text-red-700">
+              <i className="ri-error-warning-line mr-1.5"></i>{funnelError}
+            </div>
+          )}
+
+          {/* KPI summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {[
+              { label: "Chat Sessions",  value: funnelTotals.chats,                              icon: "ri-chat-3-line",            color: "text-sky-600",     bg: "bg-sky-50" },
+              { label: "Leads",          value: funnelTotals.leads,                              icon: "ri-user-follow-line",       color: "text-amber-600",   bg: "bg-amber-50" },
+              { label: "Paid Orders",    value: funnelTotals.paid,                               icon: "ri-bank-card-line",         color: "text-emerald-600", bg: "bg-emerald-50" },
+              { label: "Revenue",        value: `$${funnelTotals.revenue.toLocaleString()}`,     icon: "ri-money-dollar-circle-line", color: "text-emerald-700", bg: "bg-emerald-50" },
+              { label: "Conversion",     value: `${funnelConvRate}%`,                            icon: "ri-percent-line",           color: "text-violet-600",  bg: "bg-violet-50" },
+            ].map((kpi) => (
+              <div key={kpi.label} className={`${kpi.bg} rounded-xl border border-gray-100 p-4`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 flex items-center justify-center bg-white/70 rounded-lg flex-shrink-0">
+                    <i className={`${kpi.icon} ${kpi.color} text-sm`}></i>
+                  </div>
+                  <span className="text-xs text-gray-500 font-medium leading-tight">{kpi.label}</span>
+                </div>
+                <p className={`text-2xl font-extrabold ${kpi.color}`}>{kpi.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Channel table */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-extrabold text-gray-900">Channel Performance</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Canonical channels from <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">attribution_json.channel</code> and <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">external_metadata.attribution.channel</code>
+              </p>
+            </div>
+
+            {/* Header */}
+            <div className="grid grid-cols-12 gap-2 px-5 py-2.5 bg-gray-50 border-b border-gray-100">
+              <div className="col-span-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Channel</div>
+              <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Chat Sessions</div>
+              <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Leads</div>
+              <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Paid</div>
+              <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Revenue</div>
+              <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Conv Rate</div>
+              <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Share</div>
+            </div>
+
+            <div className="divide-y divide-gray-50">
+              {funnelStats.map((row) => {
+                const sharePct = funnelTotalOrders > 0 ? Math.round(((row.leads + row.paid) / funnelTotalOrders) * 100) : 0;
+                const convColor = row.convRate >= 50 ? "text-emerald-600" : row.convRate >= 25 ? "text-amber-600" : row.convRate > 0 ? "text-red-500" : "text-gray-300";
+                return (
+                  <div key={row.key} className="grid grid-cols-12 gap-2 px-5 py-3.5 items-center">
+                    {/* Channel */}
+                    <div className="col-span-3 flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${row.bg} ${row.border} border`}>
+                        <i className={`${row.icon} ${row.text} text-sm`}></i>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-gray-900 truncate">{row.label}</p>
+                        <p className="text-[10px] text-gray-400 truncate font-mono">{row.key}</p>
+                      </div>
+                    </div>
+                    {/* Chats */}
+                    <div className="col-span-2 flex items-center justify-end">
+                      <span className="text-sm font-bold text-sky-600">{row.chats}</span>
+                    </div>
+                    {/* Leads */}
+                    <div className="col-span-1 flex items-center justify-end">
+                      <span className="text-sm font-bold text-amber-600">{row.leads}</span>
+                    </div>
+                    {/* Paid */}
+                    <div className="col-span-1 flex items-center justify-end">
+                      <span className="text-sm font-extrabold text-emerald-600">{row.paid}</span>
+                    </div>
+                    {/* Revenue */}
+                    <div className="col-span-2 flex items-center justify-end">
+                      <span className="text-sm font-bold text-gray-800">${row.revenue.toLocaleString()}</span>
+                    </div>
+                    {/* Conv Rate */}
+                    <div className="col-span-2 flex items-center justify-end gap-2">
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden max-w-[80px]">
+                        <div className="h-full rounded-full" style={{ width: `${Math.max(4, row.convRate)}%`, backgroundColor: row.color }}></div>
+                      </div>
+                      <span className={`text-sm font-bold ${convColor} w-10 text-right`}>{row.convRate}%</span>
+                    </div>
+                    {/* Share */}
+                    <div className="col-span-1 flex items-center justify-end">
+                      <span className="text-xs font-bold text-gray-500">{sharePct}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Totals */}
+            <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-gray-50 border-t border-gray-100 items-center">
+              <div className="col-span-3 text-xs font-extrabold text-gray-700">Total</div>
+              <div className="col-span-2 text-right text-sm font-extrabold text-sky-700">{funnelTotals.chats}</div>
+              <div className="col-span-1 text-right text-sm font-extrabold text-amber-700">{funnelTotals.leads}</div>
+              <div className="col-span-1 text-right text-sm font-extrabold text-emerald-700">{funnelTotals.paid}</div>
+              <div className="col-span-2 text-right text-sm font-extrabold text-gray-900">${funnelTotals.revenue.toLocaleString()}</div>
+              <div className="col-span-2 text-right text-sm font-extrabold text-violet-700">{funnelConvRate}%</div>
+              <div className="col-span-1 text-right text-xs font-bold text-gray-400">100%</div>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-gray-400 px-1">
+            <i className="ri-information-line mr-1"></i>
+            Conversion rate = paid orders ÷ total orders (leads + paid) per channel. Chat sessions and orders are independent top-of-funnel signals — a single visitor can do either, both, or neither.
+          </p>
+        </div>
+      )}
 
       {/* ── Google Ads Sync view ── */}
       {analyticsView === "google_ads_sync" && <GoogleAdsSyncPanel />}

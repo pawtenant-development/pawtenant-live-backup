@@ -1,10 +1,11 @@
 // Admin Orders + Doctor Management — PawTenant
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import CreateDoctorModal from "./components/CreateDoctorModal";
 import EarningsPanel from "./components/EarningsPanel";
 import CustomersTab from "./components/CustomersTab";
+import ChatsTab from "./components/ChatsTab";
 import TeamTab from "./components/TeamTab";
 import PaymentsTab from "./components/PaymentsTab";
 import ChangePasswordModal from "./components/ChangePasswordModal";
@@ -153,26 +154,27 @@ const STATUS_LABEL: Record<string, string> = {
   lead: "Lead (Unpaid)",
 };
 
-// ─── Traffic source derivation (mirrors AdminDashboard logic) ─────────────────
+// ─── Traffic source derivation — STRICT hierarchy, no twitter/x, no weak referrer parsing
 function deriveTrafficSource(order: Pick<Order, "utm_source" | "utm_medium" | "gclid" | "fbclid" | "referred_by"> & { utm_source?: string | null; utm_medium?: string | null; gclid?: string | null; fbclid?: string | null }): string {
   const utmSrc = ((order as Order & { utm_source?: string | null }).utm_source ?? "").toLowerCase();
-  const utmMed = ((order as Order & { utm_medium?: string | null }).utm_medium ?? "").toLowerCase();
   const gclid = (order as Order & { gclid?: string | null }).gclid ?? "";
   const fbclid = (order as Order & { fbclid?: string | null }).fbclid ?? "";
-  const referred = (order.referred_by ?? "").toLowerCase();
 
+  // 1. gclid → Google Ads
   if (gclid) return "Google Ads";
-  if (utmSrc === "google" && ["cpc", "paid", "ppc", "paidsearch"].includes(utmMed)) return "Google Ads";
+  // 2. fbclid → Facebook Ads
   if (fbclid) return "Facebook / Instagram";
-  if (utmSrc === "facebook") return "Facebook";
-  if (utmSrc === "instagram") return "Instagram";
-  if (utmSrc === "tiktok") return "TikTok";
-  if (utmSrc === "google" || utmMed === "organic") return "Google Organic";
-  if (referred.includes("google")) return "Google";
-  if (referred.includes("tiktok")) return "TikTok";
-  if (referred.includes("facebook") || referred.includes("instagram")) return "Facebook";
-  if (referred.includes("seo") || referred.includes("organic")) return "Google Organic";
-  if (referred && referred !== "direct" && referred !== "unknown") return referred;
+  // 3. utm_source → use utm_source (lowercased, display-capped)
+  if (utmSrc) {
+    if (utmSrc === "facebook") return "Facebook";
+    if (utmSrc === "instagram") return "Instagram";
+    if (utmSrc === "google") return "Google Organic";
+    if (utmSrc === "tiktok") return "TikTok";
+    return utmSrc;
+  }
+  // 4. Referrer classification happens client-side and is stored in attribution_json.
+  //    At the order level we do NOT guess from weak referred_by strings.
+  // 5. Default
   return "Direct / Unknown";
 }
 
@@ -230,9 +232,9 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
 
 // ─── Role-based tab visibility ─────────────────────────────────────────────
 
-type TabKey = "dashboard" | "orders" | "analytics" | "comms" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
+type TabKey = "dashboard" | "orders" | "analytics" | "comms" | "chats" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
 
-const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
+const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "comms", "chats", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
 
 function getVisibleTabs(role: string | null, customTabAccess?: string[] | null): TabKey[] {
   // Custom tab access overrides role defaults — use it if set
@@ -244,11 +246,11 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
     case "admin_manager":
       return ALL_TABS;
     case "support":
-      return ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "chats", "customers", "doctors", "audit", "health"];
     case "finance":
-      return ["dashboard", "orders", "analytics", "comms", "customers", "payments", "earnings", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "chats", "customers", "payments", "earnings", "audit", "health"];
     case "read_only":
-      return ["dashboard", "orders", "analytics", "comms", "customers", "doctors", "payments", "audit", "health"];
+      return ["dashboard", "orders", "analytics", "comms", "chats", "customers", "doctors", "payments", "audit", "health"];
     default:
       return ALL_TABS;
   }
@@ -329,7 +331,38 @@ const REF_LABELS: Record<string, { label: string; icon: string; color: string }>
 
 export default function AdminOrdersPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
+  const location = useLocation();
+
+  // Tab state is bound to the ?tab= query param in both directions so the chat
+  // notification banner (which navigates to /admin-orders?tab=chats) reliably
+  // switches the UI, and a hard refresh on ?tab=chats still opens Chats.
+  const [activeTab, setActiveTabState] = useState<TabKey>(() => {
+    try {
+      const t = new URLSearchParams(location.search).get("tab");
+      return t && (ALL_TABS as string[]).includes(t) ? (t as TabKey) : "dashboard";
+    } catch {
+      return "dashboard";
+    }
+  });
+
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get("tab");
+    const next: TabKey =
+      t && (ALL_TABS as string[]).includes(t) ? (t as TabKey) : "dashboard";
+    setActiveTabState((prev) => (prev === next ? prev : next));
+  }, [location.search]);
+
+  const setActiveTab = useCallback(
+    (t: TabKey) => {
+      setActiveTabState(t);
+      const params = new URLSearchParams(location.search);
+      if (t === "dashboard") params.delete("tab");
+      else params.set("tab", t);
+      const qs = params.toString();
+      navigate(`/admin-orders${qs ? `?${qs}` : ""}`, { replace: true });
+    },
+    [location.search, navigate],
+  );
   const [orders, setOrders] = useState<Order[]>([]);
   const [doctorContacts, setDoctorContacts] = useState<DoctorContact[]>([]);
   const [doctorProfiles, setDoctorProfiles] = useState<DoctorProfile[]>([]);
@@ -1540,6 +1573,7 @@ export default function AdminOrdersPage() {
              activeTab === "orders" ? "Orders" :
              activeTab === "analytics" ? "Analytics" :
              activeTab === "comms" ? "Communications" :
+             activeTab === "chats" ? "Chats" :
              activeTab === "customers" ? "Customers" :
              activeTab === "doctors" ? "Providers" :
              activeTab === "earnings" ? "Earnings" :
@@ -2240,6 +2274,8 @@ export default function AdminOrdersPage() {
         )}
 
         {/* ── CUSTOMERS TAB ── */}
+        {activeTab === "chats" && <ChatsTab />}
+
         {activeTab === "customers" && <CustomersTab />}
 
         {/* ── DOCTORS TAB ── */}
@@ -2249,7 +2285,7 @@ export default function AdminOrdersPage() {
         {activeTab === "earnings" && (
           <div>
             <div className="mb-6">
-              <h2 className="text-base font-extrabold text-gray-900">Doctor Earnings &amp; Payouts</h2>
+              <h2 className="text-base font-extrabold text-gray-900">Provider Earnings &amp; Payouts</h2>
               <p className="text-xs text-gray-500 mt-0.5">Track completed cases, set payout amounts, and mark payments sent.</p>
             </div>
             <EarningsPanel />

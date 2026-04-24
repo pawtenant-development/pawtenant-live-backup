@@ -38,8 +38,11 @@
  * localStorage:   fbclid, fbclid_ts, fbc, first_seen_at, session_id only
  *                 — survives tab close for CAPI dedup on return visits
  *
- * ── MERGE RULES ──────────────────────────────────────────────────────────────
- * 1. URL params always win over stored values (user just clicked a new ad)
+ * ── MERGE RULES (LAST-TOUCH) ─────────────────────────────────────────────────
+ * 1. Fresh URL campaign params OVERRIDE stale stored click IDs / UTMs.
+ *    - URL utm_source  → clears stored gclid + fbclid (+derivs)
+ *    - URL fbclid      → clears stored gclid + utm_*
+ *    - URL gclid       → clears stored fbclid + utm_*
  * 2. Existing non-empty stored values are NEVER overwritten with empty/null
  * 3. fbclid is special: also persisted to localStorage for cross-session survival
  * 4. landing_url, referrer, first_seen_at: only set ONCE (first landing)
@@ -164,12 +167,29 @@ function ssSet(key: string, value: string): void {
   SS?.setItem(key, value);
 }
 
+function ssDel(key: string): void {
+  SS?.removeItem(key);
+}
+
 function lsGet(key: string): string | null {
   return LS?.getItem(key) || null;
 }
 
 function lsSet(key: string, value: string): void {
   LS?.setItem(key, value);
+}
+
+function lsDel(key: string): void {
+  LS?.removeItem(key);
+}
+
+function clearBoth(key: string): boolean {
+  const had = !!(ssGet(key) || lsGet(key));
+  if (had) {
+    ssDel(key);
+    lsDel(key);
+  }
+  return had;
 }
 
 function generateSessionId(): string {
@@ -181,12 +201,31 @@ function generateSessionId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/**
+ * Normalize a raw utm_source into a canonical channel string.
+ * facebook / fb / instagram / ig / meta → "facebook_ads"
+ * google                                  → "google_ads"
+ * anything else                           → lowercased trimmed value
+ */
+function normalizeSource(source: string): string {
+  const s = (source || "").toLowerCase().trim();
+  if (!s) return "";
+  if (s === "facebook" || s === "fb" || s === "instagram" || s === "ig" || s === "meta") {
+    return "facebook_ads";
+  }
+  if (s === "google") return "google_ads";
+  return s;
+}
+
 // ── Core: capture from URL params ────────────────────────────────────────────
 
 /**
  * Called on every route change by UTMCapture in App.tsx.
- * Merges URL params into sessionStorage/localStorage without overwriting
- * existing valid values (except fbclid which always wins from URL).
+ *
+ * LAST-TOUCH priority: a fresh campaign touch in the URL OVERRIDES the
+ * previously stored attribution from a different channel. Click IDs still
+ * get stored, but stale ones from the prior touch are cleared out so
+ * buildChannel / buildAttributionJson reflect the newest campaign source.
  */
 export function captureFromUrl(search: string): void {
   const params = new URLSearchParams(search);
@@ -194,6 +233,11 @@ export function captureFromUrl(search: string): void {
   const captured: Record<string, string> = {};
   const restored: Record<string, string> = {};
   const skipped: Record<string, string> = {};
+  const cleared: string[] = [];
+
+  const urlUtmSource = params.get("utm_source");
+  const urlFbclid    = params.get("fbclid");
+  const urlGclid     = params.get("gclid");
 
   // ── 1. Session ID — generate once, never change ───────────────────────────
   const existingSessionId = ssGet(KEYS.session_id) || lsGet(KEYS.session_id);
@@ -217,18 +261,40 @@ export function captureFromUrl(search: string): void {
     restored.first_seen_at = stored;
   }
 
+  // ── 2b. LAST-TOUCH override: clear stale attribution from OTHER channels ──
+  //        Only runs when this URL itself carries a fresh campaign signal.
+  if (urlUtmSource) {
+    // Fresh utm_source wins over any previously stored click IDs.
+    [KEYS.gclid, KEYS.fbclid, KEYS.fbc, KEYS.fbclid_ts, KEYS.gbraid, KEYS.wbraid].forEach((k) => {
+      if (clearBoth(k)) cleared.push(k);
+    });
+  } else if (urlFbclid) {
+    // Fresh fbclid wins over stale gclid and stale utm_*.
+    [KEYS.gclid, KEYS.gbraid, KEYS.wbraid,
+     KEYS.utm_source, KEYS.utm_medium, KEYS.utm_campaign, KEYS.utm_term, KEYS.utm_content].forEach((k) => {
+      if (clearBoth(k)) cleared.push(k);
+    });
+    ssDel("utm_captured");
+  } else if (urlGclid) {
+    // Fresh gclid wins over stale fbclid and stale utm_*.
+    [KEYS.fbclid, KEYS.fbc, KEYS.fbclid_ts,
+     KEYS.utm_source, KEYS.utm_medium, KEYS.utm_campaign, KEYS.utm_term, KEYS.utm_content].forEach((k) => {
+      if (clearBoth(k)) cleared.push(k);
+    });
+    ssDel("utm_captured");
+  }
+
   // ── 3. fbclid — ALWAYS capture from URL; restore from LS if missing ───────
-  const fbclidFromUrl = params.get("fbclid");
-  if (fbclidFromUrl) {
-    ssSet(KEYS.fbclid, fbclidFromUrl);
-    lsSet(KEYS.fbclid, fbclidFromUrl);
+  if (urlFbclid) {
+    ssSet(KEYS.fbclid, urlFbclid);
+    lsSet(KEYS.fbclid, urlFbclid);
     const fbclidTs = String(now);
     ssSet(KEYS.fbclid_ts, fbclidTs);
     lsSet(KEYS.fbclid_ts, fbclidTs);
-    const fbc = `fb.1.${fbclidTs}.${fbclidFromUrl}`;
+    const fbc = `fb.1.${fbclidTs}.${urlFbclid}`;
     ssSet(KEYS.fbc, fbc);
     lsSet(KEYS.fbc, fbc);
-    captured.fbclid = fbclidFromUrl;
+    captured.fbclid = urlFbclid;
     captured.fbc = fbc;
   } else {
     // Restore fbclid from localStorage if not in sessionStorage
@@ -245,11 +311,10 @@ export function captureFromUrl(search: string): void {
   }
 
   // ── 4. gclid / gbraid / wbraid — Google click IDs ────────────────────────
-  const gclidFromUrl = params.get("gclid");
-  if (gclidFromUrl) {
-    ssSet(KEYS.gclid, gclidFromUrl);
-    lsSet(KEYS.gclid, gclidFromUrl);
-    captured.gclid = gclidFromUrl;
+  if (urlGclid) {
+    ssSet(KEYS.gclid, urlGclid);
+    lsSet(KEYS.gclid, urlGclid);
+    captured.gclid = urlGclid;
   } else if (!ssGet(KEYS.gclid)) {
     const stored = lsGet(KEYS.gclid);
     if (stored) { ssSet(KEYS.gclid, stored); restored.gclid = stored; }
@@ -297,17 +362,37 @@ export function captureFromUrl(search: string): void {
     if (stored) { ssSet(KEYS.ttclid, stored); restored.ttclid = stored; }
   }
 
-  // ── 5. UTMs + ref — only capture on first landing (utm_captured flag) ─────
-  if (!ssGet("utm_captured")) {
-    const utmFields: Array<[keyof AttributionData, string]> = [
-      ["utm_source",   "utm_source"],
-      ["utm_medium",   "utm_medium"],
-      ["utm_campaign", "utm_campaign"],
-      ["utm_term",     "utm_term"],
-      ["utm_content",  "utm_content"],
-      ["ref",          "ref"],
-    ];
+  // ── 5. UTMs + ref ────────────────────────────────────────────────────────
+  const utmFields: Array<[keyof AttributionData, string]> = [
+    ["utm_source",   "utm_source"],
+    ["utm_medium",   "utm_medium"],
+    ["utm_campaign", "utm_campaign"],
+    ["utm_term",     "utm_term"],
+    ["utm_content",  "utm_content"],
+  ];
 
+  if (urlUtmSource) {
+    // LAST-TOUCH: fresh utm_source in URL → OVERRIDE any previously stored UTMs.
+    utmFields.forEach(([field, param]) => {
+      const val = params.get(param);
+      if (val) {
+        const existing = ssGet(KEYS[field]);
+        if (existing && existing !== val) {
+          skipped[`${field}_overwrote`] = `replaced "${existing}" with "${val}"`;
+        }
+        ssSet(KEYS[field], val);
+        captured[field] = val;
+      }
+    });
+    // ref is still set-once
+    const refVal = params.get("ref");
+    if (refVal && !ssGet(KEYS.ref)) {
+      ssSet(KEYS.ref, refVal);
+      captured.ref = refVal;
+    }
+    ssSet("utm_captured", "1");
+  } else if (!ssGet("utm_captured")) {
+    // First-landing: capture everything that's in the URL.
     utmFields.forEach(([field, param]) => {
       const val = params.get(param);
       if (val) {
@@ -315,29 +400,15 @@ export function captureFromUrl(search: string): void {
         captured[field] = val;
       }
     });
-
-    // landing_url and referrer — set once
-    if (!ssGet(KEYS.landing_url)) {
-      const url = typeof window !== "undefined" ? window.location.href : "";
-      ssSet(KEYS.landing_url, url);
-      captured.landing_url = url;
+    const refVal = params.get("ref");
+    if (refVal) {
+      ssSet(KEYS.ref, refVal);
+      captured.ref = refVal;
     }
-    if (!ssGet(KEYS.referrer)) {
-      const ref = typeof document !== "undefined" ? document.referrer : "";
-      ssSet(KEYS.referrer, ref);
-      if (ref) captured.referrer = ref;
-    }
-
     ssSet("utm_captured", "1");
   } else {
-    // After first landing: still capture UTMs if they appear in URL (ad retargeting)
-    const utmFields: Array<[keyof AttributionData, string]> = [
-      ["utm_source",   "utm_source"],
-      ["utm_medium",   "utm_medium"],
-      ["utm_campaign", "utm_campaign"],
-      ["utm_term",     "utm_term"],
-      ["utm_content",  "utm_content"],
-    ];
+    // After first landing, no fresh utm_source in URL:
+    // fill any still-missing UTMs (don't overwrite existing values).
     utmFields.forEach(([field, param]) => {
       const val = params.get(param);
       const existing = ssGet(KEYS[field]);
@@ -350,13 +421,30 @@ export function captureFromUrl(search: string): void {
     });
   }
 
+  // landing_url and referrer — set once
+  if (!ssGet(KEYS.landing_url)) {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    ssSet(KEYS.landing_url, url);
+    captured.landing_url = url;
+  }
+  if (!ssGet(KEYS.referrer)) {
+    const ref = typeof document !== "undefined" ? document.referrer : "";
+    ssSet(KEYS.referrer, ref);
+    if (ref) captured.referrer = ref;
+  }
+
   // ── Dev log ───────────────────────────────────────────────────────────────
-  const hasActivity = Object.keys(captured).length > 0 || Object.keys(restored).length > 0;
+  const hasActivity =
+    Object.keys(captured).length > 0 ||
+    Object.keys(restored).length > 0 ||
+    Object.keys(skipped).length > 0 ||
+    cleared.length > 0;
   if (hasActivity) {
     debugLog("captureFromUrl", {
       url: search || "(no params)",
       captured,
       restored,
+      cleared: cleared.length ? cleared.join(", ") : "(none)",
       skipped,
     });
   }
@@ -444,6 +532,7 @@ export function buildAttributionJson(stage: string): Record<string, unknown> {
     first_seen_at: data.first_seen_at,
     captured_stage: stage,
     captured_at:   new Date().toISOString(),
+    channel:       buildChannel(),
   };
 
   // Only include non-null fields
@@ -482,20 +571,81 @@ export function buildFullSource(): string {
   if (utm_source) return utm_source;
   if (referrer) {
     try {
-      const host = new URL(referrer).hostname;
-      if (host.includes("google")) return "Google Organic";
-      if (host.includes("bing")) return "Bing Organic";
+      const host = new URL(referrer).hostname.toLowerCase();
+      if (host.includes("google") || host.includes("bing") || host.includes("yahoo")) return "Google Organic";
       if (host.includes("facebook") || host.includes("instagram")) return "Facebook Organic";
-      if (host.includes("tiktok")) return "TikTok";
-      if (host.includes("twitter") || host.includes("t.co")) return "Twitter / X";
-      if (host.includes("youtube")) return "YouTube";
-      if (host.includes("linkedin")) return "LinkedIn";
       return `Referral: ${host}`;
     } catch {
       return referrer;
     }
   }
   return "Direct";
+}
+
+// ── Build strict channel (canonical attribution) ──────────────────────────────
+/**
+ * Returns the canonical channel using a LAST-TOUCH priority.
+ *
+ * Priority:
+ *   1. Current URL has utm_source →
+ *        facebook/fb/instagram/ig/meta → "facebook_ads"
+ *        google                         → "google_ads"
+ *        otherwise                      → normalized utm_source (lowercased)
+ *   2. Current URL has fbclid     → "facebook_ads"
+ *   3. Current URL has gclid      → "google_ads"
+ *   4. Stored attribution:
+ *        stored fbclid            → "facebook_ads"
+ *        stored gclid             → "google_ads"
+ *        stored utm_source        → normalized source
+ *   5. Referrer host:
+ *        google|bing|yahoo        → "organic_search"
+ *        facebook|instagram       → "social_organic"
+ *   6. otherwise                  → "direct"
+ */
+export function buildChannel(): string {
+  // ── 1–3. Current URL wins (last touch) ────────────────────────────────────
+  const currentSearch = typeof window !== "undefined" ? window.location.search : "";
+  if (currentSearch) {
+    const p = new URLSearchParams(currentSearch);
+    const urlUtm    = p.get("utm_source");
+    const urlFbclid = p.get("fbclid");
+    const urlGclid  = p.get("gclid");
+    if (urlUtm) {
+      const normalized = normalizeSource(urlUtm);
+      if (normalized) return normalized;
+    }
+    if (urlFbclid) return "facebook_ads";
+    if (urlGclid)  return "google_ads";
+  }
+
+  // ── 4. Stored attribution ─────────────────────────────────────────────────
+  const data = getAttribution();
+  const { gclid, fbclid, utm_source, referrer } = data;
+
+  if (fbclid) return "facebook_ads";
+  if (gclid)  return "google_ads";
+  if (utm_source) {
+    const normalized = normalizeSource(utm_source);
+    if (normalized) return normalized;
+  }
+
+  // ── 5. Referrer ──────────────────────────────────────────────────────────
+  if (referrer) {
+    try {
+      const host = new URL(referrer).hostname.toLowerCase();
+      if (host.includes("google") || host.includes("bing") || host.includes("yahoo")) {
+        return "organic_search";
+      }
+      if (host.includes("facebook") || host.includes("instagram")) {
+        return "social_organic";
+      }
+    } catch {
+      // fall through to direct
+    }
+  }
+
+  // ── 6. Direct ────────────────────────────────────────────────────────────
+  return "direct";
 }
 
 // ── Build URL query string for link attribution ───────────────────────────────
@@ -556,6 +706,7 @@ if (typeof window !== "undefined") {
     console.table(data);
     console.log("attribution_json (step2_lead):", buildAttributionJson("step2_lead"));
     console.log("fullSource:", buildFullSource());
+    console.log("channel:", buildChannel());
     console.groupEnd();
     return data;
   };

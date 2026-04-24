@@ -42,6 +42,12 @@ interface StripePaymentFormProps {
   agreedError: boolean;
   setAgreedError: (v: boolean) => void;
   couponSlot?: React.ReactNode;
+  /**
+   * When true, disables the submit button and short-circuits handlePay.
+   * Used by state-law compliance flow (AR/CA/IA/LA/MT) to require the user
+   * to acknowledge the state-law notice before paying.
+   */
+  complianceBlocked?: boolean;
 }
 
 // ─── Processing Overlay ───────────────────────────────────────────────────────
@@ -71,6 +77,7 @@ export default function StripePaymentForm({
   agreedError,
   setAgreedError,
   couponSlot,
+  complianceBlocked = false,
 }: StripePaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -137,6 +144,10 @@ export default function StripePaymentForm({
   const handlePay = async () => {
     setSubmitAttempted(true);
     setPaymentError("");
+
+    // Compliance gate (AR/CA/IA/LA/MT): button is also disabled, but we hard-stop
+    // here in case the click arrives mid-state-update.
+    if (complianceBlocked) return;
 
     // Validate terms agreement
     if (!agreed) {
@@ -247,7 +258,7 @@ export default function StripePaymentForm({
     return null;
   };
 
-  const canSubmit = !processing && !!stripe;
+  const canSubmit = !processing && !!stripe && !complianceBlocked;
 
   return (
     <>

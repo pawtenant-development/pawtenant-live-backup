@@ -50,6 +50,10 @@ export function AdminSubdomainRoutes() {
       <Route path="/admin-doctors" element={<P C={AdminDoctorsPage} />} />
       <Route path="/admin-guide"   element={<P C={AdminGuidePage} />} />
 
+      {/* Chats moved inside /admin-orders as a tab. Old /admin-chats path
+          redirects there for any stale bookmarks. */}
+      <Route path="/admin-chats" element={<Navigate to="/admin-orders" replace />} />
+
       {/* Shared auth utility */}
       <Route path="/reset-password" element={<P C={ResetPasswordPage} />} />
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ALL_STATES, AVAILABLE_STATES } from "../../../mocks/doctors";
+import StateComplianceBanner from "./StateComplianceBanner";
 
 export interface PetInfo {
   name: string;
@@ -291,6 +292,11 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
           </Field>
         </div>
       </div>
+
+      {/* State law compliance notice — ESA only, triggers on AR/CA/IA/LA/MT */}
+      {!isPSD && (
+        <StateComplianceBanner state={data.state} className="mb-5" />
+      )}
 
       {/* Pet Info */}
       <div className="bg-white rounded-xl border border-gray-100 p-6">

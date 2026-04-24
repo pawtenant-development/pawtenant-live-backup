@@ -22,6 +22,7 @@ import {
   setCouponCode,
   setSelectedState,
 } from "@/lib/attributionStore";
+import { markAssessmentStarted, markPaid } from "@/lib/visitorSession";
 
 const defaultStep1: Step1Data = {
   emotionalFrequency: "",
@@ -378,6 +379,8 @@ export default function AssessmentPage() {
   // ── Sync confirmation ID + coupon into attribution store ─────────────────
   useEffect(() => {
     setConfirmationId(confirmationId.current);
+    // Flag the visitor session as having started the assessment (fire-and-forget).
+    markAssessmentStarted();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1067,6 +1070,7 @@ export default function AssessmentPage() {
   /** Called when Stripe confirms payment successfully (inline card) */
   const handlePaymentSuccess = async (paymentIntentId: string) => {
     paymentCompletedRef.current = true; // prevent unmount cleanup from cancelling the subscription
+    markPaid();
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
     // Compute correct price based on actual pet count + delivery speed + plan
     const basePrice = getAssessmentBasePrice(step2.pets.length, "", step3.plan);

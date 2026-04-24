@@ -106,25 +106,26 @@ function getOrderDisplayStatus(order: Order): { label: string; key: string } {
   return { label: "In Progress", key: "lead_paid_assigned" };
 }
 
+// STRICT attribution hierarchy — no twitter/x, no weak referrer parsing.
 function deriveTrafficSource(order: Order): string {
   const utmSrc = (order.utm_source ?? "").toLowerCase();
-  const utmMed = (order.utm_medium ?? "").toLowerCase();
   const gclid = order.gclid ?? "";
   const fbclid = order.fbclid ?? "";
-  const referred = (order.referred_by ?? "").toLowerCase();
 
+  // 1. gclid → Google Ads
   if (gclid) return "Google Ads";
-  if (utmSrc === "google" && ["cpc", "paid", "ppc", "paidsearch"].includes(utmMed)) return "Google Ads";
+  // 2. fbclid → Facebook Ads
   if (fbclid) return "Facebook / Instagram";
-  if (utmSrc === "facebook") return "Facebook";
-  if (utmSrc === "instagram") return "Instagram";
-  if (utmSrc === "tiktok") return "TikTok";
-  if (utmSrc === "google" || utmMed === "organic") return "Google Organic";
-  if (referred.includes("google")) return "Google";
-  if (referred.includes("tiktok")) return "TikTok";
-  if (referred.includes("facebook") || referred.includes("instagram")) return "Facebook";
-  if (referred.includes("seo") || referred.includes("organic")) return "Google Organic";
-  if (referred && referred !== "direct" && referred !== "unknown") return referred;
+  // 3. utm_source → display label
+  if (utmSrc) {
+    if (utmSrc === "facebook") return "Facebook";
+    if (utmSrc === "instagram") return "Instagram";
+    if (utmSrc === "google") return "Google Organic";
+    if (utmSrc === "tiktok") return "TikTok";
+    return utmSrc;
+  }
+  // 4. Referrer handled client-side (organic_search / social_organic) and stored in attribution_json.
+  // 5. Default
   return "Direct / Unknown";
 }
 

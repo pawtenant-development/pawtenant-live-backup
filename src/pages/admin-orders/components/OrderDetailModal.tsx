@@ -261,7 +261,6 @@ const REF_CONFIG: Record<string, { label: string; icon: string; color: string }>
   "Google Organic":           { label: "Google Organic (SEO)",     icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   "TikTok Ads":               { label: "TikTok Ads",               icon: "ri-tiktok-line",          color: "text-gray-900 bg-gray-100 border-gray-300" },
   "Instagram Ads":            { label: "Instagram Ads",            icon: "ri-instagram-line",       color: "text-pink-600 bg-pink-50 border-pink-200" },
-  "Twitter / X":              { label: "Twitter / X",              icon: "ri-twitter-x-line",       color: "text-gray-800 bg-gray-100 border-gray-300" },
   "YouTube Ads":              { label: "YouTube Ads",              icon: "ri-youtube-line",         color: "text-red-600 bg-red-50 border-red-200" },
   "Email Campaign":           { label: "Email Campaign",           icon: "ri-mail-send-line",       color: "text-violet-600 bg-violet-50 border-violet-200" },
   "Referral":                 { label: "Referral",                 icon: "ri-share-forward-line",   color: "text-teal-600 bg-teal-50 border-teal-200" },
@@ -277,7 +276,6 @@ function resolveRefConfig(referredBy: string | null): { label: string; icon: str
   if (lower.includes("google") && lower.includes("organic")) return REF_CONFIG["Google Organic"];
   if (lower.includes("google")) return REF_CONFIG["Google Ads"];
   if (lower.includes("tiktok")) return REF_CONFIG["TikTok Ads"];
-  if (lower.includes("twitter") || lower.includes(" x ") || lower.includes("/ x")) return REF_CONFIG["Twitter / X"];
   if (lower.includes("youtube")) return REF_CONFIG["YouTube Ads"];
   if (lower.includes("email")) return REF_CONFIG["Email Campaign"];
   if (lower.includes("referral")) return REF_CONFIG["Referral"];
@@ -3143,7 +3141,7 @@ export default function OrderDetailModal({
                       <div className="relative flex-1">
                         <select value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)}
                           className="w-full appearance-none pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
-                          <option value="">— {order.doctor_name ? "Select to Reassign" : "Select Doctor"} —</option>
+                          <option value="">— {order.doctor_name ? "Select to Reassign" : "Select Provider"} —</option>
                           {eligibleDoctors.map((doc) => <option key={doc.id} value={doc.email}>{doc.full_name}</option>)}
                         </select>
                         <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">

@@ -11,6 +11,7 @@ import StripePaymentForm from "./StripePaymentForm";
 import StripeCardForm from "./StripeCardForm";
 import type { SubscriptionParams } from "./StripeCardForm";
 import KlarnaPaymentTab from "./KlarnaPaymentTab";
+import StateComplianceBanner, { isComplianceState } from "./StateComplianceBanner";
 import { Link } from "react-router-dom";
 
 // ─── Module-level Stripe constants ───────────────────────────────────────────
@@ -409,6 +410,11 @@ interface SecurePaymentCardProps {
   appliedCoupon: { code: string; discount: number } | null;
   onDiscountChange: (discount: number, code: string) => void;
   subscriptionParams?: SubscriptionParams;
+  /**
+   * When true, pay buttons render disabled regardless of card/terms state.
+   * Driven by state-specific compliance acknowledgment on ESA (AR/CA/IA/LA/MT).
+   */
+  complianceBlocked?: boolean;
 }
 
 function SecurePaymentCard({
@@ -431,6 +437,7 @@ function SecurePaymentCard({
   appliedCoupon,
   onDiscountChange,
   subscriptionParams,
+  complianceBlocked = false,
 }: SecurePaymentCardProps) {
   const isSubscription = plan === "subscription";
   const [activeTab, setActiveTab] = useState<PayTabType>("card");
@@ -573,6 +580,7 @@ function SecurePaymentCard({
                 priceBeforeDiscount={priceBeforeDiscount}
                 onDiscountChange={onDiscountChange}
                 onPaymentSuccess={handlePaymentSuccess}
+                complianceBlocked={complianceBlocked}
               />
             </Elements>
           ) : stripeSecretLoading || !elementsOptions ? (
@@ -644,6 +652,7 @@ function SecurePaymentCard({
                   setAgreed={setCardAgreed}
                   agreedError={cardAgreedError}
                   setAgreedError={setCardAgreedError}
+                  complianceBlocked={complianceBlocked}
                 />
               </Elements>
             </>
@@ -671,6 +680,7 @@ function SecurePaymentCard({
             confirmationId={confirmationId}
             onSuccess={() => onPaymentSuccess?.("klarna-success")}
             couponCode={appliedCouponCode}
+            complianceBlocked={complianceBlocked}
           />
         </>
       )}
@@ -935,6 +945,15 @@ export default function Step3Checkout({
 
   const [showMobileSummary, setShowMobileSummary] = useState(false);
 
+  // ── State-law compliance acknowledgment (AR/CA/IA/LA/MT) ────────────────
+  // Local-only: re-acknowledged each Step 3 session. Source-of-truth for
+  // WHICH state the user picked is step2.state (already persisted via the
+  // order draft / resume flow). We do NOT introduce a second state variable.
+  const requiresCompliance = isComplianceState(step2.state);
+  const [complianceAck, setComplianceAck] = useState(false);
+  const [complianceAckError, setComplianceAckError] = useState(false);
+  const complianceBlocked = requiresCompliance && !complianceAck;
+
   const resolvedPetCount = petCount ?? step2.pets?.length ?? 1;
   const basePrice = getOneTimePrice(resolvedPetCount);
   const subPrice = getAnnualSubPrice(resolvedPetCount);
@@ -998,6 +1017,7 @@ export default function Step3Checkout({
     appliedCoupon: localCoupon,
     onDiscountChange: handleCouponChange,
     subscriptionParams,
+    complianceBlocked,
   };
 
   const cardClass = CARD_SHELL;
@@ -1317,6 +1337,44 @@ export default function Step3Checkout({
                 </motion.button>
               </div>
             </div>
+
+            {/* ── State law compliance notice + required acknowledgment ── */}
+            {requiresCompliance && (
+              <div className="space-y-3">
+                <StateComplianceBanner state={step2.state} />
+                <label
+                  className={`flex items-start gap-2.5 cursor-pointer rounded-xl border px-4 py-3.5 transition-colors ${
+                    complianceAckError
+                      ? "border-red-300 bg-red-50"
+                      : complianceAck
+                        ? "bg-amber-50/60 border-amber-200"
+                        : "bg-white border-slate-200 hover:border-amber-300"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={complianceAck}
+                    onChange={(e) => {
+                      setComplianceAck(e.target.checked);
+                      if (e.target.checked) setComplianceAckError(false);
+                    }}
+                    className="mt-0.5 accent-amber-600 flex-shrink-0 cursor-pointer"
+                    aria-required="true"
+                  />
+                  <span className="text-xs text-slate-700 leading-relaxed">
+                    I understand my selected state may require a waiting/client-provider
+                    relationship period before my ESA documentation can be issued, and that
+                    my final ESA letter may not be issued immediately.
+                  </span>
+                </label>
+                {complianceAckError && (
+                  <p className="text-xs text-red-600 ml-1 flex items-center gap-1">
+                    <i className="ri-error-warning-line flex-shrink-0"></i>
+                    Please acknowledge the state law notice before continuing.
+                  </p>
+                )}
+              </div>
+            )}
 
             <SecurePaymentCard {...paymentCardProps} />
 

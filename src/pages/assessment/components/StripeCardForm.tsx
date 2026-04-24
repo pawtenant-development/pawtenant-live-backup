@@ -183,6 +183,12 @@ interface StripeCardFormProps {
   priceBeforeDiscount?: number;
   /** Callback when a coupon is applied or removed */
   onDiscountChange?: (discount: number, code: string) => void;
+  /**
+   * When true, disables the submit button and short-circuits handlePay.
+   * Used by state-law compliance flow (AR/CA/IA/LA/MT) to require the user
+   * to acknowledge the state-law notice before paying.
+   */
+  complianceBlocked?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,6 +201,7 @@ export default function StripeCardForm({
   subscriptionParams,
   priceBeforeDiscount,
   onDiscountChange,
+  complianceBlocked = false,
 }: StripeCardFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -209,7 +216,7 @@ export default function StripeCardForm({
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
 
   const allFieldsComplete = fieldsDone.number && fieldsDone.expiry && fieldsDone.cvc;
-  const canSubmit = !processing && !!stripe && !!elements;
+  const canSubmit = !processing && !!stripe && !!elements && !complianceBlocked;
 
   // Wrap onDiscountChange to also capture the coupon code.
   // ISSUE 4: discount value comes directly from the backend validate-coupon
@@ -349,6 +356,9 @@ export default function StripeCardForm({
 
   // ── Main submit handler ───────────────────────────────────────────────────
   const handlePay = async () => {
+    // Compliance gate (AR/CA/IA/LA/MT): button is also disabled, but we hard-stop
+    // here in case the click arrives mid-state-update.
+    if (complianceBlocked) return;
     if (!agreedToTerms) { setTermsError(true); return; }
     if (!stripe || !elements) return;
     setCardError("");

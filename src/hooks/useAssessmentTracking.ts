@@ -14,6 +14,7 @@ import { fireInitiateCheckout } from "@/lib/metaPixel";
 import {
   getAttribution,
   buildFullSource,
+  buildChannel,
   setSelectedState,
   type AttributionData,
 } from "@/lib/attributionStore";
@@ -42,6 +43,16 @@ export interface TrackingData {
    * Priority: ref > gclid > fbclid > utm_source > referrer > "Direct"
    */
   fullSource: string;
+  /**
+   * Canonical channel — strict hierarchy:
+   *   gclid → "google_ads"
+   *   fbclid → "facebook_ads"
+   *   utm_source → utm_source (lowercased)
+   *   referrer: google/bing/yahoo → "organic_search"; facebook/instagram → "social_organic"
+   *   else → "direct"
+   * Never "twitter" / "x".
+   */
+  channel: string;
   landingUrl: string;
   referrer: string;
   /** Full attribution snapshot — use this for attribution_json DB field */
@@ -58,6 +69,7 @@ export interface TrackingData {
 export function captureTrackingData(_searchParams?: URLSearchParams): TrackingData {
   const data = getAttribution();
   const fullSource = buildFullSource();
+  const channel = buildChannel();
 
   return {
     ref:          data.ref ?? "",
@@ -72,6 +84,7 @@ export function captureTrackingData(_searchParams?: URLSearchParams): TrackingDa
     sessionId:    data.session_id,
     firstSeenAt:  data.first_seen_at ?? "",
     fullSource,
+    channel,
     landingUrl:   data.landing_url ?? "",
     referrer:     data.referrer ?? "",
     attribution:  data,
@@ -135,6 +148,7 @@ export function useAssessmentTracking({
             letterType: letterLabel,
             leadStatus: `Assessment Started – ${letterLabel}`,
             trafficSource: tracking.fullSource,
+            channel: tracking.channel,
             ref: tracking.ref,
             utmSource: tracking.utmSource,
             utmMedium: tracking.utmMedium,
@@ -150,6 +164,7 @@ export function useAssessmentTracking({
               "Assessment Started",
               ...(tracking.ref ? [`Ref: ${tracking.ref}`] : []),
               ...(tracking.fullSource !== "Direct" ? [`Source: ${tracking.fullSource}`] : []),
+              `Channel: ${tracking.channel}`,
             ],
           }),
         });
@@ -162,6 +177,7 @@ export function useAssessmentTracking({
         window.gtag("event", "begin_assessment", {
           letter_type: letterLabel,
           traffic_source: tracking.fullSource,
+          channel: tracking.channel,
           ref_param: tracking.ref || undefined,
           utm_source: tracking.utmSource || undefined,
           utm_campaign: tracking.utmCampaign || undefined,

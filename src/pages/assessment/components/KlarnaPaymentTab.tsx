@@ -28,6 +28,12 @@ interface KlarnaPaymentTabProps {
   onSuccess?: () => void;
   /** Applied coupon code to pass to backend for discount */
   couponCode?: string;
+  /**
+   * When true, disables the Continue button and short-circuits handleContinue.
+   * Used by state-law compliance flow (AR/CA/IA/LA/MT) to require the user to
+   * acknowledge the state-law notice before starting Klarna checkout.
+   */
+  complianceBlocked?: boolean;
 }
 
 // ─── Processing Overlay ───────────────────────────────────────────────────────
@@ -66,6 +72,7 @@ export default function KlarnaPaymentTab({
   letterType = "esa",
   onSuccess,
   couponCode,
+  complianceBlocked = false,
 }: KlarnaPaymentTabProps) {
   const [loading, setLoading] = useState(false);
   const [policyModal, setPolicyModal] = useState<{ url: string; title: string } | null>(null);
@@ -77,6 +84,9 @@ export default function KlarnaPaymentTab({
   const installment = (amount / 4).toFixed(2);
 
   const handleContinue = async () => {
+    // Compliance gate (AR/CA/IA/LA/MT): button is also disabled, but we hard-stop
+    // here in case the click arrives mid-state-update.
+    if (complianceBlocked) return;
     if (!agreed) {
       setAgreedError(true);
       return;
@@ -270,8 +280,12 @@ export default function KlarnaPaymentTab({
           <button
             type="button"
             onClick={handleContinue}
-            disabled={loading}
-            className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-[#ff679a] hover:bg-[#e85a8c] disabled:bg-gray-300 text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
+            disabled={loading || complianceBlocked}
+            className={`whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 text-sm font-extrabold rounded-xl transition-colors ${
+              loading || complianceBlocked
+                ? "bg-gray-300 text-white cursor-not-allowed"
+                : "bg-[#ff679a] hover:bg-[#e85a8c] text-white cursor-pointer"
+            }`}
           >
             <div className="w-16 h-5 flex items-center justify-center bg-white/20 rounded text-[9px] font-extrabold">
               Klarna
