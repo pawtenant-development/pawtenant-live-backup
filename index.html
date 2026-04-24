@@ -232,7 +232,7 @@
       src="https://www.facebook.com/tr?id=2970753196590228&ev=PageView&noscript=1"
     /></noscript>
 
-    <!-- Hide Readdy AI Agent widget — Tawk.to is primary live chat -->
+    <!-- Hide Readdy AI Agent widget — PawTenant native widget is primary live chat -->
     <style>
       #vapi-widget-floating-button,
       #vapi-support-btn,
@@ -299,55 +299,5 @@
       })();
     </script>
 
-    <!-- Tawk.to: pre-emptive CSS kill for portal paths — runs before any JS or React -->
-    <script type="text/javascript">
-      (function() {
-        var portalPrefixes = ['/admin', '/admin-orders', '/admin-login', '/admin-doctors', '/admin-guide', '/provider-portal', '/provider-login', '/my-orders', '/customer-login', '/reset-password'];
-        var path = window.location.pathname;
-        var isPortal = portalPrefixes.some(function(p) { return path === p || path.startsWith(p + '/') || path.startsWith(p + '?'); });
-        if (!isPortal) return;
-        // Inject a permanent CSS block so Tawk iframes never flash even if the script loads
-        var style = document.createElement('style');
-        style.id = 'tawk-portal-preemptive-hide';
-        style.textContent = 'iframe[src*="tawk.to"],iframe[src*="embed.tawk"],#tawkchat-container,#tawkchat-minified-container,.tawk-min-container,.tawk-bubble-container,[id^="tawk-"],[class^="tawk-"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;}';
-        document.head.appendChild(style);
-        // Also pre-configure Tawk_API so if it somehow loads, it hides immediately
-        window.Tawk_API = window.Tawk_API || {};
-        window.Tawk_API.onLoad = function() {
-          if (window.Tawk_API && typeof window.Tawk_API.hideWidget === 'function') {
-            window.Tawk_API.hideWidget();
-          }
-        };
-      })();
-    </script>
-
-    <!-- Tawk.to Live Chat Widget — only load on public website pages, never on portals -->
-    <script type="text/javascript">
-      (function() {
-        var portalPrefixes = ['/admin', '/admin-orders', '/admin-login', '/admin-doctors', '/admin-guide', '/provider-portal', '/provider-login', '/my-orders', '/customer-login', '/reset-password'];
-        var path = window.location.pathname;
-        var isPortal = portalPrefixes.some(function(p) { return path === p || path.startsWith(p + '/') || path.startsWith(p + '?'); });
-        if (isPortal) return; // Don't load Tawk script at all on portal pages
-
-        var Tawk_API = window.Tawk_API || {};
-        window.Tawk_API = Tawk_API;
-        window.Tawk_LoadStart = new Date();
-
-        // On mobile (<768px) hide Tawk's own bubble — our custom draggable button handles it
-        Tawk_API.onLoad = function() {
-          if (window.innerWidth < 768) {
-            Tawk_API.hideWidget();
-          }
-        };
-
-        var s1 = document.createElement("script");
-        var s0 = document.getElementsByTagName("script")[0];
-        s1.async = true;
-        s1.src = 'https://embed.tawk.to/67056599cec6d0125df35425/1i9mh9opi';
-        s1.charset = 'UTF-8';
-        s1.setAttribute('crossorigin', '*');
-        s0.parentNode.insertBefore(s1, s0);
-      })();
-    </script>
   </body>
 </html>

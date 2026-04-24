@@ -328,6 +328,10 @@ export default function ChatsTab() {
       }
       const nextMessages = (data ?? []) as ChatMessage[];
       setMessages((prev) => {
+        // Defensive: never let an empty background poll wipe an existing
+        // thread. RLS is now in place, but this also guards transient
+        // network blips / aborted in-flight requests.
+        if (background && nextMessages.length === 0 && prev.length > 0) return prev;
         const prevJson = JSON.stringify(prev);
         const nextJson = JSON.stringify(nextMessages);
         return prevJson === nextJson ? prev : nextMessages;
