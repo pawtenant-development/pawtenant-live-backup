@@ -605,30 +605,66 @@ export default function AdminOrdersPage() {
     );
   }, [orderDetail, showCreateModal, showChangePassword, showBulkSMS, showBroadcast, showBulkConfirm, showLeadActionsModal, recoveryModal]);
 
+  // 2026-04-25: allSettled so one failing query (e.g. 522 from pool
+  // saturation) doesn't unwind the whole admin boot into an infinite loader.
   const loadOrderData = useCallback(async () => {
-    const [ordersRes, contactsRes, profilesRes] = await Promise.all([
-      supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import").order("created_at", { ascending: false }),
-      supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
-      supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
-    ]);
-    const loadedOrders = (ordersRes.data as Order[]) ?? [];
-    setOrders(loadedOrders);
-    setDoctorContacts((contactsRes.data as DoctorContact[]) ?? []);
-    setDoctorProfiles((profilesRes.data as DoctorProfile[]) ?? []);
-    setLastSyncedAt(new Date());
+    try {
+      const [ordersSettled, contactsSettled, profilesSettled] = await Promise.allSettled([
+        supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import").order("created_at", { ascending: false }),
+        supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
+        supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
+      ]);
 
-    if (loadedOrders.length > 0) {
-      const { data: notesData } = await supabase
-        .from("doctor_notes")
-        .select("order_id")
-        .in("order_id", loadedOrders.map((o) => o.id));
-      if (notesData) {
-        const counts: Record<string, number> = {};
-        (notesData as { order_id: string }[]).forEach((n) => {
-          counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
-        });
-        setOrderNoteCounts(counts);
+      let loadedOrders: Order[] = [];
+      if (ordersSettled.status === "fulfilled" && !ordersSettled.value.error) {
+        loadedOrders = (ordersSettled.value.data as Order[]) ?? [];
+        setOrders(loadedOrders);
+      } else {
+        console.error(
+          "[admin-orders] orders query failed:",
+          ordersSettled.status === "rejected" ? ordersSettled.reason : ordersSettled.value.error,
+        );
       }
+
+      if (contactsSettled.status === "fulfilled" && !contactsSettled.value.error) {
+        setDoctorContacts((contactsSettled.value.data as DoctorContact[]) ?? []);
+      } else {
+        console.error(
+          "[admin-orders] doctor_contacts query failed:",
+          contactsSettled.status === "rejected" ? contactsSettled.reason : contactsSettled.value.error,
+        );
+      }
+
+      if (profilesSettled.status === "fulfilled" && !profilesSettled.value.error) {
+        setDoctorProfiles((profilesSettled.value.data as DoctorProfile[]) ?? []);
+      } else {
+        console.error(
+          "[admin-orders] doctor_profiles query failed:",
+          profilesSettled.status === "rejected" ? profilesSettled.reason : profilesSettled.value.error,
+        );
+      }
+
+      setLastSyncedAt(new Date());
+
+      if (loadedOrders.length > 0) {
+        try {
+          const { data: notesData } = await supabase
+            .from("doctor_notes")
+            .select("order_id")
+            .in("order_id", loadedOrders.map((o) => o.id));
+          if (notesData) {
+            const counts: Record<string, number> = {};
+            (notesData as { order_id: string }[]).forEach((n) => {
+              counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
+            });
+            setOrderNoteCounts(counts);
+          }
+        } catch (notesErr) {
+          console.error("[admin-orders] doctor_notes query failed:", notesErr);
+        }
+      }
+    } catch (outerErr) {
+      console.error("[admin-orders] loadOrderData failed:", outerErr);
     }
   }, []);
 
@@ -1297,10 +1333,20 @@ export default function AdminOrdersPage() {
   };
 
   useEffect(() => {
+    // 2026-04-25: setLoading(false) MUST run in every path. Previously a
+    // thrown error (e.g. doctor_profiles 522 during pool saturation) hit the
+    // outer catch and redirected to login OR left the shell stuck spinning.
+    // Now auth failures bounce, data failures log+continue, and a finally
+    // block guarantees the loader drops so every tab can render its own
+    // error state instead of the whole page hanging.
     const load = async () => {
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError || !session) { navigate("/admin-login?reason=session_expired"); return; }
+        const sessionRes = await supabase.auth.getSession().catch(() => null);
+        if (!sessionRes || sessionRes.error || !sessionRes.data.session) {
+          navigate("/admin-login?reason=session_expired");
+          return;
+        }
+        const session = sessionRes.data.session;
 
         let adminCheck: { ok: boolean; is_admin: boolean; full_name?: string; user_id?: string } = { ok: false, is_admin: false };
         try {
@@ -1310,33 +1356,61 @@ export default function AdminOrdersPage() {
           });
           adminCheck = await res.json() as typeof adminCheck;
         } catch {
-          navigate("/admin-login?reason=session_expired"); return;
+          navigate("/admin-login?reason=session_expired");
+          return;
         }
-        if (!adminCheck.ok || !adminCheck.is_admin) { navigate("/admin-login?reason=unauthorized"); return; }
+        if (!adminCheck.ok || !adminCheck.is_admin) {
+          navigate("/admin-login?reason=unauthorized");
+          return;
+        }
 
-        const { data: prof } = await supabase.from("doctor_profiles")
-          .select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role, custom_tab_access")
-          .eq("user_id", session.user.id).maybeSingle();
+        let adminProfileData: DoctorProfile;
+        try {
+          const { data: prof } = await supabase.from("doctor_profiles")
+            .select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, role, custom_tab_access")
+            .eq("user_id", session.user.id).maybeSingle();
 
-        const adminProfileData: DoctorProfile = prof as DoctorProfile ?? {
-          id: "",
-          user_id: session.user.id,
-          full_name: adminCheck.full_name ?? "Admin",
-          title: null,
-          email: session.user.email ?? null,
-          phone: null,
-          is_admin: true,
-          is_active: true,
-          licensed_states: null,
-          role: null,
-        };
+          adminProfileData = (prof as DoctorProfile) ?? {
+            id: "",
+            user_id: session.user.id,
+            full_name: adminCheck.full_name ?? "Admin",
+            title: null,
+            email: session.user.email ?? null,
+            phone: null,
+            is_admin: true,
+            is_active: true,
+            licensed_states: null,
+            role: null,
+          };
+        } catch (profErr) {
+          console.error("[admin-orders] doctor_profiles self-lookup failed, using minimal profile:", profErr);
+          adminProfileData = {
+            id: "",
+            user_id: session.user.id,
+            full_name: adminCheck.full_name ?? "Admin",
+            title: null,
+            email: session.user.email ?? null,
+            phone: null,
+            is_admin: true,
+            is_active: true,
+            licensed_states: null,
+            role: null,
+          };
+        }
         setAdminProfile(adminProfileData);
 
-        await loadOrderData();
+        try {
+          await loadOrderData();
+        } catch (dataErr) {
+          console.error("[admin-orders] initial data load failed (shell will still render):", dataErr);
+        }
+      } catch (bootErr) {
+        // Unexpected boot error — log and continue. Do NOT auto-bounce to
+        // login here: a redirect loop on a transient upstream fault is worse
+        // than a partial shell that lets the user see what's wrong.
+        console.error("[admin-orders] boot error (continuing with partial shell):", bootErr);
+      } finally {
         setLoading(false);
-      } catch {
-        // Network error (e.g. token refresh failed) — send back to login
-        navigate("/admin-login?reason=session_expired");
       }
     };
     load();
