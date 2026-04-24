@@ -14,7 +14,11 @@
  * Read path:
  *   - supabase.rpc('get_visitor_chat_thread', { p_provider, p_provider_session_id })
  *   - supabase.rpc('get_visitor_chat_attachments', ...) for attachment rows.
- *   - Poll: 4s while panel is open, 15s while closed.
+ *   - Poll: 4s while panel is open; no background polling while closed
+ *     (2026-04-25 hotfix — closed-state polling was saturating the
+ *     PostgREST pool and blocking admin queries). A one-shot load()
+ *     still runs on mount + every isOpen flip so the unread badge
+ *     hydrates correctly.
  *
  * Write path:
  *   - sendChatMessage() → /functions/v1/capture-chat (already live).
@@ -42,7 +46,6 @@ export interface VisitorChatMessage {
 
 const PROVIDER        = "pawtenant";
 const POLL_OPEN_MS    = 4000;
-const POLL_CLOSED_MS  = 15000;
 const SESSION_KEY     = "__pt_chat_session_id";
 const SIGNATURE_KEY   = "__pt_chat_attribution_sig";
 const LAST_SEEN_KEY   = "__pt_chat_last_seen_agent_ts";
@@ -230,8 +233,14 @@ export function usePawChatThread(isOpen: boolean): UsePawChatThreadResult {
 
   useEffect(() => {
     void load();
-    const interval = isOpen ? POLL_OPEN_MS : POLL_CLOSED_MS;
-    const id = window.setInterval(() => void load(), interval);
+    // HOTFIX 2026-04-25: only poll while the chat panel is open.
+    // Closed-state polling was saturating the PostgREST pool — admin tabs
+    // (orders / doctor_profiles) would hang waiting behind visitor chat
+    // polls returning HTTP 522 from Cloudflare. A one-shot load() still
+    // runs on mount + on every isOpen flip, so the unread badge hydrates
+    // correctly without a background timer.
+    if (!isOpen) return;
+    const id = window.setInterval(() => void load(), POLL_OPEN_MS);
     return () => window.clearInterval(id);
   }, [isOpen, load]);
 
