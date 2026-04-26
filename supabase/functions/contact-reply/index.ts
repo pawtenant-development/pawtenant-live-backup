@@ -172,7 +172,9 @@ Deno.serve(async (req) => {
       ? `Re: ${sub.subject.trim()}`
       : "Re: Your PawTenant message";
 
-    const adminLabel = adminName?.trim() || "PawTenant Support";
+    // Customer-facing signature is intentionally team-only.
+    // Individual admin name is preserved in DB / admin portal for internal tracking,
+    // but never exposed in the outbound email body.
 
     // Pretty, branded email. Uses the same palette as contact-submit.
     const html = `
@@ -194,10 +196,7 @@ Deno.serve(async (req) => {
             <p style="margin:0 0 16px">Hi ${escapeHtml(customerName)},</p>
             <div style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(message)}</div>
             <p style="margin:0 0 4px;color:#374151">Best regards,</p>
-            <p style="margin:0 0 4px;color:#111827;font-weight:600">PawTenant Support</p>
-            ${adminLabel && adminLabel !== "PawTenant Support"
-              ? `<p style="margin:0;color:#6b7280;font-size:13px">${escapeHtml(adminLabel)}</p>`
-              : ""}
+            <p style="margin:0;color:#111827;font-weight:600">PawTenant Support</p>
           </td>
         </tr>
         ${sub.message ? `
