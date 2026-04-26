@@ -7,7 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * admin portal. The reply is:
  *   1. Recorded in public.contact_submission_replies (service role).
  *   2. Sent via Resend to the submission's email address.
- *      - from:      PawTenant <noreply@pawtenant.com>
+ *      - from:      PawTenant Support <hello@pawtenant.com>
  *      - to:        submission.email
  *      - reply_to:  hello@pawtenant.com
  *
@@ -33,7 +33,7 @@ const MAX_ADMIN_NAME = 200;
 const MAX_ADMIN_MAIL = 320;
 
 const REPLY_TO   = "hello@pawtenant.com";
-const FROM_EMAIL = "PawTenant <noreply@pawtenant.com>";
+const FROM_EMAIL = "PawTenant Support <hello@pawtenant.com>";
 
 interface ReplyPayload {
   submission_id?: string;
@@ -193,8 +193,11 @@ Deno.serve(async (req) => {
           <td style="padding:28px 32px;color:#111827;font-size:15px;line-height:1.65">
             <p style="margin:0 0 16px">Hi ${escapeHtml(customerName)},</p>
             <div style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(message)}</div>
-            <p style="margin:0 0 4px;color:#374151">${escapeHtml(adminLabel)}</p>
-            <p style="margin:0;color:#6b7280;font-size:13px">PawTenant</p>
+            <p style="margin:0 0 4px;color:#374151">Best regards,</p>
+            <p style="margin:0 0 4px;color:#111827;font-weight:600">PawTenant Support</p>
+            ${adminLabel && adminLabel !== "PawTenant Support"
+              ? `<p style="margin:0;color:#6b7280;font-size:13px">${escapeHtml(adminLabel)}</p>`
+              : ""}
           </td>
         </tr>
         ${sub.message ? `

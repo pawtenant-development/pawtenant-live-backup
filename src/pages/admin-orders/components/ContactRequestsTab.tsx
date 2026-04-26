@@ -6,20 +6,22 @@
  *   - supabase.from("contact_submissions").select(...) with optional status
  *     filter. Anon SELECT allowed by migration policy
  *     contact_submissions_read_all.
+ *   - supabase.from("contact_submission_replies").select(...) for reply log.
  *
  * Writes:
  *   - supabase.from("contact_submissions").update(...) to flip status
  *     (new → viewed | resolved) and set resolved_at. Anon UPDATE allowed
  *     by contact_submissions_update_all — guarded at UI level.
- *
- * Keep UI deliberately lightweight: table + detail drawer. Fits inside the
- * admin-orders shell (renders under AdminSidebar + header).
+ *   - sendContactReply() → contact-reply edge function (service role inside
+ *     the function inserts into contact_submission_replies and sends email
+ *     via Resend from hello@pawtenant.com with reply_to hello@pawtenant.com).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { sendContactReply } from "../../../lib/contactSubmit";
 import { getAdminIdentity } from "../../../lib/adminIdentity";
+import { isAdminLevel, type AdminRole } from "../../../lib/adminPermissions";
 
 interface ContactSubmission {
   id: string;
@@ -69,7 +71,11 @@ const STATUS_STYLES: Record<string, { label: string; color: string; icon: string
   },
 };
 
-export default function ContactRequestsTab() {
+interface ContactRequestsTabProps {
+  adminRole?: AdminRole;
+}
+
+export default function ContactRequestsTab({ adminRole = null }: ContactRequestsTabProps) {
   const [items, setItems] = useState<ContactSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -242,7 +248,6 @@ export default function ContactRequestsTab() {
 
   async function handleReplySent() {
     if (selectedId) await loadReplies(selectedId);
-    // Bump row status to viewed if still new after reply sent.
     const row = items.find((i) => i.id === selectedId);
     if (row && row.status === "new") {
       setItems((prev) =>
@@ -271,9 +276,8 @@ export default function ContactRequestsTab() {
   return (
     <div>
       <p className="text-sm text-gray-500 mb-4">
-        Website contact-form submissions. Replies go to
-        <span className="font-semibold text-gray-700"> hello@pawtenant.com</span>
-        {" "}as well.
+        Website contact-form submissions. Replies send from
+        <span className="font-semibold text-gray-700"> hello@pawtenant.com</span>.
       </p>
 
       {error && (
@@ -452,6 +456,7 @@ export default function ContactRequestsTab() {
               replies={replies}
               repliesLoading={repliesLoading}
               updating={updating}
+              canSeeMetadata={isAdminLevel(adminRole)}
               onResolve={() => void markStatus(selected.id, "resolved")}
               onReopen={() => void markStatus(selected.id, "viewed")}
               onCopy={copy}
@@ -469,6 +474,7 @@ function SubmissionDetail({
   replies,
   repliesLoading,
   updating,
+  canSeeMetadata,
   onResolve,
   onReopen,
   onCopy,
@@ -478,18 +484,34 @@ function SubmissionDetail({
   replies: ContactReplyRow[];
   repliesLoading: boolean;
   updating: boolean;
+  canSeeMetadata: boolean;
   onResolve: () => void;
   onReopen: () => void;
   onCopy: (text: string) => void;
   onReplySent: () => void;
 }) {
   const style = STATUS_STYLES[row.status] ?? STATUS_STYLES.new;
-  const mailto = (() => {
-    const subj = encodeURIComponent(
-      row.subject ? `Re: ${row.subject}` : "Your PawTenant message",
-    );
-    return `mailto:${row.email}?subject=${subj}`;
-  })();
+  const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [showTechnical, setShowTechnical] = useState(false);
+
+  // Reset the technical-details collapse whenever the selected submission changes.
+  useEffect(() => {
+    setShowTechnical(false);
+  }, [row.id]);
+
+  const focusReply = useCallback(() => {
+    const el = replyTextareaRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => {
+      try { el.focus(); } catch { /* noop */ }
+    }, 250);
+  }, []);
+
+  const hasMetadata =
+    !!row.metadata &&
+    typeof row.metadata === "object" &&
+    Object.keys(row.metadata).length > 0;
 
   return (
     <div className="flex flex-col">
@@ -550,25 +572,15 @@ function SubmissionDetail({
         {row.message}
       </div>
 
-      {row.metadata && Object.keys(row.metadata).length > 0 && (
-        <>
-          <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-2">
-            Metadata
-          </p>
-          <pre className="bg-[#f8f7f4] border border-gray-100 rounded-xl px-4 py-3 text-[11px] text-gray-700 overflow-x-auto mb-5">
-            {JSON.stringify(row.metadata, null, 2)}
-          </pre>
-        </>
-      )}
-
       <div className="flex items-center gap-2 flex-wrap">
-        <a
-          href={mailto}
+        <button
+          type="button"
+          onClick={focusReply}
           className="inline-flex items-center gap-1.5 bg-[#3b6ea5] text-white text-xs font-bold px-3.5 py-2 rounded-lg hover:bg-[#2e5a87] cursor-pointer transition-colors"
         >
           <i className="ri-reply-line text-xs"></i>
-          Reply via Email
-        </a>
+          Reply
+        </button>
         <button
           type="button"
           onClick={() => onCopy(row.email)}
@@ -617,9 +629,27 @@ function SubmissionDetail({
         submission={row}
         replies={replies}
         repliesLoading={repliesLoading}
-        mailto={mailto}
+        textareaRef={replyTextareaRef}
         onReplySent={onReplySent}
       />
+
+      {hasMetadata && canSeeMetadata && (
+        <div className="mt-6 pt-5 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={() => setShowTechnical((s) => !s)}
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-[#3b6ea5] cursor-pointer"
+          >
+            <i className={showTechnical ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line"}></i>
+            Technical details
+          </button>
+          {showTechnical && (
+            <pre className="mt-2 bg-[#f8f7f4] border border-gray-100 rounded-xl px-4 py-3 text-[11px] text-gray-700 overflow-x-auto">
+              {JSON.stringify(row.metadata, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -628,13 +658,13 @@ function RepliesSection({
   submission,
   replies,
   repliesLoading,
-  mailto,
+  textareaRef,
   onReplySent,
 }: {
   submission: ContactSubmission;
   replies: ContactReplyRow[];
   repliesLoading: boolean;
-  mailto: string;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   onReplySent: () => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -744,59 +774,46 @@ function RepliesSection({
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <textarea
+          ref={textareaRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={`Reply to ${submission.email}…`}
-          rows={4}
+          rows={5}
           maxLength={10_000}
           disabled={sending}
           className="w-full text-sm text-gray-800 px-4 py-3 focus:outline-none resize-y disabled:bg-gray-50 disabled:text-gray-400"
         />
         <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[#f8f7f4] border-t border-gray-100">
           <p className="text-[11px] text-gray-500">
-            Sends from <span className="font-semibold">noreply@pawtenant.com</span>, replies route to <span className="font-semibold">hello@pawtenant.com</span>.
+            From <span className="font-semibold">PawTenant Support &lt;hello@pawtenant.com&gt;</span> · Reply-To <span className="font-semibold">hello@pawtenant.com</span>
           </p>
-          <div className="flex items-center gap-2">
-            <a
-              href={mailto}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-500 hover:text-[#3b6ea5] cursor-pointer"
-              title="Open in local mail client (fallback)"
-            >
-              <i className="ri-external-link-line"></i>
-              mailto
-            </a>
-            <button
-              type="button"
-              onClick={() => void handleSend()}
-              disabled={!canSend}
-              className="whitespace-nowrap inline-flex items-center gap-1.5 bg-[#3b6ea5] text-white text-xs font-bold px-3.5 py-1.5 rounded-lg hover:bg-[#2e5a87] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
-            >
-              <i
-                className={`${
-                  sending
-                    ? "ri-loader-4-line animate-spin"
-                    : "ri-send-plane-line"
-                } text-xs`}
-              ></i>
-              {sending ? "Sending…" : "Send Reply"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={!canSend}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 bg-[#3b6ea5] text-white text-xs font-bold px-3.5 py-1.5 rounded-lg hover:bg-[#2e5a87] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+          >
+            <i
+              className={`${
+                sending
+                  ? "ri-loader-4-line animate-spin"
+                  : "ri-send-plane-line"
+              } text-xs`}
+            ></i>
+            {sending ? "Sending…" : "Send Reply"}
+          </button>
         </div>
       </div>
 
       {sendError && (
-        <div className="mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
-          <i className="ri-error-warning-line mr-1"></i>
-          {sendError} — you can still use{" "}
-          <a href={mailto} className="underline font-bold">
-            mailto fallback
-          </a>
-          .
+        <div className="mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+          <i className="ri-error-warning-line mt-0.5"></i>
+          <span><span className="font-bold">Reply failed.</span> {sendError}</span>
         </div>
       )}
       {lastResult && !sendError && (
         <div
-          className={`mt-2 rounded-lg px-3 py-2 text-xs ${
+          className={`mt-2 rounded-lg px-3 py-2 text-xs flex items-start gap-2 ${
             lastResult.emailSent
               ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
               : "bg-amber-50 border border-amber-200 text-amber-800"
@@ -807,11 +824,20 @@ function RepliesSection({
               lastResult.emailSent
                 ? "ri-mail-send-line"
                 : "ri-mail-close-line"
-            } mr-1`}
+            } mt-0.5`}
           ></i>
-          {lastResult.emailSent
-            ? "Reply sent and logged."
-            : `Reply saved but email not sent${lastResult.emailError ? ` (${lastResult.emailError})` : ""}.`}
+          <span>
+            {lastResult.emailSent ? (
+              <>
+                <span className="font-bold">Reply sent.</span> Saved to history.
+              </>
+            ) : (
+              <>
+                <span className="font-bold">Reply saved but email not sent.</span>
+                {lastResult.emailError ? ` ${lastResult.emailError}.` : ""}
+              </>
+            )}
+          </span>
         </div>
       )}
     </div>

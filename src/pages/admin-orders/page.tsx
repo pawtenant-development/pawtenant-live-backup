@@ -2406,7 +2406,9 @@ export default function AdminOrdersPage() {
         {/* ── CHATS / CONTACTS / CUSTOMERS ── */}
         {activeTab === "chats" && isTabVisible("chats") && <ChatsTab />}
 
-        {activeTab === "contacts" && isTabVisible("contacts") && <ContactRequestsTab />}
+        {activeTab === "contacts" && isTabVisible("contacts") && (
+          <ContactRequestsTab adminRole={adminProfile?.role ?? null} />
+        )}
 
         {activeTab === "customers" && isTabVisible("customers") && <CustomersTab />}
 
