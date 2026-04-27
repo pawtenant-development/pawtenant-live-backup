@@ -37,7 +37,7 @@
   "name": "react",
   "private": true,
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/prerender-seo.mjs",
     "dev": "vite",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",

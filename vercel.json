@@ -41,6 +41,16 @@
       "permanent": true
     },
     {
+      "source": "/affordable-esa-letter",
+      "destination": "/esa-letter-cost",
+      "permanent": true
+    },
+    {
+      "source": "/affordable-esa-letter/",
+      "destination": "/esa-letter-cost",
+      "permanent": true
+    },
+    {
       "source": "/explore-esa-letters-all-states/",
       "destination": "/explore-esa-letters-all-states",
       "permanent": true
