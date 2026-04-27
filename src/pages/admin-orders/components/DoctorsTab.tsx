@@ -1,5 +1,5 @@
 // DoctorsTab — Compact provider roster. All detail/edit actions live in ProviderDrawer.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import CreateDoctorModal from "./CreateDoctorModal";
 import EditStatesModal from "./EditStatesModal";
@@ -7,6 +7,7 @@ import DeleteProviderModal from "./DeleteProviderModal";
 import ProviderApplicationModal from "./ProviderApplicationModal";
 import ProviderDrawer from "./ProviderDrawer";
 import { canDelete, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
+import { US_STATES, normalizeStateToCode } from "../../../lib/usStates";
 
 type AvailabilityStatus = "active" | "at_capacity" | "inactive";
 
@@ -311,6 +312,46 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
     new Set(doctors.flatMap((d) => d.contact?.licensed_states ?? d.profile?.licensed_states ?? []))
   ).sort();
 
+  // ── Derived: missing-state coverage banner ──
+  // A state counts as covered iff at least one provider:
+  //   - has the state in its licensed_states (full name or 2-letter abbr)
+  //   - is NOT inactive (availability_status !== "inactive"; "active" and
+  //     "at_capacity" both count)
+  //   - is NOT deactivated (profile.is_active and contact.is_active are not
+  //     explicitly false on whichever rows exist)
+  // Computed dynamically from the live roster against the canonical 51-state
+  // list (50 states + DC) — never hardcoded.
+  const missingStates = useMemo(() => {
+    const covered = new Set<string>();
+    for (const doc of doctors) {
+      const profile = doc.profile;
+      const contact = doc.contact;
+
+      const profileActive = profile ? profile.is_active !== false : true;
+      const contactActive = contact ? contact.is_active !== false : true;
+      const availStatus: AvailabilityStatus = (
+        profile?.availability_status
+          ?? contact?.availability_status
+          ?? (profile?.is_active !== false ? "active" : "inactive")
+      ) as AvailabilityStatus;
+
+      const isCovering = profileActive && contactActive && availStatus !== "inactive";
+      if (!isCovering) continue;
+
+      // Combine licensed states from both profile and contact rows so we never
+      // miss a state that's only listed on one of the two records.
+      const states = [
+        ...(profile?.licensed_states ?? []),
+        ...(contact?.licensed_states ?? []),
+      ];
+      for (const raw of states) {
+        const code = normalizeStateToCode(raw);
+        if (code) covered.add(code);
+      }
+    }
+    return US_STATES.filter((s) => !covered.has(s.code));
+  }, [doctors]);
+
   // ── Filtered list ──
   const filteredDoctors = doctors.filter((doc) => {
     const q = searchQuery.toLowerCase();
@@ -401,6 +442,48 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
           <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-base flex-shrink-0"></i>
           <p className="text-sm text-[#3b6ea5] font-semibold">{savedMsg || createMsg}</p>
         </div>
+      )}
+
+      {/* ── State Coverage Banner ── */}
+      {!loading && doctors.length > 0 && (
+        missingStates.length === 0 ? (
+          <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <i className="ri-shield-check-fill text-emerald-600 text-base mt-0.5 flex-shrink-0"></i>
+            <div>
+              <p className="text-sm font-extrabold text-emerald-900">
+                Full coverage — all 50 states + DC have an active provider.
+              </p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                Every U.S. state has at least one active (or at-capacity) licensed provider.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <div className="flex items-start gap-3">
+              <i className="ri-error-warning-fill text-amber-600 text-base mt-0.5 flex-shrink-0"></i>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-extrabold text-amber-900">
+                  No active provider in {missingStates.length} {missingStates.length === 1 ? "state" : "states"}
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Deactivated providers and providers marked inactive are not counted. At-capacity providers DO count.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {missingStates.map((s) => (
+                    <span
+                      key={s.code}
+                      title={s.code}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-amber-300 text-amber-900 text-xs font-semibold rounded-full"
+                    >
+                      {s.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {/* ── Header ── */}

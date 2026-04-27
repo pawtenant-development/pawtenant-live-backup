@@ -101,54 +101,14 @@ export const DOCTORS: Doctor[] = [
   },
 ];
 
-export const ALL_STATES: StateOption[] = [
-  { code: "AL", name: "Alabama" },
-  { code: "AK", name: "Alaska" },
-  { code: "AZ", name: "Arizona" },
-  { code: "CA", name: "California" },
-  { code: "CO", name: "Colorado" },
-  { code: "CT", name: "Connecticut" },
-  { code: "DC", name: "District of Columbia" },
-  { code: "DE", name: "Delaware" },
-  { code: "FL", name: "Florida" },
-  { code: "GA", name: "Georgia" },
-  { code: "HI", name: "Hawaii" },
-  { code: "IA", name: "Iowa" },
-  { code: "ID", name: "Idaho" },
-  { code: "IL", name: "Illinois" },
-  { code: "IN", name: "Indiana" },
-  { code: "KS", name: "Kansas" },
-  { code: "KY", name: "Kentucky" },
-  { code: "LA", name: "Louisiana" },
-  { code: "MA", name: "Massachusetts" },
-  { code: "MD", name: "Maryland" },
-  { code: "ME", name: "Maine" },
-  { code: "MI", name: "Michigan" },
-  { code: "MN", name: "Minnesota" },
-  { code: "MS", name: "Mississippi" },
-  { code: "MT", name: "Montana" },
-  { code: "NC", name: "North Carolina" },
-  { code: "ND", name: "North Dakota" },
-  { code: "NE", name: "Nebraska" },
-  { code: "NH", name: "New Hampshire" },
-  { code: "NJ", name: "New Jersey" },
-  { code: "NM", name: "New Mexico" },
-  { code: "NV", name: "Nevada" },
-  { code: "NY", name: "New York" },
-  { code: "OH", name: "Ohio" },
-  { code: "OK", name: "Oklahoma" },
-  { code: "OR", name: "Oregon" },
-  { code: "RI", name: "Rhode Island" },
-  { code: "SC", name: "South Carolina" },
-  { code: "TX", name: "Texas" },
-  { code: "UT", name: "Utah" },
-  { code: "VA", name: "Virginia" },
-  { code: "VT", name: "Vermont" },
-  { code: "WA", name: "Washington" },
-  { code: "WI", name: "Wisconsin" },
-  { code: "WV", name: "West Virginia" },
-  { code: "WY", name: "Wyoming" },
-];
+// ALL_STATES is now derived from the canonical 51-entry list in src/lib/usStates.ts
+// (50 states + DC). The previous inline list was missing AR, MO, PA, SD, TN.
+import { US_STATES as CANONICAL_US_STATES } from "../lib/usStates";
+
+export const ALL_STATES: StateOption[] = CANONICAL_US_STATES.map((s) => ({
+  code: s.code,
+  name: s.name,
+}));
 
 export const AVAILABLE_STATES: string[] = Array.from(
   new Set(DOCTORS.flatMap((d) => d.states))

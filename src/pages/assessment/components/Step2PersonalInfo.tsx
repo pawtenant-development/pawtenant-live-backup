@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ALL_STATES, AVAILABLE_STATES } from "../../../mocks/doctors";
+import { US_STATES } from "../../../lib/usStates";
 import StateComplianceBanner from "./StateComplianceBanner";
 
 export interface PetInfo {
@@ -168,7 +168,6 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
     else window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const availableStateCodes = new Set(AVAILABLE_STATES);
   const maxDate = new Date();
   maxDate.setFullYear(maxDate.getFullYear() - 18);
   const maxDobStr = maxDate.toISOString().split("T")[0];
@@ -278,14 +277,9 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
               className={errors.state ? errorInputClass : inputClass}
             >
               <option value="">Select your state</option>
-              {ALL_STATES.map((s) => (
-                <option
-                  key={s.code}
-                  value={s.code}
-                  disabled={!availableStateCodes.has(s.code)}
-                >
+              {US_STATES.map((s) => (
+                <option key={s.code} value={s.code}>
                   {s.name}
-                  {!availableStateCodes.has(s.code) ? " (not available)" : ""}
                 </option>
               ))}
             </select>
