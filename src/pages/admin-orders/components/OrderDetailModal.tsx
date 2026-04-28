@@ -1335,18 +1335,33 @@ export default function OrderDetailModal({
   };
 
   const handleFixPayment = async () => {
-    if (!stripeIdInput.trim()) return;
+    const trimmed = stripeIdInput.trim();
+    if (!trimmed) return;
+
+    // OPS-ORDER-PAYMENT-RELINK-DELETE-FK: validate prefix client-side. The Stripe
+    // dashboard exposes both `pi_...` (PaymentIntent) and `ch_...` (Charge) IDs;
+    // anything else is a typo and should not hit the edge function.
+    const isCharge = trimmed.startsWith("ch_");
+    const isPaymentIntent = trimmed.startsWith("pi_");
+    if (!isCharge && !isPaymentIntent) {
+      setPaymentSyncMsg(
+        "Invalid Stripe ID — must start with pi_ (PaymentIntent) or ch_ (Charge).",
+      );
+      setPaymentSyncOk(false);
+      setTimeout(() => setPaymentSyncMsg(""), 12000);
+      return;
+    }
+
     setPaymentSyncing(true);
     setPaymentSyncMsg("");
     try {
       const token = await getAdminToken();
-      const isCharge = stripeIdInput.trim().startsWith("ch_");
       const res = await fetch(`${supabaseUrl}/functions/v1/fix-order-payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           confirmationId: order.confirmation_id,
-          ...(isCharge ? { stripeChargeId: stripeIdInput.trim() } : { stripePaymentIntentId: stripeIdInput.trim() }),
+          ...(isCharge ? { stripeChargeId: trimmed } : { stripePaymentIntentId: trimmed }),
         }),
       });
       const result = await res.json() as {
@@ -1357,6 +1372,11 @@ export default function OrderDetailModal({
         priceUpdated?: number;
         alreadySynced?: boolean;
         emailsTriggered?: boolean;
+        // OPS-ORDER-PAYMENT-RELINK-DELETE-FK: edge function may return this when the
+        // Stripe payment is already linked to a different order. We surface a clear
+        // admin message instead of silently duplicating the linkage.
+        alreadyLinkedToOrder?: { id: string; confirmation_id: string };
+        resolvedPiId?: string;
       };
       if (result.ok) {
         const emailNote = result.emailsTriggered
@@ -1378,6 +1398,13 @@ export default function OrderDetailModal({
           const { data: fresh } = await supabase.from("orders").select("email_log").eq("id", order.id).maybeSingle();
           if (fresh?.email_log) updateOrderField({ email_log: fresh.email_log as EmailLogEntry[] });
         } catch { /* non-critical */ }
+      } else if (result.alreadyLinkedToOrder) {
+        const otherCid = result.alreadyLinkedToOrder.confirmation_id;
+        setPaymentSyncMsg(
+          `This Stripe payment${result.resolvedPiId ? ` (${result.resolvedPiId})` : ""} is already linked to order ${otherCid}. ` +
+          "Refusing to duplicate. Resolve the original order first (refund, cancel, or unlink) before linking this payment elsewhere.",
+        );
+        setPaymentSyncOk(false);
       } else {
         setPaymentSyncMsg(result.error ?? "Sync failed — check Stripe ID and try again");
         setPaymentSyncOk(false);
@@ -1666,28 +1693,59 @@ export default function OrderDetailModal({
     setDeleteOrderMsg("");
     try {
       // Clean up ALL related records first — must be in dependency order to avoid FK violations.
-      // Each await ensures the previous table is cleared before the next, so the final
-      // `orders` delete never hits a foreign key constraint.
-      const cleanups: Array<() => Promise<unknown>> = [
-        () => supabase.from("communications").delete().eq("order_id", order.id),
-        () => supabase.from("doctor_earnings").delete().eq("order_id", order.id),
-        () => supabase.from("order_documents").delete().eq("order_id", order.id),
-        () => supabase.from("doctor_notes").delete().eq("order_id", order.id),
-        () => supabase.from("order_status_logs").delete().eq("order_id", order.id),
-        () => supabase.from("doctor_notifications").delete().eq("order_id", order.id),
-        () => supabase.from("shared_order_notes").delete().eq("order_id", order.id),
-        () => supabase.from("letter_verifications").delete().eq("order_id", order.id),
-        () => supabase.from("meta_events").delete().eq("order_id", order.id),
-        () => supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id),
+      // OPS-ORDER-PAYMENT-RELINK-DELETE-FK: capture child-delete errors instead of swallowing
+      // them. Supabase returns errors as `{ error }` rather than throwing, so the prior
+      // empty try/catch silently let RLS/permission failures pass through and the parent
+      // delete then surfaced a vague raw FK error.
+      const cleanups: Array<{ table: string; run: () => Promise<{ error?: { message: string } | null }> }> = [
+        { table: "communications",      run: () => supabase.from("communications").delete().eq("order_id", order.id) },
+        { table: "doctor_earnings",     run: () => supabase.from("doctor_earnings").delete().eq("order_id", order.id) },
+        { table: "order_documents",     run: () => supabase.from("order_documents").delete().eq("order_id", order.id) },
+        { table: "doctor_notes",        run: () => supabase.from("doctor_notes").delete().eq("order_id", order.id) },
+        { table: "order_status_logs",   run: () => supabase.from("order_status_logs").delete().eq("order_id", order.id) },
+        { table: "doctor_notifications",run: () => supabase.from("doctor_notifications").delete().eq("order_id", order.id) },
+        { table: "shared_order_notes",  run: () => supabase.from("shared_order_notes").delete().eq("order_id", order.id) },
+        { table: "letter_verifications",run: () => supabase.from("letter_verifications").delete().eq("order_id", order.id) },
+        { table: "meta_events",         run: () => supabase.from("meta_events").delete().eq("order_id", order.id) },
+        { table: "audit_logs",          run: () => supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id) },
       ];
 
-      for (const cleanup of cleanups) {
-        try { await cleanup(); } catch { /* skip tables that don't exist or aren't accessible */ }
+      const failedCleanups: string[] = [];
+      for (const c of cleanups) {
+        try {
+          const res = await c.run();
+          if (res?.error) {
+            console.warn(`[deleteOrder] ${c.table} cleanup failed:`, res.error);
+            failedCleanups.push(c.table);
+          }
+        } catch (err) {
+          console.warn(`[deleteOrder] ${c.table} cleanup threw:`, err);
+          failedCleanups.push(c.table);
+        }
       }
 
       const { error } = await supabase.from("orders").delete().eq("id", order.id);
       if (error) {
-        setDeleteOrderMsg(`Delete failed: ${error.message}`);
+        // Pull the offending child table out of the FK constraint message so the admin
+        // sees something actionable instead of a raw Postgres error. Common shape:
+        //   `... violates foreign key constraint "x_y_fkey" on table "child_table"`
+        const fkMatch = error.message.match(/on table "([^"]+)"/i);
+        const blockingTable = fkMatch?.[1];
+        if (blockingTable) {
+          setDeleteOrderMsg(
+            `Delete blocked by related records in "${blockingTable}". ` +
+            (failedCleanups.length > 0
+              ? `Cleanup also failed on: ${failedCleanups.join(", ")}. `
+              : "") +
+            "This is not a payment-status problem — extend the admin cleanup list or escalate.",
+          );
+        } else if (failedCleanups.length > 0) {
+          setDeleteOrderMsg(
+            `Delete failed: ${error.message}. Cleanup failed earlier on: ${failedCleanups.join(", ")}.`,
+          );
+        } else {
+          setDeleteOrderMsg(`Delete failed: ${error.message}`);
+        }
         setDeletingOrder(false);
         return;
       }
@@ -2147,6 +2205,122 @@ export default function OrderDetailModal({
     if (section === "comms" || section === "notes") onClearUnread?.(order.confirmation_id);
   }, [section, loadEmailLog]);
 
+  // OPS-PAYMENTS-TAB-REPAIR-TOOLS: Single source of truth for whether
+  // the order is unpaid/unlinked and a repair tool would be useful.
+  // Used by the compact warning card on Overview and by the full
+  // repair panel rendered at the top of the Payments tab.
+  const paymentRepairNeeded =
+    !order.payment_intent_id &&
+    order.status !== "refunded" &&
+    !order.refunded_at &&
+    order.doctor_status !== "patient_notified";
+
+  // OPS-PAYMENTS-TAB-REPAIR-TOOLS: full Payment Not Linked repair
+  // panel — Stripe ID input + Link Payment + Manual Override. Lives
+  // here as a local render function so both the Overview compact
+  // warning's "Fix in Payments tab" CTA and the Payments tab can
+  // share the same UX without duplicating JSX. State (stripeIdInput,
+  // paymentSyncing, etc.) and handlers (handleFixPayment, etc.) are
+  // captured via closure.
+  function renderPaymentRepairPanel() {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
+            <i className="ri-error-warning-fill text-red-600 text-base"></i>
+          </div>
+          <div>
+            <p className="text-sm font-extrabold text-red-800">Payment Not Linked</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              This order shows as &ldquo;Lead (Unpaid)&rdquo; because the Stripe payment wasn&apos;t written back to it. If the customer paid, paste the Stripe Charge ID (ch_...) or Payment Intent ID (pi_...) below to fix it instantly.
+            </p>
+            <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1 mt-2 flex items-start gap-1">
+              <i className="ri-shield-check-line mt-0.5 flex-shrink-0"></i>
+              <span>
+                <strong>Verified via Stripe:</strong> the ID is looked up in Stripe and rejected unless the underlying payment is <code>succeeded</code>. Refuses to link if the same payment is already attached to another order.
+              </span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={stripeIdInput}
+            onChange={(e) => setStripeIdInput(e.target.value)}
+            placeholder="ch_3TEFTOGwm9wIWlgi0... or pi_..."
+            className="flex-1 px-3 py-2.5 border border-red-300 rounded-lg text-sm font-mono focus:outline-none focus:border-red-500 bg-white"
+          />
+          <button
+            type="button"
+            onClick={handleFixPayment}
+            disabled={paymentSyncing || !stripeIdInput.trim()}
+            className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
+          >
+            {paymentSyncing
+              ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
+              : <><i className="ri-link-m"></i>Link Payment</>
+            }
+          </button>
+        </div>
+        {paymentSyncMsg && (
+          <p className={`text-xs mt-2 flex items-center gap-1 ${paymentSyncMsg.toLowerCase().includes("fail") || paymentSyncMsg.toLowerCase().includes("error") ? "text-red-600" : "text-[#3b6ea5]"}`}>
+            <i className="ri-information-line"></i>{paymentSyncMsg}
+          </p>
+        )}
+        {/* ── Manual override when Stripe ID isn't available ── */}
+        <div className="mt-3 pt-3 border-t border-red-200">
+          <p className="text-xs text-red-600 font-bold mb-2 flex items-center gap-1">
+            <i className="ri-settings-3-line"></i>No Stripe ID? Use Manual Override
+          </p>
+          <p className="text-[11px] text-red-700 bg-red-100/60 border border-red-200 rounded-md px-2 py-1 mb-2 flex items-start gap-1">
+            <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+            <span><strong>DB-only:</strong> this does not verify or charge Stripe. Confirm payment in Stripe before using.</span>
+          </p>
+          {!showMarkPaidConfirm ? (
+            <button
+              type="button"
+              onClick={() => setShowMarkPaidConfirm(true)}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-red-300 text-red-700 bg-red-100 hover:bg-red-200 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+            >
+              <i className="ri-checkbox-circle-line"></i>Mark as Paid (Manual Override)
+            </button>
+          ) : (
+            <div className="bg-red-100 border border-red-300 rounded-xl p-3 space-y-2">
+              <p className="text-xs font-bold text-red-800 flex items-center gap-1.5">
+                <i className="ri-error-warning-fill"></i>Confirm Manual Override
+              </p>
+              <p className="text-xs text-red-700 leading-relaxed">
+                This bypasses Stripe verification and forces the order to <strong>Processing</strong> status. Only use this if you&apos;ve confirmed payment in Stripe directly and the webhook failed. No refund will be recorded.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleMarkAsPaid}
+                  disabled={markingPaid}
+                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
+                >
+                  {markingPaid ? <><i className="ri-loader-4-line animate-spin"></i>Marking...</> : <><i className="ri-check-line"></i>Yes, Mark as Paid</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMarkPaidConfirm(false)}
+                  className="whitespace-nowrap px-3 py-1.5 text-xs text-red-600 hover:text-red-800 font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {markPaidMsg && (
+            <p className="text-xs mt-2 text-emerald-700 font-semibold flex items-center gap-1">
+              <i className="ri-checkbox-circle-fill"></i>{markPaidMsg}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
@@ -2386,12 +2560,18 @@ export default function OrderDetailModal({
 
           {/* ── PAYMENTS ── */}
           {section === "payments" && (
-            <PaymentHistoryTab
-              order={order}
-              supabaseUrl={supabaseUrl}
-              anonKey={anonKey}
-              onOrderUpdated={onOrderUpdated}
-            />
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+              {/* OPS-PAYMENTS-TAB-REPAIR-TOOLS: full repair panel only on
+                  Payments tab. Overview shows just a compact warning that
+                  routes here, so this single instance owns the repair UX. */}
+              {paymentRepairNeeded ? renderPaymentRepairPanel() : null}
+              <PaymentHistoryTab
+                order={order}
+                supabaseUrl={supabaseUrl}
+                anonKey={anonKey}
+                onOrderUpdated={onOrderUpdated}
+              />
+            </div>
           )}
 
           {/* ── COMMUNICATIONS (includes email log) ── */}
@@ -2462,95 +2642,30 @@ export default function OrderDetailModal({
                 ))}
               </div>
 
-              {/* ── PAYMENT NOT SYNCED WARNING ── always show for any unpaid order unless refunded or delivered ── */}
-              {!order.payment_intent_id && order.status !== "refunded" && !order.refunded_at && order.doctor_status !== "patient_notified" && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
-                      <i className="ri-error-warning-fill text-red-600 text-base"></i>
-                    </div>
-                    <div>
-                      <p className="text-sm font-extrabold text-red-800">Payment Not Linked</p>
-                      <p className="text-xs text-red-600 mt-0.5">
-                        This order shows as "Lead (Unpaid)" because the Stripe payment wasn't written back to it. If the customer paid, paste the Stripe Charge ID (ch_...) or Payment Intent ID (pi_...) below to fix it instantly.
-                      </p>
-                    </div>
+              {/* OPS-PAYMENTS-TAB-REPAIR-TOOLS: compact unpaid/unlinked
+                  warning. The full repair panel (Stripe ID input + Link
+                  Payment + Manual Override) lives on the Payments tab —
+                  Overview just nudges the admin there to keep this view
+                  focused on case status. */}
+              {paymentRepairNeeded && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
+                    <i className="ri-error-warning-fill text-red-600 text-base"></i>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={stripeIdInput}
-                      onChange={(e) => setStripeIdInput(e.target.value)}
-                      placeholder="ch_3TEFTOGwm9wIWlgi0... or pi_..."
-                      className="flex-1 px-3 py-2.5 border border-red-300 rounded-lg text-sm font-mono focus:outline-none focus:border-red-500 bg-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleFixPayment}
-                      disabled={paymentSyncing || !stripeIdInput.trim()}
-                      className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
-                    >
-                      {paymentSyncing
-                        ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
-                        : <><i className="ri-link-m"></i>Link Payment</>
-                      }
-                    </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-extrabold text-red-800">Payment Not Linked</p>
+                    <p className="text-xs text-red-700 mt-0.5">
+                      This order appears unpaid because the Stripe payment wasn&apos;t written back. If the customer already paid, repair tools live on the Payments tab.
+                    </p>
                   </div>
-                  {paymentSyncMsg && (
-                    <p className={`text-xs mt-2 flex items-center gap-1 ${paymentSyncMsg.toLowerCase().includes("fail") || paymentSyncMsg.toLowerCase().includes("error") ? "text-red-600" : "text-[#3b6ea5]"}`}>
-                      <i className="ri-information-line"></i>{paymentSyncMsg}
-                    </p>
-                  )}
-                  {/* ── Manual override when Stripe ID isn't available ── */}
-                  <div className="mt-3 pt-3 border-t border-red-200">
-                    <p className="text-xs text-red-600 font-bold mb-2 flex items-center gap-1">
-                      <i className="ri-settings-3-line"></i>No Stripe ID? Use Manual Override
-                    </p>
-                    <p className="text-[11px] text-red-700 bg-red-100/60 border border-red-200 rounded-md px-2 py-1 mb-2 flex items-start gap-1">
-                      <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
-                      <span><strong>DB-only:</strong> this does not verify or charge Stripe. Confirm payment in Stripe before using.</span>
-                    </p>
-                    {!showMarkPaidConfirm ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowMarkPaidConfirm(true)}
-                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-red-300 text-red-700 bg-red-100 hover:bg-red-200 rounded-lg text-xs font-bold cursor-pointer transition-colors"
-                      >
-                        <i className="ri-checkbox-circle-line"></i>Mark as Paid (Manual Override)
-                      </button>
-                    ) : (
-                      <div className="bg-red-100 border border-red-300 rounded-xl p-3 space-y-2">
-                        <p className="text-xs font-bold text-red-800 flex items-center gap-1.5">
-                          <i className="ri-error-warning-fill"></i>Confirm Manual Override
-                        </p>
-                        <p className="text-xs text-red-700 leading-relaxed">
-                          This bypasses Stripe verification and forces the order to <strong>Processing</strong> status. Only use this if you&apos;ve confirmed payment in Stripe directly and the webhook failed. No refund will be recorded.
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={handleMarkAsPaid}
-                            disabled={markingPaid}
-                            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
-                          >
-                            {markingPaid ? <><i className="ri-loader-4-line animate-spin"></i>Marking...</> : <><i className="ri-check-line"></i>Yes, Mark as Paid</>}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowMarkPaidConfirm(false)}
-                            className="whitespace-nowrap px-3 py-1.5 text-xs text-red-600 hover:text-red-800 font-semibold cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {markPaidMsg && (
-                      <p className="text-xs mt-2 text-emerald-700 font-semibold flex items-center gap-1">
-                        <i className="ri-checkbox-circle-fill"></i>{markPaidMsg}
-                      </p>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSection("payments")}
+                    className="whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                  >
+                    <i className="ri-bank-card-line"></i>
+                    Fix in Payments tab
+                  </button>
                 </div>
               )}
 

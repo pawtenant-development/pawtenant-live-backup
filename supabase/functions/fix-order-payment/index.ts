@@ -244,6 +244,15 @@ Deno.serve(async (req: Request) => {
   try {
     if (stripeChargeId) {
       const charge = await stripe.charges.retrieve(stripeChargeId);
+      // OPS-ORDER-PAYMENT-RELINK-DELETE-FK: enforce charge.status === "succeeded"
+      // for parity with the PaymentIntent branch. Previously the charge branch
+      // skipped the status check and could link a failed or pending charge.
+      if (charge.status !== "succeeded") {
+        return json(
+          { ok: false, error: `Charge status is "${charge.status}" — only "succeeded" can be linked` },
+          400,
+        );
+      }
       resolvedPiId = typeof charge.payment_intent === "string"
         ? charge.payment_intent
         : (charge.payment_intent as { id: string })?.id ?? stripeChargeId;
@@ -270,6 +279,36 @@ Deno.serve(async (req: Request) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return json({ ok: false, error: `Stripe lookup failed: ${msg}` }, 400);
+  }
+
+  // OPS-ORDER-PAYMENT-RELINK-DELETE-FK: refuse to duplicate payment linkage.
+  // If `resolvedPiId` is already attached to a DIFFERENT order than the
+  // confirmationId we were asked to link to, surface a clear admin error so
+  // we don't silently end up with two orders pointing at the same Stripe
+  // payment.
+  try {
+    let conflictQuery = supabase
+      .from("orders")
+      .select("id, confirmation_id")
+      .eq("payment_intent_id", resolvedPiId)
+      .limit(1);
+    if (confirmationId) {
+      conflictQuery = conflictQuery.neq("confirmation_id", confirmationId);
+    }
+    const { data: existingLink } = await conflictQuery.maybeSingle();
+    if (existingLink) {
+      return json({
+        ok: false,
+        error: `This Stripe payment (${resolvedPiId}) is already linked to a different order: ${existingLink.confirmation_id}. Refusing to duplicate.`,
+        alreadyLinkedToOrder: existingLink,
+        resolvedPiId,
+      }, 409);
+    }
+  } catch (err) {
+    // Non-fatal — if the conflict lookup itself errors, fall through and let
+    // the regular flow attempt the update; better to attempt linking than to
+    // hard-block on an unexpected DB read failure.
+    console.warn("[fix-order-payment] conflict lookup failed (non-fatal):", err);
   }
 
   let order: Record<string, unknown> | null = null;
