@@ -686,7 +686,7 @@ const GHL_EVENT_LABELS: Record<string, { label: string; color: string; icon: str
   assessment_started:        { label: "Assessment Started",    color: "text-amber-700 bg-amber-50 border-amber-200",    icon: "ri-file-list-3-line" },
   payment_confirmed:         { label: "Payment Confirmed",     color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: "ri-bank-card-line" },
   payment_confirmed_backfill:{ label: "Payment (Backfill)",    color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: "ri-refresh-line" },
-  doctor_assigned:           { label: "Doctor Assigned",       color: "text-sky-700 bg-sky-50 border-sky-200",          icon: "ri-user-received-line" },
+  doctor_assigned:           { label: "Provider Assigned",     color: "text-sky-700 bg-sky-50 border-sky-200",          icon: "ri-user-received-line" },
   order_completed:           { label: "Order Completed",       color: "text-violet-700 bg-violet-50 border-violet-200", icon: "ri-checkbox-circle-line" },
   order_cancelled:           { label: "Order Cancelled",       color: "text-red-700 bg-red-50 border-red-200",          icon: "ri-close-circle-line" },
   refund_issued:             { label: "Refund Issued",         color: "text-orange-700 bg-orange-50 border-orange-200", icon: "ri-refund-line" },
@@ -2150,7 +2150,7 @@ export default function OrderDetailModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
-      <div className="relative bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="relative bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="flex-shrink-0 border-b border-gray-100">
@@ -2171,7 +2171,7 @@ export default function OrderDetailModal({
                     </span>
                   );
                 })()}
-                {/* VIP or doctor status badge */}
+                {/* VIP or provider status badge */}
                 {Array.isArray(order.addon_services) && order.addon_services.length > 0 ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-gradient-to-r from-amber-400 to-orange-400 text-white">
                     <i className="ri-vip-crown-fill" style={{ fontSize: "10px" }}></i>VIP
@@ -2506,6 +2506,10 @@ export default function OrderDetailModal({
                     <p className="text-xs text-red-600 font-bold mb-2 flex items-center gap-1">
                       <i className="ri-settings-3-line"></i>No Stripe ID? Use Manual Override
                     </p>
+                    <p className="text-[11px] text-red-700 bg-red-100/60 border border-red-200 rounded-md px-2 py-1 mb-2 flex items-start gap-1">
+                      <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+                      <span><strong>DB-only:</strong> this does not verify or charge Stripe. Confirm payment in Stripe before using.</span>
+                    </p>
                     {!showMarkPaidConfirm ? (
                       <button
                         type="button"
@@ -2622,6 +2626,16 @@ export default function OrderDetailModal({
                       <p className="text-xs text-gray-400 mb-0.5">Delivery Speed</p>
                       <p className={`text-sm font-semibold ${order.delivery_speed ? "text-gray-800" : "text-gray-400"}`}>{order.delivery_speed ?? "—"}</p>
                     </div>
+                    {/* Payment Failure Reason — only when present */}
+                    {order.payment_failure_reason && (
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">Payment Failure</p>
+                        <p className="text-sm font-semibold text-red-700 break-words">{order.payment_failure_reason}</p>
+                        {order.payment_failed_at && (
+                          <p className="text-[11px] text-red-500 mt-0.5">at {fmt(order.payment_failed_at)}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* ── Column 3: Other ── */}
@@ -2661,6 +2675,13 @@ export default function OrderDetailModal({
                       <div>
                         <p className="text-xs text-gray-400 mb-0.5">Coupon Discount</p>
                         <p className="text-sm font-bold text-green-600">-${order.coupon_discount}.00</p>
+                      </div>
+                    )}
+                    {/* Referred By — only when present */}
+                    {order.referred_by && (
+                      <div>
+                        <p className="text-xs text-gray-400 mb-0.5">Referred By</p>
+                        <p className="text-sm font-semibold text-gray-800 break-words">{order.referred_by}</p>
                       </div>
                     )}
                   </div>
@@ -3370,7 +3391,7 @@ export default function OrderDetailModal({
                         </button>
                         <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
                           <i className="ri-information-line"></i>
-                          Clears submitted letter &amp; resets provider status. Doctor assignment is kept.
+                          Clears submitted letter &amp; resets provider status. Provider assignment is kept.
                         </p>
                       </div>
                     )}
@@ -3380,6 +3401,10 @@ export default function OrderDetailModal({
                     <div className="border-t border-dashed border-amber-200 mt-1 pt-3">
                       <p className="text-xs text-amber-600 mb-2 flex items-center gap-1 font-semibold">
                         <i className="ri-arrow-go-back-line"></i>Revert to Lead
+                      </p>
+                      <p className="text-[11px] text-amber-800 bg-amber-100/60 border border-amber-200 rounded-md px-2 py-1 mb-2 flex items-start gap-1">
+                        <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+                        <span><strong>DB-only:</strong> this clears the payment intent on the order but does NOT issue a Stripe refund. Handle Stripe refund or chargeback separately if required.</span>
                       </p>
                       {!showMarkUnpaidConfirm ? (
                         <button
@@ -3650,7 +3675,7 @@ export default function OrderDetailModal({
                 </div>
               </div>
 
-              {/* Doctor message */}
+              {/* Provider message */}
               <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4">
                 <label className="block text-xs font-bold text-[#3b6ea5] uppercase tracking-widest mb-2 flex items-center gap-1.5">
                   <i className="ri-message-3-line"></i>
