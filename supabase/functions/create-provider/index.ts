@@ -116,6 +116,34 @@ async function getSetupLink(adminClient: ReturnType<typeof createClient>, email:
   return `https://${COMPANY_DOMAIN}/reset-password`;
 }
 
+// Looks up an auth user by email and returns true if their email is already
+// confirmed. Used to suppress the "Action Required: Activate Your PawTenant
+// Provider Account" email for providers who have already activated. Fail-open
+// (returns false) on lookup errors so transient issues don't block real
+// invites for unconfirmed providers.
+async function isAuthUserAlreadyConfirmed(
+  adminClient: ReturnType<typeof createClient>,
+  email: string,
+): Promise<boolean> {
+  try {
+    const target = email.trim().toLowerCase();
+    let page = 1;
+    while (true) {
+      const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error || !data?.users?.length) return false;
+      const match = data.users.find((u) => (u.email ?? "").toLowerCase() === target);
+      if (match) {
+        return !!(match as { email_confirmed_at?: string | null }).email_confirmed_at;
+      }
+      if (data.users.length < 1000) return false;
+      page++;
+    }
+  } catch (e) {
+    console.warn("[create-provider] isAuthUserAlreadyConfirmed threw:", e);
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -165,9 +193,26 @@ Deno.serve(async (req) => {
     const { data: existingProfile } = await adminClient.from("doctor_profiles").select("id, user_id, full_name, is_admin").ilike("email", normalizedEmail).maybeSingle();
 
     if (existingProfile) {
+      const alreadyActivated = await isAuthUserAlreadyConfirmed(adminClient, normalizedEmail);
       const setupLink = await getSetupLink(adminClient, normalizedEmail, redirectTo);
-      const emailSent = await sendProviderInviteEmail(normalizedEmail, existingProfile.full_name ?? body.full_name, setupLink);
-      return new Response(JSON.stringify({ ok: true, email: normalizedEmail, full_name: existingProfile.full_name ?? body.full_name, invite_sent: true, welcome_email_sent: emailSent, note: "Existing provider — resent invite email." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      let emailSent = false;
+      if (alreadyActivated) {
+        console.log(`[create-provider] Skipped activation email for ${normalizedEmail} — auth user already confirmed (email_confirmed_at present).`);
+      } else {
+        emailSent = await sendProviderInviteEmail(normalizedEmail, existingProfile.full_name ?? body.full_name, setupLink);
+      }
+      return new Response(JSON.stringify({
+        ok: true,
+        email: normalizedEmail,
+        full_name: existingProfile.full_name ?? body.full_name,
+        invite_sent: !alreadyActivated,
+        welcome_email_sent: emailSent,
+        already_activated: alreadyActivated,
+        activation_email_skipped: alreadyActivated,
+        note: alreadyActivated
+          ? "Provider account is already activated; activation email was not resent."
+          : "Existing provider — resent invite email.",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     let authUserId: string | null = null;
@@ -218,8 +263,14 @@ Deno.serve(async (req) => {
     });
 
     if (profileErr) {
-      const emailSent = await sendProviderInviteEmail(normalizedEmail, body.full_name, setupLink);
-      return new Response(JSON.stringify({ ok: false, error: profileErr.message, emailSent }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const alreadyActivated = await isAuthUserAlreadyConfirmed(adminClient, normalizedEmail);
+      let emailSent = false;
+      if (alreadyActivated) {
+        console.log(`[create-provider] Skipped activation email for ${normalizedEmail} — auth user already confirmed (email_confirmed_at present).`);
+      } else {
+        emailSent = await sendProviderInviteEmail(normalizedEmail, body.full_name, setupLink);
+      }
+      return new Response(JSON.stringify({ ok: false, error: profileErr.message, emailSent, already_activated: alreadyActivated, activation_email_skipped: alreadyActivated }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const { data: ec } = await adminClient.from("doctor_contacts").select("id").eq("email", normalizedEmail).maybeSingle();
@@ -229,8 +280,23 @@ Deno.serve(async (req) => {
       await adminClient.from("doctor_contacts").insert({ full_name: body.full_name, email: normalizedEmail, phone: body.phone ?? null, licensed_states: licensedStates, notes: body.bio ?? null, per_order_rate: body.per_order_rate ?? null, is_active: true });
     }
 
-    const emailSent = await sendProviderInviteEmail(normalizedEmail, body.full_name, setupLink);
-    return new Response(JSON.stringify({ ok: true, email: normalizedEmail, full_name: body.full_name, invite_sent: true, welcome_email_sent: emailSent }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const alreadyActivated = await isAuthUserAlreadyConfirmed(adminClient, normalizedEmail);
+    let emailSent = false;
+    if (alreadyActivated) {
+      console.log(`[create-provider] Skipped activation email for ${normalizedEmail} — auth user already confirmed (email_confirmed_at present).`);
+    } else {
+      emailSent = await sendProviderInviteEmail(normalizedEmail, body.full_name, setupLink);
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      email: normalizedEmail,
+      full_name: body.full_name,
+      invite_sent: !alreadyActivated,
+      welcome_email_sent: emailSent,
+      already_activated: alreadyActivated,
+      activation_email_skipped: alreadyActivated,
+      note: alreadyActivated ? "Provider account is already activated; activation email was not resent." : undefined,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

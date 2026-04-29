@@ -338,9 +338,21 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
           per_order_rate: doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null,
         }),
       });
-      const result = await res.json() as { ok: boolean; error?: string };
+      const result = await res.json() as {
+        ok: boolean;
+        error?: string;
+        invite_sent?: boolean;
+        already_activated?: boolean;
+        activation_email_skipped?: boolean;
+        note?: string;
+      };
       if (!result.ok) throw new Error(result.error ?? "Server error");
-      showToast(`Invite resent to ${doc.email}.`);
+      const skipped = result.activation_email_skipped === true || result.already_activated === true || result.invite_sent === false;
+      if (skipped) {
+        showToast(result.note ?? "Provider account is already activated. Activation email was not resent.");
+      } else {
+        showToast(`Invite resent to ${doc.email}.`);
+      }
     } catch (err) { showToast(`Could not resend invite: ${err instanceof Error ? err.message : "Unknown error"}`); }
     finally { setResending(false); }
   };

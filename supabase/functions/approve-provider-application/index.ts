@@ -283,6 +283,34 @@ async function getSetupLink(adminClient: ReturnType<typeof createClient>, email:
   return `https://${COMPANY_DOMAIN}/reset-password`;
 }
 
+// Looks up an auth user by email and returns true if their email is already
+// confirmed. Used to suppress the "Action Required: Activate Your PawTenant
+// Provider Account" email for providers who have already activated. Fail-open
+// (returns false) on lookup errors so transient issues don't block real
+// invites for unconfirmed providers.
+async function isAuthUserAlreadyConfirmed(
+  adminClient: ReturnType<typeof createClient>,
+  email: string,
+): Promise<boolean> {
+  try {
+    const target = email.trim().toLowerCase();
+    let page = 1;
+    while (true) {
+      const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error || !data?.users?.length) return false;
+      const match = data.users.find((u) => (u.email ?? "").toLowerCase() === target);
+      if (match) {
+        return !!(match as { email_confirmed_at?: string | null }).email_confirmed_at;
+      }
+      if (data.users.length < 1000) return false;
+      page++;
+    }
+  } catch (e) {
+    console.warn("[approve-provider-application] isAuthUserAlreadyConfirmed threw:", e);
+    return false;
+  }
+}
+
 // Always 200 unless `status` is explicitly provided. Business errors use 200
 // with { ok:false } so the frontend can read the real error from the JSON body
 // (supabase.functions.invoke hides non-2xx bodies behind a generic message).
@@ -396,9 +424,15 @@ Deno.serve(async (req) => {
 
     // ── Path A: provider already exists → resend invite, link application ───
     if (existingProfile) {
+      const alreadyActivated = await isAuthUserAlreadyConfirmed(adminClient, appEmail);
       const setupLink = await getSetupLink(adminClient, appEmail, redirectTo);
       const providerName = (existingProfile.full_name as string) ?? fullName;
-      const emailSent = await sendProviderInviteEmail(appEmail, providerName, setupLink);
+      let emailSent = false;
+      if (alreadyActivated) {
+        console.log(`[approve-provider-application] Skipped activation email for ${appEmail} — auth user already confirmed (email_confirmed_at present).`);
+      } else {
+        emailSent = await sendProviderInviteEmail(appEmail, providerName, setupLink);
+      }
 
       const { error: linkAppErr } = await adminClient
         .from("provider_applications")
@@ -416,6 +450,8 @@ Deno.serve(async (req) => {
           success: false,
           error: `Provider exists but application link failed: ${linkAppErr.message}`,
           welcome_email_sent: emailSent,
+          already_activated: alreadyActivated,
+          activation_email_skipped: alreadyActivated,
         });
       }
 
@@ -439,12 +475,16 @@ Deno.serve(async (req) => {
         provider_id: existingProfile.id,
         email: appEmail,
         full_name: providerName,
-        invite_sent: true,
+        invite_sent: !alreadyActivated,
         welcome_email_sent: emailSent,
+        already_activated: alreadyActivated,
+        activation_email_skipped: alreadyActivated,
         approved_providers_created: approvedRes.created,
         approved_providers_slug: approvedRes.slug,
         approved_providers_error: approvedRes.error ?? null,
-        note: "Existing provider — invite email resent, application linked, approved_providers ensured.",
+        note: alreadyActivated
+          ? "Provider account is already activated; activation email was not resent. Application linked, approved_providers ensured."
+          : "Existing provider — invite email resent, application linked, approved_providers ensured.",
       });
     }
 
@@ -543,13 +583,21 @@ Deno.serve(async (req) => {
     if (linkAppErr) {
       // Profile exists but application link failed. Still send invite so the
       // provider isn't blocked; admin can retry to relink the application.
-      const emailSent = await sendProviderInviteEmail(appEmail, fullName, setupLink);
+      const alreadyActivated = await isAuthUserAlreadyConfirmed(adminClient, appEmail);
+      let emailSent = false;
+      if (alreadyActivated) {
+        console.log(`[approve-provider-application] Skipped activation email for ${appEmail} — auth user already confirmed (email_confirmed_at present).`);
+      } else {
+        emailSent = await sendProviderInviteEmail(appEmail, fullName, setupLink);
+      }
       return jsonResponse({
         ok: false,
         success: false,
         error: `Provider created but application link failed: ${linkAppErr.message}`,
         provider_id: insertedProfile.id,
         welcome_email_sent: emailSent,
+        already_activated: alreadyActivated,
+        activation_email_skipped: alreadyActivated,
       });
     }
 
@@ -569,8 +617,16 @@ Deno.serve(async (req) => {
     });
 
     // Send invite email (non-fatal if Resend is down — provider row is already
-    // created and linked, admin can resend manually).
-    const emailSent = await sendProviderInviteEmail(appEmail, fullName, setupLink);
+    // created and linked, admin can resend manually). Skip if the auth user is
+    // already confirmed (e.g. fallback path used createUser({ email_confirm: true })
+    // or an orphaned-but-activated auth user was reused).
+    const alreadyActivated = await isAuthUserAlreadyConfirmed(adminClient, appEmail);
+    let emailSent = false;
+    if (alreadyActivated) {
+      console.log(`[approve-provider-application] Skipped activation email for ${appEmail} — auth user already confirmed (email_confirmed_at present).`);
+    } else {
+      emailSent = await sendProviderInviteEmail(appEmail, fullName, setupLink);
+    }
 
     return jsonResponse({
       ok: true,
@@ -579,11 +635,14 @@ Deno.serve(async (req) => {
       provider_id: insertedProfile.id,
       email: appEmail,
       full_name: fullName,
-      invite_sent: true,
+      invite_sent: !alreadyActivated,
       welcome_email_sent: emailSent,
+      already_activated: alreadyActivated,
+      activation_email_skipped: alreadyActivated,
       approved_providers_created: approvedRes.created,
       approved_providers_slug: approvedRes.slug,
       approved_providers_error: approvedRes.error ?? null,
+      note: alreadyActivated ? "Provider account is already activated; activation email was not resent." : undefined,
     });
 
   } catch (err) {
