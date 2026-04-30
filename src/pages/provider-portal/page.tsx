@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import { normalizeStateListForDisplay } from "../../lib/usStates";
 import ProviderOrderDetail from "./components/ProviderOrderDetail";
 import ProviderEarnings from "./components/ProviderEarnings";
 import ProviderLicensePanel from "./components/ProviderLicensePanel";
@@ -501,12 +502,20 @@ export default function ProviderPortalPage() {
                   {profile?.title && <p className="text-xs text-[#2c5282] font-semibold mt-0.5">{profile.title}</p>}
                 </div>
                 <div className="py-1">
-                  {profile?.licensed_states && profile.licensed_states.length > 0 && (
-                    <div className="px-4 py-2">
-                      <p className="text-xs text-gray-400 mb-1">Licensed States</p>
-                      <p className="text-xs font-semibold text-gray-700">{profile.licensed_states.join(", ")}</p>
-                    </div>
-                  )}
+                  {/* OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe
+                      mixed legacy storage so "VA" + "Virginia" renders as one
+                      "Virginia" entry. Provider-facing sidebar prefers the
+                      full state name for readability. */}
+                  {(() => {
+                    const sidebarStates = normalizeStateListForDisplay(profile?.licensed_states ?? []);
+                    if (sidebarStates.length === 0) return null;
+                    return (
+                      <div className="px-4 py-2">
+                        <p className="text-xs text-gray-400 mb-1">Licensed States</p>
+                        <p className="text-xs font-semibold text-gray-700">{sidebarStates.map((s) => s.label).join(", ")}</p>
+                      </div>
+                    );
+                  })()}
                   <button type="button" onClick={handleSignOut}
                     className="whitespace-nowrap w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 cursor-pointer transition-colors font-semibold">
                     <i className="ri-logout-box-line"></i>Sign Out

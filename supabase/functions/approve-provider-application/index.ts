@@ -189,6 +189,11 @@ async function ensureApprovedProvider(
   }
 }
 
+// OPS-PROVIDER-WELCOME-EMAIL-COPY: expanded onboarding email. Body content
+// is identical to the equivalent function in supabase/functions/create-provider
+// — a future task should lift this into a shared module. Header badge and
+// sub-header line differ per entry point so the recipient knows whether they
+// were just approved (this fn) vs. invited as an existing provider account.
 function buildProviderInviteHtml(providerName: string, toEmail: string, setupLink: string): string {
   const firstName = providerName.split(" ")[0];
   return `<!DOCTYPE html>
@@ -197,45 +202,125 @@ function buildProviderInviteHtml(providerName: string, toEmail: string, setupLin
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;">
     <tr><td align="center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+
+        <!-- Header -->
         <tr>
           <td style="background:${HEADER_BG};padding:32px;text-align:center;">
             <img src="${LOGO_URL}" alt="${COMPANY_NAME}" width="180" style="display:block;margin:0 auto 18px;max-width:180px;" />
             <div style="display:inline-block;background:${HEADER_BADGE_BG};color:${HEADER_TEXT};font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:5px 16px;border-radius:999px;margin-bottom:14px;">Application Approved</div>
             <h1 style="margin:0;font-size:22px;font-weight:800;color:${HEADER_TEXT};line-height:1.3;">Welcome to ${COMPANY_NAME}, ${firstName}!</h1>
-            <p style="margin:10px 0 0;font-size:14px;color:${HEADER_SUB};line-height:1.5;">Your application has been approved. Set your password to activate your provider portal.</p>
+            <p style="margin:10px 0 0;font-size:14px;color:${HEADER_SUB};line-height:1.5;">Your application has been approved. Activate your provider portal to start reviewing cases.</p>
           </td>
         </tr>
+
+        <!-- Body -->
         <tr>
           <td style="padding:32px;">
-            <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">Hi <strong>${providerName}</strong>,</p>
+            <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;">Hi <strong>${providerName}</strong>,</p>
             <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">
-              Your application has been reviewed and approved. You've been added to the <strong>${COMPANY_NAME} Provider Network</strong>. Click the button below to set your password and activate your provider portal account.
+              Congratulations &mdash; your application has been reviewed and approved, and you've been added to the <strong>${COMPANY_NAME} Provider Network</strong>. The first step is to activate your provider portal account by setting a password.
             </p>
-            <table cellpadding="0" cellspacing="0" style="margin:28px auto;">
+
+            <!-- CTA -->
+            <table cellpadding="0" cellspacing="0" style="margin:24px auto 8px;">
               <tr>
                 <td style="background:${ORANGE};border-radius:10px;">
                   <a href="${setupLink}" style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:800;color:#ffffff;text-decoration:none;">Activate My Provider Account &rarr;</a>
                 </td>
               </tr>
             </table>
-            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin:24px 0;">
+            <p style="margin:0 0 24px;font-size:12px;color:#9ca3af;text-align:center;line-height:1.5;">This link expires in <strong>24 hours</strong>. Ask your admin to resend if it expires.</p>
+
+            <!-- Account details -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin:0 0 24px;">
               <tr>
                 <td style="padding:20px 24px;">
                   <p style="margin:0 0 12px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Your Account Details</p>
                   <table width="100%" cellpadding="0" cellspacing="0">
                     <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;width:120px;">Name</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${providerName}</td></tr>
                     <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Login Email</td><td style="padding:5px 0;font-size:13px;color:#111827;">${toEmail}</td></tr>
-                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Role</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">Licensed Provider</td></tr>
+                    <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Role</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">Licensed Mental Health Professional</td></tr>
                     <tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Portal</td><td style="padding:5px 0;font-size:13px;"><a href="https://${COMPANY_DOMAIN}${PROVIDER_PORTAL_PATH}" style="color:${ACCENT};font-weight:700;text-decoration:none;">${COMPANY_DOMAIN}${PROVIDER_PORTAL_PATH}</a></td></tr>
                   </table>
                 </td>
               </tr>
             </table>
-            <p style="margin:0 0 8px;font-size:13px;color:#9ca3af;line-height:1.6;">This link expires in <strong>24 hours</strong>. Contact your admin to resend if it expires.</p>
-            <p style="margin:0;font-size:12px;color:#d1d5db;line-height:1.5;">If you did not expect this email, you can safely ignore it.</p>
+
+            <!-- Inside the portal -->
+            <p style="margin:24px 0 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Inside Your Provider Portal</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;">
+              <tr>
+                <td style="padding:14px 18px;border-bottom:1px solid #f3f4f6;">
+                  <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">Review assigned cases.</strong> See assessment answers, supporting documents, and submit your professional decision.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 18px;border-bottom:1px solid #f3f4f6;">
+                  <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">View earnings &amp; payouts.</strong> Track completed cases and payout history once payouts are issued.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 18px;border-bottom:1px solid #f3f4f6;">
+                  <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">Manage your profile.</strong> Update your headshot, bio, contact info, and public-profile preference.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 18px;">
+                  <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">Manage licenses &amp; states.</strong> Confirm the states you are currently licensed to practice in. Cases will only be assigned to you in those states.</p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Profile completion checklist -->
+            <p style="margin:28px 0 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Complete Your Provider Profile</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbf2;border:1px solid #fde68a;border-radius:12px;">
+              <tr>
+                <td style="padding:18px 22px;">
+                  <p style="margin:0 0 10px;font-size:13px;color:#374151;line-height:1.6;">Once you log in, please review and update:</p>
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>Headshot</strong> &mdash; a clear, recent professional photo</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>Bio</strong> &mdash; a short paragraph about your background and approach</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>License &amp; NPI details</strong> &mdash; license numbers per state and your NPI on file</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>Public profile preference</strong> &mdash; whether you'd like your profile shown publicly</td></tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Public profile publishing -->
+            <p style="margin:24px 0 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">About Public Profile Publishing</p>
+            <p style="margin:0 0 16px;font-size:13px;color:#374151;line-height:1.7;">
+              You can opt to make your profile visible on the ${COMPANY_NAME} website. Published provider profiles can help build trust with prospective customers, may help market your practice, and can lead to more relevant case volume in your licensed states. Final publishing remains subject to admin and profile review &mdash; we'll let you know once your profile is live.
+            </p>
+
+            <!-- Payouts -->
+            <p style="margin:24px 0 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Payouts &amp; Earnings</p>
+            <p style="margin:0 0 16px;font-size:13px;color:#374151;line-height:1.7;">
+              Your payout details and per-case rate will be visible inside the provider portal once configured, or shared with you separately. We'll notify you when payouts are processed.
+            </p>
+
+            <!-- Compliance callout -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;margin:24px 0 8px;">
+              <tr>
+                <td style="padding:18px 22px;">
+                  <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">Compliance Reminder</p>
+                  <p style="margin:0;font-size:13px;color:#78350f;line-height:1.7;">
+                    As a ${COMPANY_NAME} provider, please continue to follow all applicable professional, privacy, ESA / Fair Housing Act, and telehealth rules in the states you serve. Only complete cases you are professionally able and licensed to evaluate. If you are unsure about a case, decline it &mdash; we'd rather you pass than over-extend.
+                  </p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Support -->
+            <p style="margin:28px 0 6px;font-size:13px;color:#374151;line-height:1.7;">
+              Need help getting started? Reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};font-weight:700;text-decoration:none;">${SUPPORT_EMAIL}</a> &mdash; we're glad to walk you through the portal.
+            </p>
+            <p style="margin:18px 0 0;font-size:12px;color:#d1d5db;line-height:1.5;">If you did not expect this email, you can safely ignore it.</p>
           </td>
         </tr>
+
+        <!-- Footer -->
         <tr>
           <td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:18px 32px;text-align:center;">
             <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Questions? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:${ACCENT};text-decoration:none;">${SUPPORT_EMAIL}</a></p>
@@ -398,13 +483,85 @@ Deno.serve(async (req) => {
     const additionalStates = appRow.additional_states ? String(appRow.additional_states) : null;
     const bio = appRow.bio ? String(appRow.bio) : null;
     const headshotUrl = appRow.headshot_url ? String(appRow.headshot_url) : null;
+    // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: NPI is captured on the
+    // application form. Sync it into doctor_profiles.npi_number so the provider
+    // does not have to re-enter it from the portal. Only fill when missing on
+    // the existing profile (Path A) — never overwrite a provider self-edit.
+    const applicationNpi = appRow.npi
+      ? String(appRow.npi).trim().replace(/\D/g, "")
+      : "";
+    const applicationNpiOrNull = applicationNpi.length > 0 ? applicationNpi : null;
 
-    const licensedStateCodes = parseStatesToCodes(primaryStateName, additionalStates);
-    const title = deriveTitle(licenseTypes);
+    // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: structured licenses are the
+    // preferred source for provider sync when present. Falls back to the
+    // legacy single-state path for old applications that have no `licenses`
+    // jsonb. licensed_states is built from the unique state_code values;
+    // state_license_numbers is keyed by code; legacy doctor_profiles columns
+    // (license_number, title) are derived for backward compatibility.
+    type StructuredLicense = { state_code: string; credential: string; license_number: string };
+    const rawLicenses = (appRow as Record<string, unknown>).licenses;
+    const structuredLicenses: StructuredLicense[] = Array.isArray(rawLicenses)
+      ? (rawLicenses as Array<Record<string, unknown>>)
+          .map((l) => ({
+            state_code: String(l.state_code ?? "").trim().toUpperCase(),
+            credential: String(l.credential ?? "").trim(),
+            license_number: String(l.license_number ?? "").trim(),
+          }))
+          .filter((l) => l.state_code && l.credential && l.license_number)
+      : [];
 
-    const stateLicenseNumbers: Record<string, string> = {};
-    if (primaryStateName && licenseNumber) {
-      stateLicenseNumbers[primaryStateName] = licenseNumber;
+    let licensedStateCodes: string[];
+    let stateLicenseNumbers: Record<string, string> = {};
+    let title: string | null;
+    let licenseNumberForProfile: string | null;
+
+    if (structuredLicenses.length > 0) {
+      // Build canonical licensed_states from unique state codes.
+      licensedStateCodes = Array.from(new Set(structuredLicenses.map((l) => l.state_code)));
+      // Group by state code; collapse same-value rows; on conflict, keep the
+      // first non-empty value but log a warning so admin can review.
+      const byState = new Map<string, Set<string>>();
+      for (const l of structuredLicenses) {
+        const set = byState.get(l.state_code) ?? new Set<string>();
+        set.add(l.license_number);
+        byState.set(l.state_code, set);
+      }
+      for (const [code, values] of byState.entries()) {
+        const uniq = Array.from(values);
+        if (uniq.length === 1) {
+          stateLicenseNumbers[code] = uniq[0];
+        } else {
+          console.warn(
+            `[approve-provider-application] structured license conflict for ${appEmail} state=${code}: ${uniq.join(" / ")} — keeping first value, please review`,
+          );
+          stateLicenseNumbers[code] = uniq[0];
+        }
+      }
+      title = deriveTitle(structuredLicenses[0].credential) ?? structuredLicenses[0].credential ?? null;
+      licenseNumberForProfile = structuredLicenses[0].license_number;
+    } else {
+      // ── Legacy fallback path (pre-V2 applications) ────────────────────────
+      licensedStateCodes = parseStatesToCodes(primaryStateName, additionalStates);
+      title = deriveTitle(licenseTypes);
+      licenseNumberForProfile = licenseNumber;
+
+      // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: state_license_numbers
+      // must be keyed by canonical 2-letter state CODE (e.g. "VA"), not the
+      // full state NAME ("Virginia").
+      const primaryStateCode: string | null = (() => {
+        if (!primaryStateName) return null;
+        const trimmed = primaryStateName.trim();
+        if (!trimmed) return null;
+        if (STATE_NAME_TO_CODE[trimmed]) return STATE_NAME_TO_CODE[trimmed];
+        if (trimmed.length === 2) return trimmed.toUpperCase();
+        return licensedStateCodes[0] ?? null;
+      })();
+
+      if (primaryStateCode && licenseNumber) {
+        stateLicenseNumbers[primaryStateCode] = licenseNumber;
+      } else if (primaryStateName && licenseNumber) {
+        stateLicenseNumbers[primaryStateName] = licenseNumber;
+      }
     }
 
     const siteUrl = Deno.env.get("SITE_URL") ?? `https://${COMPANY_DOMAIN}`;
@@ -412,9 +569,11 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
 
     // ── Duplicate check: existing provider by email (case-insensitive) ───────
+    // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: also read npi_number so we
+    // can backfill it from the application without overwriting a self-edit.
     const { data: existingProfile, error: existingErr } = await adminClient
       .from("doctor_profiles")
-      .select("id, user_id, full_name")
+      .select("id, user_id, full_name, npi_number")
       .ilike("email", appEmail)
       .maybeSingle();
 
@@ -432,6 +591,22 @@ Deno.serve(async (req) => {
         console.log(`[approve-provider-application] Skipped activation email for ${appEmail} — auth user already confirmed (email_confirmed_at present).`);
       } else {
         emailSent = await sendProviderInviteEmail(appEmail, providerName, setupLink);
+      }
+
+      // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: backfill NPI on the
+      // existing doctor_profiles row only when it is null/empty. Best-effort —
+      // failure must NOT block the application link below.
+      const existingNpiRaw = (existingProfile as { npi_number?: string | null }).npi_number;
+      const existingNpi = existingNpiRaw ? String(existingNpiRaw).trim() : "";
+      if (applicationNpiOrNull && existingNpi.length === 0) {
+        try {
+          await adminClient
+            .from("doctor_profiles")
+            .update({ npi_number: applicationNpiOrNull })
+            .eq("id", existingProfile.id);
+        } catch (npiErr) {
+          console.warn("[approve-provider-application] NPI backfill failed (non-fatal):", npiErr);
+        }
       }
 
       const { error: linkAppErr } = await adminClient
@@ -536,6 +711,8 @@ Deno.serve(async (req) => {
     }
 
     // Insert doctor_profiles with Step 1 lifecycle columns + initial license info.
+    // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: seed npi_number from the
+    // application so the provider doesn't have to re-enter it in the portal.
     const { data: insertedProfile, error: profileErr } = await adminClient
       .from("doctor_profiles")
       .insert({
@@ -544,9 +721,12 @@ Deno.serve(async (req) => {
         email: appEmail,
         phone,
         title,
-        license_number: licenseNumber,
+        // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: derived from the first
+        // structured row when present, falls back to legacy license_number.
+        license_number: licenseNumberForProfile,
         licensed_states: licensedStateCodes,
         state_license_numbers: Object.keys(stateLicenseNumbers).length > 0 ? stateLicenseNumbers : null,
+        npi_number: applicationNpiOrNull,
         bio,
         photo_url: headshotUrl,
         is_admin: false,

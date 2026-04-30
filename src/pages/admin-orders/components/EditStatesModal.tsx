@@ -2,6 +2,7 @@
 // License numbers are tied to states here so they stay in sync
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { normalizeStateToCode, US_STATE_CODE_TO_NAME } from "../../../lib/usStates";
 
 const US_STATES: { name: string; abbr: string; region: string }[] = [
   { name: "Alabama", abbr: "AL", region: "Southeast" },
@@ -75,8 +76,28 @@ interface EditStatesModalProps {
 
 type ViewMode = "grid" | "licenses";
 
+// OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: convert any legacy stored
+// value (a 2-letter code OR a full name) into the modal's canonical UI form,
+// which is FULL STATE NAME (US_STATES grid + checkboxes are name-keyed).
+// Returns null when the value is not a recognizable state.
+function legacyToFullName(raw: string | null | undefined): string | null {
+  const code = normalizeStateToCode(raw ?? null);
+  if (!code) return null;
+  return US_STATE_CODE_TO_NAME[code] ?? null;
+}
+
 export default function EditStatesModal({ doctor, onClose, onSaved }: EditStatesModalProps) {
-  const [selected, setSelected] = useState<string[]>([...doctor.currentStates]);
+  // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: doctor.currentStates may
+  // contain mixed legacy values (codes, names, or both for the same state due
+  // to historical drift). Normalize on mount so the UI checkboxes (which match
+  // by full name) reflect the actual licensed states regardless of stored form.
+  const [selected, setSelected] = useState<string[]>(() =>
+    Array.from(new Set(
+      doctor.currentStates
+        .map(legacyToFullName)
+        .filter((n): n is string => !!n)
+    ))
+  );
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -155,16 +176,27 @@ export default function EditStatesModal({ doctor, onClose, onSaved }: EditStates
       const licenseStateNames = Object.keys(cleanedLicenses)
         .map((abbr) => US_STATES.find((s) => s.abbr === abbr)?.name)
         .filter((name): name is string => !!name);
-      const finalStates = Array.from(new Set([...selected, ...licenseStateNames]));
+      const finalStateNames = Array.from(new Set([...selected, ...licenseStateNames]));
+
+      // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: write canonical
+      // 2-letter state codes to doctor_profiles.licensed_states and
+      // doctor_contacts.licensed_states. cleanedLicenses is already keyed by
+      // codes (via US_STATES.find(s => s.abbr === abbr) above), so only the
+      // arrays need conversion. UI continues to display full names.
+      const finalStateCodes = Array.from(new Set(
+        finalStateNames
+          .map((n) => normalizeStateToCode(n))
+          .filter((c): c is string => !!c)
+      ));
 
       const updates: Promise<unknown>[] = [];
 
       if (doctor.contactId) {
-        updates.push(supabase.from("doctor_contacts").update({ licensed_states: finalStates }).eq("id", doctor.contactId));
+        updates.push(supabase.from("doctor_contacts").update({ licensed_states: finalStateCodes }).eq("id", doctor.contactId));
       }
       if (doctor.profileId) {
         updates.push(supabase.from("doctor_profiles").update({
-          licensed_states: finalStates,
+          licensed_states: finalStateCodes,
           state_license_numbers: Object.keys(cleanedLicenses).length > 0 ? cleanedLicenses : null,
         }).eq("id", doctor.profileId));
       }
@@ -172,7 +204,7 @@ export default function EditStatesModal({ doctor, onClose, onSaved }: EditStates
       const results = await Promise.all(updates);
       const anyError = results.find((r: unknown) => (r as { error?: { message: string } })?.error);
       if (anyError) throw new Error((anyError as { error: { message: string } }).error.message);
-      onSaved(doctor.name, finalStates.length);
+      onSaved(doctor.name, finalStateCodes.length);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save. Please try again.");
     }

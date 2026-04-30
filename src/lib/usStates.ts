@@ -118,3 +118,128 @@ export function normalizeStateToCode(raw: string | null | undefined): string | n
 
   return null;
 }
+
+// OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: shared display helpers
+// for collapsing legacy mixed state/license storage at render time.
+// These helpers MUST NOT touch persisted data — they are read-only.
+
+/**
+ * One displayable licensed-state entry, deduped by canonical 2-letter code.
+ * `rawValues` keeps the original strings (codes, full names, mixed) so
+ * downstream UI can still react to either form when needed.
+ */
+export interface DisplayState {
+  code: string;       // e.g. "VA"
+  label: string;      // e.g. "Virginia"
+  rawValues: string[]; // every original string that mapped to `code`
+}
+
+/**
+ * Normalize an array of stored licensed_states into a deduped, code-keyed
+ * display list. Unmappable entries are kept under `rawValues` of a
+ * pseudo-row whose `code === null` semantically — but to keep the return
+ * type uniform, we surface them as their own entries with code = the raw
+ * upper-cased value and label = the raw value. They will simply not match
+ * the canonical state list. Caller can detect them via `code` not being a
+ * real US state code.
+ */
+export function normalizeStateListForDisplay(
+  raw: ReadonlyArray<string | null | undefined> | null | undefined,
+): DisplayState[] {
+  if (!raw || raw.length === 0) return [];
+  const byCode = new Map<string, DisplayState>();
+  const unmapped: DisplayState[] = [];
+  for (const value of raw) {
+    if (value === null || value === undefined) continue;
+    const trimmed = String(value).trim();
+    if (!trimmed) continue;
+    const code = normalizeStateToCode(trimmed);
+    if (code) {
+      const existing = byCode.get(code);
+      if (existing) {
+        if (!existing.rawValues.includes(trimmed)) existing.rawValues.push(trimmed);
+      } else {
+        byCode.set(code, {
+          code,
+          label: US_STATE_CODE_TO_NAME[code] ?? trimmed,
+          rawValues: [trimmed],
+        });
+      }
+    } else {
+      // Preserve unmappable values in the order they arrived.
+      const fallbackKey = trimmed.toUpperCase();
+      const existing = unmapped.find((u) => u.code === fallbackKey);
+      if (existing) {
+        if (!existing.rawValues.includes(trimmed)) existing.rawValues.push(trimmed);
+      } else {
+        unmapped.push({ code: fallbackKey, label: trimmed, rawValues: [trimmed] });
+      }
+    }
+  }
+  // Stable order: alphabetic by label for the canonical entries, then
+  // unmapped in insertion order.
+  const canonical = Array.from(byCode.values()).sort((a, b) => a.label.localeCompare(b.label));
+  return [...canonical, ...unmapped];
+}
+
+/**
+ * One displayable license row — keyed by canonical state code, with the
+ * underlying license number(s) consolidated. When two legacy keys (e.g.
+ * "VA" and "Virginia") point to the SAME license number, the row collapses
+ * to a single entry. When they point to DIFFERENT numbers, `conflict` is
+ * true and `licenseNumbers` lists every distinct value so callers can
+ * surface it without silently losing data.
+ */
+export interface DisplayLicense {
+  code: string;             // canonical 2-letter code OR raw upper-cased fallback
+  label: string;            // full state name OR raw value
+  licenseNumber: string;    // primary value (first non-empty seen)
+  licenseNumbers: string[]; // every distinct license value seen for this code
+  conflict: boolean;        // true when more than one distinct license value exists
+  rawKeys: string[];        // the original key strings that mapped to `code`
+}
+
+/**
+ * Normalize a stored state_license_numbers JSON object (keyed by codes,
+ * full names, or both) into a deduped, code-keyed display list.
+ * Empty / whitespace-only license values are skipped.
+ */
+export function normalizeLicenseMapForDisplay(
+  raw: Record<string, string | null | undefined> | null | undefined,
+): DisplayLicense[] {
+  if (!raw) return [];
+  const byCode = new Map<string, DisplayLicense>();
+  const unmapped: DisplayLicense[] = [];
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === null || k === undefined) continue;
+    const keyTrimmed = String(k).trim();
+    if (!keyTrimmed) continue;
+    const valTrimmed = (v ?? "").toString().trim();
+    if (!valTrimmed) continue;
+    const code = normalizeStateToCode(keyTrimmed);
+    const targetCode = code ?? keyTrimmed.toUpperCase();
+    const targetLabel = code ? (US_STATE_CODE_TO_NAME[code] ?? keyTrimmed) : keyTrimmed;
+    const bucket = code ? byCode : null;
+    let existing: DisplayLicense | undefined;
+    if (bucket) existing = bucket.get(targetCode);
+    else existing = unmapped.find((u) => u.code === targetCode);
+    if (existing) {
+      if (!existing.rawKeys.includes(keyTrimmed)) existing.rawKeys.push(keyTrimmed);
+      if (!existing.licenseNumbers.includes(valTrimmed)) existing.licenseNumbers.push(valTrimmed);
+      existing.conflict = existing.licenseNumbers.length > 1;
+    } else {
+      const row: DisplayLicense = {
+        code: targetCode,
+        label: targetLabel,
+        licenseNumber: valTrimmed,
+        licenseNumbers: [valTrimmed],
+        conflict: false,
+        rawKeys: [keyTrimmed],
+      };
+      if (bucket) bucket.set(targetCode, row);
+      else unmapped.push(row);
+    }
+  }
+  const canonical = Array.from(byCode.values()).sort((a, b) => a.label.localeCompare(b.label));
+  return [...canonical, ...unmapped];
+}

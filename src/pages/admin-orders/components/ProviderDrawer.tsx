@@ -3,6 +3,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import ImpersonateProviderView from "./ImpersonateProviderView";
+import { normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay, US_STATE_CODE_TO_NAME } from "../../../lib/usStates";
+
+// OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: helper used by every
+// outbound call in this drawer that re-saves an existing licensed_states
+// array. Prevents legacy full-name entries from being persisted again on
+// resend-invite / copy-invite-link / create-portal flows.
+function toStateCodes(raw: string[] | null | undefined): string[] {
+  if (!raw || raw.length === 0) return [];
+  return Array.from(new Set(
+    raw
+      .map((s) => normalizeStateToCode(s))
+      .filter((c): c is string => !!c)
+  ));
+}
 
 type AvailabilityStatus = "active" | "at_capacity" | "inactive";
 
@@ -246,7 +260,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     } else if (doc.profile) {
       updates.push(supabase.from("doctor_contacts").upsert({
         full_name: form.full_name, email: doc.email.toLowerCase(),
-        phone: form.phone || null, licensed_states: doc.profile.licensed_states ?? [],
+        phone: form.phone || null, licensed_states: toStateCodes(doc.profile.licensed_states),
         is_active: doc.profile.is_active, notes: form.notes || null, per_order_rate: safeRate,
       }, { onConflict: "email" }));
     }
@@ -334,7 +348,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
         body: JSON.stringify({
           email: doc.email, full_name: doc.name,
           phone: doc.profile?.phone ?? doc.contact?.phone ?? null,
-          licensed_states: doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? [],
+          licensed_states: toStateCodes(doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? []),
           per_order_rate: doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null,
         }),
       });
@@ -369,7 +383,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
         body: JSON.stringify({
           email: doc.email, full_name: doc.name,
           phone: doc.profile?.phone ?? doc.contact?.phone ?? null,
-          licensed_states: doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? [],
+          licensed_states: toStateCodes(doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? []),
           per_order_rate: doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null,
         }),
       });
@@ -420,7 +434,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
           email: doc.email,
           full_name: doc.name,
           phone: doc.contact?.phone ?? null,
-          licensed_states: doc.contact?.licensed_states ?? [],
+          licensed_states: toStateCodes(doc.contact?.licensed_states ?? []),
           per_order_rate: doc.contact?.per_order_rate ?? null,
           bio: doc.contact?.notes ?? null,
         }),
@@ -448,7 +462,10 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const availabilityStatus: AvailabilityStatus = (doc?.profile?.availability_status ?? doc?.contact?.availability_status ?? (doc?.profile?.is_active !== false && doc?.contact?.is_active !== false ? "active" : "inactive")) as AvailabilityStatus;
   const isActive = availabilityStatus !== "inactive";
   const isPendingSetup = !!doc?.profile && pendingSetupIds.has(doc.profile.user_id);
-  const states = doc?.contact?.licensed_states ?? doc?.profile?.licensed_states ?? [];
+  // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe licensed states
+  // for display so legacy ["VA", "Virginia"] renders one badge.
+  const rawStates = doc?.contact?.licensed_states ?? doc?.profile?.licensed_states ?? [];
+  const displayStates = normalizeStateListForDisplay(rawStates);
   const currentRate = doc?.profile?.per_order_rate ?? doc?.contact?.per_order_rate ?? null;
   const estimatedEarnings = currentRate != null && doc ? currentRate * doc.workload.completed : null;
   const total = doc ? doc.workload.active + doc.workload.completed : 0;
@@ -458,7 +475,11 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const availCfg = AVAIL_CONFIG[availabilityStatus];
 
   // Get existing state licenses for view mode
-  const existingStateLicenses = objToStateLicenses(doc?.profile?.state_license_numbers ?? null);
+  // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: deduplicate by canonical
+  // code so { "VA": "123", "Virginia": "123" } renders as one row, and a
+  // conflict ({ "VA": "123", "Virginia": "999" }) is surfaced visibly via the
+  // `conflict` flag on each row.
+  const existingStateLicenses = normalizeLicenseMapForDisplay(doc?.profile?.state_license_numbers ?? null);
 
   return (
     <>
@@ -670,10 +691,21 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                         <div className="pt-2 border-t border-gray-100">
                           <p className="text-xs font-bold text-gray-500 mb-2">State License Numbers</p>
                           <div className="space-y-1.5">
-                            {existingStateLicenses.map(({ state, license_number }) => (
-                              <div key={state} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg px-3 py-1.5">
-                                <span className="text-xs font-bold text-gray-600 uppercase w-8 flex-shrink-0">{state}</span>
-                                <span className="text-xs font-mono text-gray-700 flex-1 text-right">{license_number}</span>
+                            {existingStateLicenses.map((row) => (
+                              <div
+                                key={row.code}
+                                title={row.rawKeys.length > 1 ? `Stored under: ${row.rawKeys.join(", ")}` : undefined}
+                                className={`flex items-center justify-between gap-3 rounded-lg px-3 py-1.5 ${row.conflict ? "bg-amber-50 border border-amber-200" : "bg-gray-50"}`}
+                              >
+                                <span className="text-xs font-bold text-gray-600 uppercase w-8 flex-shrink-0">{row.code}</span>
+                                <span className="text-xs font-mono text-gray-700 flex-1 text-right">
+                                  {row.conflict ? row.licenseNumbers.join(" / ") : row.licenseNumber}
+                                  {row.conflict && (
+                                    <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold text-amber-700">
+                                      <i className="ri-error-warning-line"></i>conflict
+                                    </span>
+                                  )}
+                                </span>
                               </div>
                             ))}
                           </div>
@@ -700,20 +732,28 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                 {/* Licensed States */}
                 <div className="border-t border-gray-100 pt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Licensed States <span className="text-[#3b6ea5] font-extrabold ml-1">{states.length}</span></p>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Licensed States <span className="text-[#3b6ea5] font-extrabold ml-1">{displayStates.length}</span></p>
                     <button type="button" onClick={() => onOpenStates(doc)}
                       className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors">
                       <i className="ri-map-pin-add-line"></i>Manage States
                     </button>
                   </div>
-                  {states.length === 0 ? (
+                  {displayStates.length === 0 ? (
                     <p className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">No licensed states — provider cannot receive case assignments.</p>
                   ) : (
                     <div className="flex flex-wrap gap-1">
-                      {states.map((s) => {
-                        const abbr = US_STATES_ABBR.find((u) => u.name === s)?.abbr ?? s;
-                        return <span key={s} className="px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4] rounded-full text-xs font-semibold">{abbr}</span>;
-                      })}
+                      {/* OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: render one
+                          deduped badge per canonical state; tooltip shows raw stored
+                          values when more than one form was saved historically. */}
+                      {displayStates.map((s) => (
+                        <span
+                          key={s.code}
+                          title={s.rawValues.length > 1 ? `Stored as: ${s.rawValues.join(", ")}` : s.label}
+                          className="px-2 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4] rounded-full text-xs font-semibold"
+                        >
+                          {US_STATE_CODE_TO_NAME[s.code] ? s.code : s.label}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>

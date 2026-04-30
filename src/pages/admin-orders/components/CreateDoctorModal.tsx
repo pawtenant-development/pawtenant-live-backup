@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { normalizeStateToCode } from "../../../lib/usStates";
 
 const US_STATES: { name: string; abbr: string }[] = [
   { name: "Alabama", abbr: "AL" }, { name: "Alaska", abbr: "AK" },
@@ -79,6 +80,15 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
       if (!token) throw new Error("Not authenticated. Please refresh and try again.");
 
       const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: convert the modal's
+      // full-state-name selection to canonical 2-letter codes before sending
+      // to create-provider, so doctor_profiles.licensed_states and
+      // doctor_contacts.licensed_states are stored as codes only.
+      const licensedStateCodes = Array.from(new Set(
+        selectedStates
+          .map((n) => normalizeStateToCode(n))
+          .filter((c): c is string => !!c)
+      ));
       // Uses create-provider — the provider-specific endpoint.
       // This endpoint NEVER touches team-member creation logic.
       const res = await fetch(`${supabaseUrl}/functions/v1/create-provider`, {
@@ -92,7 +102,7 @@ export default function CreateDoctorModal({ onClose, onCreated }: CreateDoctorMo
           full_name: form.full_name.trim(),
           title: form.title.trim() || null,
           phone: form.phone.trim() || null,
-          licensed_states: selectedStates.length > 0 ? selectedStates : [],
+          licensed_states: licensedStateCodes,
           bio: form.bio.trim() || null,
           per_order_rate: (rateValue != null && !isNaN(rateValue) && rateValue >= 0) ? rateValue : null,
           license_number: form.license_number.trim() || null,

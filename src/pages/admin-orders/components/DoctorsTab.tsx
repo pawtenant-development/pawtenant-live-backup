@@ -7,7 +7,7 @@ import DeleteProviderModal from "./DeleteProviderModal";
 import ProviderApplicationModal from "./ProviderApplicationModal";
 import ProviderDrawer from "./ProviderDrawer";
 import { canDelete, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
-import { US_STATES, normalizeStateToCode } from "../../../lib/usStates";
+import { US_STATES, normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay } from "../../../lib/usStates";
 
 type AvailabilityStatus = "active" | "at_capacity" | "inactive";
 
@@ -275,12 +275,19 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
       "Active Cases","Completed Cases","Status","Portal","Member Since"
     ];
     const rows = doctors.map((doc) => {
-      const states = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
+      // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe state badges
+      // and license rows for the CSV so legacy mixed values (e.g. ["VA",
+      // "Virginia"]) export as a single canonical row each.
+      const rawStates = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
+      const displayStates = normalizeStateListForDisplay(rawStates);
       const isActive = doc.profile ? doc.profile.is_active !== false : doc.contact?.is_active !== false;
       const rate = doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null;
       const npi = (doc.profile as unknown as { npi_number?: string | null })?.npi_number ?? "";
       const stateLicenses = (doc.profile as unknown as { state_license_numbers?: Record<string, string> | null })?.state_license_numbers ?? {};
-      const stateLicensesStr = Object.entries(stateLicenses).map(([s, l]) => `${s}:${l}`).join(" | ");
+      const displayLicenses = normalizeLicenseMapForDisplay(stateLicenses);
+      const stateLicensesStr = displayLicenses
+        .map((row) => `${row.code}:${row.licenseNumbers.join("/")}${row.conflict ? "*" : ""}`)
+        .join(" | ");
       return [
         doc.name, doc.email,
         doc.contact?.phone ?? doc.profile?.phone ?? "",
@@ -288,8 +295,8 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
         npi,
         stateLicensesStr,
         rate != null ? String(rate) : "",
-        states.join("; "),
-        String(states.length),
+        displayStates.map((s) => s.label).join("; "),
+        String(displayStates.length),
         String(doc.workload.active),
         String(doc.workload.completed),
         isActive ? "Active" : "Inactive",
@@ -308,9 +315,12 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
   };
 
   // ── Derived: available states for filter dropdown ──
-  const allStatesInRoster = Array.from(
-    new Set(doctors.flatMap((d) => d.contact?.licensed_states ?? d.profile?.licensed_states ?? []))
-  ).sort();
+  // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe entries by code so
+  // legacy mixed "VA"/"Virginia" produces a single dropdown entry.
+  const allStatesInRoster = (() => {
+    const flat = doctors.flatMap((d) => d.contact?.licensed_states ?? d.profile?.licensed_states ?? []);
+    return normalizeStateListForDisplay(flat).map((s) => s.label).sort();
+  })();
 
   // ── Derived: missing-state coverage banner ──
   // A state counts as covered iff at least one provider:
@@ -568,7 +578,12 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
       ) : (
         <div className="space-y-1.5">
           {filteredDoctors.map((doc) => {
-            const states = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
+            // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe by code so
+            // legacy ["VA", "Virginia"] renders one entry. Display label uses
+            // full state name; rawValues retained for callers that still need them.
+            const rawStates = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
+            const displayStates = normalizeStateListForDisplay(rawStates);
+            const states = displayStates.map((s) => s.label);
             const initials = doc.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
             const availStatus: AvailabilityStatus = (doc.profile?.availability_status ?? doc.contact?.availability_status ?? (doc.profile?.is_active !== false ? "active" : "inactive")) as AvailabilityStatus;
             const isActive = availStatus !== "inactive";

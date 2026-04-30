@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { supabase } from "../../lib/supabaseClient";
+import { US_STATES, US_STATE_CODE_TO_NAME } from "../../lib/usStates";
 
 const licenseTypes = [
   "Licensed Clinical Social Worker (LCSW)",
@@ -120,9 +121,38 @@ const faqs = [
   },
 ];
 
+// OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: structured license row shape used
+// by the form. State is stored internally as a 2-letter code so the persisted
+// `licenses` jsonb is canonical from the start.
+interface LicenseRow {
+  id: string;          // local-only React key
+  state_code: string;  // "" until selected, then 2-letter UPPER
+  credential: string;  // free choice from CREDENTIAL_OPTIONS
+  license_number: string;
+}
+
+const CREDENTIAL_OPTIONS = [
+  "LCSW", "LPC", "LMFT", "LMHC", "Psychologist", "Psychiatrist", "Other",
+];
+
+function newLicenseRow(): LicenseRow {
+  return {
+    id: typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `lic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    state_code: "",
+    credential: "",
+    license_number: "",
+  };
+}
+
 export default function JoinOurNetworkPage() {
   const [selectedSpecs, setSelectedSpecs] = useState<string[]>([]);
   const [selectedLicenses, setSelectedLicenses] = useState<string[]>([]);
+  // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: repeatable license rows. Always
+  // contains at least one row; the user cannot remove the last row.
+  const [licenseRows, setLicenseRows] = useState<LicenseRow[]>(() => [newLicenseRow()]);
+  const [licenseRowsError, setLicenseRowsError] = useState<string>("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -189,6 +219,30 @@ export default function JoinOurNetworkPage() {
     return data.publicUrl;
   };
 
+  // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: license-row mutators. Rows are
+  // identified by a stable local id so React can re-render correctly while
+  // the user adds/removes entries.
+  const addLicenseRow = () => {
+    setLicenseRowsError("");
+    // Don't let the user pile up empty duplicates: only add a new row when the
+    // last existing one has at least started to be filled.
+    setLicenseRows((rows) => {
+      const last = rows[rows.length - 1];
+      if (last && !last.state_code && !last.credential && !last.license_number) {
+        return rows;
+      }
+      return [...rows, newLicenseRow()];
+    });
+  };
+  const removeLicenseRow = (id: string) => {
+    setLicenseRowsError("");
+    setLicenseRows((rows) => (rows.length <= 1 ? rows : rows.filter((r) => r.id !== id)));
+  };
+  const updateLicenseRow = (id: string, patch: Partial<LicenseRow>) => {
+    setLicenseRowsError("");
+    setLicenseRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
   const validateRequiredFields = (form: HTMLFormElement): Record<string, string> => {
     const errors: Record<string, string> = {};
     const fd = new FormData(form);
@@ -197,8 +251,6 @@ export default function JoinOurNetworkPage() {
     const email = ((fd.get("email") as string) ?? "").trim();
     const phoneRaw = ((fd.get("phone") as string) ?? "").trim();
     const npi = ((fd.get("npi") as string) ?? "").trim();
-    const licenseState = ((fd.get("licenseState") as string) ?? "").trim();
-    const licenseNumber = ((fd.get("licenseNumber") as string) ?? "").trim();
 
     if (firstName.length < 1) errors.firstName = "First name is required.";
     if (lastName.length < 1) errors.lastName = "Last name is required.";
@@ -206,10 +258,91 @@ export default function JoinOurNetworkPage() {
     const phoneDigits = phoneRaw.replace(/\D/g, "");
     if (phoneDigits.length < 10) errors.phone = "Enter a valid phone number (at least 10 digits).";
     if (!/^\d{10}$/.test(npi)) errors.npi = "NPI must be exactly 10 digits.";
-    if (!licenseState) errors.licenseState = "Please select your primary licensed state.";
-    if (licenseNumber.length < 1) errors.licenseNumber = "License number is required.";
+
+    // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: replace single license_state /
+    // license_number validation with structured license rows. At least one
+    // complete row required. Every populated row must have state, credential,
+    // and license number. Duplicate (state, credential) pairs are rejected so
+    // applicants don't double-enter the same credential for the same state.
+    const completedRows = licenseRows.filter(
+      (r) => r.state_code && r.credential && r.license_number.trim(),
+    );
+    if (completedRows.length === 0) {
+      errors.licenseRows = "Please add at least one license (state, credential, and license number).";
+    } else {
+      const incomplete = licenseRows.find(
+        (r) => (r.state_code || r.credential || r.license_number) &&
+               (!r.state_code || !r.credential || !r.license_number.trim()),
+      );
+      if (incomplete) {
+        errors.licenseRows = "Every license row needs state, credential, and license number.";
+      } else {
+        const seen = new Set<string>();
+        for (const r of completedRows) {
+          const key = `${r.state_code}|${r.credential}`;
+          if (seen.has(key)) {
+            errors.licenseRows = "Each (state, credential) combination can only appear once.";
+            break;
+          }
+          seen.add(key);
+        }
+      }
+    }
+
+    // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: enforce all three agreement
+    // checkboxes via custom validation (the form has noValidate, so the
+    // `required` attribute alone does not block submit). FormData reports a
+    // checkbox value as "on" only when checked.
+    const agreeCredentials = fd.get("agreeCredentials") === "on";
+    const agreeHipaa       = fd.get("agreeHipaa") === "on";
+    const agreeTerms       = fd.get("agreeTerms") === "on";
+    if (!agreeCredentials) errors.agreeCredentials = "Please confirm your active, unrestricted license.";
+    if (!agreeHipaa)       errors.agreeHipaa       = "Please agree to maintain HIPAA compliance.";
+    if (!agreeTerms)       errors.agreeTerms       = "Please accept the Terms of Use and Privacy Policy.";
+
     return errors;
   };
+
+  // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: lightweight client-side
+  // attribution capture. Read once on mount so a later URL change (e.g. from
+  // routing/state) doesn't lose the original landing context. document.referrer
+  // is also captured here because some browsers clear it after navigation.
+  type ProviderAttribution = {
+    utm_source: string | null;
+    utm_medium: string | null;
+    utm_campaign: string | null;
+    utm_term: string | null;
+    utm_content: string | null;
+    gclid: string | null;
+    fbclid: string | null;
+    referrer: string | null;
+    landing_url: string | null;
+  };
+  const attributionRef = useRef<ProviderAttribution>({
+    utm_source: null, utm_medium: null, utm_campaign: null, utm_term: null,
+    utm_content: null, gclid: null, fbclid: null, referrer: null, landing_url: null,
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const get = (k: string) => {
+        const v = params.get(k);
+        return v && v.trim() !== "" ? v.trim() : null;
+      };
+      attributionRef.current = {
+        utm_source:   get("utm_source"),
+        utm_medium:   get("utm_medium"),
+        utm_campaign: get("utm_campaign"),
+        utm_term:     get("utm_term"),
+        utm_content:  get("utm_content"),
+        gclid:        get("gclid"),
+        fbclid:       get("fbclid"),
+        referrer:     (document.referrer && document.referrer !== "" ? document.referrer : null),
+        landing_url:  window.location.href,
+      };
+    } catch { /* attribution is best-effort, never block submit */ }
+  }, []);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -218,6 +351,10 @@ export default function JoinOurNetworkPage() {
     const errors = validateRequiredFields(form);
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: surface licenseRows error
+      // separately because the rows are React-controlled (no name= input
+      // present in the form for `firstName`-style scrolling).
+      if (errors.licenseRows) setLicenseRowsError(errors.licenseRows);
       const firstKey = Object.keys(errors)[0];
       const el = form.querySelector(`[name='${firstKey}']`) as HTMLElement | null;
       if (el) {
@@ -225,10 +362,15 @@ export default function JoinOurNetworkPage() {
         if (typeof (el as HTMLInputElement).focus === "function") {
           (el as HTMLInputElement).focus({ preventScroll: true });
         }
+      } else if (errors.licenseRows) {
+        // Fallback scroll when the offender is the license-rows section.
+        const sec = form.querySelector("[data-section='license-rows']") as HTMLElement | null;
+        if (sec) sec.scrollIntoView({ behavior: "smooth", block: "center" });
       }
       return;
     }
     setFieldErrors({});
+    setLicenseRowsError("");
 
     const textarea = form.querySelector("textarea[name='bio']") as HTMLTextAreaElement;
     if (textarea && textarea.value.length > 500) {
@@ -261,16 +403,51 @@ export default function JoinOurNetworkPage() {
     const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
     const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
+    // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: at this point all three
+    // agreements have been validated as checked, so we can record the audit
+    // timestamp and the boolean fields. agreements_ip is intentionally left
+    // null for now — capturing IP requires a backend hop and is deferred to a
+    // later phase.
+    const agreeCredentials = formData.get("agreeCredentials") === "on";
+    const agreeHipaa       = formData.get("agreeHipaa") === "on";
+    const agreeTerms       = formData.get("agreeTerms") === "on";
+    const allAgreed = agreeCredentials && agreeHipaa && agreeTerms;
+    const attribution = attributionRef.current;
+
+    // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: build the structured licenses
+    // array (canonical state codes only) AND derive legacy fields from the
+    // first / unique values so existing admin review surfaces and approvals
+    // for old applications keep working until everything moves over.
+    const completedLicenses = licenseRows
+      .filter((r) => r.state_code && r.credential && r.license_number.trim())
+      .map((r) => ({
+        state_code: r.state_code.toUpperCase(),
+        credential: r.credential,
+        license_number: r.license_number.trim(),
+      }));
+    const primaryLicense = completedLicenses[0] ?? null;
+    const legacyPrimaryStateName = primaryLicense ? (US_STATE_CODE_TO_NAME[primaryLicense.state_code] ?? primaryLicense.state_code) : null;
+    const legacyAdditionalStates = completedLicenses
+      .slice(1)
+      .map((r) => US_STATE_CODE_TO_NAME[r.state_code] ?? r.state_code)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .join(", ");
+    const legacyLicenseTypes = Array.from(new Set(completedLicenses.map((r) => r.credential))).join(", ");
+
     const appPayload = {
       first_name: (formData.get("firstName") as string) ?? "",
       last_name: (formData.get("lastName") as string) ?? "",
       email: (formData.get("email") as string) ?? "",
       phone: (formData.get("phone") as string) || null,
       npi: (formData.get("npi") as string) || null,
-      license_types: selectedLicenses.join(", ") || null,
-      license_number: (formData.get("licenseNumber") as string) || null,
-      license_state: (formData.get("licenseState") as string) || null,
-      additional_states: (formData.get("additionalStates") as string) || null,
+      // Legacy compatibility fields (kept populated from licenseRows so
+      // legacy approval / admin review paths keep working).
+      license_types:     legacyLicenseTypes || (selectedLicenses.join(", ") || null),
+      license_number:    primaryLicense?.license_number ?? null,
+      license_state:     legacyPrimaryStateName,
+      additional_states: legacyAdditionalStates || null,
+      // Structured V2
+      licenses:          completedLicenses.length > 0 ? completedLicenses : null,
       years_experience: (formData.get("yearsExperience") as string) || null,
       practice_name: (formData.get("practiceName") as string) || null,
       practice_type: (formData.get("practiceType") as string) || null,
@@ -283,6 +460,21 @@ export default function JoinOurNetworkPage() {
       headshot_url: headshotUrl,
       documents_urls: docUrls.length > 0 ? docUrls : null,
       status: "pending",
+      // Agreement audit (Phase 1)
+      agree_credentials: agreeCredentials,
+      agree_hipaa:       agreeHipaa,
+      agree_terms:       agreeTerms,
+      agreements_at:     allAgreed ? new Date().toISOString() : null,
+      // Attribution (Phase 1)
+      utm_source:   attribution.utm_source,
+      utm_medium:   attribution.utm_medium,
+      utm_campaign: attribution.utm_campaign,
+      utm_term:     attribution.utm_term,
+      utm_content:  attribution.utm_content,
+      gclid:        attribution.gclid,
+      fbclid:       attribution.fbclid,
+      referrer:     attribution.referrer,
+      landing_url:  attribution.landing_url,
     };
 
     const ghlPayload = {
@@ -296,6 +488,10 @@ export default function JoinOurNetworkPage() {
       licenseNumber: appPayload.license_number ?? "",
       licenseState: appPayload.license_state ?? "",
       additionalStates: appPayload.additional_states ?? "",
+      // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: forward structured rows so
+      // GHL workflows can segment by state/credential. provider_applications
+      // remains the source of truth.
+      licenses: appPayload.licenses ?? [],
       yearsExperience: appPayload.years_experience ?? "",
       practiceName: appPayload.practice_name ?? "",
       practiceType: appPayload.practice_type ?? "",
@@ -307,6 +503,18 @@ export default function JoinOurNetworkPage() {
       leadSource: "Therapist Network Application",
       submittedAt: new Date().toISOString(),
       tags: ["Therapist Application", "Doctor Lead", "Pending Review"],
+      // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: forward attribution to the
+      // network webhook target so GHL can segment provider leads by source.
+      // provider_applications remains the source of truth.
+      utmSource:   attribution.utm_source ?? "",
+      utmMedium:   attribution.utm_medium ?? "",
+      utmCampaign: attribution.utm_campaign ?? "",
+      utmTerm:     attribution.utm_term ?? "",
+      utmContent:  attribution.utm_content ?? "",
+      gclid:       attribution.gclid ?? "",
+      fbclid:      attribution.fbclid ?? "",
+      referrer:    attribution.referrer ?? "",
+      landingUrl:  attribution.landing_url ?? "",
     };
 
     const emailPayload = {
@@ -631,43 +839,89 @@ export default function JoinOurNetworkPage() {
                   Professional Credentials
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">License Type <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(select all that apply)</span></label>
-                    {selectedLicenses.length === 0 && (
-                      <p className="text-xs text-red-400 mb-2">Please select at least one license type</p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      {licenseTypes.map((lt) => {
-                        const selected = selectedLicenses.includes(lt);
-                        return (
-                          <button
-                            key={lt}
-                            type="button"
-                            onClick={() => toggleLicense(lt)}
-                            className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer border ${
-                              selected
-                                ? "bg-orange-500 text-white border-orange-500"
-                                : "bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-600"
-                            }`}
-                          >
-                            {selected && <i className="ri-check-line mr-1 text-xs"></i>}
-                            {lt}
-                          </button>
-                        );
-                      })}
+                  {/* OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: structured
+                      repeatable license rows replace the legacy License Type
+                      chips + single License Number + Primary State + Additional
+                      States inputs. Each row captures (state, credential,
+                      license number) so we can persist and approve
+                      multi-state providers correctly. */}
+                  <div className="col-span-2" data-section="license-rows">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-semibold text-gray-700">
+                        Licenses <span className="text-red-400">*</span>
+                        <span className="font-normal text-gray-400 ml-1">(state, credential, license number per row)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={addLicenseRow}
+                        className="whitespace-nowrap inline-flex items-center gap-1 px-3 py-1 rounded-lg border border-orange-200 bg-orange-50 text-orange-700 text-xs font-bold hover:bg-orange-100 cursor-pointer transition-colors"
+                      >
+                        <i className="ri-add-line"></i>Add License
+                      </button>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">License Number <span className="text-red-400">*</span></label>
-                    <input
-                      type="text"
-                      name="licenseNumber"
-                      required
-                      placeholder="e.g. LCSW-12345"
-                      onChange={() => clearFieldError("licenseNumber")}
-                      className={`${inputBase} ${fieldErrors.licenseNumber ? inputBad : inputOk}`}
-                    />
-                    <FieldError name="licenseNumber" />
+                    <div className="space-y-2">
+                      {licenseRows.map((row, idx) => (
+                        <div
+                          key={row.id}
+                          className={`grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-start p-3 rounded-xl border ${licenseRowsError ? "border-red-300 bg-red-50/40" : "border-gray-200 bg-white"}`}
+                        >
+                          <div>
+                            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">State</label>
+                            <select
+                              value={row.state_code}
+                              onChange={(e) => updateLicenseRow(row.id, { state_code: e.target.value.toUpperCase() })}
+                              className={`${selectBase} ${inputOk}`}
+                            >
+                              <option value="" disabled>Select state...</option>
+                              {US_STATES.map((s) => (
+                                <option key={s.code} value={s.code}>{s.name} ({s.code})</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Credential</label>
+                            <select
+                              value={row.credential}
+                              onChange={(e) => updateLicenseRow(row.id, { credential: e.target.value })}
+                              className={`${selectBase} ${inputOk}`}
+                            >
+                              <option value="" disabled>Select...</option>
+                              {CREDENTIAL_OPTIONS.map((c) => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">License Number</label>
+                            <input
+                              type="text"
+                              value={row.license_number}
+                              onChange={(e) => updateLicenseRow(row.id, { license_number: e.target.value })}
+                              placeholder="e.g. 0701016127"
+                              className={`${inputBase} ${inputOk}`}
+                            />
+                          </div>
+                          <div className="flex sm:items-end sm:justify-end pt-1 sm:pt-5">
+                            <button
+                              type="button"
+                              onClick={() => removeLicenseRow(row.id)}
+                              disabled={licenseRows.length <= 1}
+                              title={licenseRows.length <= 1 ? "At least one license is required" : "Remove this license"}
+                              className="whitespace-nowrap inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                              aria-label={`Remove license row ${idx + 1}`}
+                            >
+                              <i className="ri-delete-bin-line"></i>
+                              <span className="sm:hidden">Remove</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {licenseRowsError && (
+                      <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                        <i className="ri-error-warning-line"></i>{licenseRowsError}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Years of Experience <span className="text-red-400">*</span></label>
@@ -685,7 +939,7 @@ export default function JoinOurNetworkPage() {
                       <option value="10+ years">10+ years</option>
                     </select>
                   </div>
-                  <div className="col-span-2">
+                  <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                       NPI Number <span className="text-red-400">*</span>
                       <span className="font-normal text-gray-400 ml-1">(10-digit National Provider Identifier)</span>
@@ -701,29 +955,6 @@ export default function JoinOurNetworkPage() {
                       className={`${inputBase} ${fieldErrors.npi ? inputBad : inputOk}`}
                     />
                     <FieldError name="npi" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Licensed State (Primary) <span className="text-red-400">*</span></label>
-                    <select
-                      name="licenseState"
-                      required
-                      defaultValue=""
-                      onChange={() => clearFieldError("licenseState")}
-                      className={`${selectBase} ${fieldErrors.licenseState ? inputBad : inputOk}`}
-                    >
-                      <option value="" disabled>Select state...</option>
-                      {usStates.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <FieldError name="licenseState" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Additional Licensed States</label>
-                    <input
-                      type="text"
-                      name="additionalStates"
-                      placeholder="e.g. New York, Florida"
-                      className={`${inputBase} ${inputOk}`}
-                    />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Practice / Employer Name</label>
@@ -970,30 +1201,43 @@ export default function JoinOurNetworkPage() {
               </div>
 
               {/* Section 7 — Agreement */}
+              {/* OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: form has noValidate,
+                  so the `required` attribute alone does not block submit.
+                  Custom JS validation in validateRequiredFields() now also
+                  enforces all three checkboxes and surfaces inline errors. */}
               <div className="bg-orange-50/60 border border-orange-100 rounded-xl p-5">
                 <h3 className="text-xs font-bold text-gray-900 mb-3">Agreement</h3>
                 <div className="space-y-3">
-                  <label className="flex items-start gap-2.5 cursor-pointer group">
-                    <input type="checkbox" name="agreeCredentials" required className="accent-orange-500 mt-0.5 cursor-pointer flex-shrink-0" />
-                    <span className="text-xs text-gray-600 leading-relaxed">
-                      I confirm that I hold an active, unrestricted license to practice mental health services in the state(s) listed above, and that all information provided is accurate and truthful.
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-2.5 cursor-pointer group">
-                    <input type="checkbox" name="agreeHipaa" required className="accent-orange-500 mt-0.5 cursor-pointer flex-shrink-0" />
-                    <span className="text-xs text-gray-600 leading-relaxed">
-                      I agree to maintain HIPAA compliance in all client interactions and understand that PawTenant requires all partner therapists to adhere to applicable federal and state privacy laws.
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-2.5 cursor-pointer group">
-                    <input type="checkbox" name="agreeTerms" required className="accent-orange-500 mt-0.5 cursor-pointer flex-shrink-0" />
-                    <span className="text-xs text-gray-600 leading-relaxed">
-                      I have read and agree to PawTenant&apos;s{" "}
-                      <Link to="/terms-of-use" className="text-orange-500 hover:underline cursor-pointer" target="_blank">Terms of Use</Link>{" "}
-                      and{" "}
-                      <Link to="/privacy-policy" className="text-orange-500 hover:underline cursor-pointer" target="_blank">Privacy Policy</Link>.
-                    </span>
-                  </label>
+                  <div>
+                    <label className="flex items-start gap-2.5 cursor-pointer group">
+                      <input type="checkbox" name="agreeCredentials" required onChange={() => clearFieldError("agreeCredentials")} className="accent-orange-500 mt-0.5 cursor-pointer flex-shrink-0" />
+                      <span className="text-xs text-gray-600 leading-relaxed">
+                        I confirm that I hold an active, unrestricted license to practice mental health services in the state(s) listed above, and that all information provided is accurate and truthful.
+                      </span>
+                    </label>
+                    <FieldError name="agreeCredentials" />
+                  </div>
+                  <div>
+                    <label className="flex items-start gap-2.5 cursor-pointer group">
+                      <input type="checkbox" name="agreeHipaa" required onChange={() => clearFieldError("agreeHipaa")} className="accent-orange-500 mt-0.5 cursor-pointer flex-shrink-0" />
+                      <span className="text-xs text-gray-600 leading-relaxed">
+                        I agree to maintain HIPAA compliance in all client interactions and understand that PawTenant requires all partner therapists to adhere to applicable federal and state privacy laws.
+                      </span>
+                    </label>
+                    <FieldError name="agreeHipaa" />
+                  </div>
+                  <div>
+                    <label className="flex items-start gap-2.5 cursor-pointer group">
+                      <input type="checkbox" name="agreeTerms" required onChange={() => clearFieldError("agreeTerms")} className="accent-orange-500 mt-0.5 cursor-pointer flex-shrink-0" />
+                      <span className="text-xs text-gray-600 leading-relaxed">
+                        I have read and agree to PawTenant&apos;s{" "}
+                        <Link to="/terms-of-use" className="text-orange-500 hover:underline cursor-pointer" target="_blank">Terms of Use</Link>{" "}
+                        and{" "}
+                        <Link to="/privacy-policy" className="text-orange-500 hover:underline cursor-pointer" target="_blank">Privacy Policy</Link>.
+                      </span>
+                    </label>
+                    <FieldError name="agreeTerms" />
+                  </div>
                 </div>
               </div>
 

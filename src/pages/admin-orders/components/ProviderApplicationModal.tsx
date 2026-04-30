@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
+// OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: structured license row shape.
+interface ApplicationLicenseRow {
+  state_code: string;
+  credential: string;
+  license_number: string;
+}
+
 interface ProviderApplication {
   id: string;
   first_name: string;
@@ -12,6 +19,10 @@ interface ProviderApplication {
   license_number: string | null;
   license_state: string | null;
   additional_states: string | null;
+  // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: optional jsonb. New applications
+  // populate it; legacy applications leave it null and fall back to the older
+  // license_state / license_number / license_types fields below.
+  licenses: ApplicationLicenseRow[] | null;
   years_experience: string | null;
   practice_name: string | null;
   practice_type: string | null;
@@ -209,11 +220,33 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
                 {field("Name", `${application.first_name} ${application.last_name}`)}
                 {field("Email", application.email)}
                 {field("Phone", application.phone)}
-                {field("License Type(s)", application.license_types)}
-                {field("License #", application.license_number)}
+                {/* OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: structured rows
+                    when present; legacy single fields otherwise. Falling back
+                    keeps old applications readable in admin review. */}
+                {Array.isArray(application.licenses) && application.licenses.length > 0 ? (
+                  <div className="py-2 border-b border-gray-200/70 last:border-b-0">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Licenses</p>
+                    <div className="space-y-1.5">
+                      {application.licenses.map((lic, idx) => (
+                        <div key={`${lic.state_code}-${lic.credential}-${idx}`} className="flex items-center gap-2 flex-wrap text-xs">
+                          <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-[#e8f0f9] text-[#3b6ea5] border border-[#b8cce4] font-bold">
+                            {lic.state_code}
+                          </span>
+                          <span className="font-semibold text-gray-700">{lic.credential}</span>
+                          <span className="font-mono text-gray-700">{lic.license_number}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {field("License Type(s)", application.license_types)}
+                    {field("License #", application.license_number)}
+                  </>
+                )}
                 {fieldAlways("NPI #", application.npi)}
-                {field("Primary State", application.license_state)}
-                {field("Additional States", application.additional_states)}
+                {(!Array.isArray(application.licenses) || application.licenses.length === 0) && field("Primary State", application.license_state)}
+                {(!Array.isArray(application.licenses) || application.licenses.length === 0) && field("Additional States", application.additional_states)}
                 {field("Experience", application.years_experience)}
                 {field("Practice", application.practice_name)}
                 {field("Practice Type", application.practice_type)}
