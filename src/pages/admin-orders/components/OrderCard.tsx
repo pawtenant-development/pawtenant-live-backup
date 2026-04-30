@@ -393,9 +393,13 @@ export default function OrderCard({
   return (
     <>
       {/* ══════════════════════════════════════════════════════════════════════
-          MOBILE CARD LAYOUT  (< lg — unchanged)
+          MOBILE CARD LAYOUT  (< lg)
+          ORDER-DETAIL-MODAL-V2-PHASE7A: tapping the mobile card now opens the
+          OrderDetailModal directly. Previously the card only toggled an inline
+          expand panel, leaving mobile admins with no way to reach the modal
+          (the desktop View Details icon button is hidden on small screens).
           ══════════════════════════════════════════════════════════════════════ */}
-      <div className={`lg:hidden bg-white rounded-xl border border-gray-100 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-200 group cursor-pointer ${borderAccent}`} onClick={onToggleExpand}>
+      <div className={`lg:hidden bg-white rounded-xl border border-gray-100 overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-200 group cursor-pointer ${borderAccent}`} onClick={() => onOpenDetail(order)}>
         {/* Payment failed inline banner on collapsed card */}
         {hasPaymentFailure && (
           <div className="flex items-center gap-2 px-4 pt-3 pb-0">

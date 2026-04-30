@@ -1,5 +1,5 @@
 // OrderDetailModal — Full case management view for admins
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
 import OrderNotesPanel from "./OrderNotesPanel";
@@ -68,6 +68,10 @@ interface Order {
   letter_expiry_date?: string | null;
   broadcast_opt_out?: boolean | null;
   last_broadcast_sent_at?: string | null;
+  // OPS-ORDER-ARCHIVE-VOID-FLOW: optional sibling fields. Persisted via
+  // order_status_logs/audit_logs; surfaced here only if present on the row.
+  archived_at?: string | null;
+  archive_reason?: string | null;
 }
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
@@ -115,6 +119,8 @@ const STATUS_LABEL: Record<string, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
   lead: "Lead (Unpaid)",
+  // OPS-ORDER-ARCHIVE-VOID-FLOW
+  archived: "Archived / Voided",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -123,10 +129,18 @@ const STATUS_COLOR: Record<string, string> = {
   completed: "bg-emerald-100 text-emerald-700",
   cancelled: "bg-red-100 text-red-600",
   lead: "bg-amber-100 text-amber-700",
+  // OPS-ORDER-ARCHIVE-VOID-FLOW
+  archived: "bg-gray-200 text-gray-700",
 };
 
 // ─── 4-stage display status helper ──────────────────────────────────────────
 function getModalDisplayStatus(order: Order): { label: string; color: string } {
+  // OPS-ORDER-ARCHIVE-VOID-FLOW: archived/voided takes precedence over lead
+  // labels but stays below disputed/fraud/refunded so financial states still
+  // show first if both apply.
+  if (order.status === "archived") {
+    return { label: "Archived / Voided", color: "bg-gray-200 text-gray-700" };
+  }
   if (order.status === "disputed" || order.dispute_id) {
     return { label: "Disputed", color: "bg-red-100 text-red-700" };
   }
@@ -408,7 +422,10 @@ function RetryPaymentButton({ order }: { order: Order }) {
 function NotesTabMerged({ orderId, confirmationId, adminUserId, adminName }: {
   orderId: string; confirmationId: string; adminUserId: string; adminName: string;
 }) {
-  const [activeNoteTab, setActiveNoteTab] = useState<"provider" | "internal">("provider");
+  // OPS-ORDER-MODAL-V2-LAYOUT: default to Internal Notes per owner request —
+  // admin operations open Notes for internal context first; provider notes are
+  // a deliberate switch.
+  const [activeNoteTab, setActiveNoteTab] = useState<"provider" | "internal">("internal");
   return (
     <div className="flex flex-col h-full">
       {/* Sub-tab switcher */}
@@ -873,6 +890,32 @@ export default function OrderDetailModal({
   const [statusMsg, setStatusMsg] = useState("");
   const [ghlFiring, setGhlFiring] = useState(false);
   const [ghlMsg, setGhlMsg] = useState("");
+  // OPS-ORDER-MODAL-OVERVIEW-CLEANUP: toggle for the collapsible CRM Details
+  // panel that holds GHL Contact ID, Linked badge, Open in GHL, and Sync
+  // History — moved out of the main Overview to reduce debug-screen clutter.
+  const [showCrmDetails, setShowCrmDetails] = useState(false);
+  // OPS-ORDER-MODAL-V2-LAYOUT: header "More" actions dropdown (Send Reset /
+  // Upgrade / New Order / Provider View). Closes on outside click + escape.
+  const [showHeaderMore, setShowHeaderMore] = useState(false);
+  const headerMoreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showHeaderMore) return;
+    function onClick(e: MouseEvent) {
+      if (headerMoreRef.current && !headerMoreRef.current.contains(e.target as Node)) {
+        setShowHeaderMore(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setShowHeaderMore(false); }
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showHeaderMore]);
+  // OPS-ORDER-MODAL-V2-LAYOUT: collapsed Admin Actions accordion in the right
+  // operations rail. Default collapsed so admin actions don't dominate.
+  const [showAdminActions, setShowAdminActions] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
   const [emailMsg, setEmailMsg] = useState("");
   const [confirmResending, setConfirmResending] = useState(false);
@@ -1684,6 +1727,144 @@ export default function OrderDetailModal({
     setTimeout(() => setCancelMsg(""), 8000);
   };
 
+  // OPS-ORDER-ARCHIVE-VOID-FLOW: safer alternative to hard delete for real
+  // operational orders (duplicate, rejected, abandoned, replaced). Keeps all
+  // child rows intact (notes, comms, payment history, status logs) and only
+  // updates orders.status to "archived". Resubmission unblock is handled
+  // server-side in get-resume-order, which now ignores archived rows when
+  // checking for an existing email.
+  //
+  // Side-effects intentionally avoided: no Stripe refund, no provider
+  // assignment change, no customer email, no GHL fire. Pure DB state change
+  // plus an audit/status log entry.
+  const handleArchiveOrder = async () => {
+    if (!canDelete(adminProfile.role)) {
+      setArchiveMsg("Admin access required to archive/void orders.");
+      return;
+    }
+    setArchivingOrder(true);
+    setArchiveMsg("");
+    const ts = new Date().toISOString();
+    const reasonLabel = archiveReason || "Other";
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: "archived" })
+        .eq("id", order.id);
+      if (error) {
+        setArchiveMsg(`Archive failed: ${error.message}`);
+        setArchivingOrder(false);
+        return;
+      }
+      // Best-effort audit + status log writes. Both tables are write-only here
+      // and unrelated to fulfillment, so failures should not block the archive.
+      try {
+        await supabase.from("order_status_logs").insert({
+          order_id: order.id,
+          status: "archived",
+          note: `[ARCHIVE/VOID] Reason: ${reasonLabel}. Archived by admin (${adminProfile.full_name}). Previous status: ${order.status}.`,
+          created_at: ts,
+        });
+      } catch { /* non-critical */ }
+      try {
+        await supabase.from("audit_logs").insert({
+          action: "archive_order",
+          entity_type: "order",
+          entity_id: order.id,
+          performed_by: adminProfile.user_id,
+          details: {
+            confirmation_id: order.confirmation_id,
+            previous_status: order.status,
+            archive_reason: reasonLabel,
+            admin_name: adminProfile.full_name,
+            timestamp: ts,
+          },
+        });
+      } catch { /* non-critical */ }
+      updateOrderField({ status: "archived" });
+      onOrderUpdated({ id: order.id, status: "archived" });
+      setShowArchiveConfirm(false);
+      setArchiveReason("");
+      setArchiveMsg("Order archived/voided. History preserved. Customer can resubmit with the same email.");
+    } catch (err) {
+      setArchiveMsg(err instanceof Error ? `Archive failed: ${err.message}` : "Archive failed: unexpected error");
+    }
+    setArchivingOrder(false);
+    setTimeout(() => setArchiveMsg(""), 10000);
+  };
+
+  // OPS-ORDER-ARCHIVE-RESTORE: safety undo for accidental archive/void.
+  // Restores orders.status to a sensible active state based on payment.
+  // No Stripe, no email, no provider change, no GHL — pure DB state revert
+  // plus a paired audit/status log entry.
+  //
+  // Status decision (kept minimal and conventional, mirroring handleMarkAsPaid /
+  // handleMarkAsUnpaid in this same file):
+  //   - has payment_intent_id OR paid_at → "processing"
+  //     (matches handleMarkAsPaid which sets paid orders to "processing"; provider
+  //      assignment / under-review transitions are owned by the assign-doctor flow,
+  //      not by status restores. Restoring to "under-review" would imply a provider
+  //      is engaged, which may not be true after an archive round-trip.)
+  //   - otherwise → "lead"
+  //     (matches handleMarkAsUnpaid which uses "lead" for unpaid orders.)
+  const handleRestoreOrder = async () => {
+    if (!canDelete(adminProfile.role)) {
+      setRestoreMsg("Admin access required to restore orders.");
+      return;
+    }
+    setRestoringOrder(true);
+    setRestoreMsg("");
+    const ts = new Date().toISOString();
+    const isPaid = !!order.payment_intent_id || !!order.paid_at;
+    const newStatus = isPaid ? "processing" : "lead";
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: newStatus })
+        .eq("id", order.id);
+      if (error) {
+        setRestoreMsg(`Restore failed: ${error.message}`);
+        setRestoringOrder(false);
+        return;
+      }
+      // Best-effort log writes — same pattern as handleArchiveOrder.
+      try {
+        await supabase.from("order_status_logs").insert({
+          order_id: order.id,
+          status: newStatus,
+          note: `[RESTORE/REOPEN] Restored from archived by admin (${adminProfile.full_name}). New status: ${newStatus}.`,
+          created_at: ts,
+        });
+      } catch { /* non-critical */ }
+      try {
+        await supabase.from("audit_logs").insert({
+          action: "restore_order",
+          entity_type: "order",
+          entity_id: order.id,
+          performed_by: adminProfile.user_id,
+          details: {
+            confirmation_id: order.confirmation_id,
+            previous_status: "archived",
+            new_status: newStatus,
+            paid_at_restore: isPaid,
+            admin_name: adminProfile.full_name,
+            timestamp: ts,
+          },
+        });
+      } catch { /* non-critical */ }
+      updateOrderField({ status: newStatus });
+      onOrderUpdated({ id: order.id, status: newStatus });
+      setShowRestoreConfirm(false);
+      setRestoreMsg(
+        `Order restored to "${newStatus}". It is active again and may once more block same-email resubmission.`
+      );
+    } catch (err) {
+      setRestoreMsg(err instanceof Error ? `Restore failed: ${err.message}` : "Restore failed: unexpected error");
+    }
+    setRestoringOrder(false);
+    setTimeout(() => setRestoreMsg(""), 10000);
+  };
+
   const handleDeleteOrder = async () => {
     if (!canDelete(adminProfile.role)) {
       setDeleteOrderMsg("Admin access required to permanently delete orders.");
@@ -1823,6 +2004,17 @@ export default function OrderDetailModal({
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [deleteOrderMsg, setDeleteOrderMsg] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // OPS-ORDER-ARCHIVE-VOID-FLOW: state for the safer archive/void flow.
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [archivingOrder, setArchivingOrder] = useState(false);
+  const [archiveMsg, setArchiveMsg] = useState("");
+  const [archiveReason, setArchiveReason] = useState<string>("");
+
+  // OPS-ORDER-ARCHIVE-RESTORE: state for the restore/reopen safety undo.
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [restoringOrder, setRestoringOrder] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState("");
 
   // ── Cancel Order state ──
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -2322,9 +2514,12 @@ export default function OrderDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
-      <div className="relative bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
+      {/* OPS-ORDER-MODAL-V2-LAYOUT: wider modal (~90vw, capped at 7xl) so the
+          two-column operations workspace has room to breathe. Mobile keeps
+          full width. */}
+      <div className="relative bg-white rounded-2xl w-full max-w-[95vw] lg:max-w-[90vw] xl:max-w-7xl 2xl:max-w-[1440px] max-h-[94vh] flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="flex-shrink-0 border-b border-gray-100">
@@ -2372,7 +2567,11 @@ export default function OrderDetailModal({
             </div>
             {/* Action buttons */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              {/* Preview as Customer */}
+              {/* Preview as Customer.
+                  Re-alignment to Revision 4: hidden on mobile (header at 390px
+                  must fit avatar + name + status + Actions + close cleanly).
+                  Customer View is still reachable on mobile via the More menu
+                  below. */}
               <button
                 type="button"
                 onClick={() => {
@@ -2380,63 +2579,204 @@ export default function OrderDetailModal({
                   window.open(url, "_blank");
                 }}
                 title={`Preview ${order.email}'s customer portal`}
-                className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors cursor-pointer"
+                className="hidden sm:flex whitespace-nowrap items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors cursor-pointer"
               >
                 <i className="ri-eye-line text-sm"></i>
                 <span className="hidden sm:inline">Customer View</span>
               </button>
-              {/* Send Portal Reset — branded reset link via Resend (works around broken Supabase /recover) */}
-              <button
-                type="button"
-                onClick={handleSendPortalReset}
-                disabled={portalResetSending || !order.email}
-                title={`Email a portal reset link to ${order.email}`}
-                className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors cursor-pointer disabled:opacity-60"
-              >
-                <i className={`text-sm ${portalResetSending ? "ri-loader-4-line animate-spin" : "ri-key-line"}`}></i>
-                <span className="hidden sm:inline">{portalResetSending ? "Sending..." : "Send Reset"}</span>
-              </button>
-              {/* Returning-customer actions — only for paid orders */}
-              {(order.payment_intent_id || order.paid_at) && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => spawnReturningOrder(order.id, "upgrade")}
-                    title="Upgrade this customer to an annual subscription"
-                    className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors cursor-pointer"
-                  >
-                    <i className="ri-vip-crown-line text-sm"></i>
-                    <span className="hidden sm:inline">Upgrade</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => spawnReturningOrder(order.id, "repeat")}
-                    title="Start a new ESA order for this customer"
-                    className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors cursor-pointer"
-                  >
-                    <i className="ri-add-circle-line text-sm"></i>
-                    <span className="hidden sm:inline">New Order</span>
-                  </button>
-                </>
-              )}
-              {/* Provider View — only when a provider is assigned */}
-              {(order.doctor_email || order.doctor_user_id) && (
-                <a
-                  href={`/provider-portal?order=${order.confirmation_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={`Preview provider portal for ${order.doctor_name ?? order.doctor_email ?? "assigned provider"}`}
-                  className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#e0f2ec] transition-colors cursor-pointer"
+              {/* OPS-ORDER-MODAL-V2-LAYOUT: secondary header actions consolidated
+                  into a single "More" dropdown so the header reads as Customer
+                  View + More + utility cluster instead of a 5-button row.
+                  All handlers preserved. */}
+              <div className="relative" ref={headerMoreRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowHeaderMore((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={showHeaderMore}
+                  title="More actions"
+                  className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-colors cursor-pointer"
                 >
-                  <i className="ri-user-heart-line text-sm"></i>
-                  <span className="hidden sm:inline">Provider View</span>
-                </a>
-              )}
+                  <i className="ri-more-2-fill text-sm"></i>
+                  <span className="hidden sm:inline">More</span>
+                  <i className={`ri-arrow-${showHeaderMore ? "up" : "down"}-s-line text-sm text-gray-400`}></i>
+                </button>
+                {showHeaderMore && (
+                  <div role="menu" className="absolute right-0 mt-1.5 z-30 w-56 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => { setShowHeaderMore(false); handleSendPortalReset(); }}
+                      disabled={portalResetSending || !order.email}
+                      role="menuitem"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <i className={portalResetSending ? "ri-loader-4-line animate-spin" : "ri-key-line"}></i>
+                      <span className="flex-1 text-left">{portalResetSending ? "Sending reset..." : "Send Portal Reset"}</span>
+                    </button>
+                    {(order.payment_intent_id || order.paid_at) && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMore(false); spawnReturningOrder(order.id, "upgrade"); }}
+                          role="menuitem"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors"
+                        >
+                          <i className="ri-vip-crown-line"></i>
+                          <span className="flex-1 text-left">Upgrade to Annual</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMore(false); spawnReturningOrder(order.id, "repeat"); }}
+                          role="menuitem"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-50 cursor-pointer transition-colors"
+                        >
+                          <i className="ri-add-circle-line"></i>
+                          <span className="flex-1 text-left">Start New ESA Order</span>
+                        </button>
+                      </>
+                    )}
+                    {(order.doctor_email || order.doctor_user_id) && (
+                      <a
+                        href={`/provider-portal?order=${order.confirmation_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        role="menuitem"
+                        onClick={() => setShowHeaderMore(false)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#3b6ea5] hover:bg-[#e8f0f9] cursor-pointer transition-colors"
+                      >
+                        <i className="ri-user-heart-line"></i>
+                        <span className="flex-1 text-left">Open Provider View</span>
+                        <i className="ri-external-link-line text-[10px] text-gray-400"></i>
+                      </a>
+                    )}
+
+                    {/* Re-alignment to Revision 4: Customer View item shown
+                        only on mobile (the header button is desktop-only). */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHeaderMore(false);
+                        const url = `/my-orders?preview_email=${encodeURIComponent(order.email)}`;
+                        window.open(url, "_blank");
+                      }}
+                      role="menuitem"
+                      className="sm:hidden w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors"
+                    >
+                      <i className="ri-eye-line"></i>
+                      <span className="flex-1 text-left">Customer View</span>
+                      <i className="ri-external-link-line text-[10px] text-gray-400"></i>
+                    </button>
+
+                    {/* Re-alignment to Revision 4: Status & Lifecycle actions
+                        moved from body Admin Actions card into header More
+                        menu. Same handlers and confirmation modals that the
+                        accordion used; only the entry point changes. */}
+                    {!!order.payment_intent_id && (
+                      <>
+                        <div className="border-t border-gray-100 my-1" role="separator"></div>
+                        <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p>
+                        {order.status !== "refunded" && !order.refunded_at && order.doctor_status !== "patient_notified" && order.status !== "archived" && (
+                          <button
+                            type="button"
+                            onClick={() => { setShowHeaderMore(false); handleSetStatus("under-review", undefined); }}
+                            disabled={statusUpdating || order.status === "under-review"}
+                            role="menuitem"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i className="ri-eye-line"></i>
+                            <span className="flex-1 text-left">{order.status === "under-review" ? "Already Under Review" : "Mark Under Review"}</span>
+                          </button>
+                        )}
+                        {order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
+                          <button
+                            type="button"
+                            onClick={() => { setShowHeaderMore(false); handleSetStatus("completed", "patient_notified"); }}
+                            disabled={statusUpdating || !hasProviderDocs || order.doctor_status === "patient_notified"}
+                            role="menuitem"
+                            title={!hasProviderDocs ? "Provider letter required first" : undefined}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i className="ri-checkbox-circle-line"></i>
+                            <span className="flex-1 text-left">{order.doctor_status === "patient_notified" ? "Already Delivered" : "Mark Delivered"}</span>
+                            {!hasProviderDocs && order.doctor_status !== "patient_notified" && (
+                              <span className="text-[10px] text-gray-400 font-normal normal-case">letter needed</span>
+                            )}
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {/* Re-alignment to Revision 4: Danger zone in header More.
+                        Restore is shown only when archived; Archive/Void shown
+                        when not archived; Hard Delete gated on canPerformDelete. */}
+                    <div className="border-t border-dashed border-gray-200 mt-1" role="separator"></div>
+                    <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold text-red-400 uppercase tracking-widest">Danger zone</p>
+                    {order.status === "archived" ? (
+                      canPerformDelete && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMore(false); setShowRestoreConfirm(true); }}
+                          role="menuitem"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors"
+                        >
+                          <i className="ri-arrow-go-back-line"></i>
+                          <span className="flex-1 text-left">Restore / Reopen Order</span>
+                        </button>
+                      )
+                    ) : (
+                      canPerformDelete && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMore(false); setShowArchiveConfirm(true); }}
+                          role="menuitem"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors"
+                        >
+                          <i className="ri-archive-line"></i>
+                          <span className="flex-1 text-left">Archive / Void Order</span>
+                        </button>
+                      )
+                    )}
+                    {canPerformDelete && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowHeaderMore(false); setShowDeleteOrderConfirm(true); }}
+                        role="menuitem"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 cursor-pointer transition-colors"
+                      >
+                        <i className="ri-delete-bin-line"></i>
+                        <span className="flex-1 text-left">Hard Delete</span>
+                        <span className="text-[10px] text-gray-400 font-normal">test only</span>
+                      </button>
+                    )}
+                    {!canPerformDelete && (isFinanceRole || isSupportRole) && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowHeaderMore(false); setShowDeleteApproval(true); }}
+                        role="menuitem"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors"
+                      >
+                        <i className="ri-send-plane-line"></i>
+                        <span className="flex-1 text-left">Request Delete Approval</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: visual divider separates the
+                  labelled action buttons (Customer View, Send Reset, Upgrade,
+                  New Order, Provider View) from the icon-only utility cluster
+                  (SMS, call, prev/next, close) so the header reads as two
+                  discrete groups instead of one crowded row. */}
+              <span aria-hidden="true" className="hidden sm:inline-block w-px h-5 bg-gray-200 mx-1"></span>
+              {/* ORDER-DETAIL-MODAL-V2-PHASE7A: hide modal-header SMS/Call
+                  icon-only buttons on mobile. The Comms tab already owns these
+                  workflows on mobile; keeping a duplicate header pair created
+                  the same Call/SMS quick-action duplication owners flagged. */}
               <button
                 type="button"
                 onClick={() => setSection("comms")}
                 title={order.phone ? `SMS ${order.phone}` : "No phone on file"}
-                className={`whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-[#b8cce4] text-[#3b6ea5] hover:bg-[#e8f0f9]" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+                className={`hidden sm:flex whitespace-nowrap w-8 h-8 items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-[#b8cce4] text-[#3b6ea5] hover:bg-[#e8f0f9]" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
               >
                 <i className="ri-message-3-line"></i>
               </button>
@@ -2444,17 +2784,20 @@ export default function OrderDetailModal({
                 type="button"
                 onClick={() => setSection("comms")}
                 title={order.phone ? `Call ${order.phone}` : "No phone on file"}
-                className={`whitespace-nowrap w-8 h-8 flex items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-600 hover:bg-sky-50" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+                className={`hidden sm:flex whitespace-nowrap w-8 h-8 items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-600 hover:bg-sky-50" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
               >
                 <i className="ri-phone-line"></i>
               </button>
-              {/* Arrow navigation — only shown when there are multiple orders */}
+              {/* Arrow navigation — only shown when there are multiple orders.
+                  Re-alignment to Revision 4: hidden on mobile (nav cluster
+                  takes too much room at 390px and orders list is still
+                  reachable via close → admin orders page). */}
               {allOrders.length > 1 && (() => {
                 const currentIdx = allOrders.findIndex((o) => o.id === order.id);
                 const hasPrev = currentIdx > 0;
                 const hasNext = currentIdx < allOrders.length - 1;
                 return (
-                  <div className="flex items-center gap-0.5">
+                  <div className="hidden sm:flex items-center gap-0.5">
                     <button
                       type="button"
                       onClick={() => hasPrev && onNavigate?.(allOrders[currentIdx - 1])}
@@ -2646,9 +2989,13 @@ export default function OrderDetailModal({
                   warning. The full repair panel (Stripe ID input + Link
                   Payment + Manual Override) lives on the Payments tab —
                   Overview just nudges the admin there to keep this view
-                  focused on case status. */}
+                  focused on case status.
+                  ORDER-DETAIL-MODAL-V2-PHASE7A: hide on mobile Overview per
+                  owner spec — generic "Payment Not Linked" should not appear
+                  in mobile Overview. The Payments tab still surfaces it with
+                  full repair tooling. */}
               {paymentRepairNeeded && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                <div className="hidden lg:flex bg-red-50 border border-red-200 rounded-xl p-4 items-start gap-3">
                   <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
                     <i className="ri-error-warning-fill text-red-600 text-base"></i>
                   </div>
@@ -2669,14 +3016,105 @@ export default function OrderDetailModal({
                 </div>
               )}
 
-              {/* Order info grid */}
-              <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Order Details</p>
+              {/* OPS-ORDER-MODAL-V2-LAYOUT: two-column command center.
+                  LEFT (col-span-2 on lg) = customer communications workspace.
+                  RIGHT rail (col-span-1 on lg) = Order Details + Provider +
+                  CRM Details + Admin Actions accordion + Review + Internal
+                  Notes shortcut. Stacks vertically below lg. */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-start">
+
+                {/* ── LEFT MAIN WORKSPACE — Customer Communications ── */}
+                <div className="lg:col-span-2 space-y-4 sm:space-y-5 min-w-0">
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <i className="ri-chat-3-line text-[#3b6ea5]"></i>
+                        <p className="text-xs font-bold text-gray-700 uppercase tracking-widest">Customer Communications</p>
+                      </div>
+                      {/* ORDER-DETAIL-MODAL-V2-PHASE7A: hide SMS/Email/Call
+                          mini-button row on mobile. Mobile-only Communications
+                          tab/card handles these workflows; the row caused
+                          duplicate quick-action UX vs the Comms tab itself. */}
+                      <div className="hidden sm:flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSection("comms")}
+                          title="Send SMS"
+                          disabled={!order.phone}
+                          className={`whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${order.phone ? "border-[#b8cce4] text-[#3b6ea5] bg-white hover:bg-[#e8f0f9]" : "border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50"}`}
+                        >
+                          <i className="ri-message-3-line"></i>SMS
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSection("comms")}
+                          title="Email"
+                          className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border border-amber-200 text-amber-700 bg-white hover:bg-amber-50 cursor-pointer transition-colors"
+                        >
+                          <i className="ri-mail-send-line"></i>Email
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSection("comms")}
+                          title="Call"
+                          disabled={!order.phone}
+                          className={`whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-700 bg-white hover:bg-sky-50" : "border-gray-200 text-gray-300 cursor-not-allowed bg-gray-50"}`}
+                        >
+                          <i className="ri-phone-line"></i>Call
+                        </button>
+                      </div>
+                    </div>
+                    {/* Inline Comms tab content — same handlers and data, surfaced in
+                        Overview as the main operational workspace per owner request.
+                        The dedicated Comms tab still exists for full history. */}
+                    <div className="max-h-[60vh] overflow-y-auto">
+                      <CommunicationTab
+                        orderId={order.id}
+                        confirmationId={order.confirmation_id}
+                        phone={order.phone ?? null}
+                        email={order.email}
+                        patientName={fullName}
+                        adminName={adminProfile.full_name}
+                        emailLog={order.email_log}
+                        hasDocuments={!!order.signed_letter_url}
+                        price={order.price}
+                        letterType={order.letter_type ?? null}
+                        state={order.state ?? null}
+                        doctorEmail={order.doctor_email ?? null}
+                        doctorName={order.doctor_name ?? null}
+                        onResendProviderEmail={handleResendProviderEmail}
+                        resendingProvider={resendingProvider}
+                        resendProviderMsg={resendProviderMsg}
+                        onLoadEmailLog={loadEmailLog}
+                        emailLogLoading={emailLogLoading}
+                      />
+                    </div>
+                    <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+                      <p className="text-[11px] text-gray-500">Full timeline + send tools</p>
+                      <button
+                        type="button"
+                        onClick={() => setSection("comms")}
+                        className="text-xs font-bold text-[#3b6ea5] hover:underline cursor-pointer inline-flex items-center gap-1"
+                      >
+                        Open Comms tab<i className="ri-arrow-right-s-line"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── RIGHT OPERATIONS RAIL ── */}
+                <div className="lg:col-span-1 space-y-3 sm:space-y-4 min-w-0">
+
+              {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: tightened padding + grid gaps so
+                  Order Details no longer dominates the modal. Same fields, denser
+                  presentation. */}
+              <div className="bg-gray-50 rounded-xl border border-gray-100 p-3.5 sm:p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2.5">Order Details</p>
                 {/* 3-column layout */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-5 gap-y-3">
 
                   {/* ── Column 1: Identity ── */}
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {/* Order ID */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Order ID</p>
@@ -2709,7 +3147,7 @@ export default function OrderDetailModal({
                   </div>
 
                   {/* ── Column 2: Payment ── */}
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {/* Price */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Payment Amount</p>
@@ -2722,13 +3160,7 @@ export default function OrderDetailModal({
                       <p className="text-xs text-gray-400 mb-0.5">Plan</p>
                       <p className={`text-sm font-semibold ${order.plan_type ? "text-gray-800" : "text-gray-400"}`}>{order.plan_type ?? "—"}</p>
                     </div>
-                    {/* Payment Method */}
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Method</p>
-                      <p className={`text-sm font-semibold ${order.payment_method ? "text-gray-800" : "text-gray-400"}`}>
-                        {order.payment_method ? (PAYMENT_METHOD_LABEL[order.payment_method] ?? order.payment_method) : "—"}
-                      </p>
-                    </div>
+                    {/* OPS-ORDER-MODAL-V2-LAYOUT: Method moved to Payments tab. */}
                     {/* Paid At */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Paid At</p>
@@ -2736,11 +3168,8 @@ export default function OrderDetailModal({
                         {(order as Order & { paid_at?: string | null }).paid_at ? fmt((order as Order & { paid_at?: string | null }).paid_at!) : "—"}
                       </p>
                     </div>
-                    {/* Delivery Speed */}
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Delivery Speed</p>
-                      <p className={`text-sm font-semibold ${order.delivery_speed ? "text-gray-800" : "text-gray-400"}`}>{order.delivery_speed ?? "—"}</p>
-                    </div>
+                    {/* OPS-ORDER-MODAL-V2-LAYOUT: Delivery Speed moved out of
+                        Overview Order Details (still visible in Assessment + Payments). */}
                     {/* Payment Failure Reason — only when present */}
                     {order.payment_failure_reason && (
                       <div>
@@ -2754,7 +3183,7 @@ export default function OrderDetailModal({
                   </div>
 
                   {/* ── Column 3: Other ── */}
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {/* Date Created */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Date Created</p>
@@ -2772,13 +3201,9 @@ export default function OrderDetailModal({
                         {order.payment_intent_id ? "Paid" : "No payment"}
                       </p>
                     </div>
-                    {/* Patient Notified */}
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Patient Notified</p>
-                      <p className={`text-sm font-semibold ${order.patient_notification_sent_at ? "text-emerald-600" : "text-gray-400"}`}>
-                        {order.patient_notification_sent_at ? fmt(order.patient_notification_sent_at) : "Not sent"}
-                      </p>
-                    </div>
+                    {/* OPS-ORDER-MODAL-V2-LAYOUT: Patient Notified moved out of
+                        Overview Order Details — visible in Comms tab + the Quick
+                        Summary "Letter Sent" tile already shows this state. */}
                     {/* Coupon */}
                     {order.coupon_code && (
                       <div>
@@ -2792,27 +3217,27 @@ export default function OrderDetailModal({
                         <p className="text-sm font-bold text-green-600">-${order.coupon_discount}.00</p>
                       </div>
                     )}
-                    {/* Referred By — only when present */}
-                    {order.referred_by && (
-                      <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Referred By</p>
-                        <p className="text-sm font-semibold text-gray-800 break-words">{order.referred_by}</p>
-                      </div>
-                    )}
+                    {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: duplicate Referred By
+                        removed. The colored source badge below (using
+                        resolveRefConfig) is the single source of truth. */}
                   </div>
                 </div>
 
                 {/* Remaining full-width items below the 3-col grid */}
                 <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
 
-                  {/* ── GHL Sync row — inline sync/resync button ── */}
+                  {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: GHL Sync slimmed to a single
+                      compact pill + Re-sync. Re-sync stays in Overview because it's
+                      operationally important when an order's GHL state is out of date.
+                      Contact ID, Linked badge, Open in GHL link, and Sync History
+                      moved into the collapsible "CRM Details" panel below this grid
+                      to keep Overview focused on customer/order state. */}
                   <div className="col-span-2 sm:col-span-3 md:col-span-4">
                     <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
                       <i className="ri-refresh-line text-gray-400"></i>
                       GHL Sync
                     </p>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {/* Status badge */}
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
                         order.ghl_synced_at
                           ? "bg-emerald-50 border-emerald-200 text-emerald-700"
@@ -2834,39 +3259,24 @@ export default function OrderDetailModal({
                             : "Not synced yet"
                         }
                       </span>
-
-                      {/* Sync / Re-sync button */}
                       <button
                         type="button"
                         onClick={handleGhlRefire}
                         disabled={ghlFiring}
-                        className={`whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer disabled:opacity-50 ${
+                        className={`whitespace-nowrap inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors cursor-pointer disabled:opacity-50 ${
                           order.ghl_synced_at
-                            ? "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                            ? "border-emerald-200 text-emerald-700 bg-white hover:bg-emerald-50"
                             : order.ghl_sync_error
-                              ? "border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
-                              : "border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"
+                              ? "border-red-200 text-red-700 bg-white hover:bg-red-50"
+                              : "border-amber-200 text-amber-700 bg-white hover:bg-amber-50"
                         }`}
                       >
                         {ghlFiring
                           ? <><i className="ri-loader-4-line animate-spin"></i>Syncing...</>
-                          : order.ghl_synced_at
-                            ? <><i className="ri-refresh-line"></i>Re-sync to GHL</>
-                            : order.ghl_sync_error
-                              ? <><i className="ri-refresh-line"></i>Retry GHL Sync</>
-                              : <><i className="ri-refresh-line"></i>Sync to GHL</>
+                          : <><i className="ri-refresh-line"></i>{order.ghl_synced_at ? "Re-sync" : order.ghl_sync_error ? "Retry" : "Sync"}</>
                         }
                       </button>
-
-                      {/* Error detail */}
-                      {order.ghl_sync_error && !order.ghl_synced_at && (
-                        <span className="text-xs text-red-500 italic truncate max-w-[240px]" title={order.ghl_sync_error}>
-                          {order.ghl_sync_error.slice(0, 100)}
-                        </span>
-                      )}
                     </div>
-
-                    {/* Inline feedback */}
                     {ghlMsg && (
                       <p className={`text-xs mt-1.5 flex items-center gap-1 font-semibold ${ghlMsg.toLowerCase().includes("fail") || ghlMsg.toLowerCase().includes("error") ? "text-red-600" : "text-emerald-700"}`}>
                         <i className={ghlMsg.toLowerCase().includes("fail") || ghlMsg.toLowerCase().includes("error") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>
@@ -2875,127 +3285,10 @@ export default function OrderDetailModal({
                     )}
                   </div>
 
-                  {/* ── GHL Contact ID ── */}
-                  <div className="col-span-2 sm:col-span-3 md:col-span-4">
-                    <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
-                      <i className="ri-contacts-line text-gray-400"></i>
-                      GHL Contact ID
-                    </p>
-                    {order.ghl_contact_id ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-mono font-semibold text-[#3b6ea5] bg-[#e8f0f9] border border-[#b8cce4] px-3 py-1.5 rounded-lg select-all tracking-wide">
-                          {order.ghl_contact_id}
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                          <i className="ri-checkbox-circle-fill" style={{ fontSize: "10px" }}></i>Linked
-                        </span>
-                        <CopyFieldButton value={order.ghl_contact_id} />
-                        <a
-                          href={`https://app.gohighlevel.com/contacts/${order.ghl_contact_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
-                        >
-                          <i className="ri-external-link-line text-xs"></i>Open in GHL
-                        </a>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-700">
-                          <i className="ri-link-unlink-m" style={{ fontSize: "10px" }}></i>Not linked yet
-                        </span>
-                        <p className="text-xs text-gray-400">
-                          Sync to GHL to capture the contact ID automatically
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── GHL Sync History ── */}
-                  <GhlSyncHistory confirmationId={order.confirmation_id} />
-
-                  {/* Stripe Payment Intent ID + Checkout Session ID — direct links to Stripe dashboard */}
-                  {order.payment_intent_id && (
-                    <div className="col-span-2 sm:col-span-3 md:col-span-4">
-                      <p className="text-xs text-gray-400 mb-1.5">Stripe Reference</p>
-                      <div className="space-y-2">
-                        {/* Payment Intent */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-semibold">PI</span>
-                          <span className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded-lg select-all">{order.payment_intent_id}</span>
-                          <a
-                            href={`https://dashboard.stripe.com/payments/${order.payment_intent_id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
-                          >
-                            <i className="ri-external-link-line text-xs"></i>Open in Stripe
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const val = order.payment_intent_id ?? "";
-                              const fallback = () => { try { const el = document.createElement("textarea"); el.value = val; el.style.position = "fixed"; el.style.opacity = "0"; document.body.appendChild(el); el.focus(); el.select(); document.execCommand("copy"); document.body.removeChild(el); } catch { /* ignore */ } };
-                              if (navigator.clipboard && document.hasFocus()) { navigator.clipboard.writeText(val).catch(fallback); } else { fallback(); }
-                            }}
-                            className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
-                          >
-                            <i className="ri-file-copy-line text-xs"></i>Copy
-                          </button>
-                        </div>
-                        {/* Checkout Session ID */}
-                        {order.checkout_session_id ? (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-semibold">CS</span>
-                            <span className="text-xs font-mono text-gray-700 bg-gray-100 px-2 py-1 rounded-lg select-all">{order.checkout_session_id}</span>
-                            <a
-                              href={`https://dashboard.stripe.com/payments/${order.checkout_session_id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
-                            >
-                              <i className="ri-external-link-line text-xs"></i>Open Session
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const val = order.checkout_session_id ?? "";
-                                const fallback = () => { try { const el = document.createElement("textarea"); el.value = val; el.style.position = "fixed"; el.style.opacity = "0"; document.body.appendChild(el); el.focus(); el.select(); document.execCommand("copy"); document.body.removeChild(el); } catch { /* ignore */ } };
-                                if (navigator.clipboard && document.hasFocus()) { navigator.clipboard.writeText(val).catch(fallback); } else { fallback(); }
-                              }}
-                              className="whitespace-nowrap inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
-                            >
-                              <i className="ri-file-copy-line text-xs"></i>Copy
-                            </button>
-                          </div>
-                        ) : (
-                          /* No session ID yet — show backfill button */
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded font-semibold">CS</span>
-                            <span className="text-xs text-gray-400 italic">No checkout_session_id stored</span>
-                            <button
-                              type="button"
-                              onClick={handleResendWebhook}
-                              disabled={resendingWebhook}
-                              title="Re-process the Stripe payment_intent.succeeded webhook to backfill checkout_session_id and re-trigger any missing emails"
-                              className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg hover:bg-amber-100 cursor-pointer transition-colors disabled:opacity-50"
-                            >
-                              {resendingWebhook
-                                ? <><i className="ri-loader-4-line animate-spin"></i>Processing...</>
-                                : <><i className="ri-refresh-line"></i>Resend Stripe Webhook</>
-                              }
-                            </button>
-                          </div>
-                        )}
-                        {resendWebhookMsg && (
-                          <p className={`text-xs flex items-center gap-1 font-semibold ${resendWebhookOk ? "text-emerald-700" : "text-red-600"}`}>
-                            <i className={resendWebhookOk ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
-                            {resendWebhookMsg}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  {/* OPS-ORDER-MODAL-V2-LAYOUT: Stripe Payment Intent / Checkout
+                      Session / Resend Webhook moved entirely to the Payments tab
+                      (PaymentHistoryTab owns these). Overview is no longer the
+                      place for raw Stripe references. */}
 
                   {/* ── Verification ID ── shown only when letter has been issued via the live provider-submit flow */}
                   {order.letter_id && (
@@ -3056,36 +3349,10 @@ export default function OrderDetailModal({
                     })()}
                   </div>
 
-                  {/* Broadcast Opt-Out status */}
-                  <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Broadcast Emails</p>
-                    {order.broadcast_opt_out ? (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border border-orange-300 bg-orange-50 text-orange-700">
-                        <i className="ri-mail-forbid-line"></i>
-                        Opted Out
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700">
-                        <i className="ri-mail-check-line"></i>
-                        Subscribed
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Last broadcast sent */}
-                  <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Last Broadcast Sent</p>
-                    {order.last_broadcast_sent_at ? (
-                      <p className="text-sm font-semibold text-gray-700" title={new Date(order.last_broadcast_sent_at).toLocaleString()}>
-                        {new Date(order.last_broadcast_sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        <span className="text-xs text-gray-400 ml-1">
-                          {new Date(order.last_broadcast_sent_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </p>
-                    ) : (
-                      <p className="text-sm font-semibold text-gray-400">Never contacted</p>
-                    )}
-                  </div>
+                  {/* OPS-ORDER-MODAL-V2-LAYOUT: Broadcast opt-out status and Last
+                      Broadcast Sent moved out of Overview's Order Details — these
+                      are comms metadata and belong in the Comms tab where the
+                      send/audience tooling lives. */}
                 </div>
                 {/* end full-width items grid */}
 
@@ -3176,18 +3443,11 @@ export default function OrderDetailModal({
                     </div>
                   </div>
                 )}
-                {/* Unpaid lead with no failure recorded — link to Payments tab */}
-                {order.status === "lead" && !order.payment_failed_at && !order.payment_intent_id && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => setSection("payments")}
-                      className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
-                    >
-                      <i className="ri-bank-card-line"></i>View Payments &amp; Send Recovery Email
-                    </button>
-                  </div>
-                )}
+                {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: removed the "View Payments &
+                    Send Recovery Email" button for unpaid leads. Payments tab now
+                    owns repair + recovery actions; the compact "Payment Not Linked"
+                    warning at the top of Overview already routes there with
+                    "Fix in Payments tab", so this duplicate CTA was redundant. */}
 
                 {/* Dispute details — shown when order is disputed */}
                 {(order.status === "disputed" || order.dispute_id) && (
@@ -3229,6 +3489,10 @@ export default function OrderDetailModal({
                   </div>
                 )}
               </div>
+
+              {/* OPS-ORDER-MODAL-V2-LAYOUT (rev): CRM Details panel relocated to
+                  the bottom of the right rail, below Internal Notes — see the
+                  collapsed CRM & Sync card after the Internal Notes shortcut. */}
 
               {/* Assigned Provider */}
               <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -3280,37 +3544,52 @@ export default function OrderDetailModal({
                 ) : (
                   <>
                     {order.doctor_name && (
-                      <div className="flex items-center gap-3 mb-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-3">
-                        <div className="w-9 h-9 flex items-center justify-center bg-white rounded-full flex-shrink-0">
-                          <i className="ri-user-heart-line text-[#3b6ea5] text-base"></i>
+                      // ORDER-DETAIL-MODAL-V2-PHASE7A (re-alignment fix):
+                      // assigned-provider card now stacks vertically on mobile
+                      // (flex-col) so Nudge / Remove no longer collide with
+                      // long names or emails. Desktop (sm+) keeps the original
+                      // horizontal layout: identity → spacer → action buttons.
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-3">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-9 h-9 flex items-center justify-center bg-white rounded-full flex-shrink-0">
+                            <i className="ri-user-heart-line text-[#3b6ea5] text-base"></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-[#3b6ea5] font-bold">Currently Assigned</p>
+                            <p className="text-sm font-bold text-[#3b6ea5] break-words">{order.doctor_name}</p>
+                            {order.doctor_email && (
+                              <p className="text-xs text-[#3b6ea5]/70 break-all">{order.doctor_email}</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-[#3b6ea5] font-bold">Currently Assigned</p>
-                          <p className="text-sm font-bold text-[#3b6ea5]">{order.doctor_name}</p>
-                          {order.doctor_email && <p className="text-xs text-[#3b6ea5]/70">{order.doctor_email}</p>}
+                        {/* Action buttons row — full width on mobile (stack
+                            below identity), inline on desktop. Each button
+                            takes equal width on mobile so they fit cleanly
+                            inside the card; on sm+ they shrink to content. */}
+                        <div className="flex items-center gap-2 sm:flex-shrink-0">
+                          {/* Nudge Provider button — only shows when a provider is assigned */}
+                          <button
+                            type="button"
+                            onClick={handleResendProviderEmail}
+                            disabled={resendingProvider}
+                            title="Re-send the case notification email to the currently assigned provider"
+                            className="whitespace-nowrap flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg text-xs font-bold cursor-pointer transition-colors disabled:opacity-50"
+                          >
+                            {resendingProvider
+                              ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
+                              : <><i className="ri-notification-3-line"></i>Nudge Provider</>
+                            }
+                          </button>
+                          {/* Remove Provider button */}
+                          <button
+                            type="button"
+                            onClick={() => setShowRemoveProviderConfirm(true)}
+                            title="Remove provider assignment and mark order as Paid (Unassigned)"
+                            className="whitespace-nowrap flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                          >
+                            <i className="ri-user-unfollow-line"></i>Remove
+                          </button>
                         </div>
-                        {/* Nudge Provider button — only shows when a provider is assigned */}
-                        <button
-                          type="button"
-                          onClick={handleResendProviderEmail}
-                          disabled={resendingProvider}
-                          title="Re-send the case notification email to the currently assigned provider"
-                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg text-xs font-bold cursor-pointer transition-colors disabled:opacity-50 flex-shrink-0"
-                        >
-                          {resendingProvider
-                            ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</>
-                            : <><i className="ri-notification-3-line"></i>Nudge Provider</>
-                          }
-                        </button>
-                        {/* Remove Provider button */}
-                        <button
-                          type="button"
-                          onClick={() => setShowRemoveProviderConfirm(true)}
-                          title="Remove provider assignment and mark order as Paid (Unassigned)"
-                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg text-xs font-bold cursor-pointer transition-colors flex-shrink-0"
-                        >
-                          <i className="ri-user-unfollow-line"></i>Remove
-                        </button>
                       </div>
                     )}
                     {removeProviderMsg && (
@@ -3362,9 +3641,32 @@ export default function OrderDetailModal({
                 )}
               </div>
 
-              {/* Admin Status Actions */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Admin Actions</p>
+              {/* OPS-ORDER-MODAL-V2-LAYOUT: Admin Actions wrapped in a collapsed
+                  accordion so they no longer dominate the right rail by default.
+                  All inner handlers, confirmation modals, and safety copy are
+                  preserved unchanged inside.
+                  ORDER-DETAIL-MODAL-V2-PHASE7A: hidden on mobile per owner spec.
+                  Re-alignment to Revision 4: now hidden on desktop too — admin
+                  actions live exclusively in the header More dropdown. The
+                  accordion stays mounted (display:none) so the confirmation
+                  modals it references (Archive, Restore, Hard Delete) remain
+                  wired to existing state machinery; the More menu items below
+                  drive that state directly. */}
+              <div className="hidden bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminActions((v) => !v)}
+                  aria-expanded={showAdminActions}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <i className="ri-tools-line text-gray-400"></i>
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Admin Actions</span>
+                  </span>
+                  <i className={`ri-arrow-${showAdminActions ? "up" : "down"}-s-line text-gray-400 text-base`}></i>
+                </button>
+                {showAdminActions && (
+                <div className="p-4 border-t border-gray-100">
 
                 {/* ── UNPAID LEAD — redirect to Payments tab ── */}
                 {!order.payment_intent_id ? (
@@ -3606,12 +3908,104 @@ export default function OrderDetailModal({
                     )}
                   </div>
                 )}
+
+              {/* OPS-ORDER-ARCHIVE-VOID-FLOW: Archive / Void — safer than hard delete.
+                  Use for duplicate, rejected, abandoned, or replaced orders. Preserves
+                  notes/comms/payment/provider history; unblocks customer resubmission
+                  with the same email (server-side, in get-resume-order). */}
+              <div className="bg-white rounded-xl border border-orange-200 p-4">
+                <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3 flex items-center gap-1">
+                  <i className="ri-archive-line"></i>Archive / Void Order
+                </p>
+                {order.status === "archived" ? (
+                  /* OPS-ORDER-ARCHIVE-RESTORE: Restore / Reopen safety undo. */
+                  <>
+                    <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl p-3 mb-3">
+                      <div className="w-8 h-8 flex items-center justify-center bg-gray-200 rounded-lg flex-shrink-0">
+                        <i className="ri-archive-fill text-gray-600 text-sm"></i>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-gray-700">This order is archived/voided.</p>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                          History is preserved. Customer can resubmit with the same email.
+                        </p>
+                      </div>
+                    </div>
+                    {!canPerformDelete ? (
+                      <div className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-xl p-3">
+                        <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
+                          <i className="ri-lock-2-line text-orange-600 text-sm"></i>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs font-bold text-orange-800">Restore Restricted — Admin access required</p>
+                          <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
+                            Only Owner or Admin Manager can restore archived orders.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setShowRestoreConfirm(true)}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-sm font-bold cursor-pointer transition-colors"
+                        >
+                          <i className="ri-arrow-go-back-line"></i>Restore / Reopen Order
+                        </button>
+                        <p className="text-xs text-gray-500 mt-2 leading-relaxed flex items-start gap-1">
+                          <i className="ri-information-line mt-0.5 flex-shrink-0"></i>
+                          <span>
+                            Restoring makes this order active again. It may again block same-email resubmission depending on payment/status. No Stripe, no email, no provider change.
+                          </span>
+                        </p>
+                        {restoreMsg && (
+                          <p className={`text-xs mt-2 font-semibold flex items-center gap-1 ${restoreMsg.toLowerCase().startsWith("restore failed") || restoreMsg.toLowerCase().includes("required") ? "text-red-600" : "text-emerald-700"}`}>
+                            <i className="ri-information-line"></i>{restoreMsg}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : !canPerformDelete ? (
+                  <div className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-xl p-3">
+                    <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
+                      <i className="ri-lock-2-line text-orange-600 text-sm"></i>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-orange-800">Archive Restricted — Admin access required</p>
+                      <p className="text-xs text-orange-700 mt-0.5 leading-relaxed">
+                        Only Owner or Admin Manager can archive/void orders.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowArchiveConfirm(true)}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 border border-orange-400 text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-lg text-sm font-bold cursor-pointer transition-colors"
+                    >
+                      <i className="ri-archive-line"></i>Archive / Void Order
+                    </button>
+                    <p className="text-xs text-gray-500 mt-2 leading-relaxed flex items-start gap-1">
+                      <i className="ri-information-line mt-0.5 flex-shrink-0"></i>
+                      <span>
+                        Use for duplicate, rejected, abandoned, or replaced orders. Preserves notes, comms, assessment, payment history, and audit trail. Removes this order from active workflows and lets the customer resubmit with the same email. No Stripe refund. No customer email. No provider change.
+                      </span>
+                    </p>
+                    {archiveMsg && (
+                      <p className={`text-xs mt-2 font-semibold flex items-center gap-1 ${archiveMsg.toLowerCase().startsWith("archive failed") || archiveMsg.toLowerCase().includes("required") ? "text-red-600" : "text-emerald-700"}`}>
+                        <i className="ri-information-line"></i>{archiveMsg}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
 
-              {/* ── Permanent Delete ── */}
+              {/* ── Permanent Delete (test/garbage records only) ── */}
               <div className="bg-white rounded-xl border border-red-100 p-4">
                 <p className="text-xs font-bold text-red-400 uppercase tracking-widest mb-3 flex items-center gap-1">
-                  <i className="ri-skull-line"></i>Danger Zone
+                  <i className="ri-skull-line"></i>Danger Zone — Hard Delete (test/garbage only)
                 </p>
                 {!canPerformDelete ? (
                   /* Non-admin role — locked delete. Finance/Support can request approval. */
@@ -3645,16 +4039,21 @@ export default function OrderDetailModal({
                   </div>
                 ) : (
                   <>
+                    {/* OPS-ORDER-ARCHIVE-VOID-FLOW: hard delete demoted to a secondary,
+                        smaller button. Real operational orders should use Archive/Void
+                        above; hard delete is reserved for true test/garbage records. */}
                     <button
                       type="button"
                       onClick={() => setShowDeleteOrderConfirm(true)}
-                      className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 border border-red-400 text-red-700 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
+                      className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
                     >
-                      <i className="ri-delete-bin-2-line"></i>Delete This Order Permanently
+                      <i className="ri-delete-bin-line"></i>Delete Permanently
                     </button>
-                    <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                      <i className="ri-information-line"></i>
-                      Removes this order and all documents from the database. Use for test/duplicate orders. Cannot be undone.
+                    <p className="text-xs text-gray-400 mt-2 leading-relaxed flex items-start gap-1">
+                      <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+                      <span>
+                        <strong>For test/garbage records only.</strong> Removes this order and all documents from the database. Cannot be undone. For real customer orders, use <strong>Archive / Void</strong> above instead — it preserves history and unblocks resubmission without losing data.
+                      </span>
                     </p>
                     {deleteOrderMsg && (
                       <p className="text-xs mt-2 text-red-600 font-semibold flex items-center gap-1">
@@ -3664,20 +4063,130 @@ export default function OrderDetailModal({
                   </>
                 )}
               </div>
+                </div>
+                )}
+              </div>
 
-              {/* ── TRUSTPILOT REVIEW REQUEST — completed orders only ── */}
+              {/* ── TRUSTPILOT REVIEW REQUEST — completed orders only ──
+                  ORDER-DETAIL-MODAL-V2-PHASE7A: hide on mobile Overview per
+                  owner spec — review/Trustpilot belongs in the desktop right
+                  rail only, mobile Overview stays essentials-only. */}
               {order.doctor_status === "patient_notified" && (
-                <TrustpilotReviewPanel
-                  orderId={order.id}
-                  confirmationId={order.confirmation_id}
-                  email={order.email}
-                  phone={order.phone ?? null}
-                  firstName={order.first_name ?? null}
-                  lastName={order.last_name ?? null}
-                  supabaseUrl={supabaseUrl}
-                  anonKey={anonKey}
-                />
+                <div className="hidden lg:block">
+                  <TrustpilotReviewPanel
+                    orderId={order.id}
+                    confirmationId={order.confirmation_id}
+                    email={order.email}
+                    phone={order.phone ?? null}
+                    firstName={order.first_name ?? null}
+                    lastName={order.last_name ?? null}
+                    supabaseUrl={supabaseUrl}
+                    anonKey={anonKey}
+                  />
+                </div>
               )}
+
+              {/* OPS-ORDER-MODAL-V2-LAYOUT: Internal Notes shortcut card. Default
+                  Notes tab destination is Internal Notes (set in NotesTabMerged).
+                  Full notes editor lives on the Notes tab; this card just points
+                  the admin there in one click.
+                  ORDER-DETAIL-MODAL-V2-PHASE7A: hide on mobile Overview — the
+                  Notes tab still surfaces this directly. */}
+              <div className="hidden lg:block bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <i className="ri-sticky-note-line text-gray-400"></i>Internal Notes
+                  </p>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
+                    <i className="ri-shield-user-line" style={{ fontSize: "9px" }}></i>Admin only
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed mb-3">
+                  Internal admin context for this order. Provider notes are a separate sub-tab.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSection("notes")}
+                  className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                >
+                  <i className="ri-edit-2-line"></i>Open Notes (Internal)
+                </button>
+              </div>
+
+              {/* OPS-ORDER-MODAL-V2-LAYOUT (rev): CRM & Sync panel — relocated to
+                  the bottom of the right rail per owner mockup. Auto-expands when
+                  there's a sync error so admin sees the issue without clicking.
+                  ORDER-DETAIL-MODAL-V2-PHASE7A: hide on mobile Overview — CRM
+                  & Sync is desktop-only per owner spec. */}
+              <div className="hidden lg:block bg-white rounded-xl border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowCrmDetails((v) => !v)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 rounded-xl transition-colors"
+                  aria-expanded={showCrmDetails || !!order.ghl_sync_error}
+                >
+                  <span className="flex items-center gap-2">
+                    <i className="ri-database-2-line text-gray-400"></i>
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">CRM &amp; Sync</span>
+                    {order.ghl_contact_id ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>Linked
+                      </span>
+                    ) : order.ghl_sync_error ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
+                        <i className="ri-error-warning-fill" style={{ fontSize: "9px" }}></i>Sync error
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+                        Not synced
+                      </span>
+                    )}
+                  </span>
+                  <i className={`ri-arrow-${(showCrmDetails || !!order.ghl_sync_error) ? "up" : "down"}-s-line text-gray-400 text-base`}></i>
+                </button>
+                {(showCrmDetails || !!order.ghl_sync_error) && (
+                  <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">
+                    {/* GHL Contact ID block — copy + Open in GHL preserved */}
+                    <div>
+                      <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
+                        <i className="ri-contacts-line text-gray-400"></i>GHL Contact ID
+                      </p>
+                      {order.ghl_contact_id ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-mono font-semibold text-[#3b6ea5] bg-[#e8f0f9] border border-[#b8cce4] px-3 py-1.5 rounded-lg select-all tracking-wide">
+                            {order.ghl_contact_id}
+                          </span>
+                          <CopyFieldButton value={order.ghl_contact_id} />
+                          <a
+                            href={`https://app.gohighlevel.com/contacts/${order.ghl_contact_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-[#3b6ea5] font-semibold hover:underline cursor-pointer"
+                          >
+                            <i className="ri-external-link-line text-xs"></i>Open in GHL
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-700">
+                            <i className="ri-link-unlink-m" style={{ fontSize: "10px" }}></i>Not linked yet
+                          </span>
+                          <p className="text-xs text-gray-400">
+                            Use the Sync row in Order Details to capture the contact ID automatically
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {/* GHL Sync History */}
+                    <GhlSyncHistory confirmationId={order.confirmation_id} />
+                  </div>
+                )}
+              </div>
+
+                </div>
+                {/* end RIGHT OPERATIONS RAIL */}
+              </div>
+              {/* end V2 two-column command center */}
 
 
             </div>
@@ -4503,6 +5012,116 @@ export default function OrderDetailModal({
       </div>
 
       {/* ── Delete Order Confirmation ── */}
+      {/* OPS-ORDER-ARCHIVE-RESTORE: Restore / Reopen confirmation modal */}
+      {showRestoreConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/50">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-emerald-100 rounded-xl flex-shrink-0">
+                <i className="ri-arrow-go-back-fill text-emerald-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Restore / Reopen This Order?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  Order <span className="font-mono text-gray-700">{order.confirmation_id}</span> will move out of Archived and become active again.
+                </p>
+              </div>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-4 space-y-1 text-xs text-emerald-800">
+              <p className="font-bold">{fullName}</p>
+              <p>{order.email}</p>
+              <p className="flex items-center gap-1">
+                <i className="ri-arrow-right-line"></i>
+                New status: <strong>{(order.payment_intent_id || order.paid_at) ? "Processing (paid)" : "Lead (Unpaid)"}</strong>
+              </p>
+              <p className="flex items-center gap-1"><i className="ri-shield-check-line"></i>Notes, comms, assessment, payment history untouched</p>
+              <p className="flex items-center gap-1"><i className="ri-mail-forbid-line"></i>No Stripe · No customer email · No provider change</p>
+              <p className="flex items-center gap-1"><i className="ri-error-warning-line"></i>May once more block same-email resubmission</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestoreOrder}
+                disabled={restoringOrder}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {restoringOrder
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Restoring...</>
+                  : <><i className="ri-arrow-go-back-line"></i>Yes, Restore / Reopen</>
+                }
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRestoreConfirm(false)}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OPS-ORDER-ARCHIVE-VOID-FLOW: Archive/Void confirmation modal */}
+      {showArchiveConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/50">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 flex items-center justify-center bg-orange-100 rounded-xl flex-shrink-0">
+                <i className="ri-archive-fill text-orange-600 text-lg"></i>
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-gray-900">Archive / Void This Order?</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  Order <span className="font-mono text-gray-700">{order.confirmation_id}</span> will be marked as archived/voided. History stays. Customer can resubmit with the same email.
+                </p>
+              </div>
+            </div>
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 mb-4 space-y-1 text-xs text-orange-800">
+              <p className="font-bold">{fullName}</p>
+              <p>{order.email}</p>
+              <p className="flex items-center gap-1"><i className="ri-shield-check-line"></i>Notes, comms, assessment, payment history, audit trail preserved</p>
+              <p className="flex items-center gap-1"><i className="ri-mail-forbid-line"></i>No Stripe refund · No customer email · No provider change</p>
+              <p className="flex items-center gap-1"><i className="ri-user-add-line"></i>Customer can start a fresh order with the same email</p>
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">Reason</label>
+              <select
+                value={archiveReason}
+                onChange={(e) => setArchiveReason(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-orange-500 bg-white"
+              >
+                <option value="">— Select a reason —</option>
+                <option value="Duplicate / replacement assessment">Duplicate / replacement assessment</option>
+                <option value="Customer resubmitted">Customer resubmitted</option>
+                <option value="Test order">Test order</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleArchiveOrder}
+                disabled={archivingOrder || !archiveReason}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {archivingOrder
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Archiving...</>
+                  : <><i className="ri-archive-line"></i>Yes, Archive / Void</>
+                }
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowArchiveConfirm(false); setArchiveReason(""); }}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteOrderConfirm && (
         <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/50">
           <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full mx-4">
