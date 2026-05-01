@@ -10,6 +10,9 @@ const CORS = {
 };
 
 const TRUSTPILOT_REVIEW_URL = "https://www.trustpilot.com/review/pawtenant.com";
+// Trustpilot invite BCC — required by Trustpilot to verify review invitations.
+// Scoped to this function only (review request emails). Do NOT add globally.
+const TRUSTPILOT_BCC_FALLBACK = "pawtenant.com+ddb0d00de5@invite.trustpilot.com";
 const ACCENT = "#4a7fb5";
 const ACCENT_LIGHT = "#eef2f9";
 const ACCENT_BORDER = "#b8cce4";
@@ -263,22 +266,30 @@ Deno.serve(async (req: Request) => {
         html = buildEmailHTML(name);
       }
 
+      // Trustpilot invite BCC — only attached for review request emails.
+      // Customer does not see BCC. Empty/undefined values are not sent.
+      const trustpilotBcc = (Deno.env.get("TRUSTPILOT_BCC_EMAIL") || TRUSTPILOT_BCC_FALLBACK).trim();
+      const resendPayload: Record<string, unknown> = {
+        from: "PawTenant <support@pawtenant.com>",
+        to: [email],
+        subject,
+        html,
+        tags: [
+          { name: "type", value: "trustpilot_review_request" },
+          { name: "confirmation_id", value: confirmationId },
+        ],
+      };
+      if (trustpilotBcc) {
+        resendPayload.bcc = [trustpilotBcc];
+      }
+
       const resendRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${RESEND_API_KEY}`,
         },
-        body: JSON.stringify({
-          from: "PawTenant <support@pawtenant.com>",
-          to: [email],
-          subject,
-          html,
-          tags: [
-            { name: "type", value: "trustpilot_review_request" },
-            { name: "confirmation_id", value: confirmationId },
-          ],
-        }),
+        body: JSON.stringify(resendPayload),
       });
 
       const resendText = await resendRes.text();
