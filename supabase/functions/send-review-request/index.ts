@@ -1,4 +1,25 @@
 // send-review-request — Sends Trustpilot review request via Email (Resend) or SMS (Twilio)
+//
+// EMAIL RENDERING:
+//   The email body MUST match the Settings hub preview. Both use the same
+//   pipeline:
+//     1. Load DB row from email_templates where slug='review_request' and
+//        channel='email'.
+//     2. Substitute vars ({name}, {review_url}, {site_url}) in subject, body,
+//        cta_label, cta_url.
+//     3. Render body as <p> paragraphs (split on \n\n; \n becomes <br/>).
+//     4. Append CTA button if cta_label + cta_url are non-empty.
+//     5. Wrap in the master layout from comms_settings.email_layout_html.
+//        If no master layout is configured, use a clean FALLBACK_LAYOUT
+//        (no 5-star block, no marketing chrome — admin's body is the
+//        source of truth).
+//   Hardcoded body (buildFallbackEmailHTML) runs ONLY when the DB row is
+//   missing, and the fallback path is logged with templateSource='hardcoded'.
+//
+// TRUSTPILOT BCC:
+//   Manual-only. Attached only at the email-channel send site below.
+//   Reads TRUSTPILOT_BCC_EMAIL secret with hardcoded fallback constant.
+
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
@@ -13,9 +34,9 @@ const TRUSTPILOT_REVIEW_URL = "https://www.trustpilot.com/review/pawtenant.com";
 // Trustpilot invite BCC — required by Trustpilot to verify review invitations.
 // Scoped to this function only (review request emails). Do NOT add globally.
 const TRUSTPILOT_BCC_FALLBACK = "pawtenant.com+ddb0d00de5@invite.trustpilot.com";
-const ACCENT = "#4a7fb5";
-const ACCENT_LIGHT = "#eef2f9";
-const ACCENT_BORDER = "#b8cce4";
+
+const FROM_EMAIL = "PawTenant <support@pawtenant.com>";
+const SITE_URL   = Deno.env.get("SITE_URL") ?? "https://www.pawtenant.com";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -24,173 +45,85 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function buildEmailHTML(firstName: string): string {
-  const name = firstName || "there";
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Share Your Experience — PawTenant</title>
-</head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 16px;">
+function escapeHtml(v = ""): string {
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function substitute(s: string, vars: Record<string, string>): string {
+  return String(s ?? "").replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+}
+
+// Clean fallback layout (used only when comms_settings.email_layout_html
+// is not configured). Mirrors the structure used in send-templated-email
+// and the Settings hub preview — header, body slot, footer.
+const FALLBACK_LAYOUT = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 16px;">
   <tr><td align="center">
-    <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e0e0e0;">
-      <tr>
-        <td style="background:${ACCENT};padding:32px 40px;text-align:center;">
-          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.3px;">Your ESA Letter is Ready!</h1>
-          <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">Thank you for choosing PawTenant</p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:40px 40px 32px;">
-          <p style="margin:0 0 16px;color:#1a1a1a;font-size:16px;line-height:1.6;">Hi <strong>${name}</strong>,</p>
-          <p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.7;">
-            We hope your ESA letter is everything you needed. It was a pleasure supporting you and your pet through this process.
-          </p>
-          <p style="margin:0 0 28px;color:#444;font-size:15px;line-height:1.7;">
-            If you had a positive experience, we'd love to hear about it! Your review helps other pet owners find the support they need — and it means the world to our small team.
-          </p>
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
-            <tr>
-              <td align="center" style="background:${ACCENT_LIGHT};border:1px solid ${ACCENT_BORDER};border-radius:12px;padding:24px 20px;">
-                <p style="margin:0 0 8px;font-size:28px;letter-spacing:4px;">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
-                <p style="margin:0 0 4px;color:${ACCENT};font-size:15px;font-weight:700;">Leave us a 5-star review on Trustpilot</p>
-                <p style="margin:0;color:#666;font-size:13px;">Takes less than 60 seconds</p>
-              </td>
-            </tr>
-          </table>
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
-            <tr>
-              <td align="center">
-                <a href="${TRUSTPILOT_REVIEW_URL}"
-                   style="display:inline-block;background:${ACCENT};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:0.2px;">
-                  &#9733; Write My Review
-                </a>
-              </td>
-            </tr>
-          </table>
-          <p style="margin:0 0 8px;color:#888;font-size:13px;line-height:1.6;">
-            Or copy this link into your browser:<br/>
-            <a href="${TRUSTPILOT_REVIEW_URL}" style="color:${ACCENT};word-break:break-all;">${TRUSTPILOT_REVIEW_URL}</a>
-          </p>
-        </td>
-      </tr>
-      <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #f0f0f0;margin:0;"/></td></tr>
-      <tr>
-        <td style="padding:24px 40px;text-align:center;">
-          <p style="margin:0 0 4px;color:#aaa;font-size:12px;">PawTenant &bull; Secure ESA Consultation Support</p>
-          <p style="margin:0;color:#ccc;font-size:11px;">
-            <a href="https://pawtenant.com" style="color:#aaa;text-decoration:none;">pawtenant.com</a>
-          </p>
-        </td>
-      </tr>
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
+      <tr><td style="background:#3b6ea5;padding:28px 32px;text-align:center;">
+        <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
+        <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
+      </td></tr>
+      <tr><td style="padding:32px 36px;">{{content}}</td></tr>
+      <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 36px;text-align:center;">
+        <p style="margin:0 0 4px 0;font-size:12px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:hello@pawtenant.com" style="color:#3b6ea5;text-decoration:none;">hello@pawtenant.com</a></p>
+        <p style="margin:0;font-size:11px;color:#9ca3af;">PawTenant &mdash; ESA &amp; PSD Letter Consultations &nbsp;&middot;&nbsp; <a href="https://pawtenant.com" style="color:#9ca3af;">pawtenant.com</a></p>
+      </td></tr>
     </table>
   </td></tr>
-</table>
-</body>
-</html>`;
-}
+</table></body></html>`;
 
 async function loadMasterLayout(
   supabase: ReturnType<typeof createClient>,
-): Promise<string | null> {
+): Promise<string> {
   const { data } = await supabase
     .from("comms_settings")
     .select("value")
     .eq("key", "email_layout_html")
     .maybeSingle();
-  const val = (data?.value as string | null) ?? null;
+  const val = (data?.value as string | null) ?? "";
   if (val && val.includes("{{content}}")) return val;
-  return null;
+  return FALLBACK_LAYOUT;
 }
 
-function buildEmailFromDbTemplate(
-  tmplBody: string,
-  ctaLabel: string,
-  ctaUrl: string,
-  vars: Record<string, string>,
-  masterLayout?: string | null,
-): string {
-  const sub = (s: string) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
-
-  const bodyHtml = sub(tmplBody)
-    .split("\n")
-    .filter((l) => l.trim() !== "")
-    .map((line) => `<p style="margin:0 0 16px;color:#444;font-size:15px;line-height:1.7;">${line}</p>`)
+// Render body text + CTA the same way Settings preview does.
+function renderBodyAsHtml(subject: string, bodyText: string, ctaLabel: string, ctaUrl: string): string {
+  const paragraphs = bodyText
+    .split("\n\n")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 16px 0;line-height:1.65;color:#374151;font-size:15px;">${p.replace(/\n/g, "<br/>")}</p>`)
     .join("");
 
-  const reviewUrl = sub(ctaUrl) || TRUSTPILOT_REVIEW_URL;
-  const ctaText = sub(ctaLabel) || "&#9733; Write My Review";
+  const cta = (ctaLabel && ctaUrl)
+    ? `<div style="text-align:center;margin:28px 0 0;">
+         <a href="${ctaUrl}" style="display:inline-block;background:#3b6ea5;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${ctaLabel}</a>
+       </div>`
+    : "";
 
-  if (masterLayout) {
-    const cta = `<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
-      <tr><td align="center">
-        <a href="${reviewUrl}" style="display:inline-block;background:${ACCENT};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">${ctaText}</a>
-      </td></tr>
-    </table>`;
-    return masterLayout.replace("{{content}}", `${bodyHtml}${cta}`);
-  }
+  const heading = subject
+    ? `<h1 style="margin:0 0 22px 0;font-size:20px;font-weight:800;color:#111827;line-height:1.3;">${escapeHtml(subject)}</h1>`
+    : "";
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Share Your Experience — PawTenant</title>
-</head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 16px;">
-  <tr><td align="center">
-    <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e0e0e0;">
-      <tr>
-        <td style="background:${ACCENT};padding:32px 40px;text-align:center;">
-          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;">Your ESA Letter is Ready!</h1>
-          <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">Thank you for choosing PawTenant</p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:40px 40px 32px;">
-          ${bodyHtml}
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
-            <tr>
-              <td align="center" style="background:${ACCENT_LIGHT};border:1px solid ${ACCENT_BORDER};border-radius:12px;padding:24px 20px;">
-                <p style="margin:0 0 8px;font-size:28px;letter-spacing:4px;">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
-                <p style="margin:0 0 4px;color:${ACCENT};font-size:15px;font-weight:700;">Leave us a 5-star review on Trustpilot</p>
-                <p style="margin:0;color:#666;font-size:13px;">Takes less than 60 seconds</p>
-              </td>
-            </tr>
-          </table>
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
-            <tr>
-              <td align="center">
-                <a href="${reviewUrl}"
-                   style="display:inline-block;background:${ACCENT};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">
-                  ${ctaText}
-                </a>
-              </td>
-            </tr>
-          </table>
-          <p style="margin:0;color:#888;font-size:13px;line-height:1.6;">
-            Or copy this link: <a href="${reviewUrl}" style="color:${ACCENT};word-break:break-all;">${reviewUrl}</a>
-          </p>
-        </td>
-      </tr>
-      <tr><td style="padding:0 40px;"><hr style="border:none;border-top:1px solid #f0f0f0;margin:0;"/></td></tr>
-      <tr>
-        <td style="padding:24px 40px;text-align:center;">
-          <p style="margin:0 0 4px;color:#aaa;font-size:12px;">PawTenant &bull; Secure ESA Consultation Support</p>
-          <p style="margin:0;color:#ccc;font-size:11px;">
-            <a href="https://pawtenant.com" style="color:#aaa;text-decoration:none;">pawtenant.com</a>
-          </p>
-        </td>
-      </tr>
-    </table>
-  </td></tr>
-</table>
-</body>
-</html>`;
+  return `${heading}${paragraphs}${cta}`;
+}
+
+// Hardcoded fallback used ONLY when DB template row is missing.
+// Logged with templateSource='hardcoded'.
+function buildFallbackEmailHTML(firstName: string, reviewUrl: string): string {
+  const name = escapeHtml(firstName || "there");
+  const safeUrl = escapeHtml(reviewUrl);
+  const subject = "Share your PawTenant experience";
+  const body = `Hi ${name},\n\nThank you for choosing PawTenant. If you have a moment, we'd really appreciate an honest review of your experience — it helps other pet owners and helps us keep improving.`;
+  const content = renderBodyAsHtml(subject, body, "Write My Review", safeUrl);
+  return FALLBACK_LAYOUT.replace("{{content}}", content);
 }
 
 Deno.serve(async (req: Request) => {
@@ -212,7 +145,7 @@ Deno.serve(async (req: Request) => {
     const name = firstName || "there";
     const reviewUrl = body.reviewUrl || TRUSTPILOT_REVIEW_URL;
 
-    console.log(`[send-review-request] channel=${channel} confirmationId=${confirmationId} email=${email}`);
+    console.log(`[send-review-request] channel=${channel} confirmationId=${confirmationId} email=${email ?? "(none)"}`);
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -220,6 +153,7 @@ Deno.serve(async (req: Request) => {
       ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
       : null;
 
+    // ───────────────────────────── EMAIL ─────────────────────────────────
     if (channel === "email") {
       if (!email) return json({ ok: false, error: "email is required" }, 400);
 
@@ -230,9 +164,10 @@ Deno.serve(async (req: Request) => {
 
       let html: string;
       let subject: string;
-      let templateSource = "hardcoded";
+      let templateSource: "db" | "hardcoded" = "hardcoded";
 
-      // DB-first template lookup
+      // DB-first template lookup. Body, subject, CTA all come from the row
+      // so the email matches the Settings hub preview exactly.
       if (supabase) {
         const { data: tmpl } = await supabase
           .from("email_templates")
@@ -242,41 +177,49 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
 
         if (tmpl) {
-          const vars: Record<string, string> = { name, review_url: reviewUrl };
-          subject = (tmpl.subject as string).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
-          const masterLayout = await loadMasterLayout(supabase);
-          html = buildEmailFromDbTemplate(
-            tmpl.body as string,
-            tmpl.cta_label as string,
-            tmpl.cta_url as string,
-            vars,
-            masterLayout,
-          );
+          const vars: Record<string, string> = {
+            name,
+            review_url: reviewUrl,
+            site_url: SITE_URL,
+          };
+
+          subject = substitute(tmpl.subject as string, vars) ||
+            (name !== "there" ? `${name}, share your PawTenant experience` : "Share your PawTenant experience");
+          const bodyText  = substitute((tmpl.body as string)      ?? "", vars);
+          const ctaLabel  = substitute((tmpl.cta_label as string) ?? "", vars);
+          const ctaUrl    = substitute((tmpl.cta_url as string)   ?? "", vars) || reviewUrl;
+
+          const content = renderBodyAsHtml(subject, bodyText, ctaLabel || "Write My Review", ctaUrl);
+          const layout  = await loadMasterLayout(supabase);
+          html = layout.replace("{{content}}", content);
           templateSource = "db";
         } else {
+          console.warn("[send-review-request] DB template review_request/email NOT FOUND — using hardcoded fallback");
           subject = name !== "there"
-            ? `${name}, share your PawTenant experience ⭐`
-            : "Share your PawTenant experience ⭐";
-          html = buildEmailHTML(name);
+            ? `${name}, share your PawTenant experience`
+            : "Share your PawTenant experience";
+          html = buildFallbackEmailHTML(name, reviewUrl);
         }
       } else {
+        console.warn("[send-review-request] Supabase client unavailable — using hardcoded fallback");
         subject = name !== "there"
-          ? `${name}, share your PawTenant experience ⭐`
-          : "Share your PawTenant experience ⭐";
-        html = buildEmailHTML(name);
+          ? `${name}, share your PawTenant experience`
+          : "Share your PawTenant experience";
+        html = buildFallbackEmailHTML(name, reviewUrl);
       }
 
       // Trustpilot invite BCC — only attached for review request emails.
       // Customer does not see BCC. Empty/undefined values are not sent.
       const trustpilotBcc = (Deno.env.get("TRUSTPILOT_BCC_EMAIL") || TRUSTPILOT_BCC_FALLBACK).trim();
       const resendPayload: Record<string, unknown> = {
-        from: "PawTenant <support@pawtenant.com>",
+        from: FROM_EMAIL,
         to: [email],
         subject,
         html,
         tags: [
           { name: "type", value: "trustpilot_review_request" },
           { name: "confirmation_id", value: confirmationId },
+          { name: "template_source", value: templateSource },
         ],
       };
       if (trustpilotBcc) {
@@ -303,7 +246,7 @@ Deno.serve(async (req: Request) => {
           supabase,
           confirmationId: confirmationId ?? null,
           to: email,
-          from: "PawTenant <support@pawtenant.com>",
+          from: FROM_EMAIL,
           subject,
           body: null,
           slug: "review_request",
@@ -339,6 +282,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, channel: "email", to: email, templateSource });
     }
 
+    // ─────────────────────────────── SMS ─────────────────────────────────
     if (channel === "sms") {
       if (!phone) return json({ ok: false, error: "phone is required for SMS" }, 400);
 
