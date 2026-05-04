@@ -969,6 +969,280 @@ function MasterEmailLayoutPanel() {
   );
 }
 
+// ── Recovery Sequence Settings panel ─────────────────────────────────────────
+// Reads + writes 11 keys in `comms_settings`. Backend (lead-followup-sequence)
+// reads the same keys. No DB migration needed; rows are seeded by
+// 20260502150000_recovery_sequence_control.sql + 20260502160000_recovery_sms_sequence.sql.
+type RecoveryToggleKey =
+  | "recovery_enabled"
+  | "recovery_email_enabled"
+  | "recovery_sms_enabled";
+
+type RecoveryNumKey =
+  | "recovery_stage_1_minutes"
+  | "recovery_stage_2_hours"
+  | "recovery_stage_3_hours"
+  | "recovery_stage_4_days"
+  | "recovery_stage_5_days"
+  | "recovery_sms_stage_1_hours"
+  | "recovery_sms_stage_2_hours"
+  | "recovery_sms_stage_final_days";
+
+const RECOVERY_NUM_DEFAULTS: Record<RecoveryNumKey, number> = {
+  recovery_stage_1_minutes:      30,
+  recovery_stage_2_hours:        24,
+  recovery_stage_3_hours:        48,
+  recovery_stage_4_days:         3,
+  recovery_stage_5_days:         5,
+  recovery_sms_stage_1_hours:    3,
+  recovery_sms_stage_2_hours:    48,
+  recovery_sms_stage_final_days: 5,
+};
+
+const RECOVERY_TOGGLE_DEFAULTS: Record<RecoveryToggleKey, boolean> = {
+  recovery_enabled:       true,
+  recovery_email_enabled: true,
+  recovery_sms_enabled:   false,
+};
+
+function RecoverySequencePanel() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+
+  const [toggles, setToggles] = useState<Record<RecoveryToggleKey, boolean>>(RECOVERY_TOGGLE_DEFAULTS);
+  const [nums, setNums]       = useState<Record<RecoveryNumKey, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const k of Object.keys(RECOVERY_NUM_DEFAULTS) as RecoveryNumKey[]) {
+      init[k] = String(RECOVERY_NUM_DEFAULTS[k]);
+    }
+    return init as Record<RecoveryNumKey, string>;
+  });
+
+  useEffect(() => {
+    (async () => {
+      const allKeys = [
+        ...Object.keys(RECOVERY_TOGGLE_DEFAULTS),
+        ...Object.keys(RECOVERY_NUM_DEFAULTS),
+      ];
+      const { data, error } = await supabase
+        .from("comms_settings")
+        .select("key, value")
+        .in("key", allKeys);
+
+      if (!error && data) {
+        const map = new Map<string, string>();
+        for (const r of data as Array<{ key: string; value: string | null }>) {
+          if (r.value !== null) map.set(r.key, r.value);
+        }
+
+        setToggles((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(RECOVERY_TOGGLE_DEFAULTS) as RecoveryToggleKey[]) {
+            const v = map.get(k);
+            if (v !== undefined) {
+              const lower = v.trim().toLowerCase();
+              next[k] = lower === "true" || lower === "1" || lower === "yes";
+            }
+          }
+          return next;
+        });
+
+        setNums((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(RECOVERY_NUM_DEFAULTS) as RecoveryNumKey[]) {
+            const v = map.get(k);
+            if (v !== undefined) next[k] = v;
+          }
+          return next;
+        });
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const validateNums = (): { ok: boolean; firstError?: string } => {
+    for (const k of Object.keys(RECOVERY_NUM_DEFAULTS) as RecoveryNumKey[]) {
+      const raw = nums[k];
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0 || !/^\d+$/.test(raw.trim())) {
+        return { ok: false, firstError: `${k} must be a positive whole number` };
+      }
+    }
+    return { ok: true };
+  };
+
+  const save = async () => {
+    const v = validateNums();
+    if (!v.ok) {
+      setStatus({ kind: "err", msg: v.firstError ?? "Invalid input" });
+      setTimeout(() => setStatus(null), 4000);
+      return;
+    }
+    setSaving(true);
+    setStatus(null);
+
+    const nowIso = new Date().toISOString();
+    const rows = [
+      ...(Object.keys(RECOVERY_TOGGLE_DEFAULTS) as RecoveryToggleKey[]).map((k) => ({
+        key: k,
+        value: toggles[k] ? "true" : "false",
+        updated_at: nowIso,
+      })),
+      ...(Object.keys(RECOVERY_NUM_DEFAULTS) as RecoveryNumKey[]).map((k) => ({
+        key: k,
+        value: String(Number(nums[k])),
+        updated_at: nowIso,
+      })),
+    ];
+
+    const { error } = await supabase
+      .from("comms_settings")
+      .upsert(rows, { onConflict: "key" });
+
+    setSaving(false);
+    if (error) {
+      setStatus({ kind: "err", msg: error.message });
+    } else {
+      setStatus({ kind: "ok", msg: "Saved." });
+    }
+    setTimeout(() => setStatus(null), 4000);
+  };
+
+  if (loading) return <div className="text-sm text-gray-500">Loading…</div>;
+
+  const Toggle = ({
+    label, sub, k,
+  }: { label: string; sub: string; k: RecoveryToggleKey }) => (
+    <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-gray-200 bg-white">
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-gray-800">{label}</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">{sub}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={toggles[k]}
+        onClick={() => setToggles((p) => ({ ...p, [k]: !p[k] }))}
+        className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+          toggles[k] ? "bg-[#3b6ea5]" : "bg-gray-300"
+        }`}
+      >
+        <span
+          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+            toggles[k] ? "translate-x-5" : "translate-x-1"
+          }`}
+        />
+      </button>
+    </div>
+  );
+
+  const NumField = ({
+    label, suffix, k,
+  }: { label: string; suffix: string; k: RecoveryNumKey }) => (
+    <label className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-gray-200 bg-white">
+      <span className="text-xs font-semibold text-gray-700">{label}</span>
+      <span className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={nums[k]}
+          onChange={(e) => setNums((p) => ({ ...p, [k]: e.target.value }))}
+          className="w-20 px-2 py-1 text-xs border border-gray-300 rounded-md text-right focus:outline-none focus:border-[#3b6ea5]"
+        />
+        <span className="text-[11px] text-gray-500 w-12">{suffix}</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs text-gray-600">
+        Controls the automated recovery sequence (email + SMS) for unpaid leads.
+        Backend reads these values on every cron run. Stop conditions (paid,
+        unsubscribe) are enforced regardless of these settings.
+      </div>
+
+      {/* Toggles */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Master Toggles</p>
+        <Toggle label="Recovery Sequence Enabled" sub="Master switch — turns the entire automated sequence on or off" k="recovery_enabled" />
+        <Toggle label="Email Recovery Enabled"    sub="Controls all 5 email stages"                                     k="recovery_email_enabled" />
+        <Toggle label="SMS Recovery Enabled"      sub="Controls all 3 SMS stages (also requires phone on order)"        k="recovery_sms_enabled" />
+      </div>
+
+      {/* Email stages */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Email Stage Timings</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <NumField label="Stage 1" suffix="minutes" k="recovery_stage_1_minutes" />
+          <NumField label="Stage 2" suffix="hours"   k="recovery_stage_2_hours" />
+          <NumField label="Stage 3" suffix="hours"   k="recovery_stage_3_hours" />
+          <NumField label="Stage 4" suffix="days"    k="recovery_stage_4_days" />
+          <NumField label="Stage 5" suffix="days"    k="recovery_stage_5_days" />
+        </div>
+      </div>
+
+      {/* SMS stages */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">SMS Stage Timings</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <NumField label="SMS Stage 1" suffix="hours" k="recovery_sms_stage_1_hours" />
+          <NumField label="SMS Stage 2" suffix="hours" k="recovery_sms_stage_2_hours" />
+          <NumField label="SMS Final"   suffix="days"  k="recovery_sms_stage_final_days" />
+        </div>
+      </div>
+
+      {/* Save */}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="px-3 py-1.5 rounded-md bg-[#3b6ea5] text-white text-xs font-semibold disabled:opacity-50 cursor-pointer"
+        >
+          {saving ? "Saving…" : "Save Settings"}
+        </button>
+        {status && (
+          <span className={`text-xs font-semibold ${status.kind === "ok" ? "text-green-700" : "text-red-600"}`}>
+            {status.kind === "ok" ? "✓ " : "⚠ "}{status.msg}
+          </span>
+        )}
+      </div>
+
+      {/* Future improvement marker — referenced by SETTINGS-IA-CLEANUP-GROUPED-SECTIONS */}
+      <div className="mt-3 px-3 py-2 rounded-md border border-dashed border-gray-300 bg-gray-50">
+        <p className="text-[11px] text-gray-500">
+          <strong className="text-gray-600">Future improvement:</strong> Advanced stage builder planned —
+          add/remove stages, reorder, choose email/SMS, discount, and template.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Slugs that are actively consumed by Edge Functions for automatic / button-driven sends.
+// Source of truth: AI/email-system-audit.md. Keep this list in sync with that doc.
+// Anything NOT in this set is admin-editable but currently lives only as a preset
+// (not wired to any automatic transactional flow yet).
+const DB_MANAGED_EMAIL_SLUGS = new Set<string>([
+  "review_request",
+  "checkout_recovery",
+  "checkout_recovery_discount",
+  "seq_30min",
+  "seq_24h",
+  "seq_48h",
+  "seq_3day",
+  "seq_5day",
+]);
+const DB_MANAGED_SMS_SLUGS = new Set<string>([
+  "review_request_sms",
+  "seq_sms_stage1",
+  "seq_sms_stage2",
+  "seq_sms_final",
+]);
+
 function CommsTemplatesPanel() {
   const [activeChannel, setActiveChannel] = useState<"email" | "sms">("email");
   // Email state
@@ -1185,7 +1459,7 @@ function CommsTemplatesPanel() {
           </div>
           <div>
             <h3 className="text-sm font-extrabold text-gray-900">Communications Templates Hub</h3>
-            <p className="text-xs text-gray-400">Manage all email + SMS templates — single source of truth, saved to DB</p>
+            <p className="text-xs text-gray-400">Edit DB-managed templates here. Some transactional emails still use legacy hardcoded templates until migrated.</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1241,6 +1515,19 @@ function CommsTemplatesPanel() {
         )}
       </div>
 
+      {/* DB-managed status notice */}
+      <div className="px-5 py-3 bg-amber-50 border-b border-amber-100 flex items-start gap-2.5">
+        <i className="ri-information-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+        <div className="text-[11px] text-amber-800 leading-relaxed">
+          <p className="font-semibold mb-0.5">Not every send uses these templates yet.</p>
+          <p>
+            Templates marked <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] align-middle"><span className="w-1 h-1 rounded-full bg-emerald-600"></span>Active DB</span> are wired to Edge Functions and edits go live immediately.
+            Other rows are admin-editable presets and may not yet drive an automatic flow.
+            Order confirmation, payment receipt, status emails, and most provider notifications still use legacy hardcoded templates &mdash; see <span className="font-mono">AI/email-system-audit.md</span> for the full mapping.
+          </p>
+        </div>
+      </div>
+
       {/* Add new template bar */}
       {addingNew && (
         <div className="px-5 py-3 bg-[#e8f0f9] border-b border-[#b8cce4] flex items-center gap-3 flex-wrap">
@@ -1281,7 +1568,16 @@ function CommsTemplatesPanel() {
                       <div key={t.id} className="flex items-center gap-1">
                         <button type="button" onClick={() => setSelectedEmailId(t.id)}
                           className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${selectedEmailId === t.id ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-                          {t.label}
+                          <span className="flex items-center justify-between gap-1.5">
+                            <span className="truncate">{t.label}</span>
+                            {DB_MANAGED_EMAIL_SLUGS.has(t.id) && (
+                              <span title="Wired to an Edge Function — edits go live"
+                                className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${selectedEmailId === t.id ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700"}`}>
+                                <span className={`w-1 h-1 rounded-full ${selectedEmailId === t.id ? "bg-white" : "bg-emerald-600"}`}></span>
+                                DB
+                              </span>
+                            )}
+                          </span>
                         </button>
                         {editMode && (
                           <button type="button" onClick={() => deleteEmailTemplate(t.id)} title="Delete"
@@ -1456,7 +1752,16 @@ function CommsTemplatesPanel() {
                       <div key={t.id} className="flex items-center gap-1">
                         <button type="button" onClick={() => setSelectedSmsId(t.id)}
                           className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${selectedSmsId === t.id ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-                          {t.label}
+                          <span className="flex items-center justify-between gap-1.5">
+                            <span className="truncate">{t.label}</span>
+                            {DB_MANAGED_SMS_SLUGS.has(t.id) && (
+                              <span title="Wired to an Edge Function — edits go live"
+                                className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${selectedSmsId === t.id ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700"}`}>
+                                <span className={`w-1 h-1 rounded-full ${selectedSmsId === t.id ? "bg-white" : "bg-emerald-600"}`}></span>
+                                DB
+                              </span>
+                            )}
+                          </span>
                         </button>
                         {editMode && (
                           <button type="button" onClick={() => deleteSmsTemplate(t.id)} title="Delete"
@@ -2711,6 +3016,20 @@ function SequenceManagementPanel() {
 }
 
 // ── Accordion Section wrapper ─────────────────────────────────────────────────
+// Category header shown above each grouped block of AccordionSections.
+// Pure presentation; no state; no behavior change to any panel.
+function CategoryHeader({ label, description, accent = "#3b6ea5" }: { label: string; description: string; accent?: string }) {
+  return (
+    <div className="pt-4 pb-1">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="inline-block w-1 h-4 rounded-sm" style={{ background: accent }} />
+        <h3 className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-gray-700">{label}</h3>
+      </div>
+      <p className="text-xs text-gray-500 ml-3">{description}</p>
+    </div>
+  );
+}
+
 function AccordionSection({
   title,
   subtitle,
@@ -2924,8 +3243,15 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
     <div className="space-y-3">
       <div>
         <h2 className="text-base font-extrabold text-gray-900 mb-1">Settings &amp; Integrations</h2>
-        <p className="text-xs text-gray-500">Click any section to expand it.</p>
+        <p className="text-xs text-gray-500">Organized by area. Click any section to expand it.</p>
       </div>
+
+      {/* ───────────── Category A: CRM & Integrations ───────────── */}
+      <CategoryHeader
+        label="CRM & Integrations"
+        description="Outbound CRM, payments, and data backup integrations."
+        accent="#f59e0b"
+      />
 
       {/* ── GHL Integration ── */}
       <AccordionSection
@@ -3294,17 +3620,6 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         </div>
       </AccordionSection>
 
-      {/* ── Sequence Management ── */}
-      <AccordionSection
-        title="Sequence Management"
-        subtitle="Add or remove orders from the automated follow-up sequence"
-        icon="ri-mail-send-line"
-        iconBg="bg-sky-50"
-        iconColor="text-sky-600"
-      >
-        <SequenceManagementPanel />
-      </AccordionSection>
-
       {/* ── Stripe Integration ── */}
       <AccordionSection
         title="Stripe"
@@ -3359,6 +3674,77 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         ) : null}
       </AccordionSection>
 
+      {/* ── Google Sheets Sync ── */}
+      <AccordionSection title="Google Sheets — Order Records" subtitle="Manual backup of all orders & leads to your Google Sheet" icon="ri-file-excel-2-line" iconBg="bg-green-50" iconColor="text-green-600">
+        <GoogleSheetsSyncPanel supabaseUrl={supabaseUrl} />
+      </AccordionSection>
+
+      {/* ───────────── Category B: Communications ───────────── */}
+      <CategoryHeader
+        label="Communications"
+        description="Email and SMS templates, layout, and notification routing."
+      />
+
+      {/* ── Master Email Layout ── */}
+      <AccordionSection title="Master Email Layout" subtitle="Editable HTML shell wrapping every template — use {{content}} placeholder" icon="ri-layout-2-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
+        <MasterEmailLayoutPanel />
+      </AccordionSection>
+
+      {/* ── Communications Templates Hub ── */}
+      <AccordionSection title="Communications Templates Hub" subtitle="Manage all email + SMS templates — single source of truth" icon="ri-message-2-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
+        <CommsTemplatesPanel />
+      </AccordionSection>
+
+      {/* ── Admin Notification Preferences ── */}
+      <AccordionSection title="Admin Notification Preferences" subtitle="Configure which events trigger admin alerts" icon="ri-notification-3-line" iconBg="bg-sky-50" iconColor="text-sky-600">
+        <AdminNotificationPrefsPanel />
+      </AccordionSection>
+
+      {/* ── Notification Routing Test Panel ── */}
+      <AccordionSection title="Notification Routing Test" subtitle="Live preview of who receives each notification — no emails sent" icon="ri-route-line" iconBg="bg-violet-50" iconColor="text-violet-600">
+        <NotificationRoutingTestPanel supabaseUrl={supabaseUrl} />
+      </AccordionSection>
+
+      {/* ───────────── Category C: Recovery & Sequences ───────────── */}
+      <CategoryHeader
+        label="Recovery & Sequences"
+        description="Per-order sequence operations and global recovery configuration."
+        accent="#0ea5e9"
+      />
+
+      {/* ── Sequence Management — per-order opt-in / opt-out ── */}
+      <AccordionSection
+        title="Sequence Management"
+        subtitle="Add or remove individual orders from the automated follow-up sequence"
+        icon="ri-mail-send-line"
+        iconBg="bg-sky-50"
+        iconColor="text-sky-600"
+      >
+        <SequenceManagementPanel />
+      </AccordionSection>
+
+      {/* ── Recovery Sequence Settings — global config ── */}
+      <AccordionSection title="Recovery Sequence Settings" subtitle="Toggle automated recovery + edit email/SMS stage timings (global)" icon="ri-refresh-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
+        <RecoverySequencePanel />
+      </AccordionSection>
+
+      {/* ───────────── Category D: Compliance & Records ───────────── */}
+      <CategoryHeader
+        label="Compliance & Records"
+        description="Vendor agreements, retention policy, and transactional email status."
+        accent="#6366f1"
+      />
+
+      {/* ── BAA Compliance Tracker ── */}
+      <AccordionSection title="HIPAA BAA Compliance Tracker" subtitle="Track Business Associate Agreements with PHI vendors" icon="ri-shield-keyhole-line" iconBg="bg-indigo-50" iconColor="text-indigo-600">
+        <BaaPanel />
+      </AccordionSection>
+
+      {/* ── Data Retention Policy ── */}
+      <AccordionSection title="Data Retention Policy" subtitle="Configure how long each data type is kept before archival" icon="ri-archive-line" iconBg="bg-orange-50" iconColor="text-orange-600">
+        <DataRetentionPanel />
+      </AccordionSection>
+
       {/* ── Email / Documents ── */}
       <AccordionSection
         title="Email & Documents"
@@ -3402,40 +3788,12 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         </div>
       </AccordionSection>
 
-      {/* ── BAA Compliance Tracker ── */}
-      <AccordionSection title="HIPAA BAA Compliance Tracker" subtitle="Track Business Associate Agreements with PHI vendors" icon="ri-shield-keyhole-line" iconBg="bg-indigo-50" iconColor="text-indigo-600">
-        <BaaPanel />
-      </AccordionSection>
-
-      {/* ── Google Sheets Sync ── */}
-      <AccordionSection title="Google Sheets — Order Records" subtitle="Manual backup of all orders & leads to your Google Sheet" icon="ri-file-excel-2-line" iconBg="bg-green-50" iconColor="text-green-600">
-        <GoogleSheetsSyncPanel supabaseUrl={supabaseUrl} />
-      </AccordionSection>
-
-      {/* ── Data Retention Policy ── */}
-      <AccordionSection title="Data Retention Policy" subtitle="Configure how long each data type is kept before archival" icon="ri-archive-line" iconBg="bg-orange-50" iconColor="text-orange-600">
-        <DataRetentionPanel />
-      </AccordionSection>
-
-      {/* ── Notification Routing Test Panel ── */}
-      <AccordionSection title="Notification Routing Test" subtitle="Live preview of who receives each notification — no emails sent" icon="ri-route-line" iconBg="bg-violet-50" iconColor="text-violet-600">
-        <NotificationRoutingTestPanel supabaseUrl={supabaseUrl} />
-      </AccordionSection>
-
-      {/* ── Admin Notification Preferences ── */}
-      <AccordionSection title="Admin Notification Preferences" subtitle="Configure which events trigger admin alerts" icon="ri-notification-3-line" iconBg="bg-sky-50" iconColor="text-sky-600">
-        <AdminNotificationPrefsPanel />
-      </AccordionSection>
-
-      {/* ── Master Email Layout ── */}
-      <AccordionSection title="Master Email Layout" subtitle="Editable HTML shell wrapping every template — use {{content}} placeholder" icon="ri-layout-2-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
-        <MasterEmailLayoutPanel />
-      </AccordionSection>
-
-      {/* ── Communications Templates Hub ── */}
-      <AccordionSection title="Communications Templates Hub" subtitle="Manage all email + SMS templates — single source of truth" icon="ri-message-2-line" iconBg="bg-[#e8f0f9]" iconColor="text-[#3b6ea5]">
-        <CommsTemplatesPanel />
-      </AccordionSection>
+      {/* ───────────── Category E: Tools & System ───────────── */}
+      <CategoryHeader
+        label="Tools & System"
+        description="Marketing tools and architecture reference."
+        accent="#6b7280"
+      />
 
       {/* ── UTM Campaign Link Generator ── */}
       <AccordionSection title="UTM Campaign Link Generator" subtitle="Build trackable URLs for marketing campaigns" icon="ri-links-line" iconBg="bg-gray-50" iconColor="text-gray-600">
