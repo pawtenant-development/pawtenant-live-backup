@@ -23,7 +23,20 @@ const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#1a5c4f";
 
-const MAX_SEQUENCE_AGE_DAYS = 3;
+// Eligibility lookback window for the sequence cron's leads query.
+// IMPORTANT: this MUST be larger than the latest stage's age threshold (Stage 3
+// fires at age >= 3 days), otherwise a lead that missed an earlier cron tick
+// would age out of the query before the later stage can fire — Stage 2/3 would
+// never be reached and the lead would stay stuck at "30min sent" forever.
+// 14 days gives a safe buffer for catching delayed cron ticks, function outages,
+// and the 3-day discount stage. Per-stage timing is still enforced inside the
+// loop (ageMin >= 30, ageHours >= 24, ageDays >= 3), so a fresh lead does NOT
+// receive multiple stages in one run.
+const SEQUENCE_LOOKBACK_DAYS = 14;
+// Hard cutoff inside the loop: if a lead is older than this AND has already
+// received the final stage, mark it expired and skip cheap. Mirrors the prior
+// behavior of MAX_SEQUENCE_AGE_DAYS for the expiry path only.
+const SEQUENCE_FINAL_STAGE_MAX_AGE_DAYS = 3;
 
 function escapeHtml(v = "") {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -373,7 +386,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const maxAgeDate = new Date(now.getTime() - MAX_SEQUENCE_AGE_DAYS * 86400000).toISOString();
+    // Window the query at SEQUENCE_LOOKBACK_DAYS so leads that missed an earlier
+    // tick still get picked up before the next stage. Per-stage age gates remain
+    // inside the loop, so this widening cannot fast-forward stages.
+    const maxAgeDate = new Date(now.getTime() - SEQUENCE_LOOKBACK_DAYS * 86400000).toISOString();
 
     const { data: leads, error } = await supabase
       .from("orders")
@@ -382,8 +398,12 @@ Deno.serve(async (req: Request) => {
       .is("paid_at", null)
       .neq("status", "completed")
       .neq("status", "cancelled")
+      .neq("status", "refunded")
+      .is("followup_opt_out", false)
       .not("email", "is", null)
-      .gte("created_at", maxAgeDate);
+      .gte("created_at", maxAgeDate)
+      // Skip rows that have already received every stage — nothing left to do.
+      .or("seq_30min_sent_at.is.null,seq_24h_sent_at.is.null,seq_3day_sent_at.is.null");
 
     if (error) return json({ ok: false, error: error.message }, 500);
 
@@ -401,7 +421,11 @@ Deno.serve(async (req: Request) => {
       const ageHours = ageMs / 3600000;
       const ageDays = ageMs / 86400000;
 
-      if (ageDays > MAX_SEQUENCE_AGE_DAYS && lead.seq_3day_sent_at) { results.expired++; continue; }
+      // Only mark "expired" when the lead is past the final-stage age AND the
+      // final stage has already been sent — i.e. nothing left to do. Without
+      // the && guard, a lead that missed Stage 3 (cron downtime) would be
+      // expired before Stage 3 could fire.
+      if (ageDays > SEQUENCE_FINAL_STAGE_MAX_AGE_DAYS && lead.seq_3day_sent_at) { results.expired++; continue; }
 
       const letterType = (lead.letter_type as string) || "esa";
       const assessmentPath = letterType === "psd" ? "psd-assessment" : "assessment";
