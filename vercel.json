@@ -173,6 +173,10 @@
     { "source": "/esa-letter-wisconsin/",    "destination": "/esa-letter/wisconsin",     "permanent": true },
     { "source": "/esa-letter-wyoming",       "destination": "/esa-letter/wyoming",       "permanent": true },
     { "source": "/esa-letter-wyoming/",      "destination": "/esa-letter/wyoming",       "permanent": true },
+    { "source": "/lp-esa-housing",           "destination": "/esa-letter-housing",       "permanent": true },
+    { "source": "/lp-esa-housing/",          "destination": "/esa-letter-housing",       "permanent": true },
+    { "source": "/lp/esa-housing",           "destination": "/esa-letter-housing",       "permanent": true },
+    { "source": "/lp/esa-housing/",          "destination": "/esa-letter-housing",       "permanent": true },
     {
       "source": "/",
       "has": [{ "type": "query", "key": "page_id", "value": "586" }],

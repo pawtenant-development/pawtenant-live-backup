@@ -50,6 +50,8 @@ const VerifyEntryPage = lazy(() => import("../pages/verify/page"));
 const VerifyResultPage = lazy(() => import("../pages/verify-result/page"));
 const ESALetterVerificationPage = lazy(() => import("../pages/esa-letter-verification/page"));
 const AccountCheckoutPage = lazy(() => import("../pages/account-checkout/page"));
+// Google Ads paid landing page — noindex, not in nav, not in sitemap.
+const LpEsaHousingPage = lazy(() => import("../pages/lp-esa-housing/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -128,6 +130,11 @@ const routes: RouteObject[] = [
   { path: "/ESA-letter-verification", element: <P C={ESALetterVerificationPage} /> },
   { path: "/landlord-verification", element: <Navigate to="/ESA-letter-verification" replace /> },
   { path: "/verifiable-esa-letters", element: <P C={lazy(() => import("../pages/verifiable-esa-letters/page"))} /> },
+  // Google Ads paid landing page (LIVE). noindex via per-page meta. Not in nav. Not in sitemap.
+  { path: "/esa-letter-housing", element: <P C={LpEsaHousingPage} /> },
+  // Legacy redirects to the new canonical URL.
+  { path: "/lp/esa-housing", element: <Navigate to="/esa-letter-housing" replace /> },
+  { path: "/lp-esa-housing", element: <Navigate to="/esa-letter-housing" replace /> },
   { path: "*", element: <P C={NotFound} /> },
 ];
 
