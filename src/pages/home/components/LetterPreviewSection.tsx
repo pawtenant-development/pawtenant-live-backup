@@ -27,96 +27,16 @@ export default function LetterPreviewSection() {
 
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 items-start">
 
-          {/* Letter Mockup */}
+          {/* Letter Mockup — same SVG asset used in Step 3 checkout */}
           <div className="w-full lg:w-[480px] flex-shrink-0">
-            <div className="relative bg-white rounded-2xl border border-gray-200 overflow-hidden" style={{ fontFamily: "'Georgia', serif" }}>
-              {/* Watermark strip */}
-              <div className="bg-orange-500 h-2 w-full"></div>
-
-              <div className="p-6 md:p-8 space-y-5">
-                {/* Letterhead */}
-                <div className="flex items-start justify-between border-b border-gray-100 pb-5">
-                  <div>
-                    <p className="text-orange-500 font-extrabold text-lg tracking-tight" style={{ fontFamily: "sans-serif" }}>PawTenant</p>
-                    <p className="text-gray-400 text-xs mt-0.5" style={{ fontFamily: "sans-serif" }}>Licensed Mental Health Services</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-gray-500 text-xs" style={{ fontFamily: "sans-serif" }}>Issue Date: Jan 15, 2025</p>
-                    <p className="text-gray-500 text-xs" style={{ fontFamily: "sans-serif" }}>Valid Through: Jan 15, 2026</p>
-                    {/* Callout 4 */}
-                    <div className="absolute right-6 top-[72px]">
-                      <CalloutDot num={4} color="bg-rose-500" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Provider block */}
-                <div className="relative">
-                  <p className="text-gray-800 text-sm font-semibold" style={{ fontFamily: "sans-serif" }}>Dr. Sarah Mitchell, LCSW</p>
-                  <p className="text-gray-500 text-xs" style={{ fontFamily: "sans-serif" }}>License #: CA-LCSW-98234 &nbsp;|&nbsp; NPI: 1234567890</p>
-                  <p className="text-gray-500 text-xs" style={{ fontFamily: "sans-serif" }}>State of California — Licensed Clinical Social Worker</p>
-                  <div className="absolute -left-3 top-0">
-                    <CalloutDot num={1} color="bg-orange-500" />
-                  </div>
-                </div>
-
-                {/* Patient block */}
-                <div className="relative bg-gray-50 rounded-lg px-4 py-3">
-                  <p className="text-gray-500 text-xs mb-1" style={{ fontFamily: "sans-serif" }}>RE: Emotional Support Animal Accommodation</p>
-                  <p className="text-gray-800 text-sm font-semibold" style={{ fontFamily: "sans-serif" }}>Patient: Jessica A. Thompson</p>
-                  <p className="text-gray-500 text-xs" style={{ fontFamily: "sans-serif" }}>ESA: Biscuit — Golden Retriever</p>
-                  <div className="absolute -right-3 top-3">
-                    <CalloutDot num={3} color="bg-teal-500" />
-                  </div>
-                </div>
-
-                {/* Body text */}
-                <div className="relative">
-                  <p className="text-gray-700 text-xs leading-relaxed">
-                    To Whom It May Concern,
-                  </p>
-                  <p className="text-gray-700 text-xs leading-relaxed mt-2">
-                    I am writing to confirm that <strong>Jessica A. Thompson</strong> is currently under my professional care and has been diagnosed with a condition that qualifies as a disability under the Fair Housing Act (42 U.S.C. § 3604). As part of her treatment plan, I have determined that an Emotional Support Animal provides therapeutic benefit essential to her mental health and well-being.
-                  </p>
-                  <p className="text-gray-700 text-xs leading-relaxed mt-2">
-                    I respectfully request that reasonable accommodation be granted to allow her ESA, <strong>Biscuit</strong>, to reside with her in her housing unit pursuant to the Fair Housing Act.
-                  </p>
-                  <div className="absolute -left-3 top-8">
-                    <CalloutDot num={2} color="bg-amber-500" />
-                  </div>
-                </div>
-
-                {/* Signature */}
-                <div className="relative border-t border-gray-100 pt-4">
-                  <p className="text-gray-800 text-sm italic" style={{ fontFamily: "cursive", fontSize: "18px", color: "#1a3a5c" }}>Dr. Sarah Mitchell</p>
-                  <p className="text-gray-500 text-xs mt-0.5" style={{ fontFamily: "sans-serif" }}>Licensed Clinical Social Worker, LCSW</p>
-                  <div className="absolute -left-3 top-4">
-                    <CalloutDot num={5} color="bg-violet-500" />
-                  </div>
-                </div>
-
-                {/* Verification footer */}
-                <div className="relative bg-gray-50 rounded-lg px-4 py-3 flex items-center gap-3">
-                  {/* QR placeholder */}
-                  <div className="w-12 h-12 flex-shrink-0 bg-gray-200 rounded-lg flex items-center justify-center">
-                    <i className="ri-qr-code-line text-gray-500 text-xl"></i>
-                  </div>
-                  <div>
-                    <p className="text-gray-700 text-xs font-bold" style={{ fontFamily: "sans-serif" }}>Verification ID: PT-ESA-2025-98234</p>
-                    <p className="text-gray-400 text-[10px]" style={{ fontFamily: "sans-serif" }}>Scan QR or visit pawtenant.com/verify to confirm authenticity</p>
-                  </div>
-                  <div className="absolute -right-3 top-3">
-                    <CalloutDot num={6} color="bg-sky-500" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom accent */}
-              <div className="bg-orange-500 h-1 w-full"></div>
-
-              {/* Sample watermark */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <p className="text-gray-200 text-5xl font-extrabold rotate-[-30deg] select-none opacity-40 tracking-widest">SAMPLE</p>
+            <div className="rounded-2xl overflow-hidden shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] ring-1 ring-slate-200 bg-white relative">
+              <img
+                src="/images/checkout/esa-sample-letter.svg"
+                alt="Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature"
+                className="w-full h-auto block"
+              />
+              <div className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-white/90 backdrop-blur ring-1 ring-slate-200 text-[9px] font-semibold tracking-[0.24em] text-slate-500 uppercase">
+                Sample
               </div>
             </div>
           </div>
@@ -152,13 +72,5 @@ export default function LetterPreviewSection() {
         </div>
       </div>
     </section>
-  );
-}
-
-function CalloutDot({ num, color }: { num: number; color: string }) {
-  return (
-    <div className={`w-5 h-5 flex items-center justify-center rounded-full text-white text-[10px] font-extrabold ${color}`}>
-      {num}
-    </div>
   );
 }
