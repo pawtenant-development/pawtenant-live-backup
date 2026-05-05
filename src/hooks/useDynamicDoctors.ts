@@ -91,20 +91,32 @@ export function useDynamicDoctors(): {
           .map((p) => p.email)
           .filter(Boolean) as string[];
 
-        // Single doctor_profiles fetch — gives us both is_published (gate) and npi_number (display).
+        // Single doctor_profiles fetch — gives us is_published (gate),
+        // npi_number (display), and photo_url (image fallback).
         let npiMap: Record<string, string> = {};
+        let profilePhotoMap: Record<string, string> = {};
         let publishedSet = new Set<string>();
         if (emails.length > 0) {
           const { data: profiles } = await supabase
             .from("doctor_profiles")
-            .select("email, npi_number, is_published")
+            .select("email, npi_number, is_published, photo_url")
             .in("email", emails);
           if (profiles) {
-            const rows = profiles as { email: string | null; npi_number: string | null; is_published: boolean | null }[];
+            const rows = profiles as {
+              email: string | null;
+              npi_number: string | null;
+              is_published: boolean | null;
+              photo_url: string | null;
+            }[];
             npiMap = Object.fromEntries(
               rows
                 .filter((p) => p.email && p.npi_number)
                 .map((p) => [(p.email as string).toLowerCase(), p.npi_number as string])
+            );
+            profilePhotoMap = Object.fromEntries(
+              rows
+                .filter((p) => p.email && p.photo_url && (p.photo_url as string).trim() !== "")
+                .map((p) => [(p.email as string).toLowerCase(), p.photo_url as string])
             );
             publishedSet = new Set(
               rows
@@ -122,10 +134,24 @@ export function useDynamicDoctors(): {
           (p) => !!p.email && publishedSet.has(p.email.toLowerCase())
         );
 
-        const mapped = visible.map((p) => ({
-          ...p,
-          npi_number: p.email ? (npiMap[p.email.toLowerCase()] ?? null) : null,
-        }));
+        // Image resolution — admin uploads usually live in doctor_profiles.photo_url.
+        // approved_providers.photo_url can be stale or empty for providers added via
+        // applications (Michelle Lafferty's case), so we mirror admin lookup order:
+        // approved_providers.photo_url first, then doctor_profiles.photo_url. No
+        // AI-generated placeholder; if both are empty, the card falls back to initials.
+        const mapped = visible.map((p) => {
+          const emailKey = p.email ? p.email.toLowerCase() : null;
+          const fallbackPhoto = emailKey ? profilePhotoMap[emailKey] : undefined;
+          const resolvedPhoto =
+            p.photo_url && p.photo_url.trim() !== ""
+              ? p.photo_url
+              : (fallbackPhoto ?? null);
+          return {
+            ...p,
+            photo_url: resolvedPhoto,
+            npi_number: emailKey ? (npiMap[emailKey] ?? null) : null,
+          };
+        });
 
         if (!cancelled) setDoctors(mapped.map(mapApprovedToDoctor));
       } else {
