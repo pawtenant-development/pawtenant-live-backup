@@ -1,19 +1,49 @@
 const CALLOUTS = [
-  { num: 1, label: "Provider Credentials", desc: "Full name, license type (LCSW/LMFT/LPC), NPI number, and state license number — verifiable by any landlord.", color: "bg-orange-500" },
-  { num: 2, label: "Clinical Recommendation", desc: "Professionally worded recommendation language citing the Fair Housing Act and the patient's need for emotional support.", color: "bg-amber-500" },
-  { num: 3, label: "Patient Information", desc: "Your full legal name and the specific animal(s) covered — exactly as required for housing accommodation requests.", color: "bg-teal-500" },
-  { num: 4, label: "Issue & Expiry Date", desc: "Clearly dated letter valid for 12 months from issue — renewal reminders sent automatically.", color: "bg-rose-500" },
-  { num: 5, label: "Provider Signature", desc: "Wet-style digital signature from your assigned licensed mental health professional.", color: "bg-violet-500" },
-  { num: 6, label: "Verification ID", desc: "Unique QR code and verification ID so landlords can instantly confirm authenticity online.", color: "bg-sky-500" },
+  {
+    num: 1,
+    label: "Written by a licensed provider",
+    desc: "Every letter is prepared and signed by a licensed mental health professional after your eligibility review.",
+    color: "bg-orange-500",
+  },
+  {
+    num: 2,
+    label: "Includes the details housing offices expect",
+    desc: "Your letter includes provider credentials, license details, issue date, and the information needed for housing accommodation review.",
+    color: "bg-amber-500",
+  },
+  {
+    num: 3,
+    label: "Built for Fair Housing Act requests",
+    desc: "The format is designed around ESA housing documentation standards, so it is easy for landlords and property managers to review.",
+    color: "bg-teal-500",
+  },
+  {
+    num: 4,
+    label: "Verification included",
+    desc: "Each completed letter includes a unique verification ID so housing offices can confirm authenticity when needed.",
+    color: "bg-rose-500",
+  },
+  {
+    num: 5,
+    label: "Clear, professional, and ready to submit",
+    desc: "No confusing paperwork or generic templates — just a clean letter you can send to your landlord, leasing office, or housing provider.",
+    color: "bg-violet-500",
+  },
+  {
+    num: 6,
+    label: "Valid for 12 months",
+    desc: "Your ESA letter is dated and can be used for housing accommodation requests during its active coverage period.",
+    color: "bg-sky-500",
+  },
 ];
 
 export default function LetterPreviewSection() {
   return (
-    <section className="py-20 md:py-24 bg-white">
+    <section className="py-16 md:py-20 bg-white">
       <div className="max-w-7xl mx-auto px-5 md:px-6">
 
         {/* Header */}
-        <div className="text-center mb-12 md:mb-16">
+        <div className="text-center mb-10 md:mb-14">
           <span className="inline-block px-4 py-1.5 bg-orange-50 text-orange-600 text-xs font-semibold rounded-full uppercase tracking-widest mb-3">
             What You Receive
           </span>
@@ -41,9 +71,9 @@ export default function LetterPreviewSection() {
             </div>
           </div>
 
-          {/* Callout Legend */}
+          {/* Right column — warmer, conversion-focused */}
           <div className="flex-1 space-y-4">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-5">What each section means</p>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-5">Why landlords take it seriously</p>
             {CALLOUTS.map((c) => (
               <div key={c.num} className="flex items-start gap-4 group">
                 <div className={`w-7 h-7 flex items-center justify-center rounded-full text-white text-xs font-extrabold flex-shrink-0 mt-0.5 ${c.color}`}>
@@ -56,15 +86,15 @@ export default function LetterPreviewSection() {
               </div>
             ))}
 
-            {/* Trust note */}
+            {/* Bottom callout */}
             <div className="mt-6 bg-orange-50 border border-orange-100 rounded-xl px-5 py-4 flex items-start gap-3">
               <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
                 <i className="ri-shield-check-fill text-orange-500 text-base"></i>
               </div>
               <div>
-                <p className="text-sm font-bold text-gray-900 mb-1">Accepted by housing providers nationwide</p>
+                <p className="text-sm font-bold text-gray-900 mb-1">Made for real housing conversations</p>
                 <p className="text-xs text-gray-500 leading-relaxed">
-                  Our letters are written to meet Fair Housing Act standards. Every letter includes the provider&apos;s NPI number and state license — the two things landlords and property managers look for.
+                  Whether your apartment is requesting documentation, your lease renewal is coming up, or your pet has been questioned by management, your PawTenant letter is prepared to look professional, clear, and easy to verify.
                 </p>
               </div>
             </div>

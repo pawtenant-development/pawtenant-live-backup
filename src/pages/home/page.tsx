@@ -7,7 +7,6 @@ import TrustFeatures from "./components/TrustFeatures";
 import StepsSection from "./components/StepsSection";
 import WhatIsESA from "./components/WhatIsESA";
 import TrustedLetters from "./components/TrustedLetters";
-import ESALetterSection from "./components/ESALetterSection";
 import PricingSection from "./components/PricingSection";
 import WhyChooseSection from "./components/WhyChooseSection";
 import DoctorsSection from "./components/DoctorsSection";
@@ -157,7 +156,6 @@ export default function Home() {
       <StepsSection />
       <WhatIsESA />
       <TrustedLetters />
-      <ESALetterSection />
       <LetterPreviewSection />
       <LandlordSupportSection />
       <PricingSection />
