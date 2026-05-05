@@ -359,6 +359,61 @@ export default function LpEsaHousingPage() {
         </div>
       </section>
 
+      {/* ─────────── 4b. STATE RELEVANCE — "Valid in all 50 states" ─────────── */}
+      <section className="bg-white border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
+          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
+            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+              Nationwide coverage
+            </span>
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
+              ESA Letter Support Across All 50 States
+            </h2>
+            <p className="text-[15px] text-slate-600 leading-relaxed">
+              Our licensed providers can evaluate your situation and provide ESA documentation when clinically appropriate — in compliance with Fair Housing guidelines.
+            </p>
+          </div>
+
+          {/* Popular state grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 max-w-4xl mx-auto mb-7">
+            {[
+              { name: "California", slug: "california" },
+              { name: "Texas", slug: "texas" },
+              { name: "Florida", slug: "florida" },
+              { name: "New York", slug: "new-york" },
+              { name: "Illinois", slug: "illinois" },
+              { name: "Pennsylvania", slug: "pennsylvania" },
+            ].map((s) => (
+              <Link
+                key={s.slug}
+                to={`/esa-letter/${s.slug}`}
+                className="group flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40 hover:text-[#0E2A47] transition text-[13px] font-medium"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600" aria-hidden>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>{s.name}</span>
+              </Link>
+            ))}
+          </div>
+
+          <p className="text-center text-[12.5px] text-slate-500 leading-relaxed max-w-xl mx-auto mb-8">
+            Requirements may vary slightly by state, but ESA housing rights are federally protected under the Fair Housing Act.
+          </p>
+
+          <div className="flex justify-center">
+            <Link
+              to={ASSESSMENT_HREF}
+              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
+            >
+              Check your eligibility
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* ─────────── 5. PROVIDER REVIEW ─────────── */}
       <section className="bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
