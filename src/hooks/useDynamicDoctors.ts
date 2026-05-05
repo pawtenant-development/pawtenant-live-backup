@@ -27,6 +27,26 @@ export interface ApprovedProviderRow {
   npi_number?: string | null;
 }
 
+interface DoctorProfileRow {
+  email: string | null;
+  full_name: string | null;
+  title: string | null;
+  role: string | null;
+  bio: string | null;
+  photo_url: string | null;
+  npi_number: string | null;
+  is_published: boolean | null;
+  licensed_states: string[] | null;
+  created_at: string | null;
+}
+
+interface DoctorContactRow {
+  email: string;
+  full_name: string | null;
+  photo_url: string | null;
+  licensed_states: string[] | null;
+}
+
 export function mapApprovedToDoctor(p: ApprovedProviderRow): Doctor {
   return {
     id: p.slug,
@@ -42,6 +62,20 @@ export function mapApprovedToDoctor(p: ApprovedProviderRow): Doctor {
     email: p.email ?? "",
     npi_number: p.npi_number ?? null,
   };
+}
+
+// Slug fallback — used only when a published provider exists in doctor_profiles
+// but has no matching approved_providers row to provide a slug. Mirrors the
+// admin "approve" slug pattern: lowercase, hyphen-joined, alpha-only.
+function slugifyName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 export function useDynamicDoctors(): {
@@ -62,102 +96,109 @@ export function useDynamicDoctors(): {
     const load = async () => {
       setLoading(true);
 
-      // Parallel fetch — providers for display + role probe for fallback decision.
-      const [approvedRes, roleProbeRes] = await Promise.all([
+      // doctor_profiles is the source-of-truth for publish status (admin's "Published" toggle
+      // writes is_published here). Drive the homepage from this table so any provider the
+      // admin marks Published is guaranteed to render — even if approved_providers is missing
+      // their row or has an email-case mismatch.
+      const [profilesRes, approvedRes, contactsRes] = await Promise.all([
+        supabase.from("doctor_profiles").select("email, full_name, title, role, bio, photo_url, npi_number, is_published, licensed_states, created_at"),
         supabase.from("approved_providers").select("*").order("created_at"),
-        supabase.from("doctor_profiles").select("role"),
+        supabase.from("doctor_contacts").select("email, full_name, photo_url, licensed_states"),
       ]);
 
       if (cancelled) return;
 
+      const allProfiles = (profilesRes.data as DoctorProfileRow[] | null) ?? [];
+      const allApproved = (approvedRes.data as ApprovedProviderRow[] | null) ?? [];
+      const allContacts = (contactsRes.data as DoctorContactRow[] | null) ?? [];
+
       // Phase 4 Step 4 — fallback decision: do any provider-eligible profiles exist?
       // Internal/team roles are filtered out so they cannot suppress fallback themselves.
-      // Null role is treated as provider-eligible (matches DoctorsTab logic).
-      const realProviderRowsExist = ((roleProbeRes.data as { role: string | null }[] | null) ?? [])
-        .some((r) => !NON_PROVIDER_ROLES.has(r.role ?? ""));
+      const realProviderRowsExist = allProfiles.some(
+        (p) => !NON_PROVIDER_ROLES.has((p as DoctorProfileRow & { role: string | null }).role ?? "")
+      );
       setHasProviderRows(realProviderRowsExist);
 
-      const rawProviders = approvedRes.data;
+      const norm = (e: string | null | undefined) => (e ?? "").trim().toLowerCase();
 
-      // Phase 4 Step 3 — public visibility gated by doctor_profiles.is_published.
-      // approved_providers is still the display source (slug, photo, bio, states),
-      // but its is_active flag is no longer used as the public gate.
-      const providers = (rawProviders ?? []).filter(
-        (p: ApprovedProviderRow) => !p.email || !PUBLIC_HIDDEN_PROVIDER_EMAILS.has(p.email.toLowerCase())
-      );
-
-      if (providers && providers.length > 0) {
-        const emails = (providers as ApprovedProviderRow[])
-          .map((p) => p.email)
-          .filter(Boolean) as string[];
-
-        // Single doctor_profiles fetch — gives us is_published (gate),
-        // npi_number (display), and photo_url (image fallback).
-        let npiMap: Record<string, string> = {};
-        let profilePhotoMap: Record<string, string> = {};
-        let publishedSet = new Set<string>();
-        if (emails.length > 0) {
-          const { data: profiles } = await supabase
-            .from("doctor_profiles")
-            .select("email, npi_number, is_published, photo_url")
-            .in("email", emails);
-          if (profiles) {
-            const rows = profiles as {
-              email: string | null;
-              npi_number: string | null;
-              is_published: boolean | null;
-              photo_url: string | null;
-            }[];
-            npiMap = Object.fromEntries(
-              rows
-                .filter((p) => p.email && p.npi_number)
-                .map((p) => [(p.email as string).toLowerCase(), p.npi_number as string])
-            );
-            profilePhotoMap = Object.fromEntries(
-              rows
-                .filter((p) => p.email && p.photo_url && (p.photo_url as string).trim() !== "")
-                .map((p) => [(p.email as string).toLowerCase(), p.photo_url as string])
-            );
-            publishedSet = new Set(
-              rows
-                .filter((p) => p.email && p.is_published === true)
-                .map((p) => (p.email as string).toLowerCase())
-            );
-          }
-        }
-
-        // Phase 4 Step 3 gate — only show providers whose doctor_profiles row has is_published === true.
-        // Missing profile, null, undefined, or false → hidden. Strict equality on purpose.
-        // Note: is_active (availability) intentionally NOT checked here — availability
-        // controls assignment only, publish controls homepage visibility.
-        const visible = (providers as ApprovedProviderRow[]).filter(
-          (p) => !!p.email && publishedSet.has(p.email.toLowerCase())
-        );
-
-        // Image resolution — admin uploads usually live in doctor_profiles.photo_url.
-        // approved_providers.photo_url can be stale or empty for providers added via
-        // applications (Michelle Lafferty's case), so we mirror admin lookup order:
-        // approved_providers.photo_url first, then doctor_profiles.photo_url. No
-        // AI-generated placeholder; if both are empty, the card falls back to initials.
-        const mapped = visible.map((p) => {
-          const emailKey = p.email ? p.email.toLowerCase() : null;
-          const fallbackPhoto = emailKey ? profilePhotoMap[emailKey] : undefined;
-          const resolvedPhoto =
-            p.photo_url && p.photo_url.trim() !== ""
-              ? p.photo_url
-              : (fallbackPhoto ?? null);
-          return {
-            ...p,
-            photo_url: resolvedPhoto,
-            npi_number: emailKey ? (npiMap[emailKey] ?? null) : null,
-          };
-        });
-
-        if (!cancelled) setDoctors(mapped.map(mapApprovedToDoctor));
-      } else {
-        if (!cancelled) setDoctors([]);
+      // Index enrichment tables by lowercased email so case/whitespace mismatches
+      // between admin-written rows can't drop providers.
+      const approvedByEmail = new Map<string, ApprovedProviderRow>();
+      for (const a of allApproved) {
+        const key = norm(a.email);
+        if (key) approvedByEmail.set(key, a);
+      }
+      const contactByEmail = new Map<string, DoctorContactRow>();
+      for (const c of allContacts) {
+        const key = norm(c.email);
+        if (key) contactByEmail.set(key, c);
       }
 
+      // Visible set = doctor_profiles where is_published === true, NOT in public blocklist.
+      // is_active / availability_status are intentionally NOT checked — those control
+      // assignment only. PUBLIC_HIDDEN_PROVIDER_EMAILS is the only public hide gate.
+      const publishedProfiles = allProfiles.filter((p) => {
+        if (p.is_published !== true) return false;
+        const key = norm(p.email);
+        if (!key) return false;
+        if (PUBLIC_HIDDEN_PROVIDER_EMAILS.has(key)) return false;
+        return true;
+      });
+
+      // Build the Doctor[] from doctor_profiles, enriching with approved_providers
+      // (slug, verification_url, highlights, bio fallback) and doctor_contacts
+      // (photo fallback, states fallback). Image precedence matches admin lookup:
+      // doctor_profiles.photo_url → doctor_contacts.photo_url → approved_providers.photo_url.
+      const merged: Doctor[] = publishedProfiles.map((p) => {
+        const key = norm(p.email);
+        const a = approvedByEmail.get(key);
+        const c = contactByEmail.get(key);
+
+        const fullName = (p.full_name ?? a?.full_name ?? c?.full_name ?? "").trim();
+        const photo =
+          (p.photo_url && p.photo_url.trim() !== "") ? p.photo_url
+          : (c?.photo_url && c.photo_url.trim() !== "") ? c.photo_url
+          : (a?.photo_url && a.photo_url.trim() !== "") ? a.photo_url
+          : "";
+
+        const states = (p.licensed_states && p.licensed_states.length > 0)
+          ? p.licensed_states
+          : (a?.states && a.states.length > 0)
+          ? a.states
+          : (c?.licensed_states ?? []);
+
+        const slug = a?.slug && a.slug.trim() !== ""
+          ? a.slug
+          : slugifyName(fullName || (p.email ?? ""));
+
+        return {
+          id: slug,
+          name: fullName,
+          title: p.title ?? a?.title ?? "LCSW",
+          role: p.role ?? a?.role ?? "Licensed Mental Health Professional",
+          bio: (p.bio && p.bio.trim() !== "") ? p.bio : (a?.bio ?? ""),
+          states,
+          highlights: a?.highlights ?? ["Licensed Professional", "Telehealth Evaluations", "ESA Letters"],
+          verificationUrl: a?.verification_url ?? "https://pawtenant.com/join-our-network",
+          image: photo,
+          email: p.email ?? "",
+          npi_number: p.npi_number ?? a?.npi_number ?? null,
+        } satisfies Doctor;
+      });
+
+      // Stable, deterministic order: approved_providers.created_at when available,
+      // otherwise doctor_profiles.created_at, otherwise name. Prevents random
+      // reordering between page loads.
+      const orderKey = (d: Doctor): string => {
+        const a = approvedByEmail.get(norm(d.email));
+        if (a?.created_at) return `0:${a.created_at}`;
+        const p = publishedProfiles.find((x) => norm(x.email) === norm(d.email));
+        if (p?.created_at) return `1:${p.created_at}`;
+        return `2:${d.name}`;
+      };
+      merged.sort((x, y) => orderKey(x).localeCompare(orderKey(y)));
+
+      if (!cancelled) setDoctors(merged);
       if (!cancelled) setLoading(false);
     };
     load();
