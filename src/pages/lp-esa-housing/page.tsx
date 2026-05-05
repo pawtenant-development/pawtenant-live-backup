@@ -414,6 +414,53 @@ export default function LpEsaHousingPage() {
         </div>
       </section>
 
+      {/* ─────────── 4c. VERIFICATION TRUST BOOSTER — high-intent skeptic capture ─────────── */}
+      <section className="bg-slate-50 border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
+          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
+            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+              Verification &amp; trust
+            </span>
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
+              How ESA Letter Verification Works
+            </h2>
+            <p className="text-[15px] text-slate-600 leading-relaxed">
+              Landlords may request verification of your ESA letter. PawTenant ensures your documentation is issued by licensed professionals and can be verified when required.
+            </p>
+          </div>
+
+          {/* 3 trust blocks */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5 max-w-5xl mx-auto mb-10">
+            <TrustBoosterCard
+              icon="shield"
+              title="Licensed Provider Verification"
+              body="Your ESA letter is issued by a licensed mental health professional with valid credentials."
+            />
+            <TrustBoosterCard
+              icon="document"
+              title="Secure Documentation"
+              body="Each letter includes provider details and documentation standards commonly requested by housing providers."
+            />
+            <TrustBoosterCard
+              icon="lock"
+              title="Verification Support"
+              body="If needed, landlords can verify your ESA documentation through proper channels while protecting your privacy."
+            />
+          </div>
+
+          <div className="flex justify-center">
+            <Link
+              to={ASSESSMENT_HREF}
+              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
+            >
+              Start Your ESA Evaluation
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* ─────────── 5. PROVIDER REVIEW ─────────── */}
       <section className="bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
@@ -1051,6 +1098,45 @@ function FAQItem({ q, a, defaultOpen }: { q: string; a: string; defaultOpen?: bo
       </summary>
       <div className="text-[12.5px] text-slate-600 leading-relaxed mt-3 pt-3 border-t border-slate-100">{a}</div>
     </details>
+  );
+}
+
+function TrustBoosterCard({
+  icon,
+  title,
+  body,
+}: {
+  icon: "shield" | "document" | "lock";
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 md:p-6 hover:border-emerald-200 transition">
+      <span className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mb-4">
+        {icon === "shield" && (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+        )}
+        {icon === "document" && (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="9" y1="13" x2="15" y2="13" />
+            <line x1="9" y1="17" x2="15" y2="17" />
+          </svg>
+        )}
+        {icon === "lock" && (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        )}
+      </span>
+      <div className="text-[15px] font-semibold text-slate-900 mb-1.5 leading-snug">{title}</div>
+      <p className="text-[13px] text-slate-600 leading-relaxed">{body}</p>
+    </div>
   );
 }
 
