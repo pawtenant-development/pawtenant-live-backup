@@ -399,7 +399,6 @@ Deno.serve(async (req: Request) => {
       .neq("status", "completed")
       .neq("status", "cancelled")
       .neq("status", "refunded")
-      .is("followup_opt_out", false)
       .not("email", "is", null)
       .gte("created_at", maxAgeDate)
       // Skip rows that have already received every stage — nothing left to do.
