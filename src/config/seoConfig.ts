@@ -129,6 +129,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Full sitemap of PawTenant — browse ESA letter guides, state pages, housing rights, PSD resources, blog posts, and more.",
   },
+  "/everything-you-need-to-know-about-obtaining-an-esa-letter-online": {
+    title: "Everything You Need to Know About Obtaining an ESA Letter Online | PawTenant",
+    description:
+      "The complete 2026 guide to obtaining a legitimate ESA letter online. Learn who qualifies, how online evaluations work with licensed mental health professionals, what makes a letter housing-valid, and how to spot sketchy ESA websites.",
+  },
   "/privacy-policy": {
     title: "Privacy Policy | PawTenant",
     description:
