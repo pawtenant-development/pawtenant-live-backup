@@ -9,6 +9,16 @@ const TITLE = "Everything You Need to Know About Obtaining an ESA Letter Online 
 const DESCRIPTION =
   "The complete 2026 guide to obtaining a legitimate ESA letter online. Learn who qualifies, how online evaluations work with licensed mental health professionals, what makes a letter housing-valid, and how to spot sketchy ESA websites.";
 
+// PawTenant Supabase public asset library
+const ASSET_BASE = "https://cvwbozlbbmrjxznknouq.supabase.co/storage/v1/object/public/ad-assets";
+const ASSETS = {
+  esaLetterMockup: `${ASSET_BASE}/ESA%20Letter/esa_letter_1080x1920.png`,
+  verificationScreen: `${ASSET_BASE}/verification/verification_screen_1080x1920.png`,
+  assessmentClip1: `${ASSET_BASE}/assessment-ui/assessment_clip_1.mp4`,
+  petBeagle: `${ASSET_BASE}/pets/portrait-thoughtful-beagle-dog-sitting-indoors.jpg`,
+  petCloseUp: `${ASSET_BASE}/pets/close-up-dog-looking-away.jpg`,
+};
+
 const heroBenefits = [
   "Evaluated by a state-licensed mental health professional",
   "Housing-focused ESA letters under the Fair Housing Act",
@@ -432,8 +442,65 @@ export default function EverythingEsaOnlinePage() {
         </div>
       </section>
 
+      {/* What a Housing-Valid ESA Letter Looks Like */}
+      <section id="what-a-letter-looks-like" className="py-16 bg-[#fafafa]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="order-2 lg:order-1">
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">What It Looks Like</span>
+              <h2 className="text-3xl font-bold text-gray-900 mb-5">What a Housing-Valid ESA Letter Looks Like</h2>
+              <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                A legitimate ESA letter is plain, professional documentation — not flashy. It is issued on the licensed clinician&apos;s official letterhead and includes the elements housing providers actually look for.
+              </p>
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-start gap-3 text-gray-700 text-sm">
+                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-orange-50 flex-shrink-0 mt-0.5">
+                    <i className="ri-check-line text-orange-500 text-xs"></i>
+                  </span>
+                  Clinician&apos;s name, credentials, license number, and state
+                </li>
+                <li className="flex items-start gap-3 text-gray-700 text-sm">
+                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-orange-50 flex-shrink-0 mt-0.5">
+                    <i className="ri-check-line text-orange-500 text-xs"></i>
+                  </span>
+                  Statement of a qualifying disability-related need
+                </li>
+                <li className="flex items-start gap-3 text-gray-700 text-sm">
+                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-orange-50 flex-shrink-0 mt-0.5">
+                    <i className="ri-check-line text-orange-500 text-xs"></i>
+                  </span>
+                  Recommendation that an emotional support animal is part of your support plan
+                </li>
+                <li className="flex items-start gap-3 text-gray-700 text-sm">
+                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-orange-50 flex-shrink-0 mt-0.5">
+                    <i className="ri-check-line text-orange-500 text-xs"></i>
+                  </span>
+                  Date of issue and clinician&apos;s signature
+                </li>
+              </ul>
+              <p className="text-gray-500 text-xs leading-relaxed">
+                Example shown is a representative format. Your letter will be customized by your licensed clinician.
+              </p>
+            </div>
+            <div className="order-1 lg:order-2 flex items-center justify-center">
+              <div className="relative w-full max-w-sm">
+                <div className="absolute -inset-4 bg-gradient-to-br from-orange-100/60 to-amber-100/40 rounded-3xl blur-xl"></div>
+                <img
+                  src={ASSETS.esaLetterMockup}
+                  alt="Example of a legitimate ESA letter from a licensed mental health professional showing letterhead, license number, and signature"
+                  className="relative w-full h-auto rounded-2xl shadow-xl border border-gray-100"
+                  loading="lazy"
+                  width={540}
+                  height={960}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Who Qualifies */}
-      <section id="who-qualifies" className="py-16 bg-[#fafafa]">
+      <section id="who-qualifies" className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Eligibility</span>
@@ -459,7 +526,7 @@ export default function EverythingEsaOnlinePage() {
       </section>
 
       {/* How Online Evaluations Work */}
-      <section id="how-online-evaluations-work" className="py-20 bg-white">
+      <section id="how-online-evaluations-work" className="py-20 bg-[#fdf6ee]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-14">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">The Process</span>
@@ -468,19 +535,40 @@ export default function EverythingEsaOnlinePage() {
               No magic instant approvals. Just a real, licensed clinical evaluation — done by telehealth.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {onlineProcessSteps.map((step) => (
-              <div key={step.number} className="bg-white rounded-2xl border border-gray-100 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 flex items-center justify-center rounded-full bg-orange-500">
-                    <i className={`${step.icon} text-white text-xl`}></i>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+            <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {onlineProcessSteps.map((step) => (
+                <div key={step.number} className="bg-white rounded-2xl border border-gray-100 p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 flex items-center justify-center rounded-full bg-orange-500">
+                      <i className={`${step.icon} text-white text-xl`}></i>
+                    </div>
+                    <span className="bg-orange-50 text-orange-500 text-xs font-bold rounded-full px-2.5 py-1">Step {step.number}</span>
                   </div>
-                  <span className="bg-orange-50 text-orange-500 text-xs font-bold rounded-full px-2.5 py-1">Step {step.number}</span>
+                  <h3 className="font-bold text-gray-900 mb-2 text-sm">{step.title}</h3>
+                  <p className="text-gray-500 text-xs leading-relaxed">{step.desc}</p>
                 </div>
-                <h3 className="font-bold text-gray-900 mb-2 text-sm">{step.title}</h3>
-                <p className="text-gray-500 text-xs leading-relaxed">{step.desc}</p>
+              ))}
+            </div>
+            <div className="lg:sticky lg:top-24">
+              <div className="relative w-full max-w-xs mx-auto">
+                <div className="absolute -inset-3 bg-gradient-to-br from-orange-100/60 to-amber-100/40 rounded-[2rem] blur-xl"></div>
+                <div className="relative rounded-[2rem] overflow-hidden shadow-xl border-[6px] border-gray-900 bg-gray-900">
+                  <video
+                    src={ASSETS.assessmentClip1}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    poster={ASSETS.petCloseUp}
+                    className="w-full h-auto block"
+                    aria-label="Preview of the PawTenant online ESA assessment flow"
+                  />
+                </div>
+                <p className="text-center text-xs text-gray-500 mt-4">A quick look at the online assessment.</p>
               </div>
-            ))}
+            </div>
           </div>
           <div className="text-center mt-12">
             <Link
@@ -496,7 +584,7 @@ export default function EverythingEsaOnlinePage() {
       </section>
 
       {/* Legitimacy Signals */}
-      <section id="legitimacy-signals" className="py-16 bg-[#fdf6ee]">
+      <section id="legitimacy-signals" className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">What to Look For</span>
@@ -522,7 +610,7 @@ export default function EverythingEsaOnlinePage() {
       </section>
 
       {/* Red Flags */}
-      <section id="red-flags" className="py-16 bg-white">
+      <section id="red-flags" className="py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-12">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-rose-500 mb-3">Buyer Beware</span>
@@ -553,7 +641,7 @@ export default function EverythingEsaOnlinePage() {
       </section>
 
       {/* Housing Context */}
-      <section id="housing-context" className="py-16 bg-[#fafafa]">
+      <section id="housing-context" className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
             <div>
@@ -604,6 +692,37 @@ export default function EverythingEsaOnlinePage() {
           <p className="text-gray-400 text-xs mt-6 max-w-3xl">
             This page is informational and not a substitute for legal advice. Specific protections, exceptions, and procedures vary by state and by housing type.
           </p>
+
+          {/* Landlord verification screen */}
+          <div className="mt-12 grid grid-cols-1 lg:grid-cols-5 gap-10 items-center bg-orange-50/40 border border-orange-100 rounded-3xl p-6 lg:p-10">
+            <div className="lg:col-span-3 order-2 lg:order-1">
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Landlord Verification</span>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Privacy-Safe Letter Verification for Housing Providers</h3>
+              <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                When a housing provider asks to confirm an ESA letter, they can verify the licensed clinician&apos;s credentials through our secure verification page — without seeing any of your medical information. The clinician&apos;s name, license number, state, and license status are surfaced; nothing more.
+              </p>
+              <Link
+                to="/ESA-letter-verification"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-500 hover:text-orange-600 cursor-pointer"
+              >
+                See how letter verification works
+                <i className="ri-arrow-right-line"></i>
+              </Link>
+            </div>
+            <div className="lg:col-span-2 order-1 lg:order-2 flex items-center justify-center">
+              <div className="relative w-full max-w-[260px]">
+                <div className="absolute -inset-3 bg-gradient-to-br from-orange-100/70 to-amber-100/40 rounded-[2rem] blur-xl"></div>
+                <img
+                  src={ASSETS.verificationScreen}
+                  alt="Landlord verification screen showing privacy-safe ESA letter verification on PawTenant"
+                  className="relative w-full h-auto rounded-2xl shadow-xl border border-gray-100"
+                  loading="lazy"
+                  width={540}
+                  height={960}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -674,6 +793,32 @@ export default function EverythingEsaOnlinePage() {
               Read our No-Risk Guarantee
               <i className="ri-arrow-right-line"></i>
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Pet emotional moment */}
+      <section className="py-16 bg-[#fdf6ee]">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+            <div className="rounded-3xl overflow-hidden">
+              <img
+                src={ASSETS.petBeagle}
+                alt="A calm beagle resting indoors — companionship that supports daily wellbeing"
+                className="w-full h-72 md:h-80 object-cover"
+                loading="lazy"
+              />
+            </div>
+            <div>
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Why It Matters</span>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4 leading-tight">Your Animal Is Part of Your Daily Wellbeing</h2>
+              <p className="text-gray-600 text-sm leading-relaxed mb-3">
+                For many people, an emotional support animal is a quiet, steady part of getting through hard days — long before any housing question comes up. A legitimate ESA letter exists to make sure that support is not torn away by a no-pet policy.
+              </p>
+              <p className="text-gray-500 text-xs leading-relaxed">
+                That&apos;s why a real evaluation by a licensed mental health professional matters: the documentation you receive should reflect a real care relationship, not a checkout flow.
+              </p>
+            </div>
           </div>
         </div>
       </section>
