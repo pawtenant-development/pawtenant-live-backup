@@ -52,6 +52,8 @@ const ESALetterVerificationPage = lazy(() => import("../pages/esa-letter-verific
 const AccountCheckoutPage = lazy(() => import("../pages/account-checkout/page"));
 // Google Ads paid landing page — noindex, not in nav, not in sitemap.
 const LpEsaHousingPage = lazy(() => import("../pages/lp-esa-housing/page"));
+// Meta/Facebook Ads paid landing page — noindex, not in nav, not in sitemap.
+const MetaEsaLetterPage = lazy(() => import("../pages/meta-esa-letter/page"));
 const EverythingEsaOnlinePage = lazy(() => import("../pages/everything-esa-online/page"));
 
 // Minimal page-level loading fallback
@@ -134,6 +136,8 @@ const routes: RouteObject[] = [
   { path: "/everything-you-need-to-know-about-obtaining-an-esa-letter-online", element: <P C={EverythingEsaOnlinePage} /> },
   // Google Ads paid landing page (LIVE). noindex via per-page meta. Not in nav. Not in sitemap.
   { path: "/esa-letter-housing", element: <P C={LpEsaHousingPage} /> },
+  // Meta/Facebook Ads paid landing page (LIVE). noindex via per-page meta. Not in nav. Not in sitemap.
+  { path: "/meta-esa-letter", element: <P C={MetaEsaLetterPage} /> },
   // Legacy redirects to the new canonical URL.
   { path: "/lp/esa-housing", element: <Navigate to="/esa-letter-housing" replace /> },
   { path: "/lp-esa-housing", element: <Navigate to="/esa-letter-housing" replace /> },
