@@ -2686,6 +2686,164 @@ interface SeqOrderInfo {
   seq_opted_out_at: string | null;
 }
 
+// ── Manual Sequence Run Panel ────────────────────────────────────────────────
+// Emergency button to trigger the lead-followup-sequence Edge Function on demand.
+// Calls the admin-only `manual-run-lead-followup-sequence` Edge Function so the
+// service role key never leaves the server. The underlying sequence function
+// continues each lead from its current state — it does NOT reset stamps, does
+// NOT email paid orders, and respects existing dedupe + opt-out protections.
+// Reference: SEQ-AUTOMATION-MANUAL-RUN-SETTINGS-BUTTON
+interface ManualSeqRunResult {
+  ok: boolean;
+  processed?: number;
+  results?: {
+    step1_30min?: number;
+    step2_24h?: number;
+    step3_3day?: number;
+    skipped?: number;
+    opted_out?: number;
+    expired?: number;
+    dedup_skipped?: number;
+  };
+  error?: string;
+  triggered_by?: { email?: string | null; full_name?: string | null; role?: string | null };
+  started_at?: string;
+  finished_at?: string;
+}
+
+function ManualSequenceRunPanel({ supabaseUrl }: { supabaseUrl: string }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<ManualSeqRunResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const runNow = async () => {
+    setRunning(true);
+    setResult(null);
+    setError(null);
+
+    try {
+      const token = await getAdminToken();
+      const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+      const res = await fetch(`${supabaseUrl}/functions/v1/manual-run-lead-followup-sequence`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: anonKey,
+        },
+        body: JSON.stringify({}),
+      });
+
+      const text = await res.text();
+      let parsed: ManualSeqRunResult;
+      try {
+        parsed = JSON.parse(text) as ManualSeqRunResult;
+      } catch {
+        throw new Error(`Server returned non-JSON response (status ${res.status}): ${text.slice(0, 200)}`);
+      }
+
+      if (!res.ok || !parsed.ok) {
+        setError(parsed.error ?? `Request failed with status ${res.status}`);
+        setResult(parsed);
+      } else {
+        setResult(parsed);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const r = result?.results ?? {};
+  const totalSent = (r.step1_30min ?? 0) + (r.step2_24h ?? 0) + (r.step3_3day ?? 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Warning banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+        <i className="ri-alert-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+        <div className="text-xs text-amber-800 leading-relaxed space-y-1">
+          <p><strong>Emergency recovery tool.</strong> Use this if the automated cron has stopped firing.</p>
+          <p>This continues eligible unpaid leads from their current sequence state. It will <strong>not reset previous sends</strong>, will <strong>not email paid orders</strong>, and respects opt-outs and existing dedupe protections.</p>
+          <p>If a lead got the 30-min email but missed the 24-hour, this will send the 24-hour. If it got the 24-hour but missed the 3-day, it sends the 3-day. Each run only sends what is genuinely due.</p>
+        </div>
+      </div>
+
+      {/* Run button */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={runNow}
+          disabled={running}
+          className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-[#1a5c4f] text-white text-xs font-extrabold rounded-lg hover:bg-[#144a40] disabled:opacity-50 cursor-pointer transition-colors shadow-sm"
+        >
+          {running ? (
+            <><i className="ri-loader-4-line animate-spin"></i>Running sequence…</>
+          ) : (
+            <><i className="ri-mail-send-line"></i>Run Email Sequences Now</>
+          )}
+        </button>
+        {result?.finished_at && !running && (
+          <span className="text-[11px] text-gray-500">
+            Last run finished at {new Date(result.finished_at).toLocaleString()}
+            {result.triggered_by?.email && <> by <strong className="text-gray-700">{result.triggered_by.email}</strong></>}
+          </span>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          <i className="ri-error-warning-line flex-shrink-0 mt-0.5"></i>
+          <div>
+            <p className="font-semibold mb-0.5">Run failed</p>
+            <p className="text-[11px] text-red-600 break-words">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Result counts */}
+      {result && result.ok && (
+        <div className="border border-emerald-200 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
+            <i className="ri-checkbox-circle-fill text-emerald-600 text-sm"></i>
+            <p className="text-xs font-extrabold text-emerald-700">Sequence run complete</p>
+            <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">
+              {totalSent} email{totalSent !== 1 ? "s" : ""} sent
+            </span>
+          </div>
+          <div className="px-4 py-4 bg-white">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Processed", value: result.processed ?? 0, color: "text-gray-700" },
+                { label: "Stage 1 (30min)", value: r.step1_30min ?? 0, color: "text-sky-600" },
+                { label: "Stage 2 (24h)", value: r.step2_24h ?? 0, color: "text-amber-600" },
+                { label: "Stage 3 (3-day)", value: r.step3_3day ?? 0, color: "text-violet-600" },
+                { label: "Skipped", value: r.skipped ?? 0, color: "text-gray-400" },
+                { label: "Opted out", value: r.opted_out ?? 0, color: "text-gray-400" },
+                { label: "Expired", value: r.expired ?? 0, color: "text-gray-400" },
+                { label: "Dedupe skipped", value: r.dedup_skipped ?? 0, color: "text-gray-400" },
+              ].map((s) => (
+                <div key={s.label} className="bg-gray-50 rounded-lg border border-gray-100 p-3">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">{s.label}</p>
+                  <p className={`text-xl font-extrabold ${s.color}`}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+            {result.triggered_by && (
+              <p className="mt-3 text-[11px] text-gray-500">
+                Triggered by <strong className="text-gray-700">{result.triggered_by.email ?? result.triggered_by.full_name ?? "—"}</strong>
+                {result.triggered_by.role && <span className="text-gray-400"> ({result.triggered_by.role})</span>}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SequenceManagementPanel() {
   const [searchId, setSearchId] = useState("");
   const [lookupResult, setLookupResult] = useState<SeqOrderInfo | null>(null);
@@ -3711,6 +3869,19 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         description="Per-order sequence operations and global recovery configuration."
         accent="#0ea5e9"
       />
+
+      {/* ── Email Sequence Recovery — manual on-demand trigger ── */}
+      {/* Reference: SEQ-AUTOMATION-MANUAL-RUN-SETTINGS-BUTTON */}
+      <AccordionSection
+        title="Email Sequence Recovery"
+        subtitle="Manually trigger the lead-followup sequence if the cron has stopped firing"
+        icon="ri-restart-line"
+        iconBg="bg-emerald-50"
+        iconColor="text-emerald-700"
+        defaultOpen={true}
+      >
+        <ManualSequenceRunPanel supabaseUrl={supabaseUrl} />
+      </AccordionSection>
 
       {/* ── Sequence Management — per-order opt-in / opt-out ── */}
       <AccordionSection
