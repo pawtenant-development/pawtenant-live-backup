@@ -95,7 +95,6 @@ const routes: RouteObject[] = [
   { path: "/esa-letter/:state", element: <P C={StateESAPage} /> },
   { path: "/all-about-service-dogs", element: <P C={ServiceDogsPage} /> },
   { path: "/how-to-get-psd-letter", element: <P C={HowToGetPSDLetterPage} /> },
-  { path: "/how-to-get-psd-letter/", element: <Navigate to="/how-to-get-psd-letter" replace /> },
   { path: "/privacy-policy", element: <P C={PrivacyPolicyPage} /> },
   { path: "/terms-of-use", element: <P C={TermsOfUsePage} /> },
   { path: "/about-us", element: <P C={AboutUsPage} /> },

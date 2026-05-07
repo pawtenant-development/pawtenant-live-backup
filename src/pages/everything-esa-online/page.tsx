@@ -17,6 +17,7 @@ const ASSETS = {
   assessmentClip1: `${ASSET_BASE}/assessment-ui/assessment_clip_1.mp4`,
   petBeagle: `${ASSET_BASE}/pets/portrait-thoughtful-beagle-dog-sitting-indoors.jpg`,
   petCloseUp: `${ASSET_BASE}/pets/close-up-dog-looking-away.jpg`,
+  heroImg: `${ASSET_BASE}/pets/close-up-dog-looking-away.jpg`,
 };
 
 const heroBenefits = [
@@ -329,9 +330,9 @@ export default function EverythingEsaOnlinePage() {
       <section className="relative pt-28 pb-24">
         <div className="absolute inset-0">
           <img
-            src="https://readdy.ai/api/search-image?query=warm%20cozy%20home%20living%20room%20with%20a%20person%20on%20laptop%20doing%20a%20telehealth%20mental%20health%20appointment%20with%20golden%20retriever%20resting%20on%20couch%20nearby%2C%20soft%20natural%20morning%20light%2C%20professional%20lifestyle%20photography%2C%20warm%20earth%20tones&width=1600&height=900&seq=esaonline-hero01&orientation=landscape"
-            alt="Person doing an online ESA letter evaluation with a licensed mental health professional, an emotional support dog at their side"
-            className="w-full h-full object-cover object-top"
+            src={ASSETS.heroImg}
+            alt="A close-up portrait of a calm dog looking away — emotional support animals provide comfort that supports housing accommodation requests"
+            className="w-full h-full object-cover object-center"
             loading="eager"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/20"></div>

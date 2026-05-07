@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -7,7 +7,10 @@ const PAGE_PATH = "/how-to-get-psd-letter";
 const CANONICAL = `https://www.pawtenant.com${PAGE_PATH}`;
 const TITLE = "How to Get a Psychiatric Service Dog Letter | PawTenant";
 const DESCRIPTION =
-  "Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed LMHP. Speak 1-on-1 with a qualified professional and receive your PSD letter in 24 hours.";
+  "Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed mental health professional. Learn how online PSD evaluations work, what tasks qualify, and how to begin your assessment in minutes.";
+
+const ASSET_BASE = "https://cvwbozlbbmrjxznknouq.supabase.co/storage/v1/object/public/ad-assets";
+const HERO_IMG = `${ASSET_BASE}/pets/portrait-thoughtful-beagle-dog-sitting-indoors.jpg`;
 
 const steps = [
   {
@@ -158,123 +161,86 @@ const faqs = [
   },
 ];
 
-/**
- * SEO meta + JSON-LD schema injection via useEffect (DOM-based, not React 19
- * metadata hoisting). This avoids any potential hoisting/hydration quirk that
- * could blank-screen the page in production. Same pattern used by state-esa.
- */
-function useInjectSeo(): void {
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    document.title = TITLE;
-
-    const setMeta = (name: string, content: string, prop = false) => {
-      const attr = prop ? "property" : "name";
-      let el = document.head.querySelector(`meta[${attr}="${name}"]`) as HTMLMetaElement | null;
-      if (!el) {
-        el = document.createElement("meta");
-        el.setAttribute(attr, name);
-        document.head.appendChild(el);
-      }
-      if (el.getAttribute("content") !== content) {
-        el.setAttribute("content", content);
-      }
-    };
-
-    const setLink = (rel: string, href: string) => {
-      let el = document.head.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
-      if (!el) {
-        el = document.createElement("link");
-        el.setAttribute("rel", rel);
-        document.head.appendChild(el);
-      }
-      if (el.getAttribute("href") !== href) {
-        el.setAttribute("href", href);
-      }
-    };
-
-    setMeta("description", DESCRIPTION);
-    setMeta(
-      "keywords",
-      "get psd letter, psychiatric service dog letter, psd documentation, service dog evaluation, legitimate PSD letter, how to get psd letter online, online psd evaluation, licensed mental health professional psd letter"
-    );
-    setLink("canonical", CANONICAL);
-    setMeta("og:title", TITLE, true);
-    setMeta("og:description", DESCRIPTION, true);
-    setMeta("og:url", CANONICAL, true);
-    setMeta("og:type", "article", true);
-    setMeta("twitter:card", "summary_large_image");
-    setMeta("twitter:title", TITLE);
-    setMeta("twitter:description", DESCRIPTION);
-    setMeta("robots", "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1");
-
-    // JSON-LD schemas — replace existing copies if present (keyed by id)
-    const upsertSchema = (id: string, payload: object) => {
-      let el = document.getElementById(id) as HTMLScriptElement | null;
-      const json = JSON.stringify(payload);
-      if (!el) {
-        el = document.createElement("script");
-        el.type = "application/ld+json";
-        el.id = id;
-        document.head.appendChild(el);
-      }
-      if (el.textContent !== json) {
-        el.textContent = json;
-      }
-    };
-
-    upsertSchema("psd-faq-schema", {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      mainEntity: faqs.map((faq) => ({
-        "@type": "Question",
-        name: faq.q,
-        acceptedAnswer: { "@type": "Answer", text: faq.a },
-      })),
-    });
-
-    upsertSchema("psd-article-schema", {
-      "@context": "https://schema.org",
-      "@type": "Article",
-      headline: "How to Get a Psychiatric Service Dog Letter",
-      description: DESCRIPTION,
-      mainEntityOfPage: { "@type": "WebPage", "@id": CANONICAL },
-      url: CANONICAL,
-      inLanguage: "en-US",
-      author: { "@type": "Organization", name: "PawTenant", url: "https://www.pawtenant.com/" },
-      publisher: {
-        "@type": "Organization",
-        name: "PawTenant",
-        logo: { "@type": "ImageObject", url: "https://www.pawtenant.com/logo.png" },
-      },
-    });
-
-    upsertSchema("psd-breadcrumb-schema", {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Home", item: "https://www.pawtenant.com/" },
-        { "@type": "ListItem", position: 2, name: "How to Get a PSD Letter", item: CANONICAL },
-      ],
-    });
-  }, []);
-}
-
 export default function HowToGetPSDLetterPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  useInjectSeo();
 
   return (
     <main>
+      <title>{TITLE}</title>
+      <meta name="description" content={DESCRIPTION} />
+      <meta
+        name="keywords"
+        content="get psd letter, psychiatric service dog letter, psd letter online, psd documentation, service dog evaluation, legitimate PSD letter, how to get psd letter, online psd evaluation, licensed mental health professional psd letter"
+      />
+      <link rel="canonical" href={CANONICAL} />
+      <meta property="og:title" content={TITLE} />
+      <meta property="og:description" content={DESCRIPTION} />
+      <meta property="og:url" content={CANONICAL} />
+      <meta property="og:type" content="article" />
+      <meta property="og:locale" content="en_US" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={TITLE} />
+      <meta name="twitter:description" content={DESCRIPTION} />
+      <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: faqs.map((faq) => ({
+              "@type": "Question",
+              name: faq.q,
+              acceptedAnswer: { "@type": "Answer", text: faq.a },
+            })),
+          }),
+        }}
+      />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Article",
+            headline: "How to Get a Psychiatric Service Dog Letter",
+            description: DESCRIPTION,
+            mainEntityOfPage: { "@type": "WebPage", "@id": CANONICAL },
+            url: CANONICAL,
+            inLanguage: "en-US",
+            author: { "@type": "Organization", name: "PawTenant", url: "https://www.pawtenant.com/" },
+            publisher: {
+              "@type": "Organization",
+              name: "PawTenant",
+              logo: { "@type": "ImageObject", url: "https://www.pawtenant.com/logo.png" },
+            },
+          }),
+        }}
+      />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.pawtenant.com/" },
+              { "@type": "ListItem", position: 2, name: "How to Get a PSD Letter", item: CANONICAL },
+            ],
+          }),
+        }}
+      />
+
       <SharedNavbar />
 
       {/* Hero */}
       <section className="relative pt-28 pb-24">
         <div className="absolute inset-0">
           <img
-            src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/925edf71-8f53-4f8f-8180-12a475777e58_How-to-Get-a-Psychiatric-Service-Dog-Letter.jpg?v=d622f9279132e3d201c18ec9bc2a95ab"
-            alt="How to get a psychiatric service dog PSD letter from a licensed mental health professional online"
+            src={HERO_IMG}
+            alt="A calm beagle resting indoors — psychiatric service dogs provide trained task support for mental health"
             className="w-full h-full object-cover object-top"
             loading="eager"
           />
@@ -289,7 +255,7 @@ export default function HowToGetPSDLetterPage() {
               How to Get a Psychiatric Service Dog Letter
             </h1>
             <p className="text-white/85 text-lg leading-relaxed mb-8">
-              A psychiatric service dog letter (PSD letter) grants your trained dog full public access rights under the ADA — not just housing protections. Learn exactly how to qualify, what tasks your dog must perform, and how to get your PSD letter online in as little as 24 hours.
+              A psychiatric service dog letter (PSD letter) supports a trained dog under the Americans with Disabilities Act in addition to housing rights under the Fair Housing Act. Learn exactly how to qualify, what tasks your dog must perform, and how to start your evaluation online today.
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
@@ -307,20 +273,20 @@ export default function HowToGetPSDLetterPage() {
                 See How It Works
               </a>
             </div>
-            <div className="flex flex-wrap items-center gap-6 mt-8">
-              <div className="flex items-center gap-2 text-white/75 text-xs">
-                <div className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></div>
+            <ul className="flex flex-wrap items-center gap-6 mt-8">
+              <li className="flex items-center gap-2 text-white/75 text-xs">
+                <span className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></span>
                 Licensed mental health professionals
-              </div>
-              <div className="flex items-center gap-2 text-white/75 text-xs">
-                <div className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></div>
+              </li>
+              <li className="flex items-center gap-2 text-white/75 text-xs">
+                <span className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></span>
                 Valid in all 50 states
-              </div>
-              <div className="flex items-center gap-2 text-white/75 text-xs">
-                <div className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></div>
+              </li>
+              <li className="flex items-center gap-2 text-white/75 text-xs">
+                <span className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></span>
                 Delivered in 24–48 hours
-              </div>
-            </div>
+              </li>
+            </ul>
           </div>
         </div>
       </section>
@@ -346,14 +312,14 @@ export default function HowToGetPSDLetterPage() {
                   <i className="ri-information-line text-orange-500 text-lg"></i>
                 </div>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  <strong className="text-gray-900">Good to know:</strong> Your dog does not need to be professionally trained or certified to qualify. Owner-trained psychiatric service dogs are fully recognized under the ADA — the letter documents your medical need, and your dog&apos;s task training demonstrates their service dog status.
+                  <strong className="text-gray-900">Good to know:</strong> Your dog does not need to be professionally trained or certified to qualify. Owner-trained psychiatric service dogs are recognized under the ADA — the letter documents your medical need, and your dog&apos;s task training demonstrates their service dog status.
                 </p>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden min-h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80 bg-orange-50">
               <img
-                src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/626a4b1c-6e1e-4903-b4bd-b67a5b1e37f7_What-is-a-PSD-Letter.jpg?v=8af77abe89f837f83927117fef15ce63"
-                alt="What is a psychiatric service dog PSD letter — official documentation for housing and travel rights"
+                src={`${ASSET_BASE}/pets/close-up-dog-looking-away.jpg`}
+                alt="A focused dog — psychiatric service dogs are task-trained to mitigate mental health symptoms"
                 className="w-full h-full object-cover object-top"
                 loading="lazy"
               />
@@ -486,7 +452,7 @@ export default function HowToGetPSDLetterPage() {
                     <td className="px-6 py-4 text-xs font-semibold text-gray-700">{row.category}</td>
                     <td className="px-6 py-4 text-xs text-gray-600">
                       <span className="inline-flex items-center gap-2">
-                        <span className="w-3 h-3 flex items-center justify-center flex-shrink-0">
+                        <span className="w-3 h-3 inline-flex items-center justify-center flex-shrink-0">
                           <i className="ri-check-line text-orange-500 text-sm"></i>
                         </span>
                         {row.psd}
@@ -515,11 +481,11 @@ export default function HowToGetPSDLetterPage() {
       <section className="py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-stretch">
-            <div className="rounded-2xl overflow-hidden min-h-80">
+            <div className="rounded-2xl overflow-hidden min-h-80 bg-orange-50">
               <img
-                src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0"
-                alt="Licensed mental health professional conducting telehealth PSD letter consultation for psychiatric service dog"
-                className="w-full h-full object-cover object-top"
+                src={`${ASSET_BASE}/verification/verification_screen_1080x1920.png`}
+                alt="Landlord verification screen — privacy-safe license verification for PSD and ESA letters"
+                className="w-full h-full object-contain object-center"
                 loading="lazy"
               />
             </div>
@@ -573,9 +539,9 @@ export default function HowToGetPSDLetterPage() {
                 <ul className="space-y-2 mb-8 flex-1">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-sm text-gray-700">
-                      <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i className="ri-checkbox-circle-fill text-orange-500 text-base"></i>
-                      </div>
+                      </span>
                       {f}
                     </li>
                   ))}
@@ -600,14 +566,6 @@ export default function HowToGetPSDLetterPage() {
 
       {/* CTA Banner */}
       <section className="relative py-20 bg-orange-500 overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <img
-            src="https://readdy.ai/api/search-image?query=abstract%20warm%20pattern%20texture%20subtle%20organic%20shapes%20soft%20warm%20orange%20tones%20minimal%20background%20design&width=1440&height=400&seq=psdletter-cta01&orientation=landscape"
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        </div>
         <div className="relative w-full max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to Get Your Psychiatric Service Dog Letter?</h2>
           <p className="text-white/85 text-sm leading-relaxed mb-8 max-w-xl mx-auto">
@@ -633,7 +591,7 @@ export default function HowToGetPSDLetterPage() {
           </div>
           <div className="space-y-3">
             {faqs.map((faq, i) => (
-              <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div key={faq.q} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <button
                   type="button"
                   className="w-full flex items-center justify-between px-6 py-4 text-left cursor-pointer"
@@ -641,9 +599,9 @@ export default function HowToGetPSDLetterPage() {
                   aria-expanded={openFaq === i}
                 >
                   <span className={`text-sm font-semibold ${openFaq === i ? "text-orange-500" : "text-gray-900"}`}>{faq.q}</span>
-                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-4">
+                  <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-4">
                     <i className={`${openFaq === i ? "ri-subtract-line" : "ri-add-line"} text-orange-500`}></i>
-                  </div>
+                  </span>
                 </button>
                 {openFaq === i && (
                   <div className="px-6 pb-4">
@@ -656,7 +614,7 @@ export default function HowToGetPSDLetterPage() {
         </div>
       </section>
 
-      {/* Related Links */}
+      {/* Related Resources */}
       <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-6">
           <h2 className="text-sm font-bold text-gray-900 mb-6">Related Resources</h2>
