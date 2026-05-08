@@ -433,6 +433,15 @@ export function captureFromUrl(search: string): void {
     if (ref) captured.referrer = ref;
   }
 
+  // ── Seed first-touch (set-once, never overwritten) ────────────────────────
+  // Done after all captures land so the first-touch snapshot reflects the
+  // very first attribution state, including click IDs and landing context.
+  try {
+    getOrInitFirstTouch();
+  } catch {
+    // ignore — never break the page
+  }
+
   // ── Dev log ───────────────────────────────────────────────────────────────
   const hasActivity =
     Object.keys(captured).length > 0 ||
@@ -517,15 +526,171 @@ export function setSelectedState(state: string): void {
   debugLog("setSelectedState", { selected_state: state });
 }
 
+// ── First-touch preservation ─────────────────────────────────────────────────
+//
+// The store above is LAST-TOUCH by design. We additionally snapshot the very
+// FIRST attribution touch into a single localStorage key, set ONCE per browser
+// and never overwritten. This snapshot becomes orders.first_touch_json.
+//
+// Storage key: "pt_first_touch" — independent of the per-field LS keys so a
+// last-touch override (which clears stale click IDs) cannot mutate it.
+const FIRST_TOUCH_KEY = "pt_first_touch";
+
+interface FirstTouchSnapshot {
+  session_id: string;
+  first_seen_at: string | null;
+  channel: string;
+  fullSource: string;
+  fbclid: string | null;
+  fbc: string | null;
+  fbclid_ts: string | null;
+  gclid: string | null;
+  gbraid: string | null;
+  wbraid: string | null;
+  msclkid: string | null;
+  ttclid: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
+  ref: string | null;
+  landing_url: string | null;
+  referrer: string | null;
+  captured_at: string;
+}
+
+/**
+ * Returns the persisted first-touch snapshot, creating it once if absent.
+ * Once set, it is NEVER overwritten — calling this on a returning visitor
+ * yields the original first-touch data.
+ *
+ * Storage lives inside the same attributionStore localStorage namespace —
+ * this is NOT a separate system, just an extra key alongside the per-field
+ * ones. Writes are guarded so a quota error / disabled storage cannot throw.
+ */
+export function getOrInitFirstTouch(): FirstTouchSnapshot | null {
+  // Try to read existing snapshot first — set-once semantics.
+  try {
+    const existing = lsGet(FIRST_TOUCH_KEY);
+    if (existing) {
+      try {
+        const parsed = JSON.parse(existing) as FirstTouchSnapshot;
+        if (parsed && parsed.session_id) return parsed;
+      } catch {
+        // Malformed — fall through and overwrite once.
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  // Build snapshot from current attribution state.
+  let snapshot: FirstTouchSnapshot;
+  try {
+    const data = getAttribution();
+    snapshot = {
+      session_id:    data.session_id,
+      first_seen_at: data.first_seen_at,
+      channel:       buildChannel(),
+      fullSource:    buildFullSource(),
+      fbclid:        data.fbclid,
+      fbc:           data.fbc,
+      fbclid_ts:     data.fbclid_ts,
+      gclid:         data.gclid,
+      gbraid:        data.gbraid,
+      wbraid:        data.wbraid,
+      msclkid:       data.msclkid,
+      ttclid:        data.ttclid,
+      utm_source:    data.utm_source,
+      utm_medium:    data.utm_medium,
+      utm_campaign:  data.utm_campaign,
+      utm_term:      data.utm_term,
+      utm_content:   data.utm_content,
+      ref:           data.ref,
+      landing_url:   data.landing_url,
+      referrer:      data.referrer,
+      captured_at:   new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+
+  try {
+    lsSet(FIRST_TOUCH_KEY, JSON.stringify(snapshot));
+  } catch {
+    // localStorage unavailable / quota — fine, return the in-memory snapshot.
+  }
+
+  try { debugLog("first_touch.init", snapshot); } catch { /* ignore */ }
+  return snapshot;
+}
+
+/** Returns the first-touch snapshot if it exists, null otherwise. Read-only. */
+export function getFirstTouch(): FirstTouchSnapshot | null {
+  try {
+    const raw = lsGet(FIRST_TOUCH_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as FirstTouchSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns a last-touch snapshot in the same shape as first-touch. Always
+ * reflects the current session state (overwritable). Never throws.
+ */
+export function getLastTouch(): FirstTouchSnapshot | null {
+  try {
+    const data = getAttribution();
+    return {
+      session_id:    data.session_id,
+      first_seen_at: data.first_seen_at,
+      channel:       buildChannel(),
+      fullSource:    buildFullSource(),
+      fbclid:        data.fbclid,
+      fbc:           data.fbc,
+      fbclid_ts:     data.fbclid_ts,
+      gclid:         data.gclid,
+      gbraid:        data.gbraid,
+      wbraid:        data.wbraid,
+      msclkid:       data.msclkid,
+      ttclid:        data.ttclid,
+      utm_source:    data.utm_source,
+      utm_medium:    data.utm_medium,
+      utm_campaign:  data.utm_campaign,
+      utm_term:      data.utm_term,
+      utm_content:   data.utm_content,
+      ref:           data.ref,
+      landing_url:   data.landing_url,
+      referrer:      data.referrer,
+      captured_at:   new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ── Build attribution_json for backend payloads ───────────────────────────────
 
 /**
  * Returns a clean attribution_json object ready to be stored in the DB.
  * Strips null values to keep the JSON compact.
  * Adds a captured_stage label for debugging.
+ *
+ * As of analytics-phase-1 the JSON also embeds first_touch + last_touch
+ * snapshots so downstream consumers can read both without extra queries.
  */
 export function buildAttributionJson(stage: string): Record<string, unknown> {
   const data = getAttribution();
+
+  // Ensure first_touch is captured before we serialize. Either helper may
+  // return null/throw under storage failure — guard so we still emit JSON.
+  let firstTouch: FirstTouchSnapshot | null = null;
+  try { firstTouch = getOrInitFirstTouch(); } catch { firstTouch = null; }
+  let lastTouch: FirstTouchSnapshot | null = null;
+  try { lastTouch = getLastTouch(); } catch { lastTouch = null; }
 
   const json: Record<string, unknown> = {
     session_id:    data.session_id,
@@ -533,6 +698,8 @@ export function buildAttributionJson(stage: string): Record<string, unknown> {
     captured_stage: stage,
     captured_at:   new Date().toISOString(),
     channel:       buildChannel(),
+    ...(firstTouch ? { first_touch: firstTouch } : {}),
+    ...(lastTouch  ? { last_touch:  lastTouch  } : {}),
   };
 
   // Only include non-null fields

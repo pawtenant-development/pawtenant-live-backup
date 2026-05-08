@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
+import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
+import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 
 interface ThankYouState {
   firstName?: string;
@@ -544,7 +546,14 @@ export default function AssessmentThankYouPage() {
               confirmationId: order.confirmationId ?? '',
               email: order.email,
             });
-            fireLead();
+            // Phase-1: dedup-safe Lead via shared event_id `lead_<sessionId>`.
+            // Pixel + CAPI fire from the same browser sessionId so Meta dedups
+            // even when fireLead() is also called at Step-2 transition.
+            {
+              let sid: string | null = null;
+              try { sid = getSessionId(); } catch { sid = null; }
+              fireLead({ sessionId: sid ?? undefined, email: order.email ?? undefined });
+            }
             // Mark gtag as already-handled so the bottom useEffect skips it
             gtagConversionFired.current = true;
             if (typeof window.gtag === "function") {
@@ -562,6 +571,25 @@ export default function AssessmentThankYouPage() {
                 transaction_id: txId,
               });
             }
+            // Phase 1 analytics: stitch session → order on paid arrival.
+            try {
+              if (order.confirmationId) {
+                linkSessionToOrder(order.confirmationId);
+                markPaid();
+                // Phase-3 funnel event — deduped by confirmation_id.
+                trackPaymentSuccess(order.confirmationId, {
+                  price: convVal,
+                  user_email: order.email ?? null,
+                  letter_type: "esa",
+                  arrival: "redirect",
+                });
+                trackRecoveryConversionIfFlagged(order.confirmationId, {
+                  price: convVal,
+                  letter_type: "esa",
+                  arrival: "redirect",
+                });
+              }
+            } catch { /* never block thank-you render */ }
             // Order persistence is handled exclusively by the stripe-webhook
             // for redirect-based methods — see note above the removed
             // saveOrderToSupabase() function. Do NOT write from the client.
@@ -653,6 +681,27 @@ export default function AssessmentThankYouPage() {
       confirmationId: transactionId,
       email,
     });
+
+    // Phase 1 analytics: stitch session → order on inline-card arrival.
+    try {
+      if (transactionId) {
+        linkSessionToOrder(transactionId);
+        markPaid();
+        // Phase-3 funnel event — deduped, will no-op if already fired
+        // from assessment/page.tsx for this confirmation_id.
+        trackPaymentSuccess(transactionId, {
+          price: conversionValue,
+          user_email: email ?? null,
+          letter_type: "esa",
+          arrival: "inline",
+        });
+        trackRecoveryConversionIfFlagged(transactionId, {
+          price: conversionValue,
+          letter_type: "esa",
+          arrival: "inline",
+        });
+      }
+    } catch { /* never block thank-you render */ }
 
     const fireGtag = (): boolean => {
       if (gtagConversionFired.current) return true; // already fired

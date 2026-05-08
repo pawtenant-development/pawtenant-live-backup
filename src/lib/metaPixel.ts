@@ -65,6 +65,91 @@ declare global {
   }
 }
 
+// ── Phase-1: Lead + InitiateCheckout dedup event-id format ──────────────────
+// Same protocol as Purchase: keyed by a stable per-browser id (session_id from
+// the existing attributionStore). Pixel and CAPI must produce the same string
+// for Meta to dedup non-Purchase events.
+export const META_LEAD_EVENT_ID_PREFIX = "lead_" as const;
+export const META_INITIATE_CHECKOUT_EVENT_ID_PREFIX = "initiatecheckout_" as const;
+
+export function buildMetaLeadEventId(sessionId: string): string {
+  return `${META_LEAD_EVENT_ID_PREFIX}${sessionId}`;
+}
+
+export function buildMetaInitiateCheckoutEventId(sessionId: string): string {
+  return `${META_INITIATE_CHECKOUT_EVENT_ID_PREFIX}${sessionId}`;
+}
+
+// ── Phase-1: read _fbp cookie (Meta browser pixel cookie) ───────────────────
+// Set by fbevents.js on first PageView. Format: fb.1.<ms_timestamp>.<random>.
+// Read-only — never written or modified by us. Safe to call from any page.
+export function getFbp(): string | null {
+  if (typeof document === "undefined") return null;
+  try {
+    const match = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("_fbp="));
+    if (!match) return null;
+    const v = match.slice(5);
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Phase-1: fire-and-forget CAPI mirror for Lead / InitiateCheckout ────────
+// Sends the same event_id the Pixel just fired to the Supabase edge function
+// `send-meta-browser-event`, which forwards to Meta CAPI. Meta dedups by
+// (event_name, event_id) so this is safe to fire alongside the Pixel.
+//
+// Never throws. Never blocks. If the fetch fails the Pixel side is unaffected.
+function dispatchCapiMirror(opts: {
+  eventName: "Lead" | "InitiateCheckout";
+  eventId: string;
+  email?: string;
+  value?: number;
+  currency?: string;
+  content_name?: string;
+}): void {
+  if (typeof window === "undefined") return;
+  try {
+    const supaUrl = (import.meta.env.VITE_PUBLIC_SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL ?? "") as string;
+    const anonKey = (import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "") as string;
+    if (!supaUrl || !anonKey) return;
+
+    const url = `${supaUrl.replace(/\/+$/, "")}/functions/v1/send-meta-browser-event`;
+    const body = JSON.stringify({
+      event_name: opts.eventName,
+      event_id: opts.eventId,
+      email: opts.email ?? null,
+      value: opts.value ?? null,
+      currency: opts.currency ?? "USD",
+      content_name: opts.content_name ?? null,
+      fbp: getFbp(),
+      event_source_url: typeof window !== "undefined" && window.location ? window.location.href : null,
+    });
+
+    // Prefer sendBeacon for reliability across navigations; fall back to fetch.
+    const beaconOk = (() => {
+      try {
+        if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return false;
+        const blob = new Blob([body], { type: "application/json" });
+        return navigator.sendBeacon(`${url}?apikey=${encodeURIComponent(anonKey)}`, blob);
+      } catch { return false; }
+    })();
+    if (beaconOk) return;
+
+    void fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+      body,
+      keepalive: true,
+    }).catch(() => { /* ignore */ });
+  } catch {
+    /* ignore — analytics must never break the page */
+  }
+}
+
 // ── SHA-256 email hashing for Meta advanced matching ──────────────────────────
 async function sha256Hex(message: string): Promise<string> {
   try {
@@ -89,21 +174,41 @@ export function firePageView(): void {
 /**
  * Fire Lead — call when a user submits personal info (Step 2) or arrives
  * on a thank-you page via a redirect-based payment (Klarna / QR).
+ *
+ * Phase-1: optionally accepts sessionId + email to enable Pixel↔CAPI dedup
+ * via shared event_id `lead_<sessionId>`. When sessionId is provided, also
+ * dispatches a fire-and-forget CAPI mirror via `send-meta-browser-event`.
+ * Old call sites with no args still work — they emit a Pixel-only Lead
+ * (Meta does not dedup events without an event_id).
  */
-export function fireLead(): void {
+export function fireLead(opts?: { sessionId?: string; email?: string }): void {
   if (typeof window.fbq !== 'function') return;
-  if (import.meta.env.DEV) console.log('[Meta Pixel] Lead firing');
+  const sessionId = opts?.sessionId;
+  if (sessionId) {
+    const eventId = buildMetaLeadEventId(sessionId);
+    if (import.meta.env.DEV) console.log('[Meta Pixel] Lead firing', { eventId });
+    window.fbq('track', 'Lead', {}, { eventID: eventId });
+    dispatchCapiMirror({ eventName: "Lead", eventId, email: opts?.email });
+    return;
+  }
+  if (import.meta.env.DEV) console.log('[Meta Pixel] Lead firing (no eventID — legacy call)');
   window.fbq('track', 'Lead');
 }
 
 /**
  * Fire InitiateCheckout — call when the user enters the payment/checkout step.
+ *
+ * Phase-1: optionally accepts sessionId + email to enable Pixel↔CAPI dedup
+ * via shared event_id `initiatecheckout_<sessionId>`. When sessionId is
+ * provided, also dispatches a fire-and-forget CAPI mirror.
  */
 export function fireInitiateCheckout(params: {
   value?: number;
   currency?: string;
   content_name?: string;
   num_items?: number;
+  sessionId?: string;
+  email?: string;
 }): void {
   if (typeof window.fbq !== 'function') return;
   const payload = {
@@ -112,7 +217,22 @@ export function fireInitiateCheckout(params: {
     content_name: params.content_name ?? 'ESA Letter Checkout',
     num_items: params.num_items ?? 1,
   };
-  if (import.meta.env.DEV) console.log('[Meta Pixel] InitiateCheckout firing', payload);
+  const sessionId = params.sessionId;
+  if (sessionId) {
+    const eventId = buildMetaInitiateCheckoutEventId(sessionId);
+    if (import.meta.env.DEV) console.log('[Meta Pixel] InitiateCheckout firing', { ...payload, eventId });
+    window.fbq('track', 'InitiateCheckout', payload, { eventID: eventId });
+    dispatchCapiMirror({
+      eventName: "InitiateCheckout",
+      eventId,
+      email: params.email,
+      value: payload.value,
+      currency: payload.currency,
+      content_name: payload.content_name,
+    });
+    return;
+  }
+  if (import.meta.env.DEV) console.log('[Meta Pixel] InitiateCheckout firing (no eventID — legacy call)', payload);
   window.fbq('track', 'InitiateCheckout', payload);
 }
 
@@ -202,5 +322,42 @@ export async function fireMetaPurchase(opts: {
     sessionStorage.setItem(dedupKey, '1');
   } catch {
     // ignore
+  }
+
+  // Phase-1: forward fbp + event_source_url to the existing send-meta-capi-event
+  // server function as a hint. The function's "single" mode accepts an optional
+  // payload override now (see edge-function change). Fire-and-forget.
+  try {
+    const supaUrl = (import.meta.env.VITE_PUBLIC_SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL ?? "") as string;
+    const anonKey = (import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "") as string;
+    if (!supaUrl || !anonKey) return;
+    const fbp = getFbp();
+    const eventSourceUrl = typeof window !== "undefined" && window.location ? window.location.href : null;
+    if (!fbp && !eventSourceUrl) return;
+
+    const url = `${supaUrl.replace(/\/+$/, "")}/functions/v1/send-meta-capi-event`;
+    const body = JSON.stringify({
+      mode: "single",
+      confirmationId: opts.confirmationId,
+      browser_hint: { fbp, event_source_url: eventSourceUrl },
+    });
+
+    const beaconOk = (() => {
+      try {
+        if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return false;
+        const blob = new Blob([body], { type: "application/json" });
+        return navigator.sendBeacon(`${url}?apikey=${encodeURIComponent(anonKey)}`, blob);
+      } catch { return false; }
+    })();
+    if (beaconOk) return;
+
+    void fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+      body,
+      keepalive: true,
+    }).catch(() => { /* ignore */ });
+  } catch {
+    // never throw
   }
 }

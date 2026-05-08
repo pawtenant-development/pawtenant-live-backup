@@ -17,12 +17,16 @@ import { fireMetaPurchase, fireLead, fireInitiateCheckout } from "@/lib/metaPixe
 import { logAudit, loggedFetch } from "@/lib/auditLogger";
 import {
   buildAttributionJson,
+  buildChannel,
   getAttribution,
+  getFirstTouch,
+  getLastTouch,
   setConfirmationId,
   setCouponCode,
   setSelectedState,
 } from "@/lib/attributionStore";
-import { markAssessmentStarted, markPaid } from "@/lib/visitorSession";
+import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
+import { trackAssessmentStepView, trackPaymentAttempted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 
 const defaultStep1: Step1Data = {
   emotionalFrequency: "",
@@ -241,7 +245,7 @@ async function fireGHLEarlyLead(step1: Step1Data, step2: Step2Data, confirmation
         phone: step2.phone,
         dateOfBirth: step2.dob,
         state: step2.state,
-        leadStatus: "Incomplete \u2013 Abandoned at Checkout",
+        leadStatus: "Incomplete – Abandoned at Checkout",
         confirmationId,
         numberOfPets: step2.pets.length,
         pets: step2.pets.map((p, i) => ({
@@ -255,7 +259,7 @@ async function fireGHLEarlyLead(step1: Step1Data, step2: Step2Data, confirmation
         mentalHealthConditions: step1.conditions.join(", "),
         lifeChangeStress: step1.lifeChangeStress,
         housingType: step1.housingType,
-        leadSource: "ESA Assessment Form \u2013 Step 2 Submitted",
+        leadSource: "ESA Assessment Form – Step 2 Submitted",
         landingUrl: getLandingUrl(),
         trafficSource: getTrafficSource(),
         submittedAt: new Date().toISOString(),
@@ -292,7 +296,7 @@ async function fireGHLFinalLead(
         phone: step2.phone,
         dateOfBirth: step2.dob,
         state: step2.state,
-        leadStatus: "Paid \u2013 Order Completed",
+        leadStatus: "Paid – Order Completed",
         confirmationId,
         orderTotal: price,
         deliverySpeed: "",
@@ -324,7 +328,7 @@ async function fireGHLFinalLead(
         medication: step1.medication,
         medicationDetails: step1.medicationDetails,
         housingType: step1.housingType,
-        leadSource: "ESA Assessment Form \u2013 Paid",
+        leadSource: "ESA Assessment Form – Paid",
         landingUrl: getLandingUrl(),
         trafficSource: getTrafficSource(),
         submittedAt: new Date().toISOString(),
@@ -348,6 +352,13 @@ export default function AssessmentPage() {
   const navigate = useNavigate();
   const preSelectedDoctorId = searchParams.get("doctor") ?? "";
   const resumeConfirmationId = searchParams.get("resume") ?? "";
+  // TRACK 2 · REPEAT-CUSTOMER-NEW-ESA-LINK-TEST
+  // Opt-in flag: when present on a resume URL, pre-fill still runs so the
+  // customer's identity stays loaded, but we land on Step 1 instead of jumping
+  // to Step 3. This lets repeat-customer "new pet" flows review/edit pet info
+  // before checkout. Email CTA appends &edit=pet for this purpose.
+  // Default behavior (no flag) is unchanged → still jumps to Step 3.
+  const resumeEditPet = (searchParams.get("edit") ?? "").toLowerCase() === "pet";
   // Pre-select state from ?state=CA param (used by state landing pages + ad campaigns)
   const preSelectedState = searchParams.get("state") ?? "";
 
@@ -534,10 +545,21 @@ export default function AssessmentPage() {
 
         // Use the existing confirmation ID so payment upserts the right row
         confirmationId.current = resumeConfirmationId;
-        setCurrentStep(3);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        // Fetch Stripe client_secret immediately for resume flow
-        fetchClientSecret(loadedStep2, resumeConfirmationId);
+        // TRACK 2 · REPEAT-CUSTOMER-NEW-ESA-LINK-TEST
+        // When ?edit=pet is set (repeat-customer new-pet flow) land on Step 1
+        // so the customer reviews/edits pet info first. Skip the eager
+        // fetchClientSecret call — Step 3 will trigger it normally when the
+        // customer reaches checkout. Otherwise keep the existing jump-to-Step-3
+        // behavior for every other resume use case.
+        if (resumeEditPet) {
+          setCurrentStep(1);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else {
+          setCurrentStep(3);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          // Fetch Stripe client_secret immediately for resume flow
+          fetchClientSecret(loadedStep2, resumeConfirmationId);
+        }
       } catch (err) {
         setResumeNotFound(true);
         // Log network/parse errors so we can distinguish them from "not found"
@@ -617,6 +639,27 @@ export default function AssessmentPage() {
     stripeSecretInFlight.current = true;
     setStripeSecretLoading(true);
     setStripeSecretError("");
+    // Structured event — fired before the Stripe call so analytics sees the
+    // attempt even if the network call fails. Wrapped in try/catch so a
+    // tracking failure can never block payment.
+    try {
+      trackPaymentAttempted(confId, { plan: step3.plan, pet_count: s2.pets?.length ?? 1 });
+    } catch { /* ignore */ }
+    // Read attribution + canonical session id once. Six fields ONLY into Stripe.
+    let attrForStripe = { utm_source: null as string | null, utm_campaign: null as string | null, gclid: null as string | null, fbclid: null as string | null };
+    try {
+      const a = getAttribution();
+      attrForStripe = {
+        utm_source:   a.utm_source,
+        utm_campaign: a.utm_campaign,
+        gclid:        a.gclid,
+        fbclid:       a.fbclid,
+      };
+    } catch { /* ignore */ }
+    let sessionIdForStripe: string | null = null;
+    try { sessionIdForStripe = getSessionId(); } catch { sessionIdForStripe = null; }
+    let channelForStripe: string | null = null;
+    try { channelForStripe = buildChannel(); } catch { channelForStripe = null; }
     try {
       const res = await loggedFetch(
         "create-payment-intent",
@@ -638,6 +681,15 @@ export default function AssessmentPage() {
             state: s2.state,
             plan: step3.plan,
             couponCode: coupon?.code ?? "",
+            // ── Phase 1: minimal attribution into Stripe metadata ─────────
+            // Six fields only. NEVER include full attribution_json — the
+            // canonical store is in orders.attribution_json / *_touch_json.
+            sessionId:   sessionIdForStripe,
+            utmSource:   attrForStripe.utm_source,
+            utmCampaign: attrForStripe.utm_campaign,
+            gclid:       attrForStripe.gclid,
+            fbclid:      attrForStripe.fbclid,
+            channel:     channelForStripe,
           }),
         },
         confId,
@@ -678,6 +730,13 @@ export default function AssessmentPage() {
 
   // ── Step navigation ────────────────────────────────────────────────────────
   const goNext = async () => {
+    // Structured event: about to advance from currentStep — log the next view.
+    // Fire-and-forget. Step 1 view is already fired by useAssessmentTracking.
+    try {
+      if (currentStep === 1) trackAssessmentStepView(2, "esa");
+      else if (currentStep === 2) trackAssessmentStepView(3, "esa");
+    } catch { /* analytics must never block the user */ }
+
     if (currentStep === 2) {
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
@@ -699,8 +758,16 @@ export default function AssessmentPage() {
       const estimate = getAssessmentBasePrice(step2.pets.length, "", step3.plan);
       fireGoogleAdsBeginCheckout(estimate);
       // Facebook Pixel: Lead (personal info collected) + InitiateCheckout (entering payment)
-      fireLead();
-      fireInitiateCheckout({ value: estimate, content_name: "ESA Letter Checkout" });
+      // Phase-1: pass sessionId + email so Pixel and CAPI mirror dedup via shared event_id.
+      let sidForMeta: string | null = null;
+      try { sidForMeta = getSessionId(); } catch { sidForMeta = null; }
+      fireLead({ sessionId: sidForMeta ?? undefined, email: step2.email });
+      fireInitiateCheckout({
+        value: estimate,
+        content_name: "ESA Letter Checkout",
+        sessionId: sidForMeta ?? undefined,
+        email: step2.email,
+      });
       // Fetch Stripe client_secret — uses canonical confirmationId.current
       fetchClientSecret(step2, confirmationId.current);
     }
@@ -807,6 +874,13 @@ export default function AssessmentPage() {
 
     const attr = getAttribution();
     const attributionJsonVal = buildAttributionJson("step2_lead");
+    // Phase 1 analytics: capture both touches + canonical session id for backend persist.
+    let firstTouchVal = null;
+    let lastTouchVal = null;
+    let sessionIdVal: string | null = null;
+    try { firstTouchVal = getFirstTouch(); } catch { firstTouchVal = null; }
+    try { lastTouchVal = getLastTouch(); } catch { lastTouchVal = null; }
+    try { sessionIdVal = getSessionId(); } catch { sessionIdVal = null; }
 
     let emailConflict = false;
     let conflictError: string | undefined;
@@ -844,6 +918,9 @@ export default function AssessmentPage() {
             utmContent: attr.utm_content,
             landingUrl: attr.landing_url,
             attributionJson: attributionJsonVal,
+            sessionId: sessionIdVal,
+            firstTouchJson: firstTouchVal,
+            lastTouchJson: lastTouchVal,
             assessmentAnswers: {
               ...step1,
               pets: step2.pets,
@@ -1076,6 +1153,30 @@ export default function AssessmentPage() {
     const basePrice = getAssessmentBasePrice(step2.pets.length, "", step3.plan);
     const price = getDiscountedAssessmentPrice(basePrice, appliedCoupon);
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
+
+    // Phase-3 funnel events — fire-and-forget, deduped by confirmation_id.
+    // Both calls are wrapped so an analytics failure can never block the
+    // post-payment flow (markPaid + Meta Purchase + GHL final lead + order
+    // save + assign-doctor all still run regardless).
+    try {
+      trackAssessmentCompleted(confirmationId.current, "esa", {
+        plan: step3.plan,
+        pet_count: step2.pets?.length ?? 1,
+      });
+      trackPaymentSuccess(confirmationId.current, {
+        plan: step3.plan,
+        price,
+        payment_intent_id: paymentIntentId,
+        user_email: step2.email,
+        letter_type: "esa",
+      });
+      // Phase-3B: if the user got here via /r/<stage>, fire recovery_conversion.
+      trackRecoveryConversionIfFlagged(confirmationId.current, {
+        price,
+        payment_intent_id: paymentIntentId,
+        letter_type: "esa",
+      });
+    } catch { /* analytics must never block payment success */ }
 
     // Read payment method stored in session storage by Step3Checkout
     const paymentMethod = (() => {

@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
+import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
+import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 
 interface ThankYouState {
   firstName?: string;
@@ -241,7 +243,29 @@ export default function PSDAssessmentThankYouPage() {
 
           if (!directSuccess) {
             fireMetaPurchase({ value: order.price ?? 0, confirmationId: order.confirmationId ?? '', email: order.email, contentName: 'PSD Letter' });
-            fireLead();
+            // Phase-1: dedup-safe Lead via shared event_id `lead_<sessionId>`.
+            {
+              let sid: string | null = null;
+              try { sid = getSessionId(); } catch { sid = null; }
+              fireLead({ sessionId: sid ?? undefined, email: order.email ?? undefined });
+            }
+            try {
+              if (order.confirmationId) {
+                linkSessionToOrder(order.confirmationId);
+                markPaid();
+                trackPaymentSuccess(order.confirmationId, {
+                  price: order.price ?? 0,
+                  user_email: order.email ?? null,
+                  letter_type: "psd",
+                  arrival: "redirect",
+                });
+                trackRecoveryConversionIfFlagged(order.confirmationId, {
+                  price: order.price ?? 0,
+                  letter_type: "psd",
+                  arrival: "redirect",
+                });
+              }
+            } catch { /* never block thank-you render */ }
             fireGHLPaidLead(order);
           }
         } catch { /* silent */ }
@@ -310,6 +334,25 @@ export default function PSDAssessmentThankYouPage() {
     console.log("[PSD Thank-You] Conversion params:", { rawAmount, rawOrderId, conversionValue, transactionId });
 
     fireMetaPurchase({ value: conversionValue, confirmationId: transactionId, email: resolvedState.email, contentName: 'PSD Letter' });
+
+    // Phase 1 analytics: stitch session → order on inline-card arrival.
+    try {
+      if (transactionId) {
+        linkSessionToOrder(transactionId);
+        markPaid();
+        trackPaymentSuccess(transactionId, {
+          price: conversionValue,
+          user_email: resolvedState.email ?? null,
+          letter_type: "psd",
+          arrival: "inline",
+        });
+        trackRecoveryConversionIfFlagged(transactionId, {
+          price: conversionValue,
+          letter_type: "psd",
+          arrival: "inline",
+        });
+      }
+    } catch { /* never block thank-you render */ }
 
     // Google Ads: try immediately, then poll every 100 ms for up to 10 s
     // gtag.js loads asynchronously — on SPA navigations it may not be ready at mount

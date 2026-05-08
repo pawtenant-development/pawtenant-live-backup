@@ -55,6 +55,8 @@ const LpEsaHousingPage = lazy(() => import("../pages/lp-esa-housing/page"));
 // Meta/Facebook Ads paid landing page — noindex, not in nav, not in sitemap.
 const MetaEsaLetterPage = lazy(() => import("../pages/meta-esa-letter/page"));
 const EverythingEsaOnlinePage = lazy(() => import("../pages/everything-esa-online/page"));
+// Recovery click bridge — /r/:stage?o=<confirmationId>&dc=<discountCode>
+const RecoveryClickBridge = lazy(() => import("../pages/r/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -84,6 +86,8 @@ function ESAStateRedirect() {
 const routes: RouteObject[] = [
   { path: "/", element: <P C={Home} /> },
   { path: "/apply-page", element: <Navigate to="/assessment" replace /> },
+  // Recovery click bridge — fires recovery_click then redirects to /assessment.
+  { path: "/r/:stage", element: <P C={RecoveryClickBridge} /> },
   { path: "/assessment", element: <P C={AssessmentPage} /> },
   { path: "/assessment/thank-you", element: <P C={AssessmentThankYouPage} /> },
   { path: "/customer-login", element: <P C={CustomerLoginPage} /> },
