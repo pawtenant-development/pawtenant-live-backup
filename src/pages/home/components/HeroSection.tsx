@@ -74,10 +74,10 @@ export default function HeroSection() {
             ))}
           </div>
 
-          {/* Legit ESA trust note */}
+          {/* Trust note — calm, professional */}
           <p className="text-orange-300 text-xs font-semibold mb-4 flex items-center gap-1.5">
             <i className="ri-shield-check-line"></i>
-            100% legit ESA letter — signed by a licensed clinician, accepted by landlords nationwide
+            Real ESA letter — signed by a licensed mental health professional, recognized by landlords nationwide
           </p>
 
           {/* 50 States Trust Badge */}

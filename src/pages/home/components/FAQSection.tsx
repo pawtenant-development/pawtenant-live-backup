@@ -27,11 +27,23 @@ const faqs = [
   },
   {
     q: "Are PawTenant ESA letters legitimate?",
-    a: "Absolutely. All our ESA letters are issued by licensed mental health professionals who are properly credentialed and authorized to prescribe ESA letters in your state. Each letter includes the professional's license number, signature, and contact information for verification.",
+    a: "Yes. Every PawTenant ESA letter is reviewed and signed by a licensed mental health professional who is credentialed in your state. Each letter includes the provider's full name, license number, state of licensure, signature, and a unique Verification ID so housing providers can confirm authenticity directly with us.",
   },
   {
-    q: "Is it safe to get a legit ESA letter online?",
-    a: "Yes — getting a legitimate ESA letter online through PawTenant is completely safe and legal. Our process mirrors a traditional in-person evaluation: a licensed mental health professional reviews your assessment, conducts a clinical evaluation, and issues a signed ESA letter if you qualify. The entire process is HIPAA-compliant and your data is fully protected. Thousands of pet owners have received their legit ESA letter online through our platform.",
+    q: "Is it safe to get an ESA letter online?",
+    a: "Yes. Telehealth evaluations are widely used in mental health care and are recognized in every US state. Our process follows the same clinical standards as an in-person visit: a licensed mental health professional reviews your assessment, conducts a clinical evaluation, and — if you qualify — issues a signed letter. The platform is HIPAA-compliant and your health information is never shared with your landlord during verification.",
+  },
+  {
+    q: "Can my landlord reject my ESA letter?",
+    a: "Under the Fair Housing Act, housing providers are generally required to consider reasonable accommodation requests for qualifying ESAs — even in no-pet buildings. They may ask for documentation from a licensed professional, which your PawTenant letter provides. Landlords can deny requests in narrow circumstances (e.g., the animal poses a direct threat or causes substantial property damage), but they cannot reject a legitimate ESA letter solely because of a no-pet policy. If your landlord questions the letter, our support team can help you respond.",
+  },
+  {
+    q: "Do I need to train my emotional support animal?",
+    a: "No. ESAs are not required to have specialized training. This is one of the main differences between an ESA and a service animal: service animals must be individually trained to perform a specific task related to a disability, while ESAs provide therapeutic support through their presence and companionship. Your animal should be well-behaved enough to live in housing, but no formal training or certification is needed.",
+  },
+  {
+    q: "Is the online evaluation a real clinical evaluation?",
+    a: "Yes. The evaluation is conducted by a real licensed mental health professional — not a chatbot or automated system. The provider reviews your assessment responses, may follow up with additional questions, and applies clinical judgment to determine whether an ESA is appropriate for your situation. If you do not qualify, the provider will not issue a letter and you'll receive a refund per our money-back guarantee.",
   },
   {
     q: "How do I know if an ESA letter online is legit?",
