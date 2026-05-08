@@ -7,37 +7,13 @@ const benefits = [
   "Can be any domesticated animal, not just dogs",
 ];
 
-const petBreeds = [
-  {
-    name: "Siberian Husky",
-    label: "Dogs",
-    img: "https://readdy.ai/api/search-image?query=purebred%20Siberian%20Husky%20dog%20real%20photo%20portrait%20blue%20eyes%20black%20white%20fluffy%20coat%20pointed%20ears%20sitting%20studio%20white%20background%20photorealistic&width=200&height=200&seq=husky-breed-2025x1&orientation=squarish",
-  },
-  {
-    name: "Standard Poodle",
-    label: "Dogs",
-    img: "https://readdy.ai/api/search-image?query=purebred%20Standard%20Poodle%20dog%20real%20photo%20portrait%20apricot%20curly%20coat%20long%20snout%20intelligent%20eyes%20sitting%20studio%20white%20background%20photorealistic&width=200&height=200&seq=poodle-breed-2025x1&orientation=squarish",
-  },
-  {
-    name: "Pitbull",
-    label: "Dogs",
-    img: "https://readdy.ai/api/search-image?query=American%20Pitbull%20Terrier%20dog%20real%20photo%20portrait%20brindle%20short%20coat%20blocky%20head%20muscular%20gentle%20brown%20eyes%20happy%20sitting%20studio%20white%20background%20photorealistic&width=200&height=200&seq=pitbull-breed-2025x1&orientation=squarish",
-  },
-  {
-    name: "Tabby Cat",
-    label: "Cats",
-    img: "https://readdy.ai/api/search-image?query=brown%20tabby%20cat%20real%20photo%20portrait%20M%20marking%20forehead%20striped%20orange%20fur%20green%20eyes%20sitting%20studio%20white%20background%20photorealistic&width=200&height=200&seq=tabby-breed-2025x1&orientation=squarish",
-  },
-  {
-    name: "Golden Retriever",
-    label: "Dogs",
-    img: "https://readdy.ai/api/search-image?query=purebred%20Golden%20Retriever%20dog%20real%20photo%20portrait%20golden%20wavy%20coat%20warm%20brown%20eyes%20friendly%20face%20tongue%20out%20studio%20light%20background%20photorealistic&width=200&height=200&seq=golden-breed-2025x1&orientation=squarish",
-  },
-  {
-    name: "Persian Cat",
-    label: "Cats",
-    img: "https://readdy.ai/api/search-image?query=purebred%20Persian%20cat%20real%20photo%20portrait%20long%20silky%20white%20fur%20flat%20face%20copper%20orange%20eyes%20calm%20regal%20studio%20cream%20background%20photorealistic&width=200&height=200&seq=persian-breed-2025x1&orientation=squarish",
-  },
+const petTypes = [
+  { name: "Dogs", icon: "ri-bear-smile-line" },
+  { name: "Cats", icon: "ri-bear-smile-line" },
+  { name: "Rabbits", icon: "ri-rest-time-line" },
+  { name: "Birds", icon: "ri-bird-line" },
+  { name: "Hamsters", icon: "ri-leaf-line" },
+  { name: "Reptiles", icon: "ri-shield-cross-line" },
 ];
 
 export default function WhatIsESA() {
@@ -97,21 +73,15 @@ export default function WhatIsESA() {
               Dogs, cats, rabbits, birds — if your pet provides emotional comfort, they may qualify. No special training required.
             </p>
           </div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
-            {petBreeds.map((pet) => (
-              <div key={pet.name} className="flex flex-col items-center gap-2 group">
-                <div className="w-full aspect-square rounded-2xl overflow-hidden border-2 border-white group-hover:border-orange-300 transition-colors">
-                  <img
-                    src={pet.img}
-                    alt={pet.name}
-                    className="w-full h-full object-cover object-top"
-                  />
-                </div>
-                <div className="text-center">
-                  <p className="text-xs font-semibold text-gray-800 leading-tight">{pet.name}</p>
-                  <span className="text-xs text-orange-500 font-medium">{pet.label}</span>
-                </div>
-              </div>
+          <div className="flex flex-wrap justify-center gap-2.5">
+            {petTypes.map((pet) => (
+              <span
+                key={pet.name}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-green-100 text-sm font-semibold text-gray-700 shadow-sm"
+              >
+                <i className={`${pet.icon} text-orange-500 text-base`}></i>
+                {pet.name}
+              </span>
             ))}
           </div>
           <p className="text-center text-xs text-gray-400 mt-6">

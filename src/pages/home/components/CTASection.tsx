@@ -4,15 +4,11 @@ export default function CTASection() {
   const { withAttribution } = useAttributionParams();
 
   return (
-    <section className="relative py-24 overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0">
-        <img
-          src="https://readdy.ai/api/search-image?query=cozy%20home%20interior%20with%20warm%20afternoon%20sunlight%20coming%20through%20windows%2C%20a%20dog%20resting%20on%20a%20comfortable%20sofa%2C%20peaceful%20and%20inviting%20atmosphere%2C%20warm%20tones%20amber%20and%20cream%2C%20soft%20bokeh%20background%2C%20lifestyle%20home%20photography&width=1440&height=500&seq=cta001&orientation=landscape"
-          alt="Still have questions about ESA letters"
-          className="w-full h-full object-cover object-top"
-        />
-        <div className="absolute inset-0 bg-[#78350f]/85"></div>
+    <section className="relative py-24 overflow-hidden bg-gradient-to-br from-[#7c2d12] via-[#92400e] to-[#b45309]">
+      {/* Subtle decorative glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-orange-400/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-orange-500/15 rounded-full blur-3xl"></div>
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 text-center">

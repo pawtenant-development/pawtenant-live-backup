@@ -12,7 +12,7 @@ const sections = [
       "Professional signatures meet all legal requirements",
     ],
     cta: "Get Your ESA Letter",
-    img: "https://readdy.ai/api/search-image?query=professional%20mental%20health%20therapist%20in%20modern%20office%2C%20confident%20licensed%20psychologist%20at%20desk%20with%20diploma%20certificates%20on%20wall%2C%20professional%20portrait%2C%20warm%20office%20lighting%2C%20business%20professional%20attire%2C%20trustworthy%20demeanor&width=600&height=450&seq=prof001&orientation=landscape",
+    img: "/assets/blog/fp-windowsill-dog.jpg",
     reverse: false,
   },
   {
@@ -28,7 +28,7 @@ const sections = [
       "Support when communicating with landlords",
     ],
     cta: "Protect Your Housing Rights",
-    img: "https://readdy.ai/api/search-image?query=happy%20young%20couple%20with%20their%20dog%20standing%20in%20front%20of%20a%20beautiful%20apartment%20building%2C%20moving%20into%20new%20home%20with%20emotional%20support%20pet%2C%20sunny%20day%2C%20suburban%20neighborhood%2C%20welcoming%20community%2C%20lifestyle%20photography&width=600&height=450&seq=house001&orientation=landscape",
+    img: "/assets/blog/fp-woman-jeans-living-room.jpg",
     reverse: true,
   },
   {
@@ -44,7 +44,7 @@ const sections = [
       "Instant digital and printable PDF format",
     ],
     cta: "Start Your Application",
-    img: "https://readdy.ai/api/search-image?query=person%20relaxing%20on%20couch%20with%20laptop%20and%20phone%20completing%20online%20form%2C%20casual%20home%20setting%20with%20a%20dog%20nearby%2C%20comfortable%20living%20room%2C%20soft%20natural%20window%20lighting%2C%20modern%20home%20decor%2C%20candid%20lifestyle%20photography&width=600&height=450&seq=online001&orientation=landscape",
+    img: "/assets/blog/fp-woman-dog-couch.jpg",
     reverse: false,
   },
 ];
@@ -69,19 +69,19 @@ export default function TrustedLetters() {
           {sections.map((s) => (
             <div
               key={s.title}
-              className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center"
+              className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch"
             >
-              {/* Image */}
-              <div className={`rounded-2xl overflow-hidden h-72 ${s.reverse ? "lg:order-2" : "lg:order-1"}`}>
+              {/* Image — stretches to match content column on desktop */}
+              <div className={`rounded-2xl overflow-hidden h-72 lg:h-auto lg:min-h-[420px] ${s.reverse ? "lg:order-2" : "lg:order-1"}`}>
                 <img
                   src={s.img}
                   alt={s.title}
-                  className="w-full h-full object-cover object-top"
+                  className="w-full h-full object-cover object-center"
                 />
               </div>
 
               {/* Content */}
-              <div className={s.reverse ? "lg:order-1" : "lg:order-2"}>
+              <div className={`flex flex-col justify-center ${s.reverse ? "lg:order-1" : "lg:order-2"}`}>
                 <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full ${s.badgeColor} mb-4`}>
                   <i className={`${s.icon}`}></i>
                   {s.badge}

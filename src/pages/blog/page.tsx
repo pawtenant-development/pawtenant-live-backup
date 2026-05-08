@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type SyntheticEvent } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -9,6 +9,66 @@ import { blogPostsVerification } from "../../mocks/blogPostsVerification";
 import { STATE_BLOG_MAP } from "../../mocks/stateBlogMap";
 
 const allBlogPosts: BlogPost[] = [...blogPostsVerification, ...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
+
+// Ordered for visual variety in the first ~12 slots: alternate close-ups,
+// outdoor, work-from-home, couples, and solo portraits so the first page of
+// blog cards never repeats an image close together.
+const BLOG_IMAGE_FALLBACKS = [
+  "/assets/blog/hug-close-1.jpg",
+  "/assets/blog/cafe-retriever.jpg",
+  "/assets/blog/fp-woman-jeans-living-room.jpg",
+  "/assets/blog/freelancer-cat-desk.jpg",
+  "/assets/blog/lady-pink-puppy-walk.jpg",
+  "/assets/blog/fp-curly-woman-fun-dog.jpg",
+  "/assets/blog/woman-holding-dog-1.jpg",
+  "/assets/blog/man-puppy-portrait.jpg",
+  "/assets/blog/fp-windowsill-dog.jpg",
+  "/assets/blog/woman-working-cute-dog.jpg",
+  "/assets/blog/pomeranian-portrait.jpg",
+  "/assets/blog/smiley-tablet.jpg",
+  "/assets/blog/fp-parent-baby-cat-kitchen.jpg",
+  "/assets/blog/woman-looking-dog.jpg",
+  "/assets/blog/couple-outdoors.jpg",
+  "/assets/blog/fp-woman-dog-couch.jpg",
+  "/assets/blog/man-working-dog.jpg",
+  "/assets/blog/couple-with-dog.jpg",
+  "/assets/blog/fp-woman-sitting-floor.jpg",
+  "/assets/blog/owner-laptop-cuddle.jpg",
+  "/assets/blog/hands-typing-dog.jpg",
+  "/assets/lifestyle/woman-telehealth-with-dog.jpg",
+  "/assets/blog/woman-holding-dog-2.jpg",
+  "/assets/blog/hug-close-2.jpg",
+  "/assets/blog/pregnant-with-dog.jpg",
+  "/assets/lifestyle/owner-with-dog-laptop.jpg",
+  "/assets/lifestyle/freelancer-with-dog-laptop.jpg",
+  "/assets/lifestyle/senior-with-pet-home.jpg",
+  "/assets/blog/fp-woman-dog-floor.jpg",
+  "/assets/lifestyle/person-paperwork-with-dog.jpg",
+  "/assets/lifestyle/woman-with-dog-office.jpg",
+  "/assets/lifestyle/woman-laptop-clean.jpg",
+  "/assets/lifestyle/woman-laptop-home.jpg",
+  "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
+] as const;
+
+const BLOG_LAST_RESORT_IMG = BLOG_IMAGE_FALLBACKS[0];
+
+function isLocalAssetPath(src: string | undefined | null): boolean {
+  return typeof src === "string" && src.startsWith("/") && !src.startsWith("//");
+}
+
+function resolveBlogImage(rawSrc: string | undefined, position: number): string {
+  if (isLocalAssetPath(rawSrc)) return rawSrc as string;
+  const len = BLOG_IMAGE_FALLBACKS.length;
+  const i = ((position % len) + len) % len;
+  return BLOG_IMAGE_FALLBACKS[i];
+}
+
+function handleImgFallback(e: SyntheticEvent<HTMLImageElement>) {
+  const img = e.currentTarget;
+  if (img.dataset.fallbackApplied === "1") return;
+  img.dataset.fallbackApplied = "1";
+  img.src = BLOG_LAST_RESORT_IMG;
+}
 
 const categories = ["All", "College & ESA", "Legal & Rights", "Housing Rights", "Housing & Insurance", "Travel & ESA", "Getting Started", "Mental Health"];
 
@@ -25,17 +85,18 @@ const trendingTopics = [
   { label: "ESA vs service animal 2026", slug: "esa-vs-service-animal-key-differences-2026" },
 ];
 
-function PostCard({ post }: { post: BlogPost }) {
+function PostCard({ post, position }: { post: BlogPost; position: number }) {
   const inner = (
     <>
-      <div className="h-40 overflow-hidden">
+      <div className="h-40 overflow-hidden bg-orange-50">
         <img
-          src={post.image}
+          src={resolveBlogImage(post.image, position)}
           alt={post.title}
           title={post.title}
           className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
           decoding="async"
+          onError={handleImgFallback}
         />
       </div>
       <div className="p-4">
@@ -296,15 +357,16 @@ export default function BlogPage() {
                   const post = featuredPost;
                   const inner = (
                     <>
-                      <div className="h-64 overflow-hidden">
+                      <div className="h-64 overflow-hidden bg-orange-50">
                         <img
-                          src={post.image}
+                          src={resolveBlogImage(post.image, 0)}
                           alt={post.title}
                           title={post.title}
                           className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                           loading="eager"
                           fetchPriority="high"
                           decoding="async"
+                          onError={handleImgFallback}
                         />
                       </div>
                       <div className="p-6">
@@ -370,8 +432,8 @@ export default function BlogPage() {
               {/* Posts Grid */}
               {postsToShow.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {postsToShow.map((post) => (
-                    <PostCard key={post.slug} post={post} />
+                  {postsToShow.map((post, idx) => (
+                    <PostCard key={post.slug} post={post} position={idx + 1} />
                   ))}
                 </div>
               ) : (

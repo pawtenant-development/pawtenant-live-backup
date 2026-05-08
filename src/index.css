@@ -31,13 +31,14 @@
 .text-brand-mid    { color: var(--brand-deep-mid); }
 .border-brand-cream { border-color: var(--brand-cream-border); }
 
-/* Hero image: shift left on mobile so both dog and woman are visible */
+/* Hero image: center on mobile so subject (woman + dog) stays in frame;
+   shift slightly left on desktop to leave room for headline overlay. */
 .hero-img-position {
-  object-position: 18% top;
+  object-position: 55% 35%;
 }
 @media (min-width: 768px) {
   .hero-img-position {
-    object-position: 30% top;
+    object-position: 40% center;
   }
 }
 

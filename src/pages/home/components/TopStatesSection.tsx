@@ -1,5 +1,25 @@
 import { Link } from "react-router-dom";
 
+const STATE_IMAGE_FALLBACKS = [
+  "/assets/lifestyle/owner-with-dog-laptop.jpg",
+  "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
+  "/assets/lifestyle/senior-with-pet-home.jpg",
+  "/assets/lifestyle/woman-telehealth-with-dog.jpg",
+  "/assets/lifestyle/freelancer-with-dog-laptop.jpg",
+  "/assets/lifestyle/person-paperwork-with-dog.jpg",
+  "/assets/lifestyle/woman-with-dog-office.jpg",
+  "/assets/lifestyle/woman-laptop-clean.jpg",
+] as const;
+
+function isLocalAssetPath(src: string | undefined | null): boolean {
+  return typeof src === "string" && src.startsWith("/") && !src.startsWith("//");
+}
+
+function resolveStateImageByIndex(rawSrc: string | undefined, index: number): string {
+  if (isLocalAssetPath(rawSrc)) return rawSrc as string;
+  return STATE_IMAGE_FALLBACKS[index % STATE_IMAGE_FALLBACKS.length];
+}
+
 const topStates = [
   {
     name: "California",
@@ -8,7 +28,7 @@ const topStates = [
     tagline: "Strongest ESA protections in the US",
     highlight: "AB 468 compliant letters",
     facts: ["No pet fees or deposits", "30-day provider relationship required", "Fraud penalties for fake letters"],
-    image: "https://readdy.ai/api/search-image?query=California%20golden%20coast%20sunny%20beach%20palm%20trees%20blue%20sky%20ocean%20warm%20afternoon%20light%20scenic%20landscape%20vibrant%20colors&width=600&height=400&seq=state-ca01&orientation=landscape",
+    image: "/assets/states/california.jpg",
     color: "from-orange-50 to-amber-50",
     border: "border-orange-200 hover:border-orange-400",
     badge: "bg-orange-100 text-orange-700",
@@ -20,7 +40,7 @@ const topStates = [
     tagline: "Protect your Texas tenant rights",
     highlight: "Statewide landlord compliance",
     facts: ["FHA protections statewide", "No breed restrictions on ESAs", "24-hour letter delivery"],
-    image: "https://readdy.ai/api/search-image?query=Texas%20lone%20star%20state%20wide%20open%20skyline%20sunset%20dramatic%20clouds%20rolling%20plains%20warm%20orange%20golden%20light%20scenic%20landscape&width=600&height=400&seq=state-tx01&orientation=landscape",
+    image: "/assets/states/texas.jpg",
     color: "from-red-50 to-orange-50",
     border: "border-red-200 hover:border-red-400",
     badge: "bg-red-100 text-red-700",
@@ -32,7 +52,7 @@ const topStates = [
     tagline: "Dual state & federal protections",
     highlight: "Florida Fair Housing Act",
     facts: ["State + FHA dual coverage", "Anti-fraud provisions", "No pet rent allowed"],
-    image: "https://readdy.ai/api/search-image?query=Florida%20tropical%20palm%20trees%20blue%20sky%20sunny%20warm%20vibrant%20colors%20waterway%20scenic%20beautiful%20coastal%20landscape%20bright%20daylight&width=600&height=400&seq=state-fl01&orientation=landscape",
+    image: "/assets/states/florida.jpg",
     color: "from-teal-50 to-cyan-50",
     border: "border-teal-200 hover:border-teal-400",
     badge: "bg-teal-100 text-teal-700",
@@ -44,7 +64,7 @@ const topStates = [
     tagline: "Triple-layer protections in NYC",
     highlight: "NYC Human Rights Law + FHA",
     facts: ["Federal + State + City laws", "No-pet buildings covered", "30-day response rule"],
-    image: "https://readdy.ai/api/search-image?query=New%20York%20City%20skyline%20urban%20buildings%20sunset%20golden%20hour%20warm%20light%20dramatic%20clouds%20cityscape%20beautiful%20architecture%20professional&width=600&height=400&seq=state-ny01&orientation=landscape",
+    image: "/assets/states/new-york.jpg",
     color: "from-slate-50 to-gray-50",
     border: "border-slate-200 hover:border-slate-400",
     badge: "bg-slate-100 text-slate-700",
@@ -56,7 +76,7 @@ const topStates = [
     tagline: "FHA-backed ESA rights across NC",
     highlight: "Licensed clinician coverage",
     facts: ["FHA protections statewide", "No pet deposits on ESAs", "Same-day letter available"],
-    image: "https://readdy.ai/api/search-image?query=North%20Carolina%20rolling%20green%20hills%20blue%20ridge%20mountains%20scenic%20countryside%20lush%20forests%20warm%20golden%20afternoon%20light%20peaceful%20rural%20landscape%20vibrant%20nature&width=600&height=400&seq=state-nc01&orientation=landscape",
+    image: "/assets/states/north-carolina.jpg",
     color: "from-emerald-50 to-green-50",
     border: "border-emerald-200 hover:border-emerald-400",
     badge: "bg-emerald-100 text-emerald-700",
@@ -68,7 +88,7 @@ const topStates = [
     tagline: "Strong tenant protections in PA",
     highlight: "PHRA + FHA dual coverage",
     facts: ["State + federal dual protection", "No breed or weight restrictions", "Landlord must accommodate"],
-    image: "https://readdy.ai/api/search-image?query=Pennsylvania%20autumn%20foliage%20rolling%20hills%20countryside%20scenic%20landscape%20warm%20fall%20colors%20golden%20light%20forests%20and%20fields%20beautiful%20rural%20scenery&width=600&height=400&seq=state-pa01&orientation=landscape",
+    image: "/assets/states/pennsylvania.jpg",
     color: "from-amber-50 to-yellow-50",
     border: "border-amber-200 hover:border-amber-400",
     badge: "bg-amber-100 text-amber-700",
@@ -80,10 +100,22 @@ const topStates = [
     tagline: "VHDA & FHA protections for VA renters",
     highlight: "Virginia Fair Housing Law",
     facts: ["State + FHA dual coverage", "No extra pet fees allowed", "Clinician-signed letters accepted"],
-    image: "https://readdy.ai/api/search-image?query=Virginia%20historic%20colonial%20architecture%20rolling%20green%20countryside%20blue%20sky%20warm%20sunlight%20scenic%20pastoral%20landscape%20beautiful%20nature%20vibrant%20colors&width=600&height=400&seq=state-va01&orientation=landscape",
+    image: "/assets/states/virginia.jpg",
     color: "from-sky-50 to-blue-50",
     border: "border-sky-200 hover:border-sky-400",
     badge: "bg-sky-100 text-sky-700",
+  },
+  {
+    name: "Illinois",
+    slug: "illinois",
+    abbr: "IL",
+    tagline: "Strong renter protections statewide",
+    highlight: "IL Human Rights Act + FHA",
+    facts: ["Federal + state ESA coverage", "No pet rent or deposits", "Provider-signed letters honored"],
+    image: "/assets/states/illinois.jpg",
+    color: "from-indigo-50 to-blue-50",
+    border: "border-indigo-200 hover:border-indigo-400",
+    badge: "bg-indigo-100 text-indigo-700",
   },
 ];
 
@@ -92,33 +124,35 @@ export default function TopStatesSection() {
     <section className="py-20 bg-white" id="state-guides">
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-14 max-w-2xl mx-auto">
           <span className="inline-block px-4 py-1.5 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full uppercase tracking-widest mb-4">
             State ESA Guides
           </span>
-          <h2 className="text-3xl font-extrabold text-gray-900 mb-4">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4 leading-tight">
             ESA Letters by State — Know <span className="text-orange-500">Your Local Rights</span>
           </h2>
-          <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+          <p className="text-gray-500 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
             ESA housing laws vary by state. Our most popular guides break down exactly what protections apply where you live — and what landlords can and cannot do.
           </p>
         </div>
 
         {/* State Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-          {topStates.map((state) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          {topStates.map((state, index) => (
             <Link
               key={state.slug}
               to={`/esa-letter-${state.slug}`}
-              className={`group bg-gradient-to-b ${state.color} rounded-2xl border ${state.border} overflow-hidden transition-all duration-300 cursor-pointer flex flex-col`}
+              className={`group bg-gradient-to-b ${state.color} rounded-2xl border ${state.border} overflow-hidden transition-all duration-300 cursor-pointer flex flex-col shadow-sm hover:shadow-md hover:-translate-y-0.5`}
             >
               {/* Image */}
-              <div className="w-full h-36 overflow-hidden">
+              <div className="w-full h-36 overflow-hidden bg-orange-50">
                 <img
-                  src={state.image}
+                  src={resolveStateImageByIndex(state.image, index)}
                   alt={`ESA letter ${state.name}`}
                   title={`ESA letter ${state.name} guide`}
                   className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                  loading="lazy"
+                  decoding="async"
                 />
               </div>
 
