@@ -1,6 +1,6 @@
 // SettingsTab — GHL, Stripe, and Email integration health
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { supabase, getAdminToken } from "../../../lib/supabaseClient";
+import { supabase, getAdminToken, getAdminUserToken } from "../../../lib/supabaseClient";
 import UTMLinkGenerator from "./UTMLinkGenerator";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
 
@@ -2717,13 +2717,25 @@ function ManualSequenceRunPanel({ supabaseUrl }: { supabaseUrl: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const runNow = async () => {
+    if (running) {
+      console.warn("[manual-seq-run] click ignored — run already in progress");
+      return;
+    }
     setRunning(true);
     setResult(null);
     setError(null);
 
     try {
-      const token = await getAdminToken();
+      console.info("[manual-seq-run] resolving fresh admin session token");
+      const token = await getAdminUserToken();
+      if (!token) {
+        console.warn("[manual-seq-run] no valid admin session — aborting (anon key will not be sent)");
+        setError("Your admin session expired. Please refresh or log in again.");
+        return;
+      }
+
       const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+      console.info("[manual-seq-run] starting manual run request");
       const res = await fetch(`${supabaseUrl}/functions/v1/manual-run-lead-followup-sequence`, {
         method: "POST",
         headers: {
@@ -2743,12 +2755,14 @@ function ManualSequenceRunPanel({ supabaseUrl }: { supabaseUrl: string }) {
       }
 
       if (!res.ok || !parsed.ok) {
+        console.warn("[manual-seq-run] manual run failed", { status: res.status, error: parsed.error });
         setError(parsed.error ?? `Request failed with status ${res.status}`);
         setResult(parsed);
       } else {
         setResult(parsed);
       }
     } catch (err) {
+      console.warn("[manual-seq-run] unexpected error", err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
