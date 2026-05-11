@@ -107,172 +107,70 @@ async function fireGHLPaidLead(order: PendingOrder) {
   }
 }
 
-// ── Annual Renewal Upsell Card ────────────────────────────────────────────────────────
-function RenewalUpsellCard({ price, planType, email }: { price: number; planType: string; email: string }) {
-  const [dismissed, setDismissed] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(24 * 60 * 60); // 24 hours in seconds
-  const [upgradeLoading, setUpgradeLoading] = useState(false);
-  const [upgradeError, setUpgradeError] = useState("");
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Hide for any subscription-type purchase — they already subscribed
-  const isSubscription =
-    planType === "Subscription (Annual)" ||
-    planType?.toLowerCase().includes("subscription") ||
-    planType?.toLowerCase() === "subscription";
-
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setTimeLeft((t) => Math.max(t - 1, 0));
-    }, 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  if (dismissed || isSubscription) return null;
-
-  const hours = Math.floor(timeLeft / 3600);
-  const mins = Math.floor((timeLeft % 3600) / 60);
-  const secs = timeLeft % 60;
-  const pad = (n: number) => String(n).padStart(2, "0");
-
-  const regularPrice = price;
-  const renewalPrice = Math.round(regularPrice * 0.78);
-  const savings = regularPrice - renewalPrice;
-
-  const handleUpgrade = async () => {
-    setUpgradeLoading(true);
-    setUpgradeError("");
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-upgrade-checkout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
-        body: JSON.stringify({ email }),
-      });
-      const json = await res.json() as { url?: string; error?: string };
-      if (json.url) {
-        window.open(json.url, '_blank', 'noopener,noreferrer');
-      } else {
-        setUpgradeError(json.error ?? "Failed to create checkout. Please try again.");
-        setUpgradeLoading(false);
-      }
-    } catch {
-      setUpgradeError("Something went wrong. Please try again or contact support.");
-      setUpgradeLoading(false);
-    }
-  };
+// ── Helpful Information While You Wait — calm post-purchase reassurance ─────
+// Replaces the previous RenewalUpsellCard. No countdown, no upgrade button,
+// no urgency, no price. Pure reassurance + practical guidance for the user
+// while their provider review is in progress.
+function HelpfulInfoCard({ email, confirmationId }: { email: string; confirmationId: string }) {
+  const items = [
+    {
+      icon: "ri-mail-check-line",
+      title: "Check your email for updates",
+      desc: `We'll email ${email || "you"} when your licensed provider has reviewed your assessment and when your letter is ready.`,
+    },
+    {
+      icon: "ri-bookmark-3-line",
+      title: "Save your order ID",
+      desc: `Keep ${confirmationId} handy — you'll use it if you ever need to reach support about this order.`,
+    },
+    {
+      icon: "ri-question-answer-line",
+      title: "What if my landlord has questions?",
+      desc: "Your letter includes a unique QR verification ID so landlords can confirm authenticity directly — no health information is disclosed.",
+    },
+    {
+      icon: "ri-customer-service-2-line",
+      title: "Need help? Contact support",
+      desc: "Email hello@pawtenant.com or call (409) 965-5885. Our team is here to answer any questions.",
+    },
+  ];
 
   return (
-    <div className="mb-8 rounded-2xl overflow-hidden border-2 border-orange-400 shadow-sm">
-      {/* Urgency banner */}
-      <div className="bg-orange-500 px-5 py-2.5 flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 flex items-center justify-center">
-            <i className="ri-time-line text-white text-sm"></i>
-          </div>
-          <span className="text-xs text-white font-bold tracking-wide">
-            ONE-TIME OFFER — Available for the next 24 hours only
-          </span>
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8 mb-8">
+      <div className="flex items-start gap-4 mb-5">
+        <div className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-[#f0faf7] rounded-xl border border-[#c3e8df]">
+          <i className="ri-information-line text-[#1a5c4f] text-2xl"></i>
         </div>
-        <div className="flex items-center gap-1 bg-orange-600 rounded-lg px-3 py-1">
-          <span className="text-xs text-orange-200 font-medium mr-1">Expires in</span>
-          <span className="text-sm font-extrabold text-white font-mono">
-            {pad(hours)}:{pad(mins)}:{pad(secs)}
-          </span>
+        <div>
+          <p className="text-base font-extrabold text-gray-900 mb-1">Helpful Information While You Wait</p>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            A few quick things to keep in mind while your evaluation is in progress.
+          </p>
         </div>
       </div>
 
-      <div className="bg-gradient-to-br from-orange-50 to-amber-50 px-6 py-5">
-        <div className="flex flex-col sm:flex-row items-start gap-4">
-          {/* Left content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
-                <i className="ri-rotate-lock-line text-orange-500 text-base"></i>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-orange-600 uppercase tracking-widest">Annual Auto-Renewal</p>
-                <h3 className="text-base font-extrabold text-gray-900 leading-tight">
-                  Lock In Your ESA Protection for Next Year
-                </h3>
-              </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {items.map((item) => (
+          <div key={item.title} className="flex items-start gap-3 bg-gray-50 rounded-xl p-4 border border-gray-100">
+            <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg flex-shrink-0 ring-1 ring-gray-100">
+              <i className={`${item.icon} text-[#1a5c4f] text-base`}></i>
             </div>
-
-            <p className="text-sm text-gray-600 leading-relaxed mb-4">
-              ESA letters expire after <strong>12 months</strong>. Enroll in annual auto-renewal today at a{" "}
-              <strong className="text-orange-600">discounted rate</strong> — and your housing protection renews automatically, no paperwork needed.
-            </p>
-
-            {/* Benefits */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-              {[
-                { icon: "ri-calendar-check-line", text: "Auto-renews every 12 months" },
-                { icon: "ri-price-tag-3-line", text: `Save $${savings} every year vs. full price` },
-                { icon: "ri-mail-send-line", text: "New letter emailed automatically" },
-                { icon: "ri-close-circle-line", text: "Cancel any time — no penalties" },
-              ].map((b) => (
-                <div key={b.text} className="flex items-center gap-2">
-                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                    <i className={`${b.icon} text-orange-500 text-sm`}></i>
-                  </div>
-                  <span className="text-xs text-gray-700">{b.text}</span>
-                </div>
-              ))}
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-800 mb-0.5">{item.title}</p>
+              <p className="text-xs text-gray-500 leading-relaxed">{item.desc}</p>
             </div>
           </div>
+        ))}
+      </div>
 
-          {/* Right pricing panel — stacks below on mobile, side-by-side on sm+ */}
-          <div className="w-full sm:w-auto sm:flex-shrink-0 bg-white border-2 border-orange-200 rounded-xl p-4 text-center sm:min-w-[160px]">
-            <p className="text-xs text-gray-400 line-through mb-0.5">${regularPrice}/yr</p>
-            <div className="flex items-end justify-center gap-1">
-              <span className="text-3xl font-extrabold text-gray-900">${renewalPrice}</span>
-              <span className="text-sm text-gray-500 mb-1">/yr</span>
-            </div>
-            <div className="inline-block bg-green-100 text-green-700 text-xs font-bold rounded-full px-2 py-0.5 mb-3">
-              Save ${savings} — {Math.round((savings / regularPrice) * 100)}% off
-            </div>
-
-            {upgradeError && (
-              <p className="text-xs text-red-500 mb-2 leading-tight">{upgradeError}</p>
-            )}
-
-            <button
-              type="button"
-              onClick={handleUpgrade}
-              disabled={upgradeLoading}
-              className="whitespace-nowrap w-full py-2.5 px-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-70 text-white font-extrabold text-sm rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2"
-            >
-              {upgradeLoading ? (
-                <>
-                  <i className="ri-loader-4-line animate-spin text-sm"></i>
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <i className="ri-arrow-right-circle-line text-sm"></i>
-                  Upgrade Now
-                </>
-              )}
-            </button>
-            <p className="text-xs text-gray-400 mt-2">Billed annually · Cancel anytime</p>
-          </div>
+      {/* Calm renewal reminder — no button, no price, no countdown */}
+      <div className="mt-5 pt-5 border-t border-gray-100 flex items-start gap-3">
+        <div className="w-8 h-8 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0 ring-1 ring-amber-100">
+          <i className="ri-calendar-line text-amber-600 text-base"></i>
         </div>
-
-        {/* Dismiss link */}
-        <div className="text-center mt-1">
-          <button
-            type="button"
-            onClick={() => setDismissed(true)}
-            className="text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
-          >
-            No thanks, I&apos;ll pay full price next year
-          </button>
-        </div>
+        <p className="text-xs text-gray-500 leading-relaxed">
+          ESA letters are typically valid for <strong className="text-gray-700">12 months</strong>. We&apos;ll remind you before renewal time, so there&apos;s no rush today.
+        </p>
       </div>
     </div>
   );
@@ -299,21 +197,6 @@ function SocialShareSection({ shareLinks, shareUrl, copied, onCopy }: {
             Help a friend or family member protect their bond with their pet. Share PawTenant and let them get the same fast, legitimate coverage you just got.
           </p>
         </div>
-      </div>
-
-      {/* Share stat nudge */}
-      <div className="flex items-center gap-2 bg-orange-50 border border-orange-100 rounded-lg px-4 py-2.5 mb-4">
-        <div className="flex -space-x-1.5">
-          {["https://readdy.ai/api/search-image?query=smiling%20woman%20avatar%20portrait%20closeup%20warm%20background&width=32&height=32&seq=avatar1&orientation=squarish",
-            "https://readdy.ai/api/search-image?query=friendly%20man%20avatar%20portrait%20closeup%20warm%20background&width=32&height=32&seq=avatar2&orientation=squarish",
-            "https://readdy.ai/api/search-image?query=happy%20person%20avatar%20portrait%20closeup%20light%20background&width=32&height=32&seq=avatar3&orientation=squarish"
-          ].map((src, i) => (
-            <img key={i} src={src} alt="customer" className="w-7 h-7 rounded-full border-2 border-white object-cover object-top" />
-          ))}
-        </div>
-        <p className="text-xs text-gray-600 font-medium">
-          <strong>1,240+ people</strong> found their ESA letter through a friend&apos;s recommendation
-        </p>
       </div>
 
       {/* Share buttons */}
@@ -794,7 +677,7 @@ export default function AssessmentThankYouPage() {
       <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <Link to="/" className="flex items-center gap-2 cursor-pointer">
           <img
-            src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+            src="/assets/brand/pawtenant-logo-black-02.png"
             alt="PawTenant"
             className="h-10 w-auto object-contain"
           />
@@ -890,8 +773,8 @@ export default function AssessmentThankYouPage() {
         {/* ── Create Account Prompt ── */}
         {email && <CreateAccountPrompt email={email} />}
 
-        {/* ── Annual Renewal Upsell — only for one-time customers ── */}
-        <RenewalUpsellCard price={price} planType={planType} email={email} />
+        {/* ── Helpful Information While You Wait — calm post-purchase reassurance ── */}
+        <HelpfulInfoCard email={email} confirmationId={confirmationId} />
 
         {/* ── What Happens Next ── */}
         <div className="mb-8">

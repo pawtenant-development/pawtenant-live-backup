@@ -245,7 +245,7 @@ async function fireGHLEarlyLead(step1: Step1Data, step2: Step2Data, confirmation
         phone: step2.phone,
         dateOfBirth: step2.dob,
         state: step2.state,
-        leadStatus: "Incomplete – Abandoned at Checkout",
+        leadStatus: "Incomplete \u2013 Abandoned at Checkout",
         confirmationId,
         numberOfPets: step2.pets.length,
         pets: step2.pets.map((p, i) => ({
@@ -259,7 +259,7 @@ async function fireGHLEarlyLead(step1: Step1Data, step2: Step2Data, confirmation
         mentalHealthConditions: step1.conditions.join(", "),
         lifeChangeStress: step1.lifeChangeStress,
         housingType: step1.housingType,
-        leadSource: "ESA Assessment Form – Step 2 Submitted",
+        leadSource: "ESA Assessment Form \u2013 Step 2 Submitted",
         landingUrl: getLandingUrl(),
         trafficSource: getTrafficSource(),
         submittedAt: new Date().toISOString(),
@@ -296,7 +296,7 @@ async function fireGHLFinalLead(
         phone: step2.phone,
         dateOfBirth: step2.dob,
         state: step2.state,
-        leadStatus: "Paid – Order Completed",
+        leadStatus: "Paid \u2013 Order Completed",
         confirmationId,
         orderTotal: price,
         deliverySpeed: "",
@@ -328,7 +328,7 @@ async function fireGHLFinalLead(
         medication: step1.medication,
         medicationDetails: step1.medicationDetails,
         housingType: step1.housingType,
-        leadSource: "ESA Assessment Form – Paid",
+        leadSource: "ESA Assessment Form \u2013 Paid",
         landingUrl: getLandingUrl(),
         trafficSource: getTrafficSource(),
         submittedAt: new Date().toISOString(),
@@ -361,6 +361,10 @@ export default function AssessmentPage() {
   const resumeEditPet = (searchParams.get("edit") ?? "").toLowerCase() === "pet";
   // Pre-select state from ?state=CA param (used by state landing pages + ad campaigns)
   const preSelectedState = searchParams.get("state") ?? "";
+  // Step 1 v2 (one-question-at-a-time) is now the DEFAULT.
+  // `?step1=v1` is the emergency kill switch back to the legacy long-form
+  // render — any other value (or no param) resolves to V2.
+  const useStep1V2 = (searchParams.get("step1") ?? "").toLowerCase() !== "v1";
 
   // ── Referral + traffic source tracking ───────────────────────────────────
   // ?ref= accepts ANY value — ?ref=fb-june-promo, ?ref=google-brand, etc.
@@ -1370,6 +1374,22 @@ export default function AssessmentPage() {
               ) : (
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Get Your ESA Letter</h1>
               )}
+
+              {/* Persistent trust reassurance chips */}
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 px-2">
+                <span className="inline-flex items-center gap-1.5 bg-white border border-[#CFE2DC] rounded-full px-3 py-1">
+                  <i className="ri-shield-check-line text-[#1A5C4F] text-xs"></i>
+                  <span className="text-[11px] font-semibold text-[#1A5C4F]">HIPAA Secure</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 bg-white border border-[#CFE2DC] rounded-full px-3 py-1">
+                  <i className="ri-refund-2-line text-[#1A5C4F] text-xs"></i>
+                  <span className="text-[11px] font-semibold text-[#1A5C4F]">Money-Back Guarantee</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5 bg-white border border-[#CFE2DC] rounded-full px-3 py-1">
+                  <i className="ri-lock-2-line text-[#1A5C4F] text-xs"></i>
+                  <span className="text-[11px] font-semibold text-[#1A5C4F]">Secure Checkout</span>
+                </span>
+              </div>
             </div>
 
             {/* Full Step Indicator — sits in the page flow (not fixed) */}
@@ -1382,8 +1402,8 @@ export default function AssessmentPage() {
             {/* Live status banner — only show on Step 1 to keep checkout focused */}
             {currentStep === 1 && <LiveStatusBanner />}
 
-            {/* Test mode banner */}
-            {isTestMode && (
+            {/* Test mode banner — hidden on Step 3 to keep checkout focused */}
+            {isTestMode && currentStep !== 3 && (
               <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-6 h-6 flex items-center justify-center bg-amber-200 rounded-lg flex-shrink-0">
@@ -1419,7 +1439,7 @@ export default function AssessmentPage() {
             {/* Form Steps */}
             <div className="bg-transparent">
               {currentStep === 1 && (
-                <Step1Assessment data={step1} onChange={setStep1} onNext={goNext} />
+                <Step1Assessment data={step1} onChange={setStep1} onNext={goNext} useStep1V2={useStep1V2} />
               )}
               {currentStep === 2 && (
                 <Step2PersonalInfo data={step2} onChange={setStep2} onNext={goNext} onBack={goBack} />

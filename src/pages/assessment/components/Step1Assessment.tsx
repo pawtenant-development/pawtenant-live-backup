@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { CheckboxGroup, QuestionCard, RadioGroup } from "./step1/primitives";
+import QuestionRouter from "./step1/QuestionRouter";
 
 export interface Step1Data {
   // New form fields
@@ -27,6 +29,13 @@ interface Step1AssessmentProps {
   data: Step1Data;
   onChange: (data: Step1Data) => void;
   onNext: () => void;
+  /**
+   * When true (via `?step1=v2` URL flag on /assessment), render the
+   * one-question-at-a-time v2 flow instead of the legacy long-form layout.
+   * Defaults to false. The legacy path remains the fallback and is fully
+   * preserved below — flipping the flag is the kill-switch.
+   */
+  useStep1V2?: boolean;
 }
 
 const CONDITIONS = [
@@ -53,120 +62,23 @@ const FREQUENCY_OPTIONS = [
 ];
 
 // ── Shared UI Components ──────────────────────────────────────────────────────
-
-interface RadioGroupProps {
-  name: string;
-  value: string;
-  options: { label: string; value: string }[];
-  onChange: (val: string) => void;
-}
-
-function RadioGroup({ name, value, options, onChange }: RadioGroupProps) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`text-left px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all duration-150 cursor-pointer ${
-            value === opt.value
-              ? "border-[#F97316] bg-[#FFF7ED] text-[#F97316]"
-              : "border-gray-200 bg-white text-gray-700 hover:border-[#F97316]/60 hover:bg-[#FFF7ED]/50"
-          }`}
-          aria-pressed={value === opt.value}
-          aria-label={`${name}: ${opt.label}`}
-        >
-          <span className="flex items-start gap-2">
-            <span
-              className={`w-4 h-4 flex-shrink-0 mt-0.5 rounded-full border-2 flex items-center justify-center ${
-                value === opt.value ? "border-[#F97316] bg-[#F97316]" : "border-gray-300"
-              }`}
-            >
-              {value === opt.value && (
-                <span className="w-1.5 h-1.5 rounded-full bg-white block"></span>
-              )}
-            </span>
-            <span className="break-words">{opt.label}</span>
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-interface CheckboxGroupProps {
-  values: string[];
-  options: string[];
-  onChange: (vals: string[]) => void;
-}
-
-function CheckboxGroup({ values, options, onChange }: CheckboxGroupProps) {
-  const toggle = (opt: string) => {
-    onChange(values.includes(opt) ? values.filter((v) => v !== opt) : [...values, opt]);
-  };
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {options.map((opt) => {
-        const checked = values.includes(opt);
-        return (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => toggle(opt)}
-            className={`text-left px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all duration-150 cursor-pointer ${
-              checked
-                ? "border-[#F97316] bg-[#FFF7ED] text-[#F97316]"
-                : "border-gray-200 bg-white text-gray-700 hover:border-[#F97316]/60 hover:bg-[#FFF7ED]/50"
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <span
-                className={`w-4 h-4 flex-shrink-0 rounded flex items-center justify-center border-2 ${
-                  checked ? "border-[#F97316] bg-[#F97316]" : "border-gray-300"
-                }`}
-              >
-                {checked && <i className="ri-check-line text-white text-xs leading-none"></i>}
-              </span>
-              {opt}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-interface QuestionCardProps {
-  number: number;
-  question: string;
-  required?: boolean;
-  hint?: string;
-  hasError?: boolean;
-  children: React.ReactNode;
-}
-
-function QuestionCard({ number, question, required, hint, hasError, children }: QuestionCardProps) {
-  return (
-    <div className={`bg-white rounded-xl border p-4 sm:p-6 transition-all ${hasError ? "border-red-300 ring-2 ring-red-200" : "border-gray-200"}`}>
-      <p className="text-sm font-bold text-gray-900 mb-1 leading-snug">
-        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#F97316] text-white text-xs font-bold mr-2 flex-shrink-0">
-          {number}
-        </span>
-        {question}
-        {required && <span className="text-[#F97316] ml-1">*</span>}
-      </p>
-      {hint && <p className="text-xs text-gray-400 mb-3 sm:mb-4 ml-8">{hint}</p>}
-      {!hint && <div className="mb-3 sm:mb-4" />}
-      {children}
-    </div>
-  );
-}
+// RadioGroup / CheckboxGroup / QuestionCard live in `./step1/primitives` so
+// both the legacy long-form path (below) and the new one-question-at-a-time
+// v2 router can import the exact same visuals.
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function Step1Assessment({ data, onChange, onNext }: Step1AssessmentProps) {
+export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = false }: Step1AssessmentProps) {
+  // Hooks must run on every render regardless of branch (Rules of Hooks).
+  // The v2 short-circuit below ignores this state and renders QuestionRouter.
   const [errors, setErrors] = useState<string[]>([]);
+
+  // v2 path — gated by the `?step1=v2` URL flag passed in from page.tsx.
+  // Renders the one-question-at-a-time flow. The legacy long-form render
+  // below is preserved verbatim as the fallback and is the kill-switch.
+  if (useStep1V2) {
+    return <QuestionRouter data={data} onChange={onChange} onNext={onNext} />;
+  }
 
   const update = (field: keyof Step1Data, val: string | string[]) => {
     onChange({ ...data, [field]: val });
@@ -220,39 +132,6 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
         <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">
           This confidential screening helps a licensed mental health professional evaluate your eligibility for an ESA letter. All answers are protected under HIPAA.
         </p>
-      </div>
-
-      {/* Progress bar */}
-      <div className="bg-white rounded-xl border border-gray-100 px-5 py-4 mb-6 flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-bold text-gray-700">
-              {answeredCount === 0
-                ? "Answer each question to continue"
-                : answeredCount < totalRequired
-                ? `${answeredCount} of ${totalRequired} questions answered`
-                : "All questions answered — ready to continue!"}
-            </span>
-            <span className={`text-xs font-bold ${pct === 100 ? "text-emerald-600" : "text-[#F97316]"}`}>
-              {pct}%
-            </span>
-          </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${pct === 100 ? "bg-green-500" : "bg-[#F97316]"}`}
-              style={{ width: `${Math.max(pct, 2)}%` }}
-            />
-          </div>
-        </div>
-        <div className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full ${pct === 100 ? "bg-green-100" : "bg-[#FFF7ED]"}`}>
-          {pct === 100 ? (
-            <i className="ri-checkbox-circle-fill text-green-500 text-lg"></i>
-          ) : (
-            <span className={`text-sm font-extrabold ${answeredCount > 0 ? "text-[#F97316]" : "text-gray-400"}`}>
-              {answeredCount}/{totalRequired}
-            </span>
-          )}
-        </div>
       </div>
 
       {/* Landlord Verification Badge */}
@@ -514,13 +393,26 @@ export default function Step1Assessment({ data, onChange, onNext }: Step1Assessm
               hasErr("symptomDescription") ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-[#F97316]"
             }`}
           />
-          <div className="flex items-center justify-between mt-1.5">
+          <div className="flex items-center justify-between mt-1.5 gap-2">
             {data.symptomDescription.trim().length > 0 && data.symptomDescription.trim().length < 10 ? (
               <span className="text-xs text-red-500">Please write at least a few words to describe your experience.</span>
             ) : (
               <span className="text-xs text-gray-400">Your response is confidential and only visible to your assigned provider.</span>
             )}
-            <span className="text-xs text-gray-400 ml-2 flex-shrink-0">{data.symptomDescription.length}/1000</span>
+            <span
+              className={`text-xs font-semibold ml-2 flex-shrink-0 ${
+                data.symptomDescription.length === 0
+                  ? "text-gray-400"
+                  : data.symptomDescription.trim().length < 10
+                    ? "text-red-500"
+                    : data.symptomDescription.length >= 950
+                      ? "text-amber-600"
+                      : "text-emerald-600"
+              }`}
+              aria-live="polite"
+            >
+              {data.symptomDescription.trim().length < 10 ? `${data.symptomDescription.length} / 1000 · 10 min` : `${data.symptomDescription.length} / 1000`}
+            </span>
           </div>
         </QuestionCard>
 

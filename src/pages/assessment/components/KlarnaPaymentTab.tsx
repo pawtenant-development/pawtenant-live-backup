@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import PolicyModal from "./PolicyModal";
 
@@ -80,6 +80,27 @@ export default function KlarnaPaymentTab({
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [statusError, setStatusError] = useState("");
+  // Distinct error state for checkout-session creation / fetch / redirect failures.
+  // Kept separate from `agreedError` so the "Please agree to the terms" copy is
+  // only shown when the agreement checkbox is actually missing.
+  const [submitError, setSubmitError] = useState("");
+
+  // Ref used to gently scroll the popup-blocked fallback CTA into view so the
+  // user notices it when the browser silently blocks `window.open(...)`.
+  const fallbackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!checkoutUrl) return;
+    // Defer one tick so the new fallback DOM is mounted before scrolling.
+    const t = window.setTimeout(() => {
+      try {
+        fallbackRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch {
+        // scrollIntoView options not supported — silently ignore.
+      }
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [checkoutUrl]);
 
   const installment = (amount / 4).toFixed(2);
 
@@ -94,6 +115,7 @@ export default function KlarnaPaymentTab({
 
     setLoading(true);
     setAgreedError(false);
+    setSubmitError("");
 
     try {
       const planType = plan === "subscription" ? "subscription" : "one-time";
@@ -132,7 +154,8 @@ export default function KlarnaPaymentTab({
       }
     } catch (err) {
       console.error("Klarna checkout error:", err);
-      setAgreedError(true);
+      // Distinct, helpful copy — do NOT reuse the "agree to terms" error.
+      setSubmitError("Unable to start Klarna checkout. Please try again or use card payment.");
     } finally {
       setLoading(false);
     }
@@ -277,27 +300,69 @@ export default function KlarnaPaymentTab({
 
         {/* Continue button */}
         {!checkoutUrl ? (
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={loading || complianceBlocked}
-            className={`whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 text-sm font-extrabold rounded-xl transition-colors ${
-              loading || complianceBlocked
-                ? "bg-gray-300 text-white cursor-not-allowed"
-                : "bg-[#ff679a] hover:bg-[#e85a8c] text-white cursor-pointer"
-            }`}
-          >
-            <div className="w-16 h-5 flex items-center justify-center bg-white/20 rounded text-[9px] font-extrabold">
-              Klarna
-            </div>
-            Continue with Klarna
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={handleContinue}
+              disabled={loading || complianceBlocked}
+              className={`whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 text-sm font-extrabold rounded-xl transition-colors ${
+                loading || complianceBlocked
+                  ? "bg-gray-300 text-white cursor-not-allowed"
+                  : "bg-[#ff679a] hover:bg-[#e85a8c] text-white cursor-pointer"
+              }`}
+              aria-describedby={complianceBlocked ? "klarna-compliance-hint" : undefined}
+            >
+              <div className="w-16 h-5 flex items-center justify-center bg-white/20 rounded text-[9px] font-extrabold">
+                Klarna
+              </div>
+              Continue with Klarna
+            </button>
+
+            {/* Compliance-blocked helper — explains why the button is greyed out
+                when the state-law acknowledgment above is unchecked. */}
+            {complianceBlocked && (
+              <p
+                id="klarna-compliance-hint"
+                className="text-xs text-slate-600 leading-relaxed flex items-start gap-1.5 mt-2"
+                role="note"
+              >
+                <i className="ri-information-line text-slate-400 mt-0.5 flex-shrink-0"></i>
+                <span>
+                  Please acknowledge the state law notice above before continuing with Klarna.
+                </span>
+              </p>
+            )}
+
+            {/* Submit / fetch / redirect failure — distinct from agreement error. */}
+            {submitError && (
+              <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                <i className="ri-information-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
+                <p className="text-xs text-amber-800 leading-relaxed">{submitError}</p>
+              </div>
+            )}
+          </>
         ) : (
-          <div className="space-y-3">
+          <div ref={fallbackRef} className="space-y-3">
+            {/* Helper banner — surfaces the fallback CTA when the popup was blocked
+                or the user closed the Klarna tab. Calm, informational, not alarming. */}
+            <div className="flex items-start gap-2.5 bg-[#fff0f5] border border-[#f9c6d8] rounded-xl px-3.5 py-3">
+              <div className="w-6 h-6 flex items-center justify-center bg-white rounded-full flex-shrink-0 ring-1 ring-[#f9c6d8]">
+                <i className="ri-external-link-line text-[#ff679a] text-sm"></i>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-[#17120e] leading-snug">
+                  Klarna checkout opened in a new tab
+                </p>
+                <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
+                  If the tab didn&apos;t open, your browser may have blocked the pop-up. Use the button below to reopen it.
+                </p>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={() => window.open(checkoutUrl, "_blank")}
-              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-[#ff679a] hover:bg-[#e85a8c] text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
+              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-4 bg-[#ff679a] hover:bg-[#e85a8c] text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer ring-2 ring-[#ffb3c7]/40 shadow-[0_8px_22px_-10px_rgba(255,103,154,0.55)]"
             >
               <i className="ri-external-link-line"></i>
               Reopen Klarna Checkout

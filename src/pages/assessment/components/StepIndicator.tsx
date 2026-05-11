@@ -91,7 +91,13 @@ export default function StepIndicator({
       {/* Motivational headline */}
       <div className="text-center mb-3 sm:mb-4">
         <p className="text-sm sm:text-base font-bold text-gray-900 mb-0.5 sm:mb-1 px-2">{headline}</p>
-
+        {currentStep === 1 && (
+          <p className="text-xs text-gray-500 mt-1 px-2">
+            <span className="font-semibold text-[#F97316]">Question {Math.min(answeredInStep1 + 1, totalInStep1)}</span>
+            <span> of {totalInStep1}</span>
+            <span className="text-gray-400"> · {answeredInStep1} answered</span>
+          </p>
+        )}
       </div>
 
       {/* Step pills */}

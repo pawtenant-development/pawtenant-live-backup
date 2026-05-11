@@ -258,10 +258,10 @@ Deno.serve(async (req: Request) => {
         payment_method_types: ["card"],
         subscription_data: { metadata: sharedMetadata },
         metadata: sharedMetadata,
-        // Suppress Stripe's automatic receipt email — we send our own branded receipt
-        payment_intent_data: {
-          receipt_email: null,
-        },
+        // Stripe receipt emails are controlled via the dashboard "Email customers"
+        // setting. Do NOT pass `receipt_email: null` here — the Stripe Node SDK
+        // serializes null to an empty form field which Stripe rejects with
+        // "Invalid email address: ".
       };
 
       // Apply coupon discount if resolved
@@ -285,9 +285,11 @@ Deno.serve(async (req: Request) => {
       cancel_url: cancelUrl,
       submit_type: "pay",
       metadata: sharedMetadata,
-      // Suppress Stripe's automatic receipt email — we send our own branded receipt
+      // Stripe receipt emails are controlled via the dashboard "Email customers"
+      // setting. Do NOT pass `receipt_email: null` here — the Stripe Node SDK
+      // serializes null to an empty form field which Stripe rejects with
+      // "Invalid email address: ".
       payment_intent_data: {
-        receipt_email: null,
         metadata: sharedMetadata,
       },
     };
