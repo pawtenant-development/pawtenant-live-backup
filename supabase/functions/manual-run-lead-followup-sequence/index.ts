@@ -1,25 +1,31 @@
 // manual-run-lead-followup-sequence
 //
-// Admin-only wrapper around `lead-followup-sequence`. Used by the Settings tab
-// "Run Email Sequences Now" button so an authenticated admin can trigger the
-// sequence on demand without exposing the service role key to the browser.
+// Admin-only wrapper around the lead-followup sequence engine. Used by the
+// Settings tab "Run Email Sequences Now" button so an authenticated admin
+// can trigger the sequence on demand without exposing the service role key
+// to the browser.
 //
-// Behavior:
-//   1. Verify the caller is an authenticated admin (doctor_profiles.is_admin)
-//   2. Invoke the existing lead-followup-sequence Edge Function server-side
-//      using the service role key (NEVER from the frontend)
-//   3. Forward the standard result JSON back to the UI
-//   4. Write an audit_logs row for traceability (who clicked, what happened)
+// Auth flow:
+//   1. Verify the caller is an authenticated admin (doctor_profiles.is_admin
+//      OR role in {owner, admin_manager}).
+//   2. Run the sequence IN-PROCESS by calling runLeadFollowupSequence from
+//      the shared core module (../lead-followup-sequence/core.ts).
+//      NO inter-function HTTP roundtrip — this is the fix for the prior
+//      "lead-followup-sequence returned status 401" symptom, which was
+//      Supabase platform `verify_jwt` rejecting the wrapper's call to the
+//      engine. By calling the core logic in-process, there is no second
+//      auth boundary to misconfigure.
+//   3. Write an audit_logs row for traceability (who clicked, what happened).
 //
 // IMPORTANT — does NOT duplicate sequence logic:
-//   All eligibility, dedupe, opt-out, paid-order safety, expiry handling, and
-//   per-stage timing gates live in lead-followup-sequence/index.ts. This
-//   function ONLY proxies the call. If TEST has SEQUENCE_DRY_RUN=true, no real
-//   Resend emails go out — that toggle is honoured by the underlying function.
+//   All eligibility, dedupe, opt-out, paid-order safety, expiry handling,
+//   and per-stage timing gates live in ../lead-followup-sequence/core.ts.
+//   This wrapper only handles admin auth + audit.
 //
 // Reference: SEQ-AUTOMATION-MANUAL-RUN-SETTINGS-BUTTON
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { runLeadFollowupSequence } from "../lead-followup-sequence/core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,23 +35,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-interface SequenceResults {
-  step1_30min?: number;
-  step2_24h?: number;
-  step3_3day?: number;
-  skipped?: number;
-  opted_out?: number;
-  expired?: number;
-  dedup_skipped?: number;
-}
-
-interface SequenceResponse {
-  ok: boolean;
-  processed?: number;
-  results?: SequenceResults;
-  error?: string;
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -92,35 +81,9 @@ Deno.serve(async (req: Request) => {
       role,
     };
 
-    // ── Step 2: invoke lead-followup-sequence server-side via service role ───
-    // We forward the same body shape (none — empty POST runs the sequence).
-    const targetUrl = `${SUPABASE_URL}/functions/v1/lead-followup-sequence`;
+    // ── Step 2: run the sequence IN-PROCESS (no inter-function HTTP) ─────────
     const startedAt = new Date().toISOString();
-
-    let seqResponse: SequenceResponse;
-    let seqStatus = 0;
-    try {
-      const seqRes = await fetch(targetUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-          apikey: SERVICE_ROLE_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-      });
-      seqStatus = seqRes.status;
-      const text = await seqRes.text();
-      try {
-        seqResponse = JSON.parse(text) as SequenceResponse;
-      } catch {
-        seqResponse = { ok: false, error: `Sequence returned non-JSON (status ${seqStatus}): ${text.slice(0, 200)}` };
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      seqResponse = { ok: false, error: `Failed to invoke lead-followup-sequence: ${msg}` };
-    }
-
+    const seqResult = await runLeadFollowupSequence(adminClient);
     const finishedAt = new Date().toISOString();
 
     // ── Step 3: write audit_logs row with the result and who triggered it ────
@@ -136,12 +99,11 @@ Deno.serve(async (req: Request) => {
           triggered_by: triggeredBy,
           started_at: startedAt,
           finished_at: finishedAt,
-          target_function: "lead-followup-sequence",
-          sequence_status: seqStatus,
-          sequence_response_ok: seqResponse.ok,
-          processed: seqResponse.processed ?? 0,
-          results: seqResponse.results ?? null,
-          error: seqResponse.error ?? null,
+          target_function: "lead-followup-sequence (in-process)",
+          sequence_response_ok: seqResult.ok,
+          processed: seqResult.processed,
+          results: seqResult.results,
+          error: seqResult.error ?? null,
         },
       });
     } catch (logErr) {
@@ -152,17 +114,17 @@ Deno.serve(async (req: Request) => {
 
     console.log(
       `[manual-run-lead-followup-sequence] Triggered by ${triggeredBy.email ?? triggeredBy.user_id} — ` +
-      `seq status=${seqStatus} ok=${seqResponse.ok} processed=${seqResponse.processed ?? 0} ` +
-      `results=${JSON.stringify(seqResponse.results ?? {})}`
+      `ok=${seqResult.ok} processed=${seqResult.processed} ` +
+      `results=${JSON.stringify(seqResult.results)}`,
     );
 
-    if (!seqResponse.ok) {
+    if (!seqResult.ok) {
       return json(
         {
           ok: false,
-          error: seqResponse.error ?? `lead-followup-sequence returned status ${seqStatus}`,
-          processed: seqResponse.processed ?? 0,
-          results: seqResponse.results ?? {},
+          error: seqResult.error ?? "lead-followup-sequence run failed",
+          processed: seqResult.processed,
+          results: seqResult.results,
           triggered_by: triggeredBy,
           started_at: startedAt,
           finished_at: finishedAt,
@@ -173,8 +135,8 @@ Deno.serve(async (req: Request) => {
 
     return json({
       ok: true,
-      processed: seqResponse.processed ?? 0,
-      results: seqResponse.results ?? {},
+      processed: seqResult.processed,
+      results: seqResult.results,
       triggered_by: triggeredBy,
       started_at: startedAt,
       finished_at: finishedAt,
