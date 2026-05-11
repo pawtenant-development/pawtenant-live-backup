@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
 import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
 import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
+import { setEnhancedConversionUserData } from "@/lib/googleEnhancedConversions";
 
 interface ThankYouState {
   firstName?: string;
@@ -358,6 +359,17 @@ export default function PSDAssessmentThankYouPage() {
     // gtag.js loads asynchronously — on SPA navigations it may not be ready at mount
     const fireGtag = () => {
       if (typeof window.gtag !== "function") return false;
+      // Enhanced Conversions: set identity user_data BEFORE the conversion
+      // event. Identity-only — no PSD/medical/provider/pet data.
+      const pendingForEC = resolvedState as PendingOrder;
+      const step2PSD = (pendingForEC._step2 ?? {}) as Record<string, unknown>;
+      setEnhancedConversionUserData({
+        email: resolvedState.email,
+        phone: typeof step2PSD.phone === "string" ? step2PSD.phone : null,
+        firstName: resolvedState.firstName,
+        lastName: resolvedState.lastName,
+        country: "US",
+      });
       window.gtag("event", "conversion", {
         send_to: "AW-11509262282/paT2CKzfsJEcEMrPhfAq",
         value: conversionValue,

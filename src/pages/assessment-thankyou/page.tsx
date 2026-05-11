@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
 import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
 import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
+import { setEnhancedConversionUserData } from "@/lib/googleEnhancedConversions";
 
 interface ThankYouState {
   firstName?: string;
@@ -442,6 +443,17 @@ export default function AssessmentThankYouPage() {
             if (typeof window.gtag === "function") {
               const convVal = urlAmount ? parseFloat(urlAmount) : (order.price ?? 0);
               const txId = urlOrderId ?? order.confirmationId ?? "";
+              // Enhanced Conversions: set identity user_data BEFORE the
+              // conversion event so Google can match this purchase to the
+              // ad click that drove it. Identity-only — no medical/ESA data.
+              const step2Redirect = (order._step2 ?? {}) as Record<string, unknown>;
+              setEnhancedConversionUserData({
+                email: order.email,
+                phone: typeof step2Redirect.phone === "string" ? step2Redirect.phone : null,
+                firstName: order.firstName,
+                lastName: order.lastName,
+                country: "US",
+              });
               console.log("[ESA Thank-You] Google Ads conversion (redirect path):", {
                 send_to: "AW-11509262282/Va-eCP6ZvpEcEMrPhfAq",
                 value: convVal,
@@ -590,6 +602,18 @@ export default function AssessmentThankYouPage() {
       if (gtagConversionFired.current) return true; // already fired
       if (typeof window.gtag !== "function") return false;
       gtagConversionFired.current = true;
+      // Enhanced Conversions: set identity user_data BEFORE the conversion
+      // event so Google can match this purchase to the ad click that drove
+      // it. Identity-only fields — no medical/ESA/provider/pet data.
+      const pendingForEC = resolvedState as PendingOrder;
+      const step2Inline = (pendingForEC._step2 ?? {}) as Record<string, unknown>;
+      setEnhancedConversionUserData({
+        email,
+        phone: typeof step2Inline.phone === "string" ? step2Inline.phone : null,
+        firstName: pendingForEC.firstName,
+        lastName: pendingForEC.lastName,
+        country: "US",
+      });
       console.log("[ESA Thank-You] Google Ads conversion fired ✓", {
         send_to: "AW-11509262282/Va-eCP6ZvpEcEMrPhfAq",
         value: conversionValue,
