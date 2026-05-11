@@ -221,15 +221,14 @@ export function trackPaymentSuccess(
 
 // ── Recovery funnel helpers ──────────────────────────────────────────────────
 
+// Active recovery stages currently wired in the backend
+// (supabase/functions/lead-followup-sequence/core.ts). Additional stages
+// (48-hour, 5-day, SMS) are planned but not yet implemented — add them
+// back here only when the backend sequence engine actually sends them.
 export type RecoveryStage =
   | "seq_30min"
   | "seq_24h"
-  | "seq_48h"
-  | "seq_3day"
-  | "seq_5day"
-  | "seq_sms_stage1"
-  | "seq_sms_stage2"
-  | "seq_sms_stage_final";
+  | "seq_3day";
 
 /** recovery_email_sent — log when an automated recovery email is dispatched. */
 export function trackRecoveryEmailSent(

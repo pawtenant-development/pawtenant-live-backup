@@ -970,39 +970,31 @@ function MasterEmailLayoutPanel() {
 }
 
 // ── Recovery Sequence Settings panel ─────────────────────────────────────────
-// Reads + writes 11 keys in `comms_settings`. Backend (lead-followup-sequence)
-// reads the same keys. No DB migration needed; rows are seeded by
-// 20260502150000_recovery_sequence_control.sql + 20260502160000_recovery_sms_sequence.sql.
+// Reads + writes 5 keys in `comms_settings`. ONLY the 3 email stages actually
+// wired in the backend (lead-followup-sequence) are surfaced here:
+//   recovery_stage_1_minutes (30-min), recovery_stage_2_hours (24-hr),
+//   recovery_stage_4_days (3-day — historical key name).
+// 48-hour, 5-day, and all SMS stages are intentionally hidden until backend
+// support lands. Inactive comms_settings rows in DB are left untouched so no
+// data is lost; they simply do not appear in the UI.
 type RecoveryToggleKey =
   | "recovery_enabled"
-  | "recovery_email_enabled"
-  | "recovery_sms_enabled";
+  | "recovery_email_enabled";
 
 type RecoveryNumKey =
   | "recovery_stage_1_minutes"
   | "recovery_stage_2_hours"
-  | "recovery_stage_3_hours"
-  | "recovery_stage_4_days"
-  | "recovery_stage_5_days"
-  | "recovery_sms_stage_1_hours"
-  | "recovery_sms_stage_2_hours"
-  | "recovery_sms_stage_final_days";
+  | "recovery_stage_4_days";
 
 const RECOVERY_NUM_DEFAULTS: Record<RecoveryNumKey, number> = {
-  recovery_stage_1_minutes:      30,
-  recovery_stage_2_hours:        24,
-  recovery_stage_3_hours:        48,
-  recovery_stage_4_days:         3,
-  recovery_stage_5_days:         5,
-  recovery_sms_stage_1_hours:    3,
-  recovery_sms_stage_2_hours:    48,
-  recovery_sms_stage_final_days: 5,
+  recovery_stage_1_minutes: 30,
+  recovery_stage_2_hours:   24,
+  recovery_stage_4_days:    3,
 };
 
 const RECOVERY_TOGGLE_DEFAULTS: Record<RecoveryToggleKey, boolean> = {
   recovery_enabled:       true,
   recovery_email_enabled: true,
-  recovery_sms_enabled:   false,
 };
 
 function RecoverySequencePanel() {
@@ -1158,39 +1150,34 @@ function RecoverySequencePanel() {
 
   return (
     <div className="space-y-4">
+      {/* Active-stage banner — backend currently supports 3 email stages only */}
+      <div className="px-3 py-2.5 rounded-md border border-amber-200 bg-amber-50">
+        <p className="text-[12px] text-amber-900 leading-relaxed">
+          <strong>Active 3-stage email recovery.</strong> Only the 30-minute, 24-hour,
+          and 3-day recovery emails are currently active. Additional email/SMS stages
+          should not be enabled until backend support is implemented.
+        </p>
+      </div>
+
       <div className="text-xs text-gray-600">
-        Controls the automated recovery sequence (email + SMS) for unpaid leads.
-        Backend reads these values on every cron run. Stop conditions (paid,
-        unsubscribe) are enforced regardless of these settings.
+        Controls the automated email recovery sequence for unpaid leads.
+        Stop conditions (paid, unsubscribe) are enforced regardless of these settings.
       </div>
 
       {/* Toggles */}
       <div className="space-y-2">
         <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Master Toggles</p>
         <Toggle label="Recovery Sequence Enabled" sub="Master switch — turns the entire automated sequence on or off" k="recovery_enabled" />
-        <Toggle label="Email Recovery Enabled"    sub="Controls all 5 email stages"                                     k="recovery_email_enabled" />
-        <Toggle label="SMS Recovery Enabled"      sub="Controls all 3 SMS stages (also requires phone on order)"        k="recovery_sms_enabled" />
+        <Toggle label="Email Recovery Enabled"    sub="Controls all 3 active email stages"                            k="recovery_email_enabled" />
       </div>
 
-      {/* Email stages */}
+      {/* Email stages — 3 active stages only */}
       <div className="space-y-2">
         <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Email Stage Timings</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <NumField label="Stage 1" suffix="minutes" k="recovery_stage_1_minutes" />
-          <NumField label="Stage 2" suffix="hours"   k="recovery_stage_2_hours" />
-          <NumField label="Stage 3" suffix="hours"   k="recovery_stage_3_hours" />
-          <NumField label="Stage 4" suffix="days"    k="recovery_stage_4_days" />
-          <NumField label="Stage 5" suffix="days"    k="recovery_stage_5_days" />
-        </div>
-      </div>
-
-      {/* SMS stages */}
-      <div className="space-y-2">
-        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">SMS Stage Timings</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <NumField label="SMS Stage 1" suffix="hours" k="recovery_sms_stage_1_hours" />
-          <NumField label="SMS Stage 2" suffix="hours" k="recovery_sms_stage_2_hours" />
-          <NumField label="SMS Final"   suffix="days"  k="recovery_sms_stage_final_days" />
+          <NumField label="30-minute follow-up" suffix="minutes" k="recovery_stage_1_minutes" />
+          <NumField label="24-hour follow-up"   suffix="hours"   k="recovery_stage_2_hours" />
+          <NumField label="3-day follow-up"     suffix="days"    k="recovery_stage_4_days" />
         </div>
       </div>
 
@@ -1214,8 +1201,9 @@ function RecoverySequencePanel() {
       {/* Future improvement marker — referenced by SETTINGS-IA-CLEANUP-GROUPED-SECTIONS */}
       <div className="mt-3 px-3 py-2 rounded-md border border-dashed border-gray-300 bg-gray-50">
         <p className="text-[11px] text-gray-500">
-          <strong className="text-gray-600">Future improvement:</strong> Advanced stage builder planned —
-          add/remove stages, reorder, choose email/SMS, discount, and template.
+          <strong className="text-gray-600">Planned (not yet wired):</strong> additional email stages
+          (48-hour, 5-day) and SMS recovery (3 stages). UI controls will return here once the backend
+          sequence engine implements them.
         </p>
       </div>
     </div>
@@ -1223,24 +1211,25 @@ function RecoverySequencePanel() {
 }
 
 // Slugs that are actively consumed by Edge Functions for automatic / button-driven sends.
-// Source of truth: AI/email-system-audit.md. Keep this list in sync with that doc.
 // Anything NOT in this set is admin-editable but currently lives only as a preset
 // (not wired to any automatic transactional flow yet).
+//
+// IMPORTANT — keep in sync with the backend reality. The lead-followup-sequence
+// engine (supabase/functions/lead-followup-sequence/core.ts) currently sends
+// ONLY the 3 active recovery stages (seq_30min, seq_24h, seq_3day). seq_48h,
+// seq_5day, and the seq_sms_* slugs are template presets without wired
+// senders — do NOT mark them as DB-managed or admins will believe edits go
+// live when they do not.
 const DB_MANAGED_EMAIL_SLUGS = new Set<string>([
   "review_request",
   "checkout_recovery",
   "checkout_recovery_discount",
   "seq_30min",
   "seq_24h",
-  "seq_48h",
   "seq_3day",
-  "seq_5day",
 ]);
 const DB_MANAGED_SMS_SLUGS = new Set<string>([
   "review_request_sms",
-  "seq_sms_stage1",
-  "seq_sms_stage2",
-  "seq_sms_final",
 ]);
 
 function CommsTemplatesPanel() {
