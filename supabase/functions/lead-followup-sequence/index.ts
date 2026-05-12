@@ -24,6 +24,20 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// SEQ-AUTOMATION-LIVE-SCHEDULER-ROOT-FIX:
+// Shared secret used by the Supabase pg_cron job to call this engine. The
+// engine is deployed with --no-verify-jwt so the public unsubscribe link
+// (GET ?action=unsubscribe&id=...) keeps working without an auth header;
+// in exchange we gate the sequence-run path with this secret so random
+// internet traffic cannot trigger email sends. The opt-in/opt-out POST
+// path is gated the same way.
+//
+// While CRON_SECRET is unset (e.g. between this deploy and Hamza setting
+// the secret), the gate falls back to a warn-only mode so we never break
+// in-flight runs. Once the secret is set in Supabase function secrets
+// AND embedded in the pg_cron job, enforcement turns on automatically.
+const CRON_SECRET = Deno.env.get("LEAD_FOLLOWUP_CRON_SECRET") ?? "";
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -84,11 +98,39 @@ Deno.serve(async (req: Request) => {
         if (error) return json({ ok: false, error: error.message }, 500);
         return json({ ok: true, action: body.action, orderId });
       }
+
+      // ── Default POST {} path — automated sequence run from pg_cron ───────
+      // SEQ-AUTOMATION-LIVE-SCHEDULER-ROOT-FIX:
+      //   Require the shared CRON_SECRET via x-cron-secret header before we
+      //   touch the email loop. Falls back to warn-only when the env var is
+      //   unset so the first deploy after this change does not break runs
+      //   that are still in flight under the old contract.
+      if (CRON_SECRET) {
+        const provided = req.headers.get("x-cron-secret") ?? "";
+        if (provided !== CRON_SECRET) {
+          console.warn(
+            "[lead-followup-sequence] sequence-run rejected: missing/invalid x-cron-secret header",
+          );
+          return json(
+            { ok: false, error: "Unauthorized — missing or invalid x-cron-secret header" },
+            401,
+          );
+        }
+      } else {
+        console.warn(
+          "[lead-followup-sequence] LEAD_FOLLOWUP_CRON_SECRET is unset — running without secret check. " +
+            "Set the secret with `supabase secrets set` and update the pg_cron job to enforce.",
+        );
+      }
+
+      const result = await runLeadFollowupSequence(supabase, {
+        invocationSource: "cron",
+      });
+      return json(result, result.ok ? 200 : 500);
     }
 
-    // ── Default POST path — run the sequence over eligible leads ─────────────
-    const result = await runLeadFollowupSequence(supabase);
-    return json(result, result.ok ? 200 : 500);
+    // ── Fallback for any other method ────────────────────────────────────────
+    return json({ ok: false, error: "Method not allowed" }, 405);
   } catch (err) {
     console.error("[lead-followup-sequence] HTTP handler error:", err);
     return json({ ok: false, error: String(err) }, 500);

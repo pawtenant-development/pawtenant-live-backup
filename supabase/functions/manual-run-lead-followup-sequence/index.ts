@@ -82,8 +82,13 @@ Deno.serve(async (req: Request) => {
     };
 
     // ── Step 2: run the sequence IN-PROCESS (no inter-function HTTP) ─────────
+    // invocationSource='manual' so the sequence_automation_status heartbeat
+    // is tagged correctly and the admin Settings panel can distinguish manual
+    // recovery runs from automatic cron runs.
     const startedAt = new Date().toISOString();
-    const seqResult = await runLeadFollowupSequence(adminClient);
+    const seqResult = await runLeadFollowupSequence(adminClient, {
+      invocationSource: "manual",
+    });
     const finishedAt = new Date().toISOString();
 
     // ── Step 3: write audit_logs row with the result and who triggered it ────

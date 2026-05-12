@@ -2700,6 +2700,169 @@ interface ManualSeqRunResult {
   finished_at?: string;
 }
 
+// SEQ-AUTOMATION-LIVE-SCHEDULER-ROOT-FIX
+// Status pill + summary row for the automated lead-followup-sequence cron.
+// Reads the singleton public.sequence_automation_status row that the engine
+// stamps on every invocation. If the heartbeat is stale (> 60 min) or shows
+// a recent error, this surfaces it loudly so the cron can't silently fail
+// without anyone noticing.
+interface SequenceAutomationStatusRow {
+  id: number;
+  last_run_started_at: string | null;
+  last_run_finished_at: string | null;
+  last_invocation_source: string | null;
+  last_success_at: string | null;
+  last_error_at: string | null;
+  last_error_message: string | null;
+  last_processed: number | null;
+  last_results: Record<string, number> | null;
+  updated_at: string | null;
+}
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return new Date(iso).toLocaleString();
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 48) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function AutomationStatusPanel() {
+  const [row, setRow] = useState<SequenceAutomationStatusRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("sequence_automation_status")
+        .select(
+          "id, last_run_started_at, last_run_finished_at, last_invocation_source, last_success_at, last_error_at, last_error_message, last_processed, last_results, updated_at",
+        )
+        .eq("id", 1)
+        .maybeSingle();
+      if (error) {
+        setFetchError(error.message);
+        setRow(null);
+      } else {
+        setFetchError(null);
+        setRow(data as SequenceAutomationStatusRow | null);
+      }
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+    // Auto-refresh every 60 s so a stale cron is obvious without a manual reload.
+    const id = window.setInterval(refresh, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Derive a coarse status that drives the chip color/label.
+  const now = Date.now();
+  const lastSuccessAgo = row?.last_success_at
+    ? now - new Date(row.last_success_at).getTime()
+    : Infinity;
+  const lastErrorAgo = row?.last_error_at
+    ? now - new Date(row.last_error_at).getTime()
+    : Infinity;
+  const stale = lastSuccessAgo > 60 * 60 * 1000;       // > 60 min
+  const recentlyErrored = lastErrorAgo < 60 * 60 * 1000;
+
+  let tone: "green" | "amber" | "red" | "gray";
+  let label: string;
+  if (loading) {
+    tone = "gray";
+    label = "Checking…";
+  } else if (fetchError) {
+    tone = "amber";
+    label = "Heartbeat unavailable";
+  } else if (!row || !row.last_success_at) {
+    tone = "amber";
+    label = "No automatic run on record yet";
+  } else if (recentlyErrored && lastErrorAgo < lastSuccessAgo) {
+    tone = "red";
+    label = "Recent automatic run errored";
+  } else if (stale) {
+    tone = "amber";
+    label = `Last success ${formatRelative(row.last_success_at)} — stale`;
+  } else {
+    tone = "green";
+    label = `Healthy · last success ${formatRelative(row.last_success_at)}`;
+  }
+
+  const toneClasses: Record<typeof tone, string> = {
+    green: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    amber: "bg-amber-50 border-amber-200 text-amber-800",
+    red:   "bg-red-50 border-red-200 text-red-700",
+    gray:  "bg-gray-50 border-gray-200 text-gray-600",
+  };
+  const dotClasses: Record<typeof tone, string> = {
+    green: "bg-emerald-500",
+    amber: "bg-amber-500",
+    red:   "bg-red-500",
+    gray:  "bg-gray-400",
+  };
+
+  return (
+    <div className={`border rounded-xl px-4 py-3 ${toneClasses[tone]}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`inline-block w-2 h-2 rounded-full ${dotClasses[tone]}`} aria-hidden />
+        <span className="text-xs font-extrabold uppercase tracking-wider">
+          Automated cron
+        </span>
+        <span className="text-[11px] font-semibold">{label}</span>
+        <button
+          type="button"
+          onClick={refresh}
+          className="ml-auto text-[11px] font-semibold underline underline-offset-2 hover:no-underline cursor-pointer"
+        >
+          Refresh
+        </button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 text-[11px] leading-snug">
+        <div>
+          <p className="opacity-70">Last started</p>
+          <p className="font-semibold">{formatRelative(row?.last_run_started_at ?? null)}</p>
+        </div>
+        <div>
+          <p className="opacity-70">Last finished</p>
+          <p className="font-semibold">{formatRelative(row?.last_run_finished_at ?? null)}</p>
+        </div>
+        <div>
+          <p className="opacity-70">Last success</p>
+          <p className="font-semibold">{formatRelative(row?.last_success_at ?? null)}</p>
+        </div>
+        <div>
+          <p className="opacity-70">Source</p>
+          <p className="font-semibold">{row?.last_invocation_source ?? "—"}</p>
+        </div>
+      </div>
+      {row?.last_error_at && row?.last_error_message && (
+        <div className="mt-2 text-[11px] bg-white/60 rounded-md px-2 py-1.5 break-words">
+          <span className="font-semibold">Last error ({formatRelative(row.last_error_at)}):</span>{" "}
+          {row.last_error_message}
+        </div>
+      )}
+      {fetchError && (
+        <div className="mt-2 text-[11px] bg-white/60 rounded-md px-2 py-1.5 break-words">
+          <span className="font-semibold">Heartbeat read failed:</span> {fetchError}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ManualSequenceRunPanel({ supabaseUrl }: { supabaseUrl: string }) {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<ManualSeqRunResult | null>(null);
@@ -2763,6 +2926,10 @@ function ManualSequenceRunPanel({ supabaseUrl }: { supabaseUrl: string }) {
 
   return (
     <div className="space-y-4">
+      {/* Automation heartbeat — surfaces silent cron failures so the manual
+          button below is only needed as a true backup. */}
+      <AutomationStatusPanel />
+
       {/* Warning banner */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
         <i className="ri-alert-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>

@@ -344,6 +344,40 @@ async function sendSequenceStep(
 }
 
 /**
+ * Best-effort heartbeat update of public.sequence_automation_status.
+ *
+ * Never throws — silent failures here must not break the actual sequence
+ * run, but they ARE logged to console so they show up in Supabase function
+ * logs if the heartbeat table or RLS is misconfigured.
+ *
+ * Note: writes are performed with the service-role client, which bypasses
+ * RLS. If the table does not exist (migration not yet applied), the .from()
+ * call returns an error rather than throwing — we swallow it.
+ */
+async function heartbeat(
+  supabase: SupabaseClient,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from("sequence_automation_status")
+      .update(patch)
+      .eq("id", 1);
+    if (error) {
+      console.warn(
+        "[lead-followup-sequence] heartbeat update failed:",
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[lead-followup-sequence] heartbeat threw (ignored):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/**
  * Run the follow-up sequence over eligible unpaid leads.
  *
  * Pure logic — no HTTP, no auth coordination. Imported by both:
@@ -352,10 +386,25 @@ async function sendSequenceStep(
  *
  * Caller passes a service-role Supabase client. Returns a result object;
  * never throws.
+ *
+ * SEQ-AUTOMATION-LIVE-SCHEDULER-ROOT-FIX:
+ * `invocationSource` is stamped on the heartbeat row so admins can tell
+ * apart automatic cron runs from manual Settings-button runs. Heartbeat
+ * is best-effort and never blocks the run.
  */
 export async function runLeadFollowupSequence(
   supabase: SupabaseClient,
+  opts?: { invocationSource?: "cron" | "manual" | "unknown" },
 ): Promise<SequenceRunResult> {
+  const invocationSource = opts?.invocationSource ?? "unknown";
+  const startedAtIso = new Date().toISOString();
+
+  // Heartbeat — RUN STARTED. Always fires regardless of outcome.
+  await heartbeat(supabase, {
+    last_run_started_at: startedAtIso,
+    last_invocation_source: invocationSource,
+  });
+
   try {
     const now = new Date();
     const maxAgeDate = new Date(now.getTime() - SEQUENCE_LOOKBACK_DAYS * 86400000).toISOString();
@@ -488,10 +537,43 @@ export async function runLeadFollowupSequence(
       });
     }
 
-    console.log("[lead-followup-sequence] Results:", results);
+    console.log(
+      `[lead-followup-sequence] Run complete · source=${invocationSource} · processed=${leads?.length ?? 0} · results=`,
+      results,
+    );
+
+    // Heartbeat — SUCCESS path. last_success_at is bumped so the admin
+    // Settings panel can show "Last successful run X minutes ago" even on
+    // runs where zero emails actually went out (no eligible leads).
+    const finishedAtIso = new Date().toISOString();
+    await heartbeat(supabase, {
+      last_run_finished_at: finishedAtIso,
+      last_success_at: finishedAtIso,
+      last_invocation_source: invocationSource,
+      last_results: results as unknown as Record<string, unknown>,
+      last_processed: leads?.length ?? 0,
+      // Clear the prior error message so the UI doesn't show a stale red banner
+      // after a clean run. Keep last_error_at as a historical breadcrumb.
+      last_error_message: null,
+    });
+
     return { ok: true, processed: leads?.length ?? 0, results };
   } catch (err) {
-    console.error("[lead-followup-sequence] runLeadFollowupSequence error:", err);
-    return { ok: false, processed: 0, results: emptyResults(), error: String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[lead-followup-sequence] runLeadFollowupSequence error · source=${invocationSource} · ${msg}`,
+    );
+
+    // Heartbeat — ERROR path. last_error_at + last_error_message let the
+    // admin UI flag a recent failure without anyone hunting through logs.
+    const finishedAtIso = new Date().toISOString();
+    await heartbeat(supabase, {
+      last_run_finished_at: finishedAtIso,
+      last_error_at: finishedAtIso,
+      last_error_message: msg.slice(0, 1000),
+      last_invocation_source: invocationSource,
+    });
+
+    return { ok: false, processed: 0, results: emptyResults(), error: msg };
   }
 }
