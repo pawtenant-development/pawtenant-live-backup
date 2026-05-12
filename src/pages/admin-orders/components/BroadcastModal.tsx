@@ -237,7 +237,7 @@ This is our unique feature, built specifically to protect you.
 
 Here's how it works:
 • Your letter includes a unique Verification ID and QR code
-• Your landlord visits pawtenant.com/ESA-letter-verification
+• Your landlord visits pawtenant.com/esa-letter-verification
 • They enter the ID or scan the QR code to confirm your letter is valid
 • Zero health information is disclosed — only letter validity is confirmed
 
@@ -249,7 +249,7 @@ This is what makes PawTenant the most credible ESA letter service available. No 
 
 If you have any questions about how verification works, visit the link below.`,
     ctaLabel: "How ESA Letter Verification Works",
-    ctaUrl: "https://pawtenant.com/ESA-letter-verification",
+    ctaUrl: "https://pawtenant.com/esa-letter-verification",
   },
   {
     id: "discount",

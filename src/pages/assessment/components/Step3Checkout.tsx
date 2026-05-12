@@ -1487,7 +1487,7 @@ export default function Step3Checkout({
               </div>
               <div className="mt-3">
                 <Link
-                  to="/ESA-letter-verification"
+                  to="/esa-letter-verification"
                   className="whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-semibold hover:underline cursor-pointer"
                   style={{ color: BRAND_GREEN }}
                 >

@@ -12,7 +12,7 @@ const siteMap = [
   { label: "How It Works", href: "#how-it-works" },
   { label: "Pricing", href: "#pricing" },
   { label: "What is an ESA?", href: "#states" },
-  { label: "Verifiable ESA Letters", href: "/verifiable-esa-letters" },
+  { label: "ESA Letter Verification", href: "/esa-letter-verification" },
   { label: "FAQ", href: "#faq" },
   { label: "Contact Us", href: "#contact" },
   { label: "Privacy Policy", href: "/privacy-policy" },
@@ -61,7 +61,7 @@ export default function Footer() {
           <div className="md:col-span-1">
             <a href="/" className="inline-block mb-4 cursor-pointer">
               <img
-                src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+                src="/assets/brand/pawtenant-logo-black-02.png"
                 alt="PawTenant"
                 className="h-14 w-auto object-contain"
               />

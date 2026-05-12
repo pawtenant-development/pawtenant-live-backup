@@ -482,11 +482,11 @@ function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userE
               <p className="text-sm font-extrabold text-orange-600 mb-0.5">Your letter is landlord-verifiable</p>
               <p className="text-xs text-gray-600 leading-relaxed">
                 Your ESA letter includes a unique <strong>Verification ID</strong> and QR code. Landlords can instantly confirm its authenticity at{" "}
-                <a href="/ESA-letter-verification" className="underline underline-offset-2 font-bold hover:text-orange-600 cursor-pointer">pawtenant.com/ESA-letter-verification</a>{" "}
+                <a href="/esa-letter-verification" className="underline underline-offset-2 font-bold hover:text-orange-600 cursor-pointer">pawtenant.com/esa-letter-verification</a>{" "}
                 — zero health info disclosed.
               </p>
               <a
-                href="/ESA-letter-verification"
+                href="/esa-letter-verification"
                 className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-orange-500 hover:text-orange-600 transition-colors cursor-pointer"
               >
                 <i className="ri-qr-code-line"></i>See how verification works
@@ -903,7 +903,7 @@ export default function MyOrdersPage() {
       <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <Link to="/" className="flex items-center gap-2 cursor-pointer">
           <img
-            src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+            src="/assets/brand/pawtenant-logo-black-02.png"
             alt="PawTenant"
             className="h-10 w-auto object-contain"
           />

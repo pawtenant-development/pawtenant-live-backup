@@ -62,7 +62,7 @@ export default function VerificationTrustCard({
           </div>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              to="/ESA-letter-verification"
+              to="/esa-letter-verification"
               className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-2.5 bg-orange-500 text-white text-sm font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
               <i className="ri-verified-badge-line"></i>
@@ -107,7 +107,7 @@ export default function VerificationTrustCard({
       </div>
       <div className="px-5 pb-5 flex items-center gap-3 flex-wrap">
         <Link
-          to="/ESA-letter-verification"
+          to="/esa-letter-verification"
           className="whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-bold text-orange-600 hover:underline cursor-pointer"
         >
           <i className="ri-external-link-line text-xs"></i>

@@ -434,6 +434,23 @@ export default function StateESAPage() {
   const stateData = getStateBySlug(stateSlug || "");
   const theme = stateData ? getStateTheme(stateData.abbreviation) : DEFAULT_THEME;
 
+  // Local asset map — uses state-specific image if available, else warm fallback.
+  // Avoids external readdy.ai dependency and prevents same-image repetition in viewport.
+  const STATE_HERO_MAP: Record<string, string> = {
+    CA: "/assets/states/california.jpg",
+    TX: "/assets/states/texas.jpg",
+    FL: "/assets/states/florida.jpg",
+    NY: "/assets/states/new-york.jpg",
+    NC: "/assets/states/north-carolina.jpg",
+    PA: "/assets/states/pennsylvania.jpg",
+    VA: "/assets/states/virginia.jpg",
+    IL: "/assets/states/illinois.jpg",
+  };
+  const heroSrc = (stateData && STATE_HERO_MAP[stateData.abbreviation]) || "/assets/lifestyle/woman-with-dog-new-apartment.jpg";
+  const petSceneSrc = "/assets/lifestyle/owner-with-dog-laptop.jpg";
+  const catSceneSrc = "/assets/backgrounds/lifestyle-freelancer-home-cat.jpg";
+  const labradorSrc = "/assets/blog/cafe-retriever.jpg";
+
   useEffect(() => {
     if (!stateData) return;
 
@@ -544,8 +561,9 @@ export default function StateESAPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.hero%20%20%20%20ESA%20emotional%20support%20animal%20housing%20warm%20tones%20lifestyle%20photography%29%7D&width=1440&height=600&seq=state-hero-${stateData.abbreviation}-v2&orientation=landscape`}
+            src={heroSrc}
             alt={`ESA Letter in ${stateData.name}`}
+            loading="eager"
             className="w-full h-full object-cover object-top"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/55 to-black/25"></div>
@@ -606,8 +624,9 @@ export default function StateESAPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.petScene%20%20%20%20warm%20tones%20cozy%20atmosphere%29%7D&width=700&height=450&seq=state-laws-${stateData.abbreviation}-v2&orientation=landscape`}
+                src={petSceneSrc}
                 alt={`ESA in ${stateData.name}`}
+                loading="lazy"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -621,8 +640,9 @@ export default function StateESAPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
             <div className="rounded-2xl overflow-hidden min-h-72">
               <img
-                src={`https://readdy.ai/api/search-image?query=$%7BencodeURIComponent%28theme.catScene%20%20%20%20warm%20tones%20emotional%20wellness%29%7D&width=700&height=450&seq=state-adv-${stateData.abbreviation}-v2&orientation=landscape`}
+                src={catSceneSrc}
                 alt={`ESA advantages in ${stateData.name}`}
+                loading="lazy"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -688,8 +708,9 @@ export default function StateESAPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="https://readdy.ai/api/search-image?query=adorable%20yellow%20labrador%20retriever%20puppy%20sitting%20on%20a%20cozy%20white%20sofa%20indoors%2C%20soft%20warm%20natural%20light%20from%20window%2C%20fluffy%20fur%2C%20big%20brown%20eyes%20looking%20at%20camera%2C%20happy%20expression%2C%20clean%20bright%20home%20interior%2C%20lifestyle%20pet%20photography%2C%20warm%20beige%20tones&width=700&height=500&seq=cute-lab-esa-section-01&orientation=landscape"
+                src={labradorSrc}
                 alt="Cute Labrador Retriever dog — ESA companion"
+                loading="lazy"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -742,7 +763,7 @@ export default function StateESAPage() {
               <PrivacySafeVerificationNote variant="inline" className="mt-2" />
             </div>
             <Link
-              to="/ESA-letter-verification"
+              to="/esa-letter-verification"
               className="whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-bold text-orange-600 border border-orange-400 px-4 py-2 rounded-lg hover:bg-orange-500 hover:text-white transition-colors cursor-pointer flex-shrink-0"
             >
               How it works

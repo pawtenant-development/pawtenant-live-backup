@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
+import VerificationPillarsSection from "@/components/feature/VerificationPillarsSection";
 
 const steps = [
   {
@@ -47,7 +48,7 @@ const privacyPoints = [
   },
   {
     icon: "ri-lock-password-line",
-    title: "HIPAA-Compliant",
+    title: "HIPAA-Aligned",
     desc: "The entire verification system is designed around HIPAA principles — only public professional credentials are shared.",
   },
 ];
@@ -90,50 +91,117 @@ export default function ESALetterVerificationPage() {
       <SharedNavbar />
 
       <main>
-        {/* Hero */}
-        <section className="bg-[#f0faf7] border-b border-[#b8ddd5] py-16 md:py-20">
-          <div className="max-w-4xl mx-auto px-6 text-center">
-            <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-5">
-              <i className="ri-verified-badge-line"></i>
-              Landlord Verification System
-            </span>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-4 leading-tight tracking-tight">
-              ESA Letter Verification — How It Works
-            </h1>
-            <p className="text-gray-500 text-base leading-relaxed max-w-2xl mx-auto mb-8">
-              Every ESA and PSD letter issued through PawTenant includes a unique Verification ID. Landlords can confirm authenticity and provider credentials online in seconds — without accessing any of your private health information.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link
-                to="/verify"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-md hover:bg-[#164d42] transition-colors cursor-pointer"
-              >
-                <i className="ri-search-line"></i>
-                Verify a Letter ID
-              </Link>
-              <Link
-                to="/assessment"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-white border border-[#1a5c4f] text-[#1a5c4f] text-sm font-bold rounded-md hover:bg-[#f0faf7] transition-colors cursor-pointer"
-              >
-                Get a Verified ESA Letter
-                <i className="ri-arrow-right-line"></i>
-              </Link>
+        {/* Hero — calm, professional, trust-focused */}
+        <section className="relative bg-white border-b border-gray-100 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,#e8f5f1_0%,transparent_60%)] pointer-events-none" />
+          <div className="relative max-w-6xl mx-auto px-6 pt-28 md:pt-36 pb-14 md:pb-16">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+              <div className="lg:col-span-7">
+                <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-5">
+                  <i className="ri-verified-badge-line"></i>
+                  Landlord Verification System
+                </span>
+                <h1 className="text-3xl md:text-4xl lg:text-[2.6rem] font-extrabold text-gray-900 mb-4 leading-[1.15] tracking-tight">
+                  ESA Letter Verification —<br className="hidden md:block" />
+                  <span className="text-[#1a5c4f]"> How Landlords Confirm Authenticity</span>
+                </h1>
+                <p className="text-gray-600 text-base md:text-[1.05rem] leading-relaxed max-w-xl mb-7">
+                  Every ESA and PSD letter issued through PawTenant includes a unique Verification ID. Landlords can confirm the letter and provider credentials online in seconds — without seeing any of your private health information.
+                </p>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <Link
+                    to="/verify"
+                    className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-md hover:bg-[#164d42] transition-colors cursor-pointer"
+                  >
+                    <i className="ri-search-line"></i>
+                    Verify a Letter ID
+                  </Link>
+                  <Link
+                    to="/assessment"
+                    className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-white border border-[#1a5c4f] text-[#1a5c4f] text-sm font-bold rounded-md hover:bg-[#f0faf7] transition-colors cursor-pointer"
+                  >
+                    Get a Verified ESA Letter
+                    <i className="ri-arrow-right-line"></i>
+                  </Link>
+                </div>
+                <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-500">
+                  <span className="inline-flex items-center gap-1.5">
+                    <i className="ri-shield-check-line text-[#1a5c4f]"></i>
+                    HIPAA-aligned
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <i className="ri-user-star-line text-[#1a5c4f]"></i>
+                    Licensed clinicians
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <i className="ri-home-heart-line text-[#1a5c4f]"></i>
+                    Fair Housing Act compliant
+                  </span>
+                </div>
+              </div>
+
+              {/* Hero visual: mock verification result card */}
+              <div className="lg:col-span-5">
+                <div className="bg-white rounded-2xl border border-[#b8ddd5] shadow-[0_8px_30px_-12px_rgba(26,92,79,0.18)] overflow-hidden">
+                  <div className="bg-[#1a5c4f] px-5 py-4 flex items-center gap-3">
+                    <div className="w-8 h-8 flex items-center justify-center bg-white/15 rounded-lg">
+                      <i className="ri-verified-badge-line text-white text-base"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-extrabold text-white">Letter Verified</p>
+                      <p className="text-xs text-white/70 mt-0.5">Status: Valid · ESA Letter</p>
+                    </div>
+                    <span className="ml-auto bg-emerald-400/15 text-emerald-200 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-emerald-300/40">
+                      Valid
+                    </span>
+                  </div>
+                  <div className="p-5 space-y-2.5">
+                    {[
+                      { label: "Verification ID", value: "ESA-CA-8F3K92", mono: true },
+                      { label: "Letter Type", value: "Emotional Support Animal", mono: false },
+                      { label: "State", value: "California", mono: false },
+                      { label: "Issue Date", value: "April 6, 2026", mono: false },
+                      { label: "Provider", value: "Sarah Mitchell, LCSW", mono: false },
+                      { label: "NPI Number", value: "1234567890", mono: true },
+                      { label: "State License", value: "CA-LCSW-98234", mono: true },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-start justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
+                        <span className="text-xs text-gray-400 font-medium flex-shrink-0">{row.label}</span>
+                        <span className={`text-xs text-gray-800 font-bold text-right ${row.mono ? "font-mono" : ""}`}>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-5 pb-5">
+                    <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-lg px-4 py-3 flex items-start gap-2.5">
+                      <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i className="ri-lock-line text-[#1a5c4f] text-xs"></i>
+                      </div>
+                      <p className="text-xs text-[#1a5c4f]/85 leading-relaxed">
+                        No patient health information is displayed on this page.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
+        {/* Trust pillars — large, professional cards */}
+        <VerificationPillarsSection variant="full" />
+
         {/* How it works — 4 steps */}
-        <section className="py-16 bg-white">
-          <div className="max-w-5xl mx-auto px-6">
+        <section className="py-16 md:py-20 bg-white">
+          <div className="max-w-6xl mx-auto px-6">
             <div className="text-center mb-12">
-              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-3">
+              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">
                 How the Verification Process Works
               </h2>
-              <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+              <p className="text-gray-500 text-sm md:text-base max-w-xl mx-auto leading-relaxed">
                 From letter submission to landlord confirmation — the entire process is automatic, secure, and privacy-safe.
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
               {steps.map((step) => (
                 <div key={step.number} className="relative">
                   <div className="bg-[#f8faf9] rounded-xl border border-gray-100 p-6 h-full">
@@ -143,7 +211,7 @@ export default function ESALetterVerificationPage() {
                         <i className={`${step.icon} text-[#1a5c4f] text-base`}></i>
                       </div>
                     </div>
-                    <h3 className="text-sm font-extrabold text-gray-900 mb-2">{step.title}</h3>
+                    <h3 className="text-sm font-extrabold text-gray-900 mb-2 leading-snug">{step.title}</h3>
                     <p className="text-xs text-gray-500 leading-relaxed">{step.desc}</p>
                   </div>
                 </div>
@@ -153,25 +221,25 @@ export default function ESALetterVerificationPage() {
         </section>
 
         {/* What landlords see */}
-        <section className="py-16 bg-[#f8faf9]">
-          <div className="max-w-5xl mx-auto px-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <section className="py-16 md:py-20 bg-[#f8faf9]">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
               <div>
-                <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-4">
+                <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-4">
                   <i className="ri-eye-line"></i>
                   What Landlords See
                 </span>
-                <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-4 leading-tight">
+                <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-4 leading-tight tracking-tight">
                   Only Public Professional Credentials
                 </h2>
-                <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                <p className="text-gray-500 text-sm md:text-base leading-relaxed mb-6">
                   When a landlord enters a Verification ID at pawtenant.com/verify, they see exactly the following — and nothing else. No patient data. No health information. No diagnosis.
                 </p>
                 <ul className="space-y-3">
                   {providerFields.map((f) => (
                     <li key={f.label} className="flex items-center gap-3">
-                      <div className="w-7 h-7 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                        <i className={`${f.icon} text-[#1a5c4f] text-xs`}></i>
+                      <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
+                        <i className={`${f.icon} text-[#1a5c4f] text-sm`}></i>
                       </div>
                       <span className="text-sm text-gray-700 font-medium">{f.label}</span>
                     </li>
@@ -179,43 +247,24 @@ export default function ESALetterVerificationPage() {
                 </ul>
               </div>
 
-              {/* Mock verification card */}
-              <div className="bg-white rounded-2xl border border-[#b8ddd5] overflow-hidden">
-                <div className="bg-[#1a5c4f] px-5 py-4 flex items-center gap-3">
-                  <div className="w-8 h-8 flex items-center justify-center bg-white/15 rounded-lg">
-                    <i className="ri-verified-badge-line text-white text-base"></i>
-                  </div>
-                  <div>
-                    <p className="text-sm font-extrabold text-white">Letter Verified</p>
-                    <p className="text-xs text-white/70 mt-0.5">Status: Valid &bull; ESA Letter</p>
-                  </div>
-                  <span className="ml-auto bg-[#4ade80]/20 text-[#4ade80] text-xs font-bold px-2.5 py-1 rounded-full border border-[#4ade80]/30">
-                    VALID
-                  </span>
+              {/* Lifestyle visual — real existing asset */}
+              <div className="relative">
+                <div className="rounded-2xl overflow-hidden border border-gray-100 bg-white">
+                  <img
+                    src="/assets/lifestyle/person-paperwork-with-dog.jpg"
+                    alt="Person reviewing housing paperwork at home with their dog"
+                    className="w-full h-full object-cover aspect-[4/3]"
+                    loading="lazy"
+                  />
                 </div>
-                <div className="p-5 space-y-3">
-                  {[
-                    { label: "Verification ID", value: "ESA-CA-8F3K92", mono: true },
-                    { label: "Letter Type", value: "Emotional Support Animal (ESA)", mono: false },
-                    { label: "State", value: "California", mono: false },
-                    { label: "Issue Date", value: "April 6, 2026", mono: false },
-                    { label: "Provider", value: "Sarah Mitchell, LCSW", mono: false },
-                    { label: "NPI Number", value: "1234567890", mono: true },
-                    { label: "State License", value: "CA-LCSW-98234", mono: true },
-                  ].map((row) => (
-                    <div key={row.label} className="flex items-start justify-between gap-4 py-2 border-b border-gray-50 last:border-0">
-                      <span className="text-xs text-gray-400 font-medium flex-shrink-0">{row.label}</span>
-                      <span className={`text-xs text-gray-800 font-bold text-right ${row.mono ? "font-mono" : ""}`}>{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="px-5 pb-5">
-                  <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-lg px-4 py-3 flex items-start gap-2.5">
-                    <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <i className="ri-lock-line text-[#1a5c4f] text-xs"></i>
-                    </div>
-                    <p className="text-xs text-[#1a5c4f]/80 leading-relaxed">
-                      No patient health information is displayed on this page.
+                <div className="absolute -bottom-4 left-4 right-4 md:left-6 md:right-auto md:max-w-[78%] bg-white rounded-xl border border-[#b8ddd5] shadow-[0_8px_24px_-12px_rgba(26,92,79,0.25)] px-5 py-4 flex items-start gap-3">
+                  <div className="w-9 h-9 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                    <i className="ri-shield-keyhole-line text-white text-base"></i>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-extrabold text-gray-900 leading-snug">Privacy by design</p>
+                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                      Verification confirms authenticity. It never exposes health information.
                     </p>
                   </div>
                 </div>
@@ -225,27 +274,27 @@ export default function ESALetterVerificationPage() {
         </section>
 
         {/* Privacy protection */}
-        <section className="py-16 bg-white">
-          <div className="max-w-5xl mx-auto px-6">
+        <section className="py-16 md:py-20 bg-white">
+          <div className="max-w-6xl mx-auto px-6">
             <div className="text-center mb-12">
-              <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-4">
+              <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-4">
                 <i className="ri-shield-keyhole-line"></i>
                 Privacy Protection
               </span>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-3">
+              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">
                 What Is Never Disclosed
               </h2>
-              <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+              <p className="text-gray-500 text-sm md:text-base max-w-xl mx-auto leading-relaxed">
                 The verification system is built with a strict allowlist — only explicitly approved fields are ever returned. Everything else is blocked at the database level.
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {privacyPoints.map((p) => (
-                <div key={p.title} className="bg-[#f8faf9] rounded-xl border border-gray-100 p-5">
-                  <div className="w-9 h-9 flex items-center justify-center bg-red-50 rounded-lg mb-3">
-                    <i className={`${p.icon} text-red-400 text-base`}></i>
+                <div key={p.title} className="bg-[#f8faf9] rounded-xl border border-gray-100 p-6">
+                  <div className="w-10 h-10 flex items-center justify-center bg-red-50 rounded-lg mb-3">
+                    <i className={`${p.icon} text-red-400 text-lg`}></i>
                   </div>
-                  <h3 className="text-sm font-extrabold text-gray-900 mb-1.5">{p.title}</h3>
+                  <h3 className="text-sm font-extrabold text-gray-900 mb-1.5 leading-snug">{p.title}</h3>
                   <p className="text-xs text-gray-500 leading-relaxed">{p.desc}</p>
                 </div>
               ))}
@@ -254,13 +303,13 @@ export default function ESALetterVerificationPage() {
         </section>
 
         {/* FAQ */}
-        <section className="py-16 bg-[#f8faf9]">
+        <section className="py-16 md:py-20 bg-[#f8faf9]">
           <div className="max-w-3xl mx-auto px-6">
             <div className="text-center mb-10">
-              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-3">
+              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-3 tracking-tight">
                 Frequently Asked Questions
               </h2>
-              <p className="text-gray-500 text-sm leading-relaxed">
+              <p className="text-gray-500 text-sm md:text-base leading-relaxed">
                 Common questions from tenants and landlords about the verification system.
               </p>
             </div>
@@ -281,12 +330,12 @@ export default function ESALetterVerificationPage() {
         </section>
 
         {/* CTA */}
-        <section className="py-14 bg-[#1a5c4f]">
+        <section className="py-14 md:py-16 bg-[#1a5c4f]">
           <div className="max-w-3xl mx-auto px-6 text-center">
-            <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3">
+            <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3 tracking-tight">
               Ready to Get a Verified ESA Letter?
             </h2>
-            <p className="text-white/70 text-sm leading-relaxed mb-8 max-w-xl mx-auto">
+            <p className="text-white/70 text-sm md:text-base leading-relaxed mb-8 max-w-xl mx-auto">
               Every letter we issue includes a Verification ID automatically. Start your assessment today and receive a letter your landlord can verify in seconds.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">

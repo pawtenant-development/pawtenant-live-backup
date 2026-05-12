@@ -177,6 +177,12 @@
     { "source": "/lp-esa-housing/",          "destination": "/esa-letter-housing",       "permanent": true },
     { "source": "/lp/esa-housing",           "destination": "/esa-letter-housing",       "permanent": true },
     { "source": "/lp/esa-housing/",          "destination": "/esa-letter-housing",       "permanent": true },
+    { "source": "/ESA-letter-verification",   "destination": "/esa-letter-verification",  "permanent": true },
+    { "source": "/ESA-letter-verification/",  "destination": "/esa-letter-verification",  "permanent": true },
+    { "source": "/verifiable-esa-letters",    "destination": "/esa-letter-verification",  "permanent": true },
+    { "source": "/verifiable-esa-letters/",   "destination": "/esa-letter-verification",  "permanent": true },
+    { "source": "/landlord-verification",     "destination": "/esa-letter-verification",  "permanent": true },
+    { "source": "/landlord-verification/",    "destination": "/esa-letter-verification",  "permanent": true },
     {
       "source": "/",
       "has": [{ "type": "query", "key": "page_id", "value": "586" }],

@@ -114,25 +114,15 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "PawTenant's complete ESA and PSD resource hub — guides, state-specific laws, blog posts, housing rights, travel policies, and mental health resources. Everything you need to know about ESA letters and PSD letters in 2026.",
   },
-  "/ESA-letter-verification": {
+  "/esa-letter-verification": {
     title: "ESA Letter Verification for Landlords | PawTenant",
     description:
       "Landlords and property managers: verify a PawTenant ESA letter in seconds. Privacy-safe verification confirms provider license status without exposing medical information.",
-  },
-  "/verifiable-esa-letters": {
-    title: "Verifiable ESA Letters | Landlord-Ready Documentation | PawTenant",
-    description:
-      "PawTenant ESA letters are fully verifiable by landlords. Each letter includes an LMHP license number and a secure verification link — no medical information exposed.",
   },
   "/sitemap": {
     title: "Sitemap | PawTenant",
     description:
       "Full sitemap of PawTenant — browse ESA letter guides, state pages, housing rights, PSD resources, blog posts, and more.",
-  },
-  "/everything-you-need-to-know-about-obtaining-an-esa-letter-online": {
-    title: "Everything You Need to Know About Obtaining an ESA Letter Online | PawTenant",
-    description:
-      "The complete 2026 guide to obtaining a legitimate ESA letter online. Learn who qualifies, how online evaluations work with licensed mental health professionals, what makes a letter housing-valid, and how to spot sketchy ESA websites.",
   },
   "/privacy-policy": {
     title: "Privacy Policy | PawTenant",

@@ -1,3 +1,5 @@
+import SampleLetterCard from "@/components/feature/SampleLetterCard";
+
 const CALLOUTS = [
   {
     num: 1,
@@ -51,18 +53,9 @@ export default function LetterPreviewSection() {
 
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 items-start">
 
-          {/* Letter Mockup — same SVG asset used in Step 3 checkout */}
+          {/* Letter Mockup — canonical Step 3 sample (single source) */}
           <div className="w-full lg:w-[480px] flex-shrink-0">
-            <div className="rounded-2xl overflow-hidden shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] ring-1 ring-slate-200 bg-white relative">
-              <img
-                src="/assets/documents/esa-sample-letter.svg"
-                alt="Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature"
-                className="w-full h-auto block"
-              />
-              <div className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-white/90 backdrop-blur ring-1 ring-slate-200 text-[9px] font-semibold tracking-[0.24em] text-slate-500 uppercase">
-                Sample
-              </div>
-            </div>
+            <SampleLetterCard />
           </div>
 
           {/* Right column — warmer, conversion-focused */}

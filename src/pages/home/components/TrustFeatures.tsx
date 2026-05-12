@@ -40,7 +40,7 @@ const features = [
     cardBg: "bg-[#FFF7ED]",
     title: "Landlord Verification",
     desc: "Every finalized letter includes a Verification ID. Landlords can confirm authenticity online — your health details are never disclosed.",
-    link: "/ESA-letter-verification",
+    link: "/esa-letter-verification",
     linkLabel: "How it works",
   },
 ];

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
+import VerificationPillarsSection from "../../components/feature/VerificationPillarsSection";
 import { Link } from "react-router-dom";
 
 const trustBadges = [
@@ -64,11 +65,11 @@ export default function HousingRightsPage() {
       <meta property="og:description" content="Understand your housing rights with an emotional support animal. Learn how the Fair Housing Act protects ESA owners and keeps you and your pet together." />
       <meta property="og:url" content="https://www.pawtenant.com/housing-rights-esa" />
       <meta property="og:type" content="article" />
-      <meta property="og:image" content="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0" />
+      <meta property="og:image" content="https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="ESA Housing Rights 2026: Fair Housing Act Protections | PawTenant" />
       <meta name="twitter:description" content="Your ESA housing rights under the Fair Housing Act explained. Landlords cannot charge pet fees or deny a valid ESA letter. Get your ESA letter with PawTenant." />
-      <meta name="twitter:image" content="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0" />
+      <meta name="twitter:image" content="https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@graph": [
@@ -85,16 +86,16 @@ export default function HousingRightsPage() {
             "@type": "ImageObject",
             "name": "Licensed Mental Health Professionals — ESA Housing Rights",
             "description": "Board-licensed mental health professionals provide ESA letters that protect housing rights under the Fair Housing Act for emotional support animal owners across the USA.",
-            "url": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0",
-            "contentUrl": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0",
+            "url": "https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg",
+            "contentUrl": "https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg",
             "representativeOfPage": true
           },
           {
             "@type": "ImageObject",
             "name": "ESA Housing Protection Support — Fair Housing Act",
             "description": "ESA housing protection and Fair Housing Act tenant rights for emotional support animal owners — no pet fees, no breed restrictions.",
-            "url": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/d865c255-b615-451f-a02d-71420df80d88_Housing-Protection-Support.jpg?v=c3cc0edf08b5cac53b799c74d0c40b95",
-            "contentUrl": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/d865c255-b615-451f-a02d-71420df80d88_Housing-Protection-Support.jpg?v=c3cc0edf08b5cac53b799c74d0c40b95"
+            "url": "https://www.pawtenant.com/assets/housing/home-together.jpg",
+            "contentUrl": "https://www.pawtenant.com/assets/housing/home-together.jpg"
           }
         ]
       }) }} />
@@ -105,9 +106,10 @@ export default function HousingRightsPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0"
+            src="/assets/backgrounds/telehealth-woman-doctor-videocall.jpg"
             alt="Licensed mental health professionals issuing ESA letters for housing rights under the Fair Housing Act"
             title="Licensed Mental Health Professionals — ESA Housing Rights"
+            loading="eager"
             className="w-full h-full object-cover object-top"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/20"></div>
@@ -212,8 +214,9 @@ export default function HousingRightsPage() {
             <div>
               <div className="rounded-2xl overflow-hidden min-h-64 mb-8">
                 <img
-                  src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/d865c255-b615-451f-a02d-71420df80d88_Housing-Protection-Support.jpg?v=c3cc0edf08b5cac53b799c74d0c40b95"
+                  src="/assets/housing/home-together.jpg"
                   alt="ESA housing protection support — Fair Housing Act tenant rights for emotional support animal owners"
+                  loading="lazy"
                   className="w-full h-full object-cover object-top"
                 />
               </div>
@@ -283,8 +286,11 @@ export default function HousingRightsPage() {
         </div>
       </section>
 
+      {/* Trust pillars — reusable section, compact variant */}
+      <VerificationPillarsSection variant="compact" showCTA showPrivacyNote className="bg-white" />
+
       {/* FAQ */}
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-[#fafafa]">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-10">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Popular Questions</span>

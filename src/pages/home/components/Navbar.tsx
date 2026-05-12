@@ -45,8 +45,8 @@ export default function Navbar() {
             <img
               src={
                 scrolled
-                  ? "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
-                  : "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/d2641cf9cd0cc381736d2232d3da5f7c.png"
+                  ? "/assets/brand/pawtenant-logo-black-02.png"
+                  : "/assets/brand/pawtenant-logo-white-02.png"
               }
               alt="PawTenant"
               className={`h-14 w-auto object-contain transition-all ${!scrolled ? "brightness-0 invert" : ""}`}
@@ -139,7 +139,7 @@ export default function Navbar() {
                   <div className="mx-4 my-1 border-t border-gray-100" />
                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-4 pb-1">Features</p>
                   <a
-                    href="/verifiable-esa-letters"
+                    href="/esa-letter-verification"
                     className="flex items-start gap-3 px-4 py-2.5 hover:bg-orange-50 transition-colors cursor-pointer group"
                     onClick={() => setApplyOpen(false)}
                   >
@@ -249,7 +249,7 @@ export default function Navbar() {
                 </div>
               </a>
               <a
-                href="/verifiable-esa-letters"
+                href="/esa-letter-verification"
                 className="whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#FFF7ED] border border-orange-200 text-orange-700 text-sm font-bold rounded-xl hover:bg-orange-50 transition-colors cursor-pointer"
                 onClick={() => setMenuOpen(false)}
               >

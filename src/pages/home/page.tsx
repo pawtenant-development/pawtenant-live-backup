@@ -16,7 +16,8 @@ import CTASection from "./components/CTASection";
 import ContactSection from "./components/ContactSection";
 import TopStatesSection from "./components/TopStatesSection";
 import MediaGallery from "./components/MediaGallery";
-import VerificationTrustCard from "../../components/feature/VerificationTrustCard";
+import VerificationPillarsSection from "../../components/feature/VerificationPillarsSection";
+import AssessmentVideoPreview from "../../components/feature/AssessmentVideoPreview";
 import LetterPreviewSection from "./components/LetterPreviewSection";
 import LandlordSupportSection from "./components/LandlordSupportSection";
 import { Link } from "react-router-dom";
@@ -154,15 +155,16 @@ export default function Home() {
       <MediaTrustBar />
       <TrustFeatures />
       <StepsSection />
+      <AssessmentVideoPreview />
       <WhatIsESA />
       <TrustedLetters />
       <LetterPreviewSection />
       <LandlordSupportSection />
       <PricingSection />
       <WhyChooseSection />
-      <VerificationTrustCard variant="section" />
+      <VerificationPillarsSection variant="compact" showCTA showPrivacyNote />
       <TopStatesSection />
-      <div className="hidden md:block"><DoctorsSection /></div>
+      <DoctorsSection />
       <TestimonialsSection />
       <MediaGallery />
       <FAQSection />

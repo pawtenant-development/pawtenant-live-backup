@@ -57,7 +57,7 @@ export default function LandlordVerificationBadge({
         ))}
       </div>
       <Link
-        to="/ESA-letter-verification"
+        to="/esa-letter-verification"
         className="whitespace-nowrap inline-flex items-center gap-1.5 text-xs font-bold text-orange-600 hover:underline cursor-pointer"
       >
         How verification works

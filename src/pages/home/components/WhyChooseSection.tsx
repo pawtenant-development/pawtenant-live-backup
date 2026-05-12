@@ -93,7 +93,7 @@ export default function WhyChooseSection() {
         {/* Verification highlight card — centered below the grid */}
         <div className="flex justify-center mt-6">
           <a
-            href="/verifiable-esa-letters"
+            href="/esa-letter-verification"
             className="flex items-start gap-4 p-5 bg-[#FFF7ED] rounded-xl border border-orange-200 hover:border-orange-400 transition-colors cursor-pointer group w-full max-w-md"
           >
             <div className="w-11 h-11 flex items-center justify-center rounded-lg flex-shrink-0 bg-[#92400e] text-white">

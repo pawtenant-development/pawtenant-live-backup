@@ -54,7 +54,6 @@ const AccountCheckoutPage = lazy(() => import("../pages/account-checkout/page"))
 const LpEsaHousingPage = lazy(() => import("../pages/lp-esa-housing/page"));
 // Meta/Facebook Ads paid landing page — noindex, not in nav, not in sitemap.
 const MetaEsaLetterPage = lazy(() => import("../pages/meta-esa-letter/page"));
-const EverythingEsaOnlinePage = lazy(() => import("../pages/everything-esa-online/page"));
 // Recovery click bridge — /r/:stage?o=<confirmationId>&dc=<discountCode>
 const RecoveryClickBridge = lazy(() => import("../pages/r/page"));
 
@@ -133,14 +132,16 @@ const routes: RouteObject[] = [
   { path: "/resource-center", element: <P C={ResourceCenterPage} /> },
   { path: "/verify", element: <P C={VerifyEntryPage} /> },
   { path: "/verify/:letterId", element: <P C={VerifyResultPage} /> },
-  { path: "/ESA-letter-verification", element: <P C={ESALetterVerificationPage} /> },
-  { path: "/landlord-verification", element: <Navigate to="/ESA-letter-verification" replace /> },
-  { path: "/verifiable-esa-letters", element: <P C={lazy(() => import("../pages/verifiable-esa-letters/page"))} /> },
-  // Long-form SEO guide — indexable, in sitemap.
-  { path: "/everything-you-need-to-know-about-obtaining-an-esa-letter-online", element: <P C={EverythingEsaOnlinePage} /> },
-  // Google Ads paid landing page (LIVE). noindex via per-page meta. Not in nav. Not in sitemap.
+  // Canonical landlord verification info page. caseSensitive so legacy
+  // uppercase paths fall through to the explicit Navigate redirect below.
+  { path: "/esa-letter-verification", caseSensitive: true, element: <P C={ESALetterVerificationPage} /> },
+  // Legacy paths normalize/redirect to the canonical lowercase route.
+  { path: "/ESA-letter-verification", element: <Navigate to="/esa-letter-verification" replace /> },
+  { path: "/landlord-verification", element: <Navigate to="/esa-letter-verification" replace /> },
+  { path: "/verifiable-esa-letters", element: <Navigate to="/esa-letter-verification" replace /> },
+  // Google Ads paid landing page (TEST). noindex via per-page meta. Not in nav. Not in sitemap.
   { path: "/esa-letter-housing", element: <P C={LpEsaHousingPage} /> },
-  // Meta/Facebook Ads paid landing page (LIVE). noindex via per-page meta. Not in nav. Not in sitemap.
+  // Meta/Facebook Ads paid landing page (TEST). noindex via per-page meta. Not in nav. Not in sitemap.
   { path: "/meta-esa-letter", element: <P C={MetaEsaLetterPage} /> },
   // Legacy redirects to the new canonical URL.
   { path: "/lp/esa-housing", element: <Navigate to="/esa-letter-housing" replace /> },

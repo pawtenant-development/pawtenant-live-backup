@@ -457,7 +457,7 @@ export default function BlogPostPage() {
                 );
               })()}
 
-              {/* Cross-link CTA to verifiable-esa-letters */}
+              {/* Cross-link CTA to /esa-letter-verification */}
               {'ctaLink' in post && post.ctaLink && (
                 <div className="mt-6 p-5 bg-[#f0faf7] rounded-xl border border-[#b8ddd5] flex items-center justify-between gap-4 flex-wrap">
                   <div className="flex items-center gap-3">

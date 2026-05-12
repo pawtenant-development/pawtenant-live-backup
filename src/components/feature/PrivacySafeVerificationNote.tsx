@@ -21,7 +21,7 @@ export default function PrivacySafeVerificationNote({
         <i className="ri-shield-check-line text-xs flex-shrink-0"></i>
         Verification confirms authenticity only — your health information is never disclosed.{" "}
         <Link
-          to="/ESA-letter-verification"
+          to="/esa-letter-verification"
           className="font-bold underline hover:no-underline cursor-pointer whitespace-nowrap"
         >
           Learn more
@@ -40,7 +40,7 @@ export default function PrivacySafeVerificationNote({
         <p className="text-xs text-[#2c5282]/75 leading-relaxed">
           Your finalized letter includes a Verification ID. Landlords can confirm authenticity online — your diagnosis and health details are never shared.{" "}
           <Link
-            to="/ESA-letter-verification"
+            to="/esa-letter-verification"
             className="font-bold underline hover:no-underline cursor-pointer"
           >
             See how it works

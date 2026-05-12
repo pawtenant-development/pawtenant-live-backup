@@ -686,26 +686,103 @@ export default function LpEsaHousingPage() {
             </p>
           </div>
 
-          {/* Comparison table — card feel */}
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left text-[11px] uppercase tracking-wider text-slate-500 font-semibold px-5 py-4">Feature</th>
-                  <th className="text-center text-[11px] uppercase tracking-wider text-[#0E2A47] font-semibold px-5 py-4">PawTenant</th>
-                  <th className="text-center text-[11px] uppercase tracking-wider text-slate-500 font-semibold px-5 py-4">Typical online services</th>
-                </tr>
-              </thead>
-              <tbody>
-                <CompareRow feature="Unique Verification ID landlords can confirm" us done them="Rare or absent" />
-                <CompareRow feature="Real provider names + license # + NPI on letter" us done them="Often hidden" />
-                <CompareRow feature="Reviewed by clinician licensed in your state" us done them="Sometimes" />
-                <CompareRow feature="Refund if you don't qualify after review" us done them="Sometimes" />
-                <CompareRow feature="Auto-approval / 24-hour 'guaranteed'" us={false} usText="No — clinical review only" them="Common" />
-                <CompareRow feature="Housing-specific documentation language" us done them="Generic templates" />
-              </tbody>
-            </table>
-          </div>
+          {(() => {
+            const rows: Array<{
+              feature: string;
+              us?: boolean;
+              usText?: string;
+              them: string;
+              done?: true;
+            }> = [
+              { feature: "Unique Verification ID landlords can confirm", us: true, done: true, them: "Rare or absent" },
+              { feature: "Real provider names + license # + NPI on letter", us: true, done: true, them: "Often hidden" },
+              { feature: "Reviewed by clinician licensed in your state", us: true, done: true, them: "Sometimes" },
+              { feature: "Refund if you don't qualify after review", us: true, done: true, them: "Sometimes" },
+              { feature: "Auto-approval / 24-hour 'guaranteed'", us: false, usText: "No — clinical review only", them: "Common" },
+              { feature: "Housing-specific documentation language", us: true, done: true, them: "Generic templates" },
+            ];
+            return (
+              <>
+                {/* Desktop / tablet — comparison table */}
+                <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="text-left text-[11px] uppercase tracking-wider text-slate-500 font-semibold px-5 py-4">Feature</th>
+                        <th className="text-center text-[11px] uppercase tracking-wider text-[#0E2A47] font-semibold px-5 py-4">PawTenant</th>
+                        <th className="text-center text-[11px] uppercase tracking-wider text-slate-500 font-semibold px-5 py-4">Typical online services</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <CompareRow
+                          key={r.feature}
+                          feature={r.feature}
+                          us={r.us}
+                          usText={r.usText}
+                          them={r.them}
+                          done={r.done}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile — stacked comparison cards */}
+                <div className="md:hidden space-y-4">
+                  {rows.map((r) => {
+                    const usIsYes = r.done === true || r.us === true;
+                    return (
+                      <div
+                        key={r.feature}
+                        className="bg-white rounded-2xl border border-slate-200 shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden"
+                      >
+                        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
+                          <p className="text-[13px] font-semibold text-slate-900 leading-snug">{r.feature}</p>
+                        </div>
+                        <div className="divide-y divide-slate-100">
+                          <div className="flex items-start gap-3 px-5 py-3">
+                            <span className="text-[10px] font-bold tracking-[0.12em] uppercase text-[#0E2A47] w-[88px] flex-shrink-0 pt-0.5">
+                              PawTenant
+                            </span>
+                            <span className="flex items-start gap-2 min-w-0">
+                              <span
+                                className={`w-5 h-5 rounded-full ${usIsYes ? "bg-emerald-600" : "bg-slate-400"} text-white flex items-center justify-center flex-shrink-0 mt-0.5`}
+                              >
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                  {usIsYes ? (
+                                    <polyline points="20 6 9 17 4 12" />
+                                  ) : (
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                  )}
+                                </svg>
+                              </span>
+                              <span className={`text-[13px] leading-snug ${usIsYes ? "text-emerald-700 font-medium" : "text-slate-700"}`}>
+                                {r.usText ?? (usIsYes ? "Yes" : "No")}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-3 px-5 py-3">
+                            <span className="text-[10px] font-bold tracking-[0.12em] uppercase text-slate-500 w-[88px] flex-shrink-0 pt-0.5">
+                              Typical
+                            </span>
+                            <span className="flex items-start gap-2 min-w-0">
+                              <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                  <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                              </span>
+                              <span className="text-[13px] text-slate-500 leading-snug">{r.them}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </section>
 
@@ -782,7 +859,7 @@ function LetterPreviewCard() {
       {/* SVG sample letter */}
       <div className="bg-white p-3 md:p-4">
         <img
-          src="/assets/documents/esa-sample-letter.svg"
+          src="/images/checkout/esa-sample-letter.svg"
           alt="Sample PawTenant ESA letter showing the verification ID, provider credentials, and housing-accommodation language. Names and details are placeholders."
           width={800}
           height={1035}

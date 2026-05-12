@@ -1,5 +1,6 @@
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
+import AssessmentVideoPreview from "../../components/feature/AssessmentVideoPreview";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 
@@ -176,8 +177,9 @@ export default function HowToGetESAPage() {
       <section className="relative pt-28 pb-20 overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src="https://readdy.ai/api/search-image?query=warm%20cozy%20home%20interior%20with%20a%20person%20sitting%20comfortably%20on%20a%20sofa%20with%20their%20dog%20a%20golden%20retriever%20soft%20natural%20light%20streaming%20through%20windows%20calming%20and%20peaceful%20atmosphere%20warm%20tones%20beige%20and%20cream%20home%20setting&width=1440&height=600&seq=howesa01&orientation=landscape"
+            src="/assets/lifestyle/owner-with-dog-laptop.jpg"
             alt="Get an ESA Letter"
+            loading="eager"
             className="w-full h-full object-cover object-top"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30"></div>
@@ -272,6 +274,14 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
+      {/* Assessment UI clips — real screen recordings */}
+      <AssessmentVideoPreview
+        eyebrow="A Look at the Process"
+        heading="See the Assessment Before You Start"
+        subheading="Four short, silent previews from the real PawTenant assessment. No payment to start and no surprises."
+        className="bg-white"
+      />
+
       {/* What Is ESA */}
       <section className="py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6">
@@ -298,8 +308,9 @@ export default function HowToGetESAPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="https://readdy.ai/api/search-image?query=person%20hugging%20their%20dog%20a%20labrador%20indoors%20warm%20natural%20light%20close%20emotional%20bond%20between%20human%20and%20pet%20cozy%20home%20background%20soft%20tones%20beige%20and%20warm%20white%20emotional%20support%20calming%20portrait&width=700&height=500&seq=howesa02&orientation=landscape"
+                src="/assets/testimonials/man-with-dog-home.jpg"
                 alt="Emotional Support Animal"
+                loading="lazy"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -313,8 +324,9 @@ export default function HowToGetESAPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="https://readdy.ai/api/search-image?query=woman%20sitting%20peacefully%20in%20a%20bright%20living%20room%20with%20her%20cat%20on%20her%20lap%20looking%20calm%20and%20relaxed%20warm%20sunlight%20plants%20in%20background%20cozy%20home%20environment%20natural%20tones%20mental%20wellness&width=700&height=500&seq=howesa03&orientation=landscape"
+                src="/assets/backgrounds/lifestyle-freelancer-home-cat.jpg"
                 alt="Why need an ESA letter"
+                loading="lazy"
                 className="w-full h-full object-cover object-top"
               />
             </div>

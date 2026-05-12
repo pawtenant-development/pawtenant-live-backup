@@ -1,7 +1,19 @@
-const sections = [
+type BadgeTone = "orange" | "teal";
+
+const sections: Array<{
+  badge: string;
+  tone: BadgeTone;
+  icon: string;
+  title: string;
+  desc: string;
+  bullets: string[];
+  cta: string;
+  img: string;
+  reverse: boolean;
+}> = [
   {
     badge: "Licensed Providers",
-    badgeColor: "bg-orange-100 text-orange-600",
+    tone: "orange",
     icon: "ri-user-heart-line",
     title: "Licensed Mental Health Professionals",
     desc: "Every ESA letter is reviewed and signed by a fully licensed mental health professional. Our network includes licensed therapists, psychologists, and clinical social workers credentialed in their state.",
@@ -17,7 +29,7 @@ const sections = [
   },
   {
     badge: "Housing Rights",
-    badgeColor: "bg-teal-100 text-teal-600",
+    tone: "teal",
     icon: "ri-home-smile-line",
     title: "Housing Protection Support",
     desc: "Our ESA letters are written to meet the documentation standards of the Fair Housing Act so housing providers can review reasonable accommodation requests confidently. We help you submit your letter calmly and clearly.",
@@ -33,7 +45,7 @@ const sections = [
   },
   {
     badge: "Telehealth Process",
-    badgeColor: "bg-orange-100 text-orange-600",
+    tone: "orange",
     icon: "ri-smartphone-line",
     title: "Confidential Online Evaluation",
     desc: "The entire process happens privately online — no waiting rooms, no in-person visits. Complete your assessment from home and, if you qualify, your licensed provider issues your letter — typically within one business day.",
@@ -48,6 +60,19 @@ const sections = [
     reverse: false,
   },
 ];
+
+const TONE_STYLES: Record<BadgeTone, { wrap: string; iconBg: string; text: string }> = {
+  orange: {
+    wrap: "bg-orange-50 border-orange-200",
+    iconBg: "bg-orange-500 text-white",
+    text: "text-orange-700",
+  },
+  teal: {
+    wrap: "bg-teal-50 border-teal-200",
+    iconBg: "bg-teal-600 text-white",
+    text: "text-teal-700",
+  },
+};
 
 export default function TrustedLetters() {
   return (
@@ -82,10 +107,23 @@ export default function TrustedLetters() {
 
               {/* Content */}
               <div className={`flex flex-col justify-center ${s.reverse ? "lg:order-1" : "lg:order-2"}`}>
-                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full ${s.badgeColor} mb-4`}>
-                  <i className={`${s.icon}`}></i>
-                  {s.badge}
-                </span>
+                {(() => {
+                  const t = TONE_STYLES[s.tone];
+                  return (
+                    <span
+                      className={`self-start inline-flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full border ${t.wrap} mb-5`}
+                    >
+                      <span
+                        className={`w-6 h-6 flex items-center justify-center rounded-full ${t.iconBg} flex-shrink-0`}
+                      >
+                        <i className={`${s.icon} text-[13px]`}></i>
+                      </span>
+                      <span className={`text-[11px] font-bold tracking-[0.08em] uppercase ${t.text}`}>
+                        {s.badge}
+                      </span>
+                    </span>
+                  );
+                })()}
                 <h3 className="text-2xl font-extrabold text-gray-900 mb-4">{s.title}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed mb-6">{s.desc}</p>
                 <ul className="space-y-2.5 mb-8">

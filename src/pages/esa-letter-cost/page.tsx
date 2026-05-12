@@ -90,7 +90,7 @@ const faqs = [
   { q: "Choosing Between An ESA And A Service Animal", a: "Service animals are trained for specific tasks and protected under the ADA in public spaces. ESAs provide emotional comfort and are protected under the FHA for housing. If you need housing protection and emotional support, an ESA letter is the right choice." },
 ];
 
-const SAMPLE_IMG = "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8496bb5f-3256-4901-86f7-84bbb2ec3596_PawTenant-ESA-document-with-callouts.png?v=56e54caa565cc010fb19c7679d66a2b4";
+const SAMPLE_IMG = "/images/checkout/esa-sample-letter.svg";
 
 export default function ESALetterCostPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -137,8 +137,9 @@ export default function ESALetterCostPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src="https://readdy.ai/api/search-image?query=woman%20sitting%20at%20a%20desk%20reviewing%20documents%20with%20her%20dog%20beside%20her%20warm%20home%20office%20setting%20natural%20light%20cozy%20interior%20beige%20tones%20paperwork%20ESA%20letter%20consultation%20affordable%20telehealth&width=1440&height=600&seq=esacost01&orientation=landscape"
+            src="/assets/lifestyle/person-paperwork-with-dog.jpg"
             alt="ESA Letter Cost"
+            loading="eager"
             className="w-full h-full object-cover object-top"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/20"></div>

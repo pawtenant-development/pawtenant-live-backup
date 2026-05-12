@@ -113,7 +113,7 @@ const siteStructure = [
       { label: "Why PawTenant Is the #1 Verifiable ESA Service", href: "/blog/why-pawtenant-best-verifiable-esa-letter-service" },
       { label: "Landlord Verification Guide 2026", href: "/blog/landlord-verification-esa-letter-guide-2026" },
       { label: "ESA Verification Protects Housing Rights", href: "/blog/esa-letter-verification-protects-housing-rights-2026" },
-      { label: "Verifiable ESA Letters — How It Works", href: "/verifiable-esa-letters" },
+      { label: "ESA Letter Verification — For Landlords", href: "/esa-letter-verification" },
       { label: "How to Request ESA from University", href: "/blog/how-to-request-esa-accommodation-university-2026" },
       { label: "ESA in College Dorms Guide", href: "/blog/can-you-have-esa-in-college-dorms" },
       { label: "ESA Letter for College Students", href: "/blog/esa-letter-college-students-dorm-rights-federal-laws" },

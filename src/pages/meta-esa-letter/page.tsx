@@ -21,6 +21,11 @@ type Short = {
 // /public/assets/meta/shorts/ and set `thumb: "/assets/meta/shorts/<file>.jpg"`.
 const SHORTS: Short[] = [
   {
+    // /shorts/_2sX3zf9qdk — process walkthrough Short.
+    id: "_2sX3zf9qdk",
+    title: "A closer look at the process",
+  },
+  {
     id: "tSr6-MCSx4w",
     title: "“This looked sketchy at first…”",
     thumb: "/assets/meta/shorts/thumb_v2_evelyn.jpg",
@@ -414,7 +419,7 @@ export default function MetaEsaLetterPage() {
               </div>
               <div className="bg-white p-3 md:p-4">
                 <img
-                  src="/assets/documents/esa-sample-letter.svg"
+                  src="/images/checkout/esa-sample-letter.svg"
                   alt="Sample PawTenant ESA letter showing provider credentials and housing-accommodation language. Names and details are placeholders."
                   width={800}
                   height={1035}
@@ -491,7 +496,7 @@ export default function MetaEsaLetterPage() {
         </div>
       </section>
 
-      {/* ─────────── 6. HOW PAWTENANT WORKS ─────────── */}
+      {/* ─────────── 6. HOW PAWTENANT WORKS — explainer/doodle placeholder ─────────── */}
       <section className="bg-white border-y border-slate-200">
         <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
           <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
