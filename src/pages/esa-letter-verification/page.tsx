@@ -251,8 +251,8 @@ export default function ESALetterVerificationPage() {
               <div className="relative">
                 <div className="rounded-2xl overflow-hidden border border-gray-100 bg-white">
                   <img
-                    src="/assets/lifestyle/person-paperwork-with-dog.jpg"
-                    alt="Person reviewing housing paperwork at home with their dog"
+                    src="/assets/blog/hands-typing-dog.jpg"
+                    alt="Reviewing housing paperwork at home alongside an emotional support dog"
                     className="w-full h-full object-cover aspect-[4/3]"
                     loading="lazy"
                   />

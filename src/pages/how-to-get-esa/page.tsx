@@ -177,8 +177,8 @@ export default function HowToGetESAPage() {
       <section className="relative pt-28 pb-20 overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src="/assets/lifestyle/owner-with-dog-laptop.jpg"
-            alt="Get an ESA Letter"
+            src="/assets/lifestyle/woman-telehealth-with-dog.jpg"
+            alt="Telehealth assessment for an ESA letter with a licensed mental health practitioner"
             loading="eager"
             className="w-full h-full object-cover object-top"
           />
@@ -308,7 +308,7 @@ export default function HowToGetESAPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="/assets/testimonials/man-with-dog-home.jpg"
+                src="/assets/blog/man-puppy-portrait.jpg"
                 alt="Emotional Support Animal"
                 loading="lazy"
                 className="w-full h-full object-cover object-top"
@@ -324,7 +324,7 @@ export default function HowToGetESAPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="/assets/backgrounds/lifestyle-freelancer-home-cat.jpg"
+                src="/assets/blog/freelancer-cat-desk.jpg"
                 alt="Why need an ESA letter"
                 loading="lazy"
                 className="w-full h-full object-cover object-top"
