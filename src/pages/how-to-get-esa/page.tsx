@@ -177,8 +177,8 @@ export default function HowToGetESAPage() {
       <section className="relative pt-28 pb-20 overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src="/assets/lifestyle/woman-telehealth-with-dog.jpg"
-            alt="Telehealth assessment for an ESA letter with a licensed mental health practitioner"
+            src="/assets/lifestyle/owner-with-dog-laptop.jpg"
+            alt="Get an ESA Letter"
             loading="eager"
             className="w-full h-full object-cover object-top"
           />
@@ -213,7 +213,7 @@ export default function HowToGetESAPage() {
       </section>
 
       {/* Stats */}
-      <section className="py-14 bg-orange-500">
+      <section className="py-14 md:py-16 bg-orange-500">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {stats.map((s) => (
@@ -227,7 +227,7 @@ export default function HowToGetESAPage() {
       </section>
 
       {/* Intro Text */}
-      <section className="py-14 bg-[#fdf6ee]">
+      <section className="py-14 md:py-16 bg-[#fdf6ee]">
         <div className="max-w-3xl mx-auto px-6 text-center">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Our Mission</span>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">We Make Getting Your ESA Letter Simple</h2>
@@ -308,7 +308,7 @@ export default function HowToGetESAPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="/assets/blog/man-puppy-portrait.jpg"
+                src="/assets/testimonials/man-with-dog-home.jpg"
                 alt="Emotional Support Animal"
                 loading="lazy"
                 className="w-full h-full object-cover object-top"
@@ -324,7 +324,7 @@ export default function HowToGetESAPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="/assets/blog/freelancer-cat-desk.jpg"
+                src="/assets/backgrounds/lifestyle-freelancer-home-cat.jpg"
                 alt="Why need an ESA letter"
                 loading="lazy"
                 className="w-full h-full object-cover object-top"

@@ -13,7 +13,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Ryan Foster",
     authorTitle: "ESA Rights Researcher",
-    image: "https://readdy.ai/api/search-image?query=suburban%20townhouse%20community%20homeowners%20association%20HOA%20sign%20outside%20modern%20homes%20green%20lawn%202026%20ESA%20emotional%20support%20animal%20rights%20housing%20fair%20warm%20sunny%20day%20USA&width=1200&height=630&seq=hoa2026a1&orientation=landscape",
+    image: "/assets/states/north-carolina.jpg",
     excerpt: "HOA pet restrictions and no-animals covenants cannot legally override your Fair Housing Act rights to an emotional support animal. In 2026, enforcement has gotten sharper — and so have HOA defenses. Here is what you need to know.",
     sections: [
       {
@@ -51,7 +51,7 @@ export const blogPostsExtended2 = [
     readTime: "6 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=cozy%20apartment%20living%20room%20with%20two%20dogs%20resting%20together%20on%20sofa%20warm%20home%20interior%20multiple%20pets%20ESA%20emotional%20support%20animals%20renters%20housing%20rights%202026&width=1200&height=630&seq=multiesa2026&orientation=landscape",
+    image: "/assets/blog/couple-with-dog.jpg",
     excerpt: "The Fair Housing Act does not limit you to one ESA — but multiple ESA requests require stronger documentation and individual justification. Here is the complete 2026 guide to requesting accommodation for more than one emotional support animal.",
     sections: [
       {
@@ -86,7 +86,7 @@ export const blogPostsExtended2 = [
     readTime: "7 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=welcoming%20modern%20hotel%20lobby%20entrance%20pet%20friendly%20dog%20sitting%20with%20owner%20checking%20in%20bright%20clean%20contemporary%20interior%20warm%20lighting%20USA%20travel%202026&width=1200&height=630&seq=hoteltrav2026&orientation=landscape",
+    image: "/assets/travel/dog-walk-street.jpg",
     excerpt: "Hotels are not legally required to accommodate ESAs the same way landlords are — but many have pet-friendly policies that work in your favor. Here is your complete 2026 guide to traveling with your ESA and finding accommodations that welcome you both.",
     sections: [
       {
@@ -120,7 +120,7 @@ export const blogPostsExtended2 = [
     readTime: "7 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=happy%20person%20road%20trip%20with%20dog%20in%20car%20window%20open%20open%20highway%20USA%20road%20trip%20adventure%20dog%20looking%20out%20window%20sunny%20warm%20day%202026%20pet%20travel&width=1200&height=630&seq=roadtrip2026&orientation=landscape",
+    image: "/assets/blog/lady-pink-puppy-walk.jpg",
     excerpt: "Road trips are one of the best options for ESA owners in 2026 — no airline pet policies to navigate, and your ESA stays by your side the whole time. Here is how to plan the perfect road trip with your emotional support animal.",
     sections: [
       {
@@ -159,7 +159,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=veteran%20with%20PTSD%20sitting%20peacefully%20with%20dog%20therapy%20support%20calm%20warm%20home%20natural%20light%20healing%20emotional%20support%20animal%20mental%20health%20recovery%20serene%202026&width=1200&height=630&seq=ptsdesa2026&orientation=landscape",
+    image: "/assets/lifestyle/senior-with-pet-home.jpg",
     excerpt: "PTSD is one of the most common qualifying conditions for ESA letters — and for good reason. A growing body of research supports the therapeutic benefits of human-animal interaction for trauma survivors. Here is what the science says in 2026.",
     sections: [
       {
@@ -197,7 +197,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=person%20relaxing%20at%20home%20with%20therapy%20dog%20mental%20health%20recovery%20calm%20peaceful%20bright%20living%20room%20natural%20light%20anxiety%20depression%20healing%20emotional%20support%20warm%20inviting%202026&width=1200&height=630&seq=mhesa2026&orientation=landscape",
+    image: "/assets/blog/hug-close-1.jpg",
     excerpt: "Generalized anxiety disorder and major depressive disorder are the two most common qualifying conditions for ESA letters. A licensed clinical psychologist explains the evidence base, mechanisms of benefit, and what the qualification process looks like in 2026.",
     sections: [
       {
@@ -235,7 +235,7 @@ export const blogPostsExtended2 = [
     readTime: "9 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=military%20veteran%20sitting%20calmly%20outdoors%20with%20service%20dog%20therapy%20dog%20emotional%20support%20animal%20healing%20mental%20health%20PTSD%20recovery%20natural%20light%20warm%20welcoming%202026%20USA&width=1200&height=630&seq=vetesa2026&orientation=landscape",
+    image: "/assets/veterans/senior-with-pets.jpg",
     excerpt: "Veterans with PTSD, TBI, anxiety, and depression represent one of the largest groups of ESA owners in the United States. This 2026 guide covers VA mental health services, how to get an ESA letter as a veteran, and your housing rights.",
     sections: [
       {
@@ -273,7 +273,7 @@ export const blogPostsExtended2 = [
     readTime: "7 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=licensed%20therapist%20with%20therapy%20dog%20in%20professional%20counseling%20office%20session%20patient%20mental%20health%20treatment%20calm%20warm%20professional%20interior%202026%20clinical%20setting&width=1200&height=630&seq=pettherapy2026&orientation=landscape",
+    image: "/assets/blog/woman-working-cute-dog.jpg",
     excerpt: "Pet therapy, emotional support animals, and psychiatric service dogs all involve animals in mental health care — but they are entirely different things with different legal statuses, different roles, and different qualification processes.",
     sections: [
       {
@@ -308,7 +308,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Ryan Foster",
     authorTitle: "ESA Rights Researcher",
-    image: "https://readdy.ai/api/search-image?query=Ohio%20Columbus%20Cleveland%20Cincinnati%20apartment%20building%20modern%20exterior%20sunny%20day%202026%20ESA%20emotional%20support%20animal%20tenant%20housing%20rights%20renter%20protection&width=1200&height=630&seq=ohioesa2026&orientation=landscape",
+    image: "/assets/blog/fp-woman-jeans-living-room.jpg",
     excerpt: "Ohio has both the federal Fair Housing Act and the Ohio Civil Rights Act protecting ESA owners in 2026. Here is everything Ohio renters in Columbus, Cleveland, and Cincinnati need to know about keeping their emotional support animal in housing.",
     sections: [
       {
@@ -346,7 +346,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=Seattle%20Washington%20modern%20apartment%20building%20urban%20skyline%20water%20view%202026%20ESA%20emotional%20support%20animal%20tenant%20housing%20rights%20renter%20protection%20Pacific%20Northwest&width=1200&height=630&seq=waesa2026&orientation=landscape",
+    image: "/assets/blog/fp-windowsill-dog.jpg",
     excerpt: "Washington State ESA owners benefit from some of the strongest state-level protections in the Pacific Northwest. The Washington Law Against Discrimination (WLAD) provides meaningful additional protection on top of the federal FHA. Here is what Seattle and statewide renters need to know in 2026.",
     sections: [
       {
@@ -384,7 +384,7 @@ export const blogPostsExtended2 = [
     readTime: "7 min read",
     author: "Ryan Foster",
     authorTitle: "ESA Rights Researcher",
-    image: "https://readdy.ai/api/search-image?query=Chicago%20Illinois%20apartment%20building%20urban%20exterior%20modern%20architecture%202026%20ESA%20tenant%20housing%20rights%20emotional%20support%20animal%20renter%20protection%20skyline&width=1200&height=630&seq=ilesa2026&orientation=landscape",
+    image: "/assets/states/illinois.jpg",
     excerpt: "Illinois ESA owners benefit from the federal FHA, the Illinois Human Rights Act (ILHRA), and in Chicago the Chicago Human Rights Ordinance — one of the strongest local-level ESA protections in the country.",
     sections: [
       {
@@ -418,7 +418,7 @@ export const blogPostsExtended2 = [
     readTime: "7 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=Denver%20Colorado%20modern%20apartment%20building%20urban%20exterior%20mountains%20background%202026%20ESA%20emotional%20support%20animal%20housing%20rights%20tenant%20renter%20protection%20mountain%20west&width=1200&height=630&seq=coesa2026&orientation=landscape",
+    image: "/assets/blog/fp-woman-dog-floor.jpg",
     excerpt: "Colorado ESA owners benefit from the federal FHA and the Colorado Anti-Discrimination Act (CADA). Denver's competitive rental market has made proactive ESA documentation more important than ever in 2026.",
     sections: [
       {
@@ -453,7 +453,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Ryan Foster",
     authorTitle: "ESA Rights Researcher",
-    image: "https://readdy.ai/api/search-image?query=Philadelphia Pennsylvania brick row house apartment street sunny day 2026 ESA emotional support animal tenant housing rights renter protection urban neighborhood&width=1200&height=630&seq=paesa2026&orientation=landscape",
+    image: "/assets/states/pennsylvania.jpg",
     excerpt: "Pennsylvania ESA owners are protected by the federal Fair Housing Act, the Pennsylvania Human Relations Act, and — in Philadelphia — the Philadelphia Fair Practices Ordinance. Here is what renters in Philadelphia, Pittsburgh, and across Pennsylvania need to know in 2026.",
     sections: [
       {
@@ -500,7 +500,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=Atlanta Georgia modern apartment complex exterior sunny warm day 2026 ESA emotional support animal tenant housing rights renter protection midtown skyline trees&width=1200&height=630&seq=gaesa2026&orientation=landscape",
+    image: "/assets/blog/fp-curly-woman-fun-dog.jpg",
     excerpt: "Georgia ESA owners are protected by both the federal Fair Housing Act and the Georgia Fair Housing Act. Atlanta's fast-growing rental market has made proactive ESA documentation more valuable than ever in 2026.",
     sections: [
       {
@@ -547,7 +547,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=Detroit Michigan modern apartment building urban neighborhood sunny day 2026 ESA emotional support animal tenant housing rights renter protection Great Lakes Midwest&width=1200&height=630&seq=miesa2026&orientation=landscape",
+    image: "/assets/blog/fp-woman-dog-couch.jpg",
     excerpt: "Michigan ESA owners benefit from both the federal Fair Housing Act and the Elliott-Larsen Civil Rights Act — one of the oldest and most comprehensive state civil rights laws in the country. Here is what renters in Detroit, Grand Rapids, and across Michigan need to know in 2026.",
     sections: [
       {
@@ -594,7 +594,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=Phoenix Arizona modern apartment complex exterior desert landscape sunny blue sky 2026 ESA emotional support animal tenant housing rights renter protection Southwest USA&width=1200&height=630&seq=azesa2026&orientation=landscape",
+    image: "/assets/blog/fp-woman-sitting-floor.jpg",
     excerpt: "Arizona ESA owners are protected by both the federal Fair Housing Act and the Arizona Fair Housing Act. Phoenix's explosive rental market growth has made proactive ESA documentation more valuable than ever in 2026. Here is what every Arizona renter needs to know.",
     sections: [
       {
@@ -641,7 +641,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=Northern Virginia Richmond modern apartment complex suburban exterior tree-lined street 2026 ESA emotional support animal tenant housing rights renter protection Mid-Atlantic USA&width=1200&height=630&seq=vaesa2026&orientation=landscape",
+    image: "/assets/states/virginia.jpg",
     excerpt: "Virginia ESA owners are protected by both the federal Fair Housing Act and the Virginia Human Rights Act. From Northern Virginia's high-density rental corridor to Richmond and Norfolk, here is everything Virginia renters need to know about ESA housing rights in 2026.",
     sections: [
       {
@@ -688,7 +688,7 @@ export const blogPostsExtended2 = [
     readTime: "9 min read",
     author: "Ryan Foster",
     authorTitle: "ESA Rights Researcher",
-    image: "https://readdy.ai/api/search-image?query=New Jersey Jersey City Newark Hoboken modern apartment building urban riverfront exterior sunny day 2026 ESA emotional support animal tenant housing rights renter protection NYC metro area&width=1200&height=630&seq=njesa2026a&orientation=landscape",
+    image: "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
     excerpt: "New Jersey has one of the strongest state-level ESA housing frameworks in the United States through the NJ Law Against Discrimination. For renters in Newark, Jersey City, Hoboken, and across the Garden State, here is everything you need to know in 2026.",
     sections: [
       {
@@ -739,7 +739,7 @@ export const blogPostsExtended2 = [
     readTime: "9 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=New York City apartment building exterior classic brick architecture Upper West Side Brooklyn Manhattan 2026 ESA emotional support animal tenant rights coop rent stabilized housing urban&width=1200&height=630&seq=nycesa2026coop&orientation=landscape",
+    image: "/assets/states/new-york.jpg",
     excerpt: "New York City's housing market is unlike any other in the United States — co-ops, rent-stabilized apartments, NYCHA public housing, and luxury high-rises all have different ESA dynamics. This 2026 guide breaks down what NYC renters and owners actually need to know.",
     sections: [
       {
@@ -786,7 +786,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=Miami Fort Lauderdale South Florida luxury apartment high rise building waterfront sunny tropical 2026 ESA emotional support animal tenant housing rights renter protection coastal&width=1200&height=630&seq=sfloresa2026&orientation=landscape",
+    image: "/assets/states/florida.jpg",
     excerpt: "South Florida's tri-county rental market — Miami-Dade, Broward, and Palm Beach — is one of the most expensive in the United States and home to some of the most ESA-documentation-savvy landlords in the country. Here is what ESA owners in the South Florida market need to know in 2026.",
     sections: [
       {
@@ -833,7 +833,7 @@ export const blogPostsExtended2 = [
     readTime: "8 min read",
     author: "Ryan Foster",
     authorTitle: "ESA Rights Researcher",
-    image: "https://readdy.ai/api/search-image?query=Baltimore Maryland row houses brick apartment buildings urban street neighborhood 2026 ESA emotional support animal tenant housing rights renter protection Chesapeake region&width=1200&height=630&seq=mdesa2026&orientation=landscape",
+    image: "/assets/lifestyle/woman-with-dog-office.jpg",
     excerpt: "Maryland ESA owners have some of the strongest state-level protections in the Mid-Atlantic region through the Maryland Fair Employment Practices Act. Baltimore, the DC suburbs, and the Eastern Shore all have active ESA accommodation landscapes in 2026.",
     sections: [
       {

@@ -13,7 +13,7 @@ export const blogPostsExtended = [
     readTime: "12 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/925edf71-8f53-4f8f-8180-12a475777e58_How-to-Get-a-Psychiatric-Service-Dog-Letter.jpg?v=d622f9279132e3d201c18ec9bc2a95ab",
+    image: "/assets/lifestyle/owner-with-dog-laptop.jpg",
     excerpt: "ESA laws, letter requirements, landlord obligations, and state regulations have all seen meaningful updates heading into 2026. This comprehensive guide covers every major change — and what it means for you right now.",
     sections: [
       {
@@ -60,7 +60,7 @@ export const blogPostsExtended = [
     readTime: "11 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/626a4b1c-6e1e-4903-b4bd-b67a5b1e37f7_What-is-a-PSD-Letter.jpg?v=8af77abe89f837f83927117fef15ce63",
+    image: "/assets/breeds/golden-retriever.jpg",
     excerpt: "Psychiatric Service Dogs carry stronger legal protections than ESAs — including public access and air travel rights. This 2026 guide covers everything: what qualifies as a PSD, what training is required, how to get a PSD letter, and how airline policies have evolved.",
     sections: [
       {
@@ -103,7 +103,7 @@ export const blogPostsExtended = [
     readTime: "9 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=California%20modern%20apartment%20building%20palm%20trees%20bright%20sunny%20day%202026%20ESA%20housing%20rights%20renter%20protection%20emotional%20support%20animal%20letter%20compliance%20update%20law&width=1200&height=630&seq=caesa2026&orientation=landscape",
+    image: "/assets/states/california.jpg",
     excerpt: "California\u2019s ESA landscape in 2026 is more enforcement-focused than ever. AB 468 has matured from new legislation into active enforcement — and California renters need to ensure their letters are fully compliant.",
     sections: [
       {
@@ -146,7 +146,7 @@ export const blogPostsExtended = [
     readTime: "8 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=Texas%20modern%20apartment%20complex%20exterior%20Austin%20Houston%20Dallas%20sunny%20day%202026%20ESA%20emotional%20support%20animal%20housing%20rights%20tenant%20protection%20update%20renter&width=1200&height=630&seq=txesa2026&orientation=landscape",
+    image: "/assets/states/texas.jpg",
     excerpt: "Texas ESA law hasn\u2019t added new state rules — but the enforcement landscape and landlord awareness have shifted meaningfully in 2026. Here\u2019s what Texas renters need to know.",
     sections: [
       {
@@ -185,7 +185,7 @@ export const blogPostsExtended = [
     readTime: "9 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=Florida%20warm%20coastal%20apartment%20building%20complex%20sunny%20blue%20sky%202026%20ESA%20anti-fraud%20enforcement%20housing%20renter%20rights%20emotional%20support%20animal%20letter%20update&width=1200&height=630&seq=flesa2026&orientation=landscape",
+    image: "/assets/states/florida.jpg",
     excerpt: "Florida has stepped up anti-fraud ESA enforcement in 2026, making compliant documentation more important than ever. Here\u2019s what changed — and how Florida renters with legitimate ESA needs can protect themselves.",
     sections: [
       {
@@ -224,7 +224,7 @@ export const blogPostsExtended = [
     readTime: "9 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=New%20York%20City%20brownstone%20apartment%20building%20urban%20exterior%202026%20ESA%20tenant%20rights%20NYC%20housing%20enforcement%20update%20emotional%20support%20animal%20renter%20protection%20co-op&width=1200&height=630&seq=nyesa2026&orientation=landscape",
+    image: "/assets/states/new-york.jpg",
     excerpt: "New York City\u2019s ESA enforcement landscape in 2026 is the strongest in the country. The NYC Commission on Human Rights has taken landmark actions, and New York tenants with valid ESA letters have unprecedented protection — but the documentation bar is also higher.",
     sections: [
       {
@@ -263,7 +263,7 @@ export const blogPostsExtended = [
     readTime: "8 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=California%20trained%20service%20dog%20wearing%20vest%20professional%20training%20psychiatric%20service%20dog%20PSD%20handler%202026%20sunny%20outdoor%20setting%20calm%20professional%20documentation%20rights%20guide&width=1200&height=630&seq=psdca2026&orientation=landscape",
+    image: "/assets/breeds/labrador-retriever.jpg",
     excerpt: "California\u2019s psychiatric service dog rights are among the most comprehensive in the US. This 2026 guide covers AB 468\u2019s effect on PSD letters, ADA public access rights, airline documentation, and how to qualify.",
     sections: [
       {
@@ -302,7 +302,7 @@ export const blogPostsExtended = [
     readTime: "7 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=Texas%20service%20dog%20handler%20ADA%20rights%202026%20psychiatric%20service%20dog%20trained%20calm%20professional%20setting%20warm%20sunny%20Texas%20outdoor%20setting%20documentation%20guide&width=1200&height=630&seq=psdtx2026&orientation=landscape",
+    image: "/assets/breeds/german-shepherd.jpg",
     excerpt: "Texas has no state-specific service dog laws beyond the ADA — making it one of the most straightforward states for PSD owners. This 2026 guide covers everything Texas PSD handlers need to know.",
     sections: [
       {
@@ -337,7 +337,7 @@ export const blogPostsExtended = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=Florida%20trained%20service%20dog%20psychiatric%20service%20dog%20professional%20handler%20sunny%20warm%20Florida%20environment%202026%20guide%20documentation%20rights%20ADA%20housing&width=1200&height=630&seq=psdfl2026&orientation=landscape",
+    image: "/assets/blog/man-working-dog.jpg",
     excerpt: "Florida\u2019s anti-fraud ESA provisions extend to PSD letters in 2026. Florida PSD handlers need properly credentialed Florida-licensed providers to ensure their documentation holds up.",
     sections: [
       {
@@ -372,7 +372,7 @@ export const blogPostsExtended = [
     readTime: "8 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=New%20York%20City%20sidewalk%20urban%20street%20with%20trained%20service%20dog%20handler%202026%20psychiatric%20service%20dog%20NYC%20rights%20guide%20documentation%20professional%20ADA%20housing%20NYCHRL&width=1200&height=630&seq=psdny2026&orientation=landscape",
+    image: "/assets/service-dogs/calm-attentive-dog.jpg",
     excerpt: "New York PSD handlers in 2026 benefit from the same triple-layer legal protection as ESA owners — plus full ADA public access rights. This guide covers NYC-specific protections, co-op rights, and airline travel from NY airports.",
     sections: [
       {

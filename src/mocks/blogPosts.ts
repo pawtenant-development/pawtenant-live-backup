@@ -27,7 +27,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/7efddf74-4a4d-4bfb-b606-afc0060a9955_Laws-That-Protect-a-College-Students-ESA.jpg?v=0df93183a2f7372a30c9683a689dd88e",
+    image: "/assets/colleges/student-portrait-with-dog.jpg",
     excerpt: "Navigating the ESA accommodation request process at your university can feel overwhelming, but with the right steps and documentation, you can secure your housing rights and keep your beloved companion by your side.",
     sections: [
       {
@@ -76,7 +76,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=happy%20college%20student%20in%20dorm%20room%20with%20cat%20on%20bed%20cozy%20dormitory%20setting%20studying%20emotional%20support%20animal%20warm%20lighting&width=1200&height=630&seq=blog2&orientation=landscape",
+    image: "/assets/colleges/college-student-bed-dog.jpg",
     excerpt: "Yes, you absolutely can have an ESA in college dorms — but there's a right way to go about it. This comprehensive guide walks you through everything you need to know in 2026.",
     sections: [
       {
@@ -125,7 +125,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "10 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=law%20books%20dog%20paw%20university%20campus%20legal%20rights%20disability%20accommodation%20college%20student%20studying%20warm%20professional%20setting&width=1200&height=630&seq=blog3&orientation=landscape",
+    image: "/assets/lifestyle/freelancer-with-dog-laptop.jpg",
     excerpt: "Federal laws give college students powerful protections to keep their ESAs in university housing. Here's everything you need to know about ESA letters, dorm rights, and the approval process in 2026.",
     sections: [
       {
@@ -174,7 +174,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=cozy%20home%20interior%20person%20with%20dog%20on%20couch%20insurance%20documents%20warm%20lighting%20pet%20friendly%20apartment%20comfortable%20living&width=1200&height=630&seq=blog4&orientation=landscape",
+    image: "/assets/lifestyle/person-paperwork-with-dog.jpg",
     excerpt: "Having an ESA offers housing protections, but renters insurance is still an important safety net. Here's everything pet and ESA owners need to know about protecting themselves and their animals in 2026.",
     sections: [
       {
@@ -223,7 +223,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "8 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/27841c36-74a5-4e2f-b810-72504b6b7e2a_Airline-Pet--ESA-Policy-Guide-2026.jpg?v=958e516b05dce6aa12bc43afa9d02919",
+    image: "/assets/travel/petfriendly-cafe.jpg",
     excerpt: "Airline ESA policies have changed dramatically since 2021. Here's the honest, up-to-date guide to traveling with your emotional support animal in 2026 — what works, what doesn't, and what your alternatives are.",
     sections: [
       {
@@ -272,7 +272,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/9b84851b-3705-4e4e-8dc8-0e9c04e43242_Simple-Online-Approval.jpg?v=145826463a27215e63a6b5f46f73b69b",
+    image: "/assets/lifestyle/woman-telehealth-with-dog.jpg",
     excerpt: "Getting an ESA letter in 2026 can be done through your existing therapist, a psychiatrist, your primary care doctor, or a legitimate online telehealth service. Here's what you need to know about each option.",
     sections: [
       {
@@ -321,7 +321,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "11 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/d865c255-b615-451f-a02d-71420df80d88_Housing-Protection-Support.jpg?v=c3cc0edf08b5cac53b799c74d0c40b95",
+    image: "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
     excerpt: "Your landlord cannot charge you extra fees, demand your diagnosis, or ban your ESA because of breed or weight — and that's just the start. Here's the complete breakdown breakdown of what federal law prohibits landlords from doing when you have a valid ESA letter.",
     sections: [
       {
@@ -392,7 +392,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=California%20sunny%20apartment%20building%20palm%20tree%20outside%20window%20renter%20with%20dog%20ESA%20emotional%20support%20animal%20housing%20rights%20bright%20warm%20interior%20cozy%20home&width=1200&height=630&seq=blogca01&orientation=landscape",
+    image: "/assets/states/california.jpg",
     excerpt: "California has some of the strictest ESA letter laws in the US thanks to AB 468. That means pricing, provider requirements, and what's included in a legitimate letter all follow specific rules. Here's exactly what to expect in 2026.",
     sections: [
       {
@@ -441,7 +441,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=Texas%20apartment%20complex%20blue%20sky%20sunny%20day%20ESA%20emotional%20support%20animal%20tenant%20rights%20housing%20protection%20dog%20owner%20renter%20warm%20light%20professional%20exterior%20building&width=1200&height=630&seq=blogtx01&orientation=landscape",
+    image: "/assets/states/texas.jpg",
     excerpt: "Texas landlords must follow federal Fair Housing Act rules when it comes to ESAs — and many tenants don't realize how strong their rights are. This 2026 guide covers exactly what Texas landlords can and cannot do, and how to get a legitimate ESA letter fast.",
     sections: [
       {
@@ -490,7 +490,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=Florida%20apartment%20complex%20sunny%20warm%20tropical%20palm%20trees%20blue%20sky%20bright%20day%20renter%20housing%20rights%20ESA%20emotional%20support%20animal%20tenant%20protection%20exterior%20building&width=1200&height=630&seq=blogfl01&orientation=landscape",
+    image: "/assets/states/florida.jpg",
     excerpt: "Florida has both state and federal protections for ESA owners — and stricter rules against fraudulent letters. Here's everything Florida renters need to know about getting a legitimate ESA letter and asserting their housing rights in 2026.",
     sections: [
       {
@@ -539,7 +539,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=New%20York%20City%20apartment%20building%20urban%20street%20exterior%20brownstone%20no%20pet%20policy%20ESA%20tenant%20rights%20emotional%20support%20animal%20housing%202026%20sunny%20city%20day&width=1200&height=630&seq=blogny01&orientation=landscape",
+    image: "/assets/states/new-york.jpg",
     excerpt: "New York City's no-pet housing market is notoriously strict — but ESA rights override no-pet policies at every level. Here's your complete guide to getting and using an ESA letter in a New York apartment in 2026.",
     sections: [
       {
@@ -590,7 +590,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=exotic%20rabbit%20guinea%20pig%20colorful%20parrot%20bird%20small%20reptile%20turtle%20emotional%20support%20animal%20ESA%20cozy%20bright%20home%20interior%20variety%20of%20pets%20apartment%20living%20warm%20natural%20lighting&width=1200&height=630&seq=pwexotic01&orientation=landscape",
+    image: "/assets/blog/fp-windowsill-dog.jpg",
     excerpt: "Emotional Support Animals (ESAs) have gained recognition for helping people deal with stress, anxiety, depression, and other mental health struggles. But when it comes to exotic animals, the rules get a lot more nuanced.",
     sections: [
       {
@@ -631,7 +631,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=Florida%20warm%20sunny%20apartment%20interior%20living%20room%20ESA%20tenant%20renter%20housing%20rights%20documentation%20letter%20key%20handover%20bright%20open%20window%20tropical%20indoor%20plants&width=1200&height=630&seq=pwfl01&orientation=landscape",
+    image: "/assets/states/florida.jpg",
     excerpt: "Living with an Emotional Support Animal (ESA) in Florida isn\u2019t just about companionship\u2014it\u2019s about legal rights too. Many people with anxiety, PTSD, and other conditions rely on their ESA daily.",
     sections: [
       {
@@ -672,7 +672,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=New%20York%20City%20urban%20apartment%20building%20brownstone%20exterior%20street%20tenant%20housing%20rights%20protection%20ESA%20emotional%20support%20animal%20documentation%20sunny%20day%20USA&width=1200&height=630&seq=pwny01&orientation=landscape",
+    image: "/assets/states/new-york.jpg",
     excerpt: "If you live in New York and rely on an emotional support animal (ESA), you already know how important housing protections are. New York has some of the strongest tenant protections in the country.",
     sections: [
       {
@@ -713,7 +713,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "8 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=California%20sunny%20modern%20apartment%20exterior%20palm%20trees%20blue%20sky%20ESA%20emotional%20support%20animal%20letter%20documentation%20housing%20rights%20tenant%20renter%20warm%20day&width=1200&height=630&seq=pwca01&orientation=landscape",
+    image: "/assets/states/california.jpg",
     excerpt: "Living with an Emotional Support Animal (ESA) in California is more than comfort\u2014it\u2019s about legal rights. Many renters, students, and families in California are protected under both state and federal law.",
     sections: [
       {
@@ -754,7 +754,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=person%20on%20laptop%20telehealth%20video%20consultation%20online%20ESA%20letter%20provider%20verification%20home%20office%20bright%20clean%20desk%20licensed%20therapist%20screen%20secure%20connection&width=1200&height=630&seq=pwonline01&orientation=landscape",
+    image: "/assets/lifestyle/woman-telehealth-with-dog.jpg",
     excerpt: "Emotional Support Animals (ESAs) are more than pets. For many people, they are daily companions that ease anxiety, depression, PTSD, and other conditions. But how do you know if an online ESA letter is actually legit?",
     sections: [
       {
@@ -795,7 +795,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=official%20professional%20ESA%20letter%20document%20desk%20licensed%20therapist%20letterhead%20pen%20signature%20mental%20health%20credentials%20clean%20organized%20white%20office%20bright&width=1200&height=630&seq=pwlegit01&orientation=landscape",
+    image: "/assets/documents/esa-letter-sample.jpg",
     excerpt: "If you\u2019re searching \u2018what does a legit ESA letter look like\u2019, chances are you\u2019ve run into dozens of templates online, some looking official and some clearly questionable. Here\u2019s what to look for.",
     sections: [
       {
@@ -836,7 +836,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "6 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=person%20comparing%20different%20animals%20choosing%20cat%20dog%20rabbit%20guinea%20pig%20emotional%20support%20animal%20selection%20cozy%20bright%20living%20room%20warm%20interior%20pet%20adoption%20decision&width=1200&height=630&seq=pwchoose01&orientation=landscape",
+    image: "/assets/blog/pomeranian-portrait.jpg",
     excerpt: "Choosing the right Emotional Support Animal (ESA) is a significant decision that can greatly impact your mental and emotional well-being. An ESA is more than a pet \u2014 it\u2019s a therapeutic companion.",
     sections: [
       {
@@ -873,7 +873,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Paul Winston",
     authorTitle: "ESA Specialist",
-    image: "https://readdy.ai/api/search-image?query=happy%20dog%20owner%20holding%20ESA%20letter%20certification%20document%20official%20approval%20emotional%20support%20animal%20housing%20rights%20warm%20natural%20light%20bond%20companion&width=1200&height=630&seq=pwdogcert01&orientation=landscape",
+    image: "/assets/blog/hug-close-2.jpg",
     excerpt: "Emotional support animals (ESAs) do more than offer friendship\u2014they can play a vital role in easing the symptoms of anxiety, depression, PTSD and other conditions. Here\u2019s your complete guide.",
     sections: [
       {
@@ -914,7 +914,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "7 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/8d22db50-fbe5-4a70-b2ec-86b6daa70b72_Licensed-Mental-Health-Professionals.jpg?v=720063ca19f7892a3d215673553d41f0",
+    image: "/assets/backgrounds/telehealth-female-patient-doctor.jpg",
     excerpt: "ESA letters expire after one year — and an expired letter won't protect your housing rights. Here's the complete 2026 guide to renewing your ESA letter before your landlord finds out it's expired.",
     sections: [
       {
@@ -967,7 +967,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "10 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/561aa113-dc1b-4213-a6f8-e9f681bd9156_Removing-Barriers-Between-People--Their-Support-Animals.jpg?v=9b0341ba256bb320f627993afbd6b622",
+    image: "/assets/blog/hug-close-1.jpg",
     excerpt: "Getting your ESA accommodation denied by a landlord is stressful — but it's often illegal. Here's exactly what your rights are and the steps to take in 2026 to fight an unlawful ESA housing denial.",
     sections: [
       {
@@ -1020,7 +1020,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=person%20in%20modern%20apartment%20living%20room%20with%20dog%20cozy%20home%20renting%20happy%20tenant%20ESA%20emotional%20support%20animal%20housing%20rights%202026%20comfortable%20interior%20warm%20tones&width=1200&height=630&seq=blogapt7&orientation=landscape",
+    image: "/assets/colleges/college-student-bed-dog.jpg",
     excerpt: "Getting an ESA letter for your college dorm in 2026 is completely doable — but only if you follow the right process. This is your complete guide.",
     sections: [
       {
@@ -1069,7 +1069,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "8 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/aee06116-f060-432c-9708-efefb3518d9b_Everything-You-Need-to-Know-About-Service-Dogs.jpg?v=a7de4185fc4f47c2749bf7e7906fe127",
+    image: "/assets/service-dogs/handler-working-with-dog.jpg",
     excerpt: "ESAs and service animals are two very different legal designations — and confusing them can cost you your housing protections or public access rights. Here's the clear breakdown in 2026.",
     sections: [
       {
@@ -1118,7 +1118,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Jessica Park",
     authorTitle: "Housing Rights Advocate",
-    image: "https://readdy.ai/api/search-image?query=tenant%20with%20dog%20apartment%20eviction%20notice%20legal%20rights%20housing%20protection%20emotional%20support%20animal%202026%20housing%20discrimination%20concerned%20person%20reviewing%20document&width=1200&height=630&seq=blogevict5&orientation=landscape",
+    image: "/assets/blog/hands-typing-dog.jpg",
     excerpt: "Getting threatened with eviction over your ESA is one of the scariest situations a tenant can face. But in most cases, it's also illegal. Here's exactly what the law says in 2026 — and what you should do right now.",
     sections: [
       {
@@ -1167,7 +1167,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/13037e49-5dee-4f4b-ae8a-c2d1ab78b6d5_What-Is-an-Emotional-Support-Animal-ESA.jpg?v=f7097c36da8144b17b45b9d7d5a1d06f",
+    image: "/assets/blog/hug-close-2.jpg",
     excerpt: "The question \"do I qualify for an ESA?\" is more common than you might think. The answer depends on your specific mental health condition and how it affects your daily life. Here are the top 10 qualifying conditions in 2026.",
     sections: [
       {
@@ -1232,7 +1232,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=person%20in%20modern%20apartment%20living%20room%20with%20dog%20cozy%20home%20renting%20happy%20tenant%20ESA%20emotional%20support%20animal%20housing%20rights%202026%20comfortable%20interior%20warm%20tones&width=1200&height=630&seq=blogapt7&orientation=landscape",
+    image: "/assets/blog/fp-woman-dog-floor.jpg",
     excerpt: "Renting an apartment with an ESA in 2026 is your legal right — but knowing how to assert it properly is what makes the difference between smooth sailing and a housing headache. This is your complete guide.",
     sections: [
       {
@@ -1281,7 +1281,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "9 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=licensed%20therapist%20conducting%20video%20consultation%20with%20pet%20owner%20reviewing%20travel%20documents%20and%20ESA%20paperwork%20on%20laptop%20bright%20professional%20home%20office%20calming%20neutral%20tones%20organized%20desk%202026&width=1200&height=630&seq=blogtrav1&orientation=landscape",
+    image: "/assets/blog/smiley-tablet.jpg",
     excerpt: "Traveling with an emotional support animal in 2026 requires far more preparation than it did five years ago. A travel readiness consultation connects you with a licensed professional who ensures every document, health certificate, and airline form is in place before you arrive at the airport.",
     sections: [
       {
@@ -1334,7 +1334,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "11 min read",
     author: "Marcus Williams",
     authorTitle: "ESA Policy Specialist",
-    image: "https://readdy.ai/api/search-image?query=airport%20terminal%20departure%20gate%20modern%20bright%20clean%20person%20with%20small%20dog%20in%20carrier%20travel%20bag%20waiting%20to%20board%20airplane%20airline%20compliance%20documentation%202026%20calm%20natural%20light&width=1200&height=630&seq=blogtrav2&orientation=landscape",
+    image: "/assets/travel/walk-with-puppy-city.jpg",
     excerpt: "Airline policies for ESAs and Psychiatric Service Dogs differ significantly by carrier in 2026. This definitive compliance guide tells you exactly what Delta, United, American, Southwest, Alaska, and JetBlue require — so you can travel without surprises.",
     sections: [
       {
@@ -1395,7 +1395,7 @@ export const blogPosts: BlogPost[] = [
     readTime: "8 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
-    image: "https://readdy.ai/api/search-image?query=person%20at%20desk%20calendar%20planning%20annual%20renewal%20subscription%20compliance%20documents%20organized%20professional%20home%20office%20warm%20lighting%20dog%20resting%20nearby%20cozy%202026%20planning%20ahead&width=1200&height=630&seq=blogsub1&orientation=landscape",
+    image: "/assets/blog/woman-looking-dog.jpg",
     excerpt: "An expired ESA letter is legally equivalent to having no letter at all — and most tenants don't realize their protection has lapsed until their landlord asks. Here's why an annual renewal subscription is the most reliable strategy for staying protected in 2026.",
     sections: [
       {

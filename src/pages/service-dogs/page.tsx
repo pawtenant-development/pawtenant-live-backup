@@ -6,32 +6,32 @@ import { Link } from "react-router-dom";
 const dogBreeds = [
   {
     name: "Labrador Retriever",
-    image: "https://readdy.ai/api/search-image?query=labrador%20retriever%20dog%20portrait%20sitting%20attentively%20outdoors%20bright%20natural%20light%20warm%20golden%20tones%20clean%20simple%20background%20professional%20service%20dog%20friendly%20and%20gentle%20expression&width=600&height=400&seq=breed01&orientation=landscape",
+    image: "/assets/breeds/labrador-retriever.jpg",
     desc: "Labrador Retrievers are among the most popular service dogs due to their gentle nature and intelligence. Their friendly disposition makes them excellent guides for the blind, hearing aids, and emotional support roles.",
   },
   {
     name: "Golden Retriever",
-    image: "https://readdy.ai/api/search-image?query=golden%20retriever%20dog%20sitting%20outdoors%20in%20warm%20sunlight%20beautiful%20coat%20friendly%20expression%20natural%20background%20soft%20bokeh%20warm%20tones%20calm%20gentle%20service%20dog&width=600&height=400&seq=breed02&orientation=landscape",
+    image: "/assets/breeds/golden-retriever.jpg",
     desc: "Golden Retrievers are known for their patience, trainability, and gentle temperament, making them ideal candidates for service work. Their calm nature and ability to comfort make them excellent emotional support companions.",
   },
   {
     name: "German Shepherd",
-    image: "https://readdy.ai/api/search-image?query=german%20shepherd%20dog%20portrait%20alert%20and%20attentive%20outdoors%20natural%20light%20strong%20and%20loyal%20expression%20clean%20background%20professional%20working%20dog%20warm%20tones&width=600&height=400&seq=breed03&orientation=landscape",
+    image: "/assets/breeds/german-shepherd.jpg",
     desc: "German Shepherds combine a high level of intelligence, ability, and trainability. They are frequently used as service dogs for a wide range of disabilities. Their protective instincts can also comfort those with anxiety or PTSD.",
   },
   {
     name: "Poodle",
-    image: "https://readdy.ai/api/search-image?query=standard%20poodle%20dog%20elegant%20portrait%20outdoors%20warm%20natural%20light%20fluffy%20coat%20intelligent%20expression%20clean%20background%20friendly%20and%20gentle%20service%20dog&width=600&height=400&seq=breed04&orientation=landscape",
+    image: "/assets/breeds/poodle.jpg",
     desc: "Particularly Standard Poodles, are well-known for their sharp intelligence and ability to learn quickly. These qualities make them top-tier candidates for service dog roles, and their hypoallergenic quality also makes them accessible for those with allergies.",
   },
   {
     name: "Border Collie",
-    image: "https://readdy.ai/api/search-image?query=border%20collie%20dog%20portrait%20outdoors%20black%20and%20white%20coat%20intelligent%20alert%20eyes%20natural%20light%20background%20energetic%20and%20focused%20working%20dog%20warm%20tones&width=600&height=400&seq=breed05&orientation=landscape",
+    image: "/assets/breeds/border-collie.jpg",
     desc: "Border Collies possess extraordinary intelligence, agility, and ability to focus. These qualities enable them to be excellent service dog candidates for those requiring high-precision assistance, such as mobility support and emotional grounding.",
   },
   {
     name: "Bernese Mountain Dog",
-    image: "https://readdy.ai/api/search-image?query=bernese%20mountain%20dog%20portrait%20outdoors%20large%20fluffy%20tri-color%20coat%20gentle%20expression%20natural%20light%20warm%20tones%20calm%20and%20loyal%20therapy%20service%20dog&width=600&height=400&seq=breed06&orientation=landscape",
+    image: "/assets/breeds/bernese-mountain-dog.jpg",
     desc: "Bernese Mountain Dogs are very calm in nature and gentle, combined with their large size and strength, making them incredible service dogs. Their calm temperament is well-suited for emotional support and therapy work.",
   },
 ];
@@ -82,8 +82,8 @@ export default function ServiceDogsPage() {
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Psychiatric Service Dog (PSD) Letter Online 2026 | PawTenant" />
       <meta name="twitter:description" content="Get a PSD letter online from licensed professionals. Learn about service dog breeds, training, legal rights, and how a PSD letter differs from an ESA letter." />
-      <meta property="og:image" content="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/aee06116-f060-432c-9708-efefb3518d9b_Everything-You-Need-to-Know-About-Service-Dogs.jpg?v=a7de4185fc4f47c2749bf7e7906fe127" />
-      <meta name="twitter:image" content="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/aee06116-f060-432c-9708-efefb3518d9b_Everything-You-Need-to-Know-About-Service-Dogs.jpg?v=a7de4185fc4f47c2749bf7e7906fe127" />
+      <meta property="og:image" content="https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg" />
+      <meta name="twitter:image" content="https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@graph": [
@@ -102,16 +102,16 @@ export default function ServiceDogsPage() {
             "@type": "ImageObject",
             "name": "Everything You Need to Know About Service Dogs",
             "description": "Complete guide to service dogs, psychiatric service dogs (PSDs), and ESA letters — ADA rights, training, and how to qualify for a PSD letter.",
-            "url": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/aee06116-f060-432c-9708-efefb3518d9b_Everything-You-Need-to-Know-About-Service-Dogs.jpg?v=a7de4185fc4f47c2749bf7e7906fe127",
-            "contentUrl": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/aee06116-f060-432c-9708-efefb3518d9b_Everything-You-Need-to-Know-About-Service-Dogs.jpg?v=a7de4185fc4f47c2749bf7e7906fe127",
+            "url": "https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg",
+            "contentUrl": "https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg",
             "representativeOfPage": true
           },
           {
             "@type": "ImageObject",
             "name": "How to Get a Psychiatric Service Dog Letter",
             "description": "Step-by-step guide showing how to get a psychiatric service dog (PSD) letter from a licensed mental health professional for housing and airline travel.",
-            "url": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/925edf71-8f53-4f8f-8180-12a475777e58_How-to-Get-a-Psychiatric-Service-Dog-Letter.jpg?v=d622f9279132e3d201c18ec9bc2a95ab",
-            "contentUrl": "https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/925edf71-8f53-4f8f-8180-12a475777e58_How-to-Get-a-Psychiatric-Service-Dog-Letter.jpg?v=d622f9279132e3d201c18ec9bc2a95ab"
+            "url": "https://www.pawtenant.com/assets/blog/cafe-retriever.jpg",
+            "contentUrl": "https://www.pawtenant.com/assets/blog/cafe-retriever.jpg"
           }
         ]
       }) }} />
@@ -122,7 +122,7 @@ export default function ServiceDogsPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/aee06116-f060-432c-9708-efefb3518d9b_Everything-You-Need-to-Know-About-Service-Dogs.jpg?v=a7de4185fc4f47c2749bf7e7906fe127"
+            src="https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg"
             alt="Everything you need to know about psychiatric service dogs and ESA letters — PawTenant 2026 guide"
             className="w-full h-full object-cover object-top"
           />
@@ -173,8 +173,8 @@ export default function ServiceDogsPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/561aa113-dc1b-4213-a6f8-e9f681bd9156_Removing-Barriers-Between-People--Their-Support-Animals.jpg?v=9b0341ba256bb320f627993afbd6b622"
-                alt="Removing barriers between people and their emotional support animals — service dog assistance"
+                src="/assets/service-dogs/handler-working-with-dog.jpg"
+                alt="Service dog handler working with a trained service dog — assistance and access rights"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -218,7 +218,7 @@ export default function ServiceDogsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/626a4b1c-6e1e-4903-b4bd-b67a5b1e37f7_What-is-a-PSD-Letter.jpg?v=8af77abe89f837f83927117fef15ce63"
+                src="/assets/blog/man-working-dog.jpg"
                 alt="What is a psychiatric service dog PSD letter and how it protects your housing and travel rights"
                 className="w-full h-full object-cover object-top"
               />
@@ -273,7 +273,7 @@ export default function ServiceDogsPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-72">
               <img
-                src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/925edf71-8f53-4f8f-8180-12a475777e58_How-to-Get-a-Psychiatric-Service-Dog-Letter.jpg?v=d622f9279132e3d201c18ec9bc2a95ab"
+                src="https://www.pawtenant.com/assets/blog/cafe-retriever.jpg"
                 alt="How to get a psychiatric service dog PSD letter — training and licensed professional assessment"
                 title="How to Get a Psychiatric Service Dog Letter"
                 className="w-full h-full object-cover object-top"

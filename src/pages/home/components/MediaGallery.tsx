@@ -5,10 +5,6 @@ import { Link } from "react-router-dom";
 const SITE = "https://www.pawtenant.com";
 const abs = (p: string) => `${SITE}${p}`;
 
-// Every image below is a real, calm, professional photograph that
-// physically exists in public/assets/. No AI-generated graphics, no
-// fake testimonials, no stock-photo families. Each card links to a
-// real PawTenant resource page.
 const galleryImages = [
   {
     src: "/assets/blog/owner-laptop-cuddle.jpg",
@@ -22,10 +18,10 @@ const galleryImages = [
       "description": "Comprehensive guide to understanding ESA designation, legal rights, and how to qualify for an ESA letter in the USA.",
       "url": abs("/assets/blog/owner-laptop-cuddle.jpg"),
       "contentUrl": abs("/assets/blog/owner-laptop-cuddle.jpg"),
-    },
+    }
   },
   {
-    src: "/assets/blog/fp-windowsill-dog.jpg",
+    src: "/assets/housing/home-together.jpg",
     alt: "ESA housing protection support — Fair Housing Act tenant rights emotional support animal",
     title: "ESA Housing Protection",
     caption: "Fair Housing Act",
@@ -34,13 +30,13 @@ const galleryImages = [
       "@type": "ImageObject",
       "name": "ESA Housing Protection Support",
       "description": "ESA housing rights under the Fair Housing Act — what landlords cannot do and how to assert your rights.",
-      "url": abs("/assets/blog/fp-windowsill-dog.jpg"),
-      "contentUrl": abs("/assets/blog/fp-windowsill-dog.jpg"),
-    },
+      "url": abs("/assets/housing/home-together.jpg"),
+      "contentUrl": abs("/assets/housing/home-together.jpg"),
+    }
   },
   {
     src: "/assets/lifestyle/woman-telehealth-with-dog.jpg",
-    alt: "Simple online ESA letter approval — telehealth consultation with a licensed mental health practitioner",
+    alt: "Simple online ESA letter approval process — licensed professional telehealth consultation",
     title: "Simple Online Approval",
     caption: "Same-Day Delivery",
     link: "/assessment",
@@ -50,24 +46,24 @@ const galleryImages = [
       "description": "PawTenant's simple online ESA letter approval process — telehealth consultation, same-day delivery.",
       "url": abs("/assets/lifestyle/woman-telehealth-with-dog.jpg"),
       "contentUrl": abs("/assets/lifestyle/woman-telehealth-with-dog.jpg"),
-    },
+    }
   },
   {
-    src: "/assets/blog/smiley-tablet.jpg",
-    alt: "Licensed mental health practitioners issuing ESA letters via telehealth in 2026",
-    title: "Licensed Mental Health Practitioners",
-    caption: "Board-Certified Providers",
+    src: "/assets/backgrounds/telehealth-female-patient-doctor.jpg",
+    alt: "Licensed mental health professionals LMHP issuing ESA letters via telehealth USA 2026",
+    title: "Licensed Professionals",
+    caption: "Board-Certified LMHPs",
     link: "/how-to-get-esa-letter",
     schema: {
       "@type": "ImageObject",
-      "name": "Licensed Mental Health Practitioners",
-      "description": "PawTenant works exclusively with board-licensed mental health practitioners to issue ESA and PSD letters.",
-      "url": abs("/assets/blog/smiley-tablet.jpg"),
-      "contentUrl": abs("/assets/blog/smiley-tablet.jpg"),
-    },
+      "name": "Licensed Mental Health Professionals",
+      "description": "PawTenant works exclusively with board-licensed mental health professionals to issue ESA and PSD letters.",
+      "url": abs("/assets/backgrounds/telehealth-female-patient-doctor.jpg"),
+      "contentUrl": abs("/assets/backgrounds/telehealth-female-patient-doctor.jpg"),
+    }
   },
   {
-    src: "/assets/blog/man-working-dog.jpg",
+    src: "/assets/breeds/golden-retriever.jpg",
     alt: "Everything you need to know about psychiatric service dogs PSD and emotional support animals ESA",
     title: "Service Dog & PSD Guide",
     caption: "PSD Letters",
@@ -76,12 +72,12 @@ const galleryImages = [
       "@type": "ImageObject",
       "name": "Everything About Service Dogs and ESAs",
       "description": "Complete guide to service dogs, psychiatric service dogs (PSDs), and ESAs — legal rights and how to qualify.",
-      "url": abs("/assets/blog/man-working-dog.jpg"),
-      "contentUrl": abs("/assets/blog/man-working-dog.jpg"),
-    },
+      "url": abs("/assets/breeds/golden-retriever.jpg"),
+      "contentUrl": abs("/assets/breeds/golden-retriever.jpg"),
+    }
   },
   {
-    src: "/assets/blog/cafe-retriever.jpg",
+    src: "/assets/travel/petfriendly-cafe.jpg",
     alt: "Airline pet and ESA policy guide 2026 — flying with emotional support animals and service dogs",
     title: "Airline ESA Policy 2026",
     caption: "Travel Guide",
@@ -90,12 +86,12 @@ const galleryImages = [
       "@type": "ImageObject",
       "name": "Airline Pet & ESA Policy Guide 2026",
       "description": "Complete 2026 airline policy guide for traveling with emotional support animals and psychiatric service dogs.",
-      "url": abs("/assets/blog/cafe-retriever.jpg"),
-      "contentUrl": abs("/assets/blog/cafe-retriever.jpg"),
-    },
+      "url": abs("/assets/travel/petfriendly-cafe.jpg"),
+      "contentUrl": abs("/assets/travel/petfriendly-cafe.jpg"),
+    }
   },
   {
-    src: "/assets/blog/woman-looking-dog.jpg",
+    src: "/assets/colleges/college-student-bed-dog.jpg",
     alt: "Federal laws that protect a college student ESA rights in university housing 2026",
     title: "College Student ESA Laws",
     caption: "University Housing",
@@ -104,26 +100,26 @@ const galleryImages = [
       "@type": "ImageObject",
       "name": "Laws That Protect a College Student's ESA",
       "description": "Federal and state laws protecting college students' ESA rights in university housing and dormitories.",
-      "url": abs("/assets/blog/woman-looking-dog.jpg"),
-      "contentUrl": abs("/assets/blog/woman-looking-dog.jpg"),
-    },
+      "url": abs("/assets/colleges/college-student-bed-dog.jpg"),
+      "contentUrl": abs("/assets/colleges/college-student-bed-dog.jpg"),
+    }
   },
   {
-    src: "/assets/blog/hands-typing-dog.jpg",
-    alt: "How to get a psychiatric service dog PSD letter from a licensed mental health practitioner online in 2026",
+    src: "/assets/psd/man-working-holding-dog.jpg",
+    alt: "How to get a psychiatric service dog PSD letter licensed professional online 2026",
     title: "How to Get a PSD Letter",
     caption: "PSD Assessment",
     link: "/how-to-get-psd-letter",
     schema: {
       "@type": "ImageObject",
       "name": "How to Get a Psychiatric Service Dog Letter",
-      "description": "Step-by-step guide to getting a PSD letter from a licensed mental health practitioner in 2026.",
-      "url": abs("/assets/blog/hands-typing-dog.jpg"),
-      "contentUrl": abs("/assets/blog/hands-typing-dog.jpg"),
-    },
+      "description": "Step-by-step guide to getting a PSD letter from a licensed mental health professional in 2026.",
+      "url": abs("/assets/psd/man-working-holding-dog.jpg"),
+      "contentUrl": abs("/assets/psd/man-working-holding-dog.jpg"),
+    }
   },
   {
-    src: "/assets/blog/man-puppy-portrait.jpg",
+    src: "/assets/breeds/border-collie.jpg",
     alt: "What is a psychiatric service dog PSD letter and what rights does it provide housing travel",
     title: "What Is a PSD Letter?",
     caption: "Service Dog Rights",
@@ -132,13 +128,13 @@ const galleryImages = [
       "@type": "ImageObject",
       "name": "What Is a PSD Letter",
       "description": "Understanding what a psychiatric service dog letter is, how it differs from an ESA letter, and what legal rights it provides.",
-      "url": abs("/assets/blog/man-puppy-portrait.jpg"),
-      "contentUrl": abs("/assets/blog/man-puppy-portrait.jpg"),
-    },
+      "url": abs("/assets/breeds/border-collie.jpg"),
+      "contentUrl": abs("/assets/breeds/border-collie.jpg"),
+    }
   },
   {
     src: "/assets/blog/hug-close-1.jpg",
-    alt: "Removing barriers between people and their support animals — ESA housing disability rights USA",
+    alt: "Removing barriers between people and their support animals ESA housing disability rights USA",
     title: "Removing Barriers",
     caption: "Disability Rights",
     link: "/housing-rights-esa",
@@ -148,7 +144,7 @@ const galleryImages = [
       "description": "How ESA and PSD laws remove housing barriers for people with disabilities across all 50 US states.",
       "url": abs("/assets/blog/hug-close-1.jpg"),
       "contentUrl": abs("/assets/blog/hug-close-1.jpg"),
-    },
+    }
   },
 ];
 
@@ -156,9 +152,8 @@ const schemaData = {
   "@context": "https://schema.org",
   "@type": "ImageGallery",
   "name": "PawTenant ESA & PSD Resource Image Gallery",
-  "description":
-    "Professional image gallery showcasing ESA housing rights, PSD letters, mental health support, and emotional support animal guides from PawTenant.",
-  "url": SITE + "/",
+  "description": "Professional image gallery showcasing ESA housing rights, PSD letters, mental health support, and emotional support animal guides from PawTenant.",
+  "url": "https://www.pawtenant.com/",
   "image": galleryImages.map((img) => img.schema),
 };
 
@@ -166,7 +161,7 @@ export default function MediaGallery() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   return (
-    <section className="py-16 bg-[#fdf8f3]">
+    <section className="py-16 md:py-20 bg-[#fdf8f3]">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaData) }}
@@ -175,14 +170,13 @@ export default function MediaGallery() {
       <div className="max-w-7xl mx-auto px-5 md:px-6">
         <div className="text-center mb-10">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">
-            Media &amp; Resources
+            Media & Resources
           </span>
           <h2 className="text-3xl font-bold text-gray-900 mb-3">
             Trusted ESA &amp; PSD Resources
           </h2>
           <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
-            Professional guides covering housing rights, mental health support, travel, and
-            state-specific ESA laws — all backed by licensed mental health practitioners.
+            Professional guides covering housing rights, mental health support, travel, and state-specific ESA laws — all backed by licensed professionals.
           </p>
         </div>
 
@@ -203,11 +197,9 @@ export default function MediaGallery() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
                 <p className="text-white text-xs font-bold leading-tight">{img.title}</p>
-                <span className="inline-block mt-1 text-orange-300 text-xs font-semibold">
-                  {img.caption}
-                </span>
+                <span className="inline-block mt-1 text-orange-300 text-xs font-semibold">{img.caption}</span>
               </div>
-              {/* Wrap whole card in a link so the gallery is keyboard- and SEO-accessible */}
+              {/* Keyboard- and SEO-accessible link overlay (matches LIVE behavior) */}
               <Link
                 to={img.link}
                 className="absolute inset-0"

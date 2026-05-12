@@ -449,7 +449,7 @@ export default function StateESAPage() {
   const heroSrc = (stateData && STATE_HERO_MAP[stateData.abbreviation]) || "/assets/lifestyle/woman-with-dog-new-apartment.jpg";
   const petSceneSrc = "/assets/lifestyle/owner-with-dog-laptop.jpg";
   const catSceneSrc = "/assets/backgrounds/lifestyle-freelancer-home-cat.jpg";
-  const labradorSrc = "/assets/blog/cafe-retriever.jpg";
+  const labradorSrc = "/assets/breeds/labrador-retriever.jpg";
 
   useEffect(() => {
     if (!stateData) return;
