@@ -577,19 +577,37 @@ export default function StateESAPage() {
               <i className="ri-arrow-right-s-line text-white/50 text-xs"></i>
               <span className="text-white/90 text-sm">{stateData.name}</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              ESA Letter in {stateData.name}
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
+              Get an ESA Letter in {stateData.name}
             </h1>
+            {/* Subtitle line — captures "ESA letter for housing" + "licensed
+                mental health professional" keyword variants without changing
+                the existing dynamic intro text below. */}
+            <p className="text-white/90 text-base font-medium leading-relaxed mb-4">
+              Housing ESA documentation from a {stateData.name}-licensed mental health professional, written for Fair Housing Act accommodation.
+            </p>
             <p className="text-white/85 text-base leading-relaxed mb-8">
               {stateData.introText}
             </p>
-            <Link
-              to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-              className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
-            >
-              <i className="ri-file-text-line"></i>
-              Get An ESA Letter Now
-            </Link>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link
+                to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
+                className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+              >
+                <i className="ri-file-text-line"></i>
+                Get An ESA Letter Now
+              </Link>
+              {/* Internal anchor → /housing-rights-esa with natural keyword
+                  anchor text for "Fair Housing Act protections". Strengthens
+                  internal-linking topical authority across the housing cluster. */}
+              <Link
+                to="/housing-rights-esa"
+                className="whitespace-nowrap inline-flex items-center gap-1.5 text-white/90 hover:text-white text-sm font-semibold border border-white/30 hover:border-white/60 px-5 py-3 rounded-md transition-colors cursor-pointer"
+              >
+                Fair Housing Act protections
+                <i className="ri-arrow-right-line text-xs"></i>
+              </Link>
+            </div>
           </div>
         </div>
       </section>

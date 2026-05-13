@@ -57,9 +57,9 @@ export default function HousingRightsPage() {
 
   return (
     <main>
-      <title>ESA Housing Rights Explained | Fair Housing Act | PawTenant</title>
-      <meta name="description" content="Understand your housing rights with an emotional support animal. Learn how the Fair Housing Act protects ESA owners and keeps you and your pet together." />
-      <meta name="keywords" content="ESA housing rights, Fair Housing Act, ESA landlord laws, pet fee exemption, emotional support animal housing" />
+      <title>ESA Letter for Housing | Fair Housing Act Protections | PawTenant</title>
+      <meta name="description" content="ESA letter for housing under the Fair Housing Act — what valid ESA documentation must include, how reasonable accommodation requests work, and how to avoid ESA letter scams. Reviewed by a licensed mental health professional." />
+      <meta name="keywords" content="ESA letter for housing, Fair Housing Act ESA letter, ESA housing rights, valid ESA letter documentation, reasonable accommodation request, emotional support animal letter benefits, avoiding ESA letter scams, ESA landlord laws, pet fee exemption, emotional support animal housing" />
       <link rel="canonical" href="https://www.pawtenant.com/housing-rights-esa" />
       <meta property="og:title" content="ESA Housing Rights Explained | Fair Housing Act | PawTenant" />
       <meta property="og:description" content="Understand your housing rights with an emotional support animal. Learn how the Fair Housing Act protects ESA owners and keeps you and your pet together." />
@@ -116,19 +116,35 @@ export default function HousingRightsPage() {
         </div>
         <div className="relative max-w-7xl mx-auto px-6">
           <div className="max-w-2xl">
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              Housing Rights &amp; Your ESA
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
+              ESA Letter for Housing &amp; Your Fair Housing Act Rights
             </h1>
-            <p className="text-white/85 text-lg leading-relaxed mb-8">
-              Understanding your legal rights is the first step to keeping your emotional support animal with you at home. The Fair Housing Act protects you — and we make sure you're fully covered.
+            {/* Subtitle line — captures "valid ESA letter documentation" and
+                "reasonable accommodation request" keyword variants without
+                changing the existing intro paragraph below. */}
+            <p className="text-white/90 text-base font-medium leading-relaxed mb-4">
+              Valid ESA letter documentation supports a reasonable accommodation request under federal law.
             </p>
-            <div className="flex items-center gap-4">
+            <p className="text-white/85 text-lg leading-relaxed mb-8">
+              Understanding your legal rights is the first step to keeping your emotional support animal with you at home. The Fair Housing Act protects qualifying ESA owners — and a properly issued ESA letter from a licensed mental health professional is what makes the protection enforceable.
+            </p>
+            <div className="flex flex-wrap items-center gap-4">
               <Link
                 to="/assessment"
                 className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
               >
                 <i className="ri-file-text-line"></i>
                 Get an ESA Letter Now
+              </Link>
+              {/* Internal anchor → /how-to-get-esa-letter with natural keyword
+                  anchor for "getting an ESA letter online". Strengthens
+                  internal-linking topical authority. */}
+              <Link
+                to="/how-to-get-esa-letter"
+                className="whitespace-nowrap inline-flex items-center gap-1.5 text-white/90 hover:text-white text-sm font-semibold border border-white/30 hover:border-white/60 px-5 py-3 rounded-md transition-colors cursor-pointer"
+              >
+                Getting an ESA letter online
+                <i className="ri-arrow-right-line text-xs"></i>
               </Link>
             </div>
           </div>
@@ -243,6 +259,36 @@ export default function HousingRightsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Scam-awareness callout — captures the "avoiding ESA letter scams"
+          and "valid ESA letter documentation" keyword cluster naturally,
+          and routes intent traffic to the how-to-get-esa-letter explainer
+          where the full scam-prevention checklist lives. Compact banner,
+          not a full section — preserves page rhythm. */}
+      <section className="py-8 md:py-10 bg-white border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="bg-[#fdf6ee] border border-orange-200 rounded-2xl p-6 md:p-7 flex flex-col md:flex-row items-start md:items-center gap-5">
+            <div className="w-12 h-12 flex items-center justify-center bg-orange-500 rounded-xl flex-shrink-0">
+              <i className="ri-shield-check-line text-white text-xl"></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1.5">
+                Avoiding ESA letter scams
+              </h2>
+              <p className="text-gray-700 text-sm leading-relaxed">
+                Valid ESA letter documentation must be reviewed and signed by a licensed mental health professional credentialed in your state, with their license number and signature on the letter. Services that promise instant approval, guaranteed letters, or skip the clinical evaluation are not legitimate — and many landlords reject those documents on sight.
+              </p>
+            </div>
+            <Link
+              to="/how-to-get-esa-letter"
+              className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-bold text-orange-600 border border-orange-400 px-5 py-2.5 rounded-lg hover:bg-orange-500 hover:text-white transition-colors cursor-pointer flex-shrink-0"
+            >
+              How to get a legitimate ESA letter
+              <i className="ri-arrow-right-line text-xs"></i>
+            </Link>
           </div>
         </div>
       </section>

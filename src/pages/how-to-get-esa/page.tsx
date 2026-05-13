@@ -154,9 +154,9 @@ const faqs = [
 export default function HowToGetESAPage() {
   return (
     <main>
-      <title>How to Get an ESA Letter | Step-by-Step Guide | PawTenant</title>
-      <meta name="description" content="Learn how to get a legitimate ESA letter from a licensed professional. Follow our simple step-by-step process and receive your letter within 24 hours." />
-      <meta name="keywords" content="how to get an ESA letter, ESA assessment, online ESA evaluation, get ESA letter fast, legitimate ESA letter" />
+      <title>How to Get an ESA Letter Online | Step-by-Step Guide | PawTenant</title>
+      <meta name="description" content="How to get an ESA letter online from a licensed mental health professional. Step-by-step process, qualifying conditions, required documentation, and what a valid ESA letter must include. Receive your letter within 24 hours." />
+      <meta name="keywords" content="how to get an ESA letter, how to get an ESA letter online, get ESA letter online, steps to obtain an ESA letter, ESA letter application process, qualifying for an ESA letter, licensed mental health professional ESA letter, ESA letter requirements, emotional support animal letter online, legitimate online ESA evaluation, avoiding ESA letter scams" />
       <link rel="canonical" href="https://www.pawtenant.com/how-to-get-esa-letter" />
       <meta property="og:title" content="How to Get an ESA Letter | Step-by-Step Guide | PawTenant" />
       <meta property="og:description" content="Learn how to get a legitimate ESA letter from a licensed professional. Follow our simple step-by-step process and receive your letter within 24 hours." />
@@ -190,10 +190,10 @@ export default function HowToGetESAPage() {
               Simple 3-Step Process
             </span>
             <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              How to Get an ESA Letter
+              How to Get an ESA Letter Online
             </h1>
             <p className="text-white/85 text-lg leading-relaxed mb-8">
-              Get your ESA letter smoothly through PawTenant. Our licensed mental health professionals make the process easy, legal, and stress-free.
+              The full ESA letter application process — from a short clinical assessment to provider review and secure delivery. Every emotional support animal letter is reviewed and signed by a licensed mental health professional credentialed in your state.
             </p>
             <div className="flex items-center gap-4">
               <Link
