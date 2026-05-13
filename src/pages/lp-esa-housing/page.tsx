@@ -605,14 +605,14 @@ export default function LpEsaHousingPage() {
               <Link
                 key={s.slug}
                 to={`/esa-letter/${s.slug}`}
-                className="group flex items-center justify-center gap-2 px-3 py-3 rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-[#0E2A47] hover:shadow-[0_4px_12px_rgba(16,185,129,0.15)] transition text-[13.5px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+                className="group flex items-center justify-center gap-2 px-3 py-3 min-h-[58px] rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-[#0E2A47] hover:shadow-[0_4px_12px_rgba(16,185,129,0.15)] transition text-[13.5px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
               >
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_1px_3px_rgba(16,185,129,0.35)] transition group-hover:scale-110">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </span>
-                <span>{s.name}</span>
+                <span className="text-center leading-tight">{s.name}</span>
               </Link>
             ))}
           </div>

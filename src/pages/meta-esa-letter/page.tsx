@@ -671,7 +671,10 @@ export default function MetaEsaLetterPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 md:gap-8 items-start">
-            {/* Sample letter mock */}
+            {/* Sample letter mock — matches /esa-letter-housing LetterPreviewCard
+                exactly so the sample-letter visual system is consistent across
+                paid LPs (browser chrome → SVG → emerald verification badge →
+                disclaimer footnote). */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden">
               <div className="flex items-center justify-between bg-slate-50 px-3 py-2 border-b border-slate-200">
                 <div className="flex items-center gap-1.5">
@@ -685,12 +688,26 @@ export default function MetaEsaLetterPage() {
               <div className="bg-white p-3 md:p-4">
                 <img
                   src="/images/checkout/esa-sample-letter.svg"
-                  alt="Sample PawTenant ESA letter showing provider credentials and housing-accommodation language. Names and details are placeholders."
+                  alt="Sample PawTenant ESA letter showing the verification ID, provider credentials, and housing-accommodation language. Names and details are placeholders."
                   width={800}
                   height={1035}
                   loading="lazy"
                   className="w-full h-auto block"
                 />
+              </div>
+              {/* Verification badge under preview — reinforces ID concept,
+                  matches Google LP LetterPreviewCard for visual continuity. */}
+              <div className="bg-emerald-50 border-t border-emerald-200 px-4 py-3 flex items-center gap-3">
+                <span className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <path d="m9 12 2 2 4-4" />
+                  </svg>
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[12px] font-medium text-emerald-900 leading-tight">Every letter carries a Verification ID</div>
+                  <div className="text-[11px] text-emerald-800/80 leading-snug font-mono">pawtenant.com/verify · landlords confirm in seconds</div>
+                </div>
               </div>
               <div className="text-center text-[10px] text-slate-400 py-2 px-3 bg-white border-t border-slate-100">
                 Sample template · placeholder names · housing-accommodation language only.

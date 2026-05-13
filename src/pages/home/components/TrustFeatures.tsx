@@ -2,42 +2,36 @@ const features = [
   {
     icon: "ri-user-star-line",
     color: "bg-orange-50 text-orange-500",
-    cardBg: "bg-gray-50",
     title: "Licensed Professionals",
     desc: "Our network of licensed mental health professionals ensures you receive a legitimate, legally valid ESA letter.",
   },
   {
     icon: "ri-file-shield-2-line",
-    color: "text-[#92400e]",
-    cardBg: "bg-[#FFF7ED]",
+    color: "bg-orange-50 text-[#92400e]",
     title: "Legitimate ESA Letters",
     desc: "Every letter meets federal and state housing requirements and is signed by a licensed clinician.",
   },
   {
     icon: "ri-flashlight-line",
     color: "bg-orange-50 text-orange-500",
-    cardBg: "bg-gray-50",
     title: "Fast Turnaround",
     desc: "Receive your ESA letter within 24 hours of your assessment — often the same day.",
   },
   {
     icon: "ri-lock-password-line",
-    color: "text-[#92400e]",
-    cardBg: "bg-[#FFF7ED]",
+    color: "bg-orange-50 text-[#92400e]",
     title: "100% Confidential",
     desc: "Your personal information and health details are protected under HIPAA regulations at all times.",
   },
   {
     icon: "ri-home-heart-line",
     color: "bg-orange-50 text-orange-500",
-    cardBg: "bg-gray-50",
     title: "Housing Protection",
     desc: "Our ESA letters are fully compliant with the Fair Housing Act, protecting your right to live with your pet.",
   },
   {
     icon: "ri-verified-badge-line",
-    color: "text-[#92400e]",
-    cardBg: "bg-[#FFF7ED]",
+    color: "bg-orange-50 text-[#92400e]",
     title: "Landlord Verification",
     desc: "Every finalized letter includes a Verification ID. Landlords can confirm authenticity online — your health details are never disclosed.",
     link: "/esa-letter-verification",
@@ -61,14 +55,14 @@ export default function TrustFeatures() {
           </p>
         </div>
 
-        {/* Feature Grid */}
+        {/* Feature Grid — unified white cards with subtle border for clean, premium consistency */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((f) => (
             <div
               key={f.title}
-              className={`${f.cardBg} rounded-xl p-6 hover:shadow-sm transition-shadow border border-gray-100`}
+              className="bg-white rounded-xl p-6 border border-slate-200 hover:border-slate-300 hover:shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition"
             >
-              <div className={`w-11 h-11 flex items-center justify-center rounded-lg mb-4 ${f.cardBg === "bg-[#FFF7ED]" ? "bg-orange-100" : "bg-orange-100"} ${f.color}`}>
+              <div className={`w-11 h-11 flex items-center justify-center rounded-lg mb-4 ${f.color}`}>
                 <i className={`${f.icon} text-xl`}></i>
               </div>
               <h3 className="text-gray-900 font-bold text-base mb-2">{f.title}</h3>
