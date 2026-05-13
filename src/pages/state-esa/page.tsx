@@ -426,6 +426,111 @@ const whyPawtenant = [
   { title: "Quick and Safe Delivery", desc: "Once your letter is approved, we will send it to you digitally. It is fast, secure, and ready to use right away.", icon: "ri-send-plane-line" },
 ];
 
+// Scalable housing-intent FAQ cluster — applied to every state page after
+// the per-state FAQ list. Each item is keyed to a different long-tail
+// intent (provider-in-state, landlord verification, ESA application
+// process, valid documentation / scam avoidance, renewal). The `{state}`
+// token is substituted at render time by `materializeCommonFaqs`, so the
+// surface vocabulary varies per state without manual per-state authoring.
+//
+// Duplicate-content safety: each state page already has unique upstream
+// content (per-state lawsSummary, lawsBullets, advantages, faqs, blog
+// posts, nearby states). These shared housing-intent FAQs are dynamically
+// state-parameterized and address universal housing questions that
+// legitimately apply to all states — equivalent to common help content,
+// not boilerplate keyword spam.
+const COMMON_HOUSING_FAQS: { q: string; a: string }[] = [
+  {
+    q: "Does my ESA letter need to be issued by a provider licensed in {state}?",
+    a: "For housing accommodation purposes, ESA documentation should be issued by a Licensed Mental Health Practitioner credentialed in the state where you live, including {state}. PawTenant matches every assessment with a provider who holds an active license in your state — which is exactly what landlords look for during verification.",
+  },
+  {
+    q: "How do landlords in {state} verify an ESA letter?",
+    a: "Every finalized PawTenant letter includes a unique Verification ID along with the provider's full name, license number, and NPI. A {state} landlord can confirm authenticity at pawtenant.com/verify or independently check the provider's credentials on the public NPPES NPI registry. Verification confirms authenticity only — no diagnosis, treatment history, or clinical detail is ever exposed.",
+  },
+  {
+    q: "How long does the ESA letter application process take in {state}?",
+    a: "The clinical assessment takes about five minutes on your phone. A {state}-credentialed Licensed Mental Health Practitioner typically reviews each case within 24 hours. If you qualify, you receive your housing-focused ESA documentation as a secure PDF the same day. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not result in a letter.",
+  },
+  {
+    q: "What should a valid {state} ESA letter include?",
+    a: "A valid {state} ESA letter is signed by a Licensed Mental Health Practitioner credentialed in your state and prints the provider's full name, license number, NPI, signature, and the issue and expiration dates. PawTenant letters also carry a unique Verification ID landlords can confirm directly. Services that promise instant approval, guaranteed letters, or skip the clinical review are not legitimate — and landlords have learned to spot them.",
+  },
+  {
+    q: "Can I renew my ESA letter for housing in {state}?",
+    a: "Yes. ESA letters are typically valid for one year, and most landlords ask for documentation issued within the past twelve months. PawTenant supports annual renewal in {state} through the same short clinical assessment and Licensed Mental Health Practitioner review, so your housing accommodation request stays current.",
+  },
+];
+
+function materializeCommonFaqs(stateName: string) {
+  return COMMON_HOUSING_FAQS.map(({ q, a }) => ({
+    q: q.replace(/\{state\}/g, stateName),
+    a: a.replace(/\{state\}/g, stateName),
+  }));
+}
+
+// Deterministic per-slug hero fallback pool. Only 8 states have unique
+// state-specific hero photos in /public/assets/states/; the remaining 42
+// previously all used the same fallback image, making them feel like a
+// duplicate template. This pool gives every un-mapped state one of 10
+// different lifestyle/housing photos via a deterministic slug hash — so
+// /esa-letter/ohio and /esa-letter/oregon get different hero photos
+// without any per-state authoring. Deterministic = same image on every
+// render (no hydration mismatch, no flicker). All images are existing
+// assets already used elsewhere in the site, so no bundle impact.
+const FALLBACK_HERO_POOL: string[] = [
+  "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
+  "/assets/lifestyle/woman-telehealth-with-dog.jpg",
+  "/assets/lifestyle/owner-with-dog-laptop.jpg",
+  "/assets/lifestyle/freelancer-with-dog-laptop.jpg",
+  "/assets/lifestyle/woman-laptop-home.jpg",
+  "/assets/blog/fp-woman-dog-floor.jpg",
+  "/assets/blog/fp-woman-dog-couch.jpg",
+  "/assets/blog/fp-woman-jeans-living-room.jpg",
+  "/assets/blog/fp-curly-woman-fun-dog.jpg",
+  "/assets/housing/home-together.jpg",
+];
+
+function pickFallbackHero(slug: string): string {
+  // Simple stable 32-bit string hash (djb2-ish). Pure function of the
+  // slug — produces the same index on server and client.
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) {
+    h = (h * 31 + slug.charCodeAt(i)) | 0;
+  }
+  const idx = Math.abs(h) % FALLBACK_HERO_POOL.length;
+  return FALLBACK_HERO_POOL[idx];
+}
+
+// Compact "What landlords see" trust module — 4 micro-cells that snapshot
+// what a {state} ESA letter actually shows a landlord during verification.
+// Sits between the per-state Advantages section and Why PawTenant in the
+// flow. Different surface from the existing Verification Trust Strip (a
+// single horizontal bar lower on the page) — this is a scannable visual
+// grid; the bar is the linked CTA to /esa-letter-verification.
+const LANDLORDS_SEE_ITEMS = [
+  {
+    icon: "ri-shield-check-line",
+    label: "Verification ID",
+    body: "Unique ID landlords confirm at pawtenant.com/verify.",
+  },
+  {
+    icon: "ri-user-star-line",
+    label: "Provider's license",
+    body: "Full name, license number, and NPI printed on every letter.",
+  },
+  {
+    icon: "ri-home-heart-line",
+    label: "Housing-focused",
+    body: "Written for {state} Fair Housing Act accommodation requests.",
+  },
+  {
+    icon: "ri-lock-line",
+    label: "Privacy-safe",
+    body: "Diagnosis and clinical detail never shown to landlords.",
+  },
+];
+
 export default function StateESAPage() {
   const { state: stateSlug } = useParams<{ state: string }>();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -446,7 +551,13 @@ export default function StateESAPage() {
     VA: "/assets/states/virginia.jpg",
     IL: "/assets/states/illinois.jpg",
   };
-  const heroSrc = (stateData && STATE_HERO_MAP[stateData.abbreviation]) || "/assets/lifestyle/woman-with-dog-new-apartment.jpg";
+  // Hero source: prefer the explicit per-state photo if mapped; otherwise
+  // deterministically pick from the fallback pool by hashing the state
+  // slug. Gives 42 un-mapped states 10 different visual experiences
+  // instead of all sharing one image.
+  const heroSrc =
+    (stateData && STATE_HERO_MAP[stateData.abbreviation]) ||
+    (stateData ? pickFallbackHero(stateData.slug) : "/assets/lifestyle/woman-with-dog-new-apartment.jpg");
   const petSceneSrc = "/assets/lifestyle/owner-with-dog-laptop.jpg";
   const catSceneSrc = "/assets/backgrounds/lifestyle-freelancer-home-cat.jpg";
   const labradorSrc = "/assets/breeds/labrador-retriever.jpg";
@@ -500,12 +611,21 @@ export default function StateESAPage() {
     const existingSchema = document.getElementById("state-esa-schema");
     if (existingSchema) existingSchema.remove();
 
+    // Merge per-state FAQs with the shared housing-intent FAQs so the
+    // FAQPage JSON-LD includes both sets — Google indexes the full FAQ
+    // cluster, which broadens topical coverage without authoring 50
+    // separate copies of the common housing questions.
+    const schemaFaqs = [
+      ...stateData.faqs,
+      ...materializeCommonFaqs(stateData.name),
+    ];
+
     const schema = {
       "@context": "https://schema.org",
       "@graph": [
         {
           "@type": "FAQPage",
-          "mainEntity": stateData.faqs.map((faq) => ({
+          "mainEntity": schemaFaqs.map((faq) => ({
             "@type": "Question",
             "name": faq.q,
             "acceptedAnswer": {
@@ -695,6 +815,48 @@ export default function StateESAPage() {
         </div>
       </section>
 
+      {/* What landlords see — compact 4-cell trust module that snapshots
+          what a {state} ESA letter actually surfaces during landlord
+          verification. Different surface from the existing Verification
+          Trust Strip below (a single horizontal CTA bar): this is a
+          scannable visual grid that reinforces the Verification ID +
+          provider-license + housing-focus + privacy-safe quartet without
+          duplicating the Google LP's larger verification section. */}
+      <section className="py-12 md:py-14 bg-[#fafafa] border-y border-orange-100">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-7 md:mb-9">
+            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-2">
+              What landlords see
+            </span>
+            <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+              A snapshot of your {stateData.name} ESA letter
+            </h2>
+            <p className="text-gray-500 text-sm mt-2 max-w-xl mx-auto leading-relaxed">
+              Prepared for housing accommodation requests in {stateData.name} — reviewed by licensed providers familiar with ESA documentation in your state.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            {LANDLORDS_SEE_ITEMS.map((item) => (
+              <div
+                key={item.label}
+                className="bg-white border border-gray-100 rounded-xl p-4 md:p-5 hover:border-orange-200 transition-colors"
+              >
+                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg mb-3">
+                  <i className={`${item.icon} text-orange-500 text-lg`}></i>
+                </div>
+                <div className="text-[13px] md:text-sm font-bold text-gray-900 mb-1 leading-snug">
+                  {item.label}
+                </div>
+                <p className="text-[11.5px] md:text-xs text-gray-600 leading-relaxed">
+                  {item.body.replace(/\{state\}/g, stateData.name)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Why Pawtenant */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">
@@ -736,7 +898,8 @@ export default function StateESAPage() {
         </div>
       </section>
 
-      {/* FAQ */}
+      {/* FAQ — per-state items first (most state-relevant on top), then
+          the shared housing-intent cluster materialized for this state. */}
       <section className="py-16 bg-[#fdf6ee]">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-10">
@@ -744,11 +907,12 @@ export default function StateESAPage() {
             <h2 className="text-3xl font-bold text-gray-900">Frequently Asked Questions</h2>
           </div>
           <div className="space-y-3">
-            {stateData.faqs.map((faq, i) => (
+            {[...stateData.faqs, ...materializeCommonFaqs(stateData.name)].map((faq, i) => (
               <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <button
                   className="w-full flex items-center justify-between px-6 py-4 text-left cursor-pointer"
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  aria-expanded={openFaq === i}
                 >
                   <span className={`text-sm font-semibold ${openFaq === i ? "text-orange-500" : "text-gray-900"}`}>{faq.q}</span>
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-4">
@@ -762,6 +926,21 @@ export default function StateESAPage() {
                 )}
               </div>
             ))}
+          </div>
+
+          {/* Closing internal-link CTA — natural anchor to the
+              how-to-get-esa explainer. Strengthens topical cluster linking
+              between state pages and the central process explainer
+              without adding an over-link in body copy. */}
+          <div className="mt-8 text-center">
+            <p className="text-xs text-gray-500 mb-2">Want the full walkthrough?</p>
+            <Link
+              to="/how-to-get-esa-letter"
+              className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-bold text-orange-600 hover:text-orange-700 transition-colors cursor-pointer"
+            >
+              See the full ESA letter application process
+              <i className="ri-arrow-right-line text-xs"></i>
+            </Link>
           </div>
         </div>
       </section>
@@ -778,6 +957,24 @@ export default function StateESAPage() {
               <p className="text-xs text-gray-600 leading-relaxed">
                 Every finalized {stateData.name} ESA letter includes a unique Verification ID. Landlords can confirm authenticity at pawtenant.com/verify — your health information is never disclosed.
               </p>
+              {/* Three concise trust bullets — expands the verification copy
+                  with state-aware specifics without adding a new section.
+                  Compact list so the strip still feels like a single trust
+                  bar on desktop and stacks cleanly on mobile. */}
+              <ul className="mt-2.5 grid gap-1 text-[11.5px] text-gray-600 leading-relaxed">
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-check-line text-orange-500 mt-0.5 text-sm leading-none"></i>
+                  <span>Provider's license number and NPI printed on every {stateData.name} letter</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-check-line text-orange-500 mt-0.5 text-sm leading-none"></i>
+                  <span>Privacy-safe verification — diagnosis and clinical detail never shown</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-check-line text-orange-500 mt-0.5 text-sm leading-none"></i>
+                  <span>Built for housing accommodation requests under the Fair Housing Act</span>
+                </li>
+              </ul>
               <PrivacySafeVerificationNote variant="inline" className="mt-2" />
             </div>
             <Link
@@ -804,12 +1001,15 @@ export default function StateESAPage() {
         return (
           <section className="py-14 bg-[#fafafa] border-t border-gray-100">
             <div className="max-w-7xl mx-auto px-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <span className="text-xs font-semibold uppercase tracking-widest text-orange-500 mb-1 block">Learn More</span>
-                  <h2 className="text-xl font-bold text-gray-900">
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-orange-500 mb-1 block">Housing &amp; ESA Resources</span>
+                  <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-1">
                     {stateEntry ? `${stateData.name} ESA Guides` : "ESA Housing Guides"}
                   </h2>
+                  <p className="text-sm text-gray-500 leading-relaxed max-w-xl">
+                    Helpful reads on the Fair Housing Act, ESA documentation, and the application process.
+                  </p>
                 </div>
                 <Link
                   to="/blog"
