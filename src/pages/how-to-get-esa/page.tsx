@@ -436,6 +436,62 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
+      {/* State-aware requirements — small contextual section that
+          connects the process explainer to the per-state guides. The core
+          process is the same nationwide; the rules layered on top vary
+          by state. Six curated states + the all-states hub. No
+          repetitive anchor text, no doorway-style block. */}
+      <section className="py-16 bg-white">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="bg-[#fafafa] rounded-2xl border border-gray-100 p-6 md:p-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-5">
+                <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">
+                  By State
+                </span>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3 leading-tight">
+                  ESA letter requirements can vary by state
+                </h2>
+                <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                  The application steps are the same anywhere in the US — assessment, licensed evaluation, signed letter. What changes by state is who can legally sign your letter (a clinician licensed in your state of residence) and which state-level statutes layer on top of the federal Fair Housing Act.
+                </p>
+                <p className="text-gray-600 text-sm leading-relaxed mb-5">
+                  Each state guide below covers the licensed-provider requirement, the relevant state statute, and the documentation a landlord in that state is most likely to ask for.
+                </p>
+                <Link
+                  to="/explore-esa-letters-all-states"
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-500 hover:text-orange-600 cursor-pointer"
+                >
+                  See guides for all 50 states
+                  <i className="ri-arrow-right-line text-xs"></i>
+                </Link>
+              </div>
+              <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {[
+                  { slug: "california", name: "California" },
+                  { slug: "texas", name: "Texas" },
+                  { slug: "florida", name: "Florida" },
+                  { slug: "new-york", name: "New York" },
+                  { slug: "pennsylvania", name: "Pennsylvania" },
+                  { slug: "georgia", name: "Georgia" },
+                ].map((s) => (
+                  <Link
+                    key={s.slug}
+                    to={`/esa-letter/${s.slug}`}
+                    className="flex items-center gap-2 px-3.5 py-3 rounded-lg bg-white border border-gray-100 hover:border-orange-200 hover:bg-orange-50/50 transition-colors cursor-pointer group"
+                  >
+                    <i className="ri-map-pin-2-line text-orange-500 text-sm flex-shrink-0"></i>
+                    <span className="text-sm text-gray-700 group-hover:text-orange-600 transition-colors leading-tight">
+                      {s.name}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Why Choose */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-6">

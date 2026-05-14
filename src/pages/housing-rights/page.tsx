@@ -332,6 +332,70 @@ export default function HousingRightsPage() {
         </div>
       </section>
 
+      {/* State-specific ESA housing guidance — light contextual section
+          that connects the federal FHA framing above to state-level
+          guides without becoming a 50-state link wall. Six curated
+          high-traffic states plus the all-states hub. Educational anchor
+          phrasing, no exact-match repetition. */}
+      <section className="py-16 bg-white border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+            <div className="lg:col-span-5">
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">
+                State-Specific ESA Housing Guidance
+              </span>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4 leading-tight">
+                How Fair Housing Act protections apply in your state
+              </h2>
+              <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                The Fair Housing Act applies nationwide, but several states layer in additional accommodations — California's AB 468 30-day clinical relationship, New York's anti-discrimination provisions, Florida's fraud statute, Texas Property Code Chapter 92, and Pennsylvania's PHRA all shape how a landlord may handle an ESA accommodation request.
+              </p>
+              <p className="text-gray-600 text-sm leading-relaxed mb-6">
+                Our per-state guides cover the federal FHA baseline plus the state-specific rules a landlord or property manager in your area actually references.
+              </p>
+              <Link
+                to="/explore-esa-letters-all-states"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-500 hover:text-orange-600 cursor-pointer"
+              >
+                Browse ESA housing guides for all 50 states
+                <i className="ri-arrow-right-line text-xs"></i>
+              </Link>
+            </div>
+            <div className="lg:col-span-7">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { slug: "california", name: "California", note: "FHA + AB 468 30-day rule" },
+                  { slug: "texas", name: "Texas", note: "FHA + Texas Property Code Ch. 92" },
+                  { slug: "florida", name: "Florida", note: "FHA + FL Statute 760.27" },
+                  { slug: "new-york", name: "New York", note: "FHA + NY Human Rights Law" },
+                  { slug: "pennsylvania", name: "Pennsylvania", note: "FHA + PA Human Relations Act" },
+                  { slug: "georgia", name: "Georgia", note: "FHA + Georgia Fair Housing Act" },
+                ].map((s) => (
+                  <Link
+                    key={s.slug}
+                    to={`/esa-letter/${s.slug}`}
+                    className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:border-orange-200 hover:bg-orange-50/40 transition-colors cursor-pointer group"
+                  >
+                    <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0 group-hover:bg-orange-100 transition-colors">
+                      <i className="ri-map-pin-2-line text-orange-500"></i>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-gray-900 text-sm leading-tight mb-1 group-hover:text-orange-600 transition-colors">
+                        ESA housing guide for {s.name}
+                      </div>
+                      <div className="text-gray-500 text-xs leading-snug">{s.note}</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+              <p className="text-gray-400 text-xs mt-4 leading-relaxed">
+                This is general information, not legal advice. Specific statutes, exemptions, and procedures vary by state and by housing type.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Trust pillars — reusable section, compact variant */}
       <VerificationPillarsSection variant="compact" showCTA showPrivacyNote className="bg-white" />
 

@@ -141,6 +141,66 @@ export default function ExploreStatesPage() {
         </div>
       </section>
 
+      {/* Related guides — closes the topical cluster from the hub back
+          out to peer educational pages. Light three-card strip, not a
+          link wall. Helps users who landed on the hub directly find the
+          national FHA, application, and verification context. */}
+      <section className="py-12 bg-[#fafafa] border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-6">
+            <div>
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-1">
+                Related Guides
+              </span>
+              <h2 className="text-xl md:text-2xl font-bold text-gray-900 leading-tight">
+                Broader ESA context that applies in every state
+              </h2>
+            </div>
+            <p className="text-gray-500 text-sm max-w-md md:text-right leading-relaxed">
+              Federal Fair Housing Act protections, the application process, and landlord verification — the national context behind every state guide above.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              {
+                to: "/housing-rights-esa",
+                icon: "ri-home-heart-line",
+                title: "Housing rights under the FHA",
+                desc: "Reasonable accommodation, valid documentation, and how to avoid ESA letter scams.",
+              },
+              {
+                to: "/how-to-get-esa-letter",
+                icon: "ri-file-text-line",
+                title: "How to get an ESA letter",
+                desc: "Step-by-step process from assessment to a signed letter from a licensed provider.",
+              },
+              {
+                to: "/esa-letter-verification",
+                icon: "ri-verified-badge-line",
+                title: "Landlord letter verification",
+                desc: "How housing providers confirm a PawTenant ESA letter — without exposing health info.",
+              },
+            ].map((card) => (
+              <Link
+                key={card.to}
+                to={card.to}
+                className="group flex items-start gap-3 p-4 rounded-xl bg-white border border-gray-100 hover:border-orange-200 hover:bg-orange-50/40 transition-colors cursor-pointer"
+              >
+                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0 group-hover:bg-orange-100 transition-colors">
+                  <i className={`${card.icon} text-orange-500`}></i>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-gray-900 mb-1 leading-snug group-hover:text-orange-600 transition-colors">
+                    {card.title}
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">{card.desc}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* FAQ */}
       <section className="py-16 bg-[#fdf6ee]">
         <div className="max-w-4xl mx-auto px-6">

@@ -694,6 +694,55 @@ export default function EverythingEsaOnlinePage() {
             This page is informational and not a substitute for legal advice. Specific protections, exceptions, and procedures vary by state and by housing type.
           </p>
 
+          {/* State-specific guidance — contextual outbound flow to a curated
+              set of high-traffic state pages and the all-states hub. Sits
+              inside the housing-context section so the framing stays
+              educational ("housing rules vary by state"), not a generic
+              state list. Six states only — no doorway-pattern blocks. */}
+          <div className="mt-12 bg-white border border-gray-100 rounded-2xl p-6 md:p-8">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-5 mb-5">
+              <div className="max-w-xl">
+                <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-2">
+                  Guidance by State
+                </span>
+                <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-2 leading-snug">
+                  Housing rules and ESA guidance vary by state
+                </h3>
+                <p className="text-gray-600 text-sm leading-relaxed">
+                  The Fair Housing Act applies nationwide, but a handful of states layer in their own statutes, waiting-period rules, or provider-licensing nuance. Start with the state where you live — each guide is reviewed for that state's accommodation context.
+                </p>
+              </div>
+              <Link
+                to="/explore-esa-letters-all-states"
+                className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-semibold text-orange-500 hover:text-orange-600 self-start cursor-pointer"
+              >
+                See all 50 state guides
+                <i className="ri-arrow-right-line"></i>
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {[
+                { slug: "california", name: "California" },
+                { slug: "texas", name: "Texas" },
+                { slug: "florida", name: "Florida" },
+                { slug: "new-york", name: "New York" },
+                { slug: "pennsylvania", name: "Pennsylvania" },
+                { slug: "georgia", name: "Georgia" },
+              ].map((s) => (
+                <Link
+                  key={s.slug}
+                  to={`/esa-letter/${s.slug}`}
+                  className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border border-gray-100 hover:border-orange-200 hover:bg-orange-50/50 transition-colors cursor-pointer group"
+                >
+                  <i className="ri-map-pin-2-line text-orange-500 text-sm"></i>
+                  <span className="text-sm text-gray-700 group-hover:text-orange-600 transition-colors">
+                    ESA letter in {s.name}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
           {/* Landlord verification screen */}
           <div className="mt-12 grid grid-cols-1 lg:grid-cols-5 gap-10 items-center bg-orange-50/40 border border-orange-100 rounded-3xl p-6 lg:p-10">
             <div className="lg:col-span-3 order-2 lg:order-1">

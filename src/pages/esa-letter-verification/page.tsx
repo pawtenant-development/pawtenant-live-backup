@@ -329,6 +329,66 @@ export default function ESALetterVerificationPage() {
           </div>
         </section>
 
+        {/* Related resources — light contextual cross-links to peer
+            guides + the all-states hub. Keeps verification trust
+            continuity by surfacing the FHA framing and process explainer
+            landlords and tenants tend to look at together. Three cards
+            only — not a giant link block. */}
+        <section className="py-14 md:py-16 bg-white border-t border-gray-100">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="text-center mb-8">
+              <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-3">
+                <i className="ri-links-line"></i>
+                Related Guides
+              </span>
+              <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-2 tracking-tight">
+                For tenants and housing providers
+              </h2>
+              <p className="text-gray-500 text-sm md:text-base max-w-xl mx-auto leading-relaxed">
+                Verification confirms authenticity. The pages below cover the rest — federal protections, the application process, and per-state compliance.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+              {[
+                {
+                  to: "/housing-rights-esa",
+                  icon: "ri-home-heart-line",
+                  title: "ESA Letter for Housing",
+                  desc: "Fair Housing Act protections, landlord obligations, and what valid ESA documentation must include.",
+                },
+                {
+                  to: "/how-to-get-esa-letter",
+                  icon: "ri-file-text-line",
+                  title: "How to Get an ESA Letter",
+                  desc: "The step-by-step application process — assessment, licensed evaluation, and signed letter.",
+                },
+                {
+                  to: "/explore-esa-letters-all-states",
+                  icon: "ri-map-pin-2-line",
+                  title: "ESA Guidance by State",
+                  desc: "State-specific accommodation rules and licensed-provider requirements for all 50 US states.",
+                },
+              ].map((card) => (
+                <Link
+                  key={card.to}
+                  to={card.to}
+                  className="group flex items-start gap-3 p-5 rounded-xl border border-gray-100 hover:border-[#b8ddd5] hover:bg-[#f0faf7]/40 transition-colors cursor-pointer"
+                >
+                  <div className="w-10 h-10 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
+                    <i className={`${card.icon} text-[#1a5c4f] text-lg`}></i>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-extrabold text-gray-900 mb-1 leading-snug group-hover:text-[#1a5c4f] transition-colors">
+                      {card.title}
+                    </div>
+                    <p className="text-xs text-gray-500 leading-relaxed">{card.desc}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* CTA */}
         <section className="py-14 md:py-16 bg-[#1a5c4f]">
           <div className="max-w-3xl mx-auto px-6 text-center">
