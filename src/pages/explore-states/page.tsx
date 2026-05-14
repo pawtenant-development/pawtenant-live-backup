@@ -62,8 +62,9 @@ export default function ExploreStatesPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src="https://readdy.ai/api/search-image?query=USA%20map%20background%20with%20warm%20golden%20and%20orange%20tones%20abstract%20artistic%20rendering%20showing%20states%20and%20borders%20soft%20glow%20effect%20patriotic%20warm%20colors%20beige%20and%20amber%20gradient&width=1440&height=600&seq=exstates01&orientation=landscape"
+            src="/assets/lifestyle/woman-with-dog-new-apartment.jpg"
             alt="Explore ESA Letters by State"
+            loading="eager"
             className="w-full h-full object-cover object-top"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/55 to-black/30"></div>
