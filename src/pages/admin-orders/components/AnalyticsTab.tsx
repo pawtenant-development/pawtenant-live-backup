@@ -8,6 +8,9 @@ import UnifiedBackfillPanel from "./UnifiedBackfillPanel";
 import VisitorSourceRankingsPanel from "./VisitorSourceRankingsPanel";
 import DailyVisitorsByChannelPanel from "./DailyVisitorsByChannelPanel";
 import LandingPagePerformancePanel from "./LandingPagePerformancePanel";
+import OwnerKpiStrip from "./OwnerKpiStrip";
+import Phase2AnalyticsPanel from "./Phase2AnalyticsPanel";
+import { analyticsScopeLabel } from "./analyticsScope";
 
 interface Order {
   id: string;
@@ -1104,6 +1107,23 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       {/* ── Overview view ── */}
       {analyticsView === "overview" && <>
 
+      {/* ── Owner Dashboard (Phase 2.b) ──
+           Owner-friendly 4-KPI strip at the top of the Overview view.
+           Pure visual addition above the existing Filter bar. Reads from
+           orders + visitor_sessions + analytics_roi_summary (already on
+           LIVE via Phase 2.a). Gracefully renders placeholder dashes
+           when ROI/spend data is empty. */}
+      <section className="mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-orange-50 text-orange-500">
+            <i className="ri-dashboard-3-line text-base"></i>
+          </span>
+          <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">Owner Dashboard</h2>
+          <span className="text-[11px] text-gray-400 ml-1">· {analyticsScopeLabel()}</span>
+        </div>
+        <OwnerKpiStrip />
+      </section>
+
       {/* ── Filter bar ── */}
       <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
         <div className="flex items-center gap-2 flex-wrap">
@@ -1258,6 +1278,17 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
            only (visitor_sessions.paid_at). */}
       <section>
         <LandingPagePerformancePanel rangeFrom={rangeFrom} rangeTo={rangeTo} />
+      </section>
+
+      {/* ── Marketing ROI (Phase 2.b — Phase2AnalyticsPanel "marketing" mode) ──
+           Renders the Ad Spend & ROI breakdown + per-channel performance
+           cards from analytics_roi_summary view (now on LIVE via Phase 2.a).
+           Panel handles empty ROI gracefully — shows
+           "Insert spend rows into ad_spend_meta or ad_spend_google to
+           populate this view" until operators add data. No conflict with
+           the existing Channel Mix donut or Period Summary below. */}
+      <section>
+        <Phase2AnalyticsPanel mode="marketing" />
       </section>
 
       {/* ── Revenue Trend Chart ── */}
