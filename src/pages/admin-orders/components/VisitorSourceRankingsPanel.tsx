@@ -249,15 +249,20 @@ export default function VisitorSourceRankingsPanel({
     [visitors, orders, rangeFrom, rangeTo],
   );
 
-  const totalVisitors  = rows.reduce((s, r) => s + r.visitors, 0);
-  const totalPaid      = rows.reduce((s, r) => s + r.orderPaid, 0);
-  const totalRevenue   = rows.reduce((s, r) => s + r.orderRevenue, 0);
-  const topRow         = rows[0] ?? null;
-  const aiRows         = rows.filter((r) => r.label === "ChatGPT" || r.label === "Claude" || r.label === "Gemini" || r.label === "Perplexity");
-  const aiVisitors     = aiRows.reduce((s, r) => s + r.visitors, 0);
-  const highestConv    = [...rows]
+  const totalVisitors    = rows.reduce((s, r) => s + r.visitors, 0);
+  const totalVisitorPaid = rows.reduce((s, r) => s + r.visitorPaid, 0);
+  const totalOrders      = rows.reduce((s, r) => s + r.orderPaid, 0);
+  const totalRevenue     = rows.reduce((s, r) => s + r.orderRevenue, 0);
+  const topRow           = rows[0] ?? null;
+  const aiRows           = rows.filter((r) => r.label === "ChatGPT" || r.label === "Claude" || r.label === "Gemini" || r.label === "Perplexity");
+  const aiVisitors       = aiRows.reduce((s, r) => s + r.visitors, 0);
+  // LIVE hotfix 2026-05-15: "Highest conv." now ranks by visitor-internal
+  // conversion (visitor_sessions.paid_at flag / visitors) instead of the
+  // previous broken `orderPaid / visitors` which mixed two unrelated
+  // populations and routinely returned >100%.
+  const highestConv      = [...rows]
     .filter((r) => r.visitors >= 5)
-    .sort((a, b) => (b.orderPaid / Math.max(b.visitors, 1)) - (a.orderPaid / Math.max(a.visitors, 1)))[0]
+    .sort((a, b) => (b.visitorPaid / Math.max(b.visitors, 1)) - (a.visitorPaid / Math.max(a.visitors, 1)))[0]
     ?? null;
 
   return (
@@ -272,6 +277,9 @@ export default function VisitorSourceRankingsPanel({
             <h3 className="text-sm font-extrabold text-gray-900">Visitor Source Rankings</h3>
             <p className="text-[11px] text-gray-400">
               Classified via shared <span className="font-semibold">acquisitionClassifier</span> · {visitors.length.toLocaleString()} visitors in range
+            </p>
+            <p className="text-[10px] text-gray-400 mt-0.5 leading-snug max-w-2xl">
+              Visitors and Orders are independent attribution lenses. Conversion is visitor-internal. Orders show classifier-attributed sales and may include returning customers.
             </p>
           </div>
         </div>
@@ -303,7 +311,7 @@ export default function VisitorSourceRankingsPanel({
               label="Highest conv."
               valueIcon={ACQUISITION_VISUAL[highestConv.label].icon}
               valueText={highestConv.label}
-              sub={`${Math.round((highestConv.orderPaid / Math.max(highestConv.visitors, 1)) * 100)}% paid`}
+              sub={`${Math.round(Math.min(100, (highestConv.visitorPaid / Math.max(highestConv.visitors, 1)) * 100))}% visitor conv.`}
             />
           )}
           {aiVisitors > 0 && (
@@ -357,19 +365,23 @@ export default function VisitorSourceRankingsPanel({
           <table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] uppercase tracking-widest text-gray-400 font-bold border-b border-gray-100">
-                <th className="text-left py-2 px-2">Source</th>
+                <th className="text-left  py-2 px-2">Source</th>
                 <th className="text-right py-2 px-2">Visitors</th>
                 <th className="text-right py-2 px-2 hidden sm:table-cell">Assess.</th>
-                <th className="text-right py-2 px-2">Paid</th>
-                <th className="text-right py-2 px-2">Conv.</th>
+                <th className="text-right py-2 px-2" title="Visitor sessions whose paid_at flag was set in this range">Vis. Paid</th>
+                <th className="text-right py-2 px-2" title="Visitor-internal conversion: visitor paid sessions / visitors">Vis. Conv.</th>
+                <th className="text-right py-2 px-2 hidden sm:table-cell" title="Classifier-attributed orders in this range — separate population from Visitors">Orders</th>
                 <th className="text-right py-2 px-2 hidden md:table-cell">Revenue</th>
-                <th className="text-left py-2 px-2 hidden lg:table-cell">Top landing</th>
+                <th className="text-left  py-2 px-2 hidden lg:table-cell">Top landing</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const vis = ACQUISITION_VISUAL[r.label];
-                const conv = r.visitors > 0 ? (r.orderPaid / r.visitors) * 100 : 0;
+                // LIVE hotfix 2026-05-15: visitor-internal conversion only.
+                // Capped at 100% even though visitor_sessions.paid_at is a
+                // boolean flag (paid <= visitors by definition) — defensive.
+                const visConv = r.visitors > 0 ? Math.min(100, (r.visitorPaid / r.visitors) * 100) : 0;
                 const visitorShare = totalVisitors > 0 ? (r.visitors / totalVisitors) * 100 : 0;
                 return (
                   <tr key={r.label} className="border-b border-gray-50 last:border-b-0">
@@ -392,13 +404,18 @@ export default function VisitorSourceRankingsPanel({
                     <td className="py-2.5 px-2 text-right font-bold text-gray-900 tabular-nums">{r.visitors.toLocaleString()}</td>
                     <td className="py-2.5 px-2 text-right text-gray-600 tabular-nums hidden sm:table-cell">{r.assessmentsStarted.toLocaleString()}</td>
                     <td className="py-2.5 px-2 text-right tabular-nums">
-                      <span className={r.orderPaid > 0 ? "font-bold text-emerald-700" : "text-gray-400"}>
-                        {r.orderPaid.toLocaleString()}
+                      <span className={r.visitorPaid > 0 ? "font-bold text-emerald-700" : "text-gray-400"}>
+                        {r.visitorPaid.toLocaleString()}
                       </span>
                     </td>
                     <td className="py-2.5 px-2 text-right tabular-nums">
-                      <span className={conv >= 5 ? "text-emerald-700 font-bold" : conv > 0 ? "text-gray-700" : "text-gray-300"}>
-                        {conv.toFixed(1)}%
+                      <span className={visConv >= 5 ? "text-emerald-700 font-bold" : visConv > 0 ? "text-gray-700" : "text-gray-300"}>
+                        {visConv.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-2 text-right tabular-nums hidden sm:table-cell">
+                      <span className={r.orderPaid > 0 ? "font-semibold text-gray-700" : "text-gray-300"}>
+                        {r.orderPaid.toLocaleString()}
                       </span>
                     </td>
                     <td className="py-2.5 px-2 text-right tabular-nums hidden md:table-cell">
@@ -426,10 +443,13 @@ export default function VisitorSourceRankingsPanel({
                 <td className="py-2 px-2 text-right tabular-nums text-gray-500 hidden sm:table-cell">
                   {rows.reduce((s, r) => s + r.assessmentsStarted, 0).toLocaleString()}
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums text-emerald-700">{totalPaid.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right tabular-nums text-emerald-700">{totalVisitorPaid.toLocaleString()}</td>
                 <td className="py-2 px-2 text-right tabular-nums text-gray-700">
-                  {totalVisitors > 0 ? `${((totalPaid / totalVisitors) * 100).toFixed(1)}%` : "—"}
+                  {totalVisitors > 0
+                    ? `${Math.min(100, (totalVisitorPaid / totalVisitors) * 100).toFixed(1)}%`
+                    : "—"}
                 </td>
+                <td className="py-2 px-2 text-right tabular-nums text-gray-700 hidden sm:table-cell">{totalOrders.toLocaleString()}</td>
                 <td className="py-2 px-2 text-right tabular-nums text-emerald-700 hidden md:table-cell">
                   {totalRevenue > 0 ? `$${totalRevenue.toLocaleString()}` : "—"}
                 </td>
