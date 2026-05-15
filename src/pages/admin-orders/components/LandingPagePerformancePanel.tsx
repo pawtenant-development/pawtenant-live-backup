@@ -40,23 +40,26 @@ interface VisitorRow {
   paid_at:               string | null;
 }
 
-type Preset = "today" | "7d" | "30d" | "all";
+// LIVE 2026-05-15: panel is parent-driven via rangeFrom/rangeTo. The
+// internal Today/7d/30d/All preset toggle was removed so this panel
+// always matches the rest of the Analytics tab's date window. The
+// Rankings ↔ Source × Page mode toggle stays — it's content-mode, not
+// date-mode.
 type Mode = "rankings" | "matrix";
 
-function presetRange(preset: Preset): { from: Date; to: Date } {
-  const now = new Date();
-  const to = new Date(now);
-  switch (preset) {
-    case "today": {
-      const from = new Date(now);
-      from.setHours(0, 0, 0, 0);
-      return { from, to };
-    }
-    case "7d":  return { from: new Date(now.getTime() - 7 * 86400000),  to };
-    case "30d": return { from: new Date(now.getTime() - 30 * 86400000), to };
-    case "all":
-    default:    return { from: new Date(now.getTime() - 90 * 86400000), to };
-  }
+interface LandingPagePerformancePanelProps {
+  /** Inclusive from-date — usually the parent Analytics tab's `rangeFrom`. */
+  rangeFrom: Date;
+  /** Inclusive to-date — usually the parent Analytics tab's `rangeTo`. */
+  rangeTo:   Date;
+}
+
+/** Compact label for the active date range, e.g. "May 1 – May 15 · 15 days". */
+function rangeSummary(from: Date, to: Date): string {
+  const days = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+  if (days === 1) return "Today";
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(from)} – ${fmt(to)} · ${days} days`;
 }
 
 function pathOnly(url: string | null): string | null {
@@ -93,15 +96,18 @@ interface PageRow {
   topSourceCount: number;
 }
 
-export default function LandingPagePerformancePanel() {
-  const [preset, setPreset] = useState<Preset>("30d");
+export default function LandingPagePerformancePanel({
+  rangeFrom,
+  rangeTo,
+}: LandingPagePerformancePanelProps) {
   const [mode, setMode] = useState<Mode>("rankings");
   const [visitors, setVisitors] = useState<VisitorRow[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
 
-  const { from, to } = useMemo(() => presetRange(preset), [preset]);
+  const from = rangeFrom;
+  const to   = rangeTo;
 
   useEffect(() => {
     let cancelled = false;
@@ -200,40 +206,26 @@ export default function LandingPagePerformancePanel() {
             <h3 className="text-sm font-extrabold text-gray-900">Landing Page Performance</h3>
             <p className="text-[11px] text-gray-400">
               {mode === "rankings"
-                ? `Top pages · ${totalVisitors.toLocaleString()} visitors in range`
+                ? `Top pages · ${totalVisitors.toLocaleString()} visitors`
                 : `Top 10 pages × top ${matrixSources.length} sources`}
+              {" · "}
+              <span className="text-gray-500">{rangeSummary(from, to)}</span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-            {(["rankings", "matrix"] as Mode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${
-                  mode === m ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {m === "rankings" ? "Rankings" : "Source × Page"}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-            {(["today", "7d", "30d", "all"] as Preset[]).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPreset(p)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${
-                  preset === p ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {p === "today" ? "Today" : p === "7d" ? "7d" : p === "30d" ? "30d" : "All"}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+          {(["rankings", "matrix"] as Mode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                mode === m ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {m === "rankings" ? "Rankings" : "Source × Page"}
+            </button>
+          ))}
         </div>
       </div>
 

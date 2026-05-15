@@ -32,34 +32,25 @@ interface VisitorRow {
   referrer:              string | null;
 }
 
-type Preset = "today" | "7d" | "30d" | "all";
+interface DailyVisitorsByChannelPanelProps {
+  /** Inclusive from-date — usually the parent Analytics tab's `rangeFrom`. */
+  rangeFrom: Date;
+  /** Inclusive to-date — usually the parent Analytics tab's `rangeTo`. */
+  rangeTo:   Date;
+}
 
-function presetRange(preset: Preset): { from: Date; to: Date; days: number } {
-  const now = new Date();
-  const to = new Date(now);
-  switch (preset) {
-    case "today": {
-      const from = new Date(now);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, days: 1 };
-    }
-    case "7d": {
-      const from = new Date(now.getTime() - 6 * 86400000);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, days: 7 };
-    }
-    case "30d": {
-      const from = new Date(now.getTime() - 29 * 86400000);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, days: 30 };
-    }
-    case "all":
-    default: {
-      const from = new Date(now.getTime() - 89 * 86400000);
-      from.setHours(0, 0, 0, 0);
-      return { from, to, days: 90 };
-    }
-  }
+/** Clamped day count between rangeFrom and rangeTo, floored to 1, capped at 366. */
+function daysBetween(from: Date, to: Date): number {
+  const diff = Math.ceil((to.getTime() - from.getTime()) / 86400000);
+  return Math.min(Math.max(diff, 1), 366);
+}
+
+/** Render a compact label for the active date range. */
+function rangeSummary(from: Date, to: Date): string {
+  const days = daysBetween(from, to);
+  if (days === 1) return "Today";
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(from)} – ${fmt(to)} · ${days} days`;
 }
 
 function dayKey(iso: string): string {
@@ -86,14 +77,21 @@ function classifyVisitor(v: VisitorRow): AcquisitionLabel {
   }).label;
 }
 
-export default function DailyVisitorsByChannelPanel() {
-  const [preset, setPreset] = useState<Preset>("7d");
+export default function DailyVisitorsByChannelPanel({
+  rangeFrom,
+  rangeTo,
+}: DailyVisitorsByChannelPanelProps) {
   const [visitors, setVisitors] = useState<VisitorRow[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [hoveredDay, setHoveredDay] = useState<string | null>(null);
 
-  const { from, to, days } = useMemo(() => presetRange(preset), [preset]);
+  // LIVE 2026-05-15: panel is now fully parent-driven via rangeFrom/rangeTo.
+  // Internal Today/7d/30d/All toggle was removed so the chart always reflects
+  // the same window as the rest of the Analytics tab — no competing filters.
+  const from = rangeFrom;
+  const to   = rangeTo;
+  const days = useMemo(() => daysBetween(from, to), [from, to]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,23 +181,9 @@ export default function DailyVisitorsByChannelPanel() {
           <div>
             <h3 className="text-sm font-extrabold text-gray-900">Daily Visitors by Source</h3>
             <p className="text-[11px] text-gray-400">
-              Classified daily visitor counts · {total.toLocaleString()} visitors in range
+              Classified daily visitor counts · {total.toLocaleString()} visitors · <span className="text-gray-500">{rangeSummary(from, to)}</span>
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-          {(["today", "7d", "30d", "all"] as Preset[]).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setPreset(p)}
-              className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${
-                preset === p ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {p === "today" ? "Today" : p === "7d" ? "7 days" : p === "30d" ? "30 days" : "All"}
-            </button>
-          ))}
         </div>
       </div>
 

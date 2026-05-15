@@ -1245,20 +1245,19 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       </section>
 
       {/* ── Daily Visitors by Source (Traffic Intelligence) ──
-           Stacked daily-bar chart with self-contained Today/7d/30d/All
-           preset. Reuses get_visitor_source_data RPC + classifier so the
-           legend matches the rankings table above. */}
+           Stacked daily-bar chart. Date window is parent-driven via
+           rangeFrom/rangeTo so the chart always matches the selected
+           Analytics filter — no competing internal preset. */}
       <section>
-        <DailyVisitorsByChannelPanel />
+        <DailyVisitorsByChannelPanel rangeFrom={rangeFrom} rangeTo={rangeTo} />
       </section>
 
       {/* ── Landing Page Performance (Traffic Intelligence) ──
-           Two-mode panel: top pages with source mix expansion + a
-           compact Source × Page heatmap. Visitor-level metrics only
-           (visitor_sessions.paid_at). Revenue lives in the rankings
-           table above where orders attribution folds in by source. */}
+           Two-mode panel (Rankings / Source × Page matrix). Date window
+           is parent-driven via rangeFrom/rangeTo. Visitor-level metrics
+           only (visitor_sessions.paid_at). */}
       <section>
-        <LandingPagePerformancePanel />
+        <LandingPagePerformancePanel rangeFrom={rangeFrom} rangeTo={rangeTo} />
       </section>
 
       {/* ── Revenue Trend Chart ── */}
@@ -1292,11 +1291,21 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         </div>
       </div>
 
-      {/* ── Main content: channel breakdown + donut ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-        {/* Channel breakdown table */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* ── Channel Mix + Period Summary ──
+           LIVE 2026-05-15: legacy "Traffic Source Breakdown" table removed.
+           Its role is now served by the new Visitor Source Rankings panel
+           mounted above (visitor-internal conversion + classifier-attributed
+           orders/revenue, parent-driven date range). Channel Mix donut +
+           Period Summary kept — they're complementary aggregates, not
+           duplicative of the visitor rankings. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Legacy breakdown table removed — see comment above. The
+            unused {selectedChannel} drill-in clear-filter button below
+            is preserved as a no-op safety net in case any other surface
+            still references setSelectedChannel — it now lives nowhere
+            visible. */}
+        {false && (
+          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-extrabold text-gray-900">Traffic Source Breakdown</h3>
@@ -1401,11 +1410,10 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             </div>
           )}
         </div>
+        )}
 
-        {/* Right column: donut */}
-        <div className="space-y-4">
-          {/* Donut chart */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
+        {/* Channel Mix donut */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="text-sm font-extrabold text-gray-900 mb-4">Channel Mix</h3>
             <div className="flex items-center gap-4">
               <DonutChart segments={donutSegments} />
@@ -1482,7 +1490,6 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             </div>
           </div>
         </div>
-      </div>
 
       {/* ── State breakdown ── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
