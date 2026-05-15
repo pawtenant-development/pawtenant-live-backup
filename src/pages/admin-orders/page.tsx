@@ -2,6 +2,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+// Phase K3 — shared normalized classifier so the Orders filter, the
+// AdminDashboard aggregation, and the OrderCard pill all use the same
+// label taxonomy.
+import { classifyOrder, ACQUISITION_LABELS } from "../../lib/acquisitionClassifier";
 import CreateDoctorModal from "./components/CreateDoctorModal";
 import EarningsPanel from "./components/EarningsPanel";
 import CustomersTab from "./components/CustomersTab";
@@ -32,6 +36,7 @@ import ApprovalRequestModal from "./components/ApprovalRequestModal";
 import ApprovalsInbox from "./components/ApprovalsInbox";
 import ApprovalNotificationBell from "./components/ApprovalNotificationBell";
 import FinanceOrdersGate from "./components/FinanceOrdersGate";
+import CommunicationsHub from "./components/CommunicationsHub";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +119,36 @@ interface Order {
   last_broadcast_sent_at?: string | null;
   source_system?: string | null;
   historical_import?: boolean | null;
+  // Phase K2 — attribution snapshots from analytics_phase1. Optional /
+  // possibly null on historical orders predating the rollout. Shape mirrors
+  // attributionStore.FirstTouchSnapshot; only the fields the classifier
+  // actually reads are declared here to keep the type lean.
+  first_touch_json?: AttributionSnapshot | null;
+  last_touch_json?:  AttributionSnapshot | null;
+}
+
+/**
+ * Minimal shape of orders.first_touch_json / last_touch_json — only the
+ * fields consumed by the acquisition classifier are declared here. Any
+ * other keys in the jsonb blob are ignored at the type level (they still
+ * land in the runtime object).
+ */
+interface AttributionSnapshot {
+  channel?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
+  fbclid?: string | null;
+  msclkid?: string | null;
+  ttclid?: string | null;
+  ref?: string | null;
+  referrer?: string | null;
+  landing_url?: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -233,25 +268,45 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
 
 // ─── Role-based tab visibility ─────────────────────────────────────────────
 
-type TabKey = "dashboard" | "orders" | "analytics" | "comms" | "chats" | "contacts" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
+type TabKey = "dashboard" | "orders" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
 
-const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
+// Phase A note: "communications" is the new umbrella hub. Old "comms" / "chats"
+// / "contacts" stay intact so this rollout is purely additive. Hiding them
+// happens in a later phase only after the hub has been validated.
+const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
 
 function getVisibleTabs(role: string | null, customTabAccess?: string[] | null): TabKey[] {
-  // Custom tab access overrides role defaults — use it if set
-  if (customTabAccess && customTabAccess.length > 0) {
-    return ALL_TABS.filter((t) => customTabAccess.includes(t));
+  // Phase G2 — Communications Hub sub-tab grants live in custom_tab_access
+  // using a "communications_<sub>" prefix (e.g. "communications_templates").
+  // Those entries MUST NOT flip the top-level custom_tab_access override
+  // mode — they only widen sub-tab visibility inside the hub. We strip
+  // them here so a user granted only "communications_templates" still
+  // gets their full role-default sidebar.
+  const topLevelOverrides = (customTabAccess ?? []).filter(
+    (k) => !k.startsWith("communications_"),
+  );
+  // Custom tab access overrides role defaults — use it if any top-level
+  // keys are present.
+  if (topLevelOverrides.length > 0) {
+    return ALL_TABS.filter((t) => topLevelOverrides.includes(t));
   }
   switch (role) {
     case "owner":
     case "admin_manager":
       return ALL_TABS;
     case "support":
-      return ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "doctors", "audit", "health"];
+      // Phase G2 — Communications top-level added so support roles can
+      // reach the hub's basic sub-tabs (Live / Chats / Emails / SMS).
+      // Restricted sub-tabs (Templates / Settings & Automation) are
+      // gated inside CommunicationsHub via getVisibleSubKeys().
+      return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "audit", "health"];
     case "finance":
-      return ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "payments", "earnings", "audit", "health"];
+      // Phase G2 — Communications top-level added; sub-tab gating inside
+      // the hub keeps Templates / Settings & Automation hidden by default.
+      return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "payments", "earnings", "audit", "health"];
     case "read_only":
-      return ["dashboard", "orders", "analytics", "comms", "chats", "contacts", "customers", "doctors", "payments", "audit", "health"];
+      // Phase G2 — Communications top-level added; same sub-tab gating.
+      return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "payments", "audit", "health"];
     default:
       return ALL_TABS;
   }
@@ -610,7 +665,7 @@ export default function AdminOrdersPage() {
   const loadOrderData = useCallback(async () => {
     try {
       const [ordersSettled, contactsSettled, profilesSettled] = await Promise.allSettled([
-        supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import").order("created_at", { ascending: false }),
+        supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,first_touch_json,last_touch_json").order("created_at", { ascending: false }),
         supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
         supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
       ]);
@@ -1225,13 +1280,22 @@ export default function AdminOrdersPage() {
     const matchNonGhl = !showNonGhlOnly || !o.ghl_synced_at;
     let matchSource = true;
     if (sourceFilter) {
-      const derivedSrc = deriveTrafficSource(o);
-      if (sourceFilter === "Direct / Unknown") matchSource = derivedSrc === "Direct / Unknown";
-      else if (sourceFilter === "Facebook") matchSource = derivedSrc === "Facebook / Instagram" || derivedSrc === "Facebook" || derivedSrc === "Instagram";
-      else if (sourceFilter === "Google Ads") matchSource = derivedSrc === "Google Ads";
-      else if (sourceFilter === "Google Organic") matchSource = derivedSrc === "Google Organic" || derivedSrc === "Google";
-      else if (sourceFilter === "TikTok") matchSource = derivedSrc === "TikTok";
-      else matchSource = derivedSrc === sourceFilter;
+      // Phase K3 — single normalized classifier owns Order filtering AND
+      // the AdminDashboard aggregation AND the OrderCard pill, so all
+      // three surfaces always agree. Legacy filter aliases ("Facebook",
+      // "Google", "Facebook / Instagram") still match — kept for any
+      // dashboard handoff (setActiveTab + sourceFilter) using older
+      // string values.
+      const label = classifyOrder(o).label;
+      if (sourceFilter === "Facebook") {
+        matchSource = label === "Facebook Paid" || label === "Facebook Organic" || label === "Instagram";
+      } else if (sourceFilter === "Facebook / Instagram") {
+        matchSource = label === "Facebook Paid" || label === "Facebook Organic" || label === "Instagram";
+      } else if (sourceFilter === "Google") {
+        matchSource = label === "Google Ads" || label === "Google Organic";
+      } else {
+        matchSource = label === sourceFilter;
+      }
     }
     const q = search.toLowerCase();
     const matchSearch = !q ||
@@ -1415,6 +1479,32 @@ export default function AdminOrdersPage() {
     };
     load();
   }, [navigate, supabaseUrl, loadOrderData]);
+
+  // ── Phase I — legacy comms URL normalizer ───────────────────────────────
+  // Old sidebar entries (Comms, Chats, Contacts) are hidden in Phase I but
+  // their TabKey + render branches remain so bookmarks and stale internal
+  // links don't 404. This effect detects a legacy ?tab= value and rewrites
+  // the URL to the equivalent Communications Hub sub-tab. Runs BEFORE the
+  // enforce-tab-access effect so legacy URLs never bounce to dashboard.
+  //
+  // Mapping:
+  //   ?tab=chats    → ?tab=communications&sub=chats
+  //   ?tab=contacts → ?tab=communications&sub=emails
+  //   ?tab=comms    → ?tab=communications&sub=sms
+  useEffect(() => {
+    const legacyToSub: Partial<Record<TabKey, "chats" | "emails" | "sms">> = {
+      chats:    "chats",
+      contacts: "emails",
+      comms:    "sms",
+    };
+    const targetSub = legacyToSub[activeTab];
+    if (!targetSub) return;
+    const params = new URLSearchParams(location.search);
+    params.set("tab", "communications");
+    params.set("sub", targetSub);
+    navigate(`/admin-orders?${params.toString()}`, { replace: true });
+    setActiveTabState("communications");
+  }, [activeTab, location.search, navigate]);
 
   // ── Enforce tab access from URL ─────────────────────────────────────────
   // Direct URL access (e.g. /admin-orders?tab=chats) must be blocked if the
@@ -1701,6 +1791,7 @@ export default function AdminOrdersPage() {
             {activeTab === "dashboard" ? "Dashboard" :
              activeTab === "orders" ? "Orders" :
              activeTab === "analytics" ? "Analytics" :
+             activeTab === "communications" ? "Communications" :
              activeTab === "comms" ? "Communications" :
              activeTab === "chats" ? "Chats" :
              activeTab === "contacts" ? "Contacts" :
@@ -1759,7 +1850,26 @@ export default function AdminOrdersPage() {
           />
         )}
 
-        {/* ── COMMUNICATIONS TAB ── */}
+        {/* ── COMMUNICATIONS HUB ──────────────────────────────────────
+             Phase A — umbrella surface with sub-tabs.
+             Phase B — Live Visitors functional.
+             Phase C — Chats sub-tab mounts existing ChatsTab.
+             Phase D — Emails sub-tab mounts existing ContactRequestsTab.
+             Phase E — SMS / Calls sub-tab mounts existing CommunicationsPanel
+                       (orders + onViewOrder piped through). Old Comms / Chats
+                       / Contacts sidebar entries all remain intact. */}
+        {activeTab === "communications" && (
+          <CommunicationsHub
+            orders={orders}
+            onViewOrder={(order) => {
+              openOrderDetail(order);
+              setActiveTab("orders");
+            }}
+            customTabAccess={adminProfile?.custom_tab_access ?? null}
+          />
+        )}
+
+        {/* ── LEGACY COMMUNICATIONS TAB ── */}
         {activeTab === "comms" && (
           <div>
             <div className="mb-5">
@@ -2105,18 +2215,23 @@ export default function AdminOrdersPage() {
                       <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
                     </div>
                   </div>
-                  {/* Referred By */}
+                  {/* Phase K3 — Traffic Source dropdown now drives the
+                       normalized sourceFilter against classifyOrder().label.
+                       The legacy referredByFilter state remains for any
+                       internal callers (CSV export, future analytics) but
+                       is no longer surfaced in this dropdown. */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">Traffic Source</label>
                     <div className="relative">
-                      <select value={referredByFilter} onChange={(e) => setReferredByFilter(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
+                      <select
+                        value={sourceFilter ?? "all"}
+                        onChange={(e) => setSourceFilter(e.target.value === "all" ? null : e.target.value)}
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
+                      >
                         <option value="all">All Sources</option>
-                        <option value="facebook">Facebook</option>
-                        <option value="google_ads">Google Ads</option>
-                        <option value="social_media">Social Media</option>
-                        <option value="seo">SEO</option>
-                        <option value="none">Direct / Unknown</option>
+                        {ACQUISITION_LABELS.map((label) => (
+                          <option key={label} value={label}>{label}</option>
+                        ))}
                       </select>
                       <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
                     </div>

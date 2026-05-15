@@ -63,6 +63,58 @@ function detectDevice(ua: string): "mobile" | "desktop" {
     : "desktop";
 }
 
+// ── Internal-route exclusion ────────────────────────────────────────────────
+// Visitor-intelligence pipeline must only record customer-facing public
+// traffic. Admin / portal / auth surfaces are excluded entirely:
+//
+//   * No visitor_sessions row is inserted.
+//   * No heartbeat pulse is sent (last_seen_at + current_page stay frozen).
+//   * Excluded routes never appear in Live Visitors.
+//
+// /admin matches via prefix so /admin, /admin-orders, /admin-login,
+// /admin-doctors, /admin-guide, /admin-orders/live, and any future
+// /admin-* route are automatically covered. Authenticated portal /
+// session-reset routes are listed explicitly.
+const INTERNAL_EXACT_PATHS = new Set<string>([
+  "/customer-login",
+  "/my-orders",
+  "/reset-password",
+  "/go-live",
+  "/provider-login",
+]);
+
+/**
+ * Returns true when the given pathname is an internal / admin / portal
+ * surface that must be excluded from visitor-session tracking. Defensive
+ * defaults: empty input / SSR → false (treat unknown as tracked, since
+ * we never want a false-positive exclusion to silence a real visitor).
+ *
+ * Falls back to window.location.pathname when no argument is supplied,
+ * so internal callers (ensureVisitorSession, pulseVisitorSession) can
+ * stay zero-arg.
+ */
+export function isInternalAdminPath(pathname?: string | null): boolean {
+  let p: string | null | undefined = pathname;
+  if (p === undefined || p === null) {
+    if (typeof window === "undefined") return false;
+    try { p = window.location.pathname; } catch { p = null; }
+  }
+  if (!p || typeof p !== "string") return false;
+  const lower = p.toLowerCase();
+
+  // Any /admin or /admin-* route (covers /admin-orders/live too).
+  if (lower === "/admin" || lower.startsWith("/admin/") || lower.startsWith("/admin-")) {
+    return true;
+  }
+  // Exact-match explicit internal paths.
+  if (INTERNAL_EXACT_PATHS.has(lower)) return true;
+  // Nested under any of the above (defensive — none today, but future-proof).
+  for (const exact of INTERNAL_EXACT_PATHS) {
+    if (lower.startsWith(exact + "/")) return true;
+  }
+  return false;
+}
+
 /**
  * Canonical session_id reader — used by every tracking site (events, orders,
  * Stripe metadata, RPC calls). Always prefers the attributionStore session_id
@@ -107,6 +159,10 @@ export function getVisitorSessionId(): string {
 export function ensureVisitorSession(): void {
   if (typeof window === "undefined") return;
   if (ssGet(RECORDED_KEY) === "1") return;
+
+  // Visitor pipeline is for customer-facing traffic only. Admin / portal
+  // / auth surfaces never insert a visitor_sessions row.
+  if (isInternalAdminPath()) return;
 
   const sessionId = getSessionId();
   if (!sessionId) return; // attributionStore hasn't run yet — wait for next route change.
@@ -187,6 +243,67 @@ function markEvent(flagKey: string, event: string): void {
       });
   } catch (err) {
     if (IS_DEV) console.debug("[visitorSession] mark_visitor_session_event sync throw:", err);
+  }
+}
+
+/**
+ * pulseVisitorSession — fire-and-forget visitor heartbeat.
+ *
+ * Calls the bump_visitor_pulse RPC to update last_seen_at + current_page
+ * (and increment page_count when the page changes). Safe to call from any
+ * route effect AND from a 30s interval. Pauses automatically when the tab
+ * is hidden so we don't inflate "active" counts with background tabs.
+ *
+ * Never throws. Never blocks. No-ops when the session_id is not ready yet
+ * (the next call will land — record_visitor_session inserts the row first).
+ *
+ * The current_page argument is stripped of query string + hash client-side
+ * so we never persist fbclid/gclid into the live table. Attribution stays
+ * in attributionStore + visitor_sessions.utm_* / *clid columns where it
+ * already lives.
+ */
+export function pulseVisitorSession(currentPage?: string | null): void {
+  if (typeof window === "undefined") return;
+
+  // Don't heartbeat from a hidden tab — keeps writes low and the live
+  // list honest about who is actually looking at the page.
+  try {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+  } catch {
+    /* visibility API unavailable — proceed */
+  }
+
+  // Visitor pipeline is for customer-facing traffic only. If the caller
+  // passed a path, gate on it directly; otherwise fall back to the live
+  // window.location pathname via the helper.
+  if (isInternalAdminPath(currentPage ?? null)) return;
+
+  const sessionId = getSessionId();
+  if (!sessionId) return;
+
+  // Strip query + hash so current_page stays low-cardinality and never
+  // captures click ids. Empty / non-string → null (server keeps prior value).
+  let path: string | null = null;
+  if (typeof currentPage === "string" && currentPage.length > 0) {
+    path = currentPage.split("?")[0].split("#")[0] || null;
+  }
+
+  try {
+    void supabase
+      .rpc("bump_visitor_pulse", {
+        p_session_id:   sessionId,
+        p_current_page: path,
+      })
+      .then(({ error }) => {
+        if (error && IS_DEV) console.debug("[visitorSession] bump_visitor_pulse error:", error.message);
+      })
+      .catch((err) => {
+        if (IS_DEV) console.debug("[visitorSession] bump_visitor_pulse threw:", err);
+      });
+  } catch (err) {
+    if (IS_DEV) console.debug("[visitorSession] bump_visitor_pulse sync throw:", err);
   }
 }
 

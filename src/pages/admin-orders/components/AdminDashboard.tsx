@@ -1,5 +1,8 @@
 // AdminDashboard — Redesigned with charts, stat cards, and visual hierarchy
 import { useMemo, useState, useRef, useEffect } from "react";
+// Phase K3 — shared normalized classifier so dashboard aggregation
+// agrees with Orders pills + filter dropdown + Live Visitors chips.
+import { classifyOrder, ACQUISITION_VISUAL } from "../../../lib/acquisitionClassifier";
 
 interface Order {
   id: string;
@@ -129,16 +132,38 @@ function deriveTrafficSource(order: Order): string {
   return "Direct / Unknown";
 }
 
+// Phase K3 — extended to cover every normalized acquisition label the
+// classifier can emit so the dashboard's per-source cards match the
+// Orders pills exactly. Legacy keys ("Facebook / Instagram", "Facebook",
+// "Google") preserved for any older orders / aggregations that may still
+// produce them through alternate code paths.
 const SOURCE_COLORS: Record<string, { bar: string; badge: string; icon: string; hex: string }> = {
-  "Google Ads":           { bar: "bg-[#3b6ea5]",  badge: "bg-[#e8f0f9] text-[#3b6ea5]",   icon: "ri-google-line",           hex: "#3b6ea5" },
-  "Facebook / Instagram": { bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",         icon: "ri-facebook-circle-line",  hex: "#0ea5e9" },
-  "Facebook":             { bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",         icon: "ri-facebook-circle-line",  hex: "#0ea5e9" },
-  "Instagram":            { bar: "bg-pink-500",    badge: "bg-pink-50 text-pink-700",       icon: "ri-instagram-line",        hex: "#ec4899" },
-  "TikTok":               { bar: "bg-gray-800",    badge: "bg-gray-100 text-gray-700",      icon: "ri-tiktok-line",           hex: "#1f2937" },
-  "Google Organic":       { bar: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700", icon: "ri-search-line",           hex: "#10b981" },
-  "Google":               { bar: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700", icon: "ri-search-line",           hex: "#10b981" },
-  "Direct / Unknown":     { bar: "bg-gray-300",    badge: "bg-gray-100 text-gray-500",      icon: "ri-global-line",           hex: "#d1d5db" },
+  "Google Ads":           { bar: "bg-orange-500",  badge: "bg-orange-50 text-orange-600",   icon: "ri-google-line",           hex: "#f97316" },
+  "Google Organic":       { bar: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700", icon: "ri-search-2-line",         hex: "#10b981" },
+  "Facebook Paid":        { bar: "bg-[#1877F2]",   badge: "bg-blue-50 text-[#1877F2]",       icon: "ri-facebook-circle-line",  hex: "#1877F2" },
+  "Facebook Organic":     { bar: "bg-sky-500",     badge: "bg-blue-50 text-blue-600",        icon: "ri-facebook-line",         hex: "#0ea5e9" },
+  "Instagram":            { bar: "bg-pink-500",    badge: "bg-pink-50 text-pink-600",        icon: "ri-instagram-line",        hex: "#ec4899" },
+  "Reddit":               { bar: "bg-orange-600",  badge: "bg-orange-50 text-orange-700",    icon: "ri-reddit-line",           hex: "#ea580c" },
+  "TikTok":               { bar: "bg-gray-800",    badge: "bg-gray-100 text-gray-900",       icon: "ri-tiktok-line",           hex: "#1f2937" },
+  "Microsoft Ads":        { bar: "bg-sky-700",     badge: "bg-sky-50 text-sky-700",          icon: "ri-microsoft-line",        hex: "#0369a1" },
+  "ChatGPT":              { bar: "bg-emerald-600", badge: "bg-emerald-50 text-emerald-700",  icon: "ri-openai-line",           hex: "#059669" },
+  "Claude":               { bar: "bg-amber-600",   badge: "bg-amber-50 text-amber-700",      icon: "ri-sparkling-2-line",      hex: "#d97706" },
+  "Gemini":               { bar: "bg-indigo-600",  badge: "bg-indigo-50 text-indigo-700",    icon: "ri-gemini-line",           hex: "#4f46e5" },
+  "Perplexity":           { bar: "bg-slate-700",   badge: "bg-slate-100 text-slate-700",     icon: "ri-questionnaire-line",    hex: "#334155" },
+  "Email Recovery":       { bar: "bg-violet-500",  badge: "bg-violet-50 text-violet-600",    icon: "ri-mail-send-line",        hex: "#8b5cf6" },
+  "Referral":             { bar: "bg-teal-500",    badge: "bg-teal-50 text-teal-600",        icon: "ri-share-forward-line",    hex: "#14b8a6" },
+  "Direct / Unknown":     { bar: "bg-gray-300",    badge: "bg-gray-100 text-gray-500",       icon: "ri-cursor-line",           hex: "#d1d5db" },
+  // Legacy keys preserved for backward compat against any aggregation
+  // path that may still emit the pre-K labels.
+  "Facebook / Instagram": { bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",          icon: "ri-facebook-circle-line",  hex: "#0ea5e9" },
+  "Facebook":             { bar: "bg-sky-500",     badge: "bg-sky-50 text-sky-700",          icon: "ri-facebook-circle-line",  hex: "#0ea5e9" },
+  "Google":               { bar: "bg-emerald-500", badge: "bg-emerald-50 text-emerald-700",  icon: "ri-search-line",           hex: "#10b981" },
 };
+// Phase K3 — reference: ACQUISITION_VISUAL imported above is the source
+// of truth for chip styling on Orders + Live Visitors. SOURCE_COLORS
+// (bar / hex visuals) is dashboard-specific and stays here to preserve
+// the per-source bar chart and hex codes used by SVG donut segments.
+void ACQUISITION_VISUAL;
 
 function getSourceColor(source: string) {
   return SOURCE_COLORS[source] ?? { bar: "bg-amber-400", badge: "bg-amber-50 text-amber-700", icon: "ri-share-line", hex: "#fbbf24" };
@@ -347,10 +372,14 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
   }, [orders]);
 
   const sourceBreakdown = useMemo(() => {
+    // Phase K3 — bucket by normalized acquisition label so the dashboard
+    // card values match what the OrderCard pill + Orders filter show.
+    // Single classifyOrder() pass per row keeps perf identical to the
+    // previous deriveTrafficSource() implementation.
     const counts: Record<string, { total: number; paid: number }> = {};
     for (const o of orders) {
       if (o.status === "cancelled") continue;
-      const src = deriveTrafficSource(o);
+      const src = classifyOrder(o).label;
       if (!counts[src]) counts[src] = { total: 0, paid: 0 };
       counts[src].total += 1;
       if (o.payment_intent_id) counts[src].paid += 1;

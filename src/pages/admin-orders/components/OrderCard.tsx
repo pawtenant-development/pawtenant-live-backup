@@ -55,6 +55,95 @@ export interface OrderCardProps {
   US_STATES: { name: string; abbr: string }[];
 }
 
+// Phase K — new normalized acquisition classifier.
+// Phase K2 — feed referrer + landing_url + click IDs from the
+// first_touch_json / last_touch_json snapshots on the Order so the
+// classifier can detect AI referrals, organic referrers, and dark-social
+// patterns it could not see when only flat columns were available.
+//
+// The legacy resolveRefBadge() below stays in place as a defensive
+// fallback (e.g. if some future caller passes only a raw referred_by
+// string), but the rendered Orders pill now uses classifyAcquisition()
+// to combine ALL signals — flat columns AND attribution snapshots — into
+// a single normalized label with confidence + reasoning surfaced in the
+// title tooltip.
+import {
+  classifyAcquisition,
+  visualFor as visualForAcquisition,
+  explain as explainAcquisition,
+  type AcquisitionInputs,
+} from "../../../lib/acquisitionClassifier";
+// Phase K4.5 — click-to-open attribution detail popover. Reuses the
+// classifier output already computed for the chip; no new fetches.
+import AttributionDetailsPopover from "../../../components/attribution/AttributionDetailsPopover";
+
+/**
+ * Minimal shape of orders.first_touch_json / last_touch_json that the
+ * acquisition classifier consumes. Keeps the type lean — the underlying
+ * jsonb may have additional fields that are simply ignored.
+ */
+interface OrderAttributionSnapshot {
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
+  fbclid?: string | null;
+  msclkid?: string | null;
+  ttclid?: string | null;
+  ref?: string | null;
+  referrer?: string | null;
+  landing_url?: string | null;
+}
+
+/**
+ * Build the AcquisitionInputs the classifier expects from an order row.
+ * Prefers values in this order (most-recent wins for click IDs / UTMs;
+ * first_touch fills in landing_url / referrer when last_touch is sparse):
+ *   1. order's flat columns (utm_source, gclid, fbclid, ...)
+ *   2. last_touch_json
+ *   3. first_touch_json
+ * Returns a shape the classifier degrades gracefully on if everything is
+ * null.
+ */
+function buildAcquisitionInputs(order: Order): AcquisitionInputs {
+  const lt = ((order as Order & { last_touch_json?: OrderAttributionSnapshot | null }).last_touch_json ?? null) || null;
+  const ft = ((order as Order & { first_touch_json?: OrderAttributionSnapshot | null }).first_touch_json ?? null) || null;
+  const pick = <K extends keyof OrderAttributionSnapshot>(k: K): string | null => {
+    return (lt && (lt[k] as string | null | undefined)) || (ft && (ft[k] as string | null | undefined)) || null;
+  };
+  return {
+    utm_source:   order.utm_source   ?? pick("utm_source"),
+    utm_medium:   order.utm_medium   ?? pick("utm_medium"),
+    utm_campaign: order.utm_campaign ?? pick("utm_campaign"),
+    gclid:        order.gclid        ?? pick("gclid"),
+    gbraid:                              pick("gbraid"),
+    wbraid:                              pick("wbraid"),
+    fbclid:       order.fbclid       ?? pick("fbclid"),
+    msclkid:                             pick("msclkid"),
+    ttclid:                              pick("ttclid"),
+    ref:                                 pick("ref"),
+    referred_by:  order.referred_by,
+    referrer:                            pick("referrer"),
+    landing_url:                         pick("landing_url"),
+  };
+}
+
+/**
+ * Preserve the pre-K behavior of "no pill on a fully-empty order". A
+ * landing_url alone is NOT enough to render a pill — only meaningful
+ * acquisition signals (UTMs, click IDs, referrer, ref/referred_by) count.
+ */
+function hasAnyAcquisitionSignal(i: AcquisitionInputs): boolean {
+  return !!(
+    i.utm_source || i.utm_medium || i.utm_campaign ||
+    i.gclid || i.gbraid || i.wbraid ||
+    i.fbclid || i.msclkid || i.ttclid ||
+    i.ref || i.referred_by || i.referrer
+  );
+}
+
 // ─── Referral source config ───────────────────────────────────────────────────
 const REF_BADGE: Record<string, { label: string; icon: string; color: string }> = {
   "Facebook / Instagram Ads": { label: "Facebook",  icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
@@ -196,6 +285,20 @@ export default function OrderCard({
   const showGhlRefire = !order.ghl_synced_at;
   const hasPaymentFailure = !!(order.payment_failure_reason && isLead);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
+
+  // Phase K4.5 — hoisted attribution classification + popover state.
+  // Both pill render sites (mobile + desktop) share the same result and
+  // the same popover instance. No extra fetches; uses already-loaded
+  // order columns + first_touch_json / last_touch_json snapshots.
+  const acqInputs: AcquisitionInputs = buildAcquisitionInputs(order);
+  const acqHasSignal = !!(
+    acqInputs.utm_source || acqInputs.utm_medium || acqInputs.utm_campaign ||
+    acqInputs.gclid || acqInputs.gbraid || acqInputs.wbraid ||
+    acqInputs.fbclid || acqInputs.msclkid || acqInputs.ttclid ||
+    acqInputs.ref || acqInputs.referred_by || acqInputs.referrer
+  );
+  const acqClassification = acqHasSignal ? classifyAcquisition(acqInputs) : null;
+  const [attrPopoverOpen, setAttrPopoverOpen] = useState(false);
   const borderAccent = hasPaymentFailure
     ? "border-l-4 border-l-red-400"
     : order.doctor_status === "thirty_day_reissue"
@@ -429,14 +532,19 @@ export default function OrderCard({
                      : <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded text-[10px] font-extrabold">ESA</span>}
               {isPriority && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#3b6ea5] text-white rounded text-[10px] font-extrabold"><i className="ri-vip-crown-2-line" style={{ fontSize: "8px" }}></i>P</span>}
               {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold">DUP</span>}
-              {(() => {
-                const ref = resolveRefBadge(order.referred_by);
-                return ref ? (
-                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-extrabold ${ref.color}`} title={`Source: ${ref.label}`}>
-                    <i className={`${ref.icon}`} style={{ fontSize: "8px" }}></i>
-                    {ref.label}
-                  </span>
-                ) : null;
+              {acqClassification && (() => {
+                const v = visualForAcquisition(acqClassification.label);
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setAttrPopoverOpen(true); }}
+                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-extrabold cursor-pointer hover:opacity-80 ${v.color}`}
+                    title={explainAcquisition(acqClassification)}
+                  >
+                    <i className={v.icon} style={{ fontSize: "8px" }}></i>
+                    {v.shortLabel}
+                  </button>
+                );
               })()}
               <span className={`sm:hidden inline-flex items-center gap-0.5 text-[10px] font-semibold ${lastActivity.color}`}><i className={lastActivity.icon} style={{ fontSize: "9px" }}></i>{lastActivity.label}</span>
             </div>
@@ -508,14 +616,19 @@ export default function OrderCard({
                        : <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded">ESA</span>}
                 {isPriority && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#3b6ea5] text-white rounded">VIP</span>}
                 {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">DUP</span>}
-                {(() => {
-                  const ref = resolveRefBadge(order.referred_by);
-                  return ref ? (
-                    <span className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${ref.color}`} title={`Source: ${ref.label}`}>
-                      <i className={`${ref.icon}`} style={{ fontSize: "8px" }}></i>
-                      {ref.label}
-                    </span>
-                  ) : null;
+                {acqClassification && (() => {
+                  const v = visualForAcquisition(acqClassification.label);
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setAttrPopoverOpen(true); }}
+                      className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-80 ${v.color}`}
+                      title={explainAcquisition(acqClassification)}
+                    >
+                      <i className={v.icon} style={{ fontSize: "8px" }}></i>
+                      {v.shortLabel}
+                    </button>
+                  );
                 })()}
               </div>
             </div>
@@ -650,6 +763,18 @@ export default function OrderCard({
 
 
       </div>
+
+      {/* Phase K4.5 — attribution detail popover. One instance per
+          OrderCard, opened by either pill site (mobile or desktop).
+          Uses already-loaded order data; no new fetches. */}
+      {acqClassification && (
+        <AttributionDetailsPopover
+          open={attrPopoverOpen}
+          classification={acqClassification}
+          onClose={() => setAttrPopoverOpen(false)}
+          contextLabel={`Order ${order.confirmation_id}`}
+        />
+      )}
     </>
   );
 }

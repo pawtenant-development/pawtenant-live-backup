@@ -22,7 +22,7 @@ import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
 import { firePageView } from "@/lib/metaPixel";
 import { captureFromUrl } from "@/lib/attributionStore";
-import { ensureVisitorSession } from "@/lib/visitorSession";
+import { ensureVisitorSession, pulseVisitorSession } from "@/lib/visitorSession";
 
 const PORTAL_ROUTES = [
   "/admin",
@@ -64,6 +64,11 @@ function AdminChatGate({ children }: { children: React.ReactNode }) {
 /**
  * UTMCapture — delegates all attribution capture/restore/merge logic to
  * attributionStore.captureFromUrl(). Runs on every SPA route change.
+ *
+ * Also owns the visitor-intelligence heartbeat (Phase 1): a single 30s
+ * interval that calls bump_visitor_pulse while the tab is visible, plus
+ * an immediate pulse on every route change so current_page lands fast.
+ * Pauses on visibilitychange to keep write volume low.
  */
 function UTMCapture() {
   const { pathname, search } = useLocation();
@@ -72,8 +77,62 @@ function UTMCapture() {
     captureFromUrl(search);
     // Record the visitor session once per browser session (fire-and-forget).
     ensureVisitorSession();
+    // Visitor heartbeat — bump last_seen_at + current_page immediately on
+    // route change so the live list reflects the new path right away. The
+    // 30s interval below handles idle dwell on the same page.
+    try { pulseVisitorSession(pathname); } catch { /* swallow */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, search]);
+
+  // ── 30s visitor heartbeat. Visible-only. Single timer per browser tab. ──
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const HEARTBEAT_MS = 30_000;
+    let timerId: number | null = null;
+
+    const tick = () => {
+      try {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+        pulseVisitorSession(window.location.pathname);
+      } catch { /* swallow */ }
+    };
+
+    const start = () => {
+      if (timerId !== null) return;
+      timerId = window.setInterval(tick, HEARTBEAT_MS);
+    };
+    const stop = () => {
+      if (timerId !== null) {
+        window.clearInterval(timerId);
+        timerId = null;
+      }
+    };
+
+    const onVis = () => {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "visible") {
+        // Immediate pulse on return so the row resurrects in the live list
+        // before the next 30s tick.
+        try { pulseVisitorSession(window.location.pathname); } catch { /* swallow */ }
+        start();
+      } else {
+        stop();
+      }
+    };
+
+    if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      start();
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVis);
+    }
+    return () => {
+      stop();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVis);
+      }
+    };
+  }, []);
 
   return null;
 }

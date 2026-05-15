@@ -34,6 +34,7 @@ const CustomerLoginPage = lazy(() => import("../pages/customer-login/page"));
 const MyOrdersPage = lazy(() => import("../pages/my-orders/page"));
 const GoLivePage = lazy(() => import("../pages/go-live/page"));
 const AdminOrdersPage = lazy(() => import("../pages/admin-orders/page"));
+const AdminLiveVisitorsPage = lazy(() => import("../pages/admin-live/page"));
 const AdminGuidePage = lazy(() => import("../pages/admin-guide/page"));
 const AdminLoginPage = lazy(() => import("../pages/admin-login/page"));
 const ResetPasswordPage = lazy(() => import("../pages/reset-password/page"));
@@ -119,6 +120,9 @@ const routes: RouteObject[] = [
   { path: "/join-our-network", element: <P C={JoinOurNetworkPage} /> },
   { path: "/go-live", element: <P C={GoLivePage} /> },
   { path: "/admin-login", element: <P C={AdminLoginPage} /> },
+  // Visitor Intelligence — Phase 1 read-only live visitors page.
+  // Declared before /admin-orders so the more specific match is unambiguous.
+  { path: "/admin-orders/live", element: <P C={AdminLiveVisitorsPage} /> },
   { path: "/admin-orders", element: <P C={AdminOrdersPage} /> },
   { path: "/admin-doctors", element: <P C={AdminDoctorsPage} /> },
   { path: "/provider-login", element: <P C={ProviderLoginPage} /> },

@@ -1,6 +1,8 @@
 // AdminSidebar — Fixed vertical navigation with collapsible icon-only mode
+import { useAdminChat } from "../../../context/AdminChatContext";
+
 type TabKey =
-  | "dashboard" | "orders" | "analytics" | "comms" | "chats" | "contacts" | "customers" | "doctors"
+  | "dashboard" | "orders" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors"
   | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
 
 interface AdminSidebarProps {
@@ -15,12 +17,17 @@ interface AdminSidebarProps {
 }
 
 const TAB_CONFIG: { key: TabKey; label: string; icon: string }[] = [
-  { key: "dashboard",  label: "Dashboard",  icon: "ri-dashboard-3-line" },
-  { key: "orders",     label: "Orders",     icon: "ri-file-list-3-line" },
-  { key: "analytics",  label: "Analytics",  icon: "ri-bar-chart-2-line" },
-  { key: "comms",      label: "Comms",      icon: "ri-message-3-line" },
-  { key: "chats",      label: "Chats",      icon: "ri-chat-3-line" },
-  { key: "contacts",   label: "Contacts",   icon: "ri-mail-line" },
+  { key: "dashboard",     label: "Dashboard",     icon: "ri-dashboard-3-line" },
+  { key: "orders",        label: "Orders",        icon: "ri-file-list-3-line" },
+  { key: "analytics",     label: "Analytics",     icon: "ri-bar-chart-2-line" },
+  // Phase I — legacy "Comms", "Chats", "Contacts" entries removed from
+  // the sidebar. The keys remain valid in TabKey + getVisibleTabs so
+  // direct ?tab=chats / ?tab=contacts / ?tab=comms URLs continue to
+  // resolve (page.tsx then redirects them into the Communications Hub
+  // via a normalizer effect). Render branches for the legacy tabs are
+  // intentionally preserved so any redirect race or bookmark detour
+  // never lands the admin on a blank page.
+  { key: "communications",label: "Communications",icon: "ri-radar-line" },
   { key: "customers", label: "Customers",      icon: "ri-group-line" },
   { key: "doctors",   label: "Providers",      icon: "ri-stethoscope-line" },
   { key: "earnings",  label: "Earnings",       icon: "ri-money-dollar-circle-line" },
@@ -31,8 +38,9 @@ const TAB_CONFIG: { key: TabKey; label: string; icon: string }[] = [
   { key: "health",    label: "Health",         icon: "ri-pulse-line" },
 ];
 
-// Primary tabs shown in the mobile bottom bar (most used)
-const MOBILE_PRIMARY_TABS: TabKey[] = ["dashboard", "orders", "comms", "customers", "doctors"];
+// Primary tabs shown in the mobile bottom bar (most used).
+// Phase I — "comms" replaced with the new umbrella "communications".
+const MOBILE_PRIMARY_TABS: TabKey[] = ["dashboard", "orders", "communications", "customers", "doctors"];
 
 export default function AdminSidebar({
   activeTab,
@@ -44,8 +52,29 @@ export default function AdminSidebar({
   collapsed,
   onToggleCollapse,
 }: AdminSidebarProps) {
+  // Phase J — unified Communications badge.
+  // Sums unread chat messages (visitor → admin, from the AdminChatContext
+  // sessions array) + unread contact-form submissions (status="new").
+  // Deliberately EXCLUDES the legacy unreadCommsCount (SMS / call ambient
+  // activity) and the Live Visitors active-count — both are too noisy
+  // for a red badge per spec.
+  //
+  // The hook is safe to call here: AdminChatProvider wraps every admin
+  // route in App.tsx (public site uses <AdminChatGate>, admin subdomain
+  // uses <AdminChatProvider enabled>).
+  const adminChatCtx = useAdminChat();
+  const unreadChatsCount = (adminChatCtx?.sessions ?? []).reduce(
+    (acc, s) => acc + (s?.unread_count ?? 0),
+    0,
+  );
+  // Legacy "comms" / "contacts" branches preserved so any future
+  // re-enable of those entries in TAB_CONFIG continues to render badges
+  // correctly. They are no-ops while Phase I keeps those entries hidden.
   const getBadge = (key: TabKey): number => {
     if (key === "orders" && totalUnassigned > 0) return totalUnassigned;
+    if (key === "communications") {
+      return unreadChatsCount + (unreadContactsCount ?? 0);
+    }
     if (key === "comms" && unreadCommsCount > 0) return unreadCommsCount;
     if (key === "contacts" && (unreadContactsCount ?? 0) > 0)
       return unreadContactsCount ?? 0;

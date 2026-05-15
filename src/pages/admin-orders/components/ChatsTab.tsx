@@ -32,6 +32,7 @@ import {
 } from "../../../context/AdminChatContext";
 import ChatAttachmentView from "../../../components/feature/ChatAttachmentView";
 import EditChatIdentityModal from "../../../components/admin/EditChatIdentityModal";
+import VisitorContextPanel from "./VisitorContextPanel";
 import {
   uploadChatAttachment,
   isValidChatAttachment,
@@ -1354,6 +1355,13 @@ function ThreadView({
           icon="ri-map-pin-line"
         />
       </div>
+
+      {/* Phase 2D — read-only visitor context panel. Fetches via the
+          admin-only get_chat_pre_chat_context + get_visitor_journey RPCs.
+          Renders a graceful empty state when the chat has no linked
+          visitor_session_id (legacy chats). Does not affect message
+          sending, notifications, or any existing chat behavior. */}
+      <VisitorContextPanel chatSessionId={session.id} />
 
       <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-3">
         {messages.length} {messages.length === 1 ? "Message" : "Messages"}

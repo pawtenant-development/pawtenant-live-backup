@@ -11,10 +11,11 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
-const AdminLoginPage    = lazy(() => import("../pages/admin-login/page"));
-const AdminOrdersPage   = lazy(() => import("../pages/admin-orders/page"));
-const AdminDoctorsPage  = lazy(() => import("../pages/admin-doctors/page"));
-const AdminGuidePage    = lazy(() => import("../pages/admin-guide/page"));
+const AdminLoginPage        = lazy(() => import("../pages/admin-login/page"));
+const AdminOrdersPage       = lazy(() => import("../pages/admin-orders/page"));
+const AdminDoctorsPage      = lazy(() => import("../pages/admin-doctors/page"));
+const AdminGuidePage        = lazy(() => import("../pages/admin-guide/page"));
+const AdminLiveVisitorsPage = lazy(() => import("../pages/admin-live/page"));
 const ResetPasswordPage = lazy(() => import("../pages/reset-password/page"));
 const ProviderLoginPage  = lazy(() => import("../pages/provider-login/page"));
 const ProviderPortalPage = lazy(() => import("../pages/provider-portal/page"));
@@ -45,10 +46,14 @@ export function AdminSubdomainRoutes() {
       <Route path="/" element={<Navigate to="/admin-login" replace />} />
 
       {/* Admin portal */}
-      <Route path="/admin-login"   element={<P C={AdminLoginPage} />} />
-      <Route path="/admin-orders"  element={<P C={AdminOrdersPage} />} />
-      <Route path="/admin-doctors" element={<P C={AdminDoctorsPage} />} />
-      <Route path="/admin-guide"   element={<P C={AdminGuidePage} />} />
+      <Route path="/admin-login"        element={<P C={AdminLoginPage} />} />
+      {/* Visitor Intelligence — Phase 1. More specific than /admin-orders so
+          declared first; React Router v6 picks by specificity but listing it
+          here also keeps it visually grouped with the orders surface. */}
+      <Route path="/admin-orders/live"  element={<P C={AdminLiveVisitorsPage} />} />
+      <Route path="/admin-orders"       element={<P C={AdminOrdersPage} />} />
+      <Route path="/admin-doctors"      element={<P C={AdminDoctorsPage} />} />
+      <Route path="/admin-guide"        element={<P C={AdminGuidePage} />} />
 
       {/* Chats moved inside /admin-orders as a tab. Old /admin-chats path
           redirects there for any stale bookmarks. */}
