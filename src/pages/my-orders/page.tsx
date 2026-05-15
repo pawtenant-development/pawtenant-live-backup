@@ -647,131 +647,27 @@ export default function MyOrdersPage() {
 
   const loadOrdersForEmail = async (email: string) => {
     setSearchLoading(true);
-    // LIVE hotfix 2026-05-15: trim + case-insensitive substring match so
-    // whitespace / casing drift on either side of the email comparison
-    // doesn't hide a paid customer's order. Strict client-side equality
-    // filter on lower(trim()) prevents accidentally leaking another
-    // customer's order whose address merely contains this substring.
-    const needle = (email ?? "").trim().toLowerCase();
-    const { data: ordersData } = await supabase
-      .from("orders")
-      .select("*")
-      .ilike("email", `%${needle}%`)
-      .order("created_at", { ascending: false });
-
-    const loadedOrders = (((ordersData as Order[]) ?? []).filter(
-      (o) => (o.email ?? "").trim().toLowerCase() === needle,
-    ));
-
-    if (loadedOrders.length > 0) {
-      const orderIds = loadedOrders.map((o) => o.id);
-      const { data: docsData } = await supabase
-        .from("order_documents")
-        .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
-        .in("order_id", orderIds)
-        .eq("customer_visible", true)
-        .order("uploaded_at", { ascending: true });
-
-      const docsByOrderId = new Map<string, OrderDocument[]>();
-      ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
-        const key = (doc as OrderDocument & { order_id: string }).order_id;
-        if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
-        docsByOrderId.get(key)!.push(doc);
-      });
-
-      const ordersWithDocs = loadedOrders.map((o) => ({
-        ...o,
-        documents: docsByOrderId.get(o.id) ?? [],
-      }));
-      setOrders(ordersWithDocs);
-    } else {
-      setOrders([]);
-    }
-    setSearchLoading(false);
-  };
-
-  useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { navigate("/customer-login"); return; }
-      setUserEmail(user.email ?? "");
-      setUserName(user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "");
-
-      // Check if admin
-      const { data: profile } = await supabase
-        .from("doctor_profiles")
-        .select("is_admin, full_name")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (profile?.is_admin) {
-        setIsAdminPreview(true);
-        setUserName(profile.full_name ?? user.email?.split("@")[0] ?? "Admin");
-        // Auto-load preview_email from URL param (e.g. from "Customer View" button in order detail)
-        const urlPreviewEmail = searchParams.get("preview_email");
-        if (urlPreviewEmail) {
-          setSearchEmail(urlPreviewEmail);
-          setSearchInput(urlPreviewEmail);
-          loadOrdersForEmail(urlPreviewEmail);
-          return;
-        }
-        // Admin: load all orders by default (no email filter)
-        const { data: ordersData } = await supabase
-          .from("orders")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        const loadedOrders = (ordersData as Order[]) ?? [];
-
-        if (loadedOrders.length > 0) {
-          const orderIds = loadedOrders.map((o) => o.id);
-          const { data: docsData } = await supabase
-            .from("order_documents")
-            .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
-            .in("order_id", orderIds)
-            .eq("customer_visible", true)
-            .order("uploaded_at", { ascending: true });
-
-          const docsByOrderId = new Map<string, OrderDocument[]>();
-          ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
-            const key = (doc as OrderDocument & { order_id: string }).order_id;
-            if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
-            docsByOrderId.get(key)!.push(doc);
-          });
-
-          const ordersWithDocs = loadedOrders.map((o) => ({
-            ...o,
-            documents: docsByOrderId.get(o.id) ?? [],
-          }));
-          setOrders(ordersWithDocs);
-          setAllAdminOrders(ordersWithDocs);
-        } else {
-          setOrders([]);
-          setAllAdminOrders([]);
-        }
-        setLoading(false);
-        return;
-      }
-
-      // Regular customer: fetch their own orders.
-      // LIVE hotfix 2026-05-15: normalize the email comparison so paid
-      // orders with leading/trailing whitespace or mixed casing on
-      // orders.email still surface to the right logged-in customer.
-      // Server widens via ilike '%email%'; client strictly filters by
-      // lower(trim()) so no other customer's order can ever leak in.
-      const needle = (user.email ?? "").trim().toLowerCase();
-      const { data: ordersData } = await supabase
+    try {
+      // LIVE hotfix 2026-05-15: trim + case-insensitive substring match so
+      // whitespace / casing drift on either side of the email comparison
+      // doesn't hide a paid customer's order. Strict client-side equality
+      // filter on lower(trim()) prevents accidentally leaking another
+      // customer's order whose address merely contains this substring.
+      const needle = (email ?? "").trim().toLowerCase();
+      const { data: ordersData, error: ordersErr } = await supabase
         .from("orders")
         .select("*")
         .ilike("email", `%${needle}%`)
         .order("created_at", { ascending: false });
 
+      if (ordersErr) {
+        console.error("[my-orders] loadOrdersForEmail orders query failed:", ordersErr);
+      }
+
       const loadedOrders = (((ordersData as Order[]) ?? []).filter(
         (o) => (o.email ?? "").trim().toLowerCase() === needle,
       ));
 
-      // Fetch all documents for these orders
       if (loadedOrders.length > 0) {
         const orderIds = loadedOrders.map((o) => o.id);
         const { data: docsData } = await supabase
@@ -796,7 +692,150 @@ export default function MyOrdersPage() {
       } else {
         setOrders([]);
       }
-      setLoading(false);
+    } catch (err) {
+      console.error("[my-orders] loadOrdersForEmail threw:", err);
+      setOrders([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // LIVE hotfix 2026-05-15 (rev 2):
+    //   * The admin-preview branch previously did fire-and-forget
+    //     loadOrdersForEmail() then early-returned, so the outer
+    //     `loading` state stayed true forever and Customer View just
+    //     showed an infinite spinner.
+    //   * Any throw in the regular-customer branch (transient RLS error,
+    //     network blip, dropped doctor_profiles query) also stranded the
+    //     outer loading state. Customers saw an infinite spinner that
+    //     eventually rendered "No orders found" once stale state cleared.
+    //   * The entire load() is now wrapped in try/finally so setLoading
+    //     ALWAYS clears. The admin-preview branch awaits the email loader
+    //     and the loader exposes an admin-aware option to ALSO set the
+    //     outer loading flag (vs. only the searchLoading flag).
+    const load = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { navigate("/customer-login"); return; }
+        setUserEmail(user.email ?? "");
+        setUserName(user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "");
+
+        // Check if admin
+        const { data: profile } = await supabase
+          .from("doctor_profiles")
+          .select("is_admin, full_name")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (profile?.is_admin) {
+          setIsAdminPreview(true);
+          setUserName(profile.full_name ?? user.email?.split("@")[0] ?? "Admin");
+          // Auto-load preview_email from URL param (e.g. from "Customer View" button in order detail)
+          const urlPreviewEmail = searchParams.get("preview_email");
+          if (urlPreviewEmail) {
+            setSearchEmail(urlPreviewEmail);
+            setSearchInput(urlPreviewEmail);
+            // Await so the outer try/finally clears `loading` only after
+            // the preview load actually finishes (or throws).
+            await loadOrdersForEmail(urlPreviewEmail);
+            return;
+          }
+          // Admin: load all orders by default (no email filter)
+          const { data: ordersData, error: ordersErr } = await supabase
+            .from("orders")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(50);
+
+          if (ordersErr) {
+            console.error("[my-orders] admin orders query failed:", ordersErr);
+          }
+
+          const loadedOrders = (ordersData as Order[]) ?? [];
+
+          if (loadedOrders.length > 0) {
+            const orderIds = loadedOrders.map((o) => o.id);
+            const { data: docsData } = await supabase
+              .from("order_documents")
+              .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+              .in("order_id", orderIds)
+              .eq("customer_visible", true)
+              .order("uploaded_at", { ascending: true });
+
+            const docsByOrderId = new Map<string, OrderDocument[]>();
+            ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
+              const key = (doc as OrderDocument & { order_id: string }).order_id;
+              if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
+              docsByOrderId.get(key)!.push(doc);
+            });
+
+            const ordersWithDocs = loadedOrders.map((o) => ({
+              ...o,
+              documents: docsByOrderId.get(o.id) ?? [],
+            }));
+            setOrders(ordersWithDocs);
+            setAllAdminOrders(ordersWithDocs);
+          } else {
+            setOrders([]);
+            setAllAdminOrders([]);
+          }
+          return;
+        }
+
+        // Regular customer: fetch their own orders.
+        // LIVE hotfix 2026-05-15: normalize the email comparison so paid
+        // orders with leading/trailing whitespace or mixed casing on
+        // orders.email still surface to the right logged-in customer.
+        // Server widens via ilike '%email%'; client strictly filters by
+        // lower(trim()) so no other customer's order can ever leak in.
+        const needle = (user.email ?? "").trim().toLowerCase();
+        const { data: ordersData, error: ordersErr } = await supabase
+          .from("orders")
+          .select("*")
+          .ilike("email", `%${needle}%`)
+          .order("created_at", { ascending: false });
+
+        if (ordersErr) {
+          console.error("[my-orders] customer orders query failed:", ordersErr);
+        }
+
+        const loadedOrders = (((ordersData as Order[]) ?? []).filter(
+          (o) => (o.email ?? "").trim().toLowerCase() === needle,
+        ));
+
+        // Fetch all documents for these orders
+        if (loadedOrders.length > 0) {
+          const orderIds = loadedOrders.map((o) => o.id);
+          const { data: docsData } = await supabase
+            .from("order_documents")
+            .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+            .in("order_id", orderIds)
+            .eq("customer_visible", true)
+            .order("uploaded_at", { ascending: true });
+
+          const docsByOrderId = new Map<string, OrderDocument[]>();
+          ((docsData as OrderDocument[]) ?? []).forEach((doc) => {
+            const key = (doc as OrderDocument & { order_id: string }).order_id;
+            if (!docsByOrderId.has(key)) docsByOrderId.set(key, []);
+            docsByOrderId.get(key)!.push(doc);
+          });
+
+          const ordersWithDocs = loadedOrders.map((o) => ({
+            ...o,
+            documents: docsByOrderId.get(o.id) ?? [],
+          }));
+          setOrders(ordersWithDocs);
+        } else {
+          setOrders([]);
+        }
+      } catch (err) {
+        console.error("[my-orders] load() threw:", err);
+      } finally {
+        // ALWAYS clear loading — every branch, including admin preview
+        // early-return and any thrown error, lands here.
+        setLoading(false);
+      }
     };
     load();
   }, [navigate]);
@@ -1109,14 +1148,35 @@ export default function MyOrdersPage() {
             <div className="w-16 h-16 flex items-center justify-center bg-orange-50 rounded-full mx-auto mb-4">
               <i className="ri-file-list-3-line text-orange-400 text-3xl"></i>
             </div>
-            <h2 className="text-base font-bold text-gray-800 mb-2">No orders found</h2>
-            <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
-              No orders are linked to your account yet. If you made a purchase, make sure you used the same email address.
-            </p>
-            <Link to="/assessment"
-              className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
-              <i className="ri-file-text-line"></i>Get Your ESA Letter
-            </Link>
+            {isAdminPreview && searchEmail ? (
+              <>
+                <h2 className="text-base font-bold text-gray-800 mb-2">No portal-visible orders for this customer</h2>
+                <p className="text-sm text-gray-500 mb-2 max-w-sm mx-auto">
+                  No orders are linked to <span className="font-semibold text-gray-700">{searchEmail}</span>.
+                </p>
+                <p className="text-xs text-gray-400 mb-6 max-w-sm mx-auto">
+                  Check that the order email matches the customer's auth email exactly (case + whitespace) on the order detail page.
+                </p>
+              </>
+            ) : isAdminPreview ? (
+              <>
+                <h2 className="text-base font-bold text-gray-800 mb-2">No orders in the system yet</h2>
+                <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
+                  Use the search above to preview any customer's portal by email, order ID, or name.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-base font-bold text-gray-800 mb-2">No orders found</h2>
+                <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
+                  No orders are linked to your account yet. If you made a purchase, make sure you used the same email address.
+                </p>
+                <Link to="/assessment"
+                  className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
+                  <i className="ri-file-text-line"></i>Get Your ESA Letter
+                </Link>
+              </>
+            )}
           </div>
         ) : (
           <>
