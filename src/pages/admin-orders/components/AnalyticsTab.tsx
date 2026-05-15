@@ -5,6 +5,9 @@ import AdSpendPanel from "./AdSpendPanel";
 import GoogleAdsSyncPanel from "./GoogleAdsSyncPanel";
 import MetaCAPIPanel from "./MetaCAPIPanel";
 import UnifiedBackfillPanel from "./UnifiedBackfillPanel";
+import VisitorSourceRankingsPanel from "./VisitorSourceRankingsPanel";
+import DailyVisitorsByChannelPanel from "./DailyVisitorsByChannelPanel";
+import LandingPagePerformancePanel from "./LandingPagePerformancePanel";
 
 interface Order {
   id: string;
@@ -1226,6 +1229,37 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           </div>
         ))}
       </div>
+
+      {/* ── Visitor Source Rankings (Phase A) ──
+           Read-only ranking of normalized visitor sources for the same
+           Overview-view date window. Uses get_visitor_source_data RPC +
+           shared acquisitionClassifier so labels agree with Orders pills
+           + Live Visitors chips. Gracefully degrades to "Insufficient
+           attribution data" if the RPC is missing or RLS rejects. */}
+      <section>
+        <VisitorSourceRankingsPanel
+          rangeFrom={rangeFrom}
+          rangeTo={rangeTo}
+          orders={orders}
+        />
+      </section>
+
+      {/* ── Daily Visitors by Source (Traffic Intelligence) ──
+           Stacked daily-bar chart with self-contained Today/7d/30d/All
+           preset. Reuses get_visitor_source_data RPC + classifier so the
+           legend matches the rankings table above. */}
+      <section>
+        <DailyVisitorsByChannelPanel />
+      </section>
+
+      {/* ── Landing Page Performance (Traffic Intelligence) ──
+           Two-mode panel: top pages with source mix expansion + a
+           compact Source × Page heatmap. Visitor-level metrics only
+           (visitor_sessions.paid_at). Revenue lives in the rankings
+           table above where orders attribution folds in by source. */}
+      <section>
+        <LandingPagePerformancePanel />
+      </section>
 
       {/* ── Revenue Trend Chart ── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
