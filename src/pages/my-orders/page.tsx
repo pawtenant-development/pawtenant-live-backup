@@ -647,13 +647,21 @@ export default function MyOrdersPage() {
 
   const loadOrdersForEmail = async (email: string) => {
     setSearchLoading(true);
+    // LIVE hotfix 2026-05-15: trim + case-insensitive substring match so
+    // whitespace / casing drift on either side of the email comparison
+    // doesn't hide a paid customer's order. Strict client-side equality
+    // filter on lower(trim()) prevents accidentally leaking another
+    // customer's order whose address merely contains this substring.
+    const needle = (email ?? "").trim().toLowerCase();
     const { data: ordersData } = await supabase
       .from("orders")
       .select("*")
-      .ilike("email", email)
+      .ilike("email", `%${needle}%`)
       .order("created_at", { ascending: false });
 
-    const loadedOrders = (ordersData as Order[]) ?? [];
+    const loadedOrders = (((ordersData as Order[]) ?? []).filter(
+      (o) => (o.email ?? "").trim().toLowerCase() === needle,
+    ));
 
     if (loadedOrders.length > 0) {
       const orderIds = loadedOrders.map((o) => o.id);
@@ -746,14 +754,22 @@ export default function MyOrdersPage() {
         return;
       }
 
-      // Regular customer: fetch their own orders
+      // Regular customer: fetch their own orders.
+      // LIVE hotfix 2026-05-15: normalize the email comparison so paid
+      // orders with leading/trailing whitespace or mixed casing on
+      // orders.email still surface to the right logged-in customer.
+      // Server widens via ilike '%email%'; client strictly filters by
+      // lower(trim()) so no other customer's order can ever leak in.
+      const needle = (user.email ?? "").trim().toLowerCase();
       const { data: ordersData } = await supabase
         .from("orders")
         .select("*")
-        .ilike("email", user.email ?? "")
+        .ilike("email", `%${needle}%`)
         .order("created_at", { ascending: false });
 
-      const loadedOrders = (ordersData as Order[]) ?? [];
+      const loadedOrders = (((ordersData as Order[]) ?? []).filter(
+        (o) => (o.email ?? "").trim().toLowerCase() === needle,
+      ));
 
       // Fetch all documents for these orders
       if (loadedOrders.length > 0) {
