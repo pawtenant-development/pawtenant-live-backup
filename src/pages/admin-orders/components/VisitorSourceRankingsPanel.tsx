@@ -195,6 +195,17 @@ function pathOnly(url: string): string | null {
   }
 }
 
+/** Compact label for the active date range, e.g. "May 1 – May 15 · 15 days".
+ *  Mirrors the helper already in DailyVisitorsByChannelPanel +
+ *  LandingPagePerformancePanel so all three new visitor panels show the
+ *  exact same range summary string. */
+function rangeSummary(from: Date, to: Date): string {
+  const days = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+  if (days === 1) return "Today";
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(from)} – ${fmt(to)} · ${days} days`;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function VisitorSourceRankingsPanel({
@@ -276,7 +287,7 @@ export default function VisitorSourceRankingsPanel({
           <div>
             <h3 className="text-sm font-extrabold text-gray-900">Visitor Source Rankings</h3>
             <p className="text-[11px] text-gray-400">
-              Classified via shared <span className="font-semibold">acquisitionClassifier</span> · {visitors.length.toLocaleString()} visitors in range
+              Classified via shared <span className="font-semibold">acquisitionClassifier</span> · {visitors.length.toLocaleString()} visitors · <span className="text-gray-500">{rangeSummary(rangeFrom, rangeTo)}</span>
             </p>
             <p className="text-[10px] text-gray-400 mt-0.5 leading-snug max-w-2xl">
               Visitors and Orders are independent attribution lenses. Conversion is visitor-internal. Orders show classifier-attributed sales and may include returning customers.
