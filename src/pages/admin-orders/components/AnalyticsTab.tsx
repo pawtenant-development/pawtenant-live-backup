@@ -58,116 +58,18 @@ interface ChannelConfig {
   chartColor: string;
 }
 
-const CHANNEL_MAP: Record<string, ChannelConfig> = {
-  "Facebook / Instagram Ads": {
-    label: "Facebook / Instagram",
-    icon: "ri-facebook-circle-fill",
-    color: "text-[#1877F2]",
-    bgColor: "bg-blue-50",
-    borderColor: "border-blue-200",
-    chartColor: "#1877F2",
-  },
-  "Google Ads": {
-    label: "Google Ads",
-    icon: "ri-google-fill",
-    color: "text-orange-500",
-    bgColor: "bg-orange-50",
-    borderColor: "border-orange-200",
-    chartColor: "#f97316",
-  },
-  "Google Organic": {
-    label: "Google Organic (SEO)",
-    icon: "ri-search-2-line",
-    color: "text-emerald-600",
-    bgColor: "bg-emerald-50",
-    borderColor: "border-emerald-200",
-    chartColor: "#10b981",
-  },
-  "TikTok Ads": {
-    label: "TikTok Ads",
-    icon: "ri-tiktok-fill",
-    color: "text-gray-900",
-    bgColor: "bg-gray-100",
-    borderColor: "border-gray-300",
-    chartColor: "#111827",
-  },
-  "Instagram Ads": {
-    label: "Instagram Ads",
-    icon: "ri-instagram-fill",
-    color: "text-pink-600",
-    bgColor: "bg-pink-50",
-    borderColor: "border-pink-200",
-    chartColor: "#db2777",
-  },
-  "YouTube Ads": {
-    label: "YouTube Ads",
-    icon: "ri-youtube-fill",
-    color: "text-red-600",
-    bgColor: "bg-red-50",
-    borderColor: "border-red-200",
-    chartColor: "#dc2626",
-  },
-  "Email Campaign": {
-    label: "Email Campaign",
-    icon: "ri-mail-send-fill",
-    color: "text-violet-600",
-    bgColor: "bg-violet-50",
-    borderColor: "border-violet-200",
-    chartColor: "#7c3aed",
-  },
-  "Referral": {
-    label: "Referral",
-    icon: "ri-share-forward-fill",
-    color: "text-teal-600",
-    bgColor: "bg-teal-50",
-    borderColor: "border-teal-200",
-    chartColor: "#0d9488",
-  },
-  "Direct": {
-    label: "Direct",
-    icon: "ri-cursor-fill",
-    color: "text-gray-600",
-    bgColor: "bg-gray-50",
-    borderColor: "border-gray-200",
-    chartColor: "#6b7280",
-  },
-  "Unknown": {
-    label: "Direct / Unknown",
-    icon: "ri-question-line",
-    color: "text-gray-400",
-    bgColor: "bg-gray-50",
-    borderColor: "border-gray-200",
-    chartColor: "#d1d5db",
-  },
-};
-
-function resolveChannel(referredBy: string | null): string {
-  if (!referredBy) return "Unknown";
-  if (CHANNEL_MAP[referredBy]) return referredBy;
-  const lower = referredBy.toLowerCase();
-  // Strict hierarchy — no weak twitter/x inference
-  if (lower.includes("facebook") || (lower.includes("instagram") && !lower.includes("google"))) return "Facebook / Instagram Ads";
-  if (lower.includes("google") && lower.includes("organic")) return "Google Organic";
-  if (lower.includes("google")) return "Google Ads";
-  if (lower.includes("tiktok")) return "TikTok Ads";
-  if (lower.includes("youtube")) return "YouTube Ads";
-  if (lower.includes("email")) return "Email Campaign";
-  if (lower.includes("referral")) return "Referral";
-  if (lower.includes("seo") || lower.includes("organic")) return "Google Organic";
-  if (lower.includes("direct")) return "Direct";
-  return "Unknown";
-}
-
-function getChannelConfig(channel: string): ChannelConfig {
-  return CHANNEL_MAP[channel] ?? {
-    label: channel,
-    icon: "ri-share-circle-line",
-    color: "text-gray-500",
-    bgColor: "bg-gray-50",
-    borderColor: "border-gray-200",
-    chartColor: "#9ca3af",
-  };
-}
+// ────────────────────────────────────────────────────────────────────────
+// Phase 2.d Commit B (2026-05-17) — legacy classifier RETIRED
+// ────────────────────────────────────────────────────────────────────────
+// CHANNEL_MAP, resolveChannel(), and getChannelConfig() were removed in
+// this commit. They have been replaced site-by-site with the canonical
+// adapter helpers below (orderChannelLabel / orderChannelConfig), which
+// read attribution via the shared acquisitionClassifier so labels match
+// Orders pills, Live Visitors chips, AdminDashboard breakdown, and the
+// new Visitor Source Rankings panel.
+//
+// Removed lines preserved in git history; recover via `git show <sha>:…`
+// if anyone needs to compare against the old heuristic.
 
 // ────────────────────────────────────────────────────────────────────────
 // Phase 2.d Commit A — canonical-classifier adapter helpers
@@ -583,8 +485,8 @@ function exportToCSV(orders: Order[], filename: string) {
   ];
 
   const rows = orders.map((o) => {
-    const ch = resolveChannel(o.referred_by);
-    const cfg = getChannelConfig(ch);
+    const ch = orderChannelLabel(o);
+    const cfg = orderChannelConfig(ch);
     const isPaid = !!o.payment_intent_id;
     const isCompleted = o.doctor_status === "patient_notified";
     const fullName = [o.first_name, o.last_name].filter(Boolean).join(" ") || "";
@@ -722,7 +624,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       if (letterTypeFilter === "esa" && (o.letter_type === "psd" || o.confirmation_id.includes("-PSD"))) return false;
       if (letterTypeFilter === "psd" && o.letter_type !== "psd" && !o.confirmation_id.includes("-PSD")) return false;
       if (stateFilter !== "all" && (o.state ?? "") !== stateFilter) return false;
-      const ch = resolveChannel(o.referred_by);
+      const ch = orderChannelLabel(o);
       if (channelFilter !== "all" && ch !== channelFilter) return false;
       return true;
     });
@@ -732,7 +634,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const channelStats = useMemo(() => {
     const map: Record<string, { total: number; paid: number; leads: number; revenue: number; completed: number }> = {};
     filteredOrders.forEach((o) => {
-      const ch = resolveChannel(o.referred_by);
+      const ch = orderChannelLabel(o);
       if (!map[ch]) map[ch] = { total: 0, paid: 0, leads: 0, revenue: 0, completed: 0 };
       map[ch].total++;
       if (o.payment_intent_id) {
@@ -748,7 +650,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         channel,
         ...stats,
         conversionRate: stats.total > 0 ? Math.round((stats.paid / stats.total) * 100) : 0,
-        cfg: getChannelConfig(channel),
+        cfg: orderChannelConfig(channel),
       }))
       .sort((a, b) => b.total - a.total);
   }, [filteredOrders]);
@@ -797,7 +699,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     const map: Record<string, number> = {};
     filteredOrders.forEach((o) => {
       if (reviewStats.reviewSentByOrderId.has(o.id)) {
-        const ch = resolveChannel(o.referred_by);
+        const ch = orderChannelLabel(o);
         map[ch] = (map[ch] ?? 0) + 1;
       }
     });
@@ -837,7 +739,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       filteredOrders.forEach((o) => {
         const key = o.created_at.slice(0, 10);
         if (!buckets[key]) return;
-        const ch = resolveChannel(o.referred_by);
+        const ch = orderChannelLabel(o);
         if (o.payment_intent_id) {
           buckets[key].paid++;
           buckets[key].revenue += o.price ?? 0;
@@ -866,7 +768,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             byChannel: {},
           };
         }
-        const ch = resolveChannel(o.referred_by);
+        const ch = orderChannelLabel(o);
         if (o.payment_intent_id) {
           weekMap[key].paid++;
           weekMap[key].revenue += o.price ?? 0;
@@ -882,7 +784,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   // ── Orders for selected channel ───────────────────────────────────────────
   const channelOrders = useMemo(() => {
     if (!selectedChannel) return filteredOrders;
-    return filteredOrders.filter((o) => resolveChannel(o.referred_by) === selectedChannel);
+    return filteredOrders.filter((o) => orderChannelLabel(o) === selectedChannel);
   }, [filteredOrders, selectedChannel]);
 
   const pagedOrders = channelOrders.slice(0, orderListPage * PAGE_SIZE);
@@ -908,7 +810,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
 
   // ── All unique channels for filter ───────────────────────────────────────
   const allChannels = useMemo(() => {
-    const s = new Set(orders.map((o) => resolveChannel(o.referred_by)));
+    const s = new Set(orders.map((o) => orderChannelLabel(o)));
     return Array.from(s).sort();
   }, [orders]);
 
@@ -917,7 +819,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     const map: Record<string, number> = {};
     filteredOrders.forEach((o) => {
       if (!o.payment_intent_id) return;
-      const ch = resolveChannel(o.referred_by);
+      const ch = orderChannelLabel(o);
       map[ch] = (map[ch] ?? 0) + (o.price ?? 0);
     });
     return map;
@@ -928,7 +830,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     const map: Record<string, number> = {};
     filteredOrders.forEach((o) => {
       if (!o.payment_intent_id) return;
-      const ch = resolveChannel(o.referred_by);
+      const ch = orderChannelLabel(o);
       map[ch] = (map[ch] ?? 0) + 1;
     });
     return map;
@@ -993,7 +895,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const handleExportCSV = useCallback(() => {
     setCsvExporting(true);
     const dateStr = new Date().toISOString().slice(0, 10);
-    const channelLabel = selectedChannel ? `-${getChannelConfig(selectedChannel).label.replace(/[^a-z0-9]/gi, "-").toLowerCase()}` : "";
+    const channelLabel = selectedChannel ? `-${orderChannelConfig(selectedChannel).label.replace(/[^a-z0-9]/gi, "-").toLowerCase()}` : "";
     const filename = `pawtenant-orders-${datePreset}${channelLabel}-${dateStr}.csv`;
     exportToCSV(channelOrders, filename);
     setTimeout(() => setCsvExporting(false), 1500);
@@ -1328,7 +1230,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
               className="appearance-none pl-3 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
               <option value="all">All Channels</option>
-              {allChannels.map((c) => <option key={c} value={c}>{getChannelConfig(c).label}</option>)}
+              {allChannels.map((c) => <option key={c} value={c}>{orderChannelConfig(c).label}</option>)}
             </select>
             <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
           </div>
@@ -1385,12 +1287,14 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
            Empty data renders zero values + "Need more data" insight
            cards — no white-screen path.
 
-           ownerChannel={null} for now: LIVE's channelFilter values
-           come from resolveChannel (legacy vocabulary) and don't
-           map cleanly to Phase2's OwnerChannel enum. Channel-filter
-           wiring is deferred to the upcoming classifier-consolidation
-           sprint. Today the funnel shows all-channels combined,
-           which matches the unfiltered KPI strip above. */}
+           ownerChannel={null} for now: channelFilter is now driven by
+           the canonical AcquisitionLabel vocabulary (post-Commit-B),
+           but Phase2's OwnerChannel enum buckets ("google_ads" /
+           "facebook_meta" / "seo_referral" / "direct_unknown") still
+           don't 1:1 map to AcquisitionLabel without an additional
+           translation table. Wiring deferred to a follow-up. Today
+           the funnel shows all-channels combined, matching the
+           unfiltered KPI strip above. */}
       <section>
         <Phase2AnalyticsPanel
           mode="funnel"
@@ -1720,7 +1624,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-sm font-extrabold text-gray-900">
-              {selectedChannel ? `Orders from ${getChannelConfig(selectedChannel).label}` : "All Orders in Period"}
+              {selectedChannel ? `Orders from ${orderChannelConfig(selectedChannel).label}` : "All Orders in Period"}
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">{channelOrders.length} orders — click any row to open order details</p>
           </div>
@@ -1768,8 +1672,8 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
 
             <div className="divide-y divide-gray-50">
               {pagedOrders.map((order) => {
-                const ch = resolveChannel(order.referred_by);
-                const cfg = getChannelConfig(ch);
+                const ch = orderChannelLabel(order);
+                const cfg = orderChannelConfig(ch);
                 const isPaid = !!order.payment_intent_id;
                 const isCompleted = order.doctor_status === "patient_notified";
                 const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
