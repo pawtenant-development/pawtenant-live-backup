@@ -13,6 +13,11 @@ import Phase2AnalyticsPanel from "./Phase2AnalyticsPanel";
 import RecoveryPerformancePanel from "./RecoveryPerformancePanel";
 import SmartInsightsPanel from "./SmartInsightsPanel";
 import { analyticsScopeLabel } from "./analyticsScope";
+import {
+  classifyOrder,
+  ACQUISITION_VISUAL,
+  type AcquisitionLabel,
+} from "@/lib/acquisitionClassifier";
 
 interface Order {
   id: string;
@@ -161,6 +166,101 @@ function getChannelConfig(channel: string): ChannelConfig {
     bgColor: "bg-gray-50",
     borderColor: "border-gray-200",
     chartColor: "#9ca3af",
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Phase 2.d Commit A — canonical-classifier adapter helpers
+// ────────────────────────────────────────────────────────────────────────
+// Drop-in replacements for resolveChannel() + getChannelConfig() backed by
+// the shared acquisitionClassifier + ACQUISITION_VISUAL. Defined here but
+// NOT YET used by any call site — Commit B swaps the existing
+// resolveChannel/getChannelConfig usages over in a single pass and retires
+// CHANNEL_MAP + the legacy heuristics.
+//
+// Adapter contract:
+//   orderChannelLabel(o)  → AcquisitionLabel string (e.g. "Google Ads",
+//                           "Facebook Paid", "Direct / Unknown")
+//   orderChannelConfig(s) → ChannelConfig shape identical to the existing
+//                           ChannelConfig interface, so downstream call
+//                           sites in channelStats / Channel Mix / Period
+//                           Summary / Revenue Trend stack don't need
+//                           structural changes when we flip in Commit B.
+//
+// Decision log:
+//   • Option B for chart colors — module-local LABEL_CHART_COLOR map.
+//     Keeps the shared acquisitionClassifier.ts file untouched.
+//   • YouTube label NOT added to the shared classifier yet — rare
+//     YouTube-tagged orders will fall back to "Direct / Unknown" once
+//     Commit B lands. Acceptable per audit decision.
+
+/** Hex chart color per canonical classifier label. Used by Revenue Trend
+ *  stacked-channel chart + Channel Mix donut after Commit B. Values
+ *  chosen to track the Tailwind color in ACQUISITION_VISUAL.color so
+ *  swatch + label stay visually consistent. */
+const LABEL_CHART_COLOR: Record<AcquisitionLabel, string> = {
+  "Google Ads":       "#f97316", // orange-500 — matches text-orange-600 visual
+  "Google Organic":   "#10b981", // emerald-500
+  "Facebook Paid":    "#1877F2", // canonical Meta brand blue
+  "Facebook Organic": "#2563eb", // blue-600
+  "Instagram":        "#db2777", // pink-600
+  "Reddit":           "#c2410c", // orange-700 — distinct from Google Ads
+  "TikTok":           "#111827", // gray-900 — matches text-gray-900 visual
+  "Microsoft Ads":    "#0284c7", // sky-600
+  "ChatGPT":          "#047857", // emerald-700 — distinct from Google Organic
+  "Claude":           "#b45309", // amber-700
+  "Gemini":           "#4338ca", // indigo-700
+  "Perplexity":       "#475569", // slate-600
+  "Email Recovery":   "#7c3aed", // violet-600
+  "Referral":         "#0d9488", // teal-600
+  "Direct / Unknown": "#9ca3af", // gray-400
+};
+
+/** Classifier-driven channel label for an order. Reads utm/click-id/
+ *  referred_by + (when present) first_touch/last_touch snapshots. Always
+ *  returns one of the 15 ACQUISITION_LABELS. */
+function orderChannelLabel(o: Order): string {
+  // LIVE's local Order interface declares a narrower subset of fields than
+  // classifyOrder's OrderLikeAttribution input. The missing fields
+  // (gclid / fbclid / ref / first_touch_json / last_touch_json) are all
+  // optional on the classifier side — TypeScript's structural typing
+  // accepts the narrower object, but we cast explicitly to make the
+  // intent obvious to future readers.
+  return classifyOrder(o as Parameters<typeof classifyOrder>[0]).label;
+}
+
+/** Same ChannelConfig shape as the legacy getChannelConfig(), so future
+ *  call-site swaps in Commit B don't need to restructure channelStats /
+ *  donut / Period Summary / Revenue Trend consumers. */
+function orderChannelConfig(label: string): ChannelConfig {
+  const vis = ACQUISITION_VISUAL[label as AcquisitionLabel];
+  if (!vis) {
+    // Defensive fallback — should never fire because classifyOrder always
+    // returns one of the 15 canonical labels. Kept for type completeness.
+    return {
+      label,
+      icon:        "ri-share-circle-line",
+      color:       "text-gray-500",
+      bgColor:     "bg-gray-50",
+      borderColor: "border-gray-200",
+      chartColor:  "#9ca3af",
+    };
+  }
+  // ACQUISITION_VISUAL.color is a combined Tailwind class string
+  // ("text-orange-600 bg-orange-50 border-orange-200"). Existing
+  // ChannelConfig keeps them split. Split by whitespace and bucket each
+  // token by prefix so the shape matches the legacy config.
+  const tokens = vis.color.split(/\s+/);
+  const color       = tokens.find((t) => t.startsWith("text-"))   ?? "text-gray-500";
+  const bgColor     = tokens.find((t) => t.startsWith("bg-"))     ?? "bg-gray-50";
+  const borderColor = tokens.find((t) => t.startsWith("border-")) ?? "border-gray-200";
+  return {
+    label:       vis.label,
+    icon:        vis.icon,
+    color,
+    bgColor,
+    borderColor,
+    chartColor:  LABEL_CHART_COLOR[label as AcquisitionLabel] ?? "#9ca3af",
   };
 }
 
