@@ -10,6 +10,7 @@ import DailyVisitorsByChannelPanel from "./DailyVisitorsByChannelPanel";
 import LandingPagePerformancePanel from "./LandingPagePerformancePanel";
 import OwnerKpiStrip from "./OwnerKpiStrip";
 import Phase2AnalyticsPanel from "./Phase2AnalyticsPanel";
+import RecoveryPerformancePanel from "./RecoveryPerformancePanel";
 import { analyticsScopeLabel } from "./analyticsScope";
 
 interface Order {
@@ -1289,6 +1290,19 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
            the existing Channel Mix donut or Period Summary below. */}
       <section>
         <Phase2AnalyticsPanel mode="marketing" />
+      </section>
+
+      {/* ── Recovery Performance (Phase 2.c) ──
+           Reads from public.communications (slug = seq_30min / seq_24h /
+           seq_48h / seq_3day / seq_5day + SMS variants) + orders
+           coupon usage. New columns from
+           20260502150000_recovery_sequence_control.sql and
+           20260502160000_recovery_sms_sequence.sql back the stage
+           counts (seq_48h_sent_at / seq_5day_sent_at / sms_seq_*).
+           Panel handles empty data gracefully — shows zero counts
+           per stage until the recovery sequence engine starts sending. */}
+      <section>
+        <RecoveryPerformancePanel />
       </section>
 
       {/* ── Revenue Trend Chart ── */}
