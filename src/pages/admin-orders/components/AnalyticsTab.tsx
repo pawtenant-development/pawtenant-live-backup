@@ -1274,6 +1274,32 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         ))}
       </div>
 
+      {/* ── Funnel Performance (Phase 2.d, Commit 2) ──
+           Phase2AnalyticsPanel mode="funnel" — events-driven funnel
+           breakdown (Sessions → Assessment Start → Mid → Final →
+           Payment Attempted → Orders Completed). Reads public.events
+           via loadEventsFunnel() (COUNT DISTINCT session_id per
+           event_name) inside the parent date range; falls back to
+           the legacy funnel_summary view if either bound is missing.
+
+           Empty data renders zero values + "Need more data" insight
+           cards — no white-screen path.
+
+           ownerChannel={null} for now: LIVE's channelFilter values
+           come from resolveChannel (legacy vocabulary) and don't
+           map cleanly to Phase2's OwnerChannel enum. Channel-filter
+           wiring is deferred to the upcoming classifier-consolidation
+           sprint. Today the funnel shows all-channels combined,
+           which matches the unfiltered KPI strip above. */}
+      <section>
+        <Phase2AnalyticsPanel
+          mode="funnel"
+          dateFromIso={rangeFrom.toISOString()}
+          dateToIso={rangeTo.toISOString()}
+          ownerChannel={null}
+        />
+      </section>
+
       {/* ── Visitor Source Rankings (Phase A) ──
            Read-only ranking of normalized visitor sources for the same
            Overview-view date window. Uses get_visitor_source_data RPC +
