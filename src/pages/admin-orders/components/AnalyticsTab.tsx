@@ -11,6 +11,7 @@ import LandingPagePerformancePanel from "./LandingPagePerformancePanel";
 import OwnerKpiStrip from "./OwnerKpiStrip";
 import Phase2AnalyticsPanel from "./Phase2AnalyticsPanel";
 import RecoveryPerformancePanel from "./RecoveryPerformancePanel";
+import SmartInsightsPanel from "./SmartInsightsPanel";
 import { analyticsScopeLabel } from "./analyticsScope";
 
 interface Order {
@@ -1123,6 +1124,28 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           <span className="text-[11px] text-gray-400 ml-1">· {analyticsScopeLabel()}</span>
         </div>
         <OwnerKpiStrip />
+      </section>
+
+      {/* ── Smart Insights (Phase 2.d) ──
+           Executive-level plain-English insight cards. Reads orders +
+           funnel_summary + analytics_roi_summary + landing_page_performance
+           + communications. ALREADY defensively designed end-to-end:
+             * Promise.all wrapped in .catch — empty arrays on any RPC fail
+             * Every builder returns a "Need more data" fallbackCard()
+               when its input is empty
+             * Every builder wrapped in tryBuild() that catches throws
+           No white-screen path possible. Mounts directly under Owner
+           Dashboard so the executive flow reads:
+             KPIs (now) → Insights (what to do) → Filters → Detail. */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-50 text-amber-500">
+            <i className="ri-lightbulb-flash-line text-base"></i>
+          </span>
+          <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Smart Insights</h2>
+          <span className="text-[11px] text-gray-400 ml-1">· Auto-generated from your data</span>
+        </div>
+        <SmartInsightsPanel />
       </section>
 
       {/* ── Filter bar ── */}
