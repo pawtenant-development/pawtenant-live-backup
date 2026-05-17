@@ -63,6 +63,17 @@ interface JourneyEvent {
   created_at: string;
 }
 
+// Visitor Journey Intelligence — matched-order summary, hydrated when
+// PreChatContext.chat_matched_order_id is present. Single tiny lookup per
+// chat open; no polling.
+interface MatchedOrderRef {
+  id:                string;
+  confirmation_id:   string;
+  paid_at:           string | null;
+  payment_intent_id: string | null;
+  doctor_status:     string | null;
+}
+
 const RECENT_EVENT_LIMIT = 6;
 
 // ── Display helpers ─────────────────────────────────────────────────────
@@ -164,6 +175,10 @@ export default function VisitorContextPanel({
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
   const [eventsLoaded, setEventsLoaded] = useState(false);
+  // Visitor Journey Intelligence — hydrated lazily when a matched order
+  // exists. Single round-trip; never refetched while the panel stays
+  // mounted for the same chat session.
+  const [matchedOrder, setMatchedOrder] = useState<MatchedOrderRef | null>(null);
 
   const loadContext = useCallback(async () => {
     setLoading(true);
@@ -171,6 +186,7 @@ export default function VisitorContextPanel({
     setCtx(null);
     setEvents([]);
     setEventsLoaded(false);
+    setMatchedOrder(null);
     try {
       const { data, error: rpcErr } = await supabase.rpc(
         "get_chat_pre_chat_context",
@@ -220,6 +236,30 @@ export default function VisitorContextPanel({
     return () => { cancelled = true; };
   }, [visitorSessionId, eventsLoaded]);
 
+  // Visitor Journey Intelligence — hydrate the matched-order summary so the
+  // header chip can show confirmation_id + payment status. Lazy + cancel-
+  // safe. Soft-fails: chat surface keeps working even if the lookup errors.
+  const matchedOrderId = ctx?.chat_matched_order_id ?? null;
+  useEffect(() => {
+    if (!matchedOrderId) { setMatchedOrder(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error: qErr } = await supabase
+          .from("orders")
+          .select("id, confirmation_id, paid_at, payment_intent_id, doctor_status")
+          .eq("id", matchedOrderId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (qErr) { setMatchedOrder(null); return; }
+        setMatchedOrder((data as MatchedOrderRef | null) ?? null);
+      } catch {
+        if (!cancelled) setMatchedOrder(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [matchedOrderId]);
+
   // ── States ────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -262,8 +302,10 @@ export default function VisitorContextPanel({
 
   const milestones: { label: string; tone: string }[] = [];
   if (ctx.assessment_started_at) milestones.push({ label: "Assessment", tone: "bg-amber-50 text-amber-700" });
-  if (ctx.paid_at)               milestones.push({ label: "Paid",       tone: "bg-emerald-50 text-emerald-700" });
-  if (ctx.chat_matched_order_id) milestones.push({ label: "Matched Order", tone: "bg-blue-50 text-blue-700" });
+  // "Paid" comes from the visitor_session paid_at heartbeat. Suppress it
+  // when we also render a richer order chip below — the chip already shows
+  // payment state and duplicating tags adds noise to the meta row.
+  if (ctx.paid_at && !matchedOrder) milestones.push({ label: "Paid", tone: "bg-emerald-50 text-emerald-700" });
 
   const preChatCount = Number(ctx.pre_chat_event_count ?? 0);
 
@@ -296,6 +338,32 @@ export default function VisitorContextPanel({
               {m.label}
             </span>
           ))}
+          {matchedOrder && (() => {
+            const paid  = !!matchedOrder.paid_at;
+            const tried = !!matchedOrder.payment_intent_id && !paid;
+            const tone  = paid
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              : tried
+                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : "bg-blue-50 text-blue-700 border border-blue-200";
+            const label = paid ? "Paid" : tried ? "Attempted" : "Lead";
+            const icon  = paid ? "ri-checkbox-circle-fill" : tried ? "ri-bank-card-line" : "ri-shopping-cart-line";
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  try { void navigator.clipboard.writeText(matchedOrder.confirmation_id); } catch { /* ignore */ }
+                  window.open("/admin-orders?tab=orders", "_blank", "noopener");
+                }}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md cursor-pointer hover:opacity-80 ${tone}`}
+                title={`Copy ${matchedOrder.confirmation_id} and open Orders in a new tab`}
+              >
+                <i className={icon} style={{ fontSize: "10px" }} />
+                {matchedOrder.confirmation_id}
+                <span className="opacity-70">· {label}</span>
+              </button>
+            );
+          })()}
         </div>
 
         <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">

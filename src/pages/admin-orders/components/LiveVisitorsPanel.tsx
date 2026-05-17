@@ -16,7 +16,7 @@
  * Phase A/B scope: read-only. No sounds, no notifications, no realtime,
  * no drawer, no visitor actions, no new RPCs.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
 // Phase K4 — reuse the normalized acquisition classifier so the Live
@@ -56,6 +56,17 @@ interface LiveVisitor {
   first_message_at: string | null;
   assessment_started_at: string | null;
   paid_at: string | null;
+}
+
+// Visitor Journey Intelligence — per-session order summary returned by the
+// lightweight batched orders lookup below. Lets us render an "Order #PT-…"
+// chip on Live Visitors rows where an order has already been placed.
+interface SessionOrderRef {
+  id:               string;
+  confirmation_id:  string;
+  paid_at:          string | null;
+  payment_intent_id: string | null;
+  doctor_status:    string | null;
 }
 
 const POLL_MS        = 5_000;
@@ -135,6 +146,13 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
   const [rows, setRows]             = useState<LiveVisitor[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState<string | null>(null);
+  // Visitor Journey Intelligence — session_id → linked order (if any).
+  // Populated by a single batched `.in("session_id", [...])` query right
+  // after every visitor poll. Map (vs. plain object) so we can avoid a
+  // surprising sentinel object key collision and so `.get()` reads stay
+  // O(1). Empty by default — rows where no order exists simply render
+  // without an order chip.
+  const [orderBySession, setOrderBySession] = useState<Map<string, SessionOrderRef>>(() => new Map());
 
   // ── Poll loop ───────────────────────────────────────────────────────────
   const load = useCallback(async (background: boolean) => {
@@ -148,8 +166,48 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
         if (!background) setError(rpcErr.message);
         return;
       }
-      setRows((data ?? []) as LiveVisitor[]);
+      const visitors = ((data ?? []) as LiveVisitor[]);
+      setRows(visitors);
       if (background) setError(null);
+
+      // Batched order lookup. Single round-trip per poll regardless of how
+      // many visitors are on screen — no N+1. The orders table is admin-
+      // readable directly (see AttributionJourneyTab.tsx for precedent);
+      // RLS handles non-admin callers.
+      const sessionIds = visitors
+        .map((v) => v.session_id)
+        .filter((s): s is string => typeof s === "string" && s.length > 0);
+      if (sessionIds.length === 0) {
+        setOrderBySession(new Map());
+        return;
+      }
+      try {
+        const { data: orderRows, error: orderErr } = await supabase
+          .from("orders")
+          .select("id, confirmation_id, paid_at, payment_intent_id, doctor_status, session_id")
+          .in("session_id", sessionIds);
+        if (orderErr) {
+          // Silent fallback — the visitor list still renders without chips.
+          setOrderBySession(new Map());
+          return;
+        }
+        const next = new Map<string, SessionOrderRef>();
+        for (const r of (orderRows ?? []) as Array<SessionOrderRef & { session_id: string | null }>) {
+          if (!r.session_id) continue;
+          // If multiple orders share a session_id (recovery / retry), keep
+          // the paid one if any, otherwise the most-recently-touched. The
+          // chip should reflect the meaningful conversion, not the lead
+          // shell.
+          const existing = next.get(r.session_id);
+          if (!existing) { next.set(r.session_id, r); continue; }
+          const existingPaid = !!existing.paid_at;
+          const incomingPaid = !!r.paid_at;
+          if (incomingPaid && !existingPaid) next.set(r.session_id, r);
+        }
+        setOrderBySession(next);
+      } catch {
+        setOrderBySession(new Map());
+      }
     } catch (e) {
       if (!background) setError((e as Error)?.message ?? "Failed to load");
     } finally {
@@ -176,6 +234,17 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
 
   const activeCount = rows.length;
 
+  // Visitor Journey Intelligence — header summary: how many of the live
+  // visitors already have an order in flight? Pure derivation from the
+  // already-loaded orderBySession map; no extra fetches.
+  const convertingCount = useMemo(() => {
+    let n = 0;
+    for (const v of rows) {
+      if (orderBySession.has(v.session_id)) n++;
+    }
+    return n;
+  }, [rows, orderBySession]);
+
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
@@ -190,7 +259,7 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
           <p className="text-sm text-gray-500 mt-1">
             {activeCount === 0
               ? "No visitors active right now."
-              : `${activeCount} ${activeCount === 1 ? "visitor" : "visitors"} active in the last ${WINDOW_SECONDS}s.`}
+              : `${activeCount} ${activeCount === 1 ? "visitor" : "visitors"} active in the last ${WINDOW_SECONDS}s${convertingCount > 0 ? ` · ${convertingCount} linked to an order` : ""}.`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -230,7 +299,8 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
           {rows.map((v) => {
-            const chips = milestoneChips(v);
+            const chips      = milestoneChips(v);
+            const linkedOrder = orderBySession.get(v.session_id) ?? null;
             return (
               <div
                 key={v.session_id}
@@ -280,6 +350,32 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
                         {c.label}
                       </span>
                     ))}
+                    {linkedOrder && (() => {
+                      const paid   = !!linkedOrder.paid_at;
+                      const tried  = !!linkedOrder.payment_intent_id && !paid;
+                      const tone   = paid
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : tried
+                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                          : "bg-gray-50 text-gray-700 border border-gray-200";
+                      const label  = paid ? "Paid" : tried ? "Attempted" : "Lead";
+                      const icon   = paid ? "ri-checkbox-circle-fill" : tried ? "ri-bank-card-line" : "ri-shopping-cart-line";
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            try { void navigator.clipboard.writeText(linkedOrder.confirmation_id); } catch { /* ignore */ }
+                            window.open("/admin-orders?tab=orders", "_blank", "noopener");
+                          }}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md cursor-pointer hover:opacity-80 ${tone}`}
+                          title={`Copy ${linkedOrder.confirmation_id} and open Orders in a new tab`}
+                        >
+                          <i className={icon} style={{ fontSize: "10px" }} />
+                          {linkedOrder.confirmation_id}
+                          <span className="opacity-70">· {label}</span>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="text-xs text-gray-400 shrink-0">
