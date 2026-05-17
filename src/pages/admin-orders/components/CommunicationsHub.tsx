@@ -30,6 +30,7 @@ import LiveVisitorsPanel from "./LiveVisitorsPanel";
 import ChatsTab from "./ChatsTab";
 import ContactRequestsTab from "./ContactRequestsTab";
 import CommunicationsPanel from "./CommunicationsPanel";
+import ConsultationRequestsPanel from "./ConsultationRequestsPanel";
 import BroadcastModal from "./BroadcastModal";
 import BroadcastHistoryModal from "./BroadcastHistoryModal";
 import CommunicationsTemplatesPanel, {
@@ -47,23 +48,26 @@ type CommunicationsPanelProps = ComponentProps<typeof CommunicationsPanel>;
 type HubOrders = CommunicationsPanelProps["orders"];
 type HubOnViewOrder = CommunicationsPanelProps["onViewOrder"];
 
-type SubKey = "live" | "chats" | "emails" | "sms" | "templates" | "settings";
+type SubKey = "live" | "chats" | "emails" | "sms" | "consultations" | "templates" | "settings";
 
-const SUB_KEYS: SubKey[] = ["live", "chats", "emails", "sms", "templates", "settings"];
+const SUB_KEYS: SubKey[] = ["live", "chats", "emails", "sms", "consultations", "templates", "settings"];
 const DEFAULT_SUB: SubKey = "live";
 
 // Phase G2 — basic-access sub-tabs available to support / finance /
 // read_only roles by default. Templates + Settings stay restricted to
 // owner / admin_manager unless explicitly granted via custom_tab_access.
-const BASIC_SUBS: SubKey[] = ["live", "chats", "emails", "sms"];
+// Consultations is included in the basic set so the care team (support
+// role) can work the consultation recovery funnel without extra grants.
+const BASIC_SUBS: SubKey[] = ["live", "chats", "emails", "sms", "consultations"];
 
 const SUB_CONFIG: { key: SubKey; label: string; icon: string }[] = [
-  { key: "live",      label: "Live Visitors",        icon: "ri-pulse-line" },
-  { key: "chats",     label: "Chats",                icon: "ri-chat-3-line" },
-  { key: "emails",    label: "Emails",               icon: "ri-mail-line" },
-  { key: "sms",       label: "SMS / Calls",          icon: "ri-message-3-line" },
-  { key: "templates", label: "Templates",            icon: "ri-file-list-3-line" },
-  { key: "settings",  label: "Settings & Automation",icon: "ri-settings-3-line" },
+  { key: "live",          label: "Live Visitors",         icon: "ri-pulse-line" },
+  { key: "chats",         label: "Chats",                 icon: "ri-chat-3-line" },
+  { key: "emails",        label: "Emails",                icon: "ri-mail-line" },
+  { key: "sms",           label: "SMS / Calls",           icon: "ri-message-3-line" },
+  { key: "consultations", label: "Consultations",         icon: "ri-calendar-check-line" },
+  { key: "templates",     label: "Templates",             icon: "ri-file-list-3-line" },
+  { key: "settings",      label: "Settings & Automation", icon: "ri-settings-3-line" },
 ];
 
 function isSubKey(v: string | null): v is SubKey {
@@ -115,12 +119,13 @@ function getVisibleSubKeys(
 
   const adds = new Set<SubKey>();
   if (customTabAccess) {
-    if (customTabAccess.includes("communications_templates")) adds.add("templates");
-    if (customTabAccess.includes("communications_settings"))  adds.add("settings");
-    if (customTabAccess.includes("communications_live"))      adds.add("live");
-    if (customTabAccess.includes("communications_chats"))     adds.add("chats");
-    if (customTabAccess.includes("communications_emails"))    adds.add("emails");
-    if (customTabAccess.includes("communications_sms"))       adds.add("sms");
+    if (customTabAccess.includes("communications_templates"))     adds.add("templates");
+    if (customTabAccess.includes("communications_settings"))      adds.add("settings");
+    if (customTabAccess.includes("communications_live"))          adds.add("live");
+    if (customTabAccess.includes("communications_chats"))         adds.add("chats");
+    if (customTabAccess.includes("communications_emails"))        adds.add("emails");
+    if (customTabAccess.includes("communications_sms"))           adds.add("sms");
+    if (customTabAccess.includes("communications_consultations")) adds.add("consultations");
   }
 
   const merged = new Set<SubKey>([...base, ...adds]);
@@ -374,6 +379,11 @@ export default function CommunicationsHub({
             )}
           </div>
         )}
+
+        {/* Consultation Slot Recovery Funnel (V1) — admin-side surface for
+            unpaid lead recovery via /consultation-request submissions.
+            Standalone panel, no shared state required. */}
+        {localActive === "consultations" && <ConsultationRequestsPanel />}
 
         {/* Phase G — mount the shared CommunicationsTemplatesPanel that
             was extracted from SettingsTab. Same email_templates table,

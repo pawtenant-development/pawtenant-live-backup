@@ -925,6 +925,13 @@ export default function OrderDetailModal({
   const [portalResetMsg, setPortalResetMsg] = useState("");
   const [discountSending, setDiscountSending] = useState(false);
   const [discountMsg, setDiscountMsg] = useState("");
+  // CONSULTATION-INVITE-MANUAL — admin sends a branded consultation invite
+  // email via the existing send-templated-email edge function. Cooldown is
+  // a client-side guard read from `communications` so duplicate sends within
+  // 24h require explicit confirmation. No new email infra.
+  const [consultInviteSending, setConsultInviteSending] = useState(false);
+  const [consultInviteMsg, setConsultInviteMsg] = useState("");
+  const [consultLastSentAt, setConsultLastSentAt] = useState<string | null>(null);
   const [stripeIdInput, setStripeIdInput] = useState("");
   const [paymentSyncing, setPaymentSyncing] = useState(false);
   const [paymentSyncMsg, setPaymentSyncMsg] = useState("");
@@ -1003,6 +1010,32 @@ export default function OrderDetailModal({
         }
       });
   }, [order.id, order.signed_letter_url]);
+
+  // CONSULTATION-INVITE-MANUAL — read the most recent consultation invite
+  // send from `communications` so the action button shows cooldown state
+  // and enforces a 24h guard. Activity is already logged by send-templated-email
+  // via the shared logEmailComm helper; we just surface it.
+  useEffect(() => {
+    let cancelled = false;
+    if (!order.confirmation_id) {
+      setConsultLastSentAt(null);
+      return;
+    }
+    supabase
+      .from("communications")
+      .select("created_at,status")
+      .eq("confirmation_id", order.confirmation_id)
+      .eq("slug", "consultation_window_offer")
+      .neq("status", "failed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setConsultLastSentAt((data?.created_at as string | null) ?? null);
+      });
+    return () => { cancelled = true; };
+  }, [order.confirmation_id]);
 
   // Keep in sync when orderDocs tab loads more docs
   useEffect(() => {
@@ -1168,6 +1201,117 @@ export default function OrderDetailModal({
     } catch (err) {
       alert(`Could not start checkout: ${err instanceof Error ? err.message : "network error"}`);
     }
+  };
+
+  // CONSULTATION-INVITE-MANUAL — fire the seeded "consultation_window_offer"
+  // template at the customer with a smart prefilled link back to
+  // /consultation-request. Uses the existing send-templated-email edge
+  // function (DB template + master layout + Resend + communications log).
+  // 24h cooldown is a client-side soft guard: if a non-failed send exists
+  // within the window, the admin sees a confirm prompt before re-sending.
+  const handleSendConsultationInvite = async () => {
+    if (consultInviteSending) return;
+    if (!order.email) {
+      setConsultInviteMsg("Customer email missing — cannot send invite.");
+      setTimeout(() => setConsultInviteMsg(""), 6000);
+      return;
+    }
+
+    // Cooldown soft guard — require explicit confirm if a recent send exists.
+    if (consultLastSentAt) {
+      const sentMs = new Date(consultLastSentAt).getTime();
+      const ageMs = Date.now() - sentMs;
+      if (Number.isFinite(ageMs) && ageMs < 24 * 60 * 60 * 1000) {
+        const hours = Math.max(1, Math.round((24 * 60 * 60 * 1000 - ageMs) / 3_600_000));
+        const ok = window.confirm(
+          `A consultation invite was sent to ${order.email} within the last 24h ` +
+          `(roughly ${hours}h ago). Send another one anyway?`,
+        );
+        if (!ok) return;
+      }
+    }
+
+    setConsultInviteSending(true);
+    setConsultInviteMsg("");
+    try {
+      const token = await getAdminToken();
+      if (!token) {
+        setConsultInviteMsg("Admin session expired — please sign in again.");
+        setConsultInviteSending(false);
+        setTimeout(() => setConsultInviteMsg(""), 8000);
+        return;
+      }
+
+      // Build the smart prefilled link back to /consultation-request. The
+      // page reads ?email=, ?order_id=, ?confirmation_number=, ?source=.
+      const origin = (typeof window !== "undefined" && window.location?.origin)
+        ? window.location.origin
+        : "https://www.pawtenant.com";
+      const params = new URLSearchParams();
+      if (order.email) params.set("email", order.email);
+      if (order.confirmation_id) params.set("confirmation_number", order.confirmation_id);
+      if (order.id) params.set("order_id", order.id);
+      params.set("source", "manual_recovery");
+      const consultationUrl = `${origin}/consultation-request?${params.toString()}`;
+
+      const customerName = (order.first_name ?? "").trim() || "there";
+      const letterType = (order.letter_type ?? "ESA").toString().toUpperCase();
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-templated-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          slug: "consultation_window_offer",
+          to: order.email,
+          confirmationId: order.confirmation_id,
+          vars: {
+            name: customerName,
+            letter_type: letterType,
+            confirmation_number: order.confirmation_id ?? "",
+            consultation_request_url: consultationUrl,
+          },
+        }),
+      });
+      const result = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        to?: string;
+        error?: string;
+      };
+
+      if (res.ok && result.ok) {
+        const sentAt = new Date().toISOString();
+        setConsultLastSentAt(sentAt);
+        const successText = `Consultation invite sent to ${result.to ?? order.email}`;
+        setConsultInviteMsg(successText);
+        // Mirror into orders.email_log for legacy timeline consumers. The
+        // primary activity log already lives in `communications` (written
+        // by send-templated-email). This is best-effort — failure is a
+        // no-op so the admin still sees the success state.
+        try {
+          const existing = (order.email_log ?? []) as EmailLogEntry[];
+          const next: EmailLogEntry[] = [
+            ...existing,
+            {
+              type: "templated_consultation_window_offer",
+              sentAt,
+              to: result.to ?? order.email,
+              success: true,
+            },
+          ];
+          updateOrderField({ email_log: next });
+        } catch { /* noop */ }
+      } else {
+        const errText = result.error ?? "Send failed — check edge function logs";
+        setConsultInviteMsg(errText);
+      }
+    } catch (err) {
+      setConsultInviteMsg(`Network error — ${err instanceof Error ? err.message : "please try again"}`);
+    }
+    setConsultInviteSending(false);
+    setTimeout(() => setConsultInviteMsg(""), 8000);
   };
 
   const handleResendEmail = async () => {
@@ -2522,6 +2666,35 @@ export default function OrderDetailModal({
           full width. */}
       <div className="relative bg-white rounded-2xl w-full max-w-[95vw] lg:max-w-[90vw] xl:max-w-7xl 2xl:max-w-[1440px] max-h-[94vh] flex flex-col overflow-hidden">
 
+        {/* CONSULTATION-INVITE-MANUAL — top-of-modal banner mirrors the
+            existing Send New ESA Order Link banner pattern. Auto-clears
+            after 8s via the handler. */}
+        {consultInviteMsg && (
+          <div
+            role="status"
+            className={`flex-shrink-0 flex items-center gap-2 px-4 py-3 text-sm font-bold ${
+              consultInviteMsg.toLowerCase().includes("fail") || consultInviteMsg.toLowerCase().includes("error") || consultInviteMsg.toLowerCase().includes("missing") || consultInviteMsg.toLowerCase().includes("expired")
+                ? "bg-red-50 text-red-800 border-b border-red-200"
+                : "bg-emerald-50 text-emerald-800 border-b border-emerald-200"
+            }`}
+          >
+            <i className={
+              consultInviteMsg.toLowerCase().includes("fail") || consultInviteMsg.toLowerCase().includes("error") || consultInviteMsg.toLowerCase().includes("missing") || consultInviteMsg.toLowerCase().includes("expired")
+                ? "ri-error-warning-fill text-base"
+                : "ri-calendar-check-fill text-base"
+            }></i>
+            <span className="flex-1">{consultInviteMsg}</span>
+            <button
+              type="button"
+              onClick={() => setConsultInviteMsg("")}
+              className="text-xs font-semibold opacity-70 hover:opacity-100 cursor-pointer"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex-shrink-0 border-b border-gray-100">
           {/* Top row: avatar + name + status + actions + close */}
@@ -2614,6 +2787,45 @@ export default function OrderDetailModal({
                       <i className={portalResetSending ? "ri-loader-4-line animate-spin" : "ri-key-line"}></i>
                       <span className="flex-1 text-left">{portalResetSending ? "Sending reset..." : "Send Portal Reset"}</span>
                     </button>
+
+                    {/* CONSULTATION-INVITE-MANUAL — unpaid lead recovery. Only
+                        surfaces on UNPAID, non-cancelled, non-archived orders
+                        where a customer email is on file. Uses the existing
+                        send-templated-email edge function + seeded
+                        "consultation_window_offer" template. 24h cooldown is
+                        a client-side soft guard read from `communications`. */}
+                    {!order.payment_intent_id &&
+                     !order.paid_at &&
+                     order.status !== "cancelled" &&
+                     order.status !== "archived" &&
+                     order.status !== "refunded" && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowHeaderMore(false); void handleSendConsultationInvite(); }}
+                        disabled={consultInviteSending || !order.email}
+                        role="menuitem"
+                        title={
+                          !order.email
+                            ? "Customer email missing"
+                            : consultLastSentAt
+                              ? `Last sent ${new Date(consultLastSentAt).toLocaleString()}`
+                              : "Email a consultation invite to the customer"
+                        }
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <i className={consultInviteSending ? "ri-loader-4-line animate-spin" : "ri-calendar-check-line"}></i>
+                        <span className="flex-1 text-left">
+                          {consultInviteSending
+                            ? "Sending invite..."
+                            : consultLastSentAt && (Date.now() - new Date(consultLastSentAt).getTime()) < 24 * 60 * 60 * 1000
+                              ? "Resend Consultation Invite"
+                              : "Send Consultation Invite"}
+                        </span>
+                        {consultLastSentAt && (Date.now() - new Date(consultLastSentAt).getTime()) < 24 * 60 * 60 * 1000 && (
+                          <span className="text-[10px] text-gray-400 font-normal normal-case">sent &lt;24h</span>
+                        )}
+                      </button>
+                    )}
                     {(order.payment_intent_id || order.paid_at) && (
                       <>
                         <button

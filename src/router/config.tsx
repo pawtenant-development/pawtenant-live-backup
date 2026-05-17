@@ -57,6 +57,8 @@ const LpEsaHousingPage = lazy(() => import("../pages/lp-esa-housing/page"));
 const MetaEsaLetterPage = lazy(() => import("../pages/meta-esa-letter/page"));
 // Recovery click bridge — /r/:stage?o=<confirmationId>&dc=<discountCode>
 const RecoveryClickBridge = lazy(() => import("../pages/r/page"));
+// Consultation Slot Recovery Funnel — unpaid lead recovery V1
+const ConsultationRequestPage = lazy(() => import("../pages/consultation-request/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -115,6 +117,9 @@ const routes: RouteObject[] = [
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },
+  // Consultation Slot Recovery Funnel — noindex (set per-page). Captures
+  // a preferred consultation window into public.consultation_requests.
+  { path: "/consultation-request", element: <P C={ConsultationRequestPage} /> },
   { path: "/doctors/:id", element: <P C={DoctorProfilePage} /> },
   { path: "/renew-esa-letter", element: <P C={RenewESALetterPage} /> },
   { path: "/join-our-network", element: <P C={JoinOurNetworkPage} /> },
