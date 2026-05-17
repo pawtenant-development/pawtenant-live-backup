@@ -5,6 +5,7 @@ import { isProviderEligibleForState } from "./providerEligibility";
 import OrderNotesPanel from "./OrderNotesPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 import CommunicationTab from "./CommunicationTab";
+import AttributionJourneyTab from "./AttributionJourneyTab";
 import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
 import PSDAssessmentView from "./PSDAssessmentView";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
@@ -106,7 +107,7 @@ interface OrderDetailModalProps {
   onClearUnread?: (confirmationId: string) => void;
 }
 
-type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "payments";
+type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "payments" | "attribution";
 
 // ─── PSD order detection — letter_type field OR confirmation ID prefix ────────
 function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
@@ -2850,6 +2851,7 @@ export default function OrderDetailModal({
             { key: "documents",  label: "Documents",                                    icon: "ri-file-pdf-line",     badge: docCount > 0 ? docCount : null },
             { key: "assessment", label: isPSDOrder(order) ? "PSD Eval" : "Assessment",  icon: "ri-questionnaire-line",badge: assessmentCount > 0 ? assessmentCount : null },
             { key: "notes",      label: "Notes",                                        icon: "ri-sticky-note-line",  badge: null },
+            { key: "attribution",label: "Attribution / Journey",                        icon: "ri-compass-3-line",    badge: null },
           ];
           const activeTab = TABS.find((t) => t.key === section);
           return (
@@ -4810,6 +4812,15 @@ export default function OrderDetailModal({
               adminUserId={adminProfile.user_id}
               adminName={adminProfile.full_name}
             />
+          )}
+
+          {/* ── ATTRIBUTION / JOURNEY ── */}
+          {section === "attribution" && (
+            <AttributionJourneyTab order={{
+              id: order.id,
+              confirmation_id: order.confirmation_id,
+              created_at: order.created_at,
+            }} />
           )}
 
           {/* ── EMAIL LOG TAB (kept for legacy — now merged into Comms) ── */}
