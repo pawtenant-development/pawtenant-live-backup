@@ -1390,126 +1390,14 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       </div>
 
       {/* ── Channel Mix + Period Summary ──
-           LIVE 2026-05-15: legacy "Traffic Source Breakdown" table removed.
-           Its role is now served by the new Visitor Source Rankings panel
-           mounted above (visitor-internal conversion + classifier-attributed
-           orders/revenue, parent-driven date range). Channel Mix donut +
-           Period Summary kept — they're complementary aggregates, not
-           duplicative of the visitor rankings. */}
+           Legacy "Traffic Source Breakdown" table was retired by the
+           visitor-rankings sprint (2026-05-15) and physically deleted by
+           the classifier-consolidation cleanup pass (Commit C, 2026-05-17).
+           Channel Mix donut + Period Summary remain — they're complementary
+           aggregates, not duplicative of the Visitor Source Rankings panel
+           mounted above. The selectedChannel state still drives the Order
+           list channel filter further down the page. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Legacy breakdown table removed — see comment above. The
-            unused {selectedChannel} drill-in clear-filter button below
-            is preserved as a no-op safety net in case any other surface
-            still references setSelectedChannel — it now lives nowhere
-            visible. */}
-        {false && (
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-extrabold text-gray-900">Traffic Source Breakdown</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Click a channel to drill into its orders below</p>
-            </div>
-            {selectedChannel && (
-              <button type="button" onClick={() => setSelectedChannel(null)}
-                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer">
-                <i className="ri-close-line"></i>Clear filter
-              </button>
-            )}
-          </div>
-
-          {channelStats.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-              <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mb-3">
-                <i className="ri-bar-chart-2-line text-gray-300 text-xl"></i>
-              </div>
-              <p className="text-sm font-bold text-gray-600">No data for this period</p>
-              <p className="text-xs text-gray-400 mt-1">Try expanding the date range or removing filters</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {/* Header */}
-              <div className="grid grid-cols-12 gap-2 px-5 py-2.5 bg-gray-50">
-                <div className="col-span-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Channel</div>
-                <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Total</div>
-                <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Paid</div>
-                <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Conv%</div>
-                <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Revenue</div>
-                <div className="col-span-2 text-[10px] font-bold text-[#00b67a] uppercase tracking-wider text-right flex items-center justify-end gap-1">
-                  <span>★</span>Reviews
-                </div>
-              </div>
-
-              {channelStats.map((ch) => {
-                const isSelected = selectedChannel === ch.channel;
-                return (
-                  <button
-                    key={ch.channel}
-                    type="button"
-                    onClick={() => {
-                      setSelectedChannel(isSelected ? null : ch.channel);
-                      setOrderListPage(1);
-                    }}
-                    className={`w-full grid grid-cols-12 gap-2 px-5 py-3.5 text-left transition-colors cursor-pointer ${isSelected ? "bg-[#e8f0f9] border-l-2 border-[#3b6ea5]" : "hover:bg-gray-50"}`}
-                  >
-                    {/* Channel name */}
-                    <div className="col-span-3 flex items-center gap-2.5 min-w-0">
-                      <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${ch.cfg.bgColor} ${ch.cfg.borderColor} border`}>
-                        <i className={`${ch.cfg.icon} ${ch.cfg.color} text-sm`}></i>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-gray-900 truncate">{ch.cfg.label}</p>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <MiniBar value={ch.total} max={maxTotal} color={ch.cfg.chartColor} />
-                          <span className="text-[10px] text-gray-400 flex-shrink-0">{Math.round((ch.total / filteredOrders.length) * 100)}%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Total */}
-                    <div className="col-span-2 flex items-center justify-end">
-                      <span className="text-sm font-extrabold text-gray-900">{ch.total}</span>
-                    </div>
-
-                    {/* Paid */}
-                    <div className="col-span-2 flex items-center justify-end">
-                      <span className="text-sm font-bold text-emerald-600">{ch.paid}</span>
-                    </div>
-
-                    {/* Conversion */}
-                    <div className="col-span-1 flex items-center justify-end">
-                      <span className={`text-sm font-bold ${ch.conversionRate >= 50 ? "text-emerald-600" : ch.conversionRate >= 25 ? "text-amber-600" : "text-red-500"}`}>
-                        {ch.conversionRate}%
-                      </span>
-                    </div>
-
-                    {/* Revenue */}
-                    <div className="col-span-2 flex items-center justify-end">
-                      <span className="text-sm font-bold text-gray-700">${ch.revenue.toLocaleString()}</span>
-                    </div>
-
-                    {/* Reviews Requested */}
-                    <div className="col-span-2 flex flex-col items-end justify-center gap-0.5">
-                      {(() => {
-                        const reviewCount = channelReviewCounts[ch.channel] ?? 0;
-                        const reviewPct = ch.completed > 0 ? Math.round((reviewCount / ch.completed) * 100) : 0;
-                        return reviewCount > 0 ? (
-                          <>
-                            <span className="text-sm font-bold text-[#00b67a]">{reviewCount}</span>
-                            <span className="text-[10px] text-gray-400">{reviewPct}% of done</span>
-                          </>
-                        ) : (
-                          <span className="text-sm text-gray-300 font-bold">—</span>
-                        );
-                      })()}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        )}
-
         {/* Channel Mix donut */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="text-sm font-extrabold text-gray-900 mb-4">Channel Mix</h3>
