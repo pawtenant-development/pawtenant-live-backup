@@ -75,26 +75,28 @@ function isSubKey(v: string | null): v is SubKey {
 }
 
 /**
- * Phase G2 — sub-tab access gate.
+ * Sub-tab access gate.
  *
- *   Default mapping (no overrides):
- *     owner / admin_manager      → all six
- *     support / read_only / finance → basic four (live, chats, emails, sms)
- *     unknown role               → basic four (safe default)
+ *   Resolution rules (in order):
  *
- *   Additive overrides via doctor_profiles.custom_tab_access entries with
- *   the "communications_" prefix:
- *     "communications_live"      → adds Live Visitors
- *     "communications_chats"     → adds Chats
- *     "communications_emails"    → adds Emails
- *     "communications_sms"       → adds SMS / Calls
- *     "communications_templates" → adds Templates
- *     "communications_settings"  → adds Settings & Automation
+ *   1. EXPLICIT (restrictive) — if doctor_profiles.custom_tab_access
+ *      contains ANY "communications_<sub>" entry the user sees ONLY those
+ *      sub-tabs, regardless of role. This lets the TeamTab modal say
+ *      "Ayeshaa gets ONLY Chats + Live Visitors inside Communications"
+ *      without affecting any other admin.
  *
- *   These prefix entries are stripped at the top-level getVisibleTabs()
- *   gate (admin-orders/page.tsx), so granting a sub-tab does NOT shrink
- *   a user's sidebar to "only this tab" — sub-tab grants only WIDEN
- *   hub access, never narrow it.
+ *   2. ROLE DEFAULT (no explicit child grants):
+ *        owner / admin_manager       → all sub-tabs
+ *        support / read_only / finance → BASIC_SUBS (live, chats, emails,
+ *                                        sms, consultations)
+ *        unknown role                → BASIC_SUBS (safe default)
+ *
+ *   Implications:
+ *     - Owner with no child grants keeps full access (no regression).
+ *     - Setting even one child grant on an owner restricts them — this is
+ *       intentional; admins can carve out scoped views.
+ *     - A child grant always implies the parent "communications" tab is
+ *       visible — that logic lives in page.tsx getVisibleTabs().
  *
  * Canonical order is preserved by filtering SUB_KEYS at the end.
  */
@@ -102,34 +104,33 @@ function getVisibleSubKeys(
   role: string | null | undefined,
   customTabAccess?: readonly string[] | null,
 ): SubKey[] {
-  let base: SubKey[];
+  const explicit: SubKey[] = [];
+  if (customTabAccess) {
+    for (const key of customTabAccess) {
+      if (!key.startsWith("communications_")) continue;
+      const sub = key.slice("communications_".length);
+      if ((SUB_KEYS as readonly string[]).includes(sub)) {
+        explicit.push(sub as SubKey);
+      }
+    }
+  }
+
+  if (explicit.length > 0) {
+    const set = new Set<SubKey>(explicit);
+    return SUB_KEYS.filter((k) => set.has(k));
+  }
+
   switch (role) {
     case "owner":
     case "admin_manager":
-      base = SUB_KEYS.slice();
-      break;
+      return SUB_KEYS.slice();
     case "support":
     case "read_only":
     case "finance":
-      base = BASIC_SUBS.slice();
-      break;
+      return BASIC_SUBS.slice();
     default:
-      base = BASIC_SUBS.slice();
+      return BASIC_SUBS.slice();
   }
-
-  const adds = new Set<SubKey>();
-  if (customTabAccess) {
-    if (customTabAccess.includes("communications_templates"))     adds.add("templates");
-    if (customTabAccess.includes("communications_settings"))      adds.add("settings");
-    if (customTabAccess.includes("communications_live"))          adds.add("live");
-    if (customTabAccess.includes("communications_chats"))         adds.add("chats");
-    if (customTabAccess.includes("communications_emails"))        adds.add("emails");
-    if (customTabAccess.includes("communications_sms"))           adds.add("sms");
-    if (customTabAccess.includes("communications_consultations")) adds.add("consultations");
-  }
-
-  const merged = new Set<SubKey>([...base, ...adds]);
-  return SUB_KEYS.filter((k) => merged.has(k));
 }
 
 function ComingSoonPanel({

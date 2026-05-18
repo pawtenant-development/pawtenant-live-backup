@@ -276,17 +276,49 @@ type TabKey = "dashboard" | "orders" | "analytics" | "communications" | "comms" 
 const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
 
 function getVisibleTabs(role: string | null, customTabAccess?: string[] | null): TabKey[] {
-  // Phase G2 — Communications Hub sub-tab grants live in custom_tab_access
-  // using a "communications_<sub>" prefix (e.g. "communications_templates").
-  // Those entries MUST NOT flip the top-level custom_tab_access override
-  // mode — they only widen sub-tab visibility inside the hub. We strip
-  // them here so a user granted only "communications_templates" still
-  // gets their full role-default sidebar.
-  const topLevelOverrides = (customTabAccess ?? []).filter(
-    (k) => !k.startsWith("communications_"),
+  // ── Canonical permission model ──────────────────────────────────────────
+  //   effective_tabs = explicit user override (if any top-level keys are set)
+  //                  : role default
+  //
+  // Two normalization rules keep older / partial data working:
+  //
+  //   1. Legacy umbrella keys — "comms" / "chats" / "contacts" no longer
+  //      render in the sidebar (Phase I migrated them under one
+  //      "communications" umbrella). When they appear inside a saved
+  //      override they are treated as the umbrella so the user still sees
+  //      the Communications Hub.
+  //
+  //   2. Sub-tab grants — entries with the "communications_" prefix (e.g.
+  //      "communications_templates") only widen / restrict Communications
+  //      Hub sub-tab access via CommunicationsHub.getVisibleSubKeys(). They
+  //      do NOT flip the top-level override mode by themselves, but they
+  //      DO imply the parent "communications" tab is visible so the user
+  //      can reach the sub they were granted.
+  const raw = customTabAccess ?? [];
+
+  // Strip sub-tab grants from the top-level comparison.
+  const topLevelRaw = raw.filter((k) => !k.startsWith("communications_"));
+
+  // Implicit Communications visibility — either via legacy keys or via
+  // any communications_<sub> child grant.
+  const hasLegacyComms = topLevelRaw.some(
+    (k) => k === "comms" || k === "chats" || k === "contacts",
   );
-  // Custom tab access overrides role defaults — use it if any top-level
-  // keys are present.
+  const hasCommsChild = raw.some((k) => k.startsWith("communications_"));
+
+  // Build the effective top-level override list:
+  //   - drop legacy keys that no longer render in the new sidebar
+  //   - inject "communications" when implied by legacy / child grants
+  const overrideSet = new Set<string>(
+    topLevelRaw.filter(
+      (k) => k !== "comms" && k !== "chats" && k !== "contacts",
+    ),
+  );
+  if (hasLegacyComms || hasCommsChild) {
+    overrideSet.add("communications");
+  }
+  const topLevelOverrides = Array.from(overrideSet);
+
   if (topLevelOverrides.length > 0) {
     return ALL_TABS.filter((t) => topLevelOverrides.includes(t));
   }
@@ -295,17 +327,16 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
     case "admin_manager":
       return ALL_TABS;
     case "support":
-      // Phase G2 — Communications top-level added so support roles can
-      // reach the hub's basic sub-tabs (Live / Chats / Emails / SMS).
-      // Restricted sub-tabs (Templates / Settings & Automation) are
-      // gated inside CommunicationsHub via getVisibleSubKeys().
+      // Communications top-level so support roles can reach the hub's basic
+      // sub-tabs (Live / Chats / Emails / SMS / Consultations). Restricted
+      // sub-tabs (Templates / Settings & Automation) are gated inside
+      // CommunicationsHub via getVisibleSubKeys(). Legacy comms/chats/contacts
+      // keys preserved in TabKey + render branches for bookmark resilience;
+      // the umbrella is what actually renders in the sidebar.
       return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "audit", "health"];
     case "finance":
-      // Phase G2 — Communications top-level added; sub-tab gating inside
-      // the hub keeps Templates / Settings & Automation hidden by default.
       return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "payments", "earnings", "audit", "health"];
     case "read_only":
-      // Phase G2 — Communications top-level added; same sub-tab gating.
       return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "payments", "audit", "health"];
     default:
       return ALL_TABS;
@@ -1649,13 +1680,29 @@ export default function AdminOrdersPage() {
   }, [orders, supabaseUrl, anonKey, doctorContacts]);
 
   // Synchronous visible-tabs list used for both the sidebar and render-side
-  // guarding. Until the admin profile loads, fall back to ALL_TABS so the UI
-  // doesn't bounce around; the auth effect handles the case where the user
-  // isn't an admin at all (it redirects to /admin-login).
+  // guarding. Until the admin profile loads we render an EMPTY list — that
+  // collapses the sidebar to Dashboard only (always allowed by isTabVisible)
+  // so non-admin / restricted users never see a brief flash of tabs they
+  // shouldn't have. The auth effect bounces non-admins to /admin-login if
+  // their adminProfile resolves to a non-admin role anyway.
   const visibleTabsForRender: TabKey[] = adminProfile
     ? getVisibleTabs(adminProfile.role ?? null, adminProfile.custom_tab_access)
-    : ALL_TABS;
+    : [];
   const isTabVisible = (tab: TabKey) => tab === "dashboard" || visibleTabsForRender.includes(tab);
+
+  // Dev-only permission resolution trace. Helps the operator confirm role
+  // defaults vs. explicit overrides without sprinkling logs across files.
+  // Kept behind import.meta.env.DEV so it never ships in production builds.
+  if (import.meta.env.DEV && adminProfile) {
+    // eslint-disable-next-line no-console
+    console.debug("[admin-perms]", {
+      user_id: adminProfile.user_id,
+      email: adminProfile.email,
+      role: adminProfile.role,
+      raw_custom_tab_access: adminProfile.custom_tab_access,
+      effective_top_level_tabs: visibleTabsForRender,
+    });
+  }
 
   return (
     <div className="min-h-screen bg-[#f0f4f8]">

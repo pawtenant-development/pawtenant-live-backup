@@ -4,36 +4,95 @@ import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import { logAudit } from "../../../lib/auditLogger";
 import { canManageTeam, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
 
-// All admin portal tabs that can be toggled per member.
-// Keys MUST match the TabKey union in ../page.tsx (dashboard/orders/analytics/
-// comms/chats/contacts/customers/doctors/earnings/payments/team/audit/
-// settings/health) so the sidebar's visibleTabs filter respects them.
+// All admin portal top-level tabs that can be toggled per member.
+// Keys MUST match the TabKey union in ../page.tsx + AdminSidebar's
+// TAB_CONFIG so the sidebar's visibleTabs filter respects them. Legacy
+// "comms" / "chats" / "contacts" entries are intentionally absent — the
+// Phase I migration replaced them with one "communications" umbrella.
+// Saved overrides that still carry those legacy keys are normalized
+// onto "communications" by both page.tsx (display) and the editor below
+// (round-tripping through the modal rewrites them canonical).
 const ALL_TABS = [
-  { key: "orders",      label: "Orders",       icon: "ri-shopping-bag-line" },
-  { key: "customers",   label: "Customers",    icon: "ri-user-3-line" },
-  { key: "doctors",     label: "Providers",    icon: "ri-stethoscope-line" },
-  { key: "payments",    label: "Payments",     icon: "ri-bank-card-line" },
-  { key: "analytics",   label: "Analytics",    icon: "ri-bar-chart-2-line" },
-  { key: "comms",       label: "Communication", icon: "ri-message-3-line" },
-  { key: "chats",       label: "Chats",        icon: "ri-chat-3-line" },
-  { key: "contacts",    label: "Contacts",     icon: "ri-mail-line" },
-  { key: "team",        label: "Team",         icon: "ri-team-line" },
-  { key: "settings",    label: "Settings",     icon: "ri-settings-3-line" },
-  { key: "audit",       label: "Audit Log",    icon: "ri-file-list-3-line" },
-  { key: "health",      label: "System Health",icon: "ri-heart-pulse-line" },
+  { key: "orders",         label: "Orders",        icon: "ri-shopping-bag-line" },
+  { key: "analytics",      label: "Analytics",     icon: "ri-bar-chart-2-line" },
+  { key: "communications", label: "Communications", icon: "ri-radar-line" },
+  { key: "customers",      label: "Customers",     icon: "ri-user-3-line" },
+  { key: "doctors",        label: "Providers",     icon: "ri-stethoscope-line" },
+  { key: "earnings",       label: "Earnings",      icon: "ri-money-dollar-circle-line" },
+  { key: "payments",       label: "Payments",      icon: "ri-bank-card-line" },
+  { key: "team",           label: "Team",          icon: "ri-team-line" },
+  { key: "settings",       label: "Settings",      icon: "ri-settings-3-line" },
+  { key: "audit",          label: "Audit Log",     icon: "ri-file-list-3-line" },
+  { key: "health",         label: "System Health", icon: "ri-heart-pulse-line" },
 ] as const;
 
 type TabKey = typeof ALL_TABS[number]["key"];
 
-// Default tab access per role
+const TAB_KEY_SET = new Set<string>(ALL_TABS.map((t) => t.key));
+
+// Communications Hub sub-tabs. Stored as "communications_<sub>" in
+// doctor_profiles.custom_tab_access. Display order matches
+// CommunicationsHub.SUB_CONFIG so the modal mirrors what the user
+// actually sees inside the hub.
+const COMMS_SUB_KEYS = [
+  "live",
+  "chats",
+  "emails",
+  "sms",
+  "consultations",
+  "templates",
+  "settings",
+] as const;
+type CommsSubKey = typeof COMMS_SUB_KEYS[number];
+
+const COMMS_SUB_LABELS: Record<CommsSubKey, { label: string; icon: string }> = {
+  live:          { label: "Live Visitors",         icon: "ri-pulse-line" },
+  chats:         { label: "Chats",                 icon: "ri-chat-3-line" },
+  emails:        { label: "Emails",                icon: "ri-mail-line" },
+  sms:           { label: "SMS / Calls",           icon: "ri-message-3-line" },
+  consultations: { label: "Consultations",         icon: "ri-calendar-check-line" },
+  templates:     { label: "Templates",             icon: "ri-file-list-3-line" },
+  settings:      { label: "Settings & Automation", icon: "ri-settings-3-line" },
+};
+
+const COMMS_SUB_KEY_SET = new Set<string>(COMMS_SUB_KEYS);
+
+// Default tab access per role — mirrors page.tsx getVisibleTabs() defaults
+// with legacy comms/chats/contacts keys collapsed onto "communications".
 const ROLE_DEFAULT_TABS: Record<string, TabKey[]> = {
-  owner:         ["orders","customers","doctors","payments","analytics","comms","chats","contacts","team","settings","audit","health"],
-  admin_manager: ["orders","customers","doctors","payments","analytics","comms","chats","contacts","team","settings","audit","health"],
-  support:       ["orders","customers","comms","chats","contacts","audit"],
-  finance:       ["payments","analytics","audit"],
-  read_only:     ["orders","customers","analytics","audit"],
+  owner:         ["orders","analytics","communications","customers","doctors","earnings","payments","team","settings","audit","health"],
+  admin_manager: ["orders","analytics","communications","customers","doctors","earnings","payments","team","settings","audit","health"],
+  support:       ["orders","analytics","communications","customers","doctors","audit","health"],
+  finance:       ["orders","analytics","communications","customers","payments","earnings","audit","health"],
+  read_only:     ["orders","analytics","communications","customers","doctors","payments","audit","health"],
   provider:      [],
 };
+
+// Split a raw custom_tab_access blob (may contain legacy + canonical
+// top-level keys + "communications_<sub>" sub-grants) into two clean
+// sets that the editor can drive its checkboxes from.
+function normalizeSavedAccess(raw: string[] | null | undefined): {
+  tabs: TabKey[];
+  subs: CommsSubKey[];
+} {
+  const tabs = new Set<TabKey>();
+  const subs = new Set<CommsSubKey>();
+  for (const k of raw ?? []) {
+    if (k === "comms" || k === "chats" || k === "contacts") {
+      tabs.add("communications");
+    } else if (k.startsWith("communications_")) {
+      const sub = k.slice("communications_".length);
+      if (COMMS_SUB_KEY_SET.has(sub)) {
+        subs.add(sub as CommsSubKey);
+        tabs.add("communications");
+      }
+    } else if (TAB_KEY_SET.has(k)) {
+      tabs.add(k as TabKey);
+    }
+    // anything else (unknown key from a future phase) is silently dropped
+  }
+  return { tabs: Array.from(tabs), subs: Array.from(subs) };
+}
 
 interface TeamMember {
   id: string;
@@ -45,7 +104,9 @@ interface TeamMember {
   is_admin: boolean;
   is_active: boolean;
   role: string | null;
-  custom_tab_access: TabKey[] | null;
+  // String, not TabKey, because the column also holds "communications_<sub>"
+  // child grants that aren't part of the top-level TabKey union.
+  custom_tab_access: string[] | null;
 }
 
 interface AddMemberForm {
@@ -100,17 +161,53 @@ function TabAccessEditor({
   onSaved: (updated: TeamMember) => void;
 }) {
   const roleDefaults = ROLE_DEFAULT_TABS[member.role ?? "read_only"] ?? [];
-  const initialTabs: TabKey[] = member.custom_tab_access ?? roleDefaults;
+
+  // Seed state from normalized DB data: legacy keys collapse onto
+  // "communications" + child grants get their own set. When nothing is
+  // saved we fall back to the role's default top-level tabs.
+  const normalized = normalizeSavedAccess(member.custom_tab_access);
+  const hasSaved = (member.custom_tab_access?.length ?? 0) > 0;
+  const initialTabs: TabKey[] = hasSaved ? normalized.tabs : roleDefaults;
+  const initialSubs: CommsSubKey[] = normalized.subs;
+
   const [selected, setSelected] = useState<Set<TabKey>>(new Set(initialTabs));
+  const [selectedSubs, setSelectedSubs] = useState<Set<CommsSubKey>>(new Set(initialSubs));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  const commsEnabled = selected.has("communications");
+
   const toggle = (key: TabKey) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) {
+        next.delete(key);
+        // Turning Communications off clears every sub-tab grant so the
+        // saved blob can't end up with orphan "communications_*" keys.
+        if (key === "communications") {
+          setSelectedSubs(new Set());
+        }
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+    setSaved(false);
+  };
+
+  const toggleSub = (sub: CommsSubKey) => {
+    setSelectedSubs((prev) => {
+      const next = new Set(prev);
+      if (next.has(sub)) next.delete(sub);
+      else next.add(sub);
+      return next;
+    });
+    // Enabling any child sub also flips the parent on automatically.
+    setSelected((prev) => {
+      if (prev.has("communications")) return prev;
+      const next = new Set(prev);
+      next.add("communications");
       return next;
     });
     setSaved(false);
@@ -118,20 +215,27 @@ function TabAccessEditor({
 
   const resetToRoleDefaults = () => {
     setSelected(new Set(roleDefaults));
+    setSelectedSubs(new Set());
     setSaved(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    const tabs = Array.from(selected) as TabKey[];
+    const tabs = Array.from(selected);
+    // Only persist child grants when the parent is on — otherwise the
+    // child would silently re-enable the parent on the next page load.
+    const subKeys = commsEnabled
+      ? Array.from(selectedSubs).map((s) => `communications_${s}`)
+      : [];
+    const merged: string[] = [...tabs, ...subKeys];
     const { error } = await supabase
       .from("doctor_profiles")
-      .update({ custom_tab_access: tabs })
+      .update({ custom_tab_access: merged })
       .eq("id", member.id);
     setSaving(false);
     if (!error) {
       setSaved(true);
-      onSaved({ ...member, custom_tab_access: tabs });
+      onSaved({ ...member, custom_tab_access: merged });
       setTimeout(() => { setSaved(false); onClose(); }, 1200);
     }
   };
@@ -166,7 +270,7 @@ function TabAccessEditor({
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
             <i className="ri-information-line text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
             <p className="text-xs text-amber-800 leading-relaxed">
-              Choose exactly which tabs <strong>{member.full_name}</strong> can see in the admin portal. This overrides their role defaults.
+              Choose exactly which tabs <strong>{member.full_name}</strong> can see in the admin portal. This overrides their role defaults. Dashboard is always visible.
             </p>
           </div>
 
@@ -224,11 +328,66 @@ function TabAccessEditor({
             })}
           </div>
 
+          {/* Communications sub-permissions — only meaningful when the parent
+              umbrella is enabled. Leaving every sub off grants the role's
+              default sub-tab set (Live / Chats / Emails / SMS / Consultations
+              for support+finance+read_only; all sub-tabs for owner+admin).
+              Picking specific subs RESTRICTS the user to exactly those. */}
+          {commsEnabled && (
+            <div className="border border-[#b8cce4] rounded-xl bg-[#f4f8fc]">
+              <div className="px-4 pt-3 pb-2 flex items-start gap-2">
+                <i className="ri-radar-line text-[#3b6ea5] text-sm mt-0.5"></i>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-extrabold text-[#3b6ea5] uppercase tracking-widest">Communications sub-tabs</p>
+                  <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
+                    Leave all unchecked to grant <strong>role defaults</strong> inside the hub. Check specific sub-tabs to restrict this user to exactly those.
+                  </p>
+                </div>
+              </div>
+              <div className="px-3 pb-3 grid grid-cols-2 gap-2">
+                {COMMS_SUB_KEYS.map((sub) => {
+                  const isOn = selectedSubs.has(sub);
+                  const meta = COMMS_SUB_LABELS[sub];
+                  return (
+                    <button
+                      key={sub}
+                      type="button"
+                      onClick={() => toggleSub(sub)}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border transition-all cursor-pointer text-left ${
+                        isOn
+                          ? "border-[#3b6ea5] bg-white"
+                          : "border-transparent bg-white/60 hover:bg-white"
+                      }`}
+                    >
+                      <div className={`w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0 ${isOn ? "bg-[#3b6ea5]/10" : "bg-gray-100"}`}>
+                        <i className={`${meta.icon} text-xs ${isOn ? "text-[#3b6ea5]" : "text-gray-400"}`}></i>
+                      </div>
+                      <p className={`flex-1 min-w-0 text-[11px] font-bold truncate ${isOn ? "text-[#3b6ea5]" : "text-gray-600"}`}>{meta.label}</p>
+                      <div className={`w-3.5 h-3.5 flex items-center justify-center rounded-full flex-shrink-0 ${isOn ? "bg-[#3b6ea5]" : "bg-gray-200"}`}>
+                        {isOn && <i className="ri-check-line text-white" style={{ fontSize: "8px" }}></i>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="px-4 pb-3 -mt-1">
+                <p className="text-[11px] text-gray-500">
+                  {selectedSubs.size === 0
+                    ? "Role default — user sees the standard hub sub-tabs."
+                    : `Restricted — user sees ONLY ${selectedSubs.size} sub-tab${selectedSubs.size === 1 ? "" : "s"}.`}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Summary */}
           <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
             <p className="text-xs text-gray-500">
-              <strong className="text-gray-700">{selected.size}</strong> of {ALL_TABS.length} tabs enabled
-              {selected.size === 0 && <span className="text-red-500 ml-2">— this member won&apos;t see any tabs!</span>}
+              <strong className="text-gray-700">{selected.size}</strong> of {ALL_TABS.length} top-level tabs enabled
+              {commsEnabled && selectedSubs.size > 0 && (
+                <>{" "}· <strong className="text-gray-700">{selectedSubs.size}</strong> comms sub-tab{selectedSubs.size === 1 ? "" : "s"}</>
+              )}
+              {selected.size === 0 && <span className="text-red-500 ml-2">— Dashboard only.</span>}
             </p>
           </div>
         </div>
@@ -286,10 +445,12 @@ export default function TeamTab() {
 
   const loadMembers = async () => {
     setLoading(true);
-    // Load ONLY team members (admin roles). Providers are managed separately in the Providers tab.
+    // Load ONLY team members (admin roles). Providers are managed separately
+    // in the Providers tab. custom_tab_access is required so the Tab Access
+    // editor opens with the actually-saved overrides (not the role default).
     const { data } = await supabase
       .from("doctor_profiles")
-      .select("id, user_id, full_name, title, email, phone, is_admin, is_active, role")
+      .select("id, user_id, full_name, title, email, phone, is_admin, is_active, role, custom_tab_access")
       .eq("is_admin", true)
       .order("full_name");
     setMembers((data as TeamMember[]) ?? []);
