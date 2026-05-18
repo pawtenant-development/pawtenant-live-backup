@@ -63,6 +63,36 @@ export interface LiveVisitor {
   first_message_at: string | null;
   assessment_started_at: string | null;
   paid_at: string | null;
+  // ── 2026-05-19 identity join ─────────────────────────────────────────
+  // Populated by the LEFT JOIN orders inside get_live_visitors when a
+  // non-archived/non-refunded/non-cancelled order row exists with
+  // matching session_id. Lets the Live Visitors panel render the
+  // customer's real name + email + confirmation_id + status instead of
+  // an anonymous "Visitor · #<id>" once assessment Step 2 has saved.
+  // All fields are null when no linked order exists yet.
+  // ── 2026-05-19 ATTR-RESUME-SESSION-IDENTITY-SYNC ──────────────────
+  // Order LATERAL now matches by session_id OR confirmation_id so
+  // resume / recovery visitors (whose session_id is not on orders)
+  // also surface the customer's name + email. order_id and
+  // order_payment_intent_id let the panel render the order chip
+  // directly from the RPC — no separate fetch needed.
+  order_id: string | null;
+  order_confirmation_id: string | null;
+  order_first_name: string | null;
+  order_last_name: string | null;
+  order_email: string | null;
+  order_status: string | null;
+  order_paid_at: string | null;
+  order_doctor_status: string | null;
+  order_payment_intent_id: string | null;
+  // ── 2026-05-19 CHAT-IDENTITY-NO-DOWNGRADE ──────────────────────────
+  // Populated by the LEFT JOIN chat_sessions inside get_live_visitors
+  // when a chat session exists for the same visitor_session_id with at
+  // least one of (visitor_name, visitor_email) set. Lets the panel
+  // resolver fall back to chat identity priority (3, 4) when no
+  // linked order identity exists (priority 1, 2).
+  chat_visitor_name: string | null;
+  chat_visitor_email: string | null;
 }
 
 export interface LiveVisitorsSnapshot {

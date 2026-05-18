@@ -71,6 +71,84 @@ interface LiveVisitor {
   first_message_at: string | null;
   assessment_started_at: string | null;
   paid_at: string | null;
+  // ── 2026-05-19 identity join (LEFT JOIN orders.session_id) ───────────
+  // ATTR-RESUME-SESSION-IDENTITY-SYNC (2026-05-19): RPC matches orders
+  // by session_id OR confirmation_id. order_id + order_payment_intent_id
+  // let the panel render the order chip without a second fetch, so
+  // resume / recovery visitors (Session 2) also surface as the real
+  // customer with their PT-XXXX chip.
+  order_id: string | null;
+  order_confirmation_id: string | null;
+  order_first_name: string | null;
+  order_last_name: string | null;
+  order_email: string | null;
+  order_status: string | null;
+  order_paid_at: string | null;
+  order_doctor_status: string | null;
+  order_payment_intent_id: string | null;
+  // CHAT-IDENTITY-NO-DOWNGRADE (2026-05-19): chat-side fallback so a
+  // visitor who opens chat without a linked order still surfaces by
+  // their chat-provided name/email rather than collapsing back to the
+  // anonymous short-id.
+  chat_visitor_name: string | null;
+  chat_visitor_email: string | null;
+}
+
+/**
+ * Resolve the best-available display identity for a Live Visitor row.
+ *
+ * Priority (per CHAT-IDENTITY-NO-DOWNGRADE):
+ *   1. Customer first+last name from the linked order (after Step 2).
+ *   2. Linked order email.
+ *   3. Chat-provided visitor name (from chat_sessions.visitor_name).
+ *   4. Chat-provided visitor email (from chat_sessions.visitor_email).
+ *   5. Anonymous short id fallback (Visitor · #XXXXX).
+ *
+ * Merge-only semantics: a known order identity ALWAYS wins over any
+ * chat-side identity, so opening chat can never downgrade a row that
+ * had already resolved to a real name/email.
+ */
+function resolveVisitorIdentity(v: LiveVisitor): {
+  name: string;
+  email: string | null;
+  anonymous: boolean;
+} {
+  const first = (v.order_first_name ?? "").trim();
+  const last = (v.order_last_name ?? "").trim();
+  const orderEmail = (v.order_email ?? "").trim() || null;
+  if (first || last) {
+    return { name: [first, last].filter(Boolean).join(" "), email: orderEmail, anonymous: false };
+  }
+  if (orderEmail) return { name: orderEmail, email: orderEmail, anonymous: false };
+  const chatName = (v.chat_visitor_name ?? "").trim();
+  const chatEmail = (v.chat_visitor_email ?? "").trim() || null;
+  if (chatName) return { name: chatName, email: chatEmail, anonymous: false };
+  if (chatEmail) return { name: chatEmail, email: chatEmail, anonymous: false };
+  const tail = v.session_id.replace(/-/g, "").slice(-5).toLowerCase();
+  return { name: `Visitor · #${tail}`, email: null, anonymous: true };
+}
+
+/**
+ * Compact status pill for the linked order: Lead / Paid / Unassigned /
+ * Completed / etc. Returns null when no order is linked.
+ */
+function orderStatusPill(v: LiveVisitor): { label: string; tone: string } | null {
+  if (!v.order_confirmation_id) return null;
+  // Doctor states win when paid + assigned.
+  if (v.order_doctor_status === "patient_notified") {
+    return { label: "Completed", tone: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  }
+  if (v.order_status === "refunded" || v.order_status === "cancelled") {
+    return { label: v.order_status === "refunded" ? "Refunded" : "Cancelled", tone: "bg-red-50 text-red-600 border-red-200" };
+  }
+  // Paid but no provider yet.
+  if ((v.order_paid_at || v.order_status === "paid") && !v.order_doctor_status) {
+    return { label: "Paid · Unassigned", tone: "bg-sky-50 text-sky-700 border-sky-200" };
+  }
+  if (v.order_paid_at || v.order_status === "paid") {
+    return { label: "Paid", tone: "bg-sky-50 text-sky-700 border-sky-200" };
+  }
+  return { label: "Lead", tone: "bg-amber-50 text-amber-700 border-amber-200" };
 }
 
 // Visitor Journey Intelligence — per-session order summary returned by the
@@ -165,73 +243,21 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
   const [rows, setRows]             = useState<LiveVisitor[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState<string | null>(null);
-  // Visitor Journey Intelligence — session_id → linked order (if any).
-  // Populated by a single batched `.in("session_id", [...])` query right
-  // after every visitor poll. Map (vs. plain object) so we can avoid a
-  // surprising sentinel object key collision and so `.get()` reads stay
-  // O(1). Empty by default — rows where no order exists simply render
-  // without an order chip.
-  const [orderBySession, setOrderBySession] = useState<Map<string, SessionOrderRef>>(() => new Map());
 
   // ── Subscribe to the shared live-visitors poll engine ──────────────────
-  // Polling is owned by src/lib/liveVisitorsPoll.ts. This panel reads the
-  // shared snapshot on every tick and runs its own batched orders lookup
-  // for the linked-order chip. The new-visitor chime is fired by
-  // VisitorSoundMonitor — NOT here — so admins on Orders / Analytics /
-  // Chats / Emails / etc. all hear visitor landings.
+  // ATTR-RESUME-SESSION-IDENTITY-SYNC (2026-05-19): the per-row linked-
+  // order chip was previously hydrated by a batched
+  // `.in("session_id", [...])` lookup. That worked for Session 1
+  // visitors but missed Session 2 (resume) — their session_id is not on
+  // any orders row (sticky orders.session_id stays at Session 1's id).
+  // get_live_visitors now matches orders by session_id OR
+  // confirmation_id and returns order_id + order_payment_intent_id
+  // directly, so the chip is derived inline per row — no second fetch.
+  // Polling is owned by src/lib/liveVisitorsPoll.ts.
   useEffect(() => {
     const unsubscribe = subscribeLiveVisitors((snap) => {
-      // Visitor rows + error first — UI reflects backend state immediately.
       setRows(snap.visitors);
       setError(snap.error);
-
-      // Visitor Journey Intelligence — batched orders lookup per snapshot.
-      // Single round-trip regardless of how many visitors are on screen;
-      // no N+1. Failures fall back silently — visitor list still renders.
-      const sessionIds: string[] = [];
-      for (const v of snap.visitors) {
-        if (typeof v.session_id === "string" && v.session_id.length > 0) {
-          sessionIds.push(v.session_id);
-        }
-      }
-      if (sessionIds.length === 0) {
-        setOrderBySession(new Map());
-        return;
-      }
-      void (async () => {
-        try {
-          const { data: orderRows, error: orderErr } = await supabase
-            .from("orders")
-            .select(
-              "id, confirmation_id, paid_at, payment_intent_id, doctor_status, session_id",
-            )
-            .in("session_id", sessionIds);
-          if (orderErr) {
-            setOrderBySession(new Map());
-            return;
-          }
-          const next = new Map<string, SessionOrderRef>();
-          for (const r of (orderRows ?? []) as Array<
-            SessionOrderRef & { session_id: string | null }
-          >) {
-            if (!r.session_id) continue;
-            // If multiple orders share a session_id (recovery / retry),
-            // prefer the paid one. The chip should reflect the meaningful
-            // conversion, not the lead shell.
-            const existing = next.get(r.session_id);
-            if (!existing) {
-              next.set(r.session_id, r);
-              continue;
-            }
-            const existingPaid = !!existing.paid_at;
-            const incomingPaid = !!r.paid_at;
-            if (incomingPaid && !existingPaid) next.set(r.session_id, r);
-          }
-          setOrderBySession(next);
-        } catch {
-          setOrderBySession(new Map());
-        }
-      })();
     });
     return unsubscribe;
   }, []);
@@ -263,15 +289,16 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
   const activeCount = rows.length;
 
   // Visitor Journey Intelligence — header summary: how many of the live
-  // visitors already have an order in flight? Pure derivation from the
-  // already-loaded orderBySession map; no extra fetches.
+  // visitors already have an order in flight? Derived from the RPC's
+  // order_confirmation_id column so resume / recovery visitors who
+  // matched via confirmation_id (not session_id) also count.
   const convertingCount = useMemo(() => {
     let n = 0;
     for (const v of rows) {
-      if (orderBySession.has(v.session_id)) n++;
+      if (v.order_confirmation_id) n++;
     }
     return n;
-  }, [rows, orderBySession]);
+  }, [rows]);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -328,7 +355,26 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
         <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
           {rows.map((v) => {
             const chips      = milestoneChips(v);
-            const linkedOrder = orderBySession.get(v.session_id) ?? null;
+            // ATTR-RESUME-SESSION-IDENTITY-SYNC (2026-05-19): chip is
+            // derived inline from the RPC's order_* columns so both
+            // session_id-matched (Session 1) AND confirmation_id-matched
+            // (Session 2 resume) visitors render the order pill.
+            const linkedOrder: SessionOrderRef | null = v.order_confirmation_id
+              ? {
+                  id:                v.order_id ?? "",
+                  confirmation_id:   v.order_confirmation_id,
+                  paid_at:           v.order_paid_at,
+                  payment_intent_id: v.order_payment_intent_id,
+                  doctor_status:     v.order_doctor_status,
+                }
+              : null;
+            // Identity comes from the get_live_visitors LEFT JOIN orders
+            // (session_id OR confirmation_id). Once Step 2 of the
+            // assessment saves with a session_id linkage OR a resume
+            // session stamps visitor_sessions.confirmation_id, the next
+            // 5s poll surfaces the customer's real name + email here.
+            const identity   = resolveVisitorIdentity(v);
+            const orderPill  = orderStatusPill(v);
             return (
               <div
                 key={v.session_id}
@@ -337,7 +383,19 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span className="font-medium text-gray-900">{anonLabel(v.session_id)}</span>
+                    <span
+                      className={`font-medium truncate ${identity.anonymous ? "text-gray-900" : "text-gray-900"}`}
+                      title={identity.anonymous ? v.session_id : `${identity.name}${identity.email ? ` <${identity.email}>` : ""}`}
+                    >
+                      {identity.name}
+                    </span>
+                    {orderPill && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${orderPill.tone}`}
+                      >
+                        {orderPill.label}
+                      </span>
+                    )}
                     {v.device && (
                       <span className="text-xs text-gray-400 inline-flex items-center gap-1">
                         ·
@@ -349,6 +407,11 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
                       <span className="text-xs text-gray-400">· {v.geo.country}</span>
                     )}
                   </div>
+                  {!identity.anonymous && identity.email && (
+                    <div className="mt-0.5 text-xs text-gray-500 truncate" title={identity.email}>
+                      {identity.email}
+                    </div>
+                  )}
                   <div className="mt-1 text-sm text-gray-700 truncate">
                     {v.current_page ?? v.landing_url ?? "—"}
                   </div>

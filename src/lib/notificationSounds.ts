@@ -57,7 +57,13 @@ function canFire(key: string, ttlMs: number): boolean {
   return true;
 }
 
-const VISITOR_DEDUPE_MS = 90_000;
+// Per-session visitor ding dedupe. Bumped from 90s (which equalled the
+// get_live_visitors activity window) to 30 min so a visitor whose
+// background-tab heartbeat briefly drops them out of the activity window
+// and then returns does not re-fire the chime. User spec (ADMIN-SOUND-
+// DEDUP-SESSION): ding once per genuinely new session, allow re-ding
+// only after a long inactivity, never while still active.
+const VISITOR_DEDUPE_MS = 30 * 60 * 1000;
 const OPS_DEDUPE_MS = 24 * 60 * 60 * 1000;
 
 // ── Public API ──────────────────────────────────────────────────────────

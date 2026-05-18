@@ -51,13 +51,27 @@ import { getSoundPrefs, isSoundEnabled } from "./soundPrefs";
 
 const RECENT_WINDOW_MS = 30_000;
 
+// ── 2026-05-19 ADMIN-SOUND-DEDUP-SESSION ────────────────────────────────
+// Previously `seenSessions` was a Set rebuilt from each snapshot. When a
+// visitor briefly dropped out of the 90s activity window (background tab
+// heartbeat pause) and reappeared, the Set was empty for that session_id
+// → the visitor looked "new" → ding fired again.
+//
+// New design: a Map<session_id, lastSeenMs> kept in module memory for
+// SESSION_RETENTION_MS (= 30 min). Sessions ARE remembered across
+// activity-window drops, so brief disappearances don't re-fire the ding.
+// Entries older than retention are evicted on each snapshot, which means
+// genuinely returning visitors (after a long absence) WILL get a fresh
+// "returned visitor" ding — matching the user spec for BUG 4.
+const SESSION_RETENTION_MS = 30 * 60 * 1000;
+
 const IS_DEV =
   typeof import.meta !== "undefined" &&
   Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
 
 let started = false;
 let unsubscribe: (() => void) | null = null;
-let seenSessions = new Set<string>();
+let seenSessions = new Map<string, number>();
 let baselineSet = false;
 let startedAtMs = 0;
 
@@ -109,10 +123,22 @@ function fireFallbacks(sessionId: string): void {
 function onSnapshot(snap: LiveVisitorsSnapshot): void {
   try {
     const visitors = snap.visitors;
-    const currentIds = new Set<string>();
+    const nowMs = Date.now();
+
+    // Evict sessions we have NOT seen within the retention window. This
+    // is what allows a genuinely returning visitor (gone for >30 min) to
+    // re-fire as "new" without flooding the admin while a single
+    // visitor is still actively browsing.
+    for (const [id, lastMs] of seenSessions) {
+      if (nowMs - lastMs > SESSION_RETENTION_MS) {
+        seenSessions.delete(id);
+      }
+    }
+
+    const currentIds: string[] = [];
     for (const v of visitors) {
       if (typeof v.session_id === "string" && v.session_id.length > 0) {
-        currentIds.add(v.session_id);
+        currentIds.push(v.session_id);
       }
     }
 
@@ -130,15 +156,16 @@ function onSnapshot(snap: LiveVisitorsSnapshot): void {
           playVisitorLand(v.session_id);
           fireFallbacks(v.session_id);
         }
+        seenSessions.set(v.session_id, nowMs);
       }
-      seenSessions = currentIds;
       baselineSet = true;
       return;
     }
 
-    // Subsequent snapshots — fire for any new session_id. The 90 s
-    // dedupe inside notificationSounds.playVisitorLand keeps this safe
-    // if a session disappears and re-appears within the same minute.
+    // Subsequent snapshots — fire for any session we have NOT seen
+    // within the retention window. notificationSounds.playVisitorLand
+    // also dedupes per session_id for VISITOR_DEDUPE_MS as a secondary
+    // guard against rapid re-detection if the window logic ever drifts.
     for (const id of currentIds) {
       if (!seenSessions.has(id)) {
         if (IS_DEV) {
@@ -151,8 +178,11 @@ function onSnapshot(snap: LiveVisitorsSnapshot): void {
         playVisitorLand(id);
         fireFallbacks(id);
       }
+      // Refresh the last-seen timestamp on every appearance — keeps the
+      // session alive in the map even if it briefly drops out of the
+      // activity window on the next snapshot.
+      seenSessions.set(id, nowMs);
     }
-    seenSessions = currentIds;
   } catch {
     // Sound is best-effort. A failure here must never break callers.
   }
@@ -172,7 +202,7 @@ export function startVisitorMonitor(): boolean {
   if (typeof window === "undefined") return false;
   if (started) return false;
   started = true;
-  seenSessions = new Set();
+  seenSessions = new Map();
   baselineSet = false;
   startedAtMs = Date.now();
   try {
@@ -200,7 +230,7 @@ export function stopVisitorMonitor(): void {
   if (!started) return;
   started = false;
   baselineSet = false;
-  seenSessions = new Set();
+  seenSessions = new Map();
   if (unsubscribe) {
     try {
       unsubscribe();

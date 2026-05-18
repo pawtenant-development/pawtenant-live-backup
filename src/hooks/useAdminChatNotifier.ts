@@ -59,6 +59,13 @@ export interface ChatSession {
   external_metadata: Record<string, unknown> | null;
   /** FK to orders.id when the visitor's email matches a known order. */
   matched_order_id: string | null;
+  /**
+   * FK-style link to visitor_sessions.session_id, set by the
+   * chat_sessions_link_visitor trigger when external_metadata.attribution
+   * .session_id is present. Lets the admin UI tie a chat to its visitor
+   * session even before chat collected name/email.
+   */
+  visitor_session_id: string | null;
   /** Assignment (Phase 8). null = unassigned. */
   assigned_admin_id: string | null;
   assigned_admin_email: string | null;
@@ -67,6 +74,19 @@ export interface ChatSession {
   last_handled_at: string | null;
   resolved_at: string | null;
   resolved_by_admin_id: string | null;
+  resolved_by_admin_name: string | null;
+  resolved_by_admin_email: string | null;
+  // ── 2026-05-19 CHAT-IDENTITY-NO-DOWNGRADE ──────────────────────────
+  // Client-side enrichment: identity resolved from the order linked to
+  // this chat session via (a) matched_order_id, or (b) visitor_session_id
+  // → orders.session_id. The loader populates these AFTER fetching the
+  // chat_sessions rows so the resolver can prefer order identity over
+  // chat-collected name/email. Read-only on the client — these fields
+  // are NEVER written back to chat_sessions.
+  linked_order_first_name: string | null;
+  linked_order_last_name: string | null;
+  linked_order_email: string | null;
+  linked_order_confirmation_id: string | null;
 }
 
 export type NotifPermission = "default" | "granted" | "denied" | "unsupported";
@@ -142,6 +162,14 @@ export interface UseAdminChatNotifierResult {
 }
 
 function displayNameForSession(s: ChatSession): string {
+  // CHAT-IDENTITY-NO-DOWNGRADE — linked-order identity wins over any
+  // chat-collected name/email so opening chat never downgrades a row
+  // that already has a known customer.
+  const ofn = (s.linked_order_first_name ?? "").trim();
+  const oln = (s.linked_order_last_name ?? "").trim();
+  if (ofn || oln) return [ofn, oln].filter(Boolean).join(" ");
+  const oemail = (s.linked_order_email ?? "").trim();
+  if (oemail) return oemail;
   if (s.visitor_name && s.visitor_name.trim()) return s.visitor_name.trim();
   if (s.name && s.name.trim()) return s.name.trim();
   if (s.visitor_email && s.visitor_email.trim()) return s.visitor_email.trim();
@@ -157,7 +185,12 @@ function sessionsChanged(prev: ChatSession[], next: ChatSession[]): boolean {
       prev[i].last_message_at !== next[i].last_message_at ||
       prev[i].unread_count !== next[i].unread_count ||
       prev[i].status !== next[i].status ||
-      prev[i].last_viewed_at !== next[i].last_viewed_at
+      prev[i].last_viewed_at !== next[i].last_viewed_at ||
+      // Assignment changes must trigger a re-render even if nothing else
+      // changed — otherwise admin reassignment doesn't update other agents'
+      // UIs until the next message arrives.
+      prev[i].assigned_admin_id !== next[i].assigned_admin_id ||
+      prev[i].resolved_by_admin_id !== next[i].resolved_by_admin_id
     ) {
       return true;
     }
@@ -510,7 +543,7 @@ export function useAdminChatNotifier(
         const { data, error: qErr } = await supabase
           .from("chat_sessions")
           .select(
-            "id, email, name, visitor_name, visitor_email, status, provider, last_message_at, last_message_preview, unread_count, last_viewed_at, created_at, external_metadata, matched_order_id, assigned_admin_id, assigned_admin_email, assigned_admin_name, first_handled_at, last_handled_at, resolved_at, resolved_by_admin_id",
+            "id, email, name, visitor_name, visitor_email, status, provider, last_message_at, last_message_preview, unread_count, last_viewed_at, created_at, external_metadata, matched_order_id, visitor_session_id, assigned_admin_id, assigned_admin_email, assigned_admin_name, first_handled_at, last_handled_at, resolved_at, resolved_by_admin_id, resolved_by_admin_name, resolved_by_admin_email",
           )
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
@@ -523,7 +556,190 @@ export function useAdminChatNotifier(
           return;
         }
 
-        const rows = (data ?? []) as ChatSession[];
+        const rawRows = (data ?? []) as ChatSession[];
+        // CHAT-IDENTITY-NO-DOWNGRADE (2026-05-19): enrich each chat
+        // session with linked-order identity so the resolver can prefer
+        // the customer's real name over chat-collected anonymous values.
+        // Two parallel batched lookups — no N+1.
+        //   • matched_order_id → orders.id   (direct FK, set on email match)
+        //   • visitor_session_id → orders.session_id  (trigger-derived bridge)
+        // Failures degrade silently: rows still render with chat-only
+        // identity, the resolver just stays at the lower-priority value.
+        const moIds = Array.from(
+          new Set(rawRows.map((r) => r.matched_order_id).filter((v): v is string => !!v)),
+        );
+        const vsIds = Array.from(
+          new Set(rawRows.map((r) => r.visitor_session_id).filter((v): v is string => !!v)),
+        );
+
+        const byMatched      = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null }>();
+        const byVisitor      = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null }>();
+        // CHAT-RESUME-ORDER-IDENTITY-SYNC (2026-05-19): third lookup
+        // path keyed by visitor_session_id → visitor_sessions.confirmation_id
+        // → orders.confirmation_id. Required for resume / recovery
+        // sessions where orders.session_id is sticky-pinned to the
+        // ORIGINAL Session 1 id but visitor_sessions.confirmation_id
+        // on Session 2 carries the link.
+        const byConfirmation = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null }>();
+
+        try {
+          if (moIds.length > 0) {
+            const { data: ordersByMo } = await supabase
+              .from("orders")
+              .select("id, first_name, last_name, email, confirmation_id")
+              .in("id", moIds);
+            for (const o of (ordersByMo ?? []) as Array<{
+              id: string;
+              first_name: string | null;
+              last_name: string | null;
+              email: string | null;
+              confirmation_id: string | null;
+            }>) {
+              byMatched.set(o.id, {
+                fn: o.first_name,
+                ln: o.last_name,
+                em: o.email,
+                cid: o.confirmation_id,
+              });
+            }
+          }
+        } catch {
+          /* silent — chat list still renders */
+        }
+
+        // Fetch visitor_sessions for all chat visitor_session_ids so we
+        // can resolve identity via both session_id (orders.session_id)
+        // AND confirmation_id (orders.confirmation_id). Single batched
+        // round-trip.
+        const vsConfMap = new Map<string, string>(); // visitor_session_id → confirmation_id
+        try {
+          if (vsIds.length > 0) {
+            const { data: vsRows } = await supabase
+              .from("visitor_sessions")
+              .select("session_id, confirmation_id")
+              .in("session_id", vsIds);
+            for (const row of (vsRows ?? []) as Array<{ session_id: string | null; confirmation_id: string | null }>) {
+              if (row.session_id && row.confirmation_id) {
+                vsConfMap.set(row.session_id, row.confirmation_id);
+              }
+            }
+          }
+        } catch {
+          /* silent */
+        }
+
+        try {
+          if (vsIds.length > 0) {
+            const { data: ordersByVs } = await supabase
+              .from("orders")
+              .select("session_id, first_name, last_name, email, confirmation_id, paid_at, created_at, status")
+              .in("session_id", vsIds)
+              .not("status", "in", `("archived","refunded","cancelled")`);
+            // Prefer paid > most-recent when multiple orders share a session.
+            for (const o of (ordersByVs ?? []) as Array<{
+              session_id: string | null;
+              first_name: string | null;
+              last_name: string | null;
+              email: string | null;
+              confirmation_id: string | null;
+              paid_at: string | null;
+              created_at: string;
+              status: string | null;
+            }>) {
+              if (!o.session_id) continue;
+              const existing = byVisitor.get(o.session_id);
+              if (!existing) {
+                byVisitor.set(o.session_id, {
+                  fn: o.first_name,
+                  ln: o.last_name,
+                  em: o.email,
+                  cid: o.confirmation_id,
+                });
+                continue;
+              }
+              if (o.paid_at && !existing.em) {
+                byVisitor.set(o.session_id, {
+                  fn: o.first_name,
+                  ln: o.last_name,
+                  em: o.email,
+                  cid: o.confirmation_id,
+                });
+              }
+            }
+          }
+        } catch {
+          /* silent */
+        }
+
+        // Third lookup: confirmation_id → order, keyed back to the
+        // chat's visitor_session_id for merge convenience.
+        try {
+          const confIds = Array.from(new Set([...vsConfMap.values()]));
+          if (confIds.length > 0) {
+            const { data: ordersByCid } = await supabase
+              .from("orders")
+              .select("confirmation_id, first_name, last_name, email, paid_at, status")
+              .in("confirmation_id", confIds)
+              .not("status", "in", `("archived","refunded","cancelled")`);
+            const cidToOrder = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null; paid: string | null }>();
+            for (const o of (ordersByCid ?? []) as Array<{
+              confirmation_id: string | null;
+              first_name: string | null;
+              last_name: string | null;
+              email: string | null;
+              paid_at: string | null;
+              status: string | null;
+            }>) {
+              if (!o.confirmation_id) continue;
+              const existing = cidToOrder.get(o.confirmation_id);
+              const incoming = { fn: o.first_name, ln: o.last_name, em: o.email, cid: o.confirmation_id, paid: o.paid_at };
+              if (!existing) {
+                cidToOrder.set(o.confirmation_id, incoming);
+              } else if (incoming.paid && !existing.paid) {
+                cidToOrder.set(o.confirmation_id, incoming);
+              }
+            }
+            for (const [vsid, cid] of vsConfMap.entries()) {
+              const order = cidToOrder.get(cid);
+              if (order) {
+                byConfirmation.set(vsid, {
+                  fn: order.fn, ln: order.ln, em: order.em, cid: order.cid,
+                });
+              }
+            }
+          }
+        } catch {
+          /* silent */
+        }
+
+        // Merge linked-order identity onto each row. Priority order:
+        //   1. matched_order_id (direct FK, set by email match)
+        //   2. visitor_session_id → orders.session_id (Session 1)
+        //   3. visitor_session_id → vs.confirmation_id → orders (Session 2 resume)
+        // Never mutate base chat_sessions columns — only populate the
+        // read-only linked_order_* fields the resolver checks first.
+        const rows: ChatSession[] = rawRows.map((r) => {
+          const moHit  = r.matched_order_id   ? byMatched.get(r.matched_order_id)         : undefined;
+          const vsHit  = r.visitor_session_id ? byVisitor.get(r.visitor_session_id)       : undefined;
+          const cidHit = r.visitor_session_id ? byConfirmation.get(r.visitor_session_id)  : undefined;
+          const pick = moHit ?? vsHit ?? cidHit;
+          if (!pick) {
+            return {
+              ...r,
+              linked_order_first_name: null,
+              linked_order_last_name: null,
+              linked_order_email: null,
+              linked_order_confirmation_id: null,
+            };
+          }
+          return {
+            ...r,
+            linked_order_first_name: pick.fn,
+            linked_order_last_name: pick.ln,
+            linked_order_email: pick.em,
+            linked_order_confirmation_id: pick.cid,
+          };
+        });
         const initial = !initialLoadedRef.current;
 
         // Sessions whose poll row is a stale echo of a just-marked-seen

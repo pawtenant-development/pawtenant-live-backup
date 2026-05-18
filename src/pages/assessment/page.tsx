@@ -549,6 +549,31 @@ export default function AssessmentPage() {
 
         // Use the existing confirmation ID so payment upserts the right row
         confirmationId.current = resumeConfirmationId;
+
+        // ── 2026-05-19 ATTR-RESUME-SESSION-LINKING ─────────────────────
+        // Bridge this NEW browser session to the EXISTING order so the
+        // Attribution / Journey tab can stitch the original Session 1
+        // (Facebook → assessment → abandon) together with this resume /
+        // recovery Session 2 (/r/manual → checkout → payment).
+        //
+        // link_session_to_order is bidirectional + COALESCE-safe:
+        //   • visitor_sessions[currentSid].confirmation_id = COALESCE(...)
+        //     — stamps the NEW session row with the order's confirmation_id
+        //   • orders.session_id stays untouched when already set (the
+        //     ORIGINAL Session 1 id is preserved as the "primary").
+        //
+        // Fire-and-forget — failures must never block the resume flow.
+        try {
+          const currentSid = getSessionId();
+          if (currentSid) {
+            void supabase
+              .rpc("link_session_to_order", {
+                p_session_id: currentSid,
+                p_confirmation_id: resumeConfirmationId,
+              })
+              .then(() => { /* swallowed — best effort */ });
+          }
+        } catch { /* ignore */ }
         // TRACK 2 · REPEAT-CUSTOMER-NEW-ESA-LINK-TEST
         // When ?edit=pet is set (repeat-customer new-pet flow) land on Step 1
         // so the customer reviews/edits pet info first. Skip the eager

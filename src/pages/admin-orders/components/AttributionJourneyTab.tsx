@@ -110,6 +110,27 @@ interface EventRow {
   created_at: string;
 }
 
+// ATTR-MULTI-SESSION-ORDER-JOURNEY (2026-05-19): one row per visitor
+// session ever linked to this order, surfaced via get_order_linked_sessions
+// so the journey panel can render Session 1 / Session 2 / … groupings
+// even when a session captured zero events.
+interface LinkedSessionRow {
+  session_id:            string;
+  first_seen_at:         string | null;
+  last_seen_at:          string | null;
+  landing_url:           string | null;
+  channel:               string | null;
+  utm_source:            string | null;
+  utm_campaign:          string | null;
+  fbclid:                string | null;
+  gclid:                 string | null;
+  paid_at:               string | null;
+  chat_opened_at:        string | null;
+  assessment_started_at: string | null;
+  page_count:            number | null;
+  is_primary_session:    boolean;
+}
+
 interface AttributionJourneyTabProps {
   order: { id: string; confirmation_id: string; created_at: string };
 }
@@ -236,6 +257,10 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
   const [visitorErr,     setVisitorErr]     = useState<string | null>(null);
   const [events,         setEvents]         = useState<EventRow[]>([]);
   const [eventsErr,      setEventsErr]      = useState<string | null>(null);
+  // ATTR-MULTI-SESSION-ORDER-JOURNEY: list of every visitor_session
+  // ever linked to this order. Drives the Session 1 / Session 2 /…
+  // group headers and is read independently of the events stream.
+  const [linkedSessions, setLinkedSessions] = useState<LinkedSessionRow[]>([]);
   const [showAllEvents,  setShowAllEvents]  = useState(false);
   const [reverseOrder,   setReverseOrder]   = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -268,50 +293,95 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
     return () => { cancelled = true; };
   }, [order.id]);
 
-  // Fetch visitor_sessions row + events for the order's session_id.
+  // Fetch visitor_sessions row + multi-session journey + linked-session list.
+  // ATTR-MULTI-SESSION-ORDER-JOURNEY (2026-05-19): event stream is now keyed
+  // on the order's confirmation_id (not its single session_id), so events
+  // from resume / recovery sessions linked via visitor_sessions.confirmation_id
+  // are stitched into the same journey as the primary Session 1 events.
   useEffect(() => {
-    if (!orderRow?.session_id) {
+    if (!orderRow) {
       setVisitorSession(null);
       setEvents([]);
+      setLinkedSessions([]);
       return;
     }
 
-    const sessionId = orderRow.session_id;
+    const sessionId = orderRow.session_id ?? null;
+    const confirmationId = orderRow.confirmation_id;
     let cancelled = false;
     setVisitorErr(null);
     setEventsErr(null);
 
-    supabase
-      .rpc("get_admin_visitor_session_by_id", { p_session_id: sessionId })
-      .then(
-        ({ data, error }) => {
-          if (cancelled) return;
-          if (error) {
-            setVisitorErr(error.message);
+    // Visitor session row — still keyed by the primary session_id since
+    // that drives the LIVE pulse + cross-link toolbar.
+    if (sessionId) {
+      supabase
+        .rpc("get_admin_visitor_session_by_id", { p_session_id: sessionId })
+        .then(
+          ({ data, error }) => {
+            if (cancelled) return;
+            if (error) {
+              setVisitorErr(error.message);
+              setVisitorSession(null);
+              return;
+            }
+            const rows = (data as VisitorSessionRow[] | null) ?? [];
+            setVisitorSession(rows[0] ?? null);
+          },
+          (err: unknown) => {
+            if (cancelled) return;
+            setVisitorErr(err instanceof Error ? err.message : String(err));
             setVisitorSession(null);
-            return;
-          }
-          const rows = (data as VisitorSessionRow[] | null) ?? [];
-          setVisitorSession(rows[0] ?? null);
-        },
-        (err: unknown) => {
-          if (cancelled) return;
-          setVisitorErr(err instanceof Error ? err.message : String(err));
-          setVisitorSession(null);
-        },
-      );
+          },
+        );
+    } else {
+      setVisitorSession(null);
+    }
 
+    // Multi-session event stream keyed by confirmation_id. Falls back to
+    // the single-session RPC if the new one is not yet deployed against
+    // the running Supabase project (graceful migration window).
     supabase
-      .rpc("get_visitor_journey", { p_session_id: sessionId, p_limit: 200 })
+      .rpc("get_visitor_journey_by_order", {
+        p_confirmation_id: confirmationId,
+        p_limit:           500,
+      })
       .then(
         ({ data, error }) => {
           if (cancelled) return;
           if (error) {
+            // Fallback for environments where the new RPC has not been
+            // applied yet — show the single-session journey rather than
+            // a hard error.
+            if (sessionId) {
+              supabase
+                .rpc("get_visitor_journey", { p_session_id: sessionId, p_limit: 200 })
+                .then(({ data: legacyData, error: legacyErr }) => {
+                  if (cancelled) return;
+                  if (legacyErr) {
+                    setEventsErr(legacyErr.message);
+                    setEvents([]);
+                    return;
+                  }
+                  setEvents(((legacyData as EventRow[] | null) ?? []));
+                });
+              return;
+            }
             setEventsErr(error.message);
             setEvents([]);
             return;
           }
-          setEvents(((data as EventRow[] | null) ?? []));
+          // The new RPC returns per-session context columns we don't use
+          // in the events list — strip them to the slim EventRow shape.
+          const slim = ((data as Array<EventRow & Record<string, unknown>> | null) ?? []).map((r) => ({
+            event_id:   r.event_id,
+            session_id: r.session_id,
+            event_name: r.event_name,
+            page_url:   r.page_url,
+            props:      r.props,
+            created_at: r.created_at,
+          }));
+          setEvents(slim);
         },
         (err: unknown) => {
           if (cancelled) return;
@@ -320,8 +390,49 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
         },
       );
 
+    // Linked-session header list.
+    supabase
+      .rpc("get_order_linked_sessions", { p_confirmation_id: confirmationId })
+      .then(
+        ({ data, error }) => {
+          if (cancelled) return;
+          if (error) {
+            // Tolerant — old envs may not have the RPC. Fall back to a
+            // single-session synthetic row from orderRow.session_id.
+            if (sessionId) {
+              setLinkedSessions([
+                {
+                  session_id:            sessionId,
+                  first_seen_at:         null,
+                  last_seen_at:          null,
+                  landing_url:           orderRow.landing_url,
+                  channel:               null,
+                  utm_source:            orderRow.utm_source,
+                  utm_campaign:          orderRow.utm_campaign,
+                  fbclid:                orderRow.fbclid,
+                  gclid:                 orderRow.gclid,
+                  paid_at:               orderRow.paid_at,
+                  chat_opened_at:        null,
+                  assessment_started_at: null,
+                  page_count:            null,
+                  is_primary_session:    true,
+                },
+              ]);
+              return;
+            }
+            setLinkedSessions([]);
+            return;
+          }
+          setLinkedSessions(((data as LinkedSessionRow[] | null) ?? []));
+        },
+        () => {
+          if (cancelled) return;
+          setLinkedSessions([]);
+        },
+      );
+
     return () => { cancelled = true; };
-  }, [orderRow?.session_id]);
+  }, [orderRow]);
 
   // Lightweight cross-link: how many chat_sessions are wired to this
   // visitor_session_id? COUNT-only query — admin scope already enforced
@@ -474,13 +585,24 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
   // Consecutive page_view events collapse into one row labelled
   // "Browsed N pages" with an expand toggle. Anything non-page_view stays
   // as its own row so admins can scan the meaningful milestones at a glance.
+  // ATTR-MULTI-SESSION-ORDER-JOURNEY: also inserts a "session divider"
+  // item whenever the active session_id changes mid-stream so the admin
+  // can see where Session 1 ends and Session 2 begins.
   type DisplayItem =
     | { kind: "event"; id: string; event: EventRow }
-    | { kind: "group"; id: string; events: EventRow[] };
+    | { kind: "group"; id: string; events: EventRow[] }
+    | { kind: "session-divider"; id: string; index: number; row: LinkedSessionRow | null; sessionId: string };
 
   const groupedEvents = useMemo<DisplayItem[]>(() => {
+    // Build session index map: session_id → (1-based order, row).
+    const sessionIndex = new Map<string, { idx: number; row: LinkedSessionRow | null }>();
+    linkedSessions.forEach((s, i) => {
+      sessionIndex.set(s.session_id, { idx: i + 1, row: s });
+    });
+
     const out: DisplayItem[] = [];
     let buffer: EventRow[] = [];
+    let currentSession: string | null = null;
     const flushBuffer = () => {
       if (buffer.length === 0) return;
       if (buffer.length === 1) {
@@ -491,7 +613,25 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
       }
       buffer = [];
     };
+    const maybeDivider = (sid: string | null) => {
+      if (!sid || sid === currentSession) return;
+      if (linkedSessions.length <= 1) {
+        currentSession = sid;
+        return;
+      }
+      flushBuffer();
+      const meta = sessionIndex.get(sid);
+      out.push({
+        kind: "session-divider",
+        id: `sd_${sid}`,
+        index: meta?.idx ?? (sessionIndex.size + 1),
+        row: meta?.row ?? null,
+        sessionId: sid,
+      });
+      currentSession = sid;
+    };
     for (const e of events) {
+      maybeDivider(e.session_id);
       if (e.event_name === "page_view") {
         buffer.push(e);
       } else {
@@ -501,7 +641,7 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
     }
     flushBuffer();
     return reverseOrder ? [...out].reverse() : out;
-  }, [events, reverseOrder]);
+  }, [events, reverseOrder, linkedSessions]);
 
   const isHistorical = new Date(order.created_at) < new Date(TRACKING_ENABLED_AT);
   const hasAnyAttribution =
@@ -786,6 +926,26 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
         </Section>
       )}
 
+      {/* ── 4b. Sessions (ATTR-MULTI-SESSION-ORDER-JOURNEY) ──────────── */}
+      {linkedSessions.length > 0 && (
+        <Section
+          icon="ri-stack-line"
+          iconTint="sky"
+          title={`Sessions · ${linkedSessions.length}`}
+        >
+          <ol className="space-y-2">
+            {linkedSessions.map((s, i) => (
+              <SessionGroupCard
+                key={s.session_id}
+                index={i + 1}
+                row={s}
+                eventCount={events.filter((e) => e.session_id === s.session_id).length}
+              />
+            ))}
+          </ol>
+        </Section>
+      )}
+
       {/* ── 5. Funnel Timeline ────────────────────────────────────────── */}
       <Section icon="ri-flow-chart" iconTint="indigo" title="Funnel Timeline">
         <FunnelTimeline
@@ -803,7 +963,7 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
       <Section
         icon="ri-route-line"
         iconTint="amber"
-        title={`Page Journey · ${events.length} events`}
+        title={`Page Journey · ${events.length} events${linkedSessions.length > 1 ? ` · ${linkedSessions.length} sessions` : ""}`}
         headerRight={
           events.length > 0 ? (
             <button
@@ -836,6 +996,36 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
           <>
             <ol className="relative pl-1">
               {visibleItems.map((item) => {
+                if (item.kind === "session-divider") {
+                  // ATTR-MULTI-SESSION-ORDER-JOURNEY: shown only when
+                  // ≥2 sessions are linked to this order. Acts as the
+                  // "Session 1 / Session 2 / …" subheading inline with
+                  // the events stream.
+                  const r = item.row;
+                  const label = r?.is_primary_session
+                    ? `Session ${item.index} — Original visit`
+                    : `Session ${item.index} — Resume / recovery visit`;
+                  return (
+                    <li key={item.id} className="relative pt-3 pb-1">
+                      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-sky-50 border border-sky-200">
+                        <i className="ri-stack-line text-sky-600" />
+                        <span className="text-[11px] font-bold text-sky-800">{label}</span>
+                        {r?.first_seen_at && (
+                          <span className="text-[10px] text-sky-700 font-mono">{fmtDt(r.first_seen_at)}</span>
+                        )}
+                        {r?.utm_source && (
+                          <span className="text-[10px] text-sky-700 ml-1">· {r.utm_source}</span>
+                        )}
+                        {r?.fbclid && (
+                          <span className="text-[10px] text-sky-700">· fbclid</span>
+                        )}
+                        {r?.gclid && (
+                          <span className="text-[10px] text-sky-700">· gclid</span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                }
                 if (item.kind === "group") {
                   const expanded = expandedGroups.has(item.id);
                   return (
@@ -1043,6 +1233,85 @@ function FunnelTimeline({ steps }: { steps: TimelineStep[] }) {
         );
       })}
     </ol>
+  );
+}
+
+// ── Session card (ATTR-MULTI-SESSION-ORDER-JOURNEY) ───────────────────────
+
+function SessionGroupCard({
+  index,
+  row,
+  eventCount,
+}: {
+  index: number;
+  row: LinkedSessionRow;
+  eventCount: number;
+}) {
+  const heading = row.is_primary_session
+    ? `Session ${index} — Original visit`
+    : `Session ${index} — Resume / recovery visit`;
+  const tint = row.is_primary_session
+    ? "bg-violet-50 text-violet-700 border-violet-200"
+    : "bg-sky-50 text-sky-700 border-sky-200";
+  const utmBits = [row.utm_source, row.utm_campaign].filter(Boolean).join(" · ");
+  return (
+    <li className="rounded-lg border border-gray-100 bg-white p-3">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold ${tint}`}>
+            <i className="ri-stack-line" />
+            {heading}
+          </span>
+          {row.paid_at && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+              Paid · {fmtDt(row.paid_at)}
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] text-gray-400 font-mono">
+          {eventCount} {eventCount === 1 ? "event" : "events"}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-gray-600">
+        <div>
+          <span className="text-[9px] uppercase tracking-widest text-gray-400 block">First seen</span>
+          <span className="font-mono">{fmtDt(row.first_seen_at)}</span>
+        </div>
+        <div>
+          <span className="text-[9px] uppercase tracking-widest text-gray-400 block">Last seen</span>
+          <span className="font-mono">{fmtDt(row.last_seen_at)}</span>
+        </div>
+        <div>
+          <span className="text-[9px] uppercase tracking-widest text-gray-400 block">Landing</span>
+          <span className="font-mono truncate block" title={row.landing_url ?? ""}>
+            {row.landing_url ? pathOnly(row.landing_url) : "—"}
+          </span>
+        </div>
+        {utmBits && (
+          <div className="sm:col-span-3">
+            <span className="text-[9px] uppercase tracking-widest text-gray-400 block">UTM</span>
+            <span className="font-mono">{utmBits}</span>
+          </div>
+        )}
+        {(row.fbclid || row.gclid) && (
+          <div className="sm:col-span-3 flex gap-2 flex-wrap">
+            {row.fbclid && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px]">
+                fbclid · {shortId(row.fbclid)}
+              </span>
+            )}
+            {row.gclid && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[10px]">
+                gclid · {shortId(row.gclid)}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 text-[10px] text-gray-400 font-mono">
+        session_id {row.session_id.slice(0, 8)}…
+      </div>
+    </li>
   );
 }
 

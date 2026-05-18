@@ -929,7 +929,13 @@ export default function ChatsTab() {
             ) : (
               filteredSessions.map((s) => {
                 const active = s.id === selectedId;
-                const identified = !!s.email;
+                // CHAT-IDENTITY-NO-DOWNGRADE: linked-order identity also
+                // counts as identified, so the badge agrees with the
+                // displayed name resolver above.
+                const identified =
+                  !!s.email ||
+                  !!s.visitor_email ||
+                  !!(s.linked_order_email || s.linked_order_first_name || s.linked_order_last_name);
                 const matched = hasMatchedOrder(s);
                 const hasUnread = s.unread_count > 0;
                 const flashed = flashIds.has(s.id);
@@ -1202,7 +1208,10 @@ function ThreadView({
   replyError: string | null;
   attachmentError: string | null;
 }) {
-  const identified = !!session.email;
+  const identified =
+    !!session.email ||
+    !!session.visitor_email ||
+    !!(session.linked_order_email || session.linked_order_first_name || session.linked_order_last_name);
   const canSend = replyInput.trim().length > 0 && !sending;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { mutateSession, refreshSessions } = useAdminChat();
@@ -1801,7 +1810,18 @@ function labelForSender(sender: string): string {
 }
 
 function displayNameForSession(s: ChatSession): string {
+  // CHAT-IDENTITY-NO-DOWNGRADE (2026-05-19) — match useAdminChatNotifier
+  // priority so the in-tab list and the global notifier never disagree.
+  // Linked-order identity wins so a known customer never collapses
+  // back to "Anonymous visitor" when chat opens.
+  const ofn = (s.linked_order_first_name ?? "").trim();
+  const oln = (s.linked_order_last_name ?? "").trim();
+  if (ofn || oln) return [ofn, oln].filter(Boolean).join(" ");
+  const oemail = (s.linked_order_email ?? "").trim();
+  if (oemail) return oemail;
+  if (s.visitor_name && s.visitor_name.trim()) return s.visitor_name.trim();
   if (s.name && s.name.trim()) return s.name.trim();
+  if (s.visitor_email && s.visitor_email.trim()) return s.visitor_email.trim();
   if (s.email && s.email.trim()) return s.email.trim();
   return "Anonymous visitor";
 }

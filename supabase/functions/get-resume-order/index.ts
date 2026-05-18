@@ -238,7 +238,7 @@ serve(async (req) => {
       const { data: byConfId, error: byConfIdErr } = await supabase
         .from("orders")
         .select(
-          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json"
+          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json"
         )
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
@@ -262,7 +262,7 @@ serve(async (req) => {
         const { data: byPi } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json"
           )
           .eq("payment_intent_id", body.paymentIntentId)
           .maybeSingle();
@@ -283,7 +283,7 @@ serve(async (req) => {
         const { data: byEmail } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json"
           )
           .ilike("email", normalizedEmail)
           .not("status", "in", `("refunded","cancelled")`)
@@ -408,17 +408,55 @@ serve(async (req) => {
       if (body.paymentMethod !== undefined) upsertPayload.payment_method = body.paymentMethod;
       if (body.selectedProvider !== undefined) upsertPayload.selected_provider = body.selectedProvider;
       if (body.addonServices !== undefined) upsertPayload.addon_services = body.addonServices;
-      if (body.gclid !== undefined) upsertPayload.gclid = body.gclid;
-      if (body.fbclid !== undefined) upsertPayload.fbclid = body.fbclid;
-      if (body.utmSource !== undefined) upsertPayload.utm_source = body.utmSource;
-      if (body.utmMedium !== undefined) upsertPayload.utm_medium = body.utmMedium;
-      if (body.utmCampaign !== undefined) upsertPayload.utm_campaign = body.utmCampaign;
-      if (body.utmTerm !== undefined) upsertPayload.utm_term = body.utmTerm;
-      if (body.utmContent !== undefined) upsertPayload.utm_content = body.utmContent;
-      if (body.landingUrl !== undefined) upsertPayload.landing_url = body.landingUrl;
-      if (body.attributionJson !== undefined) upsertPayload.attribution_json = body.attributionJson;
-      if (body.referredBy !== undefined && body.referredBy !== "") {
-        upsertPayload.referred_by = body.referredBy;
+      // ── 2026-05-19 ATTR-RESUME-LINK-CANONICAL-SOURCE ────────────────────
+      // The flat attribution columns (referred_by, gclid, fbclid, utm_*,
+      // landing_url, attribution_json) are now STICKY: written on the
+      // initial lead save and never overwritten on subsequent upserts.
+      //
+      // Without this, when a visitor lands via Facebook, fills assessment
+      // Step 2, abandons, then resumes payment via /r/manual?o=<conf>,
+      // the resume save sent the current-tab attribution (which has been
+      // reset because /r/manual has no UTM/click-id) and clobbered the
+      // original Facebook attribution. Order list still classified the
+      // row correctly via first_touch_json (which was already sticky),
+      // but OrderDetailModal's "Referred By" badge reads from
+      // orders.referred_by and was showing "Referral"/"Direct".
+      //
+      // first_touch_json (handled below) is the canonical first-touch
+      // snapshot. These flat columns are denormalized first-touch
+      // fields kept for backward compat with the OrderCard classifier
+      // and OrderDetailModal Referred By pill.
+      const stickyAttrSet = (
+        bodyVal: string | undefined | null,
+        existing: unknown,
+        colKey: string,
+      ): void => {
+        if (bodyVal === undefined) return;
+        if (bodyVal === null) return;
+        if (typeof bodyVal === "string" && bodyVal.length === 0) return;
+        if (existing !== null && existing !== undefined && existing !== "") return;
+        upsertPayload[colKey] = bodyVal;
+      };
+      stickyAttrSet(body.gclid,        existingOrder?.gclid,        "gclid");
+      stickyAttrSet(body.fbclid,       existingOrder?.fbclid,       "fbclid");
+      stickyAttrSet(body.utmSource,    existingOrder?.utm_source,   "utm_source");
+      stickyAttrSet(body.utmMedium,    existingOrder?.utm_medium,   "utm_medium");
+      stickyAttrSet(body.utmCampaign,  existingOrder?.utm_campaign, "utm_campaign");
+      stickyAttrSet(body.utmTerm,      existingOrder?.utm_term,     "utm_term");
+      stickyAttrSet(body.utmContent,   existingOrder?.utm_content,  "utm_content");
+      stickyAttrSet(body.landingUrl,   existingOrder?.landing_url,  "landing_url");
+      stickyAttrSet(body.referredBy,   existingOrder?.referred_by,  "referred_by");
+
+      // attribution_json: same sticky rule but uses jsonb-shaped check
+      // (an empty object {} still counts as "present" — we do not want
+      // to flip a deliberate empty snapshot back to a populated one).
+      if (
+        body.attributionJson !== undefined &&
+        body.attributionJson !== null &&
+        (existingOrder?.attribution_json === null ||
+          existingOrder?.attribution_json === undefined)
+      ) {
+        upsertPayload.attribution_json = body.attributionJson;
       }
 
       // ── Visitor session linkage + dual-touch attribution snapshots ───────
