@@ -11,6 +11,8 @@ import { logAudit, loggedFetch } from "@/lib/auditLogger";
 import {
   buildAttributionJson,
   getAttribution,
+  getFirstTouch,
+  getLastTouch,
   setConfirmationId as storeSetConfirmationId,
   buildFullSource,
 } from "@/lib/attributionStore";
@@ -259,6 +261,13 @@ export default function PSDAssessmentPage() {
     const utmContentVal  = attr.utm_content;
     const landingUrlVal  = attr.landing_url;
     const attributionJsonVal = buildAttributionJson("step2_lead_psd");
+    // Dual-touch snapshots so the admin Attribution/Journey tab hydrates
+    // for PSD orders the same way it does for ESA. The edge function
+    // applies first-touch as sticky and last-touch as overwritable.
+    let firstTouchVal = null;
+    let lastTouchVal  = null;
+    try { firstTouchVal = getFirstTouch(); } catch { firstTouchVal = null; }
+    try { lastTouchVal  = getLastTouch();  } catch { lastTouchVal  = null; }
 
     // Save via service_role edge function — bypasses RLS + CHECK constraints reliably
     try {
@@ -294,6 +303,8 @@ export default function PSDAssessmentPage() {
             utmContent:   utmContentVal,
             landingUrl:   landingUrlVal,
             sessionId:    attr.session_id,
+            firstTouchJson: firstTouchVal,
+            lastTouchJson:  lastTouchVal,
             attributionJson: attributionJsonVal,
           }),
         },

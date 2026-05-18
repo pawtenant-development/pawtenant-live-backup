@@ -24,7 +24,8 @@ import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
 import { firePageView } from "@/lib/metaPixel";
 import { captureFromUrl } from "@/lib/attributionStore";
-import { ensureVisitorSession, pulseVisitorSession } from "@/lib/visitorSession";
+import { ensureVisitorSession, pulseVisitorSession, isInternalAdminPath } from "@/lib/visitorSession";
+import { trackPageView } from "@/lib/trackEvent";
 
 const PORTAL_ROUTES = [
   "/admin",
@@ -85,6 +86,19 @@ function UTMCapture() {
     // route change so the live list reflects the new path right away. The
     // 30s interval below handles idle dwell on the same page.
     try { pulseVisitorSession(pathname); } catch { /* swallow */ }
+    // Structured page_view event for the admin Attribution/Journey tab. The
+    // existing `firePageView()` in MetaPageView only sends to Meta Pixel —
+    // it does NOT write to public.events. Without this row, the order's
+    // Page Journey list stays at 0 events even when the visitor traversed
+    // multiple landing pages before checkout. Skipped for admin / portal
+    // routes via isInternalAdminPath so admin navigation never pollutes
+    // the public funnel table. captureFromUrl above runs first and is
+    // synchronous, so getSessionId() inside trackPageView resolves.
+    try {
+      if (!isInternalAdminPath(pathname)) {
+        trackPageView({ pathname });
+      }
+    } catch { /* swallow */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, search]);
 

@@ -238,7 +238,7 @@ serve(async (req) => {
       const { data: byConfId, error: byConfIdErr } = await supabase
         .from("orders")
         .select(
-          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider"
+          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json"
         )
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
@@ -262,7 +262,7 @@ serve(async (req) => {
         const { data: byPi } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json"
           )
           .eq("payment_intent_id", body.paymentIntentId)
           .maybeSingle();
@@ -283,7 +283,7 @@ serve(async (req) => {
         const { data: byEmail } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json"
           )
           .ilike("email", normalizedEmail)
           .not("status", "in", `("refunded","cancelled")`)
@@ -419,6 +419,47 @@ serve(async (req) => {
       if (body.attributionJson !== undefined) upsertPayload.attribution_json = body.attributionJson;
       if (body.referredBy !== undefined && body.referredBy !== "") {
         upsertPayload.referred_by = body.referredBy;
+      }
+
+      // ── Visitor session linkage + dual-touch attribution snapshots ───────
+      // Previously the client at /assessment was already POSTing sessionId,
+      // firstTouchJson, lastTouchJson — but this edge function silently
+      // dropped them, so orders.session_id always stayed NULL and the admin
+      // Attribution/Journey tab showed "No session_id linked on this order."
+      //
+      // Semantics:
+      //   - session_id:        first writer wins. Once stamped on a row, a
+      //                         subsequent lead-save from the same browser
+      //                         (or any later upsert path) will not change it.
+      //   - first_touch_json:  sticky. Set when missing; never overwritten.
+      //                         This is the canonical "where did this lead
+      //                         originally come from" snapshot.
+      //   - last_touch_json:   most-recent campaign touch. Overwritable on
+      //                         every upsert so revisits with a fresh utm
+      //                         update the last-touch correctly.
+      //
+      // existingOrder may be null on isNewOrder — in that case every field
+      // writes through unconditionally.
+      const existingSessionId    = existingOrder?.session_id ?? null;
+      const existingFirstTouch   = existingOrder?.first_touch_json ?? null;
+
+      if (
+        body.sessionId !== undefined &&
+        body.sessionId !== null &&
+        body.sessionId !== "" &&
+        !existingSessionId
+      ) {
+        upsertPayload.session_id = body.sessionId;
+      }
+      if (
+        body.firstTouchJson !== undefined &&
+        body.firstTouchJson !== null &&
+        !existingFirstTouch
+      ) {
+        upsertPayload.first_touch_json = body.firstTouchJson;
+      }
+      if (body.lastTouchJson !== undefined && body.lastTouchJson !== null) {
+        upsertPayload.last_touch_json = body.lastTouchJson;
       }
 
       if (body.paymentIntentId !== undefined && body.paymentIntentId !== null && body.paymentIntentId !== "") {
