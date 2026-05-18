@@ -143,7 +143,7 @@ export default function CustomerLoginPage() {
       <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <Link to="/" className="flex items-center gap-2 cursor-pointer">
           <img
-            src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+            src="/assets/brand/pawtenant-logo-black-02.png"
             alt="PawTenant"
             className="h-10 w-auto object-contain"
           />

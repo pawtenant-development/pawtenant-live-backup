@@ -144,8 +144,9 @@ export default function DiscountPopup({ delayMs = 7000 }: DiscountPopupProps) {
         {/* LEFT — Dog image (hidden on mobile, visible on sm+) */}
         <div className="relative hidden sm:block sm:w-[44%] flex-shrink-0 min-h-[360px]">
           <img
-            src="https://readdy.ai/api/search-image?query=happy%20golden%20retriever%20dog%20sitting%20outdoors%20with%20bright%20smile%20tongue%20out%20warm%20golden%20sunlight%20bokeh%20background%20beautiful%20fluffy%20coat%20cheerful%20joyful%20expression%20natural%20outdoor%20setting%20green%20blurred%20background&width=480&height=540&seq=disc-popup-dog-landscape-2&orientation=portrait"
+            src="/assets/blog/cafe-retriever.jpg"
             alt="Happy dog"
+            loading="lazy"
             className="w-full h-full object-cover object-center absolute inset-0"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-white/30" />

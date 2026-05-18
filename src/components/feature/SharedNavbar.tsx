@@ -160,8 +160,8 @@ export default function SharedNavbar() {
             <img
               src={
                 scrolled || !isHome
-                  ? "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
-                  : "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/d2641cf9cd0cc381736d2232d3da5f7c.png"
+                  ? "/assets/brand/pawtenant-logo-black-02.png"
+                  : "/assets/brand/pawtenant-logo-white-02.png"
               }
               alt="PawTenant"
               className={`h-10 sm:h-14 w-auto object-contain transition-all ${!scrolled && isHome ? "brightness-0 invert" : ""}`}
@@ -353,7 +353,7 @@ export default function SharedNavbar() {
         {/* Panel header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <img
-            src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+            src="/assets/brand/pawtenant-logo-black-02.png"
             alt="PawTenant"
             className="h-9 w-auto object-contain"
           />

@@ -415,7 +415,7 @@ export default function ProviderPortalPage() {
         <div className="flex items-center gap-3">
           <Link to="/" className="cursor-pointer">
             <img
-              src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+              src="/assets/brand/pawtenant-logo-black-02.png"
               alt="PawTenant"
               className="h-9 w-auto object-contain"
             />

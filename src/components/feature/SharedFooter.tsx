@@ -59,7 +59,7 @@ export default function SharedFooter() {
         <div className="mb-8 lg:hidden">
           <Link to="/" className="inline-block mb-4 cursor-pointer">
             <img
-              src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+              src="/assets/brand/pawtenant-logo-black-02.png"
               alt="PawTenant Logo"
               className="h-12 w-auto object-contain object-left"
             />
@@ -75,7 +75,7 @@ export default function SharedFooter() {
           <div>
             <Link to="/" className="inline-block mb-4 cursor-pointer">
               <img
-                src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+                src="/assets/brand/pawtenant-logo-black-02.png"
                 alt="PawTenant Logo"
                 className="h-14 w-auto object-contain object-left"
               />
