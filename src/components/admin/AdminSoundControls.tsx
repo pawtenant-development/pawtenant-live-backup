@@ -43,6 +43,11 @@ import {
   isUnlocked,
   subscribeUnlockState,
 } from "../../lib/soundPlayer";
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  type NotifPermission,
+} from "../../lib/desktopNotify";
 
 const TYPE_LABELS: Record<SoundType, string> = {
   chat: "Chat messages",
@@ -69,6 +74,9 @@ export default function AdminSoundControls() {
   const [prefs, setPrefs] = useState<SoundPrefs>(() => getSoundPrefs());
   const [unlocked, setUnlocked] = useState<boolean>(() => isUnlocked());
   const [enabling, setEnabling] = useState(false);
+  const [notifPerm, setNotifPerm] = useState<NotifPermission>(() =>
+    getNotificationPermission(),
+  );
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Preload MP3 assets on mount so the first real alert plays instantly
@@ -147,6 +155,34 @@ export default function AdminSoundControls() {
       setEnabling(false);
     }
   }, [enabling]);
+
+  /**
+   * Toggle the OS-level notification opt-in. First time the admin
+   * enables it, request browser permission immediately (we're inside a
+   * user-gesture click handler so the prompt is allowed). If the user
+   * denies or the browser doesn't support Notifications, keep the toggle
+   * off so we never quietly claim a fallback that won't fire.
+   */
+  const handleToggleDesktopNotifications = useCallback(async () => {
+    const currentlyOn = prefs.desktopNotificationsEnabled;
+    if (currentlyOn) {
+      setPrefs(setSoundPrefs({ desktopNotificationsEnabled: false }));
+      return;
+    }
+    // Turning ON. Resolve permission first.
+    let perm = getNotificationPermission();
+    if (perm === "default") {
+      perm = await requestNotificationPermission();
+    }
+    setNotifPerm(perm);
+    if (perm !== "granted") {
+      // Permission denied / unsupported — leave the toggle off so the
+      // UI status stays accurate.
+      setPrefs(setSoundPrefs({ desktopNotificationsEnabled: false }));
+      return;
+    }
+    setPrefs(setSoundPrefs({ desktopNotificationsEnabled: true }));
+  }, [prefs.desktopNotificationsEnabled]);
 
   if (!shouldRender(pathname)) return null;
 
@@ -244,7 +280,9 @@ export default function AdminSoundControls() {
             <div className="px-4 py-2 bg-emerald-50/60 border-b border-emerald-100 flex items-center gap-2">
               <i className="ri-checkbox-circle-line text-emerald-600" />
               <span className="text-[11px] text-emerald-800">
-                Audio enabled. Use Preview to test individual sounds.
+                {muted
+                  ? "Audio enabled but globally muted."
+                  : "Audio enabled. Use Preview to test individual sounds."}
               </span>
             </div>
           )}
@@ -355,6 +393,62 @@ export default function AdminSoundControls() {
             <p className="text-[11px] text-gray-400 mt-3 leading-snug">
               Sounds play when an admin tab is open. Stored on this device.
             </p>
+          </div>
+
+          {/* Desktop notifications — OS-level toast for background tabs.
+              Audio in background tabs can be throttled by the browser /
+              the OS Do Not Disturb mode. A browser notification fires
+              outside the tab and survives those throttles, but it
+              requires explicit permission. */}
+          <div className="px-4 py-3 border-t border-gray-100">
+            <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">
+              Background-tab fallback
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-700 leading-snug">
+                  Desktop notifications
+                </p>
+                <p className="text-[11px] text-gray-500 leading-snug mt-0.5">
+                  OS-level toast when a new visitor lands while this tab
+                  is in the background. Title-bar count
+                  <span className="font-mono"> (N) PawTenant Admin </span>
+                  always updates regardless of this setting.
+                </p>
+                {notifPerm === "denied" && (
+                  <p className="text-[11px] text-red-600 leading-snug mt-1">
+                    Browser permission blocked. Re-enable in site settings.
+                  </p>
+                )}
+                {notifPerm === "unsupported" && (
+                  <p className="text-[11px] text-gray-500 leading-snug mt-1">
+                    Notifications API unavailable in this browser.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleDesktopNotifications}
+                disabled={notifPerm === "denied" || notifPerm === "unsupported"}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${
+                  prefs.desktopNotificationsEnabled && notifPerm === "granted"
+                    ? "bg-emerald-500"
+                    : "bg-gray-300"
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                aria-pressed={
+                  prefs.desktopNotificationsEnabled && notifPerm === "granted"
+                }
+                aria-label="Toggle desktop notifications"
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    prefs.desktopNotificationsEnabled && notifPerm === "granted"
+                      ? "translate-x-4"
+                      : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       )}

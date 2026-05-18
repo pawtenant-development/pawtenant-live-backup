@@ -28,12 +28,21 @@ export interface SoundPrefs {
   volume: number;
   /** Per-channel enable/disable. Default true. */
   enabled: Record<SoundType, boolean>;
+  /**
+   * Whether the admin has opted in to OS-level browser notifications.
+   * Used as a visual + audible fallback for tabs in the background where
+   * in-page audio may be throttled. Defaults to false — the admin must
+   * explicitly enable the toggle, which then triggers
+   * Notification.requestPermission().
+   */
+  desktopNotificationsEnabled: boolean;
 }
 
 const DEFAULTS: SoundPrefs = {
   muted: false,
   volume: 0.8,
   enabled: { chat: true, visitor: true, consultation: true, contact: true },
+  desktopNotificationsEnabled: false,
 };
 
 let cache: SoundPrefs | null = null;
@@ -66,6 +75,10 @@ function read(): SoundPrefs {
           ? clamp01(parsed.volume)
           : DEFAULTS.volume,
       enabled: { ...DEFAULTS.enabled, ...(parsed.enabled ?? {}) },
+      desktopNotificationsEnabled:
+        typeof parsed.desktopNotificationsEnabled === "boolean"
+          ? parsed.desktopNotificationsEnabled
+          : DEFAULTS.desktopNotificationsEnabled,
     };
     return cache;
   } catch {
@@ -95,7 +108,12 @@ function writeAndNotify(next: SoundPrefs): void {
 /** Returns a shallow copy so external callers can't mutate the cache. */
 export function getSoundPrefs(): SoundPrefs {
   const p = read();
-  return { muted: p.muted, volume: p.volume, enabled: { ...p.enabled } };
+  return {
+    muted: p.muted,
+    volume: p.volume,
+    enabled: { ...p.enabled },
+    desktopNotificationsEnabled: p.desktopNotificationsEnabled,
+  };
 }
 
 /** Patch update. Unknown keys are ignored. Returns the new snapshot. */
@@ -110,6 +128,10 @@ export function setSoundPrefs(
     volume:
       typeof patch.volume === "number" ? clamp01(patch.volume) : cur.volume,
     enabled: { ...cur.enabled, ...(patch.enabled ?? {}) },
+    desktopNotificationsEnabled:
+      typeof patch.desktopNotificationsEnabled === "boolean"
+        ? patch.desktopNotificationsEnabled
+        : cur.desktopNotificationsEnabled,
   };
   writeAndNotify(next);
   return next;

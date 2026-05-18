@@ -46,6 +46,9 @@ import {
   type LiveVisitorsSnapshot,
 } from "../../lib/liveVisitorsPoll";
 import { playVisitorLand } from "../../lib/notificationSounds";
+import { incrementBadge } from "../../lib/titleBadge";
+import { notify } from "../../lib/desktopNotify";
+import { getSoundPrefs, isSoundEnabled } from "../../lib/soundPrefs";
 
 const RECENT_ARRIVAL_WINDOW_MS = 30_000;
 
@@ -55,6 +58,35 @@ function shouldRun(pathname: string): boolean {
   // Admin subdomain — AdminApp mounts at "/" too.
   const host = window.location.hostname.toLowerCase();
   return host.startsWith("admin.") || host === "admin.pawtenant.com";
+}
+
+function isDocHidden(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.visibilityState !== "visible";
+}
+
+/**
+ * Fallback paths run for every newly-detected visitor session. Audio is
+ * already handled by playVisitorLand() (with per-session 90s dedupe).
+ * This adds:
+ *   - title badge (only when tab is hidden — when visible, the admin
+ *     can already see the live list grow in real time).
+ *   - opt-in browser notification (only when tab is hidden AND the user
+ *     has explicitly enabled desktop notifications).
+ * Both paths respect the visitor sound channel toggle and global mute,
+ * so an admin who turned off the visitor channel sees no visual noise
+ * either.
+ */
+function fireVisitorFallbacks(sessionId: string): void {
+  if (!isSoundEnabled("visitor")) return;
+  if (!isDocHidden()) return;
+  incrementBadge();
+  if (getSoundPrefs().desktopNotificationsEnabled) {
+    notify("New visitor on PawTenant", {
+      body: "A visitor just landed. Open the admin tab to view details.",
+      tag: `visitor-${sessionId}`,
+    });
+  }
 }
 
 export default function VisitorSoundMonitor() {
@@ -97,6 +129,7 @@ export default function VisitorSoundMonitor() {
               : NaN;
             if (Number.isFinite(firstSeenMs) && firstSeenMs >= threshold) {
               playVisitorLand(v.session_id);
+              fireVisitorFallbacks(v.session_id);
             }
           }
           seenSessionsRef.current = currentIds;
@@ -112,6 +145,7 @@ export default function VisitorSoundMonitor() {
         for (const id of currentIds) {
           if (!seen.has(id)) {
             playVisitorLand(id);
+            fireVisitorFallbacks(id);
           }
         }
         seenSessionsRef.current = currentIds;
