@@ -134,3 +134,125 @@ This repo contains an AI system in /AI folder.
 1. Graphify understanding
 2. AI/SKILLS structured execution
 3. Minimal safe fix
+
+
+## MERGE-FREEZE POLICY — MEGA-FILES (MANDATORY)
+
+Two files in this repo are formally **MERGE-FROZEN**.
+This means: extra rules apply on top of normal Safety rules.
+
+Authority: this section + `SYSTEMS.md` §4.4–§4.5 + tracker row 210.
+If this section conflicts with anything else, this section wins for these two files.
+
+### Frozen files (current scope)
+
+1. `src/pages/admin-orders/components/OrderDetailModal.tsx`
+   (~315KB / ~5617 lines, multi-system operational hub: orders, comms, payments, provider, attribution, consultation, audit)
+
+2. `src/pages/admin-orders/components/AnalyticsTab.tsx`
+   (~112KB, multi-panel analytics hub; TEST and LIVE intentionally diverge — see SYSTEMS.md §7)
+
+Both files exist in `pawtenant-test` and `pawtenant-production`.
+Both are high-risk to merge.
+Both have intentional cross-repo divergence.
+
+### Hard rules for frozen files
+
+- NEVER blanket-copy these files between TEST and LIVE.
+- NEVER replace the whole file from the other repo.
+- NEVER bundle changes to these files into an unrelated PR/commit.
+- NEVER edit these files without identifying a tracker row.
+- NEVER assume byte-diff size means anything — normalize CRLF/LF first.
+- NEVER refactor / modularize / restructure these files in this phase (see "Future modularization" below).
+
+### Approved edit types (ALLOWED)
+
+Inside a frozen file, the following edits are allowed (still require tracker row):
+
+- Scoped bugfix (single function, single bug, narrow scope).
+- Additive tab registration (mount a new tab without changing other tabs).
+- Isolated component mount (new panel/card inserted in one place).
+- Surgical operational fix (e.g. add `try/finally`, normalize an email compare).
+- Analytics panel registration (add one panel mount, no other changes — and only when SYSTEMS.md §7 allows it).
+- Localized UI correction (typo, spacing, single-element style fix).
+- Copy/text edits within a single block.
+
+Every approved edit must:
+- be the smallest change that fixes the problem.
+- not touch unrelated tabs / panels / sub-components.
+- preserve all existing functionality.
+
+### Forbidden edit types (NOT ALLOWED)
+
+Inside a frozen file, the following are forbidden without a separate planning task:
+
+- Repo-overwrite (drop the other repo's version on top).
+- Random parity copy (mirroring blocks because "the other side has them").
+- Uncontrolled redesign of any tab / panel.
+- Large structural rewrites (function extraction, layout reorg).
+- Unrelated merge bundles (mixing analytics + comms + payments in one edit).
+- Vocabulary renames (`ownerChannel`, `channel`, `source`) without a cross-repo plan.
+- Removing existing panels / tabs / mounts.
+- Changing prop shapes of shared sub-components.
+
+If a needed change does not fit the "approved" list, STOP and ask the owner.
+
+### Required merge workflow (frozen files)
+
+Every edit that touches a frozen file MUST follow these 7 steps in order:
+
+1. **Identify tracker row** — find or create the row in `PawTenant_Tracker_with_CompanyOS.xlsx`.
+2. **Classify divergence** — use the categories under "Drift classification" below.
+3. **Audit TEST/LIVE ownership** — confirm which side is canonical per `SYSTEMS.md` §3.
+4. **Surgical diff only** — produce a per-hunk diff. No blanket copy. Normalize CRLF/LF before comparing.
+5. **Verify operational surfaces** — confirm checkout, Stripe, comms log, attribution capture, consultation funnel still work.
+6. **Smoke test** — run the dev server, exercise the affected tab/panel in browser preview.
+7. **Update tracker** — write evidence (commit SHA, files touched, hunks count) into the tracker row.
+
+Skipping any step = the edit is not approved.
+
+### Drift classification (MANDATORY before any cross-repo touch)
+
+Before merging anything that touches a frozen file, classify the divergence:
+
+- **Intentional divergence** — documented in SYSTEMS.md. Leave alone. Do NOT merge.
+- **TEST-only roadmap divergence** — TEST is ahead by design (e.g. Phase-2 analytics). Do NOT promote without owner approval.
+- **LIVE operational hotfix divergence** — LIVE has a fix TEST is missing. Mirror surgically into TEST.
+- **Temporary rollout divergence** — feature is mid-rollout (e.g. consultation funnel). Wait for rollout decision.
+- **Stale drift** — unintentional, no owner. Must be classified before any action.
+
+Default: if you cannot classify, STOP and ask. Do not merge unclassified deltas.
+
+### Future modularization policy
+
+These two files are eventually intended for modularization:
+
+- `OrderDetailModal.tsx` → thin shell + per-tab sub-components (Overview, Notes, Comms, Payments, Provider, Attribution, Consultation, Audit).
+- `AnalyticsTab.tsx` → per-group sub-components matching the 7-group IA in TEST (once vocabulary is unified — see SYSTEMS.md §7).
+
+Modularization is **deferred** until ALL of the following hold:
+
+- Parity audits between TEST and LIVE are stable (no surprise drift for one full sprint).
+- Governance is stable (no in-flight changes to SYSTEMS.md / tracker / merge rules).
+- Roadmap sequencing allows it (no concurrent mega-merge — e.g. consultation funnel rollout is complete).
+- Owner explicitly approves the modularization sprint.
+
+Until then: **no extraction, no thin-shell refactor, no domain segmentation** inside these two files.
+
+### Cross-repo consistency
+
+This freeze policy must exist in BOTH repos:
+
+- `pawtenant-test/CLAUDE.md` (this file).
+- `pawtenant-live-backup/CLAUDE.md` (mirror after each amendment).
+
+If the two copies disagree, TEST is the staging canonical. Sync immediately.
+
+### When in doubt
+
+If unsure whether an edit qualifies as approved:
+1. Stop.
+2. Cite the tracker row + the divergence classification.
+3. Ask the owner before changing the file.
+
+A blocked edit is recoverable. A blanket-merged mega-file is not.
