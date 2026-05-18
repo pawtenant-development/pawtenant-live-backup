@@ -284,13 +284,20 @@ export default function AdminSoundControls() {
             </div>
           )}
           {unlocked && (
-            <div className="px-4 py-2 bg-emerald-50/60 border-b border-emerald-100 flex items-center gap-2">
-              <i className="ri-checkbox-circle-line text-emerald-600" />
-              <span className="text-[11px] text-emerald-800">
-                {muted
-                  ? "Audio enabled but globally muted."
-                  : "Audio enabled. Use Preview to test individual sounds."}
-              </span>
+            <div className="px-4 py-2 bg-emerald-50/60 border-b border-emerald-100 flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <i className="ri-checkbox-circle-line text-emerald-600" />
+                <span className="text-[11px] text-emerald-800">
+                  {muted
+                    ? "Audio enabled but globally muted."
+                    : "Audio enabled. Use Preview to test individual sounds."}
+                </span>
+              </div>
+              {!prefs.desktopNotificationsEnabled && (
+                <p className="text-[11px] text-emerald-700 leading-snug pl-6">
+                  For alerts while this tab is in the background, enable <strong>Desktop notifications</strong> below — Chrome may silence audio on hidden tabs.
+                </p>
+              )}
             </div>
           )}
 

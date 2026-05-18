@@ -73,14 +73,36 @@ function isDocHidden(): boolean {
  * actively looking at the page, the live UI already conveys the event.
  */
 function fireFallbacks(sessionId: string): void {
-  if (!isSoundEnabled("visitor")) return;
-  if (!isDocHidden()) return;
+  const channelOn = isSoundEnabled("visitor");
+  const hidden = isDocHidden();
+  if (IS_DEV) {
+    // eslint-disable-next-line no-console
+    console.debug("[visitorMonitor] fallback check", {
+      sessionId,
+      channelOn,
+      hidden,
+    });
+  }
+  if (!channelOn) return;
+  if (!hidden) return;
   incrementBadge();
-  if (getSoundPrefs().desktopNotificationsEnabled) {
+  const desktopOn = getSoundPrefs().desktopNotificationsEnabled;
+  if (IS_DEV) {
+    // eslint-disable-next-line no-console
+    console.debug("[visitorMonitor] badge incremented", {
+      sessionId,
+      desktopNotificationsEnabled: desktopOn,
+    });
+  }
+  if (desktopOn) {
     notify("New visitor on PawTenant", {
       body: "A visitor just landed. Open the admin tab to view details.",
       tag: `visitor-${sessionId}`,
     });
+    if (IS_DEV) {
+      // eslint-disable-next-line no-console
+      console.debug("[visitorMonitor] desktop notify fired", { sessionId });
+    }
   }
 }
 
@@ -119,6 +141,13 @@ function onSnapshot(snap: LiveVisitorsSnapshot): void {
     // if a session disappears and re-appears within the same minute.
     for (const id of currentIds) {
       if (!seenSessions.has(id)) {
+        if (IS_DEV) {
+          // eslint-disable-next-line no-console
+          console.debug("[visitorMonitor] new visitor", {
+            sessionId: id,
+            hidden: isDocHidden(),
+          });
+        }
         playVisitorLand(id);
         fireFallbacks(id);
       }

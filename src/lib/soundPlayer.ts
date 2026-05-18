@@ -54,10 +54,27 @@ const sources = new Map<string, HTMLAudioElement>();
 // the admin replies). Nodes self-deregister on `ended`.
 const taggedNodes = new Map<string, Set<HTMLAudioElement>>();
 
-// Pending plays queued while autoplay is locked or the tab is hidden.
+// Pending plays queued while autoplay is locked. Only queued on a VISIBLE
+// tab where the next user gesture will flush them — never on a hidden tab
+// (queueing in a hidden tab caused "stale ding" replays when the admin
+// switched back to the admin tab minutes later).
 type Pending = { url: string; vol: number; tag?: string };
 let pending: Pending[] = [];
 const PENDING_CAP = 3;
+
+const IS_DEV =
+  typeof import.meta !== "undefined" &&
+  Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
+
+function shortName(url: string): string {
+  const i = url.lastIndexOf("/");
+  return i >= 0 ? url.slice(i + 1) : url;
+}
+
+function isHidden(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.visibilityState !== "visible";
+}
 
 // Unlock state — flips to true once any successful .play() resolves OR
 // the user clicks the Enable Sounds button.
@@ -141,13 +158,31 @@ function fireOnce(url: string, vol: number, tag?: string): void {
   if (vol <= 0) return;
   const src = ensureSource(url);
   if (!src) return;
+  const hidden = isHidden();
+  if (IS_DEV) {
+    // eslint-disable-next-line no-console
+    console.debug("[soundPlayer] play attempt", {
+      url: shortName(url),
+      vol,
+      hidden,
+      unlocked,
+    });
+  }
   // Clone via new Audio() so two rapid calls don't clip each other.
   // The cloned node uses the same URL → browser HTTP cache serves it
   // instantly from memory after the first load.
   let node: HTMLAudioElement;
   try {
     node = new Audio(src.src || url);
-  } catch {
+  } catch (err) {
+    if (IS_DEV) {
+      // eslint-disable-next-line no-console
+      console.debug("[soundPlayer] new Audio() threw — dropping", {
+        url: shortName(url),
+        hidden,
+        err: String(err),
+      });
+    }
     return;
   }
   try {
@@ -158,15 +193,42 @@ function fireOnce(url: string, vol: number, tag?: string): void {
     if (p && typeof p.then === "function") {
       p.then(
         () => {
+          if (IS_DEV) {
+            // eslint-disable-next-line no-console
+            console.debug("[soundPlayer] play resolved", {
+              url: shortName(url),
+              hidden,
+            });
+          }
           if (!unlocked) {
             unlocked = true;
             notifyUnlock();
             flushPending();
           }
         },
-        () => {
-          // Autoplay blocked. Queue and wait for an unlock gesture.
-          queuePending({ url, vol, tag });
+        (err) => {
+          if (IS_DEV) {
+            // eslint-disable-next-line no-console
+            console.debug("[soundPlayer] play rejected", {
+              url: shortName(url),
+              hidden,
+              unlocked,
+              err: String(err),
+            });
+          }
+          // Only queue when the tab is VISIBLE. The legitimate case here
+          // is "page just loaded, user hasn't clicked anywhere yet" —
+          // the next gesture will unlock + flush.
+          //
+          // When the tab is HIDDEN we drop the play silently. The visitor
+          // monitor has already fired its visual fallbacks (title badge +
+          // opt-in desktop notification) before this point, so the event
+          // is already surfaced. Queueing here would just replay a stale
+          // ding minutes later when the admin switches back to the admin
+          // tab — exactly the bug this change fixes.
+          if (!hidden) {
+            queuePending({ url, vol, tag });
+          }
         },
       );
     } else {
@@ -177,8 +239,18 @@ function fireOnce(url: string, vol: number, tag?: string): void {
         flushPending();
       }
     }
-  } catch {
-    queuePending({ url, vol, tag });
+  } catch (err) {
+    if (IS_DEV) {
+      // eslint-disable-next-line no-console
+      console.debug("[soundPlayer] play threw", {
+        url: shortName(url),
+        hidden,
+        err: String(err),
+      });
+    }
+    if (!hidden) {
+      queuePending({ url, vol, tag });
+    }
   }
 }
 
@@ -190,7 +262,13 @@ function installListeners(): void {
   const onGesture = (): void => {
     // Any genuine user gesture is sufficient to unlock <audio> playback
     // in modern browsers. Flush whatever is queued so the admin hears
-    // the most recent (capped) batch.
+    // the most recent (capped) batch. This is the ONLY flush path —
+    // we deliberately do NOT auto-flush on visibilitychange/focus,
+    // because the only reason pending would contain anything is "page
+    // just loaded, no gesture yet" and the next click/keypress flushes
+    // it naturally. Auto-flushing on tab focus replayed stale visitor
+    // dings minutes after the event, which is the bug this section
+    // fixes — see the symmetric drop in fireOnce().
     if (!unlocked) {
       unlocked = true;
       notifyUnlock();
@@ -207,12 +285,6 @@ function installListeners(): void {
   for (const evt of gestureEvents) {
     window.addEventListener(evt, onGesture, true);
   }
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") flushPending();
-    });
-  }
-  window.addEventListener("focus", flushPending);
 }
 
 installListeners();
