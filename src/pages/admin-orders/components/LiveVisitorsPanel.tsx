@@ -13,12 +13,27 @@
  * RPC every 5 seconds. Auto-disappears any session whose last_seen_at
  * falls outside the 90s window.
  *
- * Phase A/B scope: read-only. No sounds, no notifications, no realtime,
- * no drawer, no visitor actions, no new RPCs.
+ * Phase A/B scope: read-only foundation, no realtime, no drawer, no
+ * visitor actions, no new RPCs.
+ *
+ * Phase 1+ (sounds): operational sound notifications are now wired
+ * through src/lib/notificationSounds.ts and gated by the
+ * AdminSoundControls UI (top-right of every admin page).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
+// Phase 1D (2026-05-18): polling consolidated. This panel now reads
+// from the shared liveVisitorsPoll engine so the new-visitor chime can
+// fire from a single admin-wide monitor (VisitorSoundMonitor) regardless
+// of which admin tab is open. The sound wiring previously inlined here
+// has been moved into VisitorSoundMonitor — single source of truth.
+import {
+  subscribeLiveVisitors,
+  refreshNow as refreshLiveVisitors,
+  LIVE_VISITORS_POLL_MS,
+  LIVE_VISITORS_WINDOW_SECONDS,
+} from "../../../lib/liveVisitorsPoll";
 // Phase K4 — reuse the normalized acquisition classifier so the Live
 // Visitors channel chip detects AI referrals, organic search, dark
 // social, and the rest, instead of the primitive Direct / Referral /
@@ -69,8 +84,12 @@ interface SessionOrderRef {
   doctor_status:    string | null;
 }
 
-const POLL_MS        = 5_000;
-const WINDOW_SECONDS = 90;
+// Polling cadence and visitor activity window now live in
+// src/lib/liveVisitorsPoll.ts. Re-export the constants under the panel's
+// original names so the existing JSX (header copy, empty state) reads
+// the canonical values without any text drift.
+const POLL_MS        = LIVE_VISITORS_POLL_MS;
+const WINDOW_SECONDS = LIVE_VISITORS_WINDOW_SECONDS;
 
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
@@ -154,72 +173,81 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
   // without an order chip.
   const [orderBySession, setOrderBySession] = useState<Map<string, SessionOrderRef>>(() => new Map());
 
-  // ── Poll loop ───────────────────────────────────────────────────────────
-  const load = useCallback(async (background: boolean) => {
-    if (!background) setRefreshing(true);
-    try {
-      const { data, error: rpcErr } = await supabase.rpc("get_live_visitors", {
-        p_window_seconds: WINDOW_SECONDS,
-        p_limit:          200,
-      });
-      if (rpcErr) {
-        if (!background) setError(rpcErr.message);
-        return;
-      }
-      const visitors = ((data ?? []) as LiveVisitor[]);
-      setRows(visitors);
-      if (background) setError(null);
+  // ── Subscribe to the shared live-visitors poll engine ──────────────────
+  // Polling is owned by src/lib/liveVisitorsPoll.ts. This panel reads the
+  // shared snapshot on every tick and runs its own batched orders lookup
+  // for the linked-order chip. The new-visitor chime is fired by
+  // VisitorSoundMonitor — NOT here — so admins on Orders / Analytics /
+  // Chats / Emails / etc. all hear visitor landings.
+  useEffect(() => {
+    const unsubscribe = subscribeLiveVisitors((snap) => {
+      // Visitor rows + error first — UI reflects backend state immediately.
+      setRows(snap.visitors);
+      setError(snap.error);
 
-      // Batched order lookup. Single round-trip per poll regardless of how
-      // many visitors are on screen — no N+1. The orders table is admin-
-      // readable directly (see AttributionJourneyTab.tsx for precedent);
-      // RLS handles non-admin callers.
-      const sessionIds = visitors
-        .map((v) => v.session_id)
-        .filter((s): s is string => typeof s === "string" && s.length > 0);
+      // Visitor Journey Intelligence — batched orders lookup per snapshot.
+      // Single round-trip regardless of how many visitors are on screen;
+      // no N+1. Failures fall back silently — visitor list still renders.
+      const sessionIds: string[] = [];
+      for (const v of snap.visitors) {
+        if (typeof v.session_id === "string" && v.session_id.length > 0) {
+          sessionIds.push(v.session_id);
+        }
+      }
       if (sessionIds.length === 0) {
         setOrderBySession(new Map());
         return;
       }
-      try {
-        const { data: orderRows, error: orderErr } = await supabase
-          .from("orders")
-          .select("id, confirmation_id, paid_at, payment_intent_id, doctor_status, session_id")
-          .in("session_id", sessionIds);
-        if (orderErr) {
-          // Silent fallback — the visitor list still renders without chips.
+      void (async () => {
+        try {
+          const { data: orderRows, error: orderErr } = await supabase
+            .from("orders")
+            .select(
+              "id, confirmation_id, paid_at, payment_intent_id, doctor_status, session_id",
+            )
+            .in("session_id", sessionIds);
+          if (orderErr) {
+            setOrderBySession(new Map());
+            return;
+          }
+          const next = new Map<string, SessionOrderRef>();
+          for (const r of (orderRows ?? []) as Array<
+            SessionOrderRef & { session_id: string | null }
+          >) {
+            if (!r.session_id) continue;
+            // If multiple orders share a session_id (recovery / retry),
+            // prefer the paid one. The chip should reflect the meaningful
+            // conversion, not the lead shell.
+            const existing = next.get(r.session_id);
+            if (!existing) {
+              next.set(r.session_id, r);
+              continue;
+            }
+            const existingPaid = !!existing.paid_at;
+            const incomingPaid = !!r.paid_at;
+            if (incomingPaid && !existingPaid) next.set(r.session_id, r);
+          }
+          setOrderBySession(next);
+        } catch {
           setOrderBySession(new Map());
-          return;
         }
-        const next = new Map<string, SessionOrderRef>();
-        for (const r of (orderRows ?? []) as Array<SessionOrderRef & { session_id: string | null }>) {
-          if (!r.session_id) continue;
-          // If multiple orders share a session_id (recovery / retry), keep
-          // the paid one if any, otherwise the most-recently-touched. The
-          // chip should reflect the meaningful conversion, not the lead
-          // shell.
-          const existing = next.get(r.session_id);
-          if (!existing) { next.set(r.session_id, r); continue; }
-          const existingPaid = !!existing.paid_at;
-          const incomingPaid = !!r.paid_at;
-          if (incomingPaid && !existingPaid) next.set(r.session_id, r);
-        }
-        setOrderBySession(next);
-      } catch {
-        setOrderBySession(new Map());
-      }
-    } catch (e) {
-      if (!background) setError((e as Error)?.message ?? "Failed to load");
-    } finally {
-      if (!background) setRefreshing(false);
-    }
+      })();
+    });
+    return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    void load(false);
-    const id = window.setInterval(() => void load(true), POLL_MS);
-    return () => window.clearInterval(id);
-  }, [load]);
+  // Manual Refresh button — forces an out-of-band fetch on the shared
+  // engine. Local refreshing flag is held only for the duration of the
+  // promise so the button shows "Refreshing…".
+  const refresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refreshLiveVisitors();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing]);
 
   // Phase K4.5 — only one attribution popover can be open at a time.
   // Keyed by session_id so closing/opening is a clean state flip.
@@ -265,7 +293,7 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => void load(false)}
+            onClick={() => void refresh()}
             disabled={refreshing}
             className="text-sm px-3 py-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50"
           >
@@ -388,7 +416,7 @@ export default function LiveVisitorsPanel({ showBackToOrders = false }: Props) {
       )}
 
       <p className="mt-4 text-xs text-gray-400">
-        Read-only foundation panel. Polling every {POLL_MS / 1000}s. Visitors disappear after {WINDOW_SECONDS}s of inactivity. Sounds and notifications are not enabled yet.
+        Polling every {POLL_MS / 1000}s. Visitors disappear after {WINDOW_SECONDS}s of inactivity. Visitor landing alerts fire admin-wide — use Admin Sound Controls (top-right) to mute or tune them.
       </p>
 
       {/* Phase K4.5 — single popover for whichever visitor's chip is

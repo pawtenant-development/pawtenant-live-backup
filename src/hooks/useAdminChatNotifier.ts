@@ -39,7 +39,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { playDoorbell, playSoftClick } from "../lib/chatSounds";
+import { playDoorbell, playSoftClick, stopChatSound } from "../lib/chatSounds";
 
 export interface ChatSession {
   id: string;
@@ -81,19 +81,35 @@ export interface AdminAlert {
 
 const POLL_INTERVAL_MS   = 5000;
 const FLASH_DURATION_MS  = 4000;
-const PING_COOLDOWN_MS   = 1500;
+/**
+ * Phase 1C (2026-05-18): bumped from 1500ms to 30000ms.
+ * Soft-click follow-up sounds are now also rate-limited inside
+ * chatSounds.playSoftClick (FOLLOWUP_COOLDOWN_MS = 45s per session).
+ * This top-level guard is a coarser second line of defense: even if
+ * many sessions flash in the same tick, no more than one ping every
+ * 30s for the same session at this layer.
+ */
+const PING_COOLDOWN_MS   = 30000;
 const NOTIF_COOLDOWN_MS  = 2000;
 const ALERT_DURATION_MS  = 6000;
 const MAX_VISIBLE_ALERTS = 4;
 /**
- * Urgent-ring window: when a visitor sends the first message in a
- * previously un-alerted session, the doorbell repeats every
- * RING_INTERVAL_MS for up to RING_DURATION_MS. The ring stops early
- * when the admin opens the session, sends a reply, or the session is
- * marked seen (all three paths route through markSeen()).
+ * Urgent ring (Phase 1C, 2026-05-18):
+ * Previous implementation re-fired the doorbell every 2.5s for 30s
+ * (= 12 plays of the new ~441KB chat-first MP3). With overlapping
+ * cloned audio nodes this produced a wall of noise that did not stop
+ * when the admin replied within a second.
+ *
+ * New rule: fire the doorbell ONCE on the first message. If the admin
+ * still hasn't engaged after RING_REMINDER_MS, fire ONE soft click as
+ * a reminder. No more. The persistent visual flash + toast +
+ * NotificationsBell unread badge carry the rest of the signal.
+ *
+ * The in-flight first-message audio element is now tagged with the
+ * session id and stopped via chatSounds.stopChatSound(sessionId) the
+ * instant the admin engages (markSeen → stopRingingSession).
  */
-const RING_DURATION_MS   = 30000;
-const RING_INTERVAL_MS   = 2500;
+const RING_REMINDER_MS   = 15000;
 
 export interface UseAdminChatNotifierOptions {
   /** Overall kill-switch — false disables polling and alerts entirely. */
@@ -276,38 +292,79 @@ export function useAdminChatNotifier(
 
   /**
    * Stop the urgent ring for a session (idempotent, no-op if not ringing).
-   * Called on markSeen and on unmount.
+   * Called on markSeen and on unmount. Phase 1C: also kills the in-flight
+   * first-message MP3 element so admin replies stop the audio instantly,
+   * not after the file plays out.
    */
   const stopRingingSession = useCallback((sessionId: string) => {
     const t = ringTimersRef.current.get(sessionId);
-    if (!t) return;
-    window.clearInterval(t.intervalId);
-    window.clearTimeout(t.timeoutId);
-    ringTimersRef.current.delete(sessionId);
+    if (t) {
+      window.clearTimeout(t.timeoutId);
+      // intervalId is retained for backwards-compatible struct shape but
+      // no longer driven by setInterval (see startRingingSession below).
+      // Clearing it is still safe and idempotent.
+      window.clearTimeout(t.intervalId);
+      ringTimersRef.current.delete(sessionId);
+    }
+    // Always stop the in-flight MP3 — even if the timer struct was
+    // already cleaned up (e.g. ring window expired naturally).
+    try {
+      stopChatSound(sessionId);
+    } catch {
+      /* sound is best-effort */
+    }
   }, []);
 
   /**
-   * Start the urgent 30s ring cycle for a session — fires doorbell
-   * immediately, then every RING_INTERVAL_MS. Auto-stops after
-   * RING_DURATION_MS. If a ring is somehow already active, it is reset.
+   * Start the urgent ring for a session — Phase 1C semantics:
+   *   - Fire the doorbell ONCE.
+   *   - If still unhandled after RING_REMINDER_MS, fire ONE soft click.
+   *   - No further audio. The flash + toast + unread badge keep
+   *     surface state visible.
+   *
+   * The in-flight first-message MP3 is tagged with the session id by
+   * playDoorbell(sessionId); stopRingingSession halts it the instant
+   * the admin replies / opens the chat / marks seen.
+   *
+   * If a ring is somehow already active for this session, the previous
+   * scheduled reminder is cancelled and the in-flight audio is stopped
+   * before starting fresh (e.g. session re-opened after being closed).
    */
   const startRingingSession = useCallback((sessionId: string) => {
     const existing = ringTimersRef.current.get(sessionId);
     if (existing) {
-      window.clearInterval(existing.intervalId);
+      window.clearTimeout(existing.intervalId);
       window.clearTimeout(existing.timeoutId);
       ringTimersRef.current.delete(sessionId);
+      try {
+        stopChatSound(sessionId);
+      } catch {
+        /* ignore */
+      }
     }
-    playDoorbell();
-    const intervalId = window.setInterval(() => {
+    playDoorbell(sessionId);
+    // Soft reminder if still unhandled. Uses setTimeout (single-shot),
+    // not setInterval (which previously produced ~12 plays in 30s).
+    const reminderId = window.setTimeout(() => {
       if (!mountedRef.current) return;
-      playDoorbell();
-    }, RING_INTERVAL_MS);
-    const timeoutId = window.setTimeout(() => {
-      window.clearInterval(intervalId);
+      // Guard: if markSeen already ran, the timer struct will have
+      // been removed — skip the reminder.
+      if (!ringTimersRef.current.has(sessionId)) return;
+      try {
+        playSoftClick(sessionId);
+      } catch {
+        /* ignore */
+      }
+    }, RING_REMINDER_MS);
+    // Self-cleanup timer — drop the struct after the reminder fires (or
+    // would have fired) so future first messages start fresh.
+    const cleanupId = window.setTimeout(() => {
       ringTimersRef.current.delete(sessionId);
-    }, RING_DURATION_MS);
-    ringTimersRef.current.set(sessionId, { intervalId, timeoutId });
+    }, RING_REMINDER_MS + 500);
+    ringTimersRef.current.set(sessionId, {
+      intervalId: reminderId,
+      timeoutId: cleanupId,
+    });
   }, []);
 
   // Flash a row briefly when a new message arrives.
@@ -528,11 +585,18 @@ export function useAdminChatNotifier(
           }
 
           // Kick off per-session urgent rings. If none started but a
-          // subsequent message fired, play the soft click once per tick.
+          // subsequent message fired, play the soft click — gated by
+          // chatSounds' per-session 45s cooldown so a chatty visitor
+          // does not produce a ping every poll.
           if (ringStartIds.length > 0) {
             for (const sid of ringStartIds) startRingingSession(sid);
           } else if (playSubsequent) {
-            playSoftClick();
+            // Pass the most-recently-alerting session id so cooldown is
+            // keyed correctly. If multiple sessions pinged in the same
+            // tick, the first one wins the audio; visual flash still
+            // surfaces them all.
+            const sid = alertRows[0]?.id;
+            playSoftClick(sid ?? null);
           }
 
           if (alertRows.length > 0) {

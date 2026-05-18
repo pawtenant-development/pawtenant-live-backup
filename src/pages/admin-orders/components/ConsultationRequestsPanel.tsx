@@ -16,6 +16,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+// Operational sounds — ops bell when a NEW consultation request appears
+// in the poll. Dedupe (24h per id) lives inside notificationSounds.
+import { playOpsAlert } from "../../../lib/notificationSounds";
 
 const STATUS_OPTIONS = [
   "new",
@@ -158,6 +161,12 @@ export default function ConsultationRequestsPanel({
   // previous "copied" indicator immediately.
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // ── Sound-on-new-request wiring ────────────────────────────────────────
+  // Track ids we've already seen. First successful poll = baseline (silent).
+  // After baseline, every new id triggers the ops bell.
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const baselineSetRef = useRef<boolean>(false);
+
   const copyValue = useCallback(async (value: string, key: string) => {
     if (!value) return;
     try {
@@ -219,6 +228,31 @@ export default function ConsultationRequestsPanel({
         return prevJson === nextJson ? prev : rows;
       });
       setError(null);
+
+      // ── Detect newly-arrived consultation requests ───────────────────
+      // First load establishes baseline silently. Subsequent loads fire
+      // the ops bell once per new row id. notificationSounds dedupes for
+      // 24h per id, so a flipping status or repeated poll never re-alerts.
+      try {
+        const currentIds = new Set<string>();
+        for (const r of rows) {
+          if (typeof r.id === "string" && r.id.length > 0) currentIds.add(r.id);
+        }
+        if (!baselineSetRef.current) {
+          seenIdsRef.current = currentIds;
+          baselineSetRef.current = true;
+        } else {
+          const seen = seenIdsRef.current;
+          for (const id of currentIds) {
+            if (!seen.has(id)) {
+              playOpsAlert("consultation", id);
+            }
+          }
+          seenIdsRef.current = currentIds;
+        }
+      } catch {
+        /* sound is best-effort */
+      }
     } catch (e) {
       if (mountedRef.current) {
         setError((e as Error)?.message ?? "Failed to load consultation requests");

@@ -16,6 +16,8 @@ import ErrorBoundary from "./components/feature/ErrorBoundary";
 import SEOManager from "./components/feature/SEOManager";
 import AdminChatNotifier from "./components/admin/AdminChatNotifier";
 import MiniChatDock from "./components/admin/MiniChatDock";
+import AdminSoundControls from "./components/admin/AdminSoundControls";
+import VisitorSoundMonitor from "./components/admin/VisitorSoundMonitor";
 import { AdminChatProvider } from "./context/AdminChatContext";
 import { supabase } from "./lib/supabaseClient";
 import { useGeoBlock } from "./hooks/useGeoBlock";
@@ -57,6 +59,8 @@ function AdminChatGate({ children }: { children: React.ReactNode }) {
       {children}
       <AdminChatNotifier />
       <MiniChatDock />
+      <AdminSoundControls />
+      <VisitorSoundMonitor />
     </AdminChatProvider>
   );
 }
@@ -224,6 +228,8 @@ function AdminApp() {
             <ScrollTopButton />
             <AdminChatNotifier />
             <MiniChatDock />
+            <AdminSoundControls />
+            <VisitorSoundMonitor />
           </AdminChatProvider>
         </BrowserRouter>
       </I18nextProvider>

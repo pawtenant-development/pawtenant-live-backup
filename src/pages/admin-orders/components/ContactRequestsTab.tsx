@@ -19,6 +19,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+// Operational sounds — ops bell on new contact-form submissions.
+// notificationSounds dedupes per id for 24h.
+import { playOpsAlert } from "../../../lib/notificationSounds";
 import { sendContactReply } from "../../../lib/contactSubmit";
 import { getAdminIdentity } from "../../../lib/adminIdentity";
 import { isAdminLevel, type AdminRole } from "../../../lib/adminPermissions";
@@ -95,6 +98,12 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
     };
   }, []);
 
+  // ── Sound-on-new-submission wiring ─────────────────────────────────────
+  // First poll = silent baseline. Subsequent polls fire the ops bell for
+  // every new submission id.
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const baselineSetRef = useRef<boolean>(false);
+
   const load = useCallback(
     async (background = false) => {
       if (!background) {
@@ -123,6 +132,28 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
           return prevJson === nextJson ? prev : rows;
         });
         setError(null);
+
+        // ── Detect new submissions and fire ops bell ────────────────────
+        try {
+          const currentIds = new Set<string>();
+          for (const r of rows) {
+            if (typeof r.id === "string" && r.id.length > 0) currentIds.add(r.id);
+          }
+          if (!baselineSetRef.current) {
+            seenIdsRef.current = currentIds;
+            baselineSetRef.current = true;
+          } else {
+            const seen = seenIdsRef.current;
+            for (const id of currentIds) {
+              if (!seen.has(id)) {
+                playOpsAlert("contact", id);
+              }
+            }
+            seenIdsRef.current = currentIds;
+          }
+        } catch {
+          /* sound is best-effort */
+        }
       } catch (e) {
         if (mountedRef.current) {
           setError((e as Error)?.message ?? "Failed to load contact requests");
