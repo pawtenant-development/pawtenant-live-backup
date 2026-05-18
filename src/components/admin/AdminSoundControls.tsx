@@ -194,9 +194,16 @@ export default function AdminSoundControls() {
       : "ri-notification-3-line";
 
   return (
+    // Positioned BELOW the sticky admin navbar (h-14 ≈ 56px on every
+    // admin page). Previous top-3 placement sat ON TOP of the navbar
+    // buttons (Broadcast / Approvals / Password / Sign Out / Refresh),
+    // visually colliding with them. The popover drops down from this
+    // pill at a max width of 300 px and a max height capped by
+    // overflow-y-auto inside, so it never extends past the viewport
+    // bottom even on small screens.
     <div
       ref={containerRef}
-      className="fixed z-[9998] top-3 right-3 pointer-events-auto flex flex-col items-end gap-2"
+      className="fixed z-[9998] top-[64px] right-3 sm:right-4 pointer-events-auto flex flex-col items-end gap-2"
       style={{ fontFamily: "inherit" }}
     >
       <button

@@ -1,56 +1,34 @@
 /**
- * VisitorSoundMonitor — admin-wide invisible monitor that fires the
- * new-visitor chime regardless of which admin tab is mounted.
+ * VisitorSoundMonitor — thin bootstrap for the admin-wide visitor
+ * alert singleton.
  *
- * Why this exists:
- *   - Previously the visitor chime lived inside LiveVisitorsPanel's
- *     poll loop. The chime only fired when the admin was on the
- *     /admin-orders?tab=communications&sub=live tab. On every other
- *     admin page (Orders, Analytics, Chats, Emails, Contact, etc.)
- *     visitor landings were silent — defeating the operational purpose.
+ * The data lifecycle (subscription, dedupe state, baseline window,
+ * sound + badge + desktop notify fanout) lives in
+ * src/lib/visitorMonitor.ts. This component only decides "are we on
+ * an admin route — yes or no" and calls startVisitorMonitor() /
+ * stopVisitorMonitor() accordingly.
  *
- * What it does:
- *   - Subscribes to the shared liveVisitorsPoll engine. Only one
- *     get_live_visitors poll runs in the whole app, regardless of how
- *     many subscribers are attached.
- *   - On each snapshot, detects newly-arrived session_ids and calls
- *     playVisitorLand(session_id). notificationSounds enforces the 90s
- *     per-session dedupe so this is safe to call on every tick.
- *   - First snapshot is treated specially: it fires for visitors whose
- *     first_seen_at is within RECENT_ARRIVAL_WINDOW_MS of monitor mount,
- *     so a visitor who landed seconds before the admin opened the page
- *     still pings.
+ * Why a JS singleton instead of React refs:
+ *   The previous design kept dedupe state in component refs. If the
+ *   component ever remounted (StrictMode double-invoke, parent
+ *   re-mount during the GeoGate spinner, route-shaped key changes),
+ *   baseline state was lost and subscription lifecycle hiccupped.
+ *   Symptom: the chime appeared to only start after the admin opened
+ *   the Communications → Live Visitors panel, because that's the
+ *   second subscriber to liveVisitorsPoll and its mount forced a
+ *   snapshot delivery. Moving state to module scope makes the monitor
+ *   completely independent of React's render lifecycle.
  *
- * What it does NOT do:
- *   - Render anything (returns null).
- *   - Mutate visitor data.
- *   - Override the AdminSoundControls visitor toggle — playVisitorLand
- *     respects isSoundEnabled("visitor") + mute + volume internally.
- *
- * Mount: once in AdminApp and once in AdminChatGate (App.tsx). Self-
- * gates on /admin* pathname so the public site never instantiates the
- * monitor's polling.
- *
- * Duplicate-sound safety:
- *   - The 90s per-session dedupe inside notificationSounds.playVisitorLand
- *     is the authoritative guard. Even if a future component also fires
- *     playVisitorLand for the same session_id, only the first wins.
- *   - LiveVisitorsPanel no longer fires its own visitor chime (the sound
- *     responsibility was moved here — single source of truth).
+ * Mount sites: AdminApp (admin subdomain) + AdminChatGate (public-site
+ * /admin* routes). Both pass through here. The component returns null.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import {
-  subscribeLiveVisitors,
-  type LiveVisitorsSnapshot,
-} from "../../lib/liveVisitorsPoll";
-import { playVisitorLand } from "../../lib/notificationSounds";
-import { incrementBadge } from "../../lib/titleBadge";
-import { notify } from "../../lib/desktopNotify";
-import { getSoundPrefs, isSoundEnabled } from "../../lib/soundPrefs";
-
-const RECENT_ARRIVAL_WINDOW_MS = 30_000;
+  startVisitorMonitor,
+  stopVisitorMonitor,
+} from "../../lib/visitorMonitor";
 
 function shouldRun(pathname: string): boolean {
   if (typeof window === "undefined") return false;
@@ -60,105 +38,22 @@ function shouldRun(pathname: string): boolean {
   return host.startsWith("admin.") || host === "admin.pawtenant.com";
 }
 
-function isDocHidden(): boolean {
-  if (typeof document === "undefined") return false;
-  return document.visibilityState !== "visible";
-}
-
-/**
- * Fallback paths run for every newly-detected visitor session. Audio is
- * already handled by playVisitorLand() (with per-session 90s dedupe).
- * This adds:
- *   - title badge (only when tab is hidden — when visible, the admin
- *     can already see the live list grow in real time).
- *   - opt-in browser notification (only when tab is hidden AND the user
- *     has explicitly enabled desktop notifications).
- * Both paths respect the visitor sound channel toggle and global mute,
- * so an admin who turned off the visitor channel sees no visual noise
- * either.
- */
-function fireVisitorFallbacks(sessionId: string): void {
-  if (!isSoundEnabled("visitor")) return;
-  if (!isDocHidden()) return;
-  incrementBadge();
-  if (getSoundPrefs().desktopNotificationsEnabled) {
-    notify("New visitor on PawTenant", {
-      body: "A visitor just landed. Open the admin tab to view details.",
-      tag: `visitor-${sessionId}`,
-    });
-  }
-}
-
 export default function VisitorSoundMonitor() {
   const { pathname } = useLocation();
   const active = shouldRun(pathname);
 
-  // Refs kept across snapshots so we never re-fire for a known visitor.
-  const seenSessionsRef = useRef<Set<string>>(new Set());
-  const baselineSetRef = useRef<boolean>(false);
-  const mountedAtRef = useRef<number>(Date.now());
-
   useEffect(() => {
-    if (!active) return;
-    // Reset on every (re)activation so a navigation OUT of admin and back
-    // doesn't replay alerts for visitors who were already on the site
-    // before the admin returned.
-    seenSessionsRef.current = new Set();
-    baselineSetRef.current = false;
-    mountedAtRef.current = Date.now();
-
-    const handle = (snap: LiveVisitorsSnapshot): void => {
-      try {
-        const visitors = snap.visitors;
-        const currentIds = new Set<string>();
-        for (const v of visitors) {
-          if (typeof v.session_id === "string" && v.session_id.length > 0) {
-            currentIds.add(v.session_id);
-          }
-        }
-
-        if (!baselineSetRef.current) {
-          // First snapshot after activation: fire only for visitors who
-          // landed in the recent-arrival window. Pre-existing visitors
-          // are silently baselined.
-          const threshold = mountedAtRef.current - RECENT_ARRIVAL_WINDOW_MS;
-          for (const v of visitors) {
-            if (!v.session_id) continue;
-            const firstSeenMs = v.first_seen_at
-              ? Date.parse(v.first_seen_at)
-              : NaN;
-            if (Number.isFinite(firstSeenMs) && firstSeenMs >= threshold) {
-              playVisitorLand(v.session_id);
-              fireVisitorFallbacks(v.session_id);
-            }
-          }
-          seenSessionsRef.current = currentIds;
-          baselineSetRef.current = true;
-          return;
-        }
-
-        // Subsequent snapshots: fire for any session_id we haven't
-        // seen yet in this monitor session. notificationSounds dedupes
-        // for 90s per session_id, so re-runs after navigation away and
-        // back are also safe.
-        const seen = seenSessionsRef.current;
-        for (const id of currentIds) {
-          if (!seen.has(id)) {
-            playVisitorLand(id);
-            fireVisitorFallbacks(id);
-          }
-        }
-        seenSessionsRef.current = currentIds;
-      } catch {
-        // Sound is best-effort. A failure here must never break the
-        // host shell.
-      }
-    };
-
-    const unsubscribe = subscribeLiveVisitors(handle);
-    return () => {
-      unsubscribe();
-    };
+    if (!active) {
+      stopVisitorMonitor();
+      return;
+    }
+    startVisitorMonitor();
+    // No cleanup on unmount — the singleton lives across React
+    // remounts. We only stop when `active` flips to false (admin left
+    // the admin route surface), which the effect above handles on the
+    // next run. This is intentional: it prevents the brief moment
+    // between an unmount and the next mount from dropping the
+    // subscription and losing in-flight visitor events.
   }, [active]);
 
   return null;
