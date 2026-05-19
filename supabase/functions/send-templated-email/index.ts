@@ -5,6 +5,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { sendEmailViaResend } from "../_shared/resendClient.ts";
+import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -108,8 +110,54 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: `Template not found for slug: ${body.slug}` }, 404);
     }
 
+    // Hydrate order-derived vars when a confirmationId is provided. Caller-
+    // supplied vars override these, so existing call sites stay backward-compatible.
+    // Fixes admin-comms "order confirmation" resends rendering with blank
+    // State/Plan/Delivery/Amount because the UI didn't pass those keys.
+    const hydratedFromOrder: Record<string, string> = {};
+    if (body.confirmationId) {
+      try {
+        const { data: ord } = await supabase
+          .from("orders")
+          .select("first_name, last_name, email, state, plan_type, delivery_speed, price, coupon_code, coupon_discount, confirmation_id")
+          .eq("confirmation_id", body.confirmationId)
+          .maybeSingle();
+        if (ord) {
+          const o = ord as Record<string, unknown>;
+          const firstName = (o.first_name as string) || "";
+          const stateValue = (o.state as string) || "";
+          const planType = (o.plan_type as string) || "One-Time Purchase";
+          const deliverySpeed = (o.delivery_speed as string) || "";
+          const deliveryLabel = deliverySpeed === "priority"
+            ? "Priority — Within 24 Hours"
+            : "Standard — 2-3 Business Days";
+          const priceNum = (o.price as number) ?? 0;
+          const formattedPrice = `$${Number(priceNum).toFixed(2)}`;
+          hydratedFromOrder.name = firstName || "there";
+          hydratedFromOrder.first_name = firstName;
+          hydratedFromOrder.order_id = (o.confirmation_id as string) || body.confirmationId;
+          hydratedFromOrder.confirmation_id = (o.confirmation_id as string) || body.confirmationId;
+          hydratedFromOrder.email = (o.email as string) || "";
+          hydratedFromOrder.state = stateValue;
+          hydratedFromOrder.plan = planType;
+          hydratedFromOrder.delivery = deliveryLabel;
+          hydratedFromOrder.amount = formattedPrice;
+          hydratedFromOrder.price = formattedPrice;
+          hydratedFromOrder.coupon_code = (o.coupon_code as string | null) ?? "";
+          hydratedFromOrder.coupon_discount = (o.coupon_discount as number | null) != null
+            ? `$${o.coupon_discount}`
+            : "";
+          hydratedFromOrder.portal_url = `${SITE_URL.replace(/\/$/, "")}/my-orders`;
+          hydratedFromOrder.date = new Date().toISOString().slice(0, 10);
+        }
+      } catch (err) {
+        console.warn("[send-templated-email] order hydration failed", err);
+      }
+    }
+
     const vars: Record<string, string> = {
       site_url: SITE_URL,
+      ...hydratedFromOrder,
       ...(body.vars ?? {}),
     };
 
@@ -118,28 +166,50 @@ Deno.serve(async (req: Request) => {
     const ctaLabel = substitute((tmpl.cta_label as string) ?? "", vars);
     const ctaUrl = substitute((tmpl.cta_url as string) ?? "", vars);
 
-    const content = renderBodyAsHtml(bodyText, ctaLabel, ctaUrl);
+    // For order_confirmation, render via the shared renderer so the manual
+    // admin email matches the automatic (webhook + client_fallback) email
+    // exactly — same structured details card, same heading, same CTA shape.
+    // Other slugs fall back to the existing generic line-by-line renderer.
+    const content = body.slug === "order_confirmation"
+      ? renderOrderConfirmationContent({
+          subject,
+          bodyText,
+          ctaLabel: ctaLabel || "Track My Order",
+          ctaUrl: ctaUrl || `${SITE_URL.replace(/\/$/, "")}/my-orders`,
+          details: {
+            orderId: vars.order_id || vars.confirmation_id || body.confirmationId || "",
+            state: vars.state || "",
+            plan: vars.plan || "",
+            delivery: vars.delivery || "",
+            amount: vars.amount || vars.price || "",
+            couponCode: vars.coupon_code || null,
+            couponDiscount: vars.coupon_discount ? Number(String(vars.coupon_discount).replace(/[^0-9.]/g, "")) || null : null,
+          },
+        })
+      : renderBodyAsHtml(bodyText, ctaLabel, ctaUrl);
     const layout = await loadMasterLayout(supabase);
     const html = layout.replace("{{content}}", content);
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    // Centralized Resend transport via shared helper.
+    // Helper does NOT auto-attach BCC and does NOT auto-write to communications;
+    // Trustpilot BCC remains scoped to send-review-request only.
+    const sendResult = await sendEmailViaResend(
+      {
         from: FROM_EMAIL,
         to: [body.to],
         subject,
         html,
         tags: [
+          { name: "email_type", value: "templated_email" },
           { name: "slug", value: body.slug },
           ...(body.confirmationId ? [{ name: "confirmation_id", value: body.confirmationId }] : []),
         ],
-      }),
-    });
+      },
+      RESEND_API_KEY,
+    );
 
-    const resendText = await resendRes.text();
-    if (!resendRes.ok) {
-      return json({ ok: false, error: `Resend error (${resendRes.status}): ${resendText}` }, 500);
+    if (!sendResult.ok) {
+      return json({ ok: false, error: `Resend error (${sendResult.status}): ${sendResult.raw || sendResult.error}` }, 500);
     }
 
     // Primary log → communications (single source of truth for the unified Comms timeline)

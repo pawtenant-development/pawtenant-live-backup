@@ -1250,7 +1250,7 @@ export default function AssessmentPage() {
           apikey: supabaseKey,
           Authorization: `Bearer ${supabaseKey}`,
         },
-        body: JSON.stringify({ confirmationId: confirmationId.current }),
+        body: JSON.stringify({ confirmationId: confirmationId.current, source: "client_fallback" }),
       }).catch(() => { /* swallow — webhook is the canonical sender */ });
     } catch { /* never block payment success */ }
 

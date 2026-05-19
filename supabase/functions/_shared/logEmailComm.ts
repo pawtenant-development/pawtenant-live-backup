@@ -52,12 +52,17 @@ export interface ReserveEmailParams {
   templateSource?: "db" | "hardcoded" | string | null;
   sentBy?: string | null;
   type?: string;                      // defaults to "email"
+  // When true, a prior reservation with status="failed" is recyclable —
+  // we flip it back to "sending" and let the caller retry. Default false to
+  // preserve existing strict-dedupe behavior for slugs that should never retry
+  // automatically (e.g. admin fan-out, marketing broadcasts).
+  allowRetryAfterFailed?: boolean;
 }
 
 export interface ReserveResult {
   proceed: boolean;
   rowId?: string | null;
-  reason?: "duplicate" | "db_error";
+  reason?: "duplicate" | "db_error" | "retry_after_failed";
   dedupeKey?: string | null;
 }
 
@@ -113,8 +118,43 @@ export async function reserveEmailSend(p: ReserveEmailParams): Promise<ReserveRe
       .maybeSingle();
 
     if (error) {
-      // PG unique_violation → duplicate send attempt, block it.
+      // PG unique_violation → existing row blocks this dedupe key.
       if ((error as { code?: string }).code === "23505") {
+        // Retry-after-failed: if the caller opts in AND the prior row finished
+        // as "failed" (Resend outage / transient network), recycle that row by
+        // flipping it back to "sending". This rescues confirmation emails that
+        // would otherwise be permanently blocked after the first attempt failed.
+        if (p.allowRetryAfterFailed) {
+          const { data: existing } = await p.supabase
+            .from("communications")
+            .select("id, status")
+            .eq("dedupe_key", dedupeKey)
+            .maybeSingle();
+          const existingStatus = (existing as { status?: string } | null)?.status;
+          const existingId = (existing as { id?: string } | null)?.id;
+          if (existingId && existingStatus === "failed") {
+            // CAS-style update — only flip if still failed. If a concurrent
+            // process already promoted it to sending/sent, we block as duplicate.
+            const { data: updated } = await p.supabase
+              .from("communications")
+              .update({
+                status: "sending",
+                body: null,
+                sent_by: p.sentBy ?? "system",
+                template_source: p.templateSource ?? null,
+                subject: p.subject,
+              })
+              .eq("id", existingId)
+              .eq("status", "failed")
+              .select("id")
+              .maybeSingle();
+            const recycledId = (updated as { id?: string } | null)?.id;
+            if (recycledId) {
+              console.info(`[reserveEmailSend] RETRY-AFTER-FAILED recycled row=${recycledId} key=${dedupeKey}`);
+              return { proceed: true, rowId: recycledId, reason: "retry_after_failed", dedupeKey };
+            }
+          }
+        }
         console.log(`[reserveEmailSend] DUPLICATE BLOCKED — key=${dedupeKey}`);
         return { proceed: false, reason: "duplicate", dedupeKey };
       }

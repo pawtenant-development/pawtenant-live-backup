@@ -319,7 +319,7 @@ Deno.serve(async (req: Request) => {
       const confRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/resend-confirmation-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
-        body: JSON.stringify({ confirmationId }),
+        body: JSON.stringify({ confirmationId, source: "webhook" }),
       });
       const confData = await confRes.json() as { ok: boolean; emailSent?: boolean; skipped?: boolean; error?: string };
       if (confData.ok && confData.emailSent) { console.info(`[stripe-webhook] ✓ Order confirmation sent to ${email}`); }
