@@ -1,9 +1,28 @@
-// TrustpilotReviewPanel — Send Trustpilot review request via Email or SMS
-// Only rendered for completed orders (doctor_status === "patient_notified")
+// TrustpilotReviewPanel — Send a Google review request via Email or SMS.
+// Only rendered for completed orders (doctor_status === "patient_notified").
+//
+// EMAIL-LETTER-DELIVERY-GOOGLE-REVIEW-URL (2026-05-19): owner chose
+// Google reviews over Trustpilot as the primary customer review channel.
+// All customer-facing copy + the CTA URL now point at Google. The
+// component name + filename are intentionally preserved for git-history
+// continuity; a broader rename is out of scope for this surgical fix.
+// REVIEW_URL is sourced from VITE_PUBLIC_GOOGLE_REVIEW_URL env when
+// configured, with a safe Google-search fallback so a missing env never
+// produces a broken button.
 import { useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
-const TRUSTPILOT_REVIEW_URL = "https://www.trustpilot.com/review/pawtenant.com";
+const GOOGLE_REVIEW_FALLBACK =
+  "https://www.google.com/search?sca_esv=08d3373863b39b87&si=AL3DRZEsmMGCryMMFSHJ3StBhOdZ2-6yYkXd_doETEE1OR-qOcgBj58jmxujTZ7byPAw8npggXTcPRI82lkEhuTmamSruv_EA9uwdfELsrB4RPReQ-OPCTj609pZy3sSjc4oz_EHV8no&q=PawTenant+Reviews&sa=X&ved=2ahUKEwjQzuTHjMSUAxUSA9sEHYkzJfIQ0bkNegQIIRAF";
+
+const TRUSTPILOT_REVIEW_URL: string = (() => {
+  try {
+    const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+    return (env?.VITE_PUBLIC_GOOGLE_REVIEW_URL ?? "").trim() || GOOGLE_REVIEW_FALLBACK;
+  } catch {
+    return GOOGLE_REVIEW_FALLBACK;
+  }
+})();
 
 const PAWTENANT_GREEN = "#1a5c4f";
 const PAWTENANT_LIGHT = "#f0faf7";
@@ -59,7 +78,7 @@ function buildEmailHTML(firstName: string): string {
             <tr>
               <td align="center" style="background:${PAWTENANT_LIGHT};border:1px solid ${PAWTENANT_BORDER};border-radius:12px;padding:24px 20px;">
                 <p style="margin:0 0 8px;font-size:28px;letter-spacing:4px;">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
-                <p style="margin:0 0 4px;color:${PAWTENANT_GREEN};font-size:15px;font-weight:700;">Leave us a 5-star review on Trustpilot</p>
+                <p style="margin:0 0 4px;color:${PAWTENANT_GREEN};font-size:15px;font-weight:700;">Leave us a 5-star review on Google</p>
                 <p style="margin:0;color:#666;font-size:13px;">Takes less than 60 seconds</p>
               </td>
             </tr>
@@ -106,7 +125,7 @@ function buildEmailHTML(firstName: string): string {
 
 function buildSMSText(firstName: string): string {
   const name = firstName || "there";
-  return `Hi ${name}! Your ESA letter from PawTenant is complete. If you had a great experience, we'd love a quick Trustpilot review — it really helps! ⭐ ${TRUSTPILOT_REVIEW_URL}`;
+  return `Hi ${name}! Your ESA letter from PawTenant is complete. If you had a great experience, we'd love a quick Google review — it really helps! ⭐ ${TRUSTPILOT_REVIEW_URL}`;
 }
 
 export default function TrustpilotReviewPanel({
@@ -246,13 +265,14 @@ export default function TrustpilotReviewPanel({
           <i className="ri-star-smile-line text-[#1a5c4f] text-base"></i>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-extrabold text-gray-800 uppercase tracking-widest">Request Trustpilot Review</p>
+          <p className="text-xs font-extrabold text-gray-800 uppercase tracking-widest">Request Google Review</p>
           <p className="text-xs text-gray-400 mt-0.5">Send a personalised review request to the customer</p>
         </div>
-        {/* Trustpilot logo badge */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#00b67a]/10 border border-[#00b67a]/30 rounded-lg flex-shrink-0">
-          <span className="text-[#00b67a] font-extrabold text-xs">★</span>
-          <span className="text-[#00b67a] font-extrabold text-xs">Trustpilot</span>
+        {/* Google review badge — kept tonally similar to the prior
+            Trustpilot pill so the surrounding panel layout is unchanged. */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#4285F4]/10 border border-[#4285F4]/30 rounded-lg flex-shrink-0">
+          <span className="text-[#FBBC04] font-extrabold text-xs">★</span>
+          <span className="text-[#4285F4] font-extrabold text-xs">Google</span>
         </div>
       </div>
 

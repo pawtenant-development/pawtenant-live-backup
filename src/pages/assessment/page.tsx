@@ -1226,6 +1226,34 @@ export default function AssessmentPage() {
     // Await order save so assign-doctor can find the row immediately
     await saveOrderToSupabase(price, docName, paymentIntentId, paymentMethod);
 
+    // ── 2026-05-19 EMAIL-ORDER-CONFIRMATION-AUTO ──────────────────────
+    // Belt-and-braces: fire resend-confirmation-email from the client
+    // immediately after the order is saved. The stripe-webhook also
+    // calls this endpoint when payment_intent.succeeded arrives, but
+    // webhook delivery is asynchronous and occasionally delayed or
+    // dropped (especially during Stripe redeliveries or staging URL
+    // changes). The function dedupes server-side via the communications
+    // table (reserveEmailSend → dedupe_key), so calling it twice — once
+    // here, once from the webhook — sends exactly one email. This is
+    // the customer-facing guarantee that pays for itself the first time
+    // a webhook misses.
+    //
+    // Fire-and-forget. The .catch() swallows any error so the
+    // navigate() and the rest of the post-payment flow are never blocked.
+    try {
+      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+      void fetch(`${supabaseUrl}/functions/v1/resend-confirmation-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ confirmationId: confirmationId.current }),
+      }).catch(() => { /* swallow — webhook is the canonical sender */ });
+    } catch { /* never block payment success */ }
+
     // Sync Google Sheets after payment (ensures all columns are correct)
     triggerSheetsFullSync();
 

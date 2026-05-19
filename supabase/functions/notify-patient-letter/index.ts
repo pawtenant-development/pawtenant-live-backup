@@ -21,7 +21,14 @@ const HEADER_TEXT = "#ffffff";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#4a7fb5";
 
-async function sendViaResend(opts: { to: string; subject: string; html: string }): Promise<{ success: boolean; error?: string; resendId?: string }> {
+interface ResendAttachment { filename: string; content: string }
+
+async function sendViaResend(opts: {
+  to: string;
+  subject: string;
+  html: string;
+  attachments?: ResendAttachment[];
+}): Promise<{ success: boolean; error?: string; resendId?: string }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) {
     const msg = "RESEND_API_KEY environment variable is not set in Supabase secrets";
@@ -29,10 +36,19 @@ async function sendViaResend(opts: { to: string; subject: string; html: string }
     return { success: false, error: msg };
   }
   try {
+    const body: Record<string, unknown> = {
+      from: FROM_ADDRESS,
+      to: [opts.to],
+      subject: opts.subject,
+      html: opts.html,
+    };
+    if (opts.attachments && opts.attachments.length > 0) {
+      body.attachments = opts.attachments;
+    }
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM_ADDRESS, to: [opts.to], subject: opts.subject, html: opts.html }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errBody = await res.text();
@@ -260,6 +276,12 @@ Deno.serve(async (req: Request) => {
 
   const confirmationId = body.confirmationId as string | undefined;
   const doctorMessage = (body.doctorMessage as string | null | undefined) ?? null;
+  // DOCS-RESEND-DEDUPE-BYPASS (2026-05-19): allow callers (the admin
+  // Resend / Send All buttons + the provider-side auto notify) to
+  // signal whether this is a manual resend ("force") or an automatic
+  // one-time delivery. Defaults preserve existing behavior for callers
+  // that do not opt in.
+  const forceResend = body.force === true || body.manual === true;
   if (!confirmationId) return jsonResp({ error: "confirmationId is required" }, 400);
 
   const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_email, doctor_name, signed_letter_url, price, doctor_status, patient_notification_sent_at, letter_id").eq("confirmation_id", confirmationId).maybeSingle();
@@ -286,13 +308,112 @@ Deno.serve(async (req: Request) => {
     else { docs = (orderDocs as OrderDoc[]) ?? []; }
   } catch (err) { console.warn("[notify-patient-letter] order_documents exception:", err); }
 
-  const totalDocCount = (order.signed_letter_url ? 1 : 0) + docs.filter((d) => d.file_url !== order.signed_letter_url).length;
-  if (!order.signed_letter_url && docs.length === 0) return jsonResp({ error: "No documents available to send for this order. Provider must upload a letter first." }, 400);
+  // ── 2026-05-19 DOCS-RESEND-DOCUMENT-COUNT-FIX ──────────────────────────
+  // Build the canonical deliverable list HERE (was previously computed
+  // after the dedupe check, which left the dedupe-return path with no
+  // count → UI rendered "0 document(s) delivered"). Same resolveUrl rule
+  // as before — prefer the footer-injected processed_file_url when
+  // available, fall back to the raw file_url.
+  const resolveUrl = (doc: OrderDoc): string => { if (doc.footer_injected && doc.processed_file_url) return doc.processed_file_url; return doc.file_url; };
+  const allDocs: Array<{ label: string; url: string; id?: string }> = [];
+  if (order.signed_letter_url) {
+    const matchingDoc = docs.find((d) => d.file_url === order.signed_letter_url || d.processed_file_url === order.signed_letter_url);
+    const url = matchingDoc ? resolveUrl(matchingDoc) : order.signed_letter_url;
+    allDocs.push({ label: "Signed ESA Letter", url, id: matchingDoc?.id });
+  }
+  docs
+    .filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url)
+    .forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc), id: doc.id }));
 
-  // Atomic dedupe reservation — blocks concurrent notify calls BEFORE we
-  // flip doctor_status or send the email. If another request (or a retry)
-  // already claimed `{confirmationId}:letter_ready`, we skip cleanly.
-  const subjectSuffixPre = totalDocCount > 1 ? ` (${totalDocCount} documents)` : "";
+  // ── 2026-05-19 EMAIL-LETTER-DELIVERY-SIGNED-DOCUMENT-LINKS ────────────
+  // Any URL pointing at /storage/v1/object/(public|sign|authenticated)/
+  // <bucket>/<path> gets re-signed via createSignedUrl. The "letters"
+  // bucket is private (per 20260519140000) so the raw /object/public/
+  // pattern returns "Bucket not found"; signed URLs work regardless of
+  // public/private state. 30-day TTL — generous enough for archive +
+  // resend; resends generate fresh URLs anyway. URLs that do not match
+  // a Supabase storage path (external CDN, etc.) are returned unchanged.
+  // Returns null when re-signing fails so the caller can skip the doc.
+  const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+  const storagePathRe = /^\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+?)(?:\?.*)?$/;
+  async function ensureDownloadUrl(rawUrl: string | null | undefined): Promise<string | null> {
+    if (!rawUrl) return null;
+    try {
+      const parsed = new URL(rawUrl);
+      const match = parsed.pathname.match(storagePathRe);
+      if (!match) return rawUrl; // not a Supabase storage URL — leave alone
+      const bucket = decodeURIComponent(match[1]);
+      const path   = decodeURIComponent(match[2]);
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+      if (error || !data?.signedUrl) {
+        console.warn(`[notify-patient-letter] createSignedUrl failed for ${bucket}/${path}: ${error?.message ?? "no signed url"}`);
+        return null;
+      }
+      return data.signedUrl;
+    } catch (err) {
+      console.warn("[notify-patient-letter] ensureDownloadUrl threw:", err);
+      return null;
+    }
+  }
+
+  // Re-sign every doc URL serially (count is small, typically 1-3 docs)
+  // so logs stay readable on failures. Drop docs we cannot resolve to a
+  // working URL — they would otherwise produce "Bucket not found" in
+  // the customer's inbox.
+  const resolvedDocs: Array<{ label: string; url: string; id?: string }> = [];
+  for (const d of allDocs) {
+    const signed = await ensureDownloadUrl(d.url);
+    if (!signed) {
+      console.warn(`[notify-patient-letter] dropping unresolvable doc ${d.label} (raw=${d.url}) for ${confirmationId}`);
+      continue;
+    }
+    resolvedDocs.push({ label: d.label, url: signed, id: d.id });
+  }
+  // Replace the original list — every downstream consumer (subject
+  // suffix, doc count, document_list HTML, attachments) now reads
+  // resolved working URLs.
+  allDocs.length = 0;
+  allDocs.push(...resolvedDocs);
+
+  // DOCS-RESEND-ATTACHMENT-SELECTION-FIX: the canonical count is the
+  // number of rows we will actually email (after dedupe of signed_letter
+  // and processed_file_url collisions). Previously totalDocCount used a
+  // weaker filter and could differ from the real attachment list.
+  const docsEmailedCount = allDocs.length;
+
+  if (docsEmailedCount === 0) {
+    return jsonResp({
+      error: "No working document download URL could be generated. Verify the letters bucket exists, the file is uploaded, and the storage path on order_documents is correct.",
+      docsEmailed: 0,
+    }, 500);
+  }
+
+  // ── 2026-05-19 DOCS-RESEND-DEDUPE-BYPASS ──────────────────────────────
+  // Previously the dedupe key was `{confirmationId}:letter_ready` — a
+  // PERMANENT key. Once a single letter_ready landed, every subsequent
+  // admin Resend / Send All click hit the unique-violation branch in
+  // reserveEmailSend and the function returned ok=true without sending
+  // a new email. Admins saw "Email sent! N document(s) delivered" but
+  // no new comms row, no new Resend message, nothing in the dashboard.
+  //
+  // Fix:
+  //   • force=true / manual=true in the payload → use a fully unique
+  //     dedupe key (Date.now() + crypto.randomUUID().slice(0,8)) so a
+  //     fresh reservation always succeeds. Reserved for explicit
+  //     admin manual resends.
+  //   • Otherwise → use a 3-SECOND-bucketed key. Protects against
+  //     accidental double-clicks within ~3 s but lets a deliberate
+  //     resend a few seconds later succeed. The "DOCUMENTS_READY_LEGACY"
+  //     dedupe row from the original first send no longer blocks any
+  //     future click because the new key shape doesn't collide with it.
+  //
+  // Every real reservation = a fresh communications row, exactly as the
+  // user-facing comms timeline requires.
+  const subjectSuffixPre = docsEmailedCount > 1 ? ` (${docsEmailedCount} documents)` : "";
+  const dedupeBucket = forceResend
+    ? `${Date.now()}.${crypto.randomUUID().slice(0, 8)}`
+    : `${Math.floor(Date.now() / 3000)}`;
+  const dedupeKey = `${confirmationId}:letter_delivery:${forceResend ? "manual" : "auto"}:${dedupeBucket}`;
   const reserve = await reserveEmailSend({
     supabase,
     orderId: order.id as string,
@@ -300,13 +421,26 @@ Deno.serve(async (req: Request) => {
     to: order.email,
     from: FROM_ADDRESS,
     subject: `Your Documents Are Ready — Order ${confirmationId}${subjectSuffixPre}`,
-    slug: "letter_ready",
+    slug: "letter_delivery",
+    dedupeKey,
     templateSource: "hardcoded",
-    sentBy: "provider_notify_patient",
+    sentBy: forceResend ? "admin_manual_resend" : "provider_notify_patient",
   });
   if (!reserve.proceed) {
     console.info(`[notify-patient-letter] DEDUPED for ${confirmationId} (key=${reserve.dedupeKey})`);
-    return jsonResp({ ok: true, message: "letter_ready already sent (dedupe)", confirmationId, skipped: true, dedupeKey: reserve.dedupeKey });
+    // DOCS-RESEND-DEDUPE-BYPASS: surface the skip as a failure to the
+    // OrderDetailModal (frozen file reads result.ok + result.error). The
+    // 3 s race-protection window only blocks accidental double-clicks;
+    // a real second click >3 s later passes cleanly.
+    return jsonResp({
+      ok: false,
+      sent: false,
+      skippedBecauseDuplicate: true,
+      error: "Another send is already in progress — please wait a few seconds and try again.",
+      confirmationId,
+      dedupeKey: reserve.dedupeKey,
+      docsEmailed: docsEmailedCount,
+    });
   }
 
   const { error: updateErr } = await supabase.from("orders").update({ patient_notification_sent_at: new Date().toISOString(), doctor_status: "patient_notified", status: "completed" }).eq("confirmation_id", confirmationId);
@@ -330,22 +464,200 @@ Deno.serve(async (req: Request) => {
     }
   } catch (err) { console.warn("[notify-patient-letter] earnings insert error:", err); }
 
-  const resolveUrl = (doc: OrderDoc): string => { if (doc.footer_injected && doc.processed_file_url) return doc.processed_file_url; return doc.file_url; };
-  const allDocs: Array<{ label: string; url: string }> = [];
-  if (order.signed_letter_url) {
-    const matchingDoc = docs.find((d) => d.file_url === order.signed_letter_url || d.processed_file_url === order.signed_letter_url);
-    const url = matchingDoc ? resolveUrl(matchingDoc) : order.signed_letter_url;
-    allDocs.push({ label: "Signed ESA Letter", url });
-  }
-  docs.filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url).forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc) }));
-
   const letterId = (order.letter_id as string | null) ?? null;
-  const docCount = allDocs.length;
-  const subjectSuffix = docCount > 1 ? ` (${docCount} documents)` : "";
+  const subjectSuffix = docsEmailedCount > 1 ? ` (${docsEmailedCount} documents)` : "";
   const subject = `Your Documents Are Ready — Order ${confirmationId}${subjectSuffix}`;
-  const html = buildDocumentsReadyEmail({ firstName: order.first_name ?? "there", confirmationId, doctorName: order.doctor_name ?? "Your Provider", doctorMessage: doctorMessage?.trim() || null, letterId }, allDocs);
 
-  const sendResult = await sendViaResend({ to: order.email, subject, html });
+  // ── 2026-05-19 EMAIL-LETTER-DELIVERY-TEMPLATE-HUB ──────────────────────
+  // Prefer the DB-managed letter_delivery template when it exists. This
+  // lets admins edit the wording / Review CTA from the Templates Hub
+  // without redeploying the edge function. The hardcoded
+  // buildDocumentsReadyEmail layout remains the fallback so a missing
+  // template never blocks delivery.
+  //
+  // EMAIL-LETTER-DELIVERY-HTML-NO-DOUBLE-WRAP (2026-05-19): when the
+  // DB body is already full email-safe HTML (starts/contains <!DOCTYPE,
+  // <html, or <table at the root), we substitute placeholders and ship
+  // it directly — no baseLayout wrap. Wrapping a complete HTML email
+  // inside another HTML email produced ugly line breaks and lost the
+  // designed cards. Plain-text bodies (no HTML tags) still get the old
+  // paragraph render + baseLayout wrap so older / non-HTML templates
+  // keep working.
+  //
+  // ── 2026-05-19 EMAIL-LETTER-DELIVERY-GOOGLE-REVIEW-URL ────────────────
+  // {review_url} in the Letter Delivery template used to resolve to
+  // pawtenant.com/review/<conf>, which 404'd because that route does
+  // not exist. The customer-facing review channel is Google. Resolve
+  // order: GOOGLE_REVIEW_URL env > REVIEW_URL env > the canonical
+  // Google search/reviews URL the owner picked. Same URL is hardcoded
+  // in TrustpilotReviewPanel.tsx as GOOGLE_REVIEW_FALLBACK so the
+  // OrderDetail manual review request + the auto Letter Delivery
+  // email share a single source of truth.
+  //
+  // Set the GOOGLE_REVIEW_URL secret to a write-review URL once the
+  //   https://search.google.com/local/writereview?placeid=<PLACE_ID>
+  // is provisioned and admins prefer it over the search results page.
+  const REVIEW_URL_FALLBACK =
+    "https://www.google.com/search?sca_esv=08d3373863b39b87&si=AL3DRZEsmMGCryMMFSHJ3StBhOdZ2-6yYkXd_doETEE1OR-qOcgBj58jmxujTZ7byPAw8npggXTcPRI82lkEhuTmamSruv_EA9uwdfELsrB4RPReQ-OPCTj609pZy3sSjc4oz_EHV8no&q=PawTenant+Reviews&sa=X&ved=2ahUKEwjQzuTHjMSUAxUSA9sEHYkzJfIQ0bkNegQIIRAF";
+  const reviewUrl = (
+    Deno.env.get("GOOGLE_REVIEW_URL")
+    ?? Deno.env.get("REVIEW_URL")
+    ?? REVIEW_URL_FALLBACK
+  ).trim() || REVIEW_URL_FALLBACK;
+
+  const verificationUrl = letterId
+    ? `https://${COMPANY_DOMAIN}/verify/${encodeURIComponent(letterId)}`
+    : "";
+
+  // Polished document_list: each document is a <tr> with icon + label
+  // + Download button, matching the original Letter Delivery design.
+  // The template body wraps this in an outer <table> so we only emit
+  // <tr> rows here. Empty-doc fallback uses a single full-width row.
+  const documentListHtmlForTemplate = allDocs.length > 0
+    ? allDocs.map((d) => `
+        <tr>
+          <td style="padding:8px 0;font-size:13px;color:#374151;vertical-align:middle;">
+            <span style="margin-right:6px;">${docIcon(d.label)}</span> ${escapeHtml(d.label)}
+          </td>
+          <td style="padding:8px 0;text-align:right;vertical-align:middle;">
+            <a href="${escapeHtml(d.url)}" style="display:inline-block;background:#4a7fb5;color:#fff;font-size:12px;font-weight:700;text-decoration:none;padding:6px 14px;border-radius:6px;">Download</a>
+          </td>
+        </tr>`).join("")
+    : `<tr><td colspan="2" style="padding:8px 0;font-size:13px;color:#6b7280;">Documents are available in your portal below.</td></tr>`;
+
+  // Detect full-HTML body (any of <!DOCTYPE, <html, <table at the start).
+  const looksLikeFullHtml = (s: string): boolean =>
+    /^\s*(?:<!DOCTYPE\s+html|<html[\s>]|<table[\s>])/i.test(s);
+
+  let html = "";
+  let templateSourceUsed: "db_letter_delivery" | "hardcoded" = "hardcoded";
+  try {
+    const { data: tmpl } = await supabase
+      .from("email_templates")
+      .select("subject, body, cta_label, cta_url")
+      .eq("slug", "letter_delivery")
+      .eq("channel", "email")
+      .maybeSingle();
+    const t = tmpl as { subject?: string | null; body?: string | null; cta_label?: string | null; cta_url?: string | null } | null;
+    if (t && (t.body ?? "").trim().length > 0) {
+      const reviewCtaLabel = (t.cta_label ?? "").trim() || "Leave a Review";
+      // REVIEW-PANEL-GOOGLE-URL-SWITCH (2026-05-19): prefer the DB
+      // row's cta_url so admin edits in the Templates Hub go live
+      // immediately. Ignore unsubstituted placeholders / legacy
+      // Trustpilot / dead pawtenant.com/review/<id> values so a
+      // stale row never beats the env / fallback resolution.
+      const rawDbCtaUrl = (t.cta_url ?? "").trim();
+      const dbCtaUrlUsable =
+        !!rawDbCtaUrl &&
+        rawDbCtaUrl !== "{review_url}" &&
+        !rawDbCtaUrl.includes("trustpilot.com") &&
+        !rawDbCtaUrl.includes(`${COMPANY_DOMAIN}/review/`);
+      const effectiveReviewUrl = dbCtaUrlUsable ? rawDbCtaUrl : reviewUrl;
+      const vars: Record<string, string> = {
+        name: order.first_name || "there",
+        order_id: confirmationId,
+        document_list: documentListHtmlForTemplate,
+        portal_url: PORTAL_URL,
+        verification_id: letterId ?? "",
+        verification_url: verificationUrl,
+        provider_name: order.doctor_name || "Your Provider",
+        review_url: effectiveReviewUrl,
+        review_cta_label: reviewCtaLabel,
+        support_email: SUPPORT_EMAIL,
+      };
+      const substitute = (s: string): string =>
+        String(s ?? "").replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
+      const rawBody = t.body ?? "";
+      const renderedSubject = substitute(t.subject ?? "") || subject;
+
+      if (looksLikeFullHtml(rawBody)) {
+        // Full email-safe HTML — substitute placeholders, ship directly.
+        // No baseLayout wrap (would double-wrap and break the design).
+        html = substitute(rawBody);
+      } else {
+        // Plain-text body — paragraph render + auto CTA + baseLayout
+        // wrap, preserving back-compat with non-HTML DB templates.
+        const renderedBody    = substitute(rawBody);
+        const renderedCtaLbl  = substitute(t.cta_label ?? "") || "View All Documents";
+        const renderedCtaUrl  = substitute(t.cta_url   ?? "") || PORTAL_URL;
+        const paragraphs = renderedBody
+          .split("\n\n")
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => `<p style="margin:0 0 16px;line-height:1.7;color:#374151;font-size:15px;">${p.replace(/\n/g, "<br/>")}</p>`)
+          .join("");
+        const ctaBlock = renderedCtaLbl && renderedCtaUrl
+          ? `<div style="text-align:center;margin:28px 0;">
+               <a href="${escapeHtml(renderedCtaUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;">${escapeHtml(renderedCtaLbl)}</a>
+             </div>`
+          : "";
+        const contentBody = `${paragraphs}${ctaBlock}`;
+        html = baseLayout("Documents Ready", renderedSubject, "Your signed documents are ready for download", contentBody);
+      }
+      templateSourceUsed = "db_letter_delivery";
+    }
+  } catch (err) {
+    console.warn("[notify-patient-letter] letter_delivery template render failed — falling back:", err);
+  }
+  if (!html) {
+    html = buildDocumentsReadyEmail({
+      firstName: order.first_name ?? "there",
+      confirmationId,
+      doctorName: order.doctor_name ?? "Your Provider",
+      doctorMessage: doctorMessage?.trim() || null,
+      letterId,
+    }, allDocs);
+    templateSourceUsed = "hardcoded";
+  }
+
+  // ── 2026-05-19 DOCS-RESEND-BROKEN ─────────────────────────────────────
+  // Fetch each document as binary, base64-encode, and attach to the email.
+  // Previously the email contained only HTML <a href="…"> download links,
+  // which (a) confused customers who expected an attached PDF, (b) broke
+  // for any mail client that strips signed URLs, and (c) made forwarding
+  // / archiving the letter awkward. Attachments now match the customer
+  // expectation. Failures to fetch any single document are tolerated —
+  // we still send the email with whatever PDFs we successfully fetched
+  // (and the in-body links remain as a fallback download path).
+  //
+  // Resend caps individual attachments at 40 MB. We cap at 25 MB per
+  // doc as a safety margin; oversize docs skip attachment but still
+  // appear as in-body links.
+  const RESEND_MAX_ATTACH_BYTES = 25 * 1024 * 1024;
+  const attachments: ResendAttachment[] = [];
+  for (const doc of allDocs) {
+    try {
+      // EMAIL-LETTER-DELIVERY-SIGNED-DOCUMENT-LINKS: doc.url is now a
+      // signed Supabase storage URL (or an external CDN URL). No
+      // Authorization header needed — the signing token is in the URL
+      // query string for storage URLs, and external CDNs are public.
+      const fileRes = await fetch(doc.url);
+      if (!fileRes.ok) {
+        console.warn(`[notify-patient-letter] attachment fetch ${fileRes.status} for ${doc.label}`);
+        continue;
+      }
+      const buf = await fileRes.arrayBuffer();
+      if (buf.byteLength > RESEND_MAX_ATTACH_BYTES) {
+        console.warn(`[notify-patient-letter] attachment ${doc.label} exceeds ${RESEND_MAX_ATTACH_BYTES} bytes — skipping inline attach`);
+        continue;
+      }
+      const bytes = new Uint8Array(buf);
+      // btoa on chunks to avoid call-stack overflow on large payloads.
+      let bin = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      const safeLabel = doc.label.replace(/[^A-Za-z0-9._ -]/g, "_").slice(0, 80) || "document";
+      const filename = /\.pdf$/i.test(safeLabel) ? safeLabel : `${safeLabel}.pdf`;
+      attachments.push({ filename, content: btoa(bin) });
+    } catch (err) {
+      console.warn(`[notify-patient-letter] attachment build failed for ${doc.label}:`, err);
+    }
+  }
+
+  const sendResult = await sendViaResend({ to: order.email, subject, html, attachments });
   const emailSent = sendResult.success;
 
   await finalizeEmailSend(supabase, reserve.rowId, {
@@ -373,7 +685,30 @@ Deno.serve(async (req: Request) => {
     return jsonResp({ ok: false, error: errMsg }, 500);
   }
 
-  fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` }, body: JSON.stringify({ webhookType: "main", event: "documents_ready_for_patient", email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "", phone: (order.phone as string) ?? "", confirmationId, patientName, patientState: order.state ?? "", documentsCount: totalDocCount, notifiedAt: new Date().toISOString(), leadStatus: "Documents Ready — Patient Notified", tags: ["Documents Ready", "Patient Notified"] }) }).catch(() => {});
+  fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` }, body: JSON.stringify({ webhookType: "main", event: "documents_ready_for_patient", email: order.email, firstName: order.first_name ?? "", lastName: order.last_name ?? "", phone: (order.phone as string) ?? "", confirmationId, patientName, patientState: order.state ?? "", documentsCount: docsEmailedCount, notifiedAt: new Date().toISOString(), leadStatus: "Documents Ready — Patient Notified", tags: ["Documents Ready", "Patient Notified"] }) }).catch(() => {});
 
-  return jsonResp({ ok: true, message: `Patient notified for order ${confirmationId}`, confirmationId, patientEmail: order.email, docsEmailed: totalDocCount, emailSent, earningsCreated, letterId, verificationIncluded: !!letterId, resendId: sendResult.resendId });
+  // DOCS-RESEND-COMMS-HISTORY-LOG (2026-05-19): every real send (manual
+  // or auto) wrote a fresh communications row via reserveEmailSend +
+  // finalizeEmailSend above, so the Order Comms timeline now reflects
+  // each click instead of silently re-using the original send's row.
+  return jsonResp({
+    ok: true,
+    sent: emailSent,
+    skippedBecauseDuplicate: false,
+    message: `Patient notified for order ${confirmationId}`,
+    confirmationId,
+    patientEmail: order.email,
+    docsEmailed: docsEmailedCount,
+    attachmentsIncluded: attachments.length,
+    templateSource: templateSourceUsed,
+    emailSent,
+    earningsCreated,
+    letterId,
+    verificationIncluded: !!letterId,
+    resendId: sendResult.resendId,
+    resendMessageId: sendResult.resendId,
+    forceResend,
+    dedupeKey,
+    communicationsRowId: reserve.rowId,
+  });
 });

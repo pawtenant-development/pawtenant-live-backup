@@ -18,7 +18,7 @@
  * default export is the panel itself, renamed to
  * CommunicationsTemplatesPanel for hub clarity.
  */
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
 interface EmailTemplate {
@@ -53,6 +53,117 @@ You can track your order status at any time by logging into your customer portal
 Thank you for trusting PawTenant with your ESA needs.`,
     ctaLabel: "Track My Order",
     ctaUrl: "https://pawtenant.com/my-orders",
+  },
+  // EMAIL-LETTER-DELIVERY-TEMPLATE-HUB + EMAIL-LETTER-DELIVERY-HTML-
+  // TEMPLATE-PARITY (2026-05-19): DB-managed template sent by
+  // notify-patient-letter on every Notify Patient / Resend / Send All.
+  // Editable from the hub via slug='letter_delivery'. Body is the full
+  // polished email-safe HTML, NOT plain text — see migration
+  // 20260519150000_letter_delivery_template_seed.sql for the canonical
+  // copy. notify-patient-letter and the hub preview detect the
+  // <!DOCTYPE / <html / <table head and ship it directly without a
+  // second master-layout wrap (would otherwise collapse the cards).
+  {
+    id: "letter_delivery",
+    label: "Letter Delivery",
+    group: "Transactional",
+    subject: "Your ESA Letter is here — Order {order_id}",
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
+      <tr>
+        <td style="background:#4a9e8a;padding:32px;text-align:center;">
+          <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="180" alt="PawTenant" style="display:block;margin:0 auto 16px;height:auto;" />
+          <div style="display:inline-block;background:rgba(255,255,255,0.22);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">Documents Ready</div>
+          <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#ffffff;line-height:1.3;">Your ESA Letter is here!</h1>
+          <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.82);">Your signed documents are ready for download</p>
+        </td>
+      </tr>
+      <tr><td style="padding:32px;">
+        <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi <strong>{name}</strong>,</p>
+        <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.7;">
+          Your ESA letter has been signed and is ready for download. You can access all your documents below or directly through your portal.
+        </p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f9;border:1px solid #b8cce4;border-radius:12px;margin-bottom:24px;">
+          <tr><td style="padding:20px 24px;">
+            <p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Your Documents</p>
+            <table width="100%" cellpadding="0" cellspacing="0">{document_list}</table>
+          </td></tr>
+        </table>
+
+        <div style="background:#fff8f0;border:1px solid #fed7aa;border-radius:10px;padding:14px 18px;margin-bottom:24px;">
+          <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">&#128274; Letter Verification ID</p>
+          <p style="margin:0 0 4px;font-size:16px;font-weight:800;color:#c2410c;letter-spacing:0.05em;">{verification_id}</p>
+          <p style="margin:0;font-size:12px;color:#78350f;">
+            Landlords can verify this letter at
+            <a href="{verification_url}" style="color:#c2410c;text-decoration:none;font-weight:700;">{verification_url}</a>
+          </p>
+        </div>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f9;border:1px solid #b8cce4;border-radius:12px;margin-bottom:24px;">
+          <tr><td style="padding:20px 24px;">
+            <p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Order Summary</p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding:7px 0;font-size:13px;color:#6b7280;width:160px;vertical-align:top;">Order ID</td><td style="padding:7px 0;font-size:13px;font-weight:600;color:#4a7fb5;">{order_id}</td></tr>
+              <tr><td style="padding:7px 0;font-size:13px;color:#6b7280;width:160px;vertical-align:top;">Completed By</td><td style="padding:7px 0;font-size:13px;font-weight:600;color:#4a7fb5;">{provider_name}</td></tr>
+              <tr><td style="padding:7px 0;font-size:13px;color:#6b7280;width:160px;vertical-align:top;">Status</td><td style="padding:7px 0;font-size:13px;font-weight:600;color:#111827;"><span style="color:#059669;font-weight:700;">Completed</span></td></tr>
+            </table>
+          </td></tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+          <tr><td align="center">
+            <a href="{portal_url}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">View All Documents &rarr;</a>
+          </td></tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:24px;">
+          <tr><td style="padding:20px 24px;">
+            <p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">What To Do With Your Letter</p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding:7px 0;vertical-align:top;width:30px;"><div style="width:22px;height:22px;background:#4a7fb5;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">1</div></td><td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">Download your signed ESA letter and keep a digital copy</td></tr>
+              <tr><td style="padding:7px 0;vertical-align:top;width:30px;"><div style="width:22px;height:22px;background:#4a7fb5;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">2</div></td><td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">Present it to your landlord or housing provider as needed</td></tr>
+              <tr><td style="padding:7px 0;vertical-align:top;width:30px;"><div style="width:22px;height:22px;background:#4a7fb5;border-radius:50%;text-align:center;line-height:22px;font-size:11px;font-weight:700;color:#fff;">3</div></td><td style="padding:7px 0 7px 10px;font-size:13px;color:#374151;line-height:1.5;">Contact us at any time if you need a renewal or have questions</td></tr>
+            </table>
+          </td></tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;">
+          <tr><td style="padding:24px;text-align:center;">
+            <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#1a5c4f;text-transform:uppercase;letter-spacing:0.08em;">A Quick Favor</p>
+            <h2 style="margin:0 0 10px;font-size:18px;font-weight:800;color:#0f3d34;">How was your PawTenant experience?</h2>
+            <p style="margin:0 0 18px;font-size:13px;color:#374151;line-height:1.6;">If everything looks good, we&rsquo;d love a quick review. It takes 30 seconds and helps other pet owners find us. If anything is off, just reply to this email &mdash; we&rsquo;ll make it right.</p>
+            <a href="{review_url}" style="display:inline-block;background:#1a5c4f;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:12px 28px;border-radius:8px;">{review_cta_label}</a>
+          </td></tr>
+        </table>
+
+        <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">
+          Your ESA letter is legally recognized under the Fair Housing Act. If you ever need assistance, we&rsquo;re always here at <a href="mailto:{support_email}" style="color:#4a7fb5;text-decoration:none;">{support_email}</a>.
+        </p>
+      </td></tr>
+      <tr>
+        <td style="padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Questions? Reply to this email or contact us at <a href="mailto:{support_email}" style="color:#4a7fb5;text-decoration:none;">{support_email}</a></p>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; ESA Consultation &nbsp;&middot;&nbsp; <a href="https://pawtenant.com" style="color:#4a7fb5;text-decoration:none;">pawtenant.com</a></p>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`,
+    ctaLabel: "Leave a Review",
+    // REVIEW-PANEL-GOOGLE-URL-SWITCH (2026-05-19): canonical Google
+    // reviews URL — same value seeded into email_templates.cta_url by
+    // 20260519150000_letter_delivery_template_seed.sql. notify-patient-
+    // letter prefers the DB row over env / fallback so an admin edit
+    // here propagates without a redeploy.
+    ctaUrl: "https://www.google.com/search?sca_esv=08d3373863b39b87&si=AL3DRZEsmMGCryMMFSHJ3StBhOdZ2-6yYkXd_doETEE1OR-qOcgBj58jmxujTZ7byPAw8npggXTcPRI82lkEhuTmamSruv_EA9uwdfELsrB4RPReQ-OPCTj609pZy3sSjc4oz_EHV8no&q=PawTenant+Reviews&sa=X&ved=2ahUKEwjQzuTHjMSUAxUSA9sEHYkzJfIQ0bkNegQIIRAF",
   },
   {
     id: "letter_ready",
@@ -131,20 +242,93 @@ Thank you for trusting PawTenant with your ESA needs.`,
   },
 ];
 
+// EMAIL-LETTER-DELIVERY-TEMPLATE-HUB (2026-05-19): the Letter Delivery
+// template uses placeholders ({document_list}, {verification_id}, etc.)
+// that notify-patient-letter substitutes at send time. The Templates Hub
+// preview should render the SAME placeholders with realistic sample
+// values so admins see what the customer will actually receive.
+//
+// EMAIL-LETTER-DELIVERY-HTML-NO-DOUBLE-WRAP (2026-05-19): document_list
+// is now pre-rendered as polished table <tr> rows that fit inside the
+// outer table the template body owns. previewName + review_cta_label
+// fall back via applyPreviewVars / cta_label respectively.
+// EMAIL-LETTER-DELIVERY-BROKEN-PUBLIC-BUCKET-FIX + EMAIL-LETTER-DELIVERY-
+// GOOGLE-REVIEW-URL (2026-05-19): the sample document_list no longer
+// references a TEST-project Supabase storage URL — that URL pattern
+// 404'd in real sends and confused admins inspecting the preview. The
+// sample now points the Download button at the portal /my-orders so
+// the preview button is at least clickable to a real page. Sample
+// review_url is the Google reviews search URL (matches the live
+// fallback in notify-patient-letter when no GOOGLE_REVIEW_URL secret
+// is set).
+const SAMPLE_PREVIEW_VARS: Record<string, string> = {
+  order_id:         "PT-SAMPLE123",
+  document_list:    `<tr><td style="padding:8px 0;font-size:13px;color:#374151;vertical-align:middle;"><span style="margin-right:6px;">&#128196;</span> Signed ESA Letter</td><td style="padding:8px 0;text-align:right;vertical-align:middle;"><a href="https://www.pawtenant.com/my-orders" style="display:inline-block;background:#4a7fb5;color:#fff;font-size:12px;font-weight:700;text-decoration:none;padding:6px 14px;border-radius:6px;">Download</a></td></tr>`,
+  portal_url:       "https://www.pawtenant.com/my-orders",
+  verification_id:  "ESA-TX-SAMPLE",
+  verification_url: "https://www.pawtenant.com/verify/ESA-TX-SAMPLE",
+  provider_name:    "Licensed Provider",
+  review_url:       "https://www.google.com/search?sca_esv=08d3373863b39b87&si=AL3DRZEsmMGCryMMFSHJ3StBhOdZ2-6yYkXd_doETEE1OR-qOcgBj58jmxujTZ7byPAw8npggXTcPRI82lkEhuTmamSruv_EA9uwdfELsrB4RPReQ-OPCTj609pZy3sSjc4oz_EHV8no&q=PawTenant+Reviews&sa=X&ved=2ahUKEwjQzuTHjMSUAxUSA9sEHYkzJfIQ0bkNegQIIRAF",
+  review_cta_label: "Leave a Review",
+  support_email:    "hello@pawtenant.com",
+};
+
+function applyPreviewVars(s: string, previewName: string): string {
+  const vars: Record<string, string> = { ...SAMPLE_PREVIEW_VARS, name: previewName };
+  return String(s ?? "").replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+}
+
+// Detect full email-safe HTML so the preview can render it directly
+// without a second master wrap (would double-wrap and break the
+// designed cards — same fix path as notify-patient-letter).
+function looksLikeFullEmailHtml(s: string): boolean {
+  return /^\s*(?:<!DOCTYPE\s+html|<html[\s>]|<table[\s>])/i.test(s);
+}
+
 function buildEmailHtml(subject: string, body: string, ctaLabel: string, ctaUrl: string, previewName = "Jane"): string {
-  const previewBody = body.replace(/\{name\}/g, previewName);
+  // EMAIL-LETTER-DELIVERY-HTML-NO-DOUBLE-WRAP: when the body is already
+  // a complete email-safe HTML document (the new letter_delivery
+  // template + any future full-HTML template), substitute placeholders
+  // and return it as-is. The outer preview shell below would double-
+  // wrap the body and collapse its cards into ugly paragraph blocks.
+  // cta_label / cta_url are surfaced as {review_cta_label} / inside
+  // the body's own button so they still influence the rendered email.
+  if (looksLikeFullEmailHtml(body)) {
+    const varsWithCta: Record<string, string> = {
+      ...SAMPLE_PREVIEW_VARS,
+      name: previewName,
+      review_cta_label: (ctaLabel || "").trim() || SAMPLE_PREVIEW_VARS.review_cta_label,
+      review_url:       (ctaUrl   || "").trim() ? applyPreviewVars(ctaUrl, previewName) : SAMPLE_PREVIEW_VARS.review_url,
+    };
+    return String(body).replace(/\{(\w+)\}/g, (_, k) => varsWithCta[k] ?? `{${k}}`);
+  }
+
+  const previewBody = applyPreviewVars(body, previewName);
+  const previewSubject = applyPreviewVars(subject, previewName);
+  const previewCtaLabel = applyPreviewVars(ctaLabel, previewName);
+  const previewCtaUrl   = applyPreviewVars(ctaUrl,   previewName);
+
+  // {document_list} is intentionally pre-rendered HTML — strip the
+  // <p> wrapping for that single line so the bullet list renders
+  // correctly instead of being escaped into a paragraph.
   const paragraphs = previewBody
     .split("\n\n")
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((p) => `<p style="margin:0 0 16px 0;line-height:1.65;color:#374151;">${p.replace(/\n/g, "<br/>")}</p>`)
+    .map((p) => /^<(ul|ol|table|div|tr|td|th)/i.test(p)
+      ? p
+      : `<p style="margin:0 0 16px 0;line-height:1.65;color:#374151;">${p.replace(/\n/g, "<br/>")}</p>`)
     .join("");
 
-  const ctaHtml = ctaLabel && ctaUrl
+  const ctaHtml = previewCtaLabel && previewCtaUrl
     ? `<div style="text-align:center;margin:28px 0;">
-        <a href="${ctaUrl}" style="display:inline-block;background:#3b6ea5;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${ctaLabel}</a>
+        <a href="${previewCtaUrl}" style="display:inline-block;background:#3b6ea5;color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:10px;text-decoration:none;">${previewCtaLabel}</a>
       </div>`
     : "";
+
+  // Re-bind so the inner head/body uses the substituted subject.
+  // (Original signature kept; subject is now the variable-substituted one.)
+  subject = previewSubject;
 
   return `<!DOCTYPE html>
 <html>
@@ -613,10 +797,36 @@ const DB_MANAGED_EMAIL_SLUGS = new Set<string>([
   "seq_30min",
   "seq_24h",
   "seq_3day",
+  // EMAIL-LETTER-DELIVERY-TEMPLATE-HUB (2026-05-19): notify-patient-letter
+  // now reads from email_templates.slug='letter_delivery' and falls back
+  // to the hardcoded layout when missing. Admin edits go live.
+  "letter_delivery",
 ]);
 const DB_MANAGED_SMS_SLUGS = new Set<string>([
   "review_request_sms",
 ]);
+
+// COMMS-TEMPLATE-HUB-RESIZABLE-SIDEBAR (2026-05-19): horizontal drag-to-
+// resize bounds for the template-picker sidebar. Below SIDEBAR_MOBILE_BP
+// the layout stacks vertically and the drag handle is hidden.
+const SIDEBAR_MIN_PX        = 220;
+const SIDEBAR_MAX_PX        = 420;
+const SIDEBAR_DEFAULT_PX    = 240;
+const SIDEBAR_MOBILE_BP     = 768; // matches Tailwind md:
+const SIDEBAR_STORAGE_KEY   = "comms_templates_sidebar_width";
+
+function readPersistedSidebarWidth(): number {
+  if (typeof window === "undefined") return SIDEBAR_DEFAULT_PX;
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (!raw) return SIDEBAR_DEFAULT_PX;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) return SIDEBAR_DEFAULT_PX;
+    return Math.max(SIDEBAR_MIN_PX, Math.min(SIDEBAR_MAX_PX, n));
+  } catch {
+    return SIDEBAR_DEFAULT_PX;
+  }
+}
 
 export default function CommunicationsTemplatesPanel() {
   const [activeChannel, setActiveChannel] = useState<"email" | "sms">("email");
@@ -644,6 +854,67 @@ export default function CommunicationsTemplatesPanel() {
   const [testStatus, setTestStatus] = useState<"idle" | "sent" | "error">("idle");
   const [testError, setTestError] = useState("");
   const [testCooldown, setTestCooldown] = useState(0);
+
+  // COMMS-TEMPLATE-HUB-RESIZABLE-SIDEBAR (2026-05-19) ────────────────────
+  // Sidebar width is admin-resizable on desktop via a drag handle. Width
+  // persists in localStorage. Below SIDEBAR_MOBILE_BP the layout stacks
+  // vertically and the inline width is ignored (Tailwind w-full applies).
+  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_PX);
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const sidebarStartXRef = useRef<number>(0);
+  const sidebarStartWidthRef = useRef<number>(SIDEBAR_DEFAULT_PX);
+  const sidebarWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // Hydrate from localStorage once on mount.
+  useEffect(() => {
+    setSidebarWidth(readPersistedSidebarWidth());
+  }, []);
+
+  // Persist on change (debounced — every change is fine, write is cheap).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarWidth)); } catch { /* ignore */ }
+  }, [sidebarWidth]);
+
+  // Mouse move + up listeners are attached on document while dragging so
+  // the drag survives the cursor briefly leaving the handle hit-target.
+  useEffect(() => {
+    if (!isDraggingSidebar) return;
+    const onMove = (e: MouseEvent) => {
+      const w = window.innerWidth;
+      if (w < SIDEBAR_MOBILE_BP) {
+        setIsDraggingSidebar(false);
+        return;
+      }
+      const delta = e.clientX - sidebarStartXRef.current;
+      const next = Math.max(SIDEBAR_MIN_PX, Math.min(SIDEBAR_MAX_PX, sidebarStartWidthRef.current + delta));
+      setSidebarWidth(next);
+    };
+    const onUp = () => setIsDraggingSidebar(false);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    // Lock body cursor + disable user-select for crisp drag UX.
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+    };
+  }, [isDraggingSidebar]);
+
+  const beginSidebarDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (typeof window !== "undefined" && window.innerWidth < SIDEBAR_MOBILE_BP) return;
+    sidebarStartXRef.current = e.clientX;
+    sidebarStartWidthRef.current = sidebarWidth;
+    setIsDraggingSidebar(true);
+    e.preventDefault();
+  };
+
+  const resetSidebarWidth = () => setSidebarWidth(SIDEBAR_DEFAULT_PX);
 
   // Tick cooldown down each second; reset status to idle when it hits 0
   useEffect(() => {
@@ -922,9 +1193,24 @@ export default function CommunicationsTemplatesPanel() {
 
       {/* ── EMAIL CHANNEL ── */}
       {activeChannel === "email" && (
-        <div className="flex flex-col lg:flex-row" style={{ minHeight: "560px" }}>
-          {/* Left: template picker */}
-          <div className="w-full lg:w-60 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4">
+        <div ref={sidebarWrapperRef} className="flex flex-col md:flex-row" style={{ minHeight: "560px" }}>
+          {/* Left: template picker.
+              COMMS-TEMPLATE-HUB-UI (2026-05-19): md: breakpoint so the
+              sidebar collapses to row layout below tablet.
+              COMMS-TEMPLATE-HUB-RESIZABLE-SIDEBAR (2026-05-19): inline
+              width is admin-resizable above md (drag handle to the
+              right of this column). Below md the Tailwind w-full wins
+              over the inline width because Tailwind compiles to a
+              !important-less class while inline style only applies
+              above the breakpoint via the conditional below. */}
+          <div
+            className="w-full flex-shrink-0 border-b md:border-b-0 md:border-r border-gray-100 bg-gray-50/50 p-4 space-y-4 max-h-[640px] md:max-h-none overflow-y-auto md:overflow-visible"
+            style={
+              typeof window !== "undefined" && window.innerWidth >= SIDEBAR_MOBILE_BP
+                ? { width: `${sidebarWidth}px` }
+                : undefined
+            }
+          >
             <div>
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Preview As</label>
               <input type="text" value={previewName} onChange={(e) => setPreviewName(e.target.value || "Jane")} placeholder="Jane"
@@ -977,14 +1263,50 @@ export default function CommunicationsTemplatesPanel() {
               </div>
             )}
           </div>
+          {/* COMMS-TEMPLATE-HUB-RESIZABLE-SIDEBAR (2026-05-19): drag
+              handle between sidebar and editor. Hidden below md so
+              the stacked mobile layout is uncluttered.
+              role="separator" + aria-orientation="vertical" + keyboard
+              support keep the handle accessible. Double-click resets
+              to the default width. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize template list"
+            tabIndex={0}
+            onMouseDown={beginSidebarDrag}
+            onDoubleClick={resetSidebarWidth}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                setSidebarWidth((w) => Math.max(SIDEBAR_MIN_PX, w - 16));
+              } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                setSidebarWidth((w) => Math.min(SIDEBAR_MAX_PX, w + 16));
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                resetSidebarWidth();
+              }
+            }}
+            className={`hidden md:flex flex-shrink-0 w-1.5 cursor-col-resize items-center justify-center group select-none ${isDraggingSidebar ? "bg-[#3b6ea5]/40" : "bg-transparent hover:bg-gray-200/70"}`}
+            style={{ touchAction: "none" }}
+            title="Drag to resize · double-click to reset"
+          >
+            <span className={`block w-0.5 h-10 rounded-full ${isDraggingSidebar ? "bg-[#3b6ea5]" : "bg-gray-300 group-hover:bg-gray-400"}`} />
+          </div>
           {/* Right: edit or preview */}
           <div className="flex-1 flex flex-col min-w-0">
             {editMode ? (
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 min-w-0">
                   <div className="w-2 h-2 rounded-full bg-[#3b6ea5] flex-shrink-0"></div>
-                  <span className="text-xs font-bold text-gray-700">Editing: {selectedEmail.label}</span>
-                  <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedEmail.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" : selectedEmail.group === "Marketing" ? "bg-amber-50 text-amber-700" : "bg-violet-50 text-violet-700"}`}>{selectedEmail.group}</span>
+                  {/* COMMS-TEMPLATE-HUB-UI (2026-05-19): truncate long
+                      template labels so the group pill stays visible on
+                      narrow viewports. */}
+                  <span className="text-xs font-bold text-gray-700 truncate min-w-0" title={selectedEmail.label}>
+                    Editing: {selectedEmail.label}
+                  </span>
+                  <span className={`ml-auto flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedEmail.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" : selectedEmail.group === "Marketing" ? "bg-amber-50 text-amber-700" : "bg-violet-50 text-violet-700"}`}>{selectedEmail.group}</span>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Template Label</label>
@@ -1050,8 +1372,11 @@ export default function CommunicationsTemplatesPanel() {
                   </p>
                 </div>
 
-                {/* ── Test Send ── */}
-                <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/40 flex items-center gap-2 flex-wrap">
+                {/* ── Test Send ──
+                    COMMS-TEMPLATE-HUB-UI (2026-05-19): stacked vertically
+                    on mobile so the input + button + status no longer
+                    cram into a single row on narrow viewports. */}
+                <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/40 flex flex-col sm:flex-row sm:items-center gap-2 sm:flex-wrap">
                   <i className="ri-send-plane-line text-[#3b6ea5] text-sm flex-shrink-0"></i>
                   <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex-shrink-0">Test Send</span>
                   <input
