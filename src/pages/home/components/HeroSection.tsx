@@ -22,40 +22,60 @@ export default function HeroSection() {
       id="get-started"
       className="relative min-h-[88vh] flex items-center overflow-hidden"
     >
-      {/* Background Image */}
+      {/* Background Image — Phase 1D responsive WebP delivery (2026-05-18).
+          Browsers that support WebP pick the matching <source> based on
+          viewport media query; legacy browsers fall back to the JPG <img>.
+          The two <source> tags are mime-typed image/webp so a future swap
+          of either variant only touches the URL string. */}
       <div className="absolute inset-0">
-        <img
-          src="/assets/blog/fp-woman-sitting-floor.jpg"
-          alt="Pet owner with dog at home applying for an ESA letter online"
-          className="w-full h-full object-cover hero-img-position opacity-80"
-          fetchPriority="high"
-          loading="eager"
-          decoding="async"
-        />
+        <picture>
+          <source
+            media="(max-width: 768px)"
+            srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian.webp"
+            type="image/webp"
+          />
+          <source
+            media="(min-width: 769px)"
+            srcSet="/assets/blog/fp-woman-sitting-floor-desktop.webp"
+            type="image/webp"
+          />
+          <img
+            src="/assets/blog/fp-woman-sitting-floor.jpg"
+            alt="Pet owner with dog at home applying for an ESA letter online"
+            className="w-full h-full object-cover hero-img-position opacity-80"
+            fetchPriority="high"
+            loading="eager"
+            decoding="async"
+            width={1920}
+            height={1280}
+          />
+        </picture>
         <div className="absolute inset-0 bg-gradient-to-r from-gray-900/85 via-gray-900/65 to-gray-900/25"></div>
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-gray-900/70 to-transparent md:hidden"></div>
       </div>
 
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-5 py-28 md:py-32">
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-5 py-20 sm:py-28 md:py-32">
         <div className="max-w-2xl">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
             <i className="ri-shield-check-line"></i>
-            HIPAA Compliant &amp; 100% Legal
+            HIPAA Compliant
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
-            Get a <span className="text-orange-400">Legit ESA Letter</span> Online
+            Get an <span className="text-orange-400">ESA Letter</span> Online
             <br className="hidden sm:block" />
             {" "}Fast, Simple &amp; Stress Free
           </h1>
 
           <p className="text-gray-200 text-base sm:text-lg mb-7 leading-relaxed">
-            Get your <strong className="text-white font-semibold">legitimate ESA letter online</strong> from licensed mental health professionals — accepted for housing nationwide under the Fair Housing Act. No waiting rooms, no hassle.
+            Get your <strong className="text-white font-semibold">ESA letter online</strong> from licensed mental health professionals — accepted for housing nationwide under the Fair Housing Act. No waiting rooms, no hassle.
           </p>
 
-          {/* Stats Row */}
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-4 sm:gap-6 mb-6">
+          {/* Stats Row — desktop/tablet only. Phase 1 mobile cleanup hides
+              the 4-stat grid above the fold; trust is preserved via the
+              compact mobile-only line below the CTA. */}
+          <div className="hidden sm:flex sm:flex-wrap gap-6 mb-6">
             {[
               { icon: "ri-shield-star-line", label: "HIPAA", value: "100% Compliant" },
               { icon: "ri-award-line", label: "Licensed", value: "Professionals" },
@@ -74,10 +94,11 @@ export default function HeroSection() {
             ))}
           </div>
 
-          {/* Trust note — calm, professional */}
-          <p className="text-orange-300 text-xs font-semibold mb-4 flex items-center gap-1.5">
+          {/* Calm desktop/tablet-only trust line. Hidden on mobile to remove
+              the second competing orange element above the CTA. */}
+          <p className="hidden sm:flex text-orange-300 text-xs font-semibold mb-4 items-center gap-1.5">
             <i className="ri-shield-check-line"></i>
-            Real ESA letter — signed by a licensed mental health professional, recognized by landlords nationwide
+            Signed by a licensed mental health professional, recognized by landlords nationwide
           </p>
 
           {/* 50 States Trust Badge */}
@@ -94,26 +115,37 @@ export default function HeroSection() {
             </div>
           </div>
 
-          {/* CTA Buttons — unchanged */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-8">
+          {/* CTA Buttons — mobile: single full-width primary CTA, larger
+              tap target. Desktop/tablet: primary + secondary side-by-side.
+              Color softened from orange-500 to orange-400 so the CTA feels
+              warm without being aggressive. */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-3 sm:mb-8">
             <a
               href={withAttribution("/assessment")}
-              className="whitespace-nowrap px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer inline-flex items-center justify-center gap-2"
+              className="w-full sm:w-auto px-8 py-4 sm:py-3.5 bg-orange-400 text-white font-bold text-base sm:text-sm rounded-md hover:bg-orange-500 transition-colors cursor-pointer inline-flex items-center justify-center gap-2 shadow-lg shadow-orange-400/25 sm:shadow-none"
             >
-              Get Your Legit ESA Letter Now
+              Get Your ESA Letter Now
               <i className="ri-arrow-right-line"></i>
             </a>
             <a
               href="#how-it-works"
-              className="whitespace-nowrap px-7 py-3.5 border border-white/40 text-white font-semibold text-sm rounded-md hover:bg-white/10 transition-colors cursor-pointer inline-flex items-center justify-center gap-2"
+              className="hidden sm:inline-flex whitespace-nowrap px-7 py-3.5 border border-white/40 text-white font-semibold text-sm rounded-md hover:bg-white/10 transition-colors cursor-pointer items-center justify-center gap-2"
             >
               <i className="ri-play-circle-line"></i>
               How It Works
             </a>
           </div>
 
-          {/* ── How It Works Mini-Cards ── */}
-          <div className="flex items-center gap-2 mb-6 flex-wrap">
+          {/* Mobile-only refund reassurance — centered under the CTA,
+              "Full Refund" bolded so the safety-net reads in a single
+              glance without re-adding visual clutter above the CTA. */}
+          <p className="sm:hidden text-white/85 text-[13px] leading-snug mb-8 text-center">
+            <i className="ri-shield-check-line text-orange-300 mr-1.5"></i>
+            <strong className="font-bold text-white">Full Refund</strong> if you don&rsquo;t qualify
+          </p>
+
+          {/* ── How It Works Mini-Cards — desktop/tablet only ── */}
+          <div className="hidden sm:flex items-center gap-2 mb-6 flex-wrap">
             {HOW_STEPS.map((s, i) => (
               <div key={s.step} className="flex items-center gap-2">
                 <div className="flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-sm rounded-xl px-3 py-2">
@@ -132,8 +164,8 @@ export default function HeroSection() {
             ))}
           </div>
 
-          {/* ── Provider Credibility Strip ── */}
-          <div className="inline-flex items-center gap-3 bg-white/10 border border-white/20 backdrop-blur-sm rounded-2xl px-4 py-3">
+          {/* ── Provider Credibility Strip — desktop/tablet only ── */}
+          <div className="hidden sm:inline-flex items-center gap-3 bg-white/10 border border-white/20 backdrop-blur-sm rounded-2xl px-4 py-3">
             {/* Stacked avatars */}
             <div className="flex items-center">
               {PROVIDERS.map((p, i) => (

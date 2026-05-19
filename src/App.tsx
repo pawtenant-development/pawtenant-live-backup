@@ -8,10 +8,8 @@ import i18n from "./i18n";
 import ScrollToTop from "./components/feature/ScrollToTop";
 import ScrollTopButton from "./components/feature/ScrollTopButton";
 import CookieBanner from "./components/feature/CookieBanner";
-import FloatingCTA from "./components/feature/FloatingCTA";
 import MobileChatButton from "./components/feature/MobileChatButton";
 import PawChatWidget from "./components/feature/PawChatWidget";
-import USResidentsBanner from "./components/feature/USResidentsBanner";
 import ErrorBoundary from "./components/feature/ErrorBoundary";
 import SEOManager from "./components/feature/SEOManager";
 import AdminChatNotifier from "./components/admin/AdminChatNotifier";
@@ -26,24 +24,6 @@ import { firePageView } from "@/lib/metaPixel";
 import { captureFromUrl } from "@/lib/attributionStore";
 import { ensureVisitorSession, pulseVisitorSession, isInternalAdminPath } from "@/lib/visitorSession";
 import { trackPageView } from "@/lib/trackEvent";
-
-const PORTAL_ROUTES = [
-  "/admin",
-  "/provider-portal",
-  "/provider-login",
-  "/my-orders",
-  "/customer-login",
-  "/reset-password",
-  "/admin-login",
-  "/account/checkout",
-];
-
-function ConditionalFloatingCTA() {
-  const { pathname } = useLocation();
-  const isPortal = PORTAL_ROUTES.some((route) => pathname.startsWith(route));
-  if (isPortal) return null;
-  return <FloatingCTA />;
-}
 
 /**
  * AdminChatGate — wraps the public router with AdminChatProvider, but only
@@ -272,8 +252,11 @@ function App() {
               <AppRoutes />
               <ScrollTopButton />
               <CookieBanner />
-              <USResidentsBanner />
-              <ConditionalFloatingCTA />
+              {/* Phase 1 mobile-first cleanup (2026-05-19):
+                  - Removed USResidentsBanner (intrusive bottom black "USA only" banner).
+                  - Removed ConditionalFloatingCTA (intrusive vertical 988 crisis side banner / mobile pill).
+                  Component files kept on disk in case a calm inline safety
+                  section is added later in the footer or FAQ. */}
               <MobileChatButton />
               <PawChatWidget />
             </AdminChatGate>

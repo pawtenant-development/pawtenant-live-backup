@@ -120,6 +120,36 @@ export default function PawChatWidget() {
   const isHidden = HIDDEN_ROUTE_PREFIXES.some((p) => pathname.startsWith(p));
 
   const [open, setOpen] = useState(false);
+
+  // Scroll-gate the launcher FAB on mobile so the orange chat bubble does
+  // not compete with the hero CTA in the first viewport. Desktop chat
+  // launcher behavior is unchanged (always visible). Both states default
+  // to false so the static prerender / first paint never flashes the
+  // bubble at the top of the page.
+  const [scrolledPastHero, setScrolledPastHero] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  useEffect(() => {
+    const SCROLL_THRESHOLD_PX = 500;
+    const mql = window.matchMedia("(max-width: 767px)");
+    const updateMobile = () => setIsMobileViewport(mql.matches);
+    updateMobile();
+    const onScroll = () => {
+      const y = window.scrollY || window.pageYOffset || 0;
+      setScrolledPastHero(y > SCROLL_THRESHOLD_PX);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    // matchMedia listener — modern API with addEventListener fallback.
+    if (mql.addEventListener) mql.addEventListener("change", updateMobile);
+    else mql.addListener(updateMobile);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (mql.removeEventListener) mql.removeEventListener("change", updateMobile);
+      else mql.removeListener(updateMobile);
+    };
+  }, []);
+  const launcherVisible = !isMobileViewport || scrolledPastHero;
+
   const {
     sessionId,
     messages,
@@ -252,13 +282,18 @@ export default function PawChatWidget() {
 
   return (
     <>
-      {!open && (
+      {!open && launcherVisible && (
         <button
           type="button"
           aria-label="Open live chat"
           onClick={() => { setOpen(true); markChatOpened(); }}
-          className="fixed right-4 bottom-[90px] md:bottom-5 z-50 w-14 h-14 rounded-full text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
-          style={{ backgroundColor: BRAND_PRIMARY }}
+          className="fixed right-4 bottom-[90px] md:bottom-5 z-50 w-14 h-14 rounded-full text-white shadow-lg flex items-center justify-center cursor-pointer"
+          style={{
+            backgroundColor: BRAND_PRIMARY,
+            transition: "opacity 200ms ease-out, transform 200ms ease-out, background-color 150ms ease-out",
+            opacity: 1,
+            transform: "translateY(0)",
+          }}
           onMouseEnter={(e) =>
             (e.currentTarget.style.backgroundColor = BRAND_PRIMARY_DK)
           }

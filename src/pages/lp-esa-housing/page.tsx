@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
-import AssessmentVideoPreview from "@/components/feature/AssessmentVideoPreview";
 
 const LP_TITLE = "Get an ESA Letter for Housing — Reviewed by Licensed Providers | PawTenant";
 const LP_DESC = "Verified with a unique ID your landlord can confirm in seconds. Reviewed by licensed mental health providers. Refund if you don't qualify.";
@@ -346,16 +345,29 @@ export default function LpEsaHousingPage() {
             </p>
           </div>
 
-          {/* Equal-height grid: image col + 4-card col */}
+          {/* Equal-height grid: image col + 4-card col.
+              The image container uses `relative` and the <img> uses
+              `absolute inset-0` so the image truly fills whatever height
+              the grid row stretches to. Without absolute positioning the
+              image only took its intrinsic-aspect height and left empty
+              space below itself on desktop. Now image height matches the
+              4-card column height exactly. */}
           <div className="grid md:grid-cols-12 gap-6 md:gap-8 items-stretch">
-            <div className="md:col-span-5 overflow-hidden rounded-2xl border border-slate-200 min-h-[320px] md:min-h-0">
+            {/* Image container — explicit min-heights at each breakpoint
+                drive the grid-row height upward, and the cards column
+                stretches to match via `items-stretch` on the grid. Without
+                a generous min-height the 2x2 cards column is naturally
+                only ~250px tall, so the image looked under-sized.
+                md:min-h-[460px] gives a stronger visual presence that
+                roughly matches the image used in section 3b below. */}
+            <div className="md:col-span-5 relative overflow-hidden rounded-2xl border border-slate-200 min-h-[360px] md:min-h-[460px]">
               <img
                 src="/assets/lifestyle/woman-with-dog-new-apartment.jpg"
                 alt="Tenant moving into a new apartment with an emotional support dog"
                 loading="lazy"
                 width={1600}
                 height={1067}
-                className="w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-cover"
               />
             </div>
             <div className="md:col-span-7 grid sm:grid-cols-2 gap-4 content-stretch">
@@ -605,14 +617,14 @@ export default function LpEsaHousingPage() {
               <Link
                 key={s.slug}
                 to={`/esa-letter/${s.slug}`}
-                className="group flex items-center justify-center gap-2 px-3 py-3 min-h-[58px] rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-[#0E2A47] hover:shadow-[0_4px_12px_rgba(16,185,129,0.15)] transition text-[13.5px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+                className="group flex items-center justify-center gap-2 px-3 py-3 rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-[#0E2A47] hover:shadow-[0_4px_12px_rgba(16,185,129,0.15)] transition text-[13.5px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
               >
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_1px_3px_rgba(16,185,129,0.35)] transition group-hover:scale-110">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </span>
-                <span className="text-center leading-tight">{s.name}</span>
+                <span>{s.name}</span>
               </Link>
             ))}
           </div>
@@ -713,22 +725,10 @@ export default function LpEsaHousingPage() {
         </div>
       </section>
 
-      {/* ─────────── 6b. ASSESSMENT UI PREVIEW — desktop only.
-          Short, lazy-loaded mobile-UI clips of the actual assessment flow.
-          Skipped on mobile (md:hidden wrapper) because mobile users will
-          encounter the real UI moments after they tap the CTA — adding a
-          UI preview on mobile adds vertical weight without conversion lift.
-          On desktop it gives skeptical Google traffic a peek of the real
-          product before committing. */}
-      <div className="hidden md:block">
-        <AssessmentVideoPreview
-          eyebrow="See the assessment"
-          heading="A short look at the real PawTenant assessment."
-          subheading="Real screens from the clinical questionnaire. About five minutes from start to provider review."
-          showCTA
-          compact
-        />
-      </div>
+      {/* ─────────── 6b. ASSESSMENT UI PREVIEW — REMOVED 2026-05-19
+          Phase 1 mobile-first cleanup. The video clip section was adding
+          cognitive load without lift in the landing flow. Component file
+          and assets are kept on disk (still used by /how-to-get-esa). */}
 
       {/* ─────────── 7. PRICING — ESA + PSD side-by-side, Klarna chips.
           ESA Letter is recommended for the Google Ads housing audience.

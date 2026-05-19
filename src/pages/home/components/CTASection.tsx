@@ -17,14 +17,14 @@ export default function CTASection() {
           Get Your <span className="text-orange-400">Legit ESA Letter Online</span> &amp; Keep Your Pet by Your Side
         </h2>
         <p className="text-gray-300 text-base max-w-xl mx-auto mb-10">
-          Our team of licensed professionals is ready to issue your <strong className="text-white">legitimate ESA letter online</strong> — quickly, affordably, and 100% legally compliant with the Fair Housing Act.
+          Our team of licensed professionals is ready to issue your <strong className="text-white">ESA letter online</strong> — quickly, affordably, and 100% legally compliant with the Fair Housing Act.
         </p>
         <div className="flex flex-wrap justify-center gap-4">
           <a
             href={withAttribution("/assessment")}
-            className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-4 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+            className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-4 bg-orange-400 text-white font-bold text-sm rounded-md hover:bg-orange-500 transition-colors cursor-pointer"
           >
-            Get My Legit ESA Letter Now
+            Get My ESA Letter Now
             <i className="ri-arrow-right-line"></i>
           </a>
           <a
