@@ -80,15 +80,18 @@ export default function DoctorsSection() {
   };
 
   return (
-    <section className="py-20 bg-[#f8f7f4]">
+    <section className="py-12 sm:py-20 bg-[#f8f7f4]">
       <div className="max-w-7xl mx-auto px-6">
         {/* Header */}
         <div className="flex items-end justify-between mb-12 flex-wrap gap-4">
-          <div>
-            <h2 className="text-4xl font-extrabold text-gray-900 mb-3" style={{ fontFamily: "'Playfair Display', serif" }}>
-              Choose Your Provider
+          <div className="max-w-xl">
+            <span className="inline-block px-4 py-1.5 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full uppercase tracking-widest mb-4">
+              Licensed Providers
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3 leading-tight">
+              Choose Your <span className="text-orange-500">Provider</span>
             </h2>
-            <p className="text-gray-500 text-sm max-w-xl leading-relaxed">
+            <p className="text-gray-500 text-sm sm:text-base leading-relaxed">
               Select the licensed mental health professional you&apos;d like to work with. Availability depends on the states where the provider is currently licensed.
             </p>
           </div>
@@ -125,10 +128,10 @@ export default function DoctorsSection() {
             ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
                 <div
                   key={`skel-${i}`}
-                  className="bg-white rounded-2xl p-6 flex flex-col items-center text-center flex-shrink-0 animate-pulse"
+                  className="bg-white rounded-2xl p-6 flex flex-col items-center text-center border border-gray-100 shadow-sm flex-shrink-0 animate-pulse"
                   style={{ minWidth: "288px", maxWidth: "288px" }}
                 >
-                  <div className="w-24 h-24 rounded-full bg-orange-50 mb-4" />
+                  <div className="w-24 h-24 rounded-full bg-slate-50 mb-4" />
                   <div className="h-3 w-20 rounded-full bg-gray-100 mb-3" />
                   <div className="h-4 w-32 bg-gray-100 rounded mb-2" />
                   <div className="h-3 w-24 bg-gray-100 rounded mb-4" />
@@ -158,11 +161,11 @@ export default function DoctorsSection() {
                 return (
                   <div
                     key={doctor.id}
-                    className="bg-white rounded-2xl p-6 flex flex-col items-center text-center transition-transform hover:-translate-y-1 duration-200 flex-shrink-0"
+                    className="bg-white rounded-2xl p-6 flex flex-col items-center text-center border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-1 duration-200 flex-shrink-0"
                     style={{ minWidth: "288px", maxWidth: "288px" }}
                   >
                     {/* Photo — real uploaded photo OR neutral initials fallback */}
-                    <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-orange-100 mb-4 flex-shrink-0 bg-orange-50 flex items-center justify-center">
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-200 mb-4 flex-shrink-0 bg-slate-50 flex items-center justify-center">
                       {hasValidImage ? (
                         <img
                           src={doctor.image}
@@ -171,7 +174,7 @@ export default function DoctorsSection() {
                           onError={() => markImageBroken(doctor.id)}
                         />
                       ) : (
-                        <span className="text-2xl font-extrabold text-orange-400 select-none">
+                        <span className="text-2xl font-extrabold text-slate-500 select-none">
                           {initials}
                         </span>
                       )}
@@ -204,7 +207,7 @@ export default function DoctorsSection() {
 
                     {/* Name & Title */}
                     <h3 className="text-gray-900 font-bold text-base leading-snug mb-1">{doctor.name}</h3>
-                    <p className="text-orange-500 font-semibold text-xs mb-3">
+                    <p className="text-[#4A8472] font-semibold text-xs mb-3">
                       {doctor.title} — {doctor.role}
                     </p>
 

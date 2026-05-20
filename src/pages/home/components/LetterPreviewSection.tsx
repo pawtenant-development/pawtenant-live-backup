@@ -63,7 +63,7 @@ export default function LetterPreviewSection() {
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-5">Why landlords take it seriously</p>
             {CALLOUTS.map((c) => (
               <div key={c.num} className="flex items-start gap-4 group">
-                <div className="w-7 h-7 flex items-center justify-center rounded-full text-white text-xs font-extrabold flex-shrink-0 mt-0.5 bg-orange-500">
+                <div className="w-7 h-7 flex items-center justify-center rounded-full text-white text-xs font-extrabold flex-shrink-0 mt-0.5 bg-[#4A8472]">
                   {c.num}
                 </div>
                 <div className="flex-1 border-b border-gray-100 pb-4">

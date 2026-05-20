@@ -10,7 +10,7 @@ const features = [
     icon: "ri-file-shield-2-line",
     color: "text-[#92400e]",
     cardBg: "bg-[#FFF7ED]",
-    title: "Legitimate ESA Letters",
+    title: "ESA Letters from Licensed Clinicians",
     desc: "Every letter meets federal and state housing requirements and is signed by a licensed clinician.",
   },
   {
@@ -54,7 +54,7 @@ export default function TrustFeatures() {
           <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-2">Why Choose Us</p>
           <h2 className="text-3xl font-extrabold text-gray-900">
             Why Thousands Get Their{" "}
-            <span className="text-orange-500">Legit ESA Letter</span> With Us
+            <span className="text-orange-500">ESA Letter</span> With Us
           </h2>
           <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
             We make getting a <strong>legitimate ESA letter online</strong> fast, affordable, and completely stress-free — from licensed professionals you can trust.

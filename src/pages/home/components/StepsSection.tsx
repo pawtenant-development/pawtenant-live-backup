@@ -25,12 +25,12 @@ export default function StepsSection() {
   const { withAttribution } = useAttributionParams();
 
   return (
-    <section id="how-it-works" className="py-20 bg-orange-50">
+    <section id="how-it-works" className="py-12 sm:py-20 bg-slate-100">
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center mb-14">
-          <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-2">Simple Process</p>
+          <p className="text-[#4A8472] text-sm font-semibold tracking-widest uppercase mb-2">Simple Process</p>
           <h2 className="text-3xl font-extrabold text-gray-900">
-            Get Your <span className="text-orange-500">Legit ESA Letter</span> in 3 Simple Steps
+            Get Your <span className="text-orange-500">ESA Letter</span> in 3 Simple Steps
           </h2>
           <p className="text-gray-500 mt-3 max-w-xl mx-auto text-sm">
             Our streamlined process makes it easy to get a <strong>legitimate ESA letter online</strong> — no waiting rooms, no in-person visits, no stress.
@@ -39,16 +39,16 @@ export default function StepsSection() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
           {/* Connector lines - desktop only */}
-          <div className="hidden md:block absolute top-12 left-1/3 right-1/3 h-0.5 bg-orange-200 z-0"></div>
+          <div className="hidden md:block absolute top-12 left-1/3 right-1/3 h-0.5 bg-[#4A8472]/40 z-0"></div>
 
           {steps.map((step, idx) => (
             <div key={step.number} className="relative z-10 flex flex-col items-center text-center">
               {/* Step number badge */}
               <div className="relative mb-6">
-                <div className="w-20 h-20 flex items-center justify-center bg-white rounded-full border-2 border-orange-200">
-                  <i className={`${step.icon} text-3xl text-orange-500`}></i>
+                <div className="w-20 h-20 flex items-center justify-center bg-white rounded-full border-2 border-[#4A8472]/40">
+                  <i className={`${step.icon} text-3xl text-[#4A8472]`}></i>
                 </div>
-                <span className="absolute -top-2 -right-2 w-7 h-7 flex items-center justify-center bg-orange-500 text-white text-xs font-bold rounded-full">
+                <span className="absolute -top-2 -right-2 w-7 h-7 flex items-center justify-center bg-[#4A8472] text-white text-xs font-bold rounded-full">
                   {idx + 1}
                 </span>
               </div>
@@ -63,7 +63,7 @@ export default function StepsSection() {
             href={withAttribution("/assessment")}
             className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
-            Start Your Legitimate ESA Letter Online
+            Start Your ESA Letter Online
             <i className="ri-arrow-right-line"></i>
           </a>
         </div>

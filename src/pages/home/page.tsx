@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import HeroSection from "./components/HeroSection";
+import ReassuranceStrip from "./components/ReassuranceStrip";
 import MediaTrustBar from "./components/MediaTrustBar";
 import TrustFeatures from "./components/TrustFeatures";
 import StepsSection from "./components/StepsSection";
+import AffordabilityStrip from "./components/AffordabilityStrip";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 
 /*
@@ -228,11 +230,16 @@ export default function Home() {
       {/* ── Above the fold — eager ──────────────────────────────────── */}
       <SharedNavbar />
       <HeroSection />
+      <ReassuranceStrip />
       <MediaTrustBar />
       <TrustFeatures />
       <StepsSection />
+      <AffordabilityStrip />
 
       {/* ── Below the fold — lazy with Suspense fallbacks ───────────── */}
+      <Suspense fallback={<SectionFallback />}>
+        <DoctorsSection />
+      </Suspense>
       <Suspense fallback={<SectionFallback />}>
         <WhatIsESA />
       </Suspense>
@@ -256,9 +263,6 @@ export default function Home() {
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
         <TopStatesSection />
-      </Suspense>
-      <Suspense fallback={<SectionFallback />}>
-        <DoctorsSection />
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
         <TestimonialsSection />

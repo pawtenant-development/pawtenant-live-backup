@@ -126,7 +126,7 @@ export default function TrustedLetters() {
                 })()}
                 <h3 className="text-2xl font-extrabold text-gray-900 mb-4">{s.title}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed mb-6">{s.desc}</p>
-                <ul className="space-y-2.5 mb-8">
+                <ul className="hidden sm:block space-y-2.5 mb-8">
                   {s.bullets.map((b) => (
                     <li key={b} className="flex items-start gap-2.5 text-sm text-gray-700">
                       <div className="w-5 h-5 flex items-center justify-center mt-0.5 flex-shrink-0">

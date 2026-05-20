@@ -18,14 +18,15 @@ const petTypes = [
 
 export default function WhatIsESA() {
   return (
-    <section className="py-20 bg-[#f0fdf4]">
+    <section className="py-12 sm:py-20 bg-white">
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
           {/* Image */}
           <div className="rounded-2xl overflow-hidden min-h-80">
             <img
-              src="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/13037e49-5dee-4f4b-ae8a-c2d1ab78b6d5_What-Is-an-Emotional-Support-Animal-ESA.jpg?v=f7097c36da8144b17b45b9d7d5a1d06f"
+              src="/assets/breeds/cat-with-owner.jpg"
               alt="What is an emotional support animal ESA — licensed LMHP letter for mental health housing rights"
+              loading="lazy"
               className="w-full h-full object-cover object-top"
             />
           </div>
@@ -39,7 +40,7 @@ export default function WhatIsESA() {
             <p className="text-gray-600 text-sm leading-relaxed mb-6">
               An Emotional Support Animal (ESA) is a companion animal that provides therapeutic benefit to its owner through affection and companionship. Unlike service animals, ESAs do not need specialized training. Their presence alone provides significant mental health benefits for people struggling with emotional or psychological conditions.
             </p>
-            <p className="text-gray-600 text-sm leading-relaxed mb-8">
+            <p className="hidden sm:block text-gray-600 text-sm leading-relaxed mb-8">
               With a <strong className="text-gray-800">legitimate ESA letter</strong> signed by a licensed mental health professional, you gain legal protections allowing you to live with your emotional support animal even in no-pet housing — without additional pet fees. You can get your <strong className="text-gray-800">legit ESA letter online</strong> in as little as 24 hours through our simple, fully digital process.
             </p>
 
@@ -64,27 +65,25 @@ export default function WhatIsESA() {
           </div>
         </div>
 
-        {/* Any Pet Qualifies strip */}
-        <div className="mt-16 pt-12 border-t border-green-100">
-          <div className="text-center mb-8">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-2">All Pets Welcome</span>
-            <h3 className="text-xl font-bold text-gray-900">Any Domesticated Animal Can Be an ESA</h3>
+        {/* Any Pet Qualifies strip — simplified: plain-text pills, no eyebrow, no icons */}
+        <div className="mt-10 pt-8 sm:mt-16 sm:pt-12 border-t border-slate-200">
+          <div className="text-center mb-6 sm:mb-8">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900">Any Domesticated Animal Can Be an ESA</h3>
             <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">
               Dogs, cats, rabbits, birds — if your pet provides emotional comfort, they may qualify. No special training required.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-2.5">
+          <div className="flex flex-wrap justify-center gap-2">
             {petTypes.map((pet) => (
               <span
                 key={pet.name}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-green-100 text-sm font-semibold text-gray-700 shadow-sm"
+                className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white border border-slate-200 text-xs sm:text-sm font-semibold text-gray-700"
               >
-                <i className={`${pet.icon} text-orange-500 text-base`}></i>
                 {pet.name}
               </span>
             ))}
           </div>
-          <p className="text-center text-xs text-gray-400 mt-6">
+          <p className="text-center text-xs text-gray-400 mt-5">
             <i className="ri-information-line mr-1"></i>
             ESA letters cover dogs, cats, rabbits, birds, hamsters, and other domesticated animals
           </p>

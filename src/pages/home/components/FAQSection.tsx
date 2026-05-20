@@ -61,10 +61,23 @@ const faqs = [
     q: "Does landlord verification expose my private health information?",
     a: "No. The verification system is designed to be privacy-safe. It only confirms that the letter is genuine and was issued by a licensed mental health professional. Your diagnosis, treatment history, and any other health details remain completely confidential and are protected under HIPAA.",
   },
+  {
+    q: "I need an ESA letter for my dog — what's the process?",
+    a: "The process is straightforward: complete a confidential clinical assessment (about 5 minutes), and a Licensed Mental Health Practitioner credentialed in your state reviews it. If an emotional support animal is clinically appropriate, you receive a housing ESA letter that names your dog and includes the provider's credentials. The process is the same for cats, rabbits, birds, and other domesticated animals — what matters is the clinical determination, not the species.",
+  },
+  {
+    q: "How do I get an ESA letter from a doctor or licensed provider?",
+    a: "ESA letters are not issued by general-practice doctors — they're signed by a Licensed Mental Health Practitioner (therapist, psychologist, LCSW, LPC, or LMHP) credentialed in your state. PawTenant matches your assessment to a licensed provider, who conducts the clinical review and signs the letter when an emotional support animal is clinically appropriate. The provider's license number and signature appear on every letter, and landlords can verify both.",
+  },
+  {
+    q: "How much does an ESA letter cost?",
+    a: "PawTenant's housing ESA letter is $110 for one pet (valid one year), with additional pets at $25 each. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not result in a letter. Flexible payment options including Klarna may be available at checkout where eligible.",
+  },
 ];
 
 export default function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [showAllMobile, setShowAllMobile] = useState(false);
 
   // ── Inject FAQPage schema via useEffect to avoid React 19 double-hoisting
   // React 19 automatically hoists inline <script> tags from JSX to <head> AND
@@ -110,7 +123,9 @@ export default function FAQSection() {
           {faqs.map((faq, idx) => (
             <div
               key={idx}
-              className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+              className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${
+                idx >= 4 && !showAllMobile ? "hidden sm:block" : ""
+              }`}
             >
               <button
                 className="w-full flex items-center justify-between p-5 text-left cursor-pointer hover:bg-gray-50 transition-colors"
@@ -136,6 +151,18 @@ export default function FAQSection() {
               )}
             </div>
           ))}
+          {!showAllMobile && faqs.length > 4 && (
+            <div className="sm:hidden pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAllMobile(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Show more questions
+                <i className="ri-arrow-down-s-line"></i>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </section>
