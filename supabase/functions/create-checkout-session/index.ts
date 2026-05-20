@@ -102,6 +102,37 @@ function getPSDPriceId(petCount: number, deliverySpeed: string, planType: string
   return PSD_ONETIME_PRICE_IDS[tier][level];
 }
 
+// ─── PSD ONE-TIME inline amount (cents) — same table as create-payment-intent ──
+// Used as a fallback path for PSD Klarna sessions where the Stripe Price IDs
+// above may not be Klarna-enabled in the dashboard. Letting Stripe create the
+// product on-the-fly from `price_data` sidesteps any per-product activation
+// requirement and matches the inline-card amount exactly.
+function getPSDOneTimeAmountCents(petCount: number, deliverySpeed: string): number {
+  const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
+  const isPriority = deliverySpeed !== "2-3days";
+  if (tier === 1) return isPriority ? 12000 : 10000;
+  if (tier === 2) return isPriority ? 14000 : 12000;
+  return isPriority ? 15500 : 13500;
+}
+
+function buildPSDOneTimeKlarnaLineItem(petCount: number, deliverySpeed: string) {
+  const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
+  const isPriority = deliverySpeed !== "2-3days";
+  const speedLabel = isPriority ? "Priority (24-hour)" : "Standard (2-3 day)";
+  const dogsLabel = tier === 1 ? "1 Dog" : `${tier} Dogs`;
+  return {
+    price_data: {
+      currency: "usd",
+      product_data: {
+        name: `PSD Letter — ${dogsLabel}, ${speedLabel}`,
+        description: `Psychiatric Service Dog letter for ${dogsLabel.toLowerCase()} — ${speedLabel} delivery. ADA-compliant.`,
+      },
+      unit_amount: getPSDOneTimeAmountCents(petCount, deliverySpeed),
+    },
+    quantity: 1,
+  };
+}
+
 /**
  * Resolve a Stripe coupon ID from a coupon code string.
  * 1. Try direct coupon ID lookup.
@@ -220,9 +251,22 @@ Deno.serve(async (req: Request) => {
   const psdPriceId = !isESA ? getPSDPriceId(petCount, deliverySpeed, planType) : "";
 
   // Success/cancel URLs — route to correct thank-you page per letter type
+  //
+  // ── 2026-05-20 CHECKOUT-SESSION-ORDER-ID-IN-SUCCESS-URL ────────────────
+  // Klarna / Amazon Pay open the Stripe Checkout Session in a NEW tab via
+  // `window.open(...)`. sessionStorage is per-tab — the new tab does NOT
+  // inherit `esa_pending_order` from the originating tab. After payment
+  // Stripe redirects the new tab to this success URL; without the
+  // confirmation_id in the URL, the thank-you page falls back to a
+  // fabricated `PT-${Date.now()}` phantom ID (which exists nowhere in the
+  // database) instead of the real canonical confirmation_id.
+  //
+  // Adding `order_id={confirmationId}` in the URL gives the thank-you
+  // page an authoritative source. Same param name the inline-card path
+  // already uses for Google Ads transaction_id, so no separate plumbing.
   const thankYouPath = letterType === "psd" ? "/psd-assessment/thank-you" : "/assessment/thank-you";
   const cancelPath   = letterType === "psd" ? "/psd-assessment" : "/assessment";
-  const successUrl   = `${origin}${thankYouPath}?session_id={CHECKOUT_SESSION_ID}&plan=${planType}`;
+  const successUrl   = `${origin}${thankYouPath}?session_id={CHECKOUT_SESSION_ID}&plan=${planType}&order_id=${encodeURIComponent(confirmationId)}`;
   const cancelUrl    = `${origin}${cancelPath}`;
 
   const sharedMetadata = {
@@ -272,14 +316,52 @@ Deno.serve(async (req: Request) => {
 
       const session = await stripe.checkout.sessions.create(sessionParams);
       console.info(`[create-checkout-session] Subscription session ${session.id} for ${confirmationId} (${letterType}), coupon=${couponCode || "none"}`);
+
+      // KLARNA-RECONCILIATION-SELF-HEAL: same writeback as the one-time
+      // path. Subscriptions don't accept Klarna at Stripe but the
+      // checkout_session_id is still useful for any reconciler that
+      // looks orders up by Stripe session.
+      if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && session.id) {
+        try {
+          const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+          await sb
+            .from("orders")
+            .update({ checkout_session_id: session.id })
+            .eq("confirmation_id", confirmationId);
+        } catch (writebackErr) {
+          console.warn("[create-checkout-session] subscription checkout_session_id writeback failed:", writebackErr);
+        }
+      }
+
       return json({ url: session.url, sessionId: session.id });
     }
 
     // ── ONE-TIME CHECKOUT (Klarna / QR) ────────────────────────────────────
+    //
+    // ── 2026-05-20 PSD-KLARNA-INLINE-PRICE-DATA ────────────────────────────
+    // For PSD one-time Klarna we use inline `price_data` instead of the
+    // pre-created Stripe Price IDs in PSD_ONETIME_PRICE_IDS. The hardcoded
+    // PSD price objects were rejecting Stripe Checkout Session creation
+    // when payment_method_types=["klarna"] — most likely the per-product
+    // Klarna activation in the Stripe dashboard is missing on those Price
+    // objects, or one of the IDs no longer exists in this Stripe mode.
+    // Inline price_data lets Stripe create the product on the fly using
+    // the merchant's account-level Klarna activation (same activation
+    // ESA Klarna already uses successfully). Amount mirrors
+    // getPSDOneTimeAmount in create-payment-intent so card and Klarna
+    // charge identical totals before coupons.
+    //
+    // QR / mobile paths and PSD subscription paths are unchanged.
+    const oneTimeLineItems = (() => {
+      if (isESA) return esaLineItems!;
+      if (mode === "klarna") return [buildPSDOneTimeKlarnaLineItem(petCount, deliverySpeed)];
+      return [{ price: psdPriceId, quantity: 1 }];
+    })();
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sessionParams: any = {
       mode: "payment",
-      line_items: isESA ? esaLineItems! : [{ price: psdPriceId, quantity: 1 }],
+      line_items: oneTimeLineItems,
       customer_email: email,
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -312,6 +394,26 @@ Deno.serve(async (req: Request) => {
 
     const session = await stripe.checkout.sessions.create(sessionParams);
     console.info(`[create-checkout-session] ${mode} session ${session.id} for ${confirmationId} (${letterType}), coupon=${couponCode || "none"}`);
+
+    // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL ─────────────────────────
+    // Persist the Stripe Checkout Session ID onto the orders row right now
+    // so the `check-payment-status` reconciliation endpoint can find it
+    // without waiting for the webhook. If the webhook never fires (Stripe
+    // event subscription missing / TEST mode quirks), check-payment-status
+    // can still query Stripe by this session_id and mark the order paid.
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && session.id) {
+      try {
+        const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        await sb
+          .from("orders")
+          .update({ checkout_session_id: session.id })
+          .eq("confirmation_id", confirmationId);
+      } catch (writebackErr) {
+        // Non-fatal — webhook reconciliation will still work. Log and continue.
+        console.warn("[create-checkout-session] checkout_session_id writeback failed:", writebackErr);
+      }
+    }
+
     return json({ url: session.url, sessionId: session.id });
 
   } catch (err: unknown) {

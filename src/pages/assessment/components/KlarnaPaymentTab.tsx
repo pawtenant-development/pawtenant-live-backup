@@ -154,8 +154,20 @@ export default function KlarnaPaymentTab({
       }
     } catch (err) {
       console.error("Klarna checkout error:", err);
-      // Distinct, helpful copy — do NOT reuse the "agree to terms" error.
-      setSubmitError("Unable to start Klarna checkout. Please try again or use card payment.");
+      // ── 2026-05-20 PSD-KLARNA-START-FAIL-VISIBILITY ────────────────────
+      // Surface the actual Stripe / create-checkout-session error so
+      // PSD Klarna failures are debuggable from the UI. The previous
+      // generic "Unable to start Klarna checkout" copy hid the cause
+      // (invalid Price ID, Klarna not activated for the product, etc.)
+      // and forced a server-log dive on every failure. ESA card flow
+      // and PSD card flow are unaffected — only Klarna error copy
+      // changes.
+      const detail = err instanceof Error ? err.message.trim() : "";
+      setSubmitError(
+        detail && detail !== "Failed to create checkout session"
+          ? `Unable to start Klarna checkout: ${detail}. Please try again or use card payment.`
+          : "Unable to start Klarna checkout. Please try again or use card payment.",
+      );
     } finally {
       setLoading(false);
     }
@@ -166,20 +178,50 @@ export default function KlarnaPaymentTab({
     setCheckingStatus(true);
     setStatusError("");
     try {
-      const { createClient } = await import("@supabase/supabase-js");
-      const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-      const { data } = await sb
-        .from("orders")
-        .select("status, paid_at")
-        .eq("confirmation_id", confirmationId)
-        .maybeSingle();
+      // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL ───────────────────
+      // Previously this query read orders.paid_at directly. That worked
+      // only when the Stripe webhook had already fired
+      // `checkout.session.async_payment_succeeded` and written paid_at.
+      // For Klarna sessions where the webhook is missing / not
+      // subscribed / delayed, the customer would see "Payment not yet
+      // completed" forever even though Stripe had charged them.
+      //
+      // The check-payment-status edge function now accepts a
+      // confirmationId, asks Stripe directly via stripe.checkout.sessions
+      // .retrieve, and writes paid_at + payment_intent_id + status back
+      // to the orders row when Stripe confirms the session is paid.
+      // Self-healing fallback for any future webhook outage.
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/check-payment-status`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+          },
+          body: JSON.stringify({ confirmationId }),
+        },
+      );
+      const data = await res.json() as {
+        paid?: boolean;
+        reconciled?: boolean;
+        paymentStatus?: string;
+        error?: string;
+      };
 
-      if (data && data.paid_at) {
+      if (data.paid === true) {
         setPaymentCompleted(true);
         onSuccess?.();
-      } else {
-        setStatusError("Payment not yet completed. Please finish payment in the Klarna window and try again.");
+        return;
       }
+
+      if (data.error) {
+        console.error("[checkPaymentStatus] reconciler error:", data.error);
+      }
+      setStatusError(
+        "Payment not yet completed. Please finish payment in the Klarna window and try again.",
+      );
     } catch (err) {
       console.error("Error checking payment status:", err);
       setStatusError("Could not verify payment status. Please try again.");

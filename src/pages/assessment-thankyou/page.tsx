@@ -406,6 +406,34 @@ export default function AssessmentThankYouPage() {
     return locationState;
   });
   const webhookFired = useRef(false);
+  const reconcilerFired = useRef(false);
+
+  // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL (thank-you arrival) ──────
+  // Fire-and-forget call to check-payment-status so the orders row is
+  // updated as soon as the customer lands on the thank-you page from
+  // Klarna, even if they never return to the original tab to click
+  // "I've Completed Payment" and even if the Stripe webhook is missing
+  // or has not yet fired. The endpoint is idempotent — a no-op when the
+  // row is already paid. Card-payment arrivals also call it harmlessly
+  // (no session_id on the row → endpoint returns paid=false and writes
+  // nothing). Never blocks the render.
+  useEffect(() => {
+    if (reconcilerFired.current) return;
+    if (!stripeSessionId && !urlOrderId) return;
+    reconcilerFired.current = true;
+    const payload: { sessionId?: string; confirmationId?: string } = {};
+    if (stripeSessionId) payload.sessionId = stripeSessionId;
+    if (urlOrderId) payload.confirmationId = urlOrderId;
+    fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify(payload),
+    }).catch(() => { /* fire-and-forget */ });
+  }, [stripeSessionId, urlOrderId]);
 
   useEffect(() => {
     const directSuccess = sessionStorage.getItem("esa_payment_success") === "true";
@@ -507,8 +535,21 @@ export default function AssessmentThankYouPage() {
     selectedProvider = "your assigned provider",
     planType = "One-Time Purchase",
     deliverySpeed = "2-3days",
-    confirmationId = `PT-${Date.now().toString(36).toUpperCase()}`,
   } = resolvedState;
+
+  // ── 2026-05-20 KLARNA-PHANTOM-ORDER-ID-FIX ───────────────────────────────
+  // Authoritative confirmation_id resolution order:
+  //   1. URL `?order_id=` — set by create-checkout-session for every
+  //      Stripe Checkout Session (Klarna / QR / Link). Survives the
+  //      cross-tab Klarna redirect where sessionStorage is empty.
+  //   2. resolvedState.confirmationId — inline-card path (same tab,
+  //      sessionStorage populated by assessment/page.tsx).
+  //   3. Empty string — render a calm "Processing — check your email"
+  //      state. NEVER fabricate a phantom `PT-${Date.now()}` id; the
+  //      previous fabricated default produced display IDs that did
+  //      not exist in the database and confused customers.
+  const confirmationId = urlOrderId || resolvedState.confirmationId || "";
+  const hasConfirmationId = confirmationId.length > 0;
 
   // Authoritative price: URL param wins over session storage
   const price = urlAmountParsed ?? resolvedState.price ?? 90;
@@ -743,7 +784,11 @@ export default function AssessmentThankYouPage() {
           <div className="flex items-center justify-between flex-wrap gap-3 mb-6 pb-5 border-b border-gray-100">
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Order ID</p>
-              <p className="text-sm font-bold text-gray-800 font-mono">{confirmationId}</p>
+              {hasConfirmationId ? (
+                <p className="text-sm font-bold text-gray-800 font-mono">{confirmationId}</p>
+              ) : (
+                <p className="text-sm font-bold text-gray-500 italic">Processing — your order ID will be emailed shortly</p>
+              )}
             </div>
             <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
               <i className="ri-checkbox-circle-line text-green-500 text-sm"></i>

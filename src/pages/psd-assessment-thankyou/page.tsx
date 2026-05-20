@@ -227,6 +227,28 @@ export default function PSDAssessmentThankYouPage() {
     return locationState;
   });
   const webhookFired = useRef(false);
+  const reconcilerFired = useRef(false);
+
+  // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL (PSD thank-you arrival) ──
+  // Same fire-and-forget reconciliation as the ESA thank-you page.
+  // Idempotent on the server — no-op when the order is already paid.
+  useEffect(() => {
+    if (reconcilerFired.current) return;
+    if (!stripeSessionId && !urlOrderId) return;
+    reconcilerFired.current = true;
+    const payload: { sessionId?: string; confirmationId?: string } = {};
+    if (stripeSessionId) payload.sessionId = stripeSessionId;
+    if (urlOrderId) payload.confirmationId = urlOrderId;
+    fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify(payload),
+    }).catch(() => { /* fire-and-forget */ });
+  }, [stripeSessionId, urlOrderId]);
 
   useEffect(() => {
     const directSuccess = sessionStorage.getItem("esa_payment_success") === "true";
@@ -281,8 +303,17 @@ export default function PSDAssessmentThankYouPage() {
     pricingPlan = "Priority ($120)",
     planType = "One-Time Purchase",
     price = 120,
-    confirmationId = `PT-PSD${Date.now().toString(36).toUpperCase()}`,
   } = resolvedState;
+
+  // ── 2026-05-20 KLARNA-PHANTOM-ORDER-ID-FIX (PSD parity with ESA) ─────────
+  // Same fix as src/pages/assessment-thankyou/page.tsx: prefer URL
+  // `?order_id=` (set by create-checkout-session for every Stripe Checkout
+  // Session) over the legacy phantom fallback. The fabricated
+  // `PT-PSD${Date.now()}` default produced phantom IDs that did not exist
+  // in the database after a cross-tab Klarna redirect where sessionStorage
+  // is empty. Empty string here renders a calm "Processing" state.
+  const confirmationId = urlOrderId || resolvedState.confirmationId || "";
+  const hasConfirmationId = confirmationId.length > 0;
 
   const shareUrl = "https://pawtenant.com/psd-assessment";
   const shareText = "I just got my Psychiatric Service Dog letter through PawTenant — fast, professional, and ADA-compliant. Check them out if you need a PSD letter!";
@@ -513,7 +544,11 @@ export default function PSDAssessmentThankYouPage() {
           <div className="flex items-center justify-between flex-wrap gap-3 mb-6 pb-5 border-b border-gray-100">
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Order ID</p>
-              <p className="text-sm font-bold text-gray-800 font-mono">{confirmationId}</p>
+              {hasConfirmationId ? (
+                <p className="text-sm font-bold text-gray-800 font-mono">{confirmationId}</p>
+              ) : (
+                <p className="text-sm font-bold text-gray-500 italic">Processing — your order ID will be emailed shortly</p>
+              )}
             </div>
             <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
               <i className="ri-checkbox-circle-line text-green-500 text-sm"></i>
