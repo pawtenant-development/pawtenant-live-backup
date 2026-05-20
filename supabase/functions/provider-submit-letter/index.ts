@@ -217,8 +217,22 @@ async function injectPdfVerification(
 
     if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
 
-    const { data: publicUrlData } = supabase.storage.from("letters").getPublicUrl(processedFileName);
-    const processedUrl = publicUrlData.publicUrl;
+    // ── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ────────────────────
+    // `letters` is a PRIVATE bucket (migration 20260519140000 §4 sets
+    // public=false). getPublicUrl returns a /storage/v1/object/public/<...>
+    // URL that resolves to "Bucket not found" 404 for both admin and
+    // customer. Use createSignedUrl with a 10-year TTL — same pattern as
+    // admin-upload-document — so the URL stored in processed_file_url is
+    // immediately working. notify-patient-letter re-signs every URL at
+    // send time anyway, so email delivery is unaffected by the change.
+    const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365 * 10;
+    const { data: signed, error: signErr } = await supabase.storage
+      .from("letters")
+      .createSignedUrl(processedFileName, SIGNED_URL_TTL_SECONDS);
+    if (signErr || !signed?.signedUrl) {
+      throw new Error(`Signed URL generation failed: ${signErr?.message ?? "no signed url"}`);
+    }
+    const processedUrl = signed.signedUrl;
 
     await supabase.from("order_documents").update({
       footer_injected: true,

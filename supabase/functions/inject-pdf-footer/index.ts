@@ -213,8 +213,20 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: `Storage upload failed: ${uploadErr.message}` }, 500);
     }
 
-    const { data: publicUrlData } = supabase.storage.from("letters").getPublicUrl(processedFileName);
-    const processedUrl = publicUrlData.publicUrl;
+    // ── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ────────────────────
+    // `letters` is a private bucket — getPublicUrl returns a broken
+    // /storage/v1/object/public/letters/... URL. Use createSignedUrl
+    // (10-year TTL) so the URL stored in processed_file_url works for
+    // both admin and customer download surfaces.
+    const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365 * 10;
+    const { data: signed, error: signErr } = await supabase.storage
+      .from("letters")
+      .createSignedUrl(processedFileName, SIGNED_URL_TTL_SECONDS);
+    if (signErr || !signed?.signedUrl) {
+      await logInjection(supabase, { orderId, confirmationId, documentId, letterId, success: false, error: `Signed URL generation failed: ${signErr?.message ?? "no signed url"}` });
+      return json({ ok: false, error: `Signed URL generation failed: ${signErr?.message ?? "no signed url"}` }, 500);
+    }
+    const processedUrl = signed.signedUrl;
 
     // ── Update order_documents ────────────────────────────────────────────────
     await supabase

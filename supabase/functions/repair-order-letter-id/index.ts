@@ -113,7 +113,20 @@ async function injectPdf(
 
     if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
 
-    const { data: { publicUrl } } = supabase.storage.from("letters").getPublicUrl(processedFileName);
+    // ── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ────────────────────
+    // `letters` is a private bucket — getPublicUrl returns a broken
+    // /storage/v1/object/public/letters/... URL. Use createSignedUrl
+    // (10-year TTL) instead so the stored processed_file_url works for
+    // admin "Open Verified PDF" and customer /my-orders without a click-
+    // time round-trip.
+    const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365 * 10;
+    const { data: signed, error: signErr } = await supabase.storage
+      .from("letters")
+      .createSignedUrl(processedFileName, SIGNED_URL_TTL_SECONDS);
+    if (signErr || !signed?.signedUrl) {
+      throw new Error(`Signed URL generation failed: ${signErr?.message ?? "no signed url"}`);
+    }
+    const publicUrl = signed.signedUrl;
 
     await supabase.from("order_documents").update({
       footer_injected: true,

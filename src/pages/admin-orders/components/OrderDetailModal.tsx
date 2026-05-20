@@ -357,6 +357,44 @@ function CopyFieldButton({ value }: { value: string }) {
 const SUPABASE_URL_MODAL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY_MODAL = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
+// ─── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ─────────────────────────
+// The `letters` storage bucket is PRIVATE. order_documents.processed_file_url
+// historically stored the broken `/storage/v1/object/public/letters/...` shape
+// returned by getPublicUrl, which 404s for both admin and customer. The
+// "Open Verified PDF" / "Open Original" anchor buttons now route through
+// the get-document-signed-url edge function which generates a fresh signed
+// URL from the bucket + path. Self-healing for old broken rows; new rows
+// already store working signed URLs after the inject-pdf-footer fix.
+//
+// Pattern: open about:blank synchronously (preserves user-gesture, avoids
+// popup blocker), then redirect the new tab once the signed URL arrives.
+// If fetch fails the new tab is closed instead of left hanging.
+async function openDocumentSignedUrl(documentId: string, preferOriginal: boolean): Promise<void> {
+  const win = window.open("about:blank", "_blank");
+  try {
+    const token = await getAdminToken();
+    const res = await fetch(`${SUPABASE_URL_MODAL}/functions/v1/get-document-signed-url`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_KEY_MODAL,
+        Authorization: `Bearer ${token || SUPABASE_KEY_MODAL}`,
+      },
+      body: JSON.stringify({ documentId, preferOriginal }),
+    });
+    const data = await res.json() as { ok?: boolean; signedUrl?: string; error?: string };
+    if (data.ok && data.signedUrl && win) {
+      win.location.href = data.signedUrl;
+      return;
+    }
+    console.error("[OrderDetailModal] get-document-signed-url failed:", data.error ?? "unknown");
+    if (win) win.close();
+  } catch (err) {
+    console.error("[OrderDetailModal] get-document-signed-url threw:", err);
+    if (win) win.close();
+  }
+}
+
 function RetryPaymentButton({ order }: { order: Order }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -4719,24 +4757,28 @@ export default function OrderDetailModal({
                                 </button>
                               );
                             })()}
-                            {/* Open button — always shows verified PDF when available, falls back to original */}
-                            <a
-                              href={doc.footer_injected && doc.processed_file_url ? doc.processed_file_url : doc.file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            {/* Open button — always shows verified PDF when available, falls back to original.
+                                LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX: routes through get-document-signed-url
+                                so private-bucket PDFs always resolve, even on legacy rows that still hold the
+                                broken /object/public/letters URL in processed_file_url. */}
+                            <button
+                              type="button"
+                              onClick={() => openDocumentSignedUrl(doc.id as string, false)}
                               title={doc.footer_injected && doc.processed_file_url ? "Opens stamped PDF with verification footer" : "Opens original uploaded PDF (not yet stamped)"}
                               className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg cursor-pointer transition-colors ${doc.footer_injected && doc.processed_file_url ? "bg-[#dbeafe] text-[#3b6ea5] hover:bg-[#d0ede6]" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
                             >
                               <i className={doc.footer_injected && doc.processed_file_url ? "ri-shield-check-line" : "ri-external-link-line"}></i>
                               {doc.footer_injected && doc.processed_file_url ? "Open Verified PDF" : "Open Original"}
-                            </a>
+                            </button>
                             {/* Show link to original if verified version exists */}
                             {doc.footer_injected && doc.processed_file_url && (
-                              <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                onClick={() => openDocumentSignedUrl(doc.id as string, true)}
                                 className="whitespace-nowrap flex items-center gap-1 px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
                                 title="Open original unprocessed PDF">
                                 <i className="ri-file-line text-xs"></i>Original
-                              </a>
+                              </button>
                             )}
                             {canPerformDelete && (
                               <button type="button" onClick={() => handleDeleteDoc(doc.id)}

@@ -204,7 +204,15 @@ function OrderStatusTimeline({ order }: { order: Order }) {
 function DocumentsSection({ order }: { order: Order }) {
   const providerCompleted = order.doctor_status === "patient_notified";
 
-  const allDocs: Array<{ label: string; doc_type: string; file_url: string; uploaded_at?: string; isLegacy?: boolean }> = [];
+  // ── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ────────────────────
+  // doc_id is carried alongside file_url so the View / Download buttons can
+  // route through the get-document-signed-url edge function instead of
+  // opening the broken /storage/v1/object/public/letters URL directly.
+  // Legacy rows that only have order.signed_letter_url (no matching
+  // order_documents row) keep the direct-link fallback — those pre-date
+  // the order_documents table and were stored before the bucket was made
+  // private, so they generally still work.
+  const allDocs: Array<{ id?: string; label: string; doc_type: string; file_url: string; uploaded_at?: string; isLegacy?: boolean }> = [];
 
   if (providerCompleted) {
     if (order.signed_letter_url) {
@@ -213,18 +221,68 @@ function DocumentsSection({ order }: { order: Order }) {
       );
       const serveUrl = matchingDoc?.processed_file_url ?? order.signed_letter_url;
       const docLabel = isPSDOrder(order) ? "Signed PSD Letter" : "Signed ESA Letter";
-      allDocs.push({ label: docLabel, doc_type: "signed_letter", file_url: serveUrl, isLegacy: true });
+      allDocs.push({ id: matchingDoc?.id, label: docLabel, doc_type: "signed_letter", file_url: serveUrl, isLegacy: true });
     }
   }
 
   if (providerCompleted && order.documents) {
     order.documents.filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url).forEach((d) => {
       const serveUrl = (d.footer_injected && d.processed_file_url) ? d.processed_file_url : d.file_url;
-      allDocs.push({ label: d.label, doc_type: d.doc_type, file_url: serveUrl, uploaded_at: d.uploaded_at });
+      allDocs.push({ id: d.id, label: d.label, doc_type: d.doc_type, file_url: serveUrl, uploaded_at: d.uploaded_at });
     });
   }
 
   if (allDocs.length === 0) return null;
+
+  // Click-handler that fetches a fresh signed URL from get-document-signed-url
+  // and either previews (target=_blank) or downloads (anchor with `download`).
+  // window.open is called synchronously before the await so the popup blocker
+  // doesn't fire; the new tab is closed if the fetch fails so the user
+  // isn't left staring at a blank page.
+  const openDocument = async (docId: string | undefined, fallbackUrl: string, mode: "view" | "download") => {
+    if (!docId) {
+      // Legacy order (no doc id) — direct link
+      window.open(fallbackUrl, mode === "view" ? "_blank" : "_self");
+      return;
+    }
+    const win = mode === "view" ? window.open("about:blank", "_blank") : null;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token ?? "";
+      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      const supabaseAnon = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+      const res = await fetch(`${supabaseUrl}/functions/v1/get-document-signed-url`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnon,
+          Authorization: `Bearer ${token || supabaseAnon}`,
+        },
+        body: JSON.stringify({ documentId: docId }),
+      });
+      const data = await res.json() as { ok?: boolean; signedUrl?: string; error?: string };
+      if (!data.ok || !data.signedUrl) {
+        console.error("[my-orders] get-document-signed-url failed:", data.error ?? "unknown");
+        if (win) win.close();
+        return;
+      }
+      if (mode === "view" && win) {
+        win.location.href = data.signedUrl;
+      } else {
+        // Download flow: create a temporary anchor with `download` attr.
+        const a = document.createElement("a");
+        a.href = data.signedUrl;
+        a.download = "";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error("[my-orders] open document threw:", err);
+      if (win) win.close();
+    }
+  };
 
   return (
     <div className="mt-4">
@@ -253,14 +311,17 @@ function DocumentsSection({ order }: { order: Order }) {
                 </div>
               </div>
               <div className="flex items-center gap-2 mt-2.5 pl-12">
-                <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                {/* LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX: route through
+                    get-document-signed-url when the doc has an id; legacy
+                    rows without a doc id fall through to direct link. */}
+                <button type="button" onClick={() => openDocument(doc.id, doc.file_url, "view")}
                   className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer transition-colors">
                   <i className="ri-eye-line"></i>View
-                </a>
-                <a href={doc.file_url} download
+                </button>
+                <button type="button" onClick={() => openDocument(doc.id, doc.file_url, "download")}
                   className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors">
                   <i className="ri-download-line"></i>Download
-                </a>
+                </button>
               </div>
             </div>
           );
