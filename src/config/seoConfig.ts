@@ -10,6 +10,7 @@ export const BASE_URL = "https://www.pawtenant.com";
 export interface SEOEntry {
   title: string;
   description: string;
+  keywords?: string;
 }
 
 // ── Core static pages ────────────────────────────────────────────────────────
@@ -28,6 +29,8 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     title: "How to Get an ESA Letter | Step-by-Step Guide | PawTenant",
     description:
       "Learn how to get a legitimate ESA letter from a licensed professional. Follow our simple step-by-step process and receive your letter within 24 hours.",
+      keywords: 
+      "How to get ESA letter,Get esa letter,Get ESA letter online ,How to get ESA letter online",
   },
   "/housing-rights-esa": {
     title: "ESA Housing Rights Explained | Fair Housing Act | PawTenant",
