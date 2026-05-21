@@ -7,6 +7,13 @@ const NotFound = lazy(() => import("../pages/NotFound"));
 const Home = lazy(() => import("../pages/home/page"));
 const AssessmentPage = lazy(() => import("../pages/assessment/page"));
 const HowToGetESAPage = lazy(() => import("../pages/how-to-get-esa/page"));
+// ── 2026-05-21 SEO-EVERYTHING-ESA ─────────────────────────────────────────
+// Long-form SEO guide. The page component already exists in this repo
+// (src/pages/everything-esa-online/page.tsx, 962 lines), but the route was
+// never wired, so /everything-you-need-to-know-about-obtaining-an-esa-letter-
+// online was returning 404 in LIVE while serving correctly in TEST. Mirrors
+// the route registration that already exists in pawtenant-test.
+const EverythingEsaOnlinePage = lazy(() => import("../pages/everything-esa-online/page"));
 const HousingRightsPage = lazy(() => import("../pages/housing-rights/page"));
 const ESALetterCostPage = lazy(() => import("../pages/esa-letter-cost/page"));
 const ExploreStatesPage = lazy(() => import("../pages/explore-states/page"));
@@ -96,6 +103,8 @@ const routes: RouteObject[] = [
   { path: "/my-orders", element: <P C={MyOrdersPage} /> },
   { path: "/account/checkout", element: <P C={AccountCheckoutPage} /> },
   { path: "/how-to-get-esa-letter", element: <P C={HowToGetESAPage} /> },
+  // Long-form SEO guide — indexable, in sitemap.
+  { path: "/everything-you-need-to-know-about-obtaining-an-esa-letter-online", element: <P C={EverythingEsaOnlinePage} /> },
   { path: "/housing-rights-esa", element: <P C={HousingRightsPage} /> },
   { path: "/esa-letter-cost", element: <P C={ESALetterCostPage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
