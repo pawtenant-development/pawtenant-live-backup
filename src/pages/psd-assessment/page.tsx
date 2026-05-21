@@ -401,7 +401,19 @@ export default function PSDAssessmentPage() {
         </p>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      {/* ── 2026-05-21 PSD-STEP3-ESA-WRAPPER ────────────────────────────────
+          On Step 3 we use ESA's exact outer wrapper (max-w-6xl / md:px-6 /
+          md:py-10) so the lg:grid-cols-5 checkout grid in PSDStep3Checkout
+          gets the same column widths, sticky right column, and central
+          alignment ESA Step 3 has. Steps 1/2 keep the narrower max-w-3xl
+          form container they were tuned for. */}
+      <div
+        className={
+          step === 3
+            ? "max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-10"
+            : "max-w-3xl mx-auto px-4 py-8"
+        }
+      >
         <StepIndicator
           currentStep={step}
           steps={[
