@@ -9,16 +9,21 @@ const TITLE = "Everything You Need to Know About Obtaining an ESA Letter Online 
 const DESCRIPTION =
   "The complete 2026 guide to obtaining a legitimate ESA letter online. Learn who qualifies, how online evaluations work with licensed mental health professionals, what makes a letter housing-valid, and how to spot sketchy ESA websites.";
 
-// PawTenant Supabase public asset library
-const ASSET_BASE = "https://cvwbozlbbmrjxznknouq.supabase.co/storage/v1/object/public/ad-assets";
-const ASSETS = {
-  esaLetterMockup: `${ASSET_BASE}/ESA%20Letter/esa_letter_1080x1920.png`,
-  verificationScreen: `${ASSET_BASE}/verification/verification_screen_1080x1920.png`,
-  assessmentClip1: `${ASSET_BASE}/assessment-ui/assessment_clip_1.mp4`,
-  petBeagle: `${ASSET_BASE}/pets/portrait-thoughtful-beagle-dog-sitting-indoors.jpg`,
-  petCloseUp: `${ASSET_BASE}/pets/close-up-dog-looking-away.jpg`,
-  heroImg: `${ASSET_BASE}/pets/close-up-dog-looking-away.jpg`,
-};
+// ── 2026-05-22 EVERYTHING-ESA-POLISH ────────────────────────────────────────
+// Local-asset paths. The page previously pulled images and an .mp4 video from
+// an external Supabase storage bucket (`ad-assets`) — those URLs render
+// inconsistently (sometimes 404, sometimes uncropped), they're heavy on the
+// LCP, and they look "AI-y" / off-brand. We now reuse the same premium image
+// assets the homepage hero + checkout sample-letter card already ship with,
+// so this guide inherits PawTenant's polished visual language and never
+// depends on an external bucket being reachable.
+const HERO_IMG_MOBILE = "/assets/blog/pawtenant-mobile-hero-pomeranian.webp";
+const HERO_IMG_DESKTOP = "/assets/blog/fp-woman-sitting-floor-desktop.webp";
+const HERO_IMG_FALLBACK = "/assets/blog/fp-woman-sitting-floor.jpg";
+const ESA_SAMPLE_LETTER = "/images/checkout/esa-sample-letter.svg";
+const TELEHEALTH_IMG = "/assets/lifestyle/woman-telehealth-with-dog.jpg";
+const HOUSING_LIFESTYLE_IMG = "/assets/lifestyle/woman-with-dog-new-apartment.jpg";
+const COMPANIONSHIP_IMG = "/assets/lifestyle/senior-with-pet-home.jpg";
 
 const heroBenefits = [
   "Evaluated by a state-licensed mental health professional",
@@ -321,71 +326,150 @@ export default function EverythingEsaOnlinePage() {
 
       <SharedNavbar />
 
-      {/* Hero */}
-      <section className="relative pt-28 pb-24">
+      {/* Hero — 2026-05-22 EVERYTHING-ESA-POLISH
+          Rebuilt against the homepage hero pattern (HeroSection.tsx) so this
+          long-form guide page inherits the same premium mobile/desktop
+          rhythm. Key changes vs the rejected version:
+            • `<picture>` triplet with the homepage's pomeranian mobile WebP
+              + sitting-on-floor desktop WebP + JPG fallback — the dog/owner
+              subject is properly composed at every viewport, no more bad
+              face-crop.
+            • Calm gray-900 gradient (not muddy black) + bottom-fade on
+              mobile to ease into the next section.
+            • Calm orange-tinted "Complete Guide" eyebrow pill — matches
+              the homepage HIPAA chip treatment.
+            • Single primary full-width CTA on mobile; primary + outline
+              "See how it works" on desktop. Money-back protection reads
+              calmly under the CTA on mobile (mirrors the homepage refund
+              reassurance pattern). */}
+      <section className="relative min-h-[78vh] sm:min-h-[72vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img
-            src={ASSETS.heroImg}
-            alt="A close-up portrait of a calm dog looking away — emotional support animals provide comfort that supports housing accommodation requests"
-            className="w-full h-full object-cover object-center"
-            loading="eager"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/20"></div>
+          <picture>
+            <source
+              media="(max-width: 768px)"
+              srcSet={HERO_IMG_MOBILE}
+              type="image/webp"
+            />
+            <source
+              media="(min-width: 769px)"
+              srcSet={HERO_IMG_DESKTOP}
+              type="image/webp"
+            />
+            <img
+              src={HERO_IMG_FALLBACK}
+              alt="A licensed mental health professional reviewing an emotional support animal letter request — calm, real, online ESA evaluation"
+              className="w-full h-full object-cover object-top opacity-85"
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+              width={1920}
+              height={1280}
+            />
+          </picture>
+          <div className="absolute inset-0 bg-gradient-to-r from-gray-900/85 via-gray-900/65 to-gray-900/25"></div>
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-gray-900/70 to-transparent md:hidden"></div>
         </div>
-        <div className="relative w-full max-w-7xl mx-auto px-6">
+
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-6 py-20 sm:py-28 md:py-32">
           <div className="max-w-2xl">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-400 mb-4">
+            <div className="inline-flex items-center gap-2 bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
+              <i className="ri-book-2-line"></i>
               Complete Guide · Updated 2026
-            </span>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
+            </div>
+
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
               Everything You Need to Know About Obtaining an ESA Letter Online
             </h1>
-            <p className="text-white/85 text-lg leading-relaxed mb-8">
+
+            {/* Long desktop subhead — preserved in DOM for SEO + crawlers. */}
+            <p className="hidden sm:block text-gray-200 text-base sm:text-lg leading-relaxed mb-7">
               A complete, plain-English guide to legitimate ESA letters: who may qualify, how online evaluations actually work with licensed mental health professionals, what a housing-valid letter looks like, and how to spot the sketchy services that get people in trouble.
             </p>
-            <div className="flex flex-wrap items-center gap-4">
+
+            {/* Mobile-only condensed subhead — homepage-style cadence. */}
+            <p className="sm:hidden text-gray-200 text-[15px] leading-relaxed mb-7 max-w-sm">
+              The plain-English guide to legitimate ESA letters — who qualifies, how online evaluations work, and what a housing-valid letter looks like.
+            </p>
+
+            {/* Calm trust pill mirroring the homepage hero badge. */}
+            <div className="inline-flex items-center gap-2.5 bg-white/10 border border-white/20 backdrop-blur-sm px-4 py-2.5 rounded-full mb-7">
+              <i className="ri-stethoscope-line text-orange-400 text-sm"></i>
+              <span className="text-white text-xs font-semibold whitespace-nowrap">Licensed clinicians · housing-focused · 24–48 hr delivery</span>
+            </div>
+
+            {/* CTA pair. Mobile: single full-width primary. Desktop: primary
+                + outline "See how it works" anchor. */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-3 sm:mb-8">
               <Link
                 to="/assessment"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-8 py-4 sm:py-3.5 bg-orange-400 text-white font-bold text-base sm:text-sm rounded-md hover:bg-orange-500 transition-colors cursor-pointer inline-flex items-center justify-center gap-2 shadow-lg shadow-orange-400/25 sm:shadow-none"
               >
-                <i className="ri-heart-line"></i>
                 Start Free Assessment
+                <i className="ri-arrow-right-line"></i>
               </Link>
               <a
                 href="#how-online-evaluations-work"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-white/15 border border-white/30 text-white font-semibold rounded-md hover:bg-white/25 transition-colors cursor-pointer"
+                className="hidden sm:inline-flex whitespace-nowrap px-7 py-3.5 border border-white/40 text-white font-semibold text-sm rounded-md hover:bg-white/10 transition-colors cursor-pointer items-center justify-center gap-2"
               >
-                <i className="ri-arrow-down-line"></i>
+                <i className="ri-play-circle-line"></i>
                 See How It Works
               </a>
             </div>
-            <ul className="flex flex-wrap items-center gap-6 mt-8">
-              {heroBenefits.map((b) => (
-                <li key={b} className="flex items-center gap-2 text-white/80 text-xs">
-                  <div className="w-4 h-4 flex items-center justify-center">
-                    <i className="ri-check-line text-orange-400"></i>
-                  </div>
-                  {b}
-                </li>
-              ))}
-            </ul>
+
+            {/* Money-back reassurance — single clean line under the CTA on
+                BOTH mobile and desktop. 2026-05-22 EVERYTHING-ESA-REFINE:
+                removed the trio of orange tick-bullet trust lines from below
+                the CTA (heroBenefits) — they read as checkbox-spam clutter,
+                duplicated copy already present in the calm sage "In This
+                Guide" strip below and in the closing CTA's three pillars.
+                The heroBenefits array is preserved in the module scope as
+                semantic guide metadata (used by SEO + future structured-data
+                ideas) but no longer renders in the hero. */}
+            <p className="text-white/85 text-[13px] sm:text-sm leading-snug max-w-xs sm:max-w-none text-center sm:text-left">
+              <i className="ri-shield-check-line text-orange-300 mr-1.5"></i>
+              <strong className="font-bold text-white">Money-back protection</strong> if you don&rsquo;t qualify
+            </p>
           </div>
         </div>
       </section>
 
-      {/* On-this-page navigation */}
-      <section className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 py-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-orange-500 mb-3">In This Guide</p>
-          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-600">
-            <li><a href="#what-is-an-esa-letter" className="hover:text-orange-500 cursor-pointer">What an ESA letter is</a></li>
-            <li><a href="#who-qualifies" className="hover:text-orange-500 cursor-pointer">Who may qualify</a></li>
-            <li><a href="#how-online-evaluations-work" className="hover:text-orange-500 cursor-pointer">How online evaluations work</a></li>
-            <li><a href="#legitimacy-signals" className="hover:text-orange-500 cursor-pointer">Legitimacy signals</a></li>
-            <li><a href="#red-flags" className="hover:text-orange-500 cursor-pointer">Red flags to avoid</a></li>
-            <li><a href="#housing-context" className="hover:text-orange-500 cursor-pointer">Housing &amp; FHA context</a></li>
-            <li><a href="#why-pawtenant" className="hover:text-orange-500 cursor-pointer">Why PawTenant</a></li>
-            <li><a href="#faq" className="hover:text-orange-500 cursor-pointer">FAQs</a></li>
+      {/* In This Guide — 2026-05-22 EVERYTHING-ESA-POLISH
+          Promoted from a flat link row to a calm sage card grid. Functions
+          like a homepage ReassuranceStrip — gives a visual hook into the
+          guide, scans well on mobile (2 col) and desktop (4 col), and uses
+          sage `#4A8472` accents instead of orange so the page rhythm is:
+          orange CTA → sage trust → white content. */}
+      <section aria-label="Guide table of contents" className="bg-[#f8fafc] border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 py-10 sm:py-12">
+          <p className="text-[#4A8472] text-xs font-bold tracking-widest uppercase mb-4 sm:mb-5 text-center">In This Guide</p>
+          <ul className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {[
+              { href: "#what-is-an-esa-letter", icon: "ri-file-text-line", title: "What an ESA letter is" },
+              { href: "#who-qualifies", icon: "ri-mental-health-line", title: "Who may qualify" },
+              { href: "#how-online-evaluations-work", icon: "ri-stethoscope-line", title: "How online evaluations work" },
+              { href: "#legitimacy-signals", icon: "ri-shield-check-line", title: "Legitimacy signals" },
+              { href: "#red-flags", icon: "ri-error-warning-line", title: "Red flags to avoid" },
+              { href: "#housing-context", icon: "ri-home-heart-line", title: "Housing & FHA context" },
+              { href: "#why-pawtenant", icon: "ri-user-star-line", title: "Why PawTenant" },
+              { href: "#faq", icon: "ri-question-answer-line", title: "FAQs" },
+            ].map((item) => (
+              <li key={item.href}>
+                <a
+                  href={item.href}
+                  className="group flex items-start gap-2.5 sm:gap-3 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-3 sm:py-3.5 hover:border-[#4A8472]/40 hover:bg-[#4A8472]/5 transition-colors cursor-pointer"
+                >
+                  <span
+                    aria-hidden
+                    className="w-7 h-7 rounded-full bg-[#4A8472]/15 text-[#4A8472] flex items-center justify-center flex-shrink-0"
+                  >
+                    <i className={`${item.icon} text-sm`} />
+                  </span>
+                  <span className="text-[12.5px] sm:text-[13px] font-semibold text-slate-800 group-hover:text-[#4A8472] transition-colors leading-snug">
+                    {item.title}
+                  </span>
+                </a>
+              </li>
+            ))}
           </ul>
         </div>
       </section>
@@ -478,17 +562,42 @@ export default function EverythingEsaOnlinePage() {
                 Example shown is a representative format. Your letter will be customized by your licensed clinician.
               </p>
             </div>
+            {/* Sample letter — 2026-05-22 EVERYTHING-ESA-POLISH
+                Uses the polished local ESA sample-letter SVG that ESA Step 3
+                checkout already ships. Bumped from max-w-sm → max-w-md (and
+                full-width on mobile) so the letter reads at a credible size,
+                wrapped in a checkout-style card shell (white + ring +
+                tinted background panel) with the "Sample" chip overlay
+                ESA checkout uses. Far more credible than the previous tiny
+                external PNG. */}
             <div className="order-1 lg:order-2 flex items-center justify-center">
-              <div className="relative w-full max-w-sm">
-                <div className="absolute -inset-4 bg-gradient-to-br from-orange-100/60 to-amber-100/40 rounded-3xl blur-xl"></div>
-                <img
-                  src={ASSETS.esaLetterMockup}
-                  alt="Example of a legitimate ESA letter from a licensed mental health professional showing letterhead, license number, and signature"
-                  className="relative w-full h-auto rounded-2xl shadow-xl border border-gray-100"
-                  loading="lazy"
-                  width={540}
-                  height={960}
-                />
+              <div className="relative w-full max-w-md">
+                <div className="absolute -inset-4 bg-gradient-to-br from-[#4A8472]/15 to-orange-100/30 rounded-3xl blur-xl"></div>
+                <div className="relative bg-white rounded-2xl border border-slate-200 shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] overflow-hidden">
+                  <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3 border-b border-slate-100">
+                    <p className="text-[11px] font-semibold tracking-widest uppercase text-slate-500">Sample · Format Preview</p>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-[0.18em] text-[#4A8472] bg-[#4A8472]/10 rounded-full px-2 py-0.5 uppercase">
+                      <i className="ri-shield-check-line text-[11px]"></i>
+                      Verified
+                    </span>
+                  </div>
+                  <div className="relative bg-slate-50 px-4 sm:px-8 py-5 sm:py-6">
+                    <div className="rounded-lg overflow-hidden ring-1 ring-slate-200 bg-white">
+                      <img
+                        src={ESA_SAMPLE_LETTER}
+                        alt="Example of a legitimate ESA letter from a licensed mental health professional showing letterhead, license number, dated signature, and patient details — no medical specifics shown"
+                        className="w-full h-auto block"
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
+                  <div className="px-5 py-3.5 border-t border-slate-100 flex items-start gap-2.5">
+                    <i className="ri-information-line text-sm flex-shrink-0 mt-0.5 text-[#4A8472]"></i>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Each PawTenant letter includes a unique <span className="font-mono font-semibold text-slate-700">ESA-XX-XXXXXX</span> verification ID. Landlords can confirm authenticity without seeing any medical detail.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -531,13 +640,23 @@ export default function EverythingEsaOnlinePage() {
               No magic instant approvals. Just a real, licensed clinical evaluation — done by telehealth.
             </p>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-            <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {/* 2026-05-22 EVERYTHING-ESA-REFINE
+              Layout rebuilt with a 12-col grid: 4 step cards (col-span-7,
+              2x2 grid) on the left + image/card stack (col-span-5) on the
+              right. All step cards use `h-full` so their heights match
+              across each row. Right column uses `flex flex-col` so the
+              image and the "On the Call" card stack with the same width
+              and a consistent gap — no more awkward vertical mismatch
+              at 1280/1366/1440. Image switched to a landscape `aspect-
+              [5/4]` ratio with `object-center` so the woman + dog scene
+              renders fully without a face/body crop. */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+            <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5 items-stretch">
               {onlineProcessSteps.map((step) => (
-                <div key={step.number} className="bg-white rounded-2xl border border-gray-100 p-6">
+                <div key={step.number} className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-6 h-full flex flex-col">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 flex items-center justify-center rounded-full bg-orange-500">
-                      <i className={`${step.icon} text-white text-xl`}></i>
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center rounded-full bg-orange-500 flex-shrink-0">
+                      <i className={`${step.icon} text-white text-lg sm:text-xl`}></i>
                     </div>
                     <span className="bg-orange-50 text-orange-500 text-xs font-bold rounded-full px-2.5 py-1">Step {step.number}</span>
                   </div>
@@ -546,23 +665,33 @@ export default function EverythingEsaOnlinePage() {
                 </div>
               ))}
             </div>
-            <div className="lg:sticky lg:top-24">
-              <div className="relative w-full max-w-xs mx-auto">
-                <div className="absolute -inset-3 bg-gradient-to-br from-orange-100/60 to-amber-100/40 rounded-[2rem] blur-xl"></div>
-                <div className="relative rounded-[2rem] overflow-hidden shadow-xl border-[6px] border-gray-900 bg-gray-900">
-                  <video
-                    src={ASSETS.assessmentClip1}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    preload="metadata"
-                    poster={ASSETS.petCloseUp}
-                    className="w-full h-auto block"
-                    aria-label="Preview of the PawTenant online ESA assessment flow"
+            <div className="lg:col-span-5">
+              <div className="lg:sticky lg:top-24 flex flex-col gap-5 w-full">
+                <div className="relative rounded-2xl overflow-hidden aspect-[5/4] ring-1 ring-slate-200 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.35)] w-full">
+                  <img
+                    src={TELEHEALTH_IMG}
+                    alt="A real online ESA telehealth evaluation — a woman with her dog speaking one-on-one with a licensed mental health professional from home"
+                    className="w-full h-full object-cover object-center"
+                    loading="lazy"
                   />
                 </div>
-                <p className="text-center text-xs text-gray-500 mt-4">A quick look at the online assessment.</p>
+                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 w-full">
+                  <p className="text-[10px] font-bold tracking-widest uppercase text-[#4A8472] mb-2.5">On the Call</p>
+                  <ul className="space-y-2 text-[12.5px] sm:text-[13px] text-slate-600 leading-snug">
+                    <li className="flex items-start gap-2">
+                      <i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>
+                      <span>Licensed clinician licensed in <strong>your state</strong></span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>
+                      <span>Real one-on-one telehealth evaluation — no chatbot</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>
+                      <span>HIPAA-aware intake &amp; encrypted records</span>
+                    </li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
@@ -738,33 +867,107 @@ export default function EverythingEsaOnlinePage() {
             </div>
           </div>
 
-          {/* Landlord verification screen */}
-          <div className="mt-12 grid grid-cols-1 lg:grid-cols-5 gap-10 items-center bg-orange-50/40 border border-orange-100 rounded-3xl p-6 lg:p-10">
+          {/* Landlord verification — 2026-05-22 EVERYTHING-ESA-POLISH
+              The previous external Supabase verification screenshot was
+              missing/broken in production. Rebuilt as a pure HTML/CSS
+              verification card mockup. Shows everything a real landlord
+              would see — verification ID format, provider license badge,
+              clinic state, status pill — and explicitly calls out
+              "no medical detail" so the privacy story reads at a glance.
+              No external image dependency. */}
+          <div className="mt-12 grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-10 items-center bg-[#f8fafc] border border-slate-200 rounded-3xl p-6 lg:p-10">
             <div className="lg:col-span-3 order-2 lg:order-1">
-              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Landlord Verification</span>
-              <h3 className="text-2xl font-bold text-gray-900 mb-4">Privacy-Safe Letter Verification for Housing Providers</h3>
-              <p className="text-gray-600 text-sm leading-relaxed mb-4">
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-[#4A8472] mb-3">Landlord Verification</span>
+              <h3 className="text-2xl font-bold text-slate-900 mb-4 leading-snug">Privacy-Safe Letter Verification for Housing Providers</h3>
+              <p className="text-slate-600 text-sm leading-relaxed mb-4">
                 When a housing provider asks to confirm an ESA letter, they can verify the licensed clinician&apos;s credentials through our secure verification page — without seeing any of your medical information. The clinician&apos;s name, license number, state, and license status are surfaced; nothing more.
               </p>
+              <ul className="space-y-2 mb-5 text-[13px] text-slate-600">
+                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>Unique verification ID on every letter</li>
+                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>Provider license confirmed by state board</li>
+                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i><strong>No medical details</strong> ever disclosed</li>
+              </ul>
               <Link
-                to="/ESA-letter-verification"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-500 hover:text-orange-600 cursor-pointer"
+                to="/esa-letter-verification"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#4A8472] hover:text-[#3F7061] cursor-pointer"
               >
                 See how letter verification works
                 <i className="ri-arrow-right-line"></i>
               </Link>
             </div>
+
+            {/* Verification card — 2026-05-22 EVERYTHING-ESA-REFINE
+                Rebuilt as a real PawTenant verification-result screen the
+                way a landlord would actually see it after looking up an ID.
+                Improvements vs the earlier mockup:
+                  • Wider proportions (max-w-sm not max-w-xs), better filled
+                    column, no more "tall narrow chip" feel.
+                  • Brand-aligned header: PawTenant green (#1A5C4F) — same
+                    BRAND_GREEN used in ESA checkout — with a calm wordmark
+                    and "Active" pill on the right.
+                  • Hero status panel (big sage check + "Letter Verified"
+                    + sub-label) — communicates the result at a glance,
+                    not just a row of fields.
+                  • Clean two-row data block (Verification ID + Issued by)
+                    with calm uppercase eyebrows and proper hierarchy.
+                  • Bottom privacy strip with a lock icon — reads as a
+                    real "No medical info disclosed" guarantee, not a
+                    generic note. */}
             <div className="lg:col-span-2 order-1 lg:order-2 flex items-center justify-center">
-              <div className="relative w-full max-w-[260px]">
-                <div className="absolute -inset-3 bg-gradient-to-br from-orange-100/70 to-amber-100/40 rounded-[2rem] blur-xl"></div>
-                <img
-                  src={ASSETS.verificationScreen}
-                  alt="Landlord verification screen showing privacy-safe ESA letter verification on PawTenant"
-                  className="relative w-full h-auto rounded-2xl shadow-xl border border-gray-100"
-                  loading="lazy"
-                  width={540}
-                  height={960}
-                />
+              <div className="relative w-full max-w-sm">
+                <div className="absolute -inset-3 bg-gradient-to-br from-[#4A8472]/15 to-slate-100/40 rounded-[2rem] blur-xl"></div>
+                <div className="relative bg-white rounded-2xl border border-slate-200 shadow-[0_20px_44px_-22px_rgba(15,23,42,0.3)] overflow-hidden">
+                  {/* Branded header */}
+                  <div className="bg-[#1A5C4F] px-5 py-3.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 flex items-center justify-center rounded-md bg-white/15">
+                        <i className="ri-shield-check-line text-white text-sm"></i>
+                      </div>
+                      <span className="text-white font-bold text-[13px] tracking-tight">PawTenant Verify</span>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-400/20 ring-1 ring-emerald-300/40">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse"></span>
+                      <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-100">Active</span>
+                    </span>
+                  </div>
+
+                  {/* Verified hero panel */}
+                  <div className="px-5 pt-5 pb-4 flex items-center gap-3.5 border-b border-slate-100">
+                    <div className="w-12 h-12 rounded-full bg-emerald-50 ring-4 ring-emerald-100 flex items-center justify-center flex-shrink-0">
+                      <i className="ri-checkbox-circle-fill text-emerald-500 text-2xl"></i>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-bold text-slate-900 leading-tight">Letter Verified</p>
+                      <p className="text-[11.5px] text-slate-500 leading-snug mt-0.5">
+                        Active accommodation document on file
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Data rows */}
+                  <div className="px-5 py-4 space-y-3.5">
+                    <div>
+                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Verification ID</p>
+                      <p className="text-[15px] font-mono font-bold text-slate-900 tracking-wider">ESA-CA-7K3N9P</p>
+                    </div>
+                    <div className="h-px bg-slate-100"></div>
+                    <div>
+                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Issued By</p>
+                      <p className="text-sm font-semibold text-slate-900 leading-tight">Dr. M. Reeves, LMFT</p>
+                      <p className="text-[11.5px] text-slate-500 mt-0.5">License #MFC-104821 · California · Dated within 12 months</p>
+                    </div>
+                  </div>
+
+                  {/* Privacy strip */}
+                  <div className="bg-slate-50 border-t border-slate-100 px-5 py-3 flex items-center gap-2.5">
+                    <div className="w-6 h-6 flex items-center justify-center rounded-full bg-white ring-1 ring-slate-200 flex-shrink-0">
+                      <i className="ri-lock-2-line text-slate-500 text-xs"></i>
+                    </div>
+                    <p className="text-[11.5px] text-slate-600 leading-snug">
+                      <strong className="font-semibold text-slate-700">No medical detail disclosed</strong> — license &amp; status only
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -842,25 +1045,28 @@ export default function EverythingEsaOnlinePage() {
         </div>
       </section>
 
-      {/* Pet emotional moment */}
-      <section className="py-16 bg-[#fdf6ee]">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
-            <div className="rounded-3xl overflow-hidden">
+      {/* Pet emotional moment — 2026-05-22 EVERYTHING-ESA-POLISH
+          Replaced the external Supabase beagle JPG with a calm local
+          lifestyle photo (`senior-with-pet-home.jpg`) — reads as real
+          companionship, no AI vibe. */}
+      <section className="py-14 sm:py-16 bg-[#fafafa]">
+        <div className="max-w-5xl mx-auto px-5 sm:px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-10 items-center">
+            <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-auto sm:h-80 ring-1 ring-slate-200">
               <img
-                src={ASSETS.petBeagle}
-                alt="A calm beagle resting indoors — companionship that supports daily wellbeing"
-                className="w-full h-72 md:h-80 object-cover"
+                src={COMPANIONSHIP_IMG}
+                alt="A real moment of pet companionship — emotional support that helps a person get through their day"
+                className="w-full h-full object-cover object-center"
                 loading="lazy"
               />
             </div>
             <div>
-              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Why It Matters</span>
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4 leading-tight">Your Animal Is Part of Your Daily Wellbeing</h2>
-              <p className="text-gray-600 text-sm leading-relaxed mb-3">
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-[#4A8472] mb-3">Why It Matters</span>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4 leading-tight">Your Animal Is Part of Your Daily Wellbeing</h2>
+              <p className="text-slate-600 text-sm leading-relaxed mb-3">
                 For many people, an emotional support animal is a quiet, steady part of getting through hard days — long before any housing question comes up. A legitimate ESA letter exists to make sure that support is not torn away by a no-pet policy.
               </p>
-              <p className="text-gray-500 text-xs leading-relaxed">
+              <p className="text-slate-500 text-xs leading-relaxed">
                 That&apos;s why a real evaluation by a licensed mental health professional matters: the documentation you receive should reflect a real care relationship, not a checkout flow.
               </p>
             </div>
@@ -868,27 +1074,50 @@ export default function EverythingEsaOnlinePage() {
         </div>
       </section>
 
-      {/* CTA Banner */}
-      <section className="relative py-20 bg-orange-500 overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <img
-            src="https://readdy.ai/api/search-image?query=abstract%20warm%20pattern%20texture%20subtle%20organic%20shapes%20soft%20warm%20orange%20tones%20minimal%20background%20design&width=1440&height=400&seq=esaonline-cta01&orientation=landscape"
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+      {/* Conversion CTA — 2026-05-22 EVERYTHING-ESA-POLISH
+          Replaced the oversized orange band (with a broken external
+          readdy.ai background pattern) with a calmer terracotta gradient
+          matching the homepage CTASection. Now reads as a premium guide
+          conclusion: refund reassurance, 24-48h delivery, licensed-clinician
+          callouts above the CTA — and a single bold action button. */}
+      <section className="relative py-14 sm:py-20 bg-gradient-to-br from-[#7a3a26] via-[#9c5239] to-[#b87053] overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/3 left-1/4 w-72 h-72 rounded-full bg-orange-300/10 blur-3xl"></div>
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full bg-amber-200/10 blur-3xl"></div>
         </div>
-        <div className="relative w-full max-w-3xl mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to Start Your Online ESA Evaluation?</h2>
-          <p className="text-white/85 text-sm leading-relaxed mb-8 max-w-xl mx-auto">
+        <div className="relative w-full max-w-3xl mx-auto px-5 sm:px-6 text-center">
+          <h2 className="text-[26px] sm:text-3xl md:text-4xl font-extrabold text-white mb-4 leading-tight">
+            Ready to Start Your Online ESA Evaluation?
+          </h2>
+          <p className="text-white/85 text-sm sm:text-base leading-relaxed mb-7 sm:mb-8 max-w-xl mx-auto">
             Begin with a free 5-minute assessment. A licensed mental health professional in your state will reach out to schedule a real telehealth evaluation — no instant-approval shortcuts.
           </p>
+
+          {/* 3 calm reassurance pillars above the CTA */}
+          <ul className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 sm:mb-9 max-w-xl mx-auto">
+            {[
+              { icon: "ri-stethoscope-line", title: "Licensed Review", body: "State-licensed clinicians only" },
+              { icon: "ri-time-line", title: "24–48 Hours", body: "After your telehealth evaluation" },
+              { icon: "ri-shield-check-line", title: "Money-Back", body: "If you don't qualify, full refund" },
+            ].map((p) => (
+              <li key={p.title} className="bg-white/10 border border-white/15 rounded-xl px-3 py-3 backdrop-blur-sm flex sm:flex-col items-center sm:items-center gap-2.5 sm:gap-2 text-left sm:text-center">
+                <span className="w-8 h-8 rounded-full bg-white/15 text-orange-200 flex items-center justify-center flex-shrink-0">
+                  <i className={`${p.icon} text-sm`} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[12.5px] sm:text-[13px] font-bold text-white leading-tight">{p.title}</p>
+                  <p className="text-[11px] sm:text-[11.5px] text-white/70 leading-tight mt-0.5">{p.body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
           <Link
             to="/assessment"
-            className="whitespace-nowrap inline-flex items-center gap-2 px-10 py-4 bg-white text-orange-500 font-bold rounded-md hover:bg-orange-50 transition-colors cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 bg-orange-400 hover:bg-orange-500 text-white font-bold text-base rounded-md transition-colors cursor-pointer shadow-lg shadow-orange-900/30"
           >
-            <i className="ri-heart-line"></i>
             Start Free Assessment
+            <i className="ri-arrow-right-line"></i>
           </Link>
           <p className="text-white/70 text-xs mt-4">No commitment · Confidential · Eligibility decided during the evaluation</p>
         </div>
