@@ -1,8 +1,8 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link } from "react-router-dom";
 
 // Helper for schema.org URLs (must be absolute per spec)
-const SITE = "https://www.pawtenant.com";
+const SITE = "https://pawtenant.com";
 const abs = (p: string) => `${SITE}${p}`;
 
 const galleryImages = [
@@ -153,7 +153,7 @@ const schemaData = {
   "@type": "ImageGallery",
   "name": "PawTenant ESA & PSD Resource Image Gallery",
   "description": "Professional image gallery showcasing ESA housing rights, PSD letters, mental health support, and emotional support animal guides from PawTenant.",
-  "url": "https://www.pawtenant.com/",
+  "url": "https://pawtenant.com/",
   "image": galleryImages.map((img) => img.schema),
 };
 

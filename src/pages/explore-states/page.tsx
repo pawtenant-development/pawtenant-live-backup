@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
@@ -34,12 +34,7 @@ export default function ExploreStatesPage() {
   return (
     <main>
       <title>ESA Letter by State | All 50 US States | PawTenant</title>
-      <meta name="description" content="Find ESA letter requirements for your state. PawTenant connects you with licensed professionals in all 50 US states. Know your rights and get your letter today." />
       <meta name="keywords" content="ESA letter by state, emotional support animal laws by state, state ESA requirements, ESA housing rights, ESA letter all states" />
-      <link rel="canonical" href="https://www.pawtenant.com/explore-esa-letters-all-states" />
-      <meta property="og:title" content="ESA Letter by State | All 50 US States | PawTenant" />
-      <meta property="og:description" content="Find ESA letter requirements for your state. PawTenant connects you with licensed professionals in all 50 US states. Know your rights and get your letter today." />
-      <meta property="og:url" content="https://www.pawtenant.com/explore-esa-letters-all-states" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="ESA Letter by State | All 50 US States | PawTenant" />

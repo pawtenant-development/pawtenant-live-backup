@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import AssessmentNavbar from "./components/AssessmentNavbar";
 import StepIndicator from "./components/StepIndicator";
@@ -1326,9 +1326,7 @@ export default function AssessmentPage() {
   return (
     <div className="min-h-screen bg-white">
       <title>Get Your ESA Letter Online — Free Assessment | PawTenant</title>
-      <meta name="description" content="Complete our free emotional support animal assessment and get a legitimate ESA letter from a licensed mental health professional. Same-day delivery, HIPAA compliant, 100% money-back guarantee." />
       <meta name="robots" content="index, follow" />
-      <link rel="canonical" href="https://www.pawtenant.com/assessment" />
       {/* Discount popup — only appears on checkout step, 18s delay */}
 
 

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 
@@ -25,12 +25,7 @@ export default function AirlinePetPolicyPage() {
   return (
     <main>
       <title>Airline ESA & Pet Policy 2026: Can You Fly with an ESA? | PawTenant</title>
-      <meta name="description" content="Can you fly with an ESA in 2026? Updated airline ESA policies for Delta, United, American, Southwest & more. Learn about Psychiatric Service Dog (PSD) letter for air travel." />
       <meta name="keywords" content="fly with ESA 2026, airline ESA policy, emotional support animal flight, PSD letter airline, ESA air travel rules, fly with emotional support animal" />
-      <link rel="canonical" href="https://www.pawtenant.com/airline-pet-policy" />
-      <meta property="og:title" content="Airline ESA Pet Policy 2026 | Can You Fly with an ESA? | PawTenant" />
-      <meta property="og:description" content="Updated airline policies for ESAs in 2026. Most airlines treat ESAs as pets. Learn about Psychiatric Service Dogs (PSDs) for in-cabin air travel access." />
-      <meta property="og:url" content="https://www.pawtenant.com/airline-pet-policy" />
       <meta property="og:type" content="article" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Can You Fly with an ESA in 2026? Airline Policy Guide | PawTenant" />

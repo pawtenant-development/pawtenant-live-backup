@@ -1,10 +1,10 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 
 const PAGE_PATH = "/how-to-get-psd-letter";
-const CANONICAL = `https://www.pawtenant.com${PAGE_PATH}`;
+const CANONICAL = `https://pawtenant.com${PAGE_PATH}`;
 const TITLE = "How to Get a Psychiatric Service Dog Letter | PawTenant";
 const DESCRIPTION =
   "Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed mental health professional. Learn how online PSD evaluations work, what tasks qualify, and how to begin your assessment in minutes.";
@@ -167,15 +167,10 @@ export default function HowToGetPSDLetterPage() {
   return (
     <main>
       <title>{TITLE}</title>
-      <meta name="description" content={DESCRIPTION} />
       <meta
         name="keywords"
         content="get psd letter, psychiatric service dog letter, psd letter online, psd documentation, service dog evaluation, legitimate PSD letter, how to get psd letter, online psd evaluation, licensed mental health professional psd letter"
       />
-      <link rel="canonical" href={CANONICAL} />
-      <meta property="og:title" content={TITLE} />
-      <meta property="og:description" content={DESCRIPTION} />
-      <meta property="og:url" content={CANONICAL} />
       <meta property="og:type" content="article" />
       <meta property="og:locale" content="en_US" />
       <meta name="twitter:card" content="summary_large_image" />
@@ -209,11 +204,11 @@ export default function HowToGetPSDLetterPage() {
             mainEntityOfPage: { "@type": "WebPage", "@id": CANONICAL },
             url: CANONICAL,
             inLanguage: "en-US",
-            author: { "@type": "Organization", name: "PawTenant", url: "https://www.pawtenant.com/" },
+            author: { "@type": "Organization", name: "PawTenant", url: "https://pawtenant.com/" },
             publisher: {
               "@type": "Organization",
               name: "PawTenant",
-              logo: { "@type": "ImageObject", url: "https://www.pawtenant.com/logo.png" },
+              logo: { "@type": "ImageObject", url: "https://pawtenant.com/logo.png" },
             },
           }),
         }}
@@ -226,7 +221,7 @@ export default function HowToGetPSDLetterPage() {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.pawtenant.com/" },
+              { "@type": "ListItem", position: 1, name: "Home", item: "https://pawtenant.com/" },
               { "@type": "ListItem", position: 2, name: "How to Get a PSD Letter", item: CANONICAL },
             ],
           }),

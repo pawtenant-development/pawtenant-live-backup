@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import VerificationPillarsSection from "../../components/feature/VerificationPillarsSection";
@@ -58,18 +58,13 @@ export default function HousingRightsPage() {
   return (
     <main>
       <title>ESA Letter for Housing | Fair Housing Act Protections | PawTenant</title>
-      <meta name="description" content="ESA letter for housing under the Fair Housing Act — what valid ESA documentation must include, how reasonable accommodation requests work, and how to avoid ESA letter scams. Reviewed by a licensed mental health professional." />
       <meta name="keywords" content="ESA letter for housing, Fair Housing Act ESA letter, ESA housing rights, valid ESA letter documentation, reasonable accommodation request, emotional support animal letter benefits, avoiding ESA letter scams, ESA landlord laws, pet fee exemption, emotional support animal housing" />
-      <link rel="canonical" href="https://www.pawtenant.com/housing-rights-esa" />
-      <meta property="og:title" content="ESA Housing Rights Explained | Fair Housing Act | PawTenant" />
-      <meta property="og:description" content="Understand your housing rights with an emotional support animal. Learn how the Fair Housing Act protects ESA owners and keeps you and your pet together." />
-      <meta property="og:url" content="https://www.pawtenant.com/housing-rights-esa" />
       <meta property="og:type" content="article" />
-      <meta property="og:image" content="https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
+      <meta property="og:image" content="https://pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="ESA Housing Rights 2026: Fair Housing Act Protections | PawTenant" />
       <meta name="twitter:description" content="Your ESA housing rights under the Fair Housing Act explained. Landlords cannot charge pet fees or deny a valid ESA letter. Get your ESA letter with PawTenant." />
-      <meta name="twitter:image" content="https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
+      <meta name="twitter:image" content="https://pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@graph": [
@@ -86,16 +81,16 @@ export default function HousingRightsPage() {
             "@type": "ImageObject",
             "name": "Licensed Mental Health Professionals — ESA Housing Rights",
             "description": "Board-licensed mental health professionals provide ESA letters that protect housing rights under the Fair Housing Act for emotional support animal owners across the USA.",
-            "url": "https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg",
-            "contentUrl": "https://www.pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg",
+            "url": "https://pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg",
+            "contentUrl": "https://pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg",
             "representativeOfPage": true
           },
           {
             "@type": "ImageObject",
             "name": "ESA Housing Protection Support — Fair Housing Act",
             "description": "ESA housing protection and Fair Housing Act tenant rights for emotional support animal owners — no pet fees, no breed restrictions.",
-            "url": "https://www.pawtenant.com/assets/housing/home-together.jpg",
-            "contentUrl": "https://www.pawtenant.com/assets/housing/home-together.jpg"
+            "url": "https://pawtenant.com/assets/housing/home-together.jpg",
+            "contentUrl": "https://pawtenant.com/assets/housing/home-together.jpg"
           }
         ]
       }) }} />

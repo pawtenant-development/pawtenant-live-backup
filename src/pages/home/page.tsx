@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+﻿import { lazy, Suspense, useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import HeroSection from "./components/HeroSection";
 import ReassuranceStrip from "./components/ReassuranceStrip";
@@ -73,20 +73,20 @@ const ORGANIZATION_SCHEMA = {
   "@graph": [
     {
       "@type": "Organization",
-      "@id": "https://www.pawtenant.com/#organization",
+      "@id": "https://pawtenant.com/#organization",
       "name": "PawTenant",
       "alternateName": "PawTenant ESA Letters",
-      "url": "https://www.pawtenant.com",
+      "url": "https://pawtenant.com",
       "logo": {
         "@type": "ImageObject",
-        "@id": "https://www.pawtenant.com/#logo",
-        "url": "https://www.pawtenant.com/logo.png",
-        "contentUrl": "https://www.pawtenant.com/logo.png",
+        "@id": "https://pawtenant.com/#logo",
+        "url": "https://pawtenant.com/logo.png",
+        "contentUrl": "https://pawtenant.com/logo.png",
         "width": 400,
         "height": 80,
         "caption": "PawTenant"
       },
-      "image": { "@id": "https://www.pawtenant.com/#logo" },
+      "image": { "@id": "https://pawtenant.com/#logo" },
       "description": "PawTenant connects people with licensed mental health professionals for fast, legitimate ESA letters and psychiatric service dog letters. Serving all 50 states with same-day delivery and a 100% money-back guarantee.",
       "foundingDate": "2021",
       "areaServed": {
@@ -109,7 +109,7 @@ const ORGANIZATION_SCHEMA = {
         {
           "@type": "ContactPoint",
           "contactType": "customer service",
-          "url": "https://www.pawtenant.com/contact-us",
+          "url": "https://pawtenant.com/contact-us",
           "areaServed": "US",
           "availableLanguage": "English"
         }
@@ -130,7 +130,7 @@ const ORGANIZATION_SCHEMA = {
               "@type": "Service",
               "name": "ESA Letter — 1 Pet",
               "description": "Legitimate ESA letter from a licensed mental health professional with telehealth consultation. Valid for housing accommodation under the Fair Housing Act.",
-              "url": "https://www.pawtenant.com/assessment"
+              "url": "https://pawtenant.com/assessment"
             },
             "price": "99.00",
             "priceCurrency": "USD"
@@ -141,7 +141,7 @@ const ORGANIZATION_SCHEMA = {
               "@type": "Service",
               "name": "Psychiatric Service Dog Letter",
               "description": "PSD letter from a licensed mental health professional confirming psychiatric disability and task training. Includes DOT form co-signature for airline travel.",
-              "url": "https://www.pawtenant.com/assessment"
+              "url": "https://pawtenant.com/assessment"
             },
             "price": "149.00",
             "priceCurrency": "USD"
@@ -151,15 +151,15 @@ const ORGANIZATION_SCHEMA = {
     },
     {
       "@type": "WebSite",
-      "@id": "https://www.pawtenant.com/#website",
-      "url": "https://www.pawtenant.com",
+      "@id": "https://pawtenant.com/#website",
+      "url": "https://pawtenant.com",
       "name": "PawTenant",
-      "publisher": { "@id": "https://www.pawtenant.com/#organization" },
+      "publisher": { "@id": "https://pawtenant.com/#organization" },
       "potentialAction": {
         "@type": "SearchAction",
         "target": {
           "@type": "EntryPoint",
-          "urlTemplate": "https://www.pawtenant.com/blog?q={search_term_string}"
+          "urlTemplate": "https://pawtenant.com/blog?q={search_term_string}"
         },
         "query-input": "required name=search_term_string"
       }
@@ -207,7 +207,7 @@ export default function Home() {
       (metaKw as HTMLMetaElement).content = "legitimate ESA letter, legit ESA letter, ESA letter online, ESA letter for housing, emotional support animal letter USA, licensed LMHP";
       let canonical = document.querySelector('link[rel="canonical"]');
       if (!canonical) { canonical = document.createElement("link"); (canonical as HTMLLinkElement).rel = "canonical"; document.head.appendChild(canonical); }
-      (canonical as HTMLLinkElement).href = "https://www.pawtenant.com/";
+      (canonical as HTMLLinkElement).href = "https://pawtenant.com/";
 
       const existingScript = document.getElementById("org-schema");
       if (!existingScript) {

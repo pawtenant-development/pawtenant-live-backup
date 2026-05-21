@@ -1,4 +1,4 @@
-import SharedNavbar from "../../components/feature/SharedNavbar";
+﻿import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
 import { DOCTORS } from "../../mocks/doctors";
@@ -66,12 +66,7 @@ export default function AboutUsPage() {
   return (
     <main>
       <title>About PawTenant | Our Network of Licensed Professionals</title>
-      <meta name="description" content="Meet the network of licensed mental health providers at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
       <meta name="keywords" content="about pawtenant, licensed ESA providers, clinical integrity, ESA letter providers" />
-      <link rel="canonical" href="https://www.pawtenant.com/about-us" />
-      <meta property="og:title" content="About PawTenant | Our Network of Licensed Professionals" />
-      <meta property="og:description" content="Meet the network of licensed mental health providers at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA." />
-      <meta property="og:url" content="https://www.pawtenant.com/about-us" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="About PawTenant | Licensed ESA & PSD Letter Provider" />
@@ -82,12 +77,12 @@ export default function AboutUsPage() {
           {
             "@type": "AboutPage",
             "name": "About PawTenant",
-            "url": "https://www.pawtenant.com/about-us",
+            "url": "https://pawtenant.com/about-us",
             "description": "PawTenant connects people with licensed mental health professionals to get legitimate ESA and PSD letters online for housing and ADA rights.",
             "mainEntity": {
               "@type": "Organization",
               "name": "PawTenant",
-              "url": "https://www.pawtenant.com",
+              "url": "https://pawtenant.com",
               "description": "PawTenant is a telehealth platform connecting patients with licensed mental health professionals for ESA and PSD letters.",
               "foundingDate": "2021",
               "areaServed": { "@type": "Country", "name": "United States" },
@@ -103,8 +98,8 @@ export default function AboutUsPage() {
           {
             "@type": "BreadcrumbList",
             "itemListElement": [
-              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com" },
-              { "@type": "ListItem", "position": 2, "name": "About Us", "item": "https://www.pawtenant.com/about-us" }
+              { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com" },
+              { "@type": "ListItem", "position": 2, "name": "About Us", "item": "https://pawtenant.com/about-us" }
             ]
           }
         ]

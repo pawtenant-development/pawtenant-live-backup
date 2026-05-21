@@ -1,4 +1,4 @@
-/**
+﻿/**
  * /consultation-request — lightweight customer-facing page that captures
  * a preferred consultation / callback window into public.consultation_requests.
  *
@@ -317,7 +317,6 @@ export default function ConsultationRequestPage() {
         content="Request a preferred consultation or callback window with PawTenant. Our care team will reach out to discuss your ESA documentation process and next steps."
       />
       <meta name="robots" content="noindex,nofollow" />
-      <link rel="canonical" href="https://www.pawtenant.com/consultation-request" />
 
       <SharedNavbar />
 

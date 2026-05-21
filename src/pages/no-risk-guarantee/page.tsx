@@ -1,4 +1,4 @@
-import SharedNavbar from "../../components/feature/SharedNavbar";
+﻿import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
 
@@ -25,12 +25,7 @@ export default function NoRiskGuaranteePage() {
   return (
     <main>
       <title>PawTenant No-Risk Guarantee | 100% Money-Back ESA Letter Promise</title>
-      <meta name="description" content="PawTenant's 100% money-back guarantee on every ESA letter. If you don't qualify or your landlord unlawfully denies your letter, you get a full refund — no questions asked." />
       <meta name="keywords" content="ESA letter money back guarantee, PawTenant guarantee, no risk ESA letter, ESA letter refund, emotional support animal letter guarantee" />
-      <link rel="canonical" href="https://www.pawtenant.com/no-risk-guarantee" />
-      <meta property="og:title" content="PawTenant 100% Money-Back Guarantee | No-Risk ESA Letter" />
-      <meta property="og:description" content="Every PawTenant ESA letter is backed by a 100% money-back guarantee. If your letter is denied or you don't qualify, you get a full refund." />
-      <meta property="og:url" content="https://www.pawtenant.com/no-risk-guarantee" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="PawTenant 100% Money-Back Guarantee | No-Risk ESA Letter" />
@@ -39,13 +34,13 @@ export default function NoRiskGuaranteePage() {
         "@context": "https://schema.org",
         "@type": "WebPage",
         "name": "PawTenant No-Risk Guarantee",
-        "url": "https://www.pawtenant.com/no-risk-guarantee",
+        "url": "https://pawtenant.com/no-risk-guarantee",
         "description": "PawTenant offers a 100% money-back guarantee on all ESA letters. Full refund if you don't qualify or if your landlord unlawfully denies a valid letter.",
         "breadcrumb": {
           "@type": "BreadcrumbList",
           "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com" },
-            { "@type": "ListItem", "position": 2, "name": "No-Risk Guarantee", "item": "https://www.pawtenant.com/no-risk-guarantee" }
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com" },
+            { "@type": "ListItem", "position": 2, "name": "No-Risk Guarantee", "item": "https://pawtenant.com/no-risk-guarantee" }
           ]
         }
       }) }} />

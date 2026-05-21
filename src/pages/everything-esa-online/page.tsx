@@ -1,10 +1,10 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 
 const PAGE_PATH = "/everything-you-need-to-know-about-obtaining-an-esa-letter-online";
-const CANONICAL = `https://www.pawtenant.com${PAGE_PATH}`;
+const CANONICAL = `https://pawtenant.com${PAGE_PATH}`;
 const TITLE = "Everything You Need to Know About Obtaining an ESA Letter Online | PawTenant";
 const DESCRIPTION =
   "The complete 2026 guide to obtaining a legitimate ESA letter online. Learn who qualifies, how online evaluations work with licensed mental health professionals, what makes a letter housing-valid, and how to spot sketchy ESA websites.";
@@ -246,15 +246,10 @@ export default function EverythingEsaOnlinePage() {
   return (
     <main>
       <title>{TITLE}</title>
-      <meta name="description" content={DESCRIPTION} />
       <meta
         name="keywords"
         content="ESA letter online, obtain ESA letter online, legitimate ESA letter online, emotional support animal letter online, ESA housing letter, online ESA evaluation, licensed mental health professional ESA letter, ESA letter for housing, ESA letter 2026, how to get an ESA letter online"
       />
-      <link rel="canonical" href={CANONICAL} />
-      <meta property="og:title" content={TITLE} />
-      <meta property="og:description" content={DESCRIPTION} />
-      <meta property="og:url" content={CANONICAL} />
       <meta property="og:type" content="article" />
       <meta property="og:locale" content="en_US" />
       <meta name="twitter:card" content="summary_large_image" />
@@ -291,14 +286,14 @@ export default function EverythingEsaOnlinePage() {
             author: {
               "@type": "Organization",
               name: "PawTenant",
-              url: "https://www.pawtenant.com/",
+              url: "https://pawtenant.com/",
             },
             publisher: {
               "@type": "Organization",
               name: "PawTenant",
               logo: {
                 "@type": "ImageObject",
-                url: "https://www.pawtenant.com/logo.png",
+                url: "https://pawtenant.com/logo.png",
               },
             },
           }),
@@ -312,7 +307,7 @@ export default function EverythingEsaOnlinePage() {
             "@context": "https://schema.org",
             "@type": "BreadcrumbList",
             itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://www.pawtenant.com/" },
+              { "@type": "ListItem", position: 1, name: "Home", item: "https://pawtenant.com/" },
               {
                 "@type": "ListItem",
                 position: 2,

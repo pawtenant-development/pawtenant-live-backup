@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
@@ -115,12 +115,7 @@ export default function ESALetterCostPage() {
   return (
     <main>
       <title>Affordable ESA Letter | Legitimate &amp; Fast | PawTenant</title>
-      <meta name="description" content="Get an affordable ESA letter without sacrificing legitimacy. Licensed professionals issue your letter within 24 hours. Protect your housing rights at a fair price." />
       <meta name="keywords" content="affordable ESA letter, ESA letter cost, legitimate ESA letter, ESA letter price, cheap ESA letter" />
-      <link rel="canonical" href="https://www.pawtenant.com/esa-letter-cost" />
-      <meta property="og:title" content="Affordable ESA Letter | Legitimate & Fast | PawTenant" />
-      <meta property="og:description" content="Get an affordable ESA letter without sacrificing legitimacy. Licensed professionals issue your letter within 24 hours. Protect your housing rights at a fair price." />
-      <meta property="og:url" content="https://www.pawtenant.com/esa-letter-cost" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@type": "FAQPage",

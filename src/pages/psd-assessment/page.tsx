@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import PSDAssessmentNavbar from "./components/PSDAssessmentNavbar";
 import PSDStep1, { PSDStep1Data } from "./components/PSDStep1";
@@ -386,9 +386,7 @@ export default function PSDAssessmentPage() {
         letterType="psd"
       />
       <title>Psychiatric Service Dog Letter Online — ADA Compliant PSD Letter | PawTenant</title>
-      <meta name="description" content="Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed mental health professional. ADA compliant, HIPAA secure, delivered within 24 hours. Start your free PSD assessment." />
       <meta name="robots" content="index, follow" />
-      <link rel="canonical" href="https://www.pawtenant.com/psd-assessment" />
       {/* Navbar */}
       <PSDAssessmentNavbar />
 

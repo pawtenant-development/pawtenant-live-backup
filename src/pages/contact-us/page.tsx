@@ -1,4 +1,4 @@
-import { useState, FormEvent } from "react";
+﻿import { useState, FormEvent } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
@@ -13,12 +13,12 @@ const contactSchema = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "ContactPage",
   "name": "Contact PawTenant — ESA Letter Support",
-  "url": "https://www.pawtenant.com/contact-us",
+  "url": "https://pawtenant.com/contact-us",
   "description": "Contact PawTenant for ESA letter support, housing rights questions, or landlord disputes. Reach us by phone, email, or the contact form.",
   "mainEntity": {
     "@type": "LocalBusiness",
     "name": "PawTenant",
-    "url": "https://www.pawtenant.com",
+    "url": "https://pawtenant.com",
     "telephone": "+14099655885",
     "email": "hello@pawtenant.com",
     "openingHoursSpecification": [
@@ -126,14 +126,9 @@ export default function ContactUsPage() {
   return (
     <>
       <title>Contact PawTenant | ESA Letter Support — Email &amp; Phone Help</title>
-      <meta name="description" content="Contact PawTenant for ESA letter support. Call (409) 965-5885, email hello@pawtenant.com, or use our form. Mon–Fri 7am–6pm CT. Same-day ESA letter help from licensed professionals." />
       <meta name="keywords" content="contact PawTenant, ESA letter support, emotional support animal help, PawTenant phone number, ESA letter questions" />
-      <link rel="canonical" href="https://www.pawtenant.com/contact-us" />
       <meta name="last-modified" content={new Date().toISOString().split("T")[0]} />
-      <meta property="og:title" content="Contact PawTenant | ESA Letter Support — Email &amp; Phone" />
-      <meta property="og:description" content="Questions about your ESA letter, housing rights, or landlord dispute? Contact PawTenant — phone, email, or contact form. Replies within 2–4 hours." />
       <meta property="og:type" content="website" />
-      <meta property="og:url" content="https://www.pawtenant.com/contact-us" />
       <meta name="twitter:card" content="summary" />
       <meta name="twitter:title" content="Contact PawTenant | ESA Letter Support" />
       <meta name="twitter:description" content="Reach PawTenant by phone at (409) 965-5885 or email hello@pawtenant.com. Mon–Fri 7am–6pm CT, Sat 9am–4pm CT." />

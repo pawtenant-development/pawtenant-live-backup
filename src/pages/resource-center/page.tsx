@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -50,24 +50,19 @@ export default function ResourceCenterPage() {
   return (
     <main>
       <title>ESA &amp; PSD Resource Center 2026 — Complete Guide Hub | PawTenant</title>
-      <meta name="description" content="PawTenant's complete ESA and PSD resource hub — guides, state-specific laws, blog posts, housing rights, travel policies, and mental health resources. Everything you need to know about ESA letters and PSD letters in 2026." />
       <meta name="keywords" content="ESA resource center, PSD resource center, ESA letter guide, psychiatric service dog guide, emotional support animal resources, ESA state laws 2026, PSD letter states" />
-      <link rel="canonical" href="https://www.pawtenant.com/resource-center" />
-      <meta property="og:title" content="ESA & PSD Resource Center 2026 — Complete Guide Hub | PawTenant" />
-      <meta property="og:description" content="Complete hub for all ESA and PSD resources — state guides, housing rights, travel policies, mental health articles, and more." />
-      <meta property="og:url" content="https://www.pawtenant.com/resource-center" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@type": "CollectionPage",
         "name": "ESA & PSD Resource Center 2026",
         "description": "PawTenant's complete hub of ESA and PSD resources, state guides, housing rights, and mental health articles.",
-        "url": "https://www.pawtenant.com/resource-center",
-        "publisher": { "@type": "Organization", "name": "PawTenant", "url": "https://www.pawtenant.com" },
+        "url": "https://pawtenant.com/resource-center",
+        "publisher": { "@type": "Organization", "name": "PawTenant", "url": "https://pawtenant.com" },
         "breadcrumb": {
           "@type": "BreadcrumbList",
           "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com" },
-            { "@type": "ListItem", "position": 2, "name": "Resource Center", "item": "https://www.pawtenant.com/resource-center" }
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com" },
+            { "@type": "ListItem", "position": 2, "name": "Resource Center", "item": "https://pawtenant.com/resource-center" }
           ]
         }
       }) }} />

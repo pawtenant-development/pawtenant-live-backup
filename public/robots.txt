@@ -28,10 +28,12 @@ User-agent: Bingbot
 Allow: /
 Crawl-delay: 2
 
-# Preferred host
-Host: www.pawtenant.com
+# Preferred host — 2026-05-21 SEO-DOMAIN-CANONICAL
+# Non-www is the canonical host (matches BASE_URL in src/config/seoConfig.ts
+# and the 301 host redirect in vercel.json).
+Host: pawtenant.com
 
 # US-focused service — geotarget via Search Console is primary method
 # All pages serve United States residents only
 
-Sitemap: https://www.pawtenant.com/sitemap.xml
+Sitemap: https://pawtenant.com/sitemap.xml

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { colleges } from "../../mocks/colleges";
@@ -23,12 +23,7 @@ export default function CollegePetPolicyPage() {
   return (
     <main>
       <title>ESA Letter for College Students 2026: Dorm Rights & University Policies | PawTenant</title>
-      <meta name="description" content="Get an ESA letter for your college dorm in 2026. Federal law protects your right to keep an ESA in university housing. Same-day letters from licensed professionals at PawTenant." />
       <meta name="keywords" content="ESA letter college dorm, emotional support animal university, ESA housing college, ESA letter student, college ESA policy 2026" />
-      <link rel="canonical" href="https://www.pawtenant.com/college-pet-policy" />
-      <meta property="og:title" content="ESA Letter for College Students 2026 | PawTenant" />
-      <meta property="og:description" content="Federal law protects college students' right to ESAs in dorms. Get a university-compliant ESA letter from PawTenant — same-day delivery, 100% money-back guarantee." />
-      <meta property="og:url" content="https://www.pawtenant.com/college-pet-policy" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="ESA Letter for College Students 2026 | Dorm Rights | PawTenant" />

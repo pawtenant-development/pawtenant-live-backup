@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+﻿import { useEffect, useMemo } from "react";
 import { Link, useParams, Navigate } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -70,7 +70,7 @@ export default function BlogStatePage() {
       .filter((p): p is BlogPost => !!p);
   }, [entry]);
 
-  const canonicalUrl = `https://www.pawtenant.com/blog/state/${stateSlug}`;
+  const canonicalUrl = `https://pawtenant.com/blog/state/${stateSlug}`;
   const pageTitle = entry ? `${entry.stateName} ESA Housing Rights Blog 2026 | PawTenant` : "ESA Blog | PawTenant";
   const pageDesc = entry ? `All ESA housing rights guides for ${entry.stateName} renters in 2026. ${entry.descriptor}. Written by licensed professionals at PawTenant.` : "";
 
@@ -81,11 +81,11 @@ export default function BlogStatePage() {
         "name": `${entry.stateName} ESA Housing Rights Guides 2026`,
         "description": pageDesc,
         "url": canonicalUrl,
-        "publisher": { "@type": "Organization", "name": "PawTenant", "url": "https://www.pawtenant.com/" },
+        "publisher": { "@type": "Organization", "name": "PawTenant", "url": "https://pawtenant.com/" },
         "hasPart": statePosts.map((p) => ({
           "@type": "BlogPosting",
           "headline": p.title,
-          "url": `https://www.pawtenant.com/blog/${p.slug}`,
+          "url": `https://pawtenant.com/blog/${p.slug}`,
           "datePublished": p.date,
           "author": { "@type": "Person", "name": p.author },
           "description": p.metaDesc,
@@ -98,8 +98,8 @@ export default function BlogStatePage() {
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
-          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com/" },
-          { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://www.pawtenant.com/blog" },
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com/" },
+          { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://pawtenant.com/blog" },
           { "@type": "ListItem", "position": 3, "name": `${entry.stateName} ESA Guides`, "item": canonicalUrl },
         ],
       })
@@ -130,11 +130,6 @@ export default function BlogStatePage() {
   return (
     <main>
       <title>{pageTitle}</title>
-      <meta name="description" content={pageDesc} />
-      <link rel="canonical" href={canonicalUrl} />
-      <meta property="og:title" content={pageTitle} />
-      <meta property="og:description" content={pageDesc} />
-      <meta property="og:url" content={canonicalUrl} />
       <meta property="og:type" content="website" />
       <meta name="Last-Modified" content={new Date().toUTCString()} />
 

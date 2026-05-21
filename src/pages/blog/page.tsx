@@ -1,4 +1,4 @@
-import { useState, useMemo, type SyntheticEvent } from "react";
+﻿import { useState, useMemo, type SyntheticEvent } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -321,12 +321,7 @@ export default function BlogPage() {
   return (
     <main>
       <title>ESA Letter Blog | Guides, Laws &amp; Tips | PawTenant</title>
-      <meta name="description" content="Explore expert guides on ESA letters, emotional support animal laws, and tenant rights. Stay informed with PawTenant's blog, your trusted ESA resource." />
       <meta name="keywords" content="ESA letter blog, emotional support animal guides, ESA laws, ESA housing rights, ESA tips" />
-      <link rel="canonical" href="https://www.pawtenant.com/blog" />
-      <meta property="og:title" content="ESA Letter Blog | Guides, Laws & Tips | PawTenant" />
-      <meta property="og:description" content="Explore expert guides on ESA letters, emotional support animal laws, and tenant rights. Stay informed with PawTenant's blog, your trusted ESA resource." />
-      <meta property="og:url" content="https://www.pawtenant.com/blog" />
       <meta property="og:type" content="website" />
 
       <SharedNavbar />

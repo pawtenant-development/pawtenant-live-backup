@@ -1,4 +1,4 @@
-import { useState, FormEvent, useEffect, useRef } from "react";
+﻿import { useState, FormEvent, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -593,13 +593,8 @@ export default function JoinOurNetworkPage() {
   return (
     <main>
       <title>Join Our Licensed Therapist Network — Write ESA Letters & Earn | PawTenant</title>
-      <meta name="description" content="Licensed mental health professionals: join PawTenant's LMHP network and help clients get their ESA letters. Flexible hours, competitive weekly pay, telehealth-ready. Apply in 5 minutes." />
       <meta name="keywords" content="join ESA therapist network, LMHP ESA evaluations, write ESA letters earn money, licensed therapist ESA partner, mental health professional ESA platform" />
-      <link rel="canonical" href="https://www.pawtenant.com/join-our-network" />
-      <meta property="og:title" content="Join PawTenant's Licensed Therapist Network | Apply Now" />
-      <meta property="og:description" content="Are you a licensed mental health professional? Partner with PawTenant to evaluate ESA clients. Flexible schedule, competitive compensation, meaningful work." />
       <meta property="og:type" content="website" />
-      <meta property="og:url" content="https://www.pawtenant.com/join-our-network" />
       <meta property="og:image" content="https://readdy.ai/api/search-image?query=professional%20licensed%20therapist%20psychologist%20working%20telehealth%20session%20warm%20office%20natural%20lighting%20confident%20mental%20health%20provider&width=1200&height=630&seq=joinog01&orientation=landscape" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: schemaOrg }} />
 

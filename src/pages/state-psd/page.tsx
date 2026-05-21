@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -33,7 +33,7 @@ export default function StatePSDPage() {
 
     const title = `PSD Letter ${stateData.name} 2026 — Psychiatric Service Dog Letter | PawTenant`;
     const description = `Need a PSD letter in ${stateData.name}? PawTenant connects you with ${stateData.name}-licensed mental health professionals for Psychiatric Service Dog documentation. ADA compliant, same-day delivery, 100% money-back guarantee. ${stateData.name} PSD rights explained.`;
-    const canonical = `https://www.pawtenant.com/psd-letter/${stateData.slug}`;
+    const canonical = `https://pawtenant.com/psd-letter/${stateData.slug}`;
 
     document.title = title;
 
@@ -85,8 +85,8 @@ export default function StatePSDPage() {
         {
           "@type": "BreadcrumbList",
           "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com" },
-            { "@type": "ListItem", "position": 2, "name": "PSD Letters", "item": "https://www.pawtenant.com/how-to-get-psd-letter" },
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com" },
+            { "@type": "ListItem", "position": 2, "name": "PSD Letters", "item": "https://pawtenant.com/how-to-get-psd-letter" },
             { "@type": "ListItem", "position": 3, "name": `PSD Letter in ${stateData.name}`, "item": canonical },
           ],
         },
@@ -94,7 +94,7 @@ export default function StatePSDPage() {
           "@type": "Service",
           "name": `PSD Letter in ${stateData.name}`,
           "description": description,
-          "provider": { "@type": "Organization", "name": "PawTenant", "url": "https://www.pawtenant.com" },
+          "provider": { "@type": "Organization", "name": "PawTenant", "url": "https://pawtenant.com" },
           "areaServed": { "@type": "State", "name": stateData.name },
           "serviceType": "Psychiatric Service Dog Letter",
         },

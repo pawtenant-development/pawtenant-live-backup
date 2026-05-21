@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 
@@ -24,12 +24,7 @@ export default function ServiceAnimalVsESAPage() {
   return (
     <main>
       <title>Service Animal vs ESA vs Therapy Dog: Key Differences 2026 | PawTenant</title>
-      <meta name="description" content="What's the difference between a service animal, therapy dog, and ESA? Full comparison of legal rights, training, airline access, and housing protections in 2026." />
       <meta name="keywords" content="service animal vs ESA, emotional support animal vs service dog, therapy dog vs ESA, service dog vs emotional support animal, ESA rights 2026" />
-      <link rel="canonical" href="https://www.pawtenant.com/service-animal-vs-esa" />
-      <meta property="og:title" content="Service Animal vs ESA vs Therapy Dog 2026 | PawTenant" />
-      <meta property="og:description" content="Clear comparison of service animals, emotional support animals, and therapy dogs — legal rights, housing, airline access, and how to get the right documentation." />
-      <meta property="og:url" content="https://www.pawtenant.com/service-animal-vs-esa" />
       <meta property="og:type" content="article" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Service Animal vs ESA vs Therapy Dog: Full Comparison 2026 | PawTenant" />

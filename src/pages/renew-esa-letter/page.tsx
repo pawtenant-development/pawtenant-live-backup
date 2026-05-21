@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -156,14 +156,14 @@ const serviceSchema = JSON.stringify({
   "provider": {
     "@type": "Organization",
     "name": "PawTenant",
-    "url": "https://www.pawtenant.com",
+    "url": "https://pawtenant.com",
   },
   "offers": [
     { "@type": "Offer", "name": "1 Pet Renewal", "price": "100", "priceCurrency": "USD" },
     { "@type": "Offer", "name": "2 Pets Renewal", "price": "115", "priceCurrency": "USD" },
     { "@type": "Offer", "name": "3 Pets Renewal", "price": "135", "priceCurrency": "USD" },
   ],
-  "url": "https://www.pawtenant.com/renew-esa-letter",
+  "url": "https://pawtenant.com/renew-esa-letter",
 });
 
 interface SelectedPlan {
@@ -196,12 +196,7 @@ export default function RenewESALetterPage() {
   return (
     <main>
       <title>Renew Your ESA Letter in 2026 — Fast &amp; FHA-Compliant | PawTenant</title>
-      <meta name="description" content="ESA letters expire after 12 months. Renew your emotional support animal letter with a licensed therapist in 2026. Same-day delivery, 100% money-back guarantee. From $99." />
       <meta name="keywords" content="renew ESA letter, ESA letter renewal, emotional support animal letter renewal, expired ESA letter, ESA letter 2026 renewal" />
-      <link rel="canonical" href="https://www.pawtenant.com/renew-esa-letter" />
-      <meta property="og:title" content="Renew Your ESA Letter 2026 — Fast, Legal &amp; FHA-Compliant | PawTenant" />
-      <meta property="og:description" content="Keep your ESA housing rights active. Renew your emotional support animal letter with a licensed mental health professional. From $99, delivered within 24 hours." />
-      <meta property="og:url" content="https://www.pawtenant.com/renew-esa-letter" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Renew Your ESA Letter 2026 — Stay Protected | PawTenant" />

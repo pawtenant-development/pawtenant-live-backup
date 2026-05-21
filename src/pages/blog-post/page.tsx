@@ -1,4 +1,4 @@
-import { Fragment, useEffect } from "react";
+﻿import { Fragment, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -238,7 +238,7 @@ export default function BlogPostPage() {
         .slice(0, 3)
     : [];
 
-  const canonicalUrl = `https://www.pawtenant.com/blog/${slug}`;
+  const canonicalUrl = `https://pawtenant.com/blog/${slug}`;
 
   // One Set per render — shared across all section .map() iterations
   const linkedStates = new Set<string>();
@@ -260,10 +260,10 @@ export default function BlogPostPage() {
     "publisher": {
       "@type": "Organization",
       "name": "PawTenant",
-      "url": "https://www.pawtenant.com/",
+      "url": "https://pawtenant.com/",
       "logo": {
         "@type": "ImageObject",
-        "url": "https://www.pawtenant.com/logo.png"
+        "url": "https://pawtenant.com/logo.png"
       }
     },
     "mainEntityOfPage": {
@@ -278,10 +278,10 @@ export default function BlogPostPage() {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     "itemListElement": [
-      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com/" },
-      { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://www.pawtenant.com/blog" },
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com/" },
+      { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://pawtenant.com/blog" },
       ...(stateEntry
-        ? [{ "@type": "ListItem", "position": 3, "name": `${stateEntry.stateName} ESA Guides`, "item": `https://www.pawtenant.com/blog/state/${stateEntry.stateSlug}` }]
+        ? [{ "@type": "ListItem", "position": 3, "name": `${stateEntry.stateName} ESA Guides`, "item": `https://pawtenant.com/blog/state/${stateEntry.stateSlug}` }]
         : []),
       { "@type": "ListItem", "position": stateEntry ? 4 : 3, "name": post.title, "item": canonicalUrl }
     ]
@@ -320,12 +320,7 @@ export default function BlogPostPage() {
   return (
     <main>
       <title>{post.metaTitle}</title>
-      <meta name="description" content={post.metaDesc} />
-      <link rel="canonical" href={canonicalUrl} />
-      <meta property="og:title" content={post.metaTitle} />
-      <meta property="og:description" content={post.metaDesc} />
       <meta property="og:image" content={post.image} />
-      <meta property="og:url" content={canonicalUrl} />
       <meta property="og:type" content="article" />
       <meta name="twitter:title" content={post.metaTitle} />
       <meta name="twitter:description" content={post.metaDesc} />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -573,7 +573,7 @@ export default function StateESAPage() {
     const description = customMeta
       ? customMeta.desc
       : `Need an ESA letter in ${stateData.name}? PawTenant connects you with ${stateData.name}-licensed mental health professionals. Valid for housing across all of ${stateData.name}, HIPAA-secure, same-day delivery, 100% money-back guarantee. ${stateData.name} ESA housing rights explained.`;
-    const canonical = `https://www.pawtenant.com/esa-letter/${stateData.slug}`;
+    const canonical = `https://pawtenant.com/esa-letter/${stateData.slug}`;
 
     document.title = title;
 
@@ -637,8 +637,8 @@ export default function StateESAPage() {
         {
           "@type": "BreadcrumbList",
           "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com" },
-            { "@type": "ListItem", "position": 2, "name": "All States", "item": "https://www.pawtenant.com/explore-esa-letters-all-states" },
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com" },
+            { "@type": "ListItem", "position": 2, "name": "All States", "item": "https://pawtenant.com/explore-esa-letters-all-states" },
             { "@type": "ListItem", "position": 3, "name": `ESA Letter in ${stateData.name}`, "item": canonical },
           ],
         },

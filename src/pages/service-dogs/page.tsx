@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
@@ -72,18 +72,13 @@ export default function ServiceDogsPage() {
   return (
     <main>
       <title>Psychiatric Service Dog Letter Online 2026 — PSD Letter vs ESA Letter | PawTenant</title>
-      <meta name="description" content="Get a psychiatric service dog letter (PSD letter) online from licensed mental health professionals. Learn the difference between a PSD letter and an ESA letter, and find out if you qualify. Fast, legal, HIPAA compliant." />
       <meta name="keywords" content="psychiatric service dog letter, PSD letter, service dog breeds, service dog training, ESA vs service dog, PSD letter online" />
-      <link rel="canonical" href="https://www.pawtenant.com/all-about-service-dogs" />
-      <meta property="og:title" content="Psychiatric Service Dog Letter Online 2026 | PawTenant" />
-      <meta property="og:description" content="Licensed mental health professionals issue PSD letters and ESA letters online. Learn about service dog rights, PSD vs ESA differences, and how to qualify." />
-      <meta property="og:url" content="https://www.pawtenant.com/all-about-service-dogs" />
       <meta property="og:type" content="article" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Psychiatric Service Dog (PSD) Letter Online 2026 | PawTenant" />
       <meta name="twitter:description" content="Get a PSD letter online from licensed professionals. Learn about service dog breeds, training, legal rights, and how a PSD letter differs from an ESA letter." />
-      <meta property="og:image" content="https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg" />
-      <meta name="twitter:image" content="https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg" />
+      <meta property="og:image" content="https://pawtenant.com/assets/blog/man-puppy-portrait.jpg" />
+      <meta name="twitter:image" content="https://pawtenant.com/assets/blog/man-puppy-portrait.jpg" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@graph": [
@@ -102,16 +97,16 @@ export default function ServiceDogsPage() {
             "@type": "ImageObject",
             "name": "Everything You Need to Know About Service Dogs",
             "description": "Complete guide to service dogs, psychiatric service dogs (PSDs), and ESA letters — ADA rights, training, and how to qualify for a PSD letter.",
-            "url": "https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg",
-            "contentUrl": "https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg",
+            "url": "https://pawtenant.com/assets/blog/man-puppy-portrait.jpg",
+            "contentUrl": "https://pawtenant.com/assets/blog/man-puppy-portrait.jpg",
             "representativeOfPage": true
           },
           {
             "@type": "ImageObject",
             "name": "How to Get a Psychiatric Service Dog Letter",
             "description": "Step-by-step guide showing how to get a psychiatric service dog (PSD) letter from a licensed mental health professional for housing and airline travel.",
-            "url": "https://www.pawtenant.com/assets/blog/cafe-retriever.jpg",
-            "contentUrl": "https://www.pawtenant.com/assets/blog/cafe-retriever.jpg"
+            "url": "https://pawtenant.com/assets/blog/cafe-retriever.jpg",
+            "contentUrl": "https://pawtenant.com/assets/blog/cafe-retriever.jpg"
           }
         ]
       }) }} />
@@ -122,7 +117,7 @@ export default function ServiceDogsPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src="https://www.pawtenant.com/assets/blog/man-puppy-portrait.jpg"
+            src="https://pawtenant.com/assets/blog/man-puppy-portrait.jpg"
             alt="Everything you need to know about psychiatric service dogs and ESA letters — PawTenant 2026 guide"
             className="w-full h-full object-cover object-top"
           />
@@ -273,7 +268,7 @@ export default function ServiceDogsPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-72">
               <img
-                src="https://www.pawtenant.com/assets/blog/cafe-retriever.jpg"
+                src="https://pawtenant.com/assets/blog/cafe-retriever.jpg"
                 alt="How to get a psychiatric service dog PSD letter — training and licensed professional assessment"
                 title="How to Get a Psychiatric Service Dog Letter"
                 className="w-full h-full object-cover object-top"

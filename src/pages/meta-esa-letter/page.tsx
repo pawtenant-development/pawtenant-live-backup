@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
@@ -67,7 +67,7 @@ const META_DESC =
 const META_KEYWORDS =
   "ESA letter online, emotional support animal letter, ESA letter for housing, Licensed Mental Health Practitioner, Fair Housing Act ESA, reasonable accommodation, psychiatric service dog letter, PSD letter, ESA evaluation online, ESA documentation, no-pet apartment ESA, ESA housing rights";
 const META_OG_IMAGE =
-  "https://www.pawtenant.com/assets/blog/fp-woman-dog-floor.jpg";
+  "https://pawtenant.com/assets/blog/fp-woman-dog-floor.jpg";
 
 const ASSESSMENT_HREF = "/assessment";
 const PSD_ASSESSMENT_HREF = "/psd-assessment";

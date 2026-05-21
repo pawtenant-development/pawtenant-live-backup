@@ -5,7 +5,23 @@
  * unique title/description.
  */
 
-export const BASE_URL = "https://www.pawtenant.com";
+// ── 2026-05-21 SEO-DOMAIN-CANONICAL ─────────────────────────────────────────
+// Single source of truth for the canonical host.
+//
+// PawTenant historically lived on both `pawtenant.com` (non-www, used by the
+// original WordPress site and registered with Google Search Console) and
+// `www.pawtenant.com` (used by an earlier Vercel deployment of the React
+// build). Two indexable hosts splits link equity, creates duplicate-canonical
+// reports in SEO tools, and produces the "Canonical defined multiple times"
+// warning when the per-page JSX meta and the prerendered <head> disagree.
+//
+// We have now standardized on `https://pawtenant.com` (NON-WWW) as the only
+// canonical and indexable host. The 301 redirect from www.* → non-www lives in
+// `vercel.json`; everything that consumes BASE_URL (SEOManager runtime
+// canonicals, scripts/prerender-seo.mjs build-time canonicals, all og:url
+// fields) inherits the host from this constant. Do not hardcode the host
+// anywhere else in the SEO pipeline — import BASE_URL instead.
+export const BASE_URL = "https://pawtenant.com";
 
 export interface SEOEntry {
   title: string;

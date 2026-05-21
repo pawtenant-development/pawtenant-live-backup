@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -14,7 +14,7 @@ export default function CollegePolicyDetailPage() {
 
     const title = college.metaTitle;
     const description = college.metaDesc;
-    const canonical = `https://www.pawtenant.com/college-pet-policy/${college.slug}`;
+    const canonical = `https://pawtenant.com/college-pet-policy/${college.slug}`;
 
     document.title = title;
 
@@ -59,8 +59,8 @@ export default function CollegePolicyDetailPage() {
         {
           "@type": "BreadcrumbList",
           "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.pawtenant.com" },
-            { "@type": "ListItem", "position": 2, "name": "College Pet Policy", "item": "https://www.pawtenant.com/college-pet-policy" },
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://pawtenant.com" },
+            { "@type": "ListItem", "position": 2, "name": "College Pet Policy", "item": "https://pawtenant.com/college-pet-policy" },
             { "@type": "ListItem", "position": 3, "name": college.name, "item": canonical },
           ],
         },

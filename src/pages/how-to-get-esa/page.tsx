@@ -1,4 +1,4 @@
-import SharedNavbar from "../../components/feature/SharedNavbar";
+﻿import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import AssessmentVideoPreview from "../../components/feature/AssessmentVideoPreview";
 import { Link } from "react-router-dom";
@@ -155,12 +155,7 @@ export default function HowToGetESAPage() {
   return (
     <main>
       <title>How to Get an ESA Letter Online | Step-by-Step Guide | PawTenant</title>
-      <meta name="description" content="How to get an ESA letter online from a licensed mental health professional. Step-by-step process, qualifying conditions, required documentation, and what a valid ESA letter must include. Receive your letter within 24 hours." />
       <meta name="keywords" content="how to get an ESA letter, how to get an ESA letter online, get ESA letter online, steps to obtain an ESA letter, ESA letter application process, qualifying for an ESA letter, licensed mental health professional ESA letter, ESA letter requirements, emotional support animal letter online, legitimate online ESA evaluation, avoiding ESA letter scams" />
-      <link rel="canonical" href="https://www.pawtenant.com/how-to-get-esa-letter" />
-      <meta property="og:title" content="How to Get an ESA Letter | Step-by-Step Guide | PawTenant" />
-      <meta property="og:description" content="Learn how to get a legitimate ESA letter from a licensed professional. Follow our simple step-by-step process and receive your letter within 24 hours." />
-      <meta property="og:url" content="https://www.pawtenant.com/how-to-get-esa-letter" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@type": "FAQPage",

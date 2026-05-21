@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
@@ -120,12 +120,7 @@ export default function FAQsPage() {
   return (
     <main>
       <title>ESA FAQs 2026: Emotional Support Animal Questions Answered | PawTenant</title>
-      <meta name="description" content="Answers to every ESA question — letters, housing rights, college dorms, airline travel, and more. Expert guidance from PawTenant's licensed mental health professionals." />
       <meta name="keywords" content="ESA FAQs, emotional support animal questions, ESA letter questions, ESA housing rights FAQ, ESA college dorm FAQ" />
-      <link rel="canonical" href="https://www.pawtenant.com/faqs" />
-      <meta property="og:title" content="ESA FAQs 2026 | PawTenant" />
-      <meta property="og:description" content="Every ESA question answered: letters, housing rights, college dorms, airline travel, landlord rights, and more from PawTenant." />
-      <meta property="og:url" content="https://www.pawtenant.com/faqs" />
       <meta property="og:type" content="website" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="ESA FAQs 2026: Every Emotional Support Animal Question Answered | PawTenant" />

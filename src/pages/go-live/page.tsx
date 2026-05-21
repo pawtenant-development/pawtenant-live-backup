@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -294,7 +294,7 @@ const SECTIONS: Section[] = [
         id: "gsc-sitemap",
         label: "Submit sitemap to Google Search Console",
         detail: "GSC → Sitemaps → Add a new sitemap. The sitemap is already live and production-ready.",
-        code: "https://www.pawtenant.com/sitemap.xml",
+        code: "https://pawtenant.com/sitemap.xml",
         codeLabel: "Sitemap URL:",
         link: { href: "https://search.google.com/search-console/sitemaps", text: "Open GSC Sitemaps →" },
       },
