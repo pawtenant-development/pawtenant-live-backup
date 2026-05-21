@@ -2,7 +2,6 @@
   "cleanUrls": true,
   "redirects": [
     {
-      "// 2026-05-21 SEO-DOMAIN-CANONICAL": "Force www.pawtenant.com/* → pawtenant.com/* (non-www is canonical). 308 permanent (Vercel default for permanent:true), preserves SEO equity, preserves the request path and query string via $1.",
       "source": "/:path*",
       "has": [{ "type": "host", "value": "www.pawtenant.com" }],
       "destination": "https://pawtenant.com/:path*",
