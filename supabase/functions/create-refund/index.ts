@@ -40,6 +40,11 @@ Deno.serve(async (req: Request) => {
   if (!isAdmin) return json({ ok: false, error: "Access denied — admin only" }, 403);
 
   // ── Parse body ────────────────────────────────────────────────────────────
+  // 2026-05-22 REFUND-CANCEL-WORKFLOW: added optional `skipCustomerNotification`
+  // (default false). When true, the auto-fire of notify-customer-refund is
+  // skipped so the caller (OrderDetailModal Refund + Cancel modal) can decide
+  // whether to send the customer email itself — without breaking the existing
+  // RefundModal flow on PaymentsTab, which still gets its email automatically.
   let body: {
     chargeId?: string;
     paymentIntentId?: string;
@@ -47,11 +52,12 @@ Deno.serve(async (req: Request) => {
     reason?: string;
     note?: string;
     confirmationId?: string;
+    skipCustomerNotification?: boolean;
   };
   try { body = await req.json(); }
   catch { return json({ ok: false, error: "Invalid JSON body" }, 400); }
 
-  const { chargeId: rawChargeId, paymentIntentId, amount, reason, note, confirmationId } = body;
+  const { chargeId: rawChargeId, paymentIntentId, amount, reason, note, confirmationId, skipCustomerNotification } = body;
 
   // @ts-ignore
   const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
@@ -166,8 +172,12 @@ Deno.serve(async (req: Request) => {
   } catch { /* non-critical */ }
 
   // ── Notify customer via notify-customer-refund ────────────────────────────
+  // 2026-05-22 REFUND-CANCEL-WORKFLOW: gated by skipCustomerNotification so
+  // the new OrderDetailModal Refund + Cancel flow can own the customer email
+  // (via the order_cancelled_refund template) without firing the generic
+  // "Refund Issued" email at the same time. Default behavior unchanged.
   let customerNotificationQueued = false;
-  if (confirmationId) {
+  if (confirmationId && !skipCustomerNotification) {
     try {
       const notifyRes = await fetch(`${supabaseUrl}/functions/v1/notify-customer-refund`, {
         method: "POST",

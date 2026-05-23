@@ -32,6 +32,10 @@ interface Order {
   payment_failure_reason: string | null;
   status: string;
   letter_type?: string | null;
+  // 2026-05-22 REFUND-CANCEL-FOLLOWUP: surfaced so the useEffect below can
+  // retrigger payment_attempts reload right after a Refund + Cancel finishes.
+  refund_amount?: number | null;
+  refunded_at?: string | null;
 }
 
 interface PaymentHistoryTabProps {
@@ -231,9 +235,15 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
     setLoading(false);
   }, [order.confirmation_id]);
 
+  // 2026-05-22 REFUND-CANCEL-FOLLOWUP: also reload payment_attempts when the
+  // parent updates `order.refund_amount` (which happens immediately after a
+  // successful Refund + Cancel). Without this, the Payments tab kept showing
+  // the pre-refund attempt list until the user clicked Refresh. We do NOT
+  // change `loadAttempts`'s own dependency array, because the query only
+  // needs `confirmation_id`; we just retrigger the existing function.
   useEffect(() => {
     loadAttempts();
-  }, [loadAttempts]);
+  }, [loadAttempts, order.refund_amount, order.refunded_at]);
 
   const successCount = attempts.filter((a) => a.status === "succeeded" || a.status === "async_succeeded").length;
   const failedCount = attempts.filter((a) => a.status === "failed" || a.status === "async_failed").length;

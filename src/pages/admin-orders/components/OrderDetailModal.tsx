@@ -1793,20 +1793,34 @@ export default function OrderDetailModal({
     try {
       const token = await getAdminToken();
 
+      // 2026-05-22 REFUND-CANCEL-WORKFLOW: refund amount is now parsed from the
+      // editable input. Empty / 0 / unparseable → no refund. Boolean
+      // cancelWithRefund kept for back-compat with downstream calls (notify
+      // payload + result message) and is derived from the parsed amount.
+      const capturedAmount = typeof order.price === "number" ? order.price : 0;
+      const parsedRefundAmount = parseFloat(cancelRefundAmount);
+      const wantsRefund = !!order.payment_intent_id && parsedRefundAmount > 0 && parsedRefundAmount <= capturedAmount;
+
       // If refund requested, process it first
       let refundAmount: number | undefined;
       let refundSkipped = false;
       let refundSkipReason = "";
-      if (cancelWithRefund && order.payment_intent_id) {
+      if (wantsRefund) {
+        const isPartial = parsedRefundAmount < capturedAmount;
         const refundRes = await fetch(`${supabaseUrl}/functions/v1/create-refund`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             // Pass paymentIntentId — the edge function resolves the charge automatically
             paymentIntentId: order.payment_intent_id,
+            // amount in dollars; omit for full refund so Stripe refunds the full charge balance
+            amount: isPartial ? parsedRefundAmount : undefined,
             reason: "requested_by_customer",
             note: cancelNote.trim() || "Order cancelled by admin",
             confirmationId: order.confirmation_id,
+            // The Refund + Cancel modal owns customer notifications via its own
+            // email/SMS checkboxes — suppress the generic auto-fired refund email.
+            skipCustomerNotification: true,
           }),
         });
         const refundData = await refundRes.json() as { ok: boolean; error?: string; refund?: { amount: number }; refundAmountDollars?: number };
@@ -1839,21 +1853,105 @@ export default function OrderDetailModal({
         return;
       }
 
-      // Send cancellation email notification (best-effort)
-      try {
-        fetch(`${supabaseUrl}/functions/v1/notify-order-status`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            confirmationId: order.confirmation_id,
-            newStatus: "cancelled",
-            refunded: cancelWithRefund && !!order.payment_intent_id,
-            refundAmount,
-            cancelNote: cancelNote.trim() || undefined,
-          }),
-        }).catch(() => {});
-      } catch {
-        // Email is best-effort
+      // 2026-05-22 REFUND-CANCEL-FOLLOWUP-2: customer email goes through
+      // send-templated-email using the DB-backed `order_cancelled_refund`
+      // slug — NOT notify-order-status (which renders a hardcoded generic
+      // "Your order has been cancelled" Resend HTML). Awaited so failures
+      // surface to the operator. Explicit name/order_id/amount/reason vars
+      // override auto-hydration so the customer always sees the real name.
+      let emailResultMsg = "";
+      if (cancelSendEmail) {
+        try {
+          const amountForEmail = refundAmount != null
+            ? `$${refundAmount.toFixed(2)}`
+            : (wantsRefund ? `$${parsedRefundAmount.toFixed(2)}` : "$0.00");
+          const reasonForEmail = cancelNote.trim() || "provider availability in your state";
+          const explicitName =
+            (order.first_name && order.first_name.trim()) ||
+            (order.last_name && order.last_name.trim()) ||
+            (order.email ? order.email.split("@")[0] : "") ||
+            "there";
+          const emailRes = await fetch(`${supabaseUrl}/functions/v1/send-templated-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              slug: "order_cancelled_refund",
+              to: order.email,
+              confirmationId: order.confirmation_id,
+              vars: {
+                name: explicitName,
+                first_name: explicitName,
+                order_id: order.confirmation_id ?? "",
+                confirmation_id: order.confirmation_id ?? "",
+                amount: amountForEmail,
+                reason: reasonForEmail,
+              },
+            }),
+          });
+          const emailData = await emailRes.json().catch(() => ({ ok: false, error: "Invalid response" })) as { ok: boolean; error?: string };
+          if (!emailData.ok) {
+            emailResultMsg = ` Email send FAILED: ${emailData.error ?? "unknown error"}.`;
+            console.error("[refund-cancel] send-templated-email failed:", emailData);
+          }
+        } catch (err) {
+          emailResultMsg = ` Email send failed: ${err instanceof Error ? err.message : "network error"}.`;
+          console.error("[refund-cancel] send-templated-email exception:", err);
+        }
+      }
+
+      // 2026-05-22 REFUND-CANCEL-WORKFLOW: optional SMS via ghl-send-sms.
+      // Renders the seeded sms_order_cancelled_refund template client-side
+      // (DB is the single source of truth — same pattern used by
+      // CommunicationTab). Customer name resolved with the same fallback
+      // chain as email.
+      let smsResultMsg = "";
+      if (cancelSendSMS && order.phone) {
+        try {
+          const { data: tpl } = await supabase
+            .from("email_templates")
+            .select("body")
+            .eq("id", "sms_order_cancelled_refund")
+            .eq("channel", "sms")
+            .maybeSingle();
+          const rawBody = (tpl?.body as string) ??
+            "Hi {name}, your PawTenant order {order_id} has been cancelled and a refund of {amount} has been issued. We apologize for the inconvenience — refund timing depends on your bank/provider.";
+          const amountLabel = refundAmount != null
+            ? `$${refundAmount.toFixed(2)}`
+            : (wantsRefund ? `$${parsedRefundAmount.toFixed(2)}` : "your payment");
+          const reasonLabel = cancelNote.trim() || "provider availability in your state";
+          const explicitName =
+            (order.first_name && order.first_name.trim()) ||
+            (order.last_name && order.last_name.trim()) ||
+            (order.email ? order.email.split("@")[0] : "") ||
+            "there";
+          const rendered = rawBody
+            .replace(/\{name\}/g, explicitName)
+            .replace(/\{first_name\}/g, explicitName)
+            .replace(/\{order_id\}/g, order.confirmation_id ?? "")
+            .replace(/\{confirmation_id\}/g, order.confirmation_id ?? "")
+            .replace(/\{amount\}/g, amountLabel)
+            .replace(/\{reason\}/g, reasonLabel)
+            .slice(0, 320);
+          const smsRes = await fetch(`${supabaseUrl}/functions/v1/ghl-send-sms`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              orderId: order.id,
+              confirmationId: order.confirmation_id,
+              toPhone: order.phone,
+              message: rendered,
+              sentBy: "Refund + Cancel Workflow",
+            }),
+          });
+          const smsData = await smsRes.json().catch(() => ({ ok: false, error: "Invalid response" })) as { ok: boolean; error?: string };
+          if (!smsData.ok) {
+            smsResultMsg = ` SMS send FAILED: ${smsData.error ?? "unknown error"}.`;
+            console.error("[refund-cancel] ghl-send-sms failed:", smsData);
+          }
+        } catch (err) {
+          smsResultMsg = ` SMS send failed: ${err instanceof Error ? err.message : "network error"}.`;
+          console.error("[refund-cancel] ghl-send-sms exception:", err);
+        }
       }
 
       // ── Fire GHL with Cancelled + Closed tags (fire-and-forget) ──────────
@@ -1879,30 +1977,47 @@ export default function OrderDetailModal({
         // GHL is best-effort
       }
 
-      updateOrderField({ status: "cancelled" });
-      setShowCancelConfirm(false);
-      onOrderUpdated({ id: order.id, status: "cancelled" });
-      let refundNote = "";
-      if (refundSkipped) {
-        refundNote = ` — Note: ${refundSkipReason}`;
-      } else if (cancelWithRefund && order.payment_intent_id) {
-        refundNote = refundAmount ? ` — $${refundAmount.toFixed(2)} refunded` : " — full refund issued";
-      }
-      setCancelMsg(`Order cancelled successfully${refundNote}. Customer notified by email.`);
-
-      // ── Refresh email log so the cancellation email entry appears immediately ──
+      // 2026-05-22 REFUND-CANCEL-FOLLOWUP: stale-UI fix. After a successful
+      // refund + cancel, refetch refunded_at / refund_amount / status /
+      // email_log and push them through updateOrderField, which updates
+      // both modal local state AND the parent admin-orders list (via
+      // onOrderUpdated → handleOrderUpdated). Cancelled badge + refund
+      // amount + refunded timestamp all appear without F5.
+      let freshFields: Partial<Order> = { status: "cancelled" };
       try {
         const { data: fresh } = await supabase
           .from("orders")
-          .select("email_log")
+          .select("status, refunded_at, refund_amount, email_log")
           .eq("id", order.id)
           .maybeSingle();
-        if (fresh?.email_log) {
-          updateOrderField({ email_log: fresh.email_log as EmailLogEntry[] });
+        if (fresh) {
+          freshFields = {
+            status: (fresh.status as Order["status"]) ?? "cancelled",
+            refunded_at: (fresh.refunded_at as string | null) ?? null,
+            refund_amount: (fresh.refund_amount as number | null) ?? null,
+            email_log: (fresh.email_log as EmailLogEntry[] | null) ?? [],
+          };
         }
       } catch {
-        // Non-critical — email log will refresh next time the Emails tab is opened
+        // Non-critical — fall back to the minimal status patch below
       }
+
+      updateOrderField(freshFields);
+      setShowCancelConfirm(false);
+      onOrderUpdated({ id: order.id, ...freshFields });
+      let refundNote = "";
+      if (refundSkipped) {
+        refundNote = ` — Note: ${refundSkipReason}`;
+      } else if (wantsRefund && order.payment_intent_id) {
+        refundNote = refundAmount ? ` — $${refundAmount.toFixed(2)} refunded` : " — refund issued";
+      }
+      // Only count channels that didn't fail. emailResultMsg / smsResultMsg
+      // are non-empty when the send failed; that text is appended verbatim.
+      const notifBits: string[] = [];
+      if (cancelSendEmail && !emailResultMsg) notifBits.push("email");
+      if (cancelSendSMS && order.phone && !smsResultMsg) notifBits.push("SMS");
+      const notifLabel = notifBits.length ? ` Customer notified by ${notifBits.join(" + ")}.` : " No customer notification sent.";
+      setCancelMsg(`Order cancelled successfully${refundNote}.${notifLabel}${emailResultMsg}${smsResultMsg}`);
     } catch {
       setCancelMsg("Unexpected error — please try again.");
     }
@@ -2200,10 +2315,19 @@ export default function OrderDetailModal({
   const [restoreMsg, setRestoreMsg] = useState("");
 
   // ── Cancel Order state ──
+  // 2026-05-22 REFUND-CANCEL-WORKFLOW: cancelWithRefund (boolean) replaced by
+  // cancelRefundAmount (editable string) so the operator can issue full OR
+  // partial refunds in the same flow. cancelSendEmail / cancelSendSMS added so
+  // the customer-notification channels are explicit per spec. The existing
+  // body-card "Cancel This Order" button still mounts this same modal; we
+  // also expose it via the header More dropdown.
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancellingOrder, setCancellingOrder] = useState(false);
   const [cancelNote, setCancelNote] = useState("");
   const [cancelWithRefund, setCancelWithRefund] = useState(false);
+  const [cancelRefundAmount, setCancelRefundAmount] = useState<string>("");
+  const [cancelSendEmail, setCancelSendEmail] = useState(true);
+  const [cancelSendSMS, setCancelSendSMS] = useState(false);
   const [cancelMsg, setCancelMsg] = useState("");
 
   // ── Role restriction state ──
@@ -2815,6 +2939,33 @@ export default function OrderDetailModal({
                 </button>
                 {showHeaderMore && (
                   <div role="menu" className="absolute right-0 mt-1.5 z-30 w-56 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                    {/* 2026-05-22 REFUND-CANCEL-WORKFLOW: single entry point for
+                        the Refund + Cancel Order modal. The same modal is also
+                        opened by the body's "Refund + Cancel" button so we
+                        never end up with two parallel flows. Hidden when the
+                        order is already cancelled / refunded / fully delivered
+                        so operators don't second-cancel a closed order.
+
+                        2026-05-22 REFUND-CANCEL-FOLLOWUP-2: only show for PAID
+                        orders. Unpaid leads (no payment_intent AND no paid_at)
+                        must not see a refund flow — they're handled via the
+                        existing Archive/Void path in the Danger zone below. */}
+                    {(order.payment_intent_id || order.paid_at) &&
+                     order.doctor_status !== "patient_notified" &&
+                     order.status !== "refunded" &&
+                     !order.refunded_at &&
+                     order.status !== "cancelled" && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowHeaderMore(false); setShowCancelConfirm(true); }}
+                        role="menuitem"
+                        title="Refund (full or partial) and cancel this order"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors border-b border-gray-100"
+                      >
+                        <i className="ri-refund-2-line"></i>
+                        <span className="flex-1 text-left">Refund + Cancel Order</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => { setShowHeaderMore(false); handleSendPortalReset(); }}
@@ -4123,23 +4274,24 @@ export default function OrderDetailModal({
                     </div>
                     )}
 
-                    {/* ── Cancel Order — shown for all paid orders that aren't completed/refunded/already cancelled ── */}
-                    {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
+                    {/* ── Refund + Cancel — shown for paid orders only that aren't completed/refunded/already cancelled.
+                         2026-05-22 REFUND-CANCEL-FOLLOWUP-2: same gating as the More-menu entry so the body and the
+                         dropdown never disagree. Unpaid leads use Archive/Void in the More-menu Danger zone. ── */}
+                    {(order.payment_intent_id || order.paid_at) && order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
                     <div className="border-t border-dashed border-orange-200 mt-1 pt-3">
                       <p className="text-xs text-orange-500 mb-2 flex items-center gap-1 font-semibold">
-                        <i className="ri-close-circle-line"></i>Cancel Order
+                        <i className="ri-refund-2-line"></i>Refund + Cancel
                       </p>
                       <button
                         type="button"
                         onClick={() => setShowCancelConfirm(true)}
                         className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
                       >
-                        <i className="ri-close-circle-line"></i>Cancel This Order
+                        <i className="ri-refund-2-line"></i>Refund + Cancel Order
                       </button>
                       <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
                         <i className="ri-information-line"></i>
-                        Marks order as cancelled and notifies the customer.
-                        {order.payment_intent_id ? " Optionally issues a full Stripe refund." : ""}
+                        Issues a Stripe refund (full or partial), marks the order cancelled, and notifies the customer.
                       </p>
                       {cancelMsg && (
                         <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${cancelMsg.includes("success") || cancelMsg.includes("cancelled") ? "text-[#3b6ea5]" : cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "text-red-600" : "text-[#3b6ea5]"}`}>
@@ -5461,6 +5613,27 @@ export default function OrderDetailModal({
               </div>
             </div>
 
+            {/* 2026-05-22 REFUND-CANCEL-WORKFLOW: Stripe captured + remaining
+                refundable amounts shown at the top of the modal so the operator
+                can see what they're working with before entering a partial
+                refund amount. */}
+            {order.payment_intent_id && order.price != null && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Stripe Captured</p>
+                    <p className="text-sm font-extrabold text-gray-900">${order.price.toFixed(2)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Refundable</p>
+                    <p className="text-sm font-extrabold text-emerald-700">
+                      ${Math.max(0, order.price - ((order.refund_amount as number | null) ?? 0)).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Refund option — only for paid orders with a payment intent */}
             {order.payment_intent_id ? (
               isFinanceRole ? (
@@ -5483,24 +5656,50 @@ export default function OrderDetailModal({
                     </button>
                   </div>
                 </div>
-              ) : (
-              <div
-                className={`flex items-start gap-3 rounded-xl p-3 mb-4 border cursor-pointer transition-colors ${cancelWithRefund ? "bg-emerald-50 border-emerald-300" : "bg-gray-50 border-gray-200 hover:bg-gray-100"}`}
-                onClick={() => setCancelWithRefund((v) => !v)}
-              >
-                <div
-                  className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${cancelWithRefund ? "bg-emerald-600 border-emerald-600" : "border-gray-400"}`}
-                >
-                  {cancelWithRefund && <i className="ri-check-line text-white" style={{ fontSize: "11px" }}></i>}
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-gray-800">Issue Full Refund via Stripe</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {order.price != null ? `$${order.price.toFixed(2)}` : "Full amount"} will be refunded to the customer&apos;s original payment method. Takes 5-10 business days.
-                  </p>
-                </div>
-              </div>
-              )
+              ) : (() => {
+                const capturedAmt = typeof order.price === "number" ? order.price : 0;
+                const alreadyRefunded = (order.refund_amount as number | null) ?? 0;
+                const maxRefundable = Math.max(0, capturedAmt - alreadyRefunded);
+                const parsedAmt = parseFloat(cancelRefundAmount);
+                const overMax = !isNaN(parsedAmt) && parsedAmt > maxRefundable;
+                return (
+                  <div className="mb-4 rounded-xl p-3 border border-emerald-200 bg-emerald-50/60">
+                    <label className="block text-xs font-bold text-emerald-900 mb-1.5">
+                      Refund Amount <span className="text-gray-400 font-normal">(leave blank for no refund)</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-bold">$</span>
+                        <input
+                          type="number"
+                          value={cancelRefundAmount}
+                          onChange={(e) => setCancelRefundAmount(e.target.value)}
+                          min="0"
+                          max={maxRefundable}
+                          step="0.01"
+                          placeholder={`0.00 – ${maxRefundable.toFixed(2)}`}
+                          className="w-full pl-7 pr-3 py-2 border border-emerald-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500 bg-white"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCancelRefundAmount(maxRefundable.toFixed(2))}
+                        className="whitespace-nowrap px-3 py-2 border border-emerald-300 text-emerald-700 text-xs font-bold rounded-lg hover:bg-emerald-100 cursor-pointer transition-colors"
+                      >
+                        Full
+                      </button>
+                    </div>
+                    {overMax && (
+                      <p className="text-xs text-red-600 mt-1.5">
+                        Cannot exceed refundable balance (${maxRefundable.toFixed(2)}).
+                      </p>
+                    )}
+                    <p className="text-xs text-emerald-800/80 mt-1.5">
+                      Refunded via Stripe to the original payment method. Takes 5–10 business days.
+                    </p>
+                  </div>
+                );
+              })()
             ) : (
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
                 <i className="ri-information-line text-amber-600 flex-shrink-0 mt-0.5"></i>
@@ -5510,42 +5709,95 @@ export default function OrderDetailModal({
               </div>
             )}
 
-            {/* Cancel note */}
+            {/* Cancellation reason — free-form. Reused as the cancel email's
+                `cancelNote` field AND as the {reason} substitution in the SMS
+                template, so a single textarea drives both customer-facing
+                channels without duplicating UI. */}
             <div className="mb-4">
-              <label className="block text-xs font-bold text-gray-600 mb-1.5">Internal Note (optional)</label>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                Cancellation Reason <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
               <textarea
                 value={cancelNote}
                 onChange={(e) => setCancelNote(e.target.value.slice(0, 300))}
                 rows={2}
-                placeholder="Reason for cancellation, e.g. customer requested via email..."
+                placeholder="e.g. No provider available in state, appointment unavailable, customer requested cancellation..."
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-orange-400 resize-none"
               />
               <p className="text-xs text-gray-400 text-right mt-0.5">{cancelNote.length}/300</p>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
-              <p className="text-xs text-amber-800 flex items-start gap-1 leading-relaxed">
-                <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
-                A cancellation email will be sent to the customer at <strong>{order.email}</strong>.
-                {cancelWithRefund && order.payment_intent_id ? " A full Stripe refund will also be processed." : ""}
-              </p>
+            {/* 2026-05-22 REFUND-CANCEL-WORKFLOW: customer-notification channels.
+                Email defaults on (operational best practice); SMS optional and
+                only enabled when the order has a phone on file. */}
+            <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Notify Customer</p>
+              <label className="flex items-center gap-2 mb-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cancelSendEmail}
+                  onChange={(e) => setCancelSendEmail(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-gray-700">
+                  Email <span className="text-gray-400 font-normal">— sends to {order.email}</span>
+                </span>
+              </label>
+              <label className={`flex items-center gap-2 cursor-pointer ${!order.phone ? "opacity-50" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={cancelSendSMS && !!order.phone}
+                  disabled={!order.phone}
+                  onChange={(e) => setCancelSendSMS(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-gray-700">
+                  SMS <span className="text-gray-400 font-normal">
+                    {order.phone ? `— sends to ${order.phone}` : "— no phone on file"}
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="flex items-center gap-2">
+              {(() => {
+                // 2026-05-22 REFUND-CANCEL-WORKFLOW: submit-button copy reflects
+                // the parsed refund amount (full / partial / no refund) and is
+                // disabled when the entered amount exceeds the refundable balance.
+                const capturedAmt = typeof order.price === "number" ? order.price : 0;
+                const alreadyRefunded = (order.refund_amount as number | null) ?? 0;
+                const maxRefundable = Math.max(0, capturedAmt - alreadyRefunded);
+                const parsedAmt = parseFloat(cancelRefundAmount);
+                const wantsRefund = !!order.payment_intent_id && parsedAmt > 0 && parsedAmt <= maxRefundable;
+                const overMax = !isNaN(parsedAmt) && parsedAmt > maxRefundable;
+                const disabled = cancellingOrder || overMax;
+                const isPartial = wantsRefund && parsedAmt < maxRefundable;
+                const submitLabel = cancellingOrder
+                  ? (wantsRefund ? "Refunding & Cancelling..." : "Cancelling...")
+                  : (wantsRefund ? (isPartial ? "Refund & Cancel" : "Full Refund & Cancel") : "Cancel Order");
+                return (
+                  <button
+                    type="button"
+                    onClick={handleCancelOrder}
+                    disabled={disabled}
+                    className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    {cancellingOrder
+                      ? <><i className="ri-loader-4-line animate-spin"></i>{submitLabel}</>
+                      : <><i className="ri-refund-2-line"></i>{submitLabel}</>}
+                  </button>
+                );
+              })()}
               <button
                 type="button"
-                onClick={handleCancelOrder}
-                disabled={cancellingOrder}
-                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-xl hover:bg-orange-700 cursor-pointer transition-colors disabled:opacity-50"
-              >
-                {cancellingOrder
-                  ? <><i className="ri-loader-4-line animate-spin"></i>{cancelWithRefund && order.payment_intent_id ? "Refunding & Cancelling..." : "Cancelling..."}</>
-                  : <><i className="ri-close-circle-line"></i>{cancelWithRefund && order.payment_intent_id ? "Cancel & Refund" : "Cancel Order"}</>
-                }
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowCancelConfirm(false); setCancelNote(""); setCancelWithRefund(false); }}
+                onClick={() => {
+                  setShowCancelConfirm(false);
+                  setCancelNote("");
+                  setCancelWithRefund(false);
+                  setCancelRefundAmount("");
+                  setCancelSendEmail(true);
+                  setCancelSendSMS(false);
+                }}
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 Keep Order
