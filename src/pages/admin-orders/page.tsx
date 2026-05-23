@@ -696,13 +696,30 @@ export default function AdminOrdersPage() {
   const loadOrderData = useCallback(async () => {
     try {
       const [ordersSettled, contactsSettled, profilesSettled] = await Promise.allSettled([
-        // LIVE hotfix 2026-05-15: first_touch_json / last_touch_json are not
-        // yet present on LIVE orders. Including them made the whole select
-        // 400 and emptied the Orders + Dashboard + Analytics tabs. The
-        // classifier (acquisitionClassifier.buildOrderAcquisitionInputs) is
-        // null-safe and falls back to flat columns, so omitting these
-        // snapshots only loses the deep-touch breakdown, not the pill.
-        supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import").order("created_at", { ascending: false }),
+        // ATTR-CONSISTENCY-LOCK 2026-05-23 (owner-approved follow-up to the
+        // ATTR-CONSISTENCY-LOCK modal mirror): restore the seven attribution
+        // columns the acquisition classifier consumes for both the Overview
+        // source badge AND the OrderCard list pill. Without these the order
+        // row arrives at the classifier with no paid-signal data, so the
+        // pill / Overview chip collapses to the legacy referred_by salvage
+        // label (Dayana case: gclid set + referred_by="State page" rendered
+        // as "Referral" outside the modal, "Google Ads" inside the
+        // Attribution / Journey tab — a documented three-way disagreement).
+        //
+        // Previous 2026-05-15 hotfix removed these columns after the SELECT
+        // returned 400 and emptied Orders + Dashboard + Analytics. That
+        // failure mode is no longer reproducible — AttributionJourneyTab's
+        // separate self-fetch (this same repo, this same LIVE Supabase) has
+        // been pulling the identical column set successfully every day
+        // since. Restoring here closes Dayana parity without touching any
+        // of the unrelated systems that benefit from the rest of the row.
+        //
+        // If the 400 returns under load, the safest minimal revert is to
+        // drop ONLY the two json columns (first_touch_json,last_touch_json);
+        // the five flat columns (utm_source,utm_medium,utm_campaign,gclid,
+        // fbclid) MUST stay because they carry the click-ID signals the
+        // pill hierarchy needs on every paid order.
+        supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json").order("created_at", { ascending: false }),
         supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
         supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
       ]);
