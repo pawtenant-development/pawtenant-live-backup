@@ -11,6 +11,20 @@ import PSDAssessmentView from "./PSDAssessmentView";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
 import PaymentHistoryTab from "./PaymentHistoryTab";
 import { canDelete } from "../../../lib/adminPermissions";
+// ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
+// reads the same canonical classifier the order list pill (OrderCard) and
+// the Attribution / Journey tab Source Summary already use. Hierarchy:
+// gclid/gbraid/wbraid > fbclid > UTM > referrer host > legacy referred_by
+// salvage > Direct / Unknown. Previously the badge consulted only the
+// legacy referred_by text column via resolveRefConfig(), which ignored
+// click IDs entirely and disagreed with every other surface when a gclid
+// was present but referred_by was set to a weak landing-page label
+// (e.g. "State page" / "Referral"). Single source of truth = classifyOrder.
+import {
+  classifyOrder,
+  visualFor as visualForAcquisition,
+  explain as explainAcquisition,
+} from "../../../lib/acquisitionClassifier";
 import {
   LOGO_URL as ASSESSMENT_LOGO,
   STATE_NAMES,
@@ -53,6 +67,48 @@ interface Order {
   ghl_contact_id?: string | null;
   email_log?: EmailLogEntry[] | null;
   referred_by: string | null;
+  // ATTR-CONSISTENCY-LOCK: only the flat attribution columns the parent
+  // admin-orders SELECT actually returns (utm_source, utm_medium,
+  // utm_campaign, gclid, fbclid + the first_touch_json / last_touch_json
+  // snapshots). gbraid / wbraid / msclkid / ttclid live exclusively in
+  // the snapshot jsonb and are read by the classifier's pick() helper,
+  // so they are intentionally NOT declared here as flat fields — adding
+  // them would imply a SELECT column that does not exist. Every flat
+  // field is optional + nullable to remain compatible with historical
+  // rows that predate any single column.
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  gclid?: string | null;
+  fbclid?: string | null;
+  first_touch_json?: {
+    utm_source?: string | null;
+    utm_medium?: string | null;
+    utm_campaign?: string | null;
+    gclid?: string | null;
+    gbraid?: string | null;
+    wbraid?: string | null;
+    fbclid?: string | null;
+    msclkid?: string | null;
+    ttclid?: string | null;
+    ref?: string | null;
+    referrer?: string | null;
+    landing_url?: string | null;
+  } | null;
+  last_touch_json?: {
+    utm_source?: string | null;
+    utm_medium?: string | null;
+    utm_campaign?: string | null;
+    gclid?: string | null;
+    gbraid?: string | null;
+    wbraid?: string | null;
+    fbclid?: string | null;
+    msclkid?: string | null;
+    ttclid?: string | null;
+    ref?: string | null;
+    referrer?: string | null;
+    landing_url?: string | null;
+  } | null;
   addon_services?: string[] | null;
   refunded_at?: string | null;
   refund_amount?: number | null;
@@ -265,41 +321,16 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   qr: "QR Code / Mobile Pay",
 };
 
-const REF_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  // Short keys (legacy)
-  facebook:     { label: "Facebook / Instagram Ads", icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
-  google_ads:   { label: "Google Ads",   icon: "ri-google-line",          color: "text-orange-600 bg-orange-50 border-orange-200" },
-  social_media: { label: "Social Media", icon: "ri-share-circle-line",    color: "text-pink-600 bg-pink-50 border-pink-200" },
-  seo:          { label: "SEO",          icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
-  // Full string values stored in DB
-  "Facebook / Instagram Ads": { label: "Facebook / Instagram Ads", icon: "ri-facebook-circle-line", color: "text-[#1877F2] bg-blue-50 border-blue-200" },
-  "Google Ads":               { label: "Google Ads",               icon: "ri-google-line",          color: "text-orange-600 bg-orange-50 border-orange-200" },
-  "Google Organic":           { label: "Google Organic (SEO)",     icon: "ri-search-2-line",        color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
-  "TikTok Ads":               { label: "TikTok Ads",               icon: "ri-tiktok-line",          color: "text-gray-900 bg-gray-100 border-gray-300" },
-  "Instagram Ads":            { label: "Instagram Ads",            icon: "ri-instagram-line",       color: "text-pink-600 bg-pink-50 border-pink-200" },
-  "YouTube Ads":              { label: "YouTube Ads",              icon: "ri-youtube-line",         color: "text-red-600 bg-red-50 border-red-200" },
-  "Email Campaign":           { label: "Email Campaign",           icon: "ri-mail-send-line",       color: "text-violet-600 bg-violet-50 border-violet-200" },
-  "Referral":                 { label: "Referral",                 icon: "ri-share-forward-line",   color: "text-teal-600 bg-teal-50 border-teal-200" },
-  "Direct":                   { label: "Direct",                   icon: "ri-cursor-line",          color: "text-gray-600 bg-gray-50 border-gray-200" },
-};
-
-function resolveRefConfig(referredBy: string | null): { label: string; icon: string; color: string } | null {
-  if (!referredBy) return null;
-  if (REF_CONFIG[referredBy]) return REF_CONFIG[referredBy];
-  // Fuzzy match: check if any key is contained in the value
-  const lower = referredBy.toLowerCase();
-  if (lower.includes("facebook") || lower.includes("instagram")) return REF_CONFIG["Facebook / Instagram Ads"];
-  if (lower.includes("google") && lower.includes("organic")) return REF_CONFIG["Google Organic"];
-  if (lower.includes("google")) return REF_CONFIG["Google Ads"];
-  if (lower.includes("tiktok")) return REF_CONFIG["TikTok Ads"];
-  if (lower.includes("youtube")) return REF_CONFIG["YouTube Ads"];
-  if (lower.includes("email")) return REF_CONFIG["Email Campaign"];
-  if (lower.includes("referral")) return REF_CONFIG["Referral"];
-  if (lower.includes("seo") || lower.includes("organic")) return REF_CONFIG["Google Organic"];
-  if (lower.includes("direct")) return REF_CONFIG["Direct"];
-  // Unknown but has a value — show it as-is with a generic icon
-  return { label: referredBy, icon: "ri-share-circle-line", color: "text-gray-600 bg-gray-50 border-gray-200" };
-}
+// ATTR-CONSISTENCY-LOCK (2026-05-23): the legacy REF_CONFIG map and the
+// resolveRefConfig() helper that previously rendered the Overview
+// "Referred By" badge from order.referred_by alone are removed. Source
+// pill rendering on every admin surface now flows through the canonical
+// classifyOrder() / classifyAcquisition() helpers in
+// src/lib/acquisitionClassifier.ts. Click IDs (gclid/gbraid/wbraid,
+// fbclid, msclkid, ttclid) win over UTMs, which win over referrer host,
+// which wins over the legacy referred_by salvage. Keeping a parallel
+// single-column lookup here was the root cause of the documented
+// outside-vs-inside-the-modal disagreement (Dayana example).
 
 // ── Verification ID row — fetches status from letter_verifications ────────────
 const VERIF_STATUS_BADGE: Record<string, string> = {
@@ -3622,7 +3653,10 @@ export default function OrderDetailModal({
                     )}
                     {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: duplicate Referred By
                         removed. The colored source badge below (using
-                        resolveRefConfig) is the single source of truth. */}
+                        classifyOrder — ATTR-CONSISTENCY-LOCK 2026-05-23) is
+                        the single source of truth for the source pill on
+                        this surface AND every other surface (OrderCard pill
+                        + Attribution / Journey tab Source Summary). */}
                   </div>
                 </div>
 
@@ -3736,18 +3770,23 @@ export default function OrderDetailModal({
                     </div>
                   )}
 
-                  {/* Referred By badge */}
+                  {/* Acquisition Source badge — ATTR-CONSISTENCY-LOCK 2026-05-23.
+                      Uses the same classifyOrder() result the order list pill
+                      and the Attribution / Journey tab consume, so the three
+                      surfaces never disagree. */}
                   <div className="col-span-2 sm:col-span-1">
-                    <p className="text-xs text-gray-400 mb-0.5">Referred By</p>
+                    <p className="text-xs text-gray-400 mb-0.5">Acquisition Source</p>
                     {(() => {
-                      const cfg = resolveRefConfig(order.referred_by);
-                      return cfg ? (
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${cfg.color}`}>
-                          <i className={cfg.icon}></i>
-                          {cfg.label}
+                      const classification = classifyOrder(order);
+                      const v = visualForAcquisition(classification.label);
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold border ${v.color}`}
+                          title={explainAcquisition(classification)}
+                        >
+                          <i className={v.icon}></i>
+                          {v.label}
                         </span>
-                      ) : (
-                        <p className="text-sm font-semibold text-gray-400">Direct / Unknown</p>
                       );
                     })()}
                   </div>
