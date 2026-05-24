@@ -797,6 +797,66 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
+      {/* Related Resources — natural internal links to help readers continue
+          their research without leaving the funnel. Bottom-of-page placement
+          keeps the page focused on the primary how-to flow above. */}
+      <section className="py-12 sm:py-16 bg-slate-50 border-t border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6">
+          <div className="text-center max-w-xl mx-auto mb-8 sm:mb-10">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2 leading-tight">
+              Related Resources
+            </h2>
+            <p className="text-[14px] text-slate-600 leading-relaxed">
+              Helpful guides for the rest of your ESA letter journey.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <Link
+              to="/housing-rights-esa"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                Fair Housing Act Rights
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                How federal Fair Housing law supports reasonable accommodation requests for tenants with a qualifying ESA.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/esa-letter-cost"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                ESA Letter Pricing
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Transparent pricing for a clinically reviewed ESA letter, with a refund if you don&rsquo;t qualify after review.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/esa-letter-verification"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                Landlord Verification
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                How landlords confirm an ESA letter&rsquo;s authenticity using its unique verification ID.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <SharedFooter />
 
       {/* Mobile sticky CTA — 2026-05-21 HOWTO-HERO-REFINE

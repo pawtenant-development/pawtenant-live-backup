@@ -1211,6 +1211,54 @@ export default function StateESAPage() {
         </div>
       </section>
 
+      {/* Related Resources — adds the two internal links state pages were
+          missing (pricing + general FAQs). The existing in-body sections
+          already link to /housing-rights-esa, /how-to-get-esa-letter,
+          /esa-letter-verification and /blog so we keep this block compact
+          to avoid spammy linking across all 51 state pages. */}
+      <section className="py-12 sm:py-14 bg-slate-50 border-t border-slate-200">
+        <div className="max-w-5xl mx-auto px-5 sm:px-6">
+          <div className="text-center max-w-xl mx-auto mb-6 sm:mb-8">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2 leading-tight">
+              Related Resources
+            </h2>
+            <p className="text-[14px] text-slate-600 leading-relaxed">
+              Helpful guides for the rest of your ESA letter process.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+            <Link
+              to="/esa-letter-cost"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                ESA Letter Pricing
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Transparent pricing for a clinically reviewed ESA letter, with a refund if you don&rsquo;t qualify after review.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/faqs"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                ESA Letter FAQs
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Common questions about ESA letters, housing rights, eligibility, and the clinical review process.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <SharedFooter />
     </main>
   );
