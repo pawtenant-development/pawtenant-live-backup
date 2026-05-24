@@ -122,15 +122,22 @@ export default function TestimonialsSection() {
           </p>
         </div>
 
-        {/* Stats Row */}
-        <div className="flex flex-wrap items-stretch justify-center mb-10 md:mb-12 rounded-2xl border border-gray-100 overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
-          {STATS.map((stat) => (
-            <div key={stat.label} className="flex flex-col items-center justify-center gap-1 px-8 py-5 bg-gray-50 flex-1 min-w-[160px]">
+        {/* Stats Row — mobile-first: 2x2 grid on phones so each stat reads
+            comfortably without overflowing 360px viewports. Single row on
+            tablet+ where the inline divider treatment makes sense. */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-stretch sm:justify-center mb-10 md:mb-12 rounded-2xl border border-gray-100 overflow-hidden sm:divide-x divide-gray-100">
+          {STATS.map((stat, i) => (
+            <div
+              key={stat.label}
+              className={`flex flex-col items-center justify-center gap-1 px-4 sm:px-8 py-4 sm:py-5 bg-gray-50 sm:flex-1 sm:min-w-[160px] ${
+                i >= 2 ? "border-t sm:border-t-0 border-gray-100" : ""
+              } ${i % 2 === 1 ? "border-l sm:border-l-0 border-gray-100" : ""}`}
+            >
               <div className="w-8 h-8 flex items-center justify-center mb-1">
                 <i className={`${stat.icon} text-orange-500 text-xl`} />
               </div>
-              <p className="text-xl md:text-2xl font-extrabold text-gray-900 leading-none">{stat.value}</p>
-              <p className="text-xs text-gray-400 text-center whitespace-nowrap">{stat.label}</p>
+              <p className="text-lg sm:text-xl md:text-2xl font-extrabold text-gray-900 leading-none">{stat.value}</p>
+              <p className="text-[11px] sm:text-xs text-gray-400 text-center">{stat.label}</p>
             </div>
           ))}
         </div>

@@ -1,18 +1,4 @@
 import { useAttributionParams } from "@/hooks/useAttributionParams";
-import { DOCTORS } from "@/mocks/doctors";
-
-const PROVIDERS = DOCTORS.map((d) => ({
-  name: d.name,
-  cred: d.title,
-  role: d.role,
-  img: d.image,
-}));
-
-const HOW_STEPS = [
-  { icon: "ri-file-list-3-line", label: "Complete Assessment", step: "01" },
-  { icon: "ri-stethoscope-line", label: "Provider Review", step: "02" },
-  { icon: "ri-mail-check-line", label: "Receive ESA Letter", step: "03" },
-];
 
 export default function HeroSection() {
   const { withAttribution } = useAttributionParams();
@@ -20,7 +6,7 @@ export default function HeroSection() {
   return (
     <section
       id="get-started"
-      className="relative min-h-[88vh] flex items-center overflow-hidden"
+      className="relative min-h-[100svh] flex items-center overflow-hidden"
     >
       {/* Background Image — Phase 1D responsive WebP delivery (2026-05-18).
           Browsers that support WebP pick the matching <source> based on
@@ -72,47 +58,18 @@ export default function HeroSection() {
             Get your <strong className="text-white font-semibold">ESA letter online</strong> from licensed mental health professionals — accepted for housing nationwide under the Fair Housing Act. No waiting rooms, no hassle.
           </p>
 
-          {/* Stats Row — desktop/tablet only. Phase 1 mobile cleanup hides
-              the 4-stat grid above the fold; trust is preserved via the
-              compact mobile-only line below the CTA. */}
-          <div className="hidden sm:flex sm:flex-wrap gap-6 mb-6">
-            {[
-              { icon: "ri-shield-star-line", label: "HIPAA", value: "100% Compliant" },
-              { icon: "ri-award-line", label: "Licensed", value: "Professionals" },
-              { icon: "ri-timer-flash-line", label: "Fast", value: "Same-Day Delivery" },
-              { icon: "ri-calendar-check-line", label: "3+ Years", value: "Of Experience" },
-            ].map((s) => (
-              <div key={s.label} className="flex items-center gap-2">
-                <div className="w-9 h-9 flex items-center justify-center bg-orange-500 rounded-lg flex-shrink-0">
-                  <i className={`${s.icon} text-white text-base`}></i>
-                </div>
-                <div>
-                  <p className="text-white text-sm font-bold leading-tight">{s.value}</p>
-                  <p className="text-gray-300 text-xs">{s.label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Calm desktop/tablet-only trust line. Hidden on mobile to remove
-              the second competing orange element above the CTA. */}
-          <p className="hidden sm:flex text-orange-300 text-xs font-semibold mb-4 items-center gap-1.5">
-            <i className="ri-shield-check-line"></i>
-            Signed by a licensed mental health professional, recognized by landlords nationwide
-          </p>
-
-          {/* 50 States Trust Badge */}
+          {/* 50 States Trust Badge — single calm trust signal.
+              Pre-cleanup-2026-05-24 the hero stacked a 4-icon stats grid,
+              a separate "Signed by..." trust line, a state-abbrev list,
+              How-It-Works mini-cards, and a Provider Credibility Strip
+              above this badge. All duplicated content from the StepsSection
+              / DoctorsSection / TrustFeatures sections below. Removed to
+              calm the desktop hero per pre-LIVE cleanup spec. */}
           <div className="inline-flex items-center gap-2.5 bg-white/10 border border-white/20 backdrop-blur-sm px-4 py-2.5 rounded-full mb-7">
             <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
               <i className="ri-map-2-line text-orange-400"></i>
             </div>
             <span className="text-white text-xs font-semibold whitespace-nowrap">Serving all 50 US states</span>
-            <div className="flex items-center gap-1">
-              {["CA","TX","FL","NY","IL","PA","OH","GA","NC","MI"].map((s) => (
-                <span key={s} className="text-white/60 text-xs font-medium hidden sm:inline">{s}</span>
-              ))}
-              <span className="text-white/50 text-xs hidden sm:inline">&amp; more</span>
-            </div>
           </div>
 
           {/* CTA Buttons — mobile: single full-width primary CTA, larger
@@ -144,54 +101,30 @@ export default function HeroSection() {
             <strong className="font-bold text-white">Full Refund</strong> if you don&rsquo;t qualify
           </p>
 
-          {/* ── How It Works Mini-Cards — desktop/tablet only ── */}
-          <div className="hidden sm:flex items-center gap-2 mb-6 flex-wrap">
-            {HOW_STEPS.map((s, i) => (
-              <div key={s.step} className="flex items-center gap-2">
-                <div className="flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-sm rounded-xl px-3 py-2">
-                  <div className="w-7 h-7 flex items-center justify-center bg-orange-500 rounded-lg flex-shrink-0">
-                    <i className={`${s.icon} text-white text-sm`}></i>
-                  </div>
-                  <div>
-                    <p className="text-white/50 text-[10px] font-semibold leading-none">Step {s.step}</p>
-                    <p className="text-white text-xs font-bold leading-tight">{s.label}</p>
-                  </div>
-                </div>
-                {i < HOW_STEPS.length - 1 && (
-                  <i className="ri-arrow-right-s-line text-white/30 text-sm flex-shrink-0"></i>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* ── Provider Credibility Strip — desktop/tablet only ── */}
-          <div className="hidden sm:inline-flex items-center gap-3 bg-white/10 border border-white/20 backdrop-blur-sm rounded-2xl px-4 py-3">
-            {/* Stacked avatars */}
-            <div className="flex items-center">
-              {PROVIDERS.map((p, i) => (
-                <div
-                  key={p.name}
-                  className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/60 flex-shrink-0"
-                  style={{ marginLeft: i === 0 ? 0 : "-10px", zIndex: PROVIDERS.length - i }}
-                >
-                  <img
-                    src={p.img}
-                    alt="Licensed clinician"
-                    className="w-full h-full object-cover object-top"
-                    loading="lazy"
-                  />
-                </div>
-              ))}
-            </div>
-            {/* Text */}
-            <div>
-              <p className="text-white text-xs font-bold leading-tight">Licensed clinician review</p>
-              <p className="text-white/60 text-[11px] leading-tight">100% online &middot; Real clinical evaluation</p>
-            </div>
-          </div>
+          {/* How-It-Works mini-cards (pre-cleanup) and Provider Credibility
+              Strip (pre-cleanup) used to render here. Both removed in the
+              2026-05-24 pre-LIVE cleanup — they duplicated the StepsSection
+              and DoctorsSection / TrustFeatures sections that sit directly
+              below the hero in the decision-journey order. The hero now
+              carries: badge, h1, subtitle, single 50-states trust pill,
+              one primary CTA + one secondary CTA, and a desktop scroll
+              cue at the bottom. Mobile gets the refund line + sticky CTA. */}
 
         </div>
       </div>
+
+      {/* Calm scroll cue at the bottom of the hero cover. Hidden until sm:
+          on mobile the hero already feels full-cover via min-h-[100svh]
+          and the sticky apply CTA gives the user a clear next action;
+          stacking another cue would crowd the fold. */}
+      <a
+        href="#how-it-works"
+        aria-label="Scroll to see how it works"
+        className="hidden sm:flex absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex-col items-center gap-1 text-white/55 hover:text-white/85 transition-colors cursor-pointer"
+      >
+        <span className="text-[10.5px] uppercase tracking-[0.18em] font-semibold">Scroll to see how it works</span>
+        <i className="ri-arrow-down-s-line text-xl leading-none -my-1"></i>
+      </a>
     </section>
   );
 }

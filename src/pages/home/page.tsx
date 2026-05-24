@@ -1,38 +1,53 @@
-﻿import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import HeroSection from "./components/HeroSection";
 import ReassuranceStrip from "./components/ReassuranceStrip";
 import MediaTrustBar from "./components/MediaTrustBar";
-import TrustFeatures from "./components/TrustFeatures";
 import StepsSection from "./components/StepsSection";
-import AffordabilityStrip from "./components/AffordabilityStrip";
+import JourneyConnector from "./components/JourneyConnector";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 
 /*
- * Performance note (2026-05-18):
+ * Section order (2026-05-24): decision-journey reorder.
  *
- * The homepage previously imported 18+ section components eagerly, so the
- * entire below-fold tree was parsed, evaluated, and committed before the
- * browser could finish the LCP paint. Mobile PageSpeed sat ~48.
+ *   Hero               creates interest
+ *   ReassuranceStrip   quick what-you-get reassurance under hero
+ *   MediaTrustBar      small trust badges
+ *   StepsSection       "How does this work?" — explains simplicity
+ *   ── below the fold ──
+ *   WhatIsESA          definition + why this matters
+ *   TrustFeatures      key benefits cards
+ *   LandlordSupportSection   housing context + objection framing
+ *   VerificationPillars      why PawTenant is trustworthy (verification)
+ *   WhyChooseSection         why PawTenant is trustworthy
+ *   DoctorsSection           Provider / Licensed Professional section
+ *   LetterPreviewSection     sample letter + verification visual
+ *   TrustedLetters           additional letter trust
+ *   AffordabilityStrip       affordability bridge into pricing
+ *   PricingSection           Cost / pricing clarity
+ *   TopStatesSection         coverage / availability proof
+ *   TestimonialsSection      Reviews / social proof
+ *   MediaGallery             media coverage
+ *   FAQSection               FAQs / objection removal
+ *   CTASection               final, confident CTA
+ *   ContactSection           contact options
+ *   SharedFooter             footer
  *
- * Above-the-fold sections (Navbar → Hero → MediaTrustBar → TrustFeatures
- * → StepsSection) are still imported eagerly so the first paint matches
- * the previous render and no Suspense fallbacks flash near the hero.
- *
- * Everything below the fold is now React.lazy + Suspense. The Suspense
- * fallback is a fixed-height placeholder so visible layout still settles
- * without CLS while the chunk loads. JS execution for the lower page is
- * pushed off the critical path, freeing the main thread for LCP + TBT.
+ * Performance: eager block trimmed to 5 sections (was 7) — TrustFeatures
+ * and AffordabilityStrip moved to lazy. This reduces JS parsed before
+ * LCP. SectionFallback keeps stable vertical slots so CLS stays low while
+ * the below-fold chunks stream in.
  *
  * SEO + visual surface preserved:
- *   - All sections still render (in the same order) once their chunks
- *     resolve. The DOM and section IDs are unchanged.
  *   - Title / canonical / meta / schema injection still runs on mount.
  *   - H1 / H2 wording untouched.
- *   - Schema injection is now nudged into requestIdleCallback so the
+ *   - Anchor IDs (#how-it-works, #pricing, #faq) live inside their child
+ *     components, so reordering the parent does not break in-page links.
+ *   - Schema injection still nudged into requestIdleCallback so the
  *     <head> mutation happens after the LCP paint.
  */
 const WhatIsESA = lazy(() => import("./components/WhatIsESA"));
+const TrustFeatures = lazy(() => import("./components/TrustFeatures"));
 const TrustedLetters = lazy(() => import("./components/TrustedLetters"));
 const LetterPreviewSection = lazy(
   () => import("./components/LetterPreviewSection"),
@@ -40,6 +55,7 @@ const LetterPreviewSection = lazy(
 const LandlordSupportSection = lazy(
   () => import("./components/LandlordSupportSection"),
 );
+const AffordabilityStrip = lazy(() => import("./components/AffordabilityStrip"));
 const PricingSection = lazy(() => import("./components/PricingSection"));
 const WhyChooseSection = lazy(() => import("./components/WhyChooseSection"));
 const VerificationPillarsSection = lazy(
@@ -228,42 +244,78 @@ export default function Home() {
   return (
     <main>
       {/* ── Above the fold — eager ──────────────────────────────────── */}
+      {/* 1. Hero — interest. */}
       <SharedNavbar />
       <HeroSection />
+
+      {/* 2. Quick reassurance + trust badges under the hero. */}
       <ReassuranceStrip />
       <MediaTrustBar />
-      <TrustFeatures />
+
+      {/* 3. How does this work? — process explains simplicity. */}
       <StepsSection />
-      <AffordabilityStrip />
+
+      {/* Connector: Steps → Benefits */}
+      <JourneyConnector to="Why get an ESA letter" number={2} total={6} bg="bg-slate-100" />
 
       {/* ── Below the fold — lazy with Suspense fallbacks ───────────── */}
-      <Suspense fallback={<SectionFallback />}>
-        <DoctorsSection />
-      </Suspense>
+
+      {/* 4. Why get an ESA letter / key benefits. */}
       <Suspense fallback={<SectionFallback />}>
         <WhatIsESA />
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
-        <TrustedLetters />
-      </Suspense>
-      <Suspense fallback={<SectionFallback />}>
-        <LetterPreviewSection />
+        <TrustFeatures />
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
         <LandlordSupportSection />
       </Suspense>
-      <Suspense fallback={<SectionFallback />}>
-        <PricingSection />
-      </Suspense>
-      <Suspense fallback={<SectionFallback />}>
-        <WhyChooseSection />
-      </Suspense>
+
+      {/* Connector: Benefits → Trust */}
+      <JourneyConnector to="Why PawTenant is trustworthy" number={3} total={6} bg="bg-white" />
+
+      {/* 5. Why PawTenant is trustworthy. */}
       <Suspense fallback={<SectionFallback />}>
         <VerificationPillarsSection variant="compact" showCTA showPrivacyNote />
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
-        <TopStatesSection />
+        <WhyChooseSection />
       </Suspense>
+
+      {/* Connector: Trust → Provider */}
+      <JourneyConnector to="Meet your provider" number={4} total={6} bg="bg-white" />
+
+      {/* 6. Provider / Licensed Professional section. */}
+      <Suspense fallback={<SectionFallback />}>
+        <DoctorsSection />
+      </Suspense>
+
+      {/* Connector: Provider → Sample letter */}
+      <JourneyConnector to="See a sample letter" number={5} total={6} bg="bg-[#f8f7f4]" />
+
+      {/* 7. Sample letter + verification visual — strong proof. */}
+      <Suspense fallback={<SectionFallback />}>
+        <LetterPreviewSection />
+      </Suspense>
+      <Suspense fallback={<SectionFallback />}>
+        <TrustedLetters />
+      </Suspense>
+
+      {/* Connector: Sample → Pricing */}
+      <JourneyConnector to="Simple pricing" number={6} total={6} bg="bg-white" />
+
+      {/* 8. Cost / pricing clarity — affordability bridge then prices.
+          2026-05-24 pre-LIVE reorder: TopStatesSection moved DOWN into the
+          Reviews/States/FAQ cluster so Pricing visually appears earlier in
+          the scroll (user feedback: pricing was too low). */}
+      <Suspense fallback={<SectionFallback />}>
+        <AffordabilityStrip />
+      </Suspense>
+      <Suspense fallback={<SectionFallback />}>
+        <PricingSection />
+      </Suspense>
+
+      {/* 9. Reviews / customer trust / states / FAQs. */}
       <Suspense fallback={<SectionFallback />}>
         <TestimonialsSection />
       </Suspense>
@@ -271,8 +323,13 @@ export default function Home() {
         <MediaGallery />
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
+        <TopStatesSection />
+      </Suspense>
+      <Suspense fallback={<SectionFallback />}>
         <FAQSection />
       </Suspense>
+
+      {/* 10. Final CTA + contact + footer. */}
       <Suspense fallback={<SectionFallback />}>
         <CTASection />
       </Suspense>

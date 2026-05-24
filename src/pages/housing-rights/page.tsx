@@ -2,6 +2,7 @@
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import VerificationPillarsSection from "../../components/feature/VerificationPillarsSection";
+import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
 import { Link } from "react-router-dom";
 
 const trustBadges = [
@@ -97,36 +98,40 @@ export default function HousingRightsPage() {
 
       <SharedNavbar />
 
-      {/* Hero */}
-      <section className="relative pt-28 pb-20">
+      {/* Hero — full cover (min-h-[100svh]) so the next section doesn't
+          peek at the fold on initial load. Consolidated 2 hero paragraphs
+          into 1 short subtitle; the longer legal context now lives in the
+          FHA Section + Landlord Obligations cards directly below. */}
+      <section className="relative min-h-[100svh] flex flex-col justify-center pt-24 sm:pt-28 pb-14 sm:pb-20">
         <div className="absolute inset-0">
           <img
             src="/assets/backgrounds/telehealth-woman-doctor-videocall.jpg"
             alt="Licensed mental health professionals issuing ESA letters for housing rights under the Fair Housing Act"
             title="Licensed Mental Health Professionals — ESA Housing Rights"
+            fetchPriority="high"
             loading="eager"
+            decoding="async"
+            width={1920}
+            height={1280}
             className="w-full h-full object-cover object-top"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/20"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/55 to-black/25"></div>
         </div>
-        <div className="relative max-w-7xl mx-auto px-6">
+        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 w-full">
           <div className="max-w-2xl">
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
+            <h1 className="text-[28px] sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-[1.15]">
               ESA Letter for Housing &amp; Your Fair Housing Act Rights
             </h1>
-            {/* Subtitle line — captures "valid ESA letter documentation" and
-                "reasonable accommodation request" keyword variants without
-                changing the existing intro paragraph below. */}
-            <p className="text-white/90 text-base font-medium leading-relaxed mb-4">
-              Valid ESA letter documentation supports a reasonable accommodation request under federal law.
+            {/* Single short subtitle — was 2 paragraphs pre-cleanup. The
+                longer legal explanation moved to the FHA + Landlord
+                Obligations sections directly below. */}
+            <p className="text-white/90 text-[14.5px] sm:text-base leading-relaxed mb-6 sm:mb-8 max-w-xl">
+              Valid ESA documentation supports a reasonable accommodation request under federal law.
             </p>
-            <p className="text-white/85 text-lg leading-relaxed mb-8">
-              Understanding your legal rights is the first step to keeping your emotional support animal with you at home. The Fair Housing Act protects qualifying ESA owners — and a properly issued ESA letter from a licensed mental health professional is what makes the protection enforceable.
-            </p>
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4">
               <Link
                 to="/assessment"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 sm:px-8 py-3.5 bg-orange-500 text-white font-bold text-[14px] sm:text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer shadow-[0_4px_12px_rgba(249,115,22,0.30)] sm:shadow-none"
               >
                 <i className="ri-file-text-line"></i>
                 Get an ESA Letter Now
@@ -136,7 +141,7 @@ export default function HousingRightsPage() {
                   internal-linking topical authority. */}
               <Link
                 to="/how-to-get-esa-letter"
-                className="whitespace-nowrap inline-flex items-center gap-1.5 text-white/90 hover:text-white text-sm font-semibold border border-white/30 hover:border-white/60 px-5 py-3 rounded-md transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto text-white/90 hover:text-white text-[13.5px] sm:text-sm font-semibold border border-white/30 hover:border-white/60 px-5 py-3 rounded-md transition-colors cursor-pointer"
               >
                 Getting an ESA letter online
                 <i className="ri-arrow-right-line text-xs"></i>
@@ -281,7 +286,7 @@ export default function HousingRightsPage() {
               to="/how-to-get-esa-letter"
               className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-bold text-orange-600 border border-orange-400 px-5 py-2.5 rounded-lg hover:bg-orange-500 hover:text-white transition-colors cursor-pointer flex-shrink-0"
             >
-              How to get a legitimate ESA letter
+              How to get your ESA letter
               <i className="ri-arrow-right-line text-xs"></i>
             </Link>
           </div>
@@ -391,6 +396,11 @@ export default function HousingRightsPage() {
         </div>
       </section>
 
+      {/* PSD awareness — ESA vs PSD comparison so visitors who came
+          for ESA housing rights also see PawTenant's PSD support for
+          qualifying individuals. Added in mobile-cleanup pass. */}
+      <EsaVsPsdCard className="bg-[#fafbfb]" />
+
       {/* Trust pillars — reusable section, compact variant */}
       <VerificationPillarsSection variant="compact" showCTA showPrivacyNote className="bg-white" />
 
@@ -433,7 +443,7 @@ export default function HousingRightsPage() {
           <p className="text-gray-500 mb-8">Get peace of mind with a service you can trust</p>
           <Link
             to="/assessment"
-            className="whitespace-nowrap inline-flex items-center gap-2 px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 px-6 sm:px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-center w-full sm:w-auto"
           >
             <i className="ri-calendar-line"></i>
             Schedule Your Appointment Today

@@ -1,8 +1,9 @@
 ﻿import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
-import AssessmentVideoPreview from "../../components/feature/AssessmentVideoPreview";
+import EsaPricingMini from "@/components/feature/EsaPricingMini";
+import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const steps = [
   {
@@ -152,8 +153,43 @@ const faqs = [
 ];
 
 export default function HowToGetESAPage() {
+  // ── 2026-05-21 HOWTO-MOBILE-REVAMP ──────────────────────────────────────
+  // Mobile-only collapse state for the long Tips / Why-Choose card grids.
+  // Both arrays stay rendered in the DOM (so SEO content is preserved); the
+  // tail cards are simply `display: none` on mobile until the user taps the
+  // "Show more" button. Desktop (sm+) always shows all cards.
+  const [tipsExpanded, setTipsExpanded] = useState(false);
+  const [whyExpanded, setWhyExpanded] = useState(false);
+
+  // ── 2026-05-21 HOWTO-HERO-REFINE ────────────────────────────────────────
+  // Scroll-aware sticky mobile CTA. The bottom-fixed CTA is hidden while the
+  // hero is in view (the hero already has a primary CTA — two CTAs above the
+  // fold compete and clutter), then fades up once the hero scrolls out.
+  // IntersectionObserver is preferred over scroll listeners for perf — the
+  // browser does the math off the main thread.
+  const heroRef = useRef<HTMLElement>(null);
+  const [showStickyCTA, setShowStickyCTA] = useState(false);
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      // Server-side render or no IO support — keep sticky hidden by default.
+      return;
+    }
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        setShowStickyCTA(!entry.isIntersecting);
+      },
+      // rootMargin lifts the trigger line slightly above the bottom of the
+      // hero so the sticky CTA appears just before the hero CTA leaves view —
+      // the handoff feels intentional rather than abrupt.
+      { rootMargin: "0px 0px -40% 0px", threshold: 0 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   return (
-    <main>
+    <main className="pb-24 md:pb-0">
       <title>How to Get an ESA Letter Online | Step-by-Step Guide | PawTenant</title>
       <meta name="keywords" content="how to get an ESA letter, how to get an ESA letter online, get ESA letter online, steps to obtain an ESA letter, ESA letter application process, qualifying for an ESA letter, licensed mental health professional ESA letter, ESA letter requirements, emotional support animal letter online, legitimate online ESA evaluation, avoiding ESA letter scams" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
@@ -168,47 +204,176 @@ export default function HowToGetESAPage() {
 
       <SharedNavbar />
 
-      {/* Hero */}
-      <section className="relative pt-28 pb-20 overflow-hidden">
+      {/* Hero — 2026-05-21 HOWTO-HERO-REFINE
+          Rebuilt to mirror the new homepage hero (`src/pages/home/components/
+          HeroSection.tsx`) so /how-to-get-esa-letter inherits the same premium
+          mobile rhythm:
+            • `<picture>` with the same mobile WebP (`pawtenant-mobile-hero-
+              pomeranian.webp`) the homepage uses, plus the desktop WebP, plus
+              a JPG fallback for legacy browsers.
+            • Calm dark overlay (gray-900 stops, not muddy black) + a bottom-
+              fade on mobile so the hero blends into the sage reassurance strip
+              below instead of butting against it abruptly.
+            • Calm orange-tinted eyebrow pill matching the homepage HIPAA badge
+              treatment (orange-500/20 bg + orange-400/40 border + orange-300
+              text).
+            • H1 unchanged ("How to Get an ESA Letter Online"). Mobile subhead
+              shortened; long desktop paragraph preserved in DOM via hidden
+              sm:block (so the keywords/SEO body still indexes).
+            • Single full-width primary CTA above the fold. The earlier
+              "100% Money-Back Guarantee" inline trust chip is replaced with
+              a calmer "Money-back protection if you don't qualify" line
+              centered directly under the CTA — mirrors the homepage refund
+              reassurance pattern. */}
+      <section
+        ref={heroRef}
+        className="relative min-h-[100svh] flex items-center overflow-hidden"
+      >
         <div className="absolute inset-0">
-          <img
-            src="/assets/lifestyle/owner-with-dog-laptop.jpg"
-            alt="Get an ESA Letter"
-            loading="eager"
-            className="w-full h-full object-cover object-top"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30"></div>
+          <picture>
+            <source
+              media="(max-width: 768px)"
+              srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian.webp"
+              type="image/webp"
+            />
+            <source
+              media="(min-width: 769px)"
+              srcSet="/assets/blog/fp-woman-sitting-floor-desktop.webp"
+              type="image/webp"
+            />
+            <img
+              src="/assets/blog/fp-woman-sitting-floor.jpg"
+              alt="Pet owner with dog at home applying for an ESA letter online"
+              className="w-full h-full object-cover object-top opacity-80"
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+              width={1920}
+              height={1280}
+            />
+          </picture>
+          <div className="absolute inset-0 bg-gradient-to-r from-gray-900/85 via-gray-900/65 to-gray-900/25"></div>
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-gray-900/70 to-transparent md:hidden"></div>
         </div>
-        <div className="relative max-w-7xl mx-auto px-6">
+
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 py-20 sm:py-28 md:py-32">
           <div className="max-w-2xl">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-400 mb-3">
+            {/* Eyebrow badge — matches homepage HIPAA pill treatment. */}
+            <div className="inline-flex items-center gap-2 bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
+              <i className="ri-shield-check-line"></i>
               Simple 3-Step Process
-            </span>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
+            </div>
+
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
               How to Get an ESA Letter Online
             </h1>
-            <p className="text-white/85 text-lg leading-relaxed mb-8">
-              The full ESA letter application process — from a short clinical assessment to provider review and secure delivery. Every emotional support animal letter is reviewed and signed by a licensed mental health professional credentialed in your state.
+
+            {/* Single subtitle — short, scan-friendly across viewports.
+                Pre-2026-05-24 cleanup the hero had 2 separate paragraphs
+                (one long desktop, one short mobile). The longer process
+                detail still appears in the Intro Text + Steps sections
+                below the hero. */}
+            <p className="text-gray-200 text-[15px] sm:text-lg leading-relaxed mb-7 max-w-xl">
+              A short assessment, a licensed provider review, and your letter delivered in as little as 24 hours.
             </p>
-            <div className="flex items-center gap-4">
+
+            {/* Calm 50-states trust pill — mirrors the homepage hero badge. */}
+            <div className="inline-flex items-center gap-2.5 bg-white/10 border border-white/20 backdrop-blur-sm px-4 py-2.5 rounded-full mb-7">
+              <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                <i className="ri-user-star-line text-orange-400"></i>
+              </div>
+              <span className="text-white text-xs font-semibold whitespace-nowrap">Licensed clinicians in all 50 US states</span>
+            </div>
+
+            {/* Single primary CTA — full-width on mobile, auto on desktop.
+                No secondary button on mobile so the CTA hierarchy is unambiguous
+                and the sticky bottom CTA (which fades in only after the hero
+                scrolls out of view) never overlaps with this one above the fold. */}
+            <div className="mb-3 sm:mb-8">
               <Link
                 to="/assessment"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-8 py-4 sm:py-3.5 bg-orange-400 text-white font-bold text-base sm:text-sm rounded-md hover:bg-orange-500 transition-colors cursor-pointer inline-flex items-center justify-center gap-2 shadow-lg shadow-orange-400/25 sm:shadow-none"
               >
-                <i className="ri-file-text-line"></i>
                 Find Out If You Qualify
+                <i className="ri-arrow-right-line"></i>
               </Link>
-              <div className="flex items-center gap-2 text-white/80 text-sm">
-                <i className="ri-refresh-line text-orange-400"></i>
-                100% Money-Back Guarantee
-              </div>
             </div>
+
+            {/* Mobile-only refund reassurance — centered under the CTA. The
+                "Money-back protection" phrase is bolded so the safety-net
+                reads in a single glance without re-adding trust-spam chips
+                above the CTA. Hidden on desktop because desktop already
+                surfaces the Money-Back card later in the Why-Choose grid. */}
+            <p className="sm:hidden text-white/85 text-[13px] leading-snug text-center max-w-xs mx-auto">
+              <i className="ri-shield-check-line text-orange-300 mr-1.5"></i>
+              <strong className="font-bold text-white">Money-back protection</strong> if you don&rsquo;t qualify
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="py-14 md:py-16 bg-orange-500">
+      {/* Reassurance Strip — 2026-05-21 HOWTO-HERO-REFINE
+          Calm sage 2x2 mobile / 4-up desktop grid sitting directly under the
+          hero. Same pattern as `src/pages/home/components/ReassuranceStrip.tsx`
+          so the visual language carries over from the homepage to this page.
+          Absorbs the four questions a visitor asks before tapping the CTA —
+          clinician review, refund, Fair Housing fit, privacy — without
+          re-introducing trust-spam chips in the hero itself. */}
+      <section
+        aria-label="Reassurance"
+        className="bg-[#f8fafc] border-b border-slate-200"
+      >
+        <div className="max-w-6xl mx-auto px-5 py-10 sm:py-12">
+          <ul className="grid grid-cols-2 gap-x-5 gap-y-7 sm:grid-cols-4 sm:gap-7">
+            {[
+              {
+                icon: "ri-stethoscope-line",
+                title: "Licensed Review",
+                body: "Every case is reviewed by a Licensed Mental Health Practitioner in your state.",
+              },
+              {
+                icon: "ri-shield-check-line",
+                title: "Money-Back Protection",
+                body: "If you don't qualify after review, your payment is refunded.",
+              },
+              {
+                icon: "ri-home-heart-line",
+                title: "Built for Housing",
+                body: "Documentation prepared with Fair Housing Act standards in mind.",
+              },
+              {
+                icon: "ri-lock-2-line",
+                title: "Secure & Private",
+                body: "Your intake is encrypted in transit and kept confidential.",
+              },
+            ].map((p) => (
+              <li key={p.title} className="flex flex-col items-start">
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <span
+                    aria-hidden
+                    className="w-7 h-7 rounded-full bg-[#4A8472]/15 text-[#4A8472] flex items-center justify-center flex-shrink-0"
+                  >
+                    <i className={`${p.icon} text-base`} />
+                  </span>
+                  <h3 className="text-[13.5px] sm:text-sm font-bold text-slate-900 leading-tight">
+                    {p.title}
+                  </h3>
+                </div>
+                <p className="text-[12.5px] sm:text-[13px] text-slate-600 leading-snug">
+                  {p.body}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* Stats — hidden on mobile per 2026-05-21 HOWTO-MOBILE-REVAMP.
+          Decorative orange-band stat row was a heavy first-fold blast on
+          mobile; removing it lets the page flow Hero → Reassurance → Steps
+          with the calm rhythm the homepage hero established. Section stays
+          in the DOM for desktop + crawlers (`display: none` only at <sm). */}
+      <section className="hidden sm:block py-14 md:py-16 bg-orange-500">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {stats.map((s) => (
@@ -221,8 +386,10 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
-      {/* Intro Text */}
-      <section className="py-14 md:py-16 bg-[#fdf6ee]">
+      {/* Intro Text — hidden on mobile (duplicates hero messaging on a
+          small screen and pushes the Steps section further down). Still
+          in DOM for desktop + crawlers. */}
+      <section className="hidden sm:block py-14 md:py-16 bg-[#fdf6ee]">
         <div className="max-w-3xl mx-auto px-6 text-center">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Our Mission</span>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">We Make Getting Your ESA Letter Simple</h2>
@@ -232,76 +399,102 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
-      {/* Steps */}
-      <section className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-14">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Quick & Easy</span>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Explore Quick and Easy Way to Obtain Your Legitimate ESA Letter With PawTenant
+      {/* Steps — 2026-05-21 HOWTO-HERO-REFINE
+          Adopts the centered-circle timeline pattern from the homepage
+          `StepsSection.tsx` so this page no longer feels like generic
+          orange-tinted stacked cards. Visual ingredients (mirrored 1:1):
+            • 80×80 white circle with sage `#4A8472` icon + sage border
+            • Small sage number badge in the top-right of the circle
+            • Centered text below
+            • Desktop horizontal connector line between circles
+            • bg-white section, calm vertical rhythm
+          Mobile H2 swaps to a short "How it works" headline; the long
+          original H2 stays in the DOM via `hidden sm:block` for SEO. */}
+      <section id="how-it-works" className="py-14 sm:py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-12 sm:mb-14">
+            <p className="text-[#4A8472] text-xs sm:text-sm font-semibold tracking-widest uppercase mb-2">Simple Process</p>
+            {/* Mobile-only headline — short, calm, scannable. */}
+            <h2 className="sm:hidden text-[26px] leading-tight font-extrabold text-slate-900 px-4">
+              How it works
             </h2>
+            {/* Original long H2 preserved for desktop + crawlers. */}
+            <h2 className="hidden sm:block text-3xl font-extrabold text-slate-900">
+              Explore Quick and Easy Way to Obtain Your ESA Letter With PawTenant
+            </h2>
+            <p className="hidden sm:block text-slate-500 mt-3 max-w-xl mx-auto text-sm">
+              A streamlined process for getting a legitimate ESA letter online — no waiting rooms, no in-person visits.
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {steps.map((step, i) => (
-              <div key={i} className="relative bg-[#fdf6ee] rounded-2xl p-8 border border-orange-100">
-                <div className="absolute -top-4 left-8">
-                  <span className="inline-block px-3 py-1 bg-orange-500 text-white text-xs font-bold rounded-full">
-                    Step {step.num}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 sm:gap-8 relative">
+            {/* Desktop-only horizontal connector between the three circles. */}
+            <div className="hidden md:block absolute top-12 left-1/3 right-1/3 h-0.5 bg-[#4A8472]/40 z-0"></div>
+            {steps.map((step, idx) => (
+              <div
+                key={step.num}
+                className="relative z-10 flex flex-col items-center text-center"
+              >
+                <div className="relative mb-5 sm:mb-6">
+                  <div className="w-20 h-20 flex items-center justify-center bg-white rounded-full border-2 border-[#4A8472]/40">
+                    <i className={`${step.icon} text-3xl text-[#4A8472]`}></i>
+                  </div>
+                  <span className="absolute -top-2 -right-2 w-7 h-7 flex items-center justify-center bg-[#4A8472] text-white text-xs font-bold rounded-full">
+                    {idx + 1}
                   </span>
                 </div>
-                <div className="w-12 h-12 flex items-center justify-center bg-orange-500 rounded-xl mb-5 mt-3">
-                  <i className={`${step.icon} text-white text-xl`}></i>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-3">{step.title}</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">{step.desc}</p>
+                <h3 className="text-slate-900 font-bold text-base mb-3">{step.title}</h3>
+                <p className="text-slate-500 text-[13.5px] sm:text-sm leading-relaxed max-w-xs">{step.desc}</p>
               </div>
             ))}
           </div>
-          <div className="text-center mt-10">
+
+          <div className="text-center mt-10 sm:mt-12">
             <Link
               to="/assessment"
-              className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+              className="whitespace-nowrap inline-flex items-center gap-2 px-7 sm:px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
-              <i className="ri-search-line"></i>
-              Find Out If You Qualify
+              Start Your ESA Letter Online
+              <i className="ri-arrow-right-line"></i>
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Assessment UI clips — real screen recordings */}
-      <AssessmentVideoPreview
-        eyebrow="A Look at the Process"
-        heading="See the Assessment Before You Start"
-        subheading="Four short, silent previews from the real PawTenant assessment. No payment to start and no surprises."
-        className="bg-white"
-      />
+      {/* ESA pricing snapshot — clear cost upfront so visitors don't
+          have to scroll through the full education content first.
+          Added in mobile-cleanup pass. */}
+      <EsaPricingMini className="bg-white border-t border-orange-100" />
 
-      {/* What Is ESA */}
-      <section className="py-16 bg-[#fafafa]">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+      {/* What Is ESA — 2026-05-21 HOWTO-MOBILE-REVAMP
+          Mobile: only the first paragraph shows; paragraphs 2 + 3 stay in
+          the DOM (display: none) so crawlers still index the full body. Image
+          gets a fixed mobile aspect ratio so it never dominates the column.
+          Heading shrinks. */}
+      <section className="py-12 sm:py-16 bg-[#fafafa]">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-stretch">
             <div className="flex flex-col">
               <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Understanding ESAs</span>
-              <h2 className="text-3xl font-bold text-gray-900 mb-5">What Is an Emotional Support Animal?</h2>
-              <p className="text-gray-600 leading-relaxed mb-4">
+              <h2 className="text-[24px] sm:text-3xl font-bold text-slate-900 mb-4 sm:mb-5 leading-tight">What Is an Emotional Support Animal?</h2>
+              <p className="text-slate-600 leading-relaxed mb-4 text-[14.5px] sm:text-base">
                 An ESA is a supportive companion for people who have emotional and mental disabilities. These animals provide invaluable comfort and assistance, which improves mental wellbeing of people.
               </p>
-              <p className="text-gray-600 leading-relaxed mb-4">
+              <p className="hidden sm:block text-gray-600 leading-relaxed mb-4">
                 As the body of knowledge about mental health matters grows, it is more likely a physician has to diagnose conditions he or she may have recognized before. Frequently, an ESA is part of someone's path to recovery.
               </p>
-              <p className="text-gray-600 leading-relaxed mb-6">
+              <p className="hidden sm:block text-gray-600 leading-relaxed mb-6">
                 Although ESAs are not service animals trained to do specific tasks, they have a noticeable impact on a person's life. ESAs give people a sense of calming comfort that can help them get through their mental health challenges.
               </p>
               <Link
                 to="/assessment"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
+                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm mt-2 sm:mt-0 self-start"
               >
                 <i className="ri-file-text-line"></i>
                 Get an ESA Letter Now
               </Link>
             </div>
-            <div className="rounded-2xl overflow-hidden min-h-80">
+            <div className="rounded-2xl overflow-hidden aspect-[16/10] sm:aspect-auto sm:min-h-80">
               <img
                 src="/assets/testimonials/man-with-dog-home.jpg"
                 alt="Emotional Support Animal"
@@ -313,13 +506,18 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
-      {/* Why Do I Need */}
-      <section className="py-16 bg-gradient-to-br from-orange-500 to-orange-600">
+      {/* Why Do I Need — hidden on mobile per 2026-05-21 HOWTO-MOBILE-REVAMP.
+          The full-bleed orange gradient + three white/10 cards was the loudest
+          block on the mobile scroll and largely duplicated the "What Is an
+          ESA?" and Why-Choose narratives. Section stays in the DOM so the
+          three short subheads + bodies remain indexable; only the
+          orange-screaming mobile rendering is suppressed. */}
+      <section className="hidden sm:block py-16 bg-gradient-to-br from-orange-500 to-orange-600">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
             <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src="/assets/backgrounds/lifestyle-freelancer-home-cat.jpg"
+                src="/assets/testimonials/home-together-with-pet.jpg"
                 alt="Why need an ESA letter"
                 loading="lazy"
                 className="w-full h-full object-cover object-top"
@@ -350,34 +548,49 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
-      {/* Tips for ESA Letter Holder — Enhanced */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-14">
+      {/* Tips for ESA Letter Holder — 2026-05-21 HOWTO-MOBILE-REVAMP
+          The biggest mobile-wall offender on this page: 6 multi-colored cards
+          × 4 bullets each = 24 dense mobile lines. Mobile now shows the first
+          2 cards by default; cards 3-6 stay rendered in the DOM
+          (`display: none` via `hidden sm:block`) so the SEO content is fully
+          indexable, and a "Show all 6 tips" button reveals them inline.
+          Desktop (sm+) always shows all 6 cards. */}
+      <section className="py-14 sm:py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-10 sm:mb-14">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Expert Advice</span>
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Tips for an ESA Letter Holder</h2>
-            <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
+            <h2 className="text-[26px] sm:text-3xl font-bold text-slate-900 mb-3 sm:mb-4 leading-tight">Tips for an ESA Letter Holder</h2>
+            <p className="hidden sm:block text-gray-500 text-sm max-w-xl mx-auto leading-relaxed">
               Once you receive your ESA letter, knowing how to use it properly is just as important. Here is everything you need to know to protect your rights and get the most out of your ESA.
             </p>
+            <p className="sm:hidden text-slate-500 text-[13.5px] max-w-sm mx-auto leading-relaxed">
+              Practical tips to protect your rights and get the most from your letter.
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {esaTips.map((tip, i) => {
               const colors = tipColorMap[tip.color];
+              // Mobile: first 2 cards visible, remaining 4 hidden until expanded.
+              // Desktop (sm+): all cards always visible.
+              const hideOnMobile = i >= 2 && !tipsExpanded;
               return (
-                <div key={i} className={`rounded-2xl p-6 border ${colors.bg}`}>
-                  <div className="flex items-center gap-3 mb-5">
+                <div
+                  key={i}
+                  className={`rounded-2xl p-5 sm:p-6 border ${colors.bg} ${hideOnMobile ? "hidden sm:block" : ""}`}
+                >
+                  <div className="flex items-center gap-3 mb-4 sm:mb-5">
                     <div className={`w-10 h-10 flex items-center justify-center rounded-xl ${colors.icon}`}>
                       <i className={`${tip.icon} text-lg`}></i>
                     </div>
-                    <h3 className="text-sm font-bold text-gray-900 leading-snug">{tip.title}</h3>
+                    <h3 className="text-sm font-bold text-slate-900 leading-snug">{tip.title}</h3>
                   </div>
-                  <ul className="space-y-3">
+                  <ul className="space-y-2.5 sm:space-y-3">
                     {tip.tips.map((item, j) => (
                       <li key={j} className="flex items-start gap-2.5">
                         <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
                           <i className={`ri-checkbox-circle-fill text-sm ${colors.dot}`}></i>
                         </div>
-                        <p className="text-gray-600 text-xs leading-relaxed">{item}</p>
+                        <p className="text-slate-600 text-xs leading-relaxed">{item}</p>
                       </li>
                     ))}
                   </ul>
@@ -385,10 +598,24 @@ export default function HowToGetESAPage() {
               );
             })}
           </div>
-          <div className="mt-10 text-center">
+          {/* Mobile-only "Show all tips" toggle. Hidden on desktop. */}
+          {!tipsExpanded && (
+            <div className="sm:hidden mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setTipsExpanded(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-300 rounded-full text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                aria-expanded={tipsExpanded}
+              >
+                Show all 6 tips
+                <i className="ri-arrow-down-s-line"></i>
+              </button>
+            </div>
+          )}
+          <div className="mt-8 sm:mt-10 text-center">
             <Link
               to="/assessment"
-              className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+              className="whitespace-nowrap inline-flex items-center gap-2 px-7 sm:px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
             >
               <i className="ri-file-text-line"></i>
               Get Your ESA Letter Now
@@ -447,10 +674,12 @@ export default function HowToGetESAPage() {
                 <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3 leading-tight">
                   ESA letter requirements can vary by state
                 </h2>
-                <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                <p className="text-slate-600 text-sm leading-relaxed mb-4">
                   The application steps are the same anywhere in the US — assessment, licensed evaluation, signed letter. What changes by state is who can legally sign your letter (a clinician licensed in your state of residence) and which state-level statutes layer on top of the federal Fair Housing Act.
                 </p>
-                <p className="text-gray-600 text-sm leading-relaxed mb-5">
+                {/* 2026-05-21 HOWTO-MOBILE-REVAMP: secondary paragraph hidden
+                    on mobile, kept in DOM for desktop + crawlers. */}
+                <p className="hidden sm:block text-gray-600 text-sm leading-relaxed mb-5">
                   Each state guide below covers the licensed-provider requirement, the relevant state statute, and the documentation a landlord in that state is most likely to ask for.
                 </p>
                 <Link
@@ -487,46 +716,80 @@ export default function HowToGetESAPage() {
         </div>
       </section>
 
-      {/* Why Choose */}
-      <section className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-12">
+      {/* Why Choose — 2026-05-21 HOWTO-MOBILE-REVAMP
+          Mobile: first 3 cards visible, remaining 3 hidden under
+          "Show more reasons". All 6 stay in DOM. Cards on mobile use a calm
+          white shell with sage `#4A8472` icon background (matching the new
+          homepage palette); desktop keeps the existing orange-tinted shell. */}
+      <section className="py-12 sm:py-16 bg-white">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-10 sm:mb-12">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Why PawTenant</span>
-            <h2 className="text-3xl font-bold text-gray-900">Why Choose Us?</h2>
+            <h2 className="text-[26px] sm:text-3xl font-bold text-slate-900 leading-tight">Why Choose Us?</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {whyItems.map((item, i) => (
-              <div key={i} className="bg-[#fdf6ee] rounded-xl p-6 border border-orange-100">
-                <div className="w-10 h-10 flex items-center justify-center bg-orange-500 rounded-lg mb-4">
-                  <i className={`${item.icon} text-white text-lg`}></i>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+            {whyItems.map((item, i) => {
+              const hideOnMobile = i >= 3 && !whyExpanded;
+              return (
+                <div
+                  key={i}
+                  className={`bg-white sm:bg-[#fdf6ee] rounded-xl p-5 sm:p-6 border border-slate-200 sm:border-orange-100 ${hideOnMobile ? "hidden sm:block" : ""}`}
+                >
+                  <div className="w-10 h-10 flex items-center justify-center bg-[#4A8472] sm:bg-orange-500 rounded-lg mb-4">
+                    <i className={`${item.icon} text-white text-lg`}></i>
+                  </div>
+                  <h3 className="font-bold text-slate-900 mb-2 text-sm">{item.title}</h3>
+                  <p className="text-slate-600 text-[13.5px] sm:text-sm leading-relaxed">{item.desc}</p>
                 </div>
-                <h3 className="font-bold text-gray-900 mb-2 text-sm">{item.title}</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          {!whyExpanded && (
+            <div className="sm:hidden mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setWhyExpanded(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-300 rounded-full text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                aria-expanded={whyExpanded}
+              >
+                Show more reasons
+                <i className="ri-arrow-down-s-line"></i>
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* FAQ */}
-      <section className="py-16 bg-[#fafafa]">
-        <div className="max-w-4xl mx-auto px-6">
-          <div className="text-center mb-10">
+      {/* PSD awareness — ESA vs PSD comparison before the FAQ so
+          visitors who came searching for "esa letter" also see that
+          PawTenant supports PSD for qualifying individuals. Added in
+          mobile-cleanup pass. */}
+      <EsaVsPsdCard className="bg-[#fafbfb]" />
+
+      {/* FAQ — 2026-05-21 HOWTO-MOBILE-REVAMP
+          First 4 questions visible on mobile (matches the homepage FAQSection
+          pattern); items 5-6 stay in the DOM and the FAQPage JSON-LD schema
+          remains a full iteration of the `faqs` array. */}
+      <section className="py-12 sm:py-16 bg-[#fafafa]">
+        <div className="max-w-4xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-8 sm:mb-10">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Popular Questions</span>
-            <h2 className="text-3xl font-bold text-gray-900">Frequently Asked Questions</h2>
+            <h2 className="text-[26px] sm:text-3xl font-bold text-slate-900 leading-tight">Frequently Asked Questions</h2>
           </div>
-          <FAQAccordion faqs={faqs} />
+          <FAQAccordion faqs={faqs} mobileShowCount={4} />
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-16 bg-gradient-to-br from-orange-500 to-orange-600">
-        <div className="max-w-2xl mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Schedule Your ESA Letter Consultation Today</h2>
-          <p className="text-orange-100 mb-8">Get peace of mind with a service you can trust</p>
+      {/* CTA — 2026-05-21 HOWTO-MOBILE-REVAMP
+          Tighter mobile padding so the section doesn't dwarf the sticky CTA
+          (which is anchored 64px from the bottom on mobile). Copy unchanged. */}
+      <section className="py-12 sm:py-16 bg-gradient-to-br from-orange-500 to-orange-600">
+        <div className="max-w-2xl mx-auto px-5 sm:px-6 text-center">
+          <h2 className="text-[26px] sm:text-3xl font-bold text-white mb-3 sm:mb-4 leading-tight">Schedule Your ESA Letter Consultation Today</h2>
+          <p className="text-orange-100 mb-7 sm:mb-8 text-sm sm:text-base">Get peace of mind with a service you can trust</p>
           <Link
             to="/assessment"
-            className="whitespace-nowrap inline-flex items-center gap-2 px-10 py-4 bg-white text-orange-600 font-bold rounded-md hover:bg-orange-50 transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 px-6 sm:px-10 py-4 bg-white text-orange-600 font-bold rounded-md hover:bg-orange-50 transition-colors cursor-pointer text-center w-full sm:w-auto"
           >
             <i className="ri-calendar-line"></i>
             Schedule Your Appointment Today
@@ -536,10 +799,24 @@ export default function HowToGetESAPage() {
 
       <SharedFooter />
 
-      {/* Mobile sticky CTA */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom,12px))]">
+      {/* Mobile sticky CTA — 2026-05-21 HOWTO-HERO-REFINE
+          Scroll-aware: hidden while the hero is in view (so it never competes
+          with the hero CTA above the fold), fades up the moment the hero
+          scrolls out via the IntersectionObserver effect at the top of this
+          component. `aria-hidden` and `pointer-events: none` are toggled in
+          sync with the visual state so the button is fully inert when off-
+          screen. */}
+      <div
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom,12px))] transition-all duration-300 ease-out ${
+          showStickyCTA
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0 pointer-events-none"
+        }`}
+        aria-hidden={!showStickyCTA}
+      >
         <Link
           to="/assessment"
+          tabIndex={showStickyCTA ? 0 : -1}
           className="whitespace-nowrap flex items-center justify-center gap-2 w-full py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
         >
           <i className="ri-file-text-line"></i>
@@ -550,30 +827,70 @@ export default function HowToGetESAPage() {
   );
 }
 
-function FAQAccordion({ faqs }: { faqs: { q: string; a: string }[] }) {
+function FAQAccordion({
+  faqs,
+  mobileShowCount,
+}: {
+  faqs: { q: string; a: string }[];
+  // Number of questions to show by default on mobile. Items beyond this index
+  // are kept in the DOM (so FAQPage JSON-LD schema + crawler indexability is
+  // preserved) but rendered with `display: none` until the user taps
+  // "Show more questions". Desktop (sm+) always shows everything.
+  mobileShowCount?: number;
+}) {
   const [open, setOpen] = useState<number | null>(0);
+  const [showAllMobile, setShowAllMobile] = useState(false);
+  const threshold = mobileShowCount ?? faqs.length;
   return (
     <div className="space-y-3">
-      {faqs.map((faq, i) => (
-        <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <button
-            className="w-full flex items-center justify-between px-6 py-4 text-left cursor-pointer"
-            onClick={() => setOpen(open === i ? null : i)}
+      {faqs.map((faq, i) => {
+        const hideOnMobile = i >= threshold && !showAllMobile;
+        return (
+          <div
+            key={i}
+            className={`bg-white rounded-xl border border-gray-100 overflow-hidden ${hideOnMobile ? "hidden sm:block" : ""}`}
           >
-            <span className={`text-sm font-semibold ${open === i ? "text-orange-500" : "text-gray-900"}`}>
-              {faq.q}
-            </span>
-            <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-4">
-              <i className={`${open === i ? "ri-subtract-line" : "ri-add-line"} text-orange-500`}></i>
-            </div>
+            <button
+              className="w-full flex items-center justify-between px-5 sm:px-6 py-4 text-left cursor-pointer"
+              onClick={() => setOpen(open === i ? null : i)}
+              aria-expanded={open === i}
+              aria-controls={`howto-faq-answer-${i}`}
+              id={`howto-faq-question-${i}`}
+            >
+              <span className={`text-sm font-semibold pr-3 ${open === i ? "text-orange-500" : "text-slate-900"}`}>
+                {faq.q}
+              </span>
+              <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-2 sm:ml-4">
+                <i className={`${open === i ? "ri-subtract-line" : "ri-add-line"} text-orange-500`}></i>
+              </div>
+            </button>
+            {open === i && (
+              <div
+                id={`howto-faq-answer-${i}`}
+                role="region"
+                aria-labelledby={`howto-faq-question-${i}`}
+                className="px-5 sm:px-6 pb-4"
+              >
+                <p className="text-slate-600 text-sm leading-relaxed">{faq.a}</p>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {/* Mobile-only "Show more questions" toggle. */}
+      {!showAllMobile && faqs.length > threshold && (
+        <div className="sm:hidden pt-1 text-center">
+          <button
+            type="button"
+            onClick={() => setShowAllMobile(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-300 rounded-full text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+            aria-expanded={showAllMobile}
+          >
+            Show more questions
+            <i className="ri-arrow-down-s-line"></i>
           </button>
-          {open === i && (
-            <div className="px-6 pb-4">
-              <p className="text-gray-600 text-sm leading-relaxed">{faq.a}</p>
-            </div>
-          )}
         </div>
-      ))}
+      )}
     </div>
   );
 }

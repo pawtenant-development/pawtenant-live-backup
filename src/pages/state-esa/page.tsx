@@ -6,6 +6,8 @@ import { getStateBySlug, usStates } from "../../mocks/states";
 import { getStateBlogEntry } from "../../mocks/stateBlogMap";
 import { blogPosts } from "../../mocks/blogPosts";
 import PrivacySafeVerificationNote from "../../components/feature/PrivacySafeVerificationNote";
+import EsaPricingMini from "@/components/feature/EsaPricingMini";
+import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 // Universal fallback blog posts shown when no state-specific posts exist
@@ -481,7 +483,7 @@ function materializeCommonFaqs(stateName: string) {
 const FALLBACK_HERO_POOL: string[] = [
   "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
   "/assets/lifestyle/woman-telehealth-with-dog.jpg",
-  "/assets/lifestyle/owner-with-dog-laptop.jpg",
+  "/assets/testimonials/couple-with-dog-home.jpg",
   "/assets/lifestyle/freelancer-with-dog-laptop.jpg",
   "/assets/lifestyle/woman-laptop-home.jpg",
   "/assets/blog/fp-woman-dog-floor.jpg",
@@ -534,6 +536,10 @@ const LANDLORDS_SEE_ITEMS = [
 export default function StateESAPage() {
   const { state: stateSlug } = useParams<{ state: string }>();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  // Mobile-only: show first 4 FAQs initially, rest behind "Show more questions".
+  // All FAQ items stay in the DOM regardless (display:none only) so SEO/schema
+  // and desktop layout are unchanged.
+  const [showAllMobile, setShowAllMobile] = useState(false);
   const { withAttribution } = useAttributionParams();
 
   const stateData = getStateBySlug(stateSlug || "");
@@ -558,8 +564,8 @@ export default function StateESAPage() {
   const heroSrc =
     (stateData && STATE_HERO_MAP[stateData.abbreviation]) ||
     (stateData ? pickFallbackHero(stateData.slug) : "/assets/lifestyle/woman-with-dog-new-apartment.jpg");
-  const petSceneSrc = "/assets/lifestyle/owner-with-dog-laptop.jpg";
-  const catSceneSrc = "/assets/backgrounds/lifestyle-freelancer-home-cat.jpg";
+  const petSceneSrc = "/assets/testimonials/couple-with-dog-home.jpg";
+  const catSceneSrc = "/assets/testimonials/home-together-with-pet.jpg";
   const labradorSrc = "/assets/breeds/labrador-retriever.jpg";
 
   useEffect(() => {
@@ -677,42 +683,64 @@ export default function StateESAPage() {
     <main>
       <SharedNavbar />
 
-      {/* Hero */}
-      <section className="relative pt-28 pb-20">
+      {/* Hero — full-cover poster: min-h-[100svh] so the next section
+          doesn't peek above the fold on initial load. Content vertically
+          centered with flex justify-center. Top padding clears the
+          fixed navbar (h-16 mobile / h-20 tablet+). Short subtitle, 3
+          trust chips, single CTA pair — premium and breathable. */}
+      <section className="relative min-h-[100svh] flex flex-col justify-center pt-24 sm:pt-28 pb-12 sm:pb-20">
         <div className="absolute inset-0">
           <img
             src={heroSrc}
             alt={`ESA Letter in ${stateData.name}`}
+            fetchPriority="high"
             loading="eager"
+            decoding="async"
+            width={1600}
+            height={1067}
             className="w-full h-full object-cover object-top"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/55 to-black/25"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/30"></div>
         </div>
-        <div className="relative max-w-7xl mx-auto px-6">
+        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 w-full">
           <div className="max-w-2xl">
-            <div className="flex items-center gap-2 mb-4">
-              <Link to="/explore-esa-letters-all-states" className="text-white/70 hover:text-white text-sm transition-colors">
+            <div className="flex items-center gap-2 mb-3 sm:mb-4">
+              <Link to="/explore-esa-letters-all-states" className="text-white/70 hover:text-white text-[13px] sm:text-sm transition-colors">
                 All States
               </Link>
               <i className="ri-arrow-right-s-line text-white/50 text-xs"></i>
-              <span className="text-white/90 text-sm">{stateData.name}</span>
+              <span className="text-white/90 text-[13px] sm:text-sm">{stateData.name}</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-3 leading-tight">
+            <h1 className="text-[28px] sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-[1.15]">
               Get an ESA Letter in {stateData.name}
             </h1>
-            {/* Subtitle line — captures "ESA letter for housing" + "licensed
-                mental health professional" keyword variants without changing
-                the existing dynamic intro text below. */}
-            <p className="text-white/90 text-base font-medium leading-relaxed mb-4">
-              Housing ESA documentation from a {stateData.name}-licensed mental health professional, written for Fair Housing Act accommodation.
+            {/* Single tight subtitle — keeps the housing + licensed-MHP
+                keyword variants in one breath. */}
+            <p className="text-white/90 text-[14.5px] sm:text-base leading-relaxed mb-5 sm:mb-6 max-w-xl">
+              {stateData.name}-licensed mental health professionals · Fair Housing Act accommodation.
             </p>
-            <p className="text-white/85 text-base leading-relaxed mb-8">
-              {stateData.introText}
-            </p>
-            <div className="flex flex-wrap items-center gap-4">
+
+            {/* Compact trust chips — replace the long introText block that
+                used to crowd the hero. */}
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-6 sm:mb-7">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/25 backdrop-blur-sm text-white text-[11px] sm:text-[12px] font-semibold">
+                <i className="ri-shield-check-line text-emerald-300"></i>
+                Licensed in {stateData.name}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/25 backdrop-blur-sm text-white text-[11px] sm:text-[12px] font-semibold">
+                <i className="ri-home-heart-line text-orange-300"></i>
+                FHA-aligned
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/25 backdrop-blur-sm text-white text-[11px] sm:text-[12px] font-semibold">
+                <i className="ri-refresh-line text-orange-300"></i>
+                Refund if not approved
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4">
               <Link
                 to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-                className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 sm:px-8 py-3.5 bg-orange-500 text-white font-bold text-[14px] sm:text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer shadow-[0_4px_12px_rgba(249,115,22,0.30)] sm:shadow-none"
               >
                 <i className="ri-file-text-line"></i>
                 Get An ESA Letter Now
@@ -722,7 +750,7 @@ export default function StateESAPage() {
                   internal-linking topical authority across the housing cluster. */}
               <Link
                 to="/housing-rights-esa"
-                className="whitespace-nowrap inline-flex items-center gap-1.5 text-white/90 hover:text-white text-sm font-semibold border border-white/30 hover:border-white/60 px-5 py-3 rounded-md transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto text-white/90 hover:text-white text-[13.5px] sm:text-sm font-semibold border border-white/30 hover:border-white/60 px-5 py-3 rounded-md transition-colors cursor-pointer"
               >
                 Fair Housing Act protections
                 <i className="ri-arrow-right-line text-xs"></i>
@@ -732,39 +760,82 @@ export default function StateESAPage() {
         </div>
       </section>
 
-      {/* Laws Summary */}
-      <section className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
-            <div className="flex flex-col">
-              <h2 className="text-3xl font-bold text-gray-900 mb-5">{stateData.name} ESA Laws</h2>
-              <p className="text-gray-600 leading-relaxed mb-6">{stateData.lawsSummary}</p>
-              <div className="bg-[#fdf6ee] rounded-xl p-6 mb-6 flex-1">
-                <h3 className="text-sm font-bold text-gray-900 mb-4">To Be Protected in {stateData.name}:</h3>
-                <ul className="space-y-3">
+      {/* Laws Summary — visual storytelling pass: scan-first 3 Key Facts
+          row above the long-form SEO content, then the protections panel.
+          introText + lawsSummary preserved verbatim for SEO but rendered
+          as smaller body copy under a subheading so the section reads as
+          "quick visual facts → detail" instead of "wall of text". */}
+      <section className="py-12 sm:py-16 bg-white">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-stretch">
+            <div className="flex flex-col order-2 lg:order-1">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-5 leading-tight">{stateData.name} ESA Laws</h2>
+
+              {/* Scan-first: 3 Key Facts cards — visual entry point above
+                  the long-form content. Reads in 5 seconds. */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-5 sm:mb-6">
+                {[
+                  { icon: "ri-government-line", label: "Federal", body: "FHA-protected" },
+                  { icon: "ri-shield-user-line", label: "Licensed", body: `${stateData.name} provider` },
+                  { icon: "ri-refresh-line", label: "Refund", body: "If not approved" },
+                ].map((k) => (
+                  <div key={k.label} className="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 text-center hover:border-orange-300 transition-colors">
+                    <div className="inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-orange-100 text-orange-600 mb-2">
+                      <i className={`${k.icon} text-base sm:text-lg`}></i>
+                    </div>
+                    <div className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-orange-600 mb-0.5">{k.label}</div>
+                    <div className="text-[11px] sm:text-[12px] text-gray-700 font-semibold leading-snug">{k.body}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Protections checklist — orange-tinted panel for the
+                  primary protections list (highest scan value). */}
+              <div className="bg-[#fdf6ee] rounded-xl p-5 sm:p-6 mb-5 sm:mb-6">
+                <h3 className="text-[13.5px] sm:text-sm font-bold text-gray-900 mb-3 sm:mb-4">To Be Protected in {stateData.name}:</h3>
+                <ul className="space-y-2.5 sm:space-y-3">
                   {stateData.lawsBullets.map((b) => (
-                    <li key={b} className="flex items-start gap-3">
+                    <li key={b} className="flex items-start gap-2.5 sm:gap-3">
                       <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i className="ri-checkbox-circle-fill text-orange-500"></i>
                       </div>
-                      <p className="text-gray-700 text-sm leading-relaxed">{b}</p>
+                      <p className="text-gray-700 text-[13.5px] sm:text-sm leading-relaxed">{b}</p>
                     </li>
                   ))}
                 </ul>
               </div>
+
+              {/* Long-form SEO content — full introText + lawsSummary
+                  rendered as smaller body copy under a subheading so they
+                  are still in the DOM (Google-readable) but don't carry
+                  the page's visual weight. */}
+              <details className="group mb-5 sm:mb-6">
+                <summary className="cursor-pointer list-none flex items-center justify-between gap-3 text-[13px] sm:text-[14px] font-semibold text-gray-700 hover:text-orange-600 transition-colors">
+                  <span>Full {stateData.name} ESA law overview</span>
+                  <i className="ri-arrow-down-s-line text-lg transition-transform group-open:rotate-180"></i>
+                </summary>
+                <div className="mt-3 sm:mt-4 space-y-3 sm:space-y-4 border-t border-slate-100 pt-3 sm:pt-4">
+                  <p className="text-gray-600 text-[13px] sm:text-[14px] leading-relaxed">{stateData.introText}</p>
+                  <p className="text-gray-600 text-[13px] sm:text-[14px] leading-relaxed">{stateData.lawsSummary}</p>
+                </div>
+              </details>
+
               <Link
                 to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm self-start"
+                className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[14px] sm:text-sm self-start shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
               >
                 <i className="ri-file-text-line"></i>
                 Get An ESA Letter Now
               </Link>
             </div>
-            <div className="rounded-2xl overflow-hidden min-h-80">
+            <div className="rounded-2xl overflow-hidden order-1 lg:order-2 aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-80">
               <img
                 src={petSceneSrc}
                 alt={`ESA in ${stateData.name}`}
+                width={1200}
+                height={900}
                 loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -772,39 +843,42 @@ export default function StateESAPage() {
         </div>
       </section>
 
-      {/* Advantages */}
-      <section className="py-16 bg-[#fafafa]">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
-            <div className="rounded-2xl overflow-hidden min-h-72">
+      {/* Advantages — mobile-first: aspect-ratio image, tighter gaps */}
+      <section className="py-12 sm:py-16 bg-[#fafafa]">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-stretch">
+            <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-72">
               <img
                 src={catSceneSrc}
                 alt={`ESA advantages in ${stateData.name}`}
+                width={1200}
+                height={900}
                 loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover object-top"
               />
             </div>
             <div className="flex flex-col">
-              <h2 className="text-3xl font-bold text-gray-900 mb-7">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-5 sm:mb-7 leading-tight">
                 Advantages of Having an Emotional Support Animal for {stateData.name} Residents
               </h2>
-              <div className="space-y-5 flex-1">
+              <div className="space-y-4 sm:space-y-5 flex-1">
                 {stateData.advantages.map((adv) => (
-                  <div key={adv.title} className="flex items-start gap-4">
+                  <div key={adv.title} className="flex items-start gap-3 sm:gap-4">
                     <div className="w-8 h-8 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0 mt-0.5">
                       <i className="ri-checkbox-circle-fill text-orange-500"></i>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-sm mb-1">{adv.title}</h3>
-                      <p className="text-gray-600 text-sm leading-relaxed">{adv.desc}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-gray-900 text-[14px] sm:text-sm mb-1 leading-snug">{adv.title}</h3>
+                      <p className="text-gray-600 text-[13.5px] sm:text-sm leading-relaxed">{adv.desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="mt-7">
+              <div className="mt-6 sm:mt-7">
                 <Link
                   to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-                  className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
+                  className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[14px] sm:text-sm shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
                 >
                   <i className="ri-file-text-line"></i>
                   Get An ESA Letter Now
@@ -836,61 +910,69 @@ export default function StateESAPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+          {/* Mobile-first: single column on phones so each card is readable
+              (was 2-col with cramped text), 2-col on small tablets, 4-col on
+              desktop. Bumped tiny 11.5px body to 12.5px for better legibility. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             {LANDLORDS_SEE_ITEMS.map((item) => (
               <div
                 key={item.label}
-                className="bg-white border border-gray-100 rounded-xl p-4 md:p-5 hover:border-orange-200 transition-colors"
+                className="bg-white border border-gray-100 rounded-xl p-4 md:p-5 hover:border-orange-200 transition-colors flex sm:block items-start gap-3 sm:gap-0"
               >
-                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg mb-3">
+                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg sm:mb-3 flex-shrink-0">
                   <i className={`${item.icon} text-orange-500 text-lg`}></i>
                 </div>
-                <div className="text-[13px] md:text-sm font-bold text-gray-900 mb-1 leading-snug">
-                  {item.label}
+                <div className="min-w-0">
+                  <div className="text-[13.5px] md:text-sm font-bold text-gray-900 mb-1 leading-snug">
+                    {item.label}
+                  </div>
+                  <p className="text-[12.5px] md:text-xs text-gray-600 leading-relaxed">
+                    {item.body.replace(/\{state\}/g, stateData.name)}
+                  </p>
                 </div>
-                <p className="text-[11.5px] md:text-xs text-gray-600 leading-relaxed">
-                  {item.body.replace(/\{state\}/g, stateData.name)}
-                </p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Why Pawtenant */}
-      <section className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
+      {/* Why Pawtenant — mobile-first: aspect ratio image, tighter gaps */}
+      <section className="py-12 sm:py-16 bg-white">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-stretch">
             <div className="flex flex-col">
-              <h2 className="text-3xl font-bold text-gray-900 mb-8">Why PawTenant?</h2>
-              <div className="space-y-5 flex-1">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 sm:mb-8 leading-tight">Why PawTenant?</h2>
+              <div className="space-y-4 sm:space-y-5 flex-1">
                 {whyPawtenant.map((item) => (
-                  <div key={item.title} className="flex items-start gap-4">
+                  <div key={item.title} className="flex items-start gap-3 sm:gap-4">
                     <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
                       <i className={`${item.icon} text-orange-500`}></i>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-sm mb-1">{item.title}</h3>
-                      <p className="text-gray-600 text-sm leading-relaxed">{item.desc}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-gray-900 text-[14px] sm:text-sm mb-1 leading-snug">{item.title}</h3>
+                      <p className="text-gray-600 text-[13.5px] sm:text-sm leading-relaxed">{item.desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="mt-7">
+              <div className="mt-6 sm:mt-7">
                 <Link
                   to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-                  className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-sm"
+                  className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-7 py-3 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[14px] sm:text-sm shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
                 >
                   <i className="ri-file-text-line"></i>
                   Get An ESA Letter Now
                 </Link>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden min-h-80">
+            <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-80">
               <img
                 src={labradorSrc}
                 alt="Cute Labrador Retriever dog — ESA companion"
+                width={1200}
+                height={900}
                 loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -898,35 +980,60 @@ export default function StateESAPage() {
         </div>
       </section>
 
+      {/* ESA pricing snapshot + PSD awareness — added in the mobile
+          cleanup pass. Surfaces clear pricing and a short PSD-vs-ESA
+          comparison before the FAQ so visitors can make a faster
+          decision without reading every section first. */}
+      <EsaPricingMini className="bg-white border-t border-slate-100" />
+      <EsaVsPsdCard className="bg-[#fafbfb]" />
+
       {/* FAQ — per-state items first (most state-relevant on top), then
-          the shared housing-intent cluster materialized for this state. */}
-      <section className="py-16 bg-[#fdf6ee]">
-        <div className="max-w-4xl mx-auto px-6">
-          <div className="text-center mb-10">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Popular Questions</span>
-            <h2 className="text-3xl font-bold text-gray-900">Frequently Asked Questions</h2>
+          the shared housing-intent cluster materialized for this state.
+          Mobile-first: tighter section padding, smaller heading. */}
+      <section className="py-12 sm:py-16 bg-[#fdf6ee]">
+        <div className="max-w-4xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-8 sm:mb-10">
+            <span className="inline-block text-[11px] sm:text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Popular Questions</span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">Frequently Asked Questions</h2>
           </div>
           <div className="space-y-3">
             {[...stateData.faqs, ...materializeCommonFaqs(stateData.name)].map((faq, i) => (
-              <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div
+                key={i}
+                className={`bg-white rounded-xl border border-gray-100 overflow-hidden ${
+                  i >= 4 && !showAllMobile ? "hidden sm:block" : ""
+                }`}
+              >
                 <button
-                  className="w-full flex items-center justify-between px-6 py-4 text-left cursor-pointer"
+                  className="w-full flex items-center justify-between gap-3 px-5 sm:px-6 py-4 text-left cursor-pointer"
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
                   aria-expanded={openFaq === i}
                 >
-                  <span className={`text-sm font-semibold ${openFaq === i ? "text-orange-500" : "text-gray-900"}`}>{faq.q}</span>
-                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-4">
+                  <span className={`text-[13.5px] sm:text-sm font-semibold leading-snug ${openFaq === i ? "text-orange-500" : "text-gray-900"}`}>{faq.q}</span>
+                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                     <i className={`${openFaq === i ? "ri-subtract-line" : "ri-add-line"} text-orange-500`}></i>
                   </div>
                 </button>
                 {openFaq === i && (
-                  <div className="px-6 pb-4">
-                    <p className="text-gray-600 text-sm leading-relaxed">{faq.a}</p>
+                  <div className="px-5 sm:px-6 pb-4">
+                    <p className="text-gray-600 text-[13px] sm:text-sm leading-relaxed">{faq.a}</p>
                   </div>
                 )}
               </div>
             ))}
           </div>
+          {!showAllMobile && (
+            <div className="sm:hidden pt-4 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAllMobile(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Show more questions
+                <i className="ri-arrow-down-s-line"></i>
+              </button>
+            </div>
+          )}
 
           {/* Closing internal-link CTA — natural anchor to the
               how-to-get-esa explainer. Strengthens topical cluster linking
@@ -1085,14 +1192,14 @@ export default function StateESAPage() {
         );
       })()}
 
-      {/* CTA */}
-      <section className="py-16 bg-white">
-        <div className="max-w-2xl mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Book Your ESA Letter Consultation Today</h2>
-          <p className="text-gray-500 mb-8">Feel confident with a trusted and reliable service</p>
+      {/* CTA — mobile-first: full-width button, smaller h2 */}
+      <section className="py-12 sm:py-16 bg-white">
+        <div className="max-w-2xl mx-auto px-5 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 sm:mb-4 leading-tight">Book Your ESA Letter Consultation Today</h2>
+          <p className="text-gray-500 text-[14px] sm:text-base mb-7 sm:mb-8">Feel confident with a trusted and reliable service</p>
           <Link
             to={withAttribution(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
-            className="whitespace-nowrap inline-flex items-center gap-2 px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[15px] sm:text-base shadow-[0_4px_12px_rgba(249,115,22,0.30)]"
           >
             <i className="ri-file-text-line"></i>
             Get Your ESA Letter

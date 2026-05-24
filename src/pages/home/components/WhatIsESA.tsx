@@ -19,25 +19,29 @@ const petTypes = [
 export default function WhatIsESA() {
   return (
     <section className="py-12 sm:py-20 bg-white">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
-          {/* Image */}
-          <div className="rounded-2xl overflow-hidden min-h-80">
+      <div className="max-w-7xl mx-auto px-5 sm:px-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-stretch">
+          {/* Image — mobile-first: aspect-ratio container prevents CLS and
+              keeps the image from feeling oversized on narrow phones. */}
+          <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-80">
             <img
               src="/assets/breeds/cat-with-owner.jpg"
               alt="What is an emotional support animal ESA — licensed LMHP letter for mental health housing rights"
+              width={1200}
+              height={900}
               loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover object-top"
             />
           </div>
 
           {/* Content */}
           <div className="flex flex-col">
-            <p className="text-orange-500 text-sm font-semibold tracking-widest uppercase mb-3">Understanding ESAs</p>
-            <h2 className="text-3xl font-extrabold text-gray-900 mb-5">
+            <p className="text-orange-500 text-[12px] sm:text-sm font-semibold tracking-widest uppercase mb-3">Understanding ESAs</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-4 sm:mb-5 leading-tight">
               What Is an Emotional Support Animal (ESA)?
             </h2>
-            <p className="text-gray-600 text-sm leading-relaxed mb-6">
+            <p className="text-gray-600 text-[14px] sm:text-sm leading-relaxed mb-5 sm:mb-6">
               An Emotional Support Animal (ESA) is a companion animal that provides therapeutic benefit to its owner through affection and companionship. Unlike service animals, ESAs do not need specialized training. Their presence alone provides significant mental health benefits for people struggling with emotional or psychological conditions.
             </p>
             <p className="hidden sm:block text-gray-600 text-sm leading-relaxed mb-8">

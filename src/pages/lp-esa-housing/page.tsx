@@ -99,6 +99,11 @@ const FAQ_ITEMS = [
 ];
 
 export default function LpEsaHousingPage() {
+  // Mobile-only: show first 4 FAQs initially, rest behind "Show more questions".
+  // All FAQ items stay in the DOM regardless (display:none only) so SEO/schema
+  // and desktop layout are unchanged.
+  const [showAllMobile, setShowAllMobile] = useState(false);
+
   // Set <title>, meta description, and noindex per page-load. Restore on unmount.
   useEffect(() => {
     const prevTitle = document.title;
@@ -205,9 +210,11 @@ export default function LpEsaHousingPage() {
         {/* SharedNavbar is fixed top-0 with h-16 (64px) on mobile and
             sm:h-20 (80px) on tablet+. Hero top padding clears the navbar
             plus ~32px breathing room so the green pill never sits under
-            the navbar. (Previous pt-16 md:pt-24 = exactly navbar height,
-            so the pill was visually touching the navbar bottom.) */}
-        <div className="relative max-w-6xl mx-auto px-5 pt-24 md:pt-28 pb-12 md:pb-20 grid md:grid-cols-12 gap-10 md:gap-14 items-start">
+            the navbar. min-h-[100svh] makes the hero feel like a proper
+            poster/cover area so the next section doesn't peek at the fold
+            on initial load. items-center vertically centers the
+            text+letter-preview row inside the hero cover. */}
+        <div className="relative max-w-6xl mx-auto px-5 pt-24 md:pt-28 pb-16 md:pb-24 min-h-[100svh] grid md:grid-cols-12 gap-10 md:gap-14 items-start md:items-center">
           <div className="md:col-span-7 lg:col-span-7">
             <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full mb-5 shadow-[0_1px_3px_rgba(16,185,129,0.10)]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
@@ -254,45 +261,30 @@ export default function LpEsaHousingPage() {
               </div>
             </div>
 
-            {/* Trust bullets — moved below Klarna to match Meta LP hero
-                structure. All green checkmarks for visual consistency. */}
-            <ul className="grid gap-3 mt-5 max-w-xl">
-              <li className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+            {/* Trust pills — compact single-line row (was 3 stacked
+                bullets pre-cleanup-2026-05-24). Same 3 trust signals,
+                much calmer visual weight. */}
+            <div className="flex flex-wrap gap-1.5 mt-5">
+              {[
+                { label: "Licensed clinicians" },
+                { label: "FHA-aligned" },
+                { label: "Verification ID" },
+              ].map((t) => (
+                <span
+                  key={t.label}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11.5px] font-semibold"
+                >
+                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                  {t.label}
                 </span>
-                <span className="text-[14px] text-slate-700">
-                  <span className="font-medium text-slate-900">Reviewed by licensed clinicians</span>
-                  <span className="text-slate-500"> — LMHP, LCSW, LPC licensed in your state</span>
-                </span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </span>
-                <span className="text-[14px] text-slate-700">
-                  <span className="font-medium text-slate-900">Built for housing requests</span>
-                  <span className="text-slate-500"> — aligned with Fair Housing Act standards</span>
-                </span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </span>
-                <span className="text-[14px] text-slate-700">
-                  <span className="font-medium text-slate-900">Unique Verification ID on every document</span>
-                  <span className="text-slate-500"> — landlords confirm authenticity in seconds</span>
-                </span>
-              </li>
-            </ul>
+              ))}
+            </div>
 
-            {/* Refund trust line — sits below the trust bullets as the
+            {/* Refund trust line — sits below the trust pills as the
                 final reassurance under the CTA stack. */}
             <div className="text-[12.5px] text-slate-500 mt-4 flex items-center gap-2">
               <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]" aria-hidden>✓</span>
@@ -682,8 +674,8 @@ export default function LpEsaHousingPage() {
         <div className="max-w-6xl mx-auto px-5 py-16 md:py-24 grid md:grid-cols-12 gap-8 md:gap-10 items-center">
           <div className="md:col-span-6 md:order-2 overflow-hidden rounded-xl border border-slate-200">
             <img
-              src="/assets/lifestyle/owner-with-dog-laptop.jpg"
-              alt="Person at home with their dog, completing the ESA assessment on a laptop — calm, professional, work-from-home scene"
+              src="/assets/testimonials/couple-with-dog-home.jpg"
+              alt="Couple at home embracing their emotional support dog — the bond an ESA letter is designed to protect"
               loading="lazy"
               width={1280}
               height={960}
@@ -1175,9 +1167,26 @@ export default function LpEsaHousingPage() {
           </h2>
           <div className="space-y-2">
             {FAQ_ITEMS.map((item, i) => (
-              <FAQItem key={item.q} q={item.q} a={item.a} defaultOpen={i === 0} />
+              <div
+                key={item.q}
+                className={i >= 4 && !showAllMobile ? "hidden sm:block" : ""}
+              >
+                <FAQItem q={item.q} a={item.a} defaultOpen={i === 0} />
+              </div>
             ))}
           </div>
+          {!showAllMobile && FAQ_ITEMS.length > 4 && (
+            <div className="sm:hidden pt-4 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAllMobile(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Show more questions
+                <i className="ri-arrow-down-s-line"></i>
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

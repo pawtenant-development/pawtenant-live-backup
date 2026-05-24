@@ -1,29 +1,43 @@
+/*
+ * 2026-05-24 visual storytelling pass v2.
+ *
+ * Tightened the 4 objection cards from paragraph-length answers to
+ * one-line reply + one short proof point. Reads as a scannable
+ * "objection → reply → proof" matrix instead of a wall of text. No
+ * unique points removed — the original detail moves into the
+ * verification CTA strip and the existing /esa-letter-verification page.
+ */
+
 const OBJECTIONS = [
   {
     icon: "ri-question-line",
     question: "\"I don't accept ESA letters.\"",
-    answer: "Under the Fair Housing Act, housing providers are generally required to consider reasonable accommodation requests for emotional support animals — even in no-pet buildings. Our letters are written to meet these legal standards.",
+    answer: "Under the Fair Housing Act, landlords must consider reasonable accommodation requests — even in no-pet buildings.",
+    proof: "Federal protection",
     color: "border-orange-200 bg-orange-50",
     iconColor: "bg-orange-100 text-orange-600",
   },
   {
     icon: "ri-search-eye-line",
     question: "\"How do I know this letter is real?\"",
-    answer: "Every PawTenant letter includes the provider's full name, state license number, NPI number, and a unique verification ID. Landlords can scan the QR code or visit our verification page to confirm authenticity instantly.",
+    answer: "Every letter carries a unique Verification ID landlords can confirm at pawtenant.com/verify.",
+    proof: "Instant verify",
     color: "border-teal-200 bg-teal-50",
     iconColor: "bg-teal-100 text-teal-600",
   },
   {
     icon: "ri-user-heart-line",
     question: "\"Is the provider actually licensed?\"",
-    answer: "Yes. Every evaluation is conducted by a licensed mental health professional (LCSW, LMFT, LPC, or PhD) who is actively licensed in your state. License numbers are printed directly on the letter.",
+    answer: "Yes — a Licensed Mental Health Professional credentialed in your state. License # and NPI printed on the letter.",
+    proof: "NPI verifiable",
     color: "border-amber-200 bg-amber-50",
     iconColor: "bg-amber-100 text-amber-700",
   },
   {
     icon: "ri-file-damage-line",
     question: "\"This letter looks like it came from the internet.\"",
-    answer: "Our letters are formatted to professional clinical standards — the same format used by private therapists and mental health clinics. They include all the elements housing providers are trained to look for.",
+    answer: "Formatted to clinical standards used by private therapists — provider credentials, license #, NPI, and dates.",
+    proof: "Clinical format",
     color: "border-violet-200 bg-violet-50",
     iconColor: "bg-violet-100 text-violet-600",
   },
@@ -53,17 +67,21 @@ export default function LandlordSupportSection() {
           </p>
         </div>
 
-        {/* Objection cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-14">
+        {/* Objection cards — short reply + small proof chip */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 mb-12 sm:mb-14">
           {OBJECTIONS.map((o) => (
-            <div key={o.question} className={`rounded-2xl border p-6 ${o.color}`}>
-              <div className="flex items-start gap-4">
+            <div key={o.question} className={`rounded-2xl border p-5 sm:p-6 ${o.color}`}>
+              <div className="flex items-start gap-3 sm:gap-4">
                 <div className={`w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 ${o.iconColor}`}>
                   <i className={`${o.icon} text-lg`}></i>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-900 mb-2 italic">{o.question}</p>
-                  <p className="text-xs text-gray-600 leading-relaxed">{o.answer}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13.5px] sm:text-sm font-bold text-gray-900 mb-1.5 italic leading-snug">{o.question}</p>
+                  <p className="text-[12.5px] sm:text-[13px] text-gray-600 leading-relaxed mb-2.5">{o.answer}</p>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${o.iconColor}`}>
+                    <i className="ri-check-line text-[11px]"></i>
+                    {o.proof}
+                  </span>
                 </div>
               </div>
             </div>

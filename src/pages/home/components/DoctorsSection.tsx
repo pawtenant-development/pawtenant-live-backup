@@ -75,23 +75,23 @@ export default function DoctorsSection() {
   const scroll = (dir: "left" | "right") => {
     const el = scrollRef.current;
     if (!el) return;
-    const cardWidth = 288 + 24; // card min-w + gap
+    const cardWidth = 260 + 24; // card min-w + gap (mobile-tighter)
     el.scrollBy({ left: dir === "left" ? -cardWidth * 2 : cardWidth * 2, behavior: "smooth" });
   };
 
   return (
     <section className="py-12 sm:py-20 bg-[#f8f7f4]">
-      <div className="max-w-7xl mx-auto px-6">
+      <div className="max-w-7xl mx-auto px-5 sm:px-6">
         {/* Header */}
-        <div className="flex items-end justify-between mb-12 flex-wrap gap-4">
+        <div className="flex items-end justify-between mb-8 sm:mb-12 flex-wrap gap-4">
           <div className="max-w-xl">
-            <span className="inline-block px-4 py-1.5 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full uppercase tracking-widest mb-4">
+            <span className="inline-block px-3 sm:px-4 py-1 sm:py-1.5 bg-orange-100 text-orange-600 text-[11px] sm:text-xs font-semibold rounded-full uppercase tracking-widest mb-3 sm:mb-4">
               Licensed Providers
             </span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3 leading-tight">
+            <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-2 sm:mb-3 leading-tight">
               Choose Your <span className="text-orange-500">Provider</span>
             </h2>
-            <p className="text-gray-500 text-sm sm:text-base leading-relaxed">
+            <p className="text-gray-500 text-[14px] sm:text-base leading-relaxed">
               Select the licensed mental health professional you&apos;d like to work with. Availability depends on the states where the provider is currently licensed.
             </p>
           </div>
@@ -118,18 +118,20 @@ export default function DoctorsSection() {
           )}
         </div>
 
-        {/* Scrollable row */}
+        {/* Scrollable row — mobile-first: snap-scroll + smaller gap + slight
+            negative margin so the card edge sits flush with the page padding
+            and the next card peeks in on phones (cues swipeability). */}
         <div
           ref={scrollRef}
-          className="flex gap-6 overflow-x-auto scroll-smooth"
+          className="flex gap-4 sm:gap-6 overflow-x-auto scroll-smooth snap-x snap-mandatory -mx-5 sm:mx-0 px-5 sm:px-0 pb-2 sm:pb-0"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {showSkeleton
             ? Array.from({ length: SKELETON_COUNT }).map((_, i) => (
                 <div
                   key={`skel-${i}`}
-                  className="bg-white rounded-2xl p-6 flex flex-col items-center text-center border border-gray-100 shadow-sm flex-shrink-0 animate-pulse"
-                  style={{ minWidth: "288px", maxWidth: "288px" }}
+                  className="bg-white rounded-2xl p-5 sm:p-6 flex flex-col items-center text-center border border-gray-100 shadow-sm flex-shrink-0 snap-start animate-pulse"
+                  style={{ minWidth: "260px", maxWidth: "260px" }}
                 >
                   <div className="w-24 h-24 rounded-full bg-slate-50 mb-4" />
                   <div className="h-3 w-20 rounded-full bg-gray-100 mb-3" />
@@ -161,8 +163,8 @@ export default function DoctorsSection() {
                 return (
                   <div
                     key={doctor.id}
-                    className="bg-white rounded-2xl p-6 flex flex-col items-center text-center border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-1 duration-200 flex-shrink-0"
-                    style={{ minWidth: "288px", maxWidth: "288px" }}
+                    className="bg-white rounded-2xl p-5 sm:p-6 flex flex-col items-center text-center border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-1 duration-200 flex-shrink-0 snap-start"
+                    style={{ minWidth: "260px", maxWidth: "260px" }}
                   >
                     {/* Photo — real uploaded photo OR neutral initials fallback */}
                     <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-200 mb-4 flex-shrink-0 bg-slate-50 flex items-center justify-center">

@@ -24,6 +24,12 @@ type Short = {
 // supporting variety but must not appear before the real-person card.
 // To override a thumbnail, save a vertical JPG/WEBP into
 // /public/assets/meta/shorts/ and set `thumb: "/assets/meta/shorts/<file>.jpg"`.
+
+// Hide the AI-style testimonial Shorts carousel per mobile-cleanup pass.
+// Component + assets intentionally kept in source so this can be flipped
+// back without restoring code. Toggle to true to show the carousel again.
+const SHOW_SHORTS_CAROUSEL = false;
+
 const SHORTS: Short[] = [
   {
     // /shorts/_2sX3zf9qdk — real-person process walkthrough Short.
@@ -72,17 +78,20 @@ const META_OG_IMAGE =
 const ASSESSMENT_HREF = "/assessment";
 const PSD_ASSESSMENT_HREF = "/psd-assessment";
 
-const STATES = [
-  "California",
-  "Texas",
-  "Florida",
-  "New York",
-  "Illinois",
-  "Pennsylvania",
-  "Georgia",
-  "North Carolina",
-  "Ohio",
-  "Arizona",
+// State pills are now linked to the canonical /esa-letter/[slug] route
+// (same route used by the Google LP). Slugs match the lowercase, hyphenated
+// format the StateESAPage route expects.
+const STATES: Array<{ name: string; slug: string }> = [
+  { name: "California", slug: "california" },
+  { name: "Texas", slug: "texas" },
+  { name: "Florida", slug: "florida" },
+  { name: "New York", slug: "new-york" },
+  { name: "Illinois", slug: "illinois" },
+  { name: "Pennsylvania", slug: "pennsylvania" },
+  { name: "Georgia", slug: "georgia" },
+  { name: "North Carolina", slug: "north-carolina" },
+  { name: "Ohio", slug: "ohio" },
+  { name: "Arizona", slug: "arizona" },
 ];
 
 // Story → emotional pain. Reused from prior version, refined wording.
@@ -159,29 +168,26 @@ const TRUST_PILLARS = [
   },
 ];
 
-// Why-people-seek-ESA cards. Bodies expanded with natural keyword spread
-// (emotional support animal, ESA letter, ESA evaluation, Licensed Mental
-// Health Practitioner, PSD letter) for SEO + reader clarity. Frames the
-// clinical context for ESA documentation without overpromising therapeutic
-// outcomes — the cards describe situations renters seek an evaluation for,
-// not claims that an ESA will cure or treat any condition. A Licensed
-// Mental Health Practitioner determines clinical eligibility.
+// Why-people-seek-ESA cards. Bodies kept to a single short sentence each
+// so the grid reads as a scannable situation list, not a wall of text.
+// The clinical context (LMHP review, housing-only scope, no public-access)
+// lives in the intro trust lines above the cards — not duplicated here.
 const MENTAL_HEALTH_USES = [
   {
     title: "Anxiety and panic",
-    body: "Many renters seek an ESA evaluation because their support animal helps with grounding during anxious or panic episodes at home. An emotional support animal letter, issued only when clinically appropriate, supports a reasonable accommodation request for housing.",
+    body: "A support animal can help with grounding during anxious or panic episodes at home.",
   },
   {
     title: "Depression",
-    body: "For some renters managing depression, a support animal is part of daily routine, motivation, and meaningful connection. A Licensed Mental Health Practitioner reviews each case before issuing an ESA letter for housing documentation.",
+    body: "Daily routine and connection with a pet can be part of how some renters cope with depression.",
   },
   {
     title: "PTSD and trauma",
-    body: "Animals can offer steady presence and grounding during stress responses related to trauma or PTSD. A Licensed Mental Health Practitioner determines whether an ESA letter — distinct from a Psychiatric Service Dog (PSD) letter — is the right fit for your situation.",
+    body: "A familiar, steady presence can help during stress responses related to trauma.",
   },
   {
     title: "Major life transitions",
-    body: "Moving into a new apartment, loss, or chronic life stress are common moments when renters seek an ESA evaluation online. ESA documentation can support a calm, paper-based housing accommodation request during transitional periods.",
+    body: "Moves, loss, or chronic stress are common moments renters seek an ESA evaluation.",
   },
 ];
 
@@ -244,14 +250,40 @@ const HONEST_LIMITS: HonestLimit[] = [
   },
 ];
 
+// FAQ items expanded for SEO + trust coverage on the Meta LP. Each new
+// entry naturally surfaces a high-intent search query (online legitimacy,
+// ESA letter for a dog, getting an ESA letter from a doctor/licensed
+// provider, cost, ESA vs PSD). Wording stays clinical and compliance-safe
+// — no overclaim, no guaranteed-approval language, no public-access or
+// airline implications.
 const FAQ_ITEMS = [
   {
+    q: "Are online ESA letters legit?",
+    a: "Yes — when issued by a Licensed Mental Health Practitioner after a real clinical review. A legitimate ESA evaluation online is conducted by a provider licensed in the state where you live, and every letter includes the provider's name, license number, and signature. PawTenant follows this standard for every letter. Services that issue letters without a real clinical review — sometimes marketed as instant or guaranteed — are not legitimate, and many landlords have learned to spot them.",
+  },
+  {
+    q: "I need an ESA letter for my dog — how does the process work?",
+    a: "You complete a confidential clinical assessment (about 5 minutes on your phone), a Licensed Mental Health Practitioner in your state reviews it, and — if clinically appropriate — you receive a housing ESA letter as a secure PDF that names your dog and includes the provider's credentials. If you don't qualify after review, your payment is refunded. The process is the same whether your emotional support animal is a dog, cat, or other domesticated animal.",
+  },
+  {
+    q: "How do I get an ESA letter from a doctor or licensed provider?",
+    a: "ESA letters are issued by a Licensed Mental Health Practitioner — a therapist, psychologist, LCSW, LPC, or LMHP — not a general-practice doctor. PawTenant matches your assessment with a licensed provider credentialed in your state, who conducts a clinical review and signs the letter when an emotional support animal is clinically appropriate for your situation.",
+  },
+  {
+    q: "What does an ESA letter cost?",
+    a: "PawTenant's housing ESA letter is $110 for one pet, valid for one year, with additional pets at $25 each. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Flexible payment options including Klarna may be available at checkout where eligible.",
+  },
+  {
+    q: "How do I know if an online ESA letter provider is legitimate?",
+    a: "A legitimate online ESA letter provider connects you with a Licensed Mental Health Practitioner who is credentialed in your state and signs the letter after a real clinical review. Look for the provider's full name, license number, and signature on the document. Avoid services that promise instant approval, guaranteed letters, or skip the clinical review — those documents are commonly rejected by landlords.",
+  },
+  {
     q: "Can an ESA letter help with housing?",
-    a: "An ESA letter from a licensed mental health professional may support a reasonable accommodation request under the Fair Housing Act. Whether a specific landlord grants the accommodation depends on the property type, applicable law, and the landlord's review process.",
+    a: "An emotional support animal letter from a licensed mental health professional may support a reasonable accommodation request under the federal Fair Housing Act. Whether a specific landlord grants the accommodation depends on the property type, applicable law, and the landlord's review process. PawTenant documentation is written specifically for the housing accommodation context.",
   },
   {
     q: "Is this accepted by landlords?",
-    a: "Most landlords subject to the Fair Housing Act are required to consider reasonable accommodation requests. Our documentation is written to align with FHA standards and includes the provider's license details for verification.",
+    a: "Most landlords subject to the Fair Housing Act are required to consider reasonable accommodation requests for tenants with a qualifying emotional support animal. PawTenant documentation is written to align with FHA standards and includes the provider's license details, which housing providers may verify before approving accommodation.",
   },
   {
     q: "How fast can I start?",
@@ -262,12 +294,17 @@ const FAQ_ITEMS = [
     a: "Yes. Your assessment is confidential and handled in alignment with HIPAA-aligned data standards. Diagnosis and clinical detail are never shared on any verification page or with your landlord.",
   },
   {
-    q: "Are flexible payment options available?",
-    a: "At checkout you may see flexible payment options including Klarna where eligible. Availability depends on your eligibility at checkout and is not guaranteed. We don't change the underlying clinical review process.",
+    q: "What's the difference between an ESA letter and a PSD letter?",
+    a: "An ESA letter supports a housing accommodation request under the Fair Housing Act — no specialized training required. A Psychiatric Service Dog (PSD) letter is for a dog individually trained to perform specific tasks for a psychiatric disability and supports housing plus air-travel documentation. Both are issued by a Licensed Mental Health Practitioner. Most renters seeking housing accommodation start with the ESA evaluation.",
   },
 ];
 
 export default function MetaEsaLetterPage() {
+  // Mobile-only: show first 4 FAQs initially, rest behind "Show more questions".
+  // All FAQ items stay in the DOM regardless (display:none only) so SEO/schema
+  // and desktop layout are unchanged.
+  const [showAllMobile, setShowAllMobile] = useState(false);
+
   useEffect(() => {
     const prevTitle = document.title;
     document.title = META_TITLE;
@@ -360,7 +397,7 @@ export default function MetaEsaLetterPage() {
             (80px) on tablet+. Hero top padding clears the navbar plus adds
             ~32px of breathing room so the green pill and the hero image
             never sit under the navbar. */}
-        <div className="relative max-w-6xl mx-auto px-5 pt-24 md:pt-28 pb-14 md:pb-20 grid md:grid-cols-12 gap-10 md:gap-14 items-center">
+        <div className="relative max-w-6xl mx-auto px-5 pt-24 md:pt-28 pb-14 md:pb-20 min-h-[100svh] grid md:grid-cols-12 gap-10 md:gap-14 items-center">
           <div className="md:col-span-6">
             <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
@@ -416,6 +453,24 @@ export default function MetaEsaLetterPage() {
               <span className="text-slate-300">•</span>
               <span className="inline-flex items-center gap-1.5">
                 <CheckDot /> Housing-focused ESA letters
+              </span>
+            </div>
+
+            {/* Mobile-only refund trust pill — mirrors the desktop floating
+                pill content but renders inline inside the hero text column.
+                Subtle, non-overlapping, above the fold on a 375px viewport.
+                Hidden on md+ where the floating pill on the hero image is
+                visible instead. */}
+            <div className="md:hidden mt-4 inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full pl-2 pr-3.5 py-1.5 shadow-[0_2px_8px_rgba(15,23,42,0.06)]">
+              <span className="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <path d="m9 12 2 2 4-4" />
+                </svg>
+              </span>
+              <span className="text-[11.5px] leading-tight">
+                <span className="font-semibold text-slate-900">No risk to start</span>
+                <span className="text-slate-500"> — refund if you don't qualify</span>
               </span>
             </div>
           </div>
@@ -622,6 +677,25 @@ export default function MetaEsaLetterPage() {
               <p className="text-[15px] md:text-[16px] text-slate-600 leading-relaxed max-w-xl mx-auto md:mx-0">
                 Renters often describe their support animal as part of how they cope at home. A Licensed Mental Health Practitioner determines whether an ESA letter is clinically appropriate for your situation — never an algorithm.
               </p>
+
+              {/* Three short trust lines that absorb the context previously
+                  duplicated across the four card bodies. Reuses the hero's
+                  CheckDot pattern for visual consistency. Centered with the
+                  rest of this column on mobile, left-aligned on md+. */}
+              <ul className="mt-4 grid gap-1.5 text-[13.5px] md:text-[14px] text-slate-600 max-w-xl mx-auto md:mx-0">
+                <li className="flex items-start gap-2 justify-center md:justify-start text-left">
+                  <span className="mt-0.5"><CheckDot /></span>
+                  <span className="leading-relaxed">ESA letters may support housing accommodation requests when clinically appropriate.</span>
+                </li>
+                <li className="flex items-start gap-2 justify-center md:justify-start text-left">
+                  <span className="mt-0.5"><CheckDot /></span>
+                  <span className="leading-relaxed">Every evaluation is reviewed by a Licensed Mental Health Practitioner credentialed in your state.</span>
+                </li>
+                <li className="flex items-start gap-2 justify-center md:justify-start text-left">
+                  <span className="mt-0.5"><CheckDot /></span>
+                  <span className="leading-relaxed">This documentation is built for housing support — not public-access rights.</span>
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -671,10 +745,7 @@ export default function MetaEsaLetterPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 md:gap-8 items-start">
-            {/* Sample letter mock — matches /esa-letter-housing LetterPreviewCard
-                exactly so the sample-letter visual system is consistent across
-                paid LPs (browser chrome → SVG → emerald verification badge →
-                disclaimer footnote). */}
+            {/* Sample letter mock */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden">
               <div className="flex items-center justify-between bg-slate-50 px-3 py-2 border-b border-slate-200">
                 <div className="flex items-center gap-1.5">
@@ -688,26 +759,12 @@ export default function MetaEsaLetterPage() {
               <div className="bg-white p-3 md:p-4">
                 <img
                   src="/images/checkout/esa-sample-letter.svg"
-                  alt="Sample PawTenant ESA letter showing the verification ID, provider credentials, and housing-accommodation language. Names and details are placeholders."
+                  alt="Sample PawTenant ESA letter showing provider credentials and housing-accommodation language. Names and details are placeholders."
                   width={800}
                   height={1035}
                   loading="lazy"
                   className="w-full h-auto block"
                 />
-              </div>
-              {/* Verification badge under preview — reinforces ID concept,
-                  matches Google LP LetterPreviewCard for visual continuity. */}
-              <div className="bg-emerald-50 border-t border-emerald-200 px-4 py-3 flex items-center gap-3">
-                <span className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <path d="m9 12 2 2 4-4" />
-                  </svg>
-                </span>
-                <div className="min-w-0">
-                  <div className="text-[12px] font-medium text-emerald-900 leading-tight">Every letter carries a Verification ID</div>
-                  <div className="text-[11px] text-emerald-800/80 leading-snug font-mono">pawtenant.com/verify · landlords confirm in seconds</div>
-                </div>
               </div>
               <div className="text-center text-[10px] text-slate-400 py-2 px-3 bg-white border-t border-slate-100">
                 Sample template · placeholder names · housing-accommodation language only.
@@ -878,7 +935,7 @@ export default function MetaEsaLetterPage() {
               to={ASSESSMENT_HREF}
               className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
             >
-              Start the assessment
+              Start Your ESA Evaluation
               <span aria-hidden>→</span>
             </Link>
           </div>
@@ -910,9 +967,16 @@ export default function MetaEsaLetterPage() {
             {HONEST_LIMITS.map((c) => (
               <div key={c.title} className="bg-white border border-slate-200 rounded-xl p-5 md:p-6">
                 <div className="flex items-start gap-3">
-                  <span className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <polyline points="20 6 9 17 4 12" />
+                  {/* Neutral info icon — slate, not emerald. This section is
+                      informational/transparency, not a celebratory trust grid,
+                      so the icon visually signals "guidance" rather than
+                      "win". Outlined info circle avoids the positive-check
+                      visual that the What-You-Receive grid uses. */}
+                  <span className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="16" x2="12" y2="12" />
+                      <line x1="12" y1="8" x2="12.01" y2="8" />
                     </svg>
                   </span>
                   <div className="min-w-0">
@@ -921,7 +985,7 @@ export default function MetaEsaLetterPage() {
                     {c.linkHref && c.linkLabel && (
                       <Link
                         to={c.linkHref}
-                        className="inline-flex items-center gap-1 mt-2 text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 transition"
+                        className="inline-flex items-center gap-1 mt-2 text-[12px] font-semibold text-slate-700 hover:text-[#0E2A47] transition"
                       >
                         {c.linkLabel}
                         <span aria-hidden>→</span>
@@ -949,15 +1013,16 @@ export default function MetaEsaLetterPage() {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 max-w-4xl mx-auto mb-7">
             {STATES.map((s) => (
-              <div
-                key={s}
-                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[13px] font-medium"
+              <Link
+                key={s.slug}
+                to={`/esa-letter/${s.slug}`}
+                className="group flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[13px] font-medium hover:border-emerald-400 hover:bg-emerald-50 hover:text-[#0E2A47] hover:shadow-[0_2px_8px_rgba(16,185,129,0.12)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600" aria-hidden>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600 group-hover:text-emerald-700" aria-hidden>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
-                <span>{s}</span>
-              </div>
+                <span>{s.name}</span>
+              </Link>
             ))}
           </div>
 
@@ -1034,7 +1099,7 @@ export default function MetaEsaLetterPage() {
                 to={ASSESSMENT_HREF}
                 className="mt-auto block w-full text-center bg-orange-500 hover:bg-orange-600 text-white font-semibold text-[15px] px-5 py-3.5 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
               >
-                Check ESA Eligibility →
+                Start Your ESA Evaluation →
               </Link>
               <div className="text-center text-[11px] text-slate-500 mt-3">
                 For renters seeking housing accommodation under the Fair Housing Act.
@@ -1084,7 +1149,7 @@ export default function MetaEsaLetterPage() {
                 to={PSD_ASSESSMENT_HREF}
                 className="mt-auto block w-full text-center bg-[#0E2A47] hover:bg-[#091B30] text-white font-semibold text-[15px] px-5 py-3.5 rounded-md transition shadow-[0_2px_6px_rgba(14,42,71,0.25)]"
               >
-                Check PSD Eligibility →
+                Start Your PSD Evaluation →
               </Link>
               <div className="text-center text-[11px] text-slate-500 mt-3">
                 For handlers of trained psychiatric service dogs.
@@ -1128,7 +1193,9 @@ export default function MetaEsaLetterPage() {
               <details
                 key={item.q}
                 open={i === 0}
-                className="group rounded-lg px-4 py-3 border border-slate-200 bg-white"
+                className={`group rounded-lg px-4 py-3 border border-slate-200 bg-white ${
+                  i >= 4 && !showAllMobile ? "hidden sm:block" : ""
+                }`}
               >
                 <summary className="flex items-center justify-between gap-3 cursor-pointer list-none">
                   <span className="text-[13.5px] font-semibold text-slate-900 leading-snug">{item.q}</span>
@@ -1138,6 +1205,18 @@ export default function MetaEsaLetterPage() {
               </details>
             ))}
           </div>
+          {!showAllMobile && FAQ_ITEMS.length > 4 && (
+            <div className="sm:hidden pt-4 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAllMobile(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Show more questions
+                <i className="ri-arrow-down-s-line"></i>
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -1146,7 +1225,7 @@ export default function MetaEsaLetterPage() {
           The user has read pricing, FAQ, and all trust content above — the
           reels here serve as social proof "people like you who chose this"
           right before the closing assessment button. */}
-      <MetaShortsCarousel />
+      {SHOW_SHORTS_CAROUSEL && <MetaShortsCarousel />}
 
       {/* ─────────── 11. FINAL CTA ─────────── */}
       <section className="relative bg-gradient-to-b from-[#0E2A47] to-[#091B30] text-white overflow-hidden">
