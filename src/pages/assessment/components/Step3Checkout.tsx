@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import CompactWhatHappensNext from "./step3/CompactWhatHappensNext";
 import RefundReassurance from "./step3/RefundReassurance";
 import SupportCard from "./step3/SupportCard";
+import { US_STATES } from "../../../lib/usStates";
 
 // ─── Module-level Stripe constants ───────────────────────────────────────────
 const stripePromise = loadStripe(
@@ -26,24 +27,44 @@ const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
 // ─── Color System ────────────────────────────────────────────────────────────
+// BRAND_GREEN (#1A5C4F) — calm, deep, used for trust signals (HIPAA chip,
+// shield icons, "Reviewed by Licensed" card, etc.). Does NOT pop, by design.
 const BRAND_GREEN = "#1A5C4F";
 const BRAND_GREEN_SOFT = "#E8F1EE";
 const BRAND_GREEN_BORDER = "#CFE2DC";
 
+// ACTION_GREEN (emerald-600) — the single, consistent primary-CTA color for
+// Step 3 checkout. Chosen over a harsh orange so the Pay buttons read as
+// "secure transaction confirmation" (Apple Pay / Stripe success hue) rather
+// than alert/urgency. Distinct from BRAND_GREEN (deeper teal) so it still
+// pops against trust chips.
+const ACTION_GREEN = "#059669";       // emerald-600
+const ACTION_GREEN_DARK = "#047857";  // emerald-700 (hover/active)
+const ACTION_GREEN_SOFT = "#ECFDF5";  // emerald-50
+const ACTION_GREEN_BORDER = "#A7F3D0"; // emerald-200
+
+// Orange retained ONLY for non-CTA value-prop accents — the "Save $X/yr"
+// chip and the orange-tinted "Annual Subscription" notice. All primary
+// actions use ACTION_GREEN now.
 const ACTION_ORANGE = "#F97316";
 const ACTION_ORANGE_DARK = "#EA580C";
 const ACTION_ORANGE_SOFT = "#FFF7ED";
 const ACTION_ORANGE_BORDER = "#FED7AA";
 
+// Stronger card separation than the previous slate-200 border. Goal: cards
+// should read as defined surfaces on mobile, with shadow giving subtle
+// elevation without looking heavy.
 const CARD_SHELL =
-  "bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_0_rgba(15,23,42,0.03),0_8px_28px_-14px_rgba(15,23,42,0.12)] overflow-hidden";
+  "bg-white rounded-2xl border border-slate-300/90 shadow-[0_1px_0_rgba(15,23,42,0.04),0_10px_28px_-14px_rgba(15,23,42,0.18)] overflow-hidden";
 
 const PAYMENT_SECTION_ID = "step3-payment-section";
 
 const STRIPE_APPEARANCE: StripeElementsOptions["appearance"] = {
   theme: "flat",
   variables: {
-    colorPrimary: ACTION_ORANGE,
+    // Match the calm emerald action color so card-input focus rings and
+    // selected radio states read as secure/grounded across the form.
+    colorPrimary: ACTION_GREEN,
     colorBackground: "#ffffff",
     colorText: "#0f172a",
     colorDanger: "#dc2626",
@@ -493,22 +514,29 @@ function SecurePaymentCard({
   };
 
   return (
-    <div id={PAYMENT_SECTION_ID} className={CARD_SHELL}>
-      {/* Header — GREEN = trust */}
-      <div className="px-4 sm:px-5 py-4 flex items-center justify-between gap-3 border-b border-slate-100">
+    <div
+      id={PAYMENT_SECTION_ID}
+      className={`${CARD_SHELL} ring-1 ring-emerald-200/70`}
+      style={{ boxShadow: `0 1px 0 rgba(15,23,42,0.04), 0 14px 36px -16px rgba(5,150,105,0.18)` }}
+    >
+      {/* Header — emerald-tinted band so the Secure Payment surface reads as
+          the primary, bank-secure section of Step 3. The SSL / PCI-DSS info
+          lives directly under the Pay button so it isn't repeated here.
+          flex-wrap + gap-y lets the card-brand row drop onto a second line
+          on narrow desktop sidebars instead of squeezing the title. */}
+      <div
+        className="px-4 sm:px-5 py-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 border-b"
+        style={{ backgroundColor: ACTION_GREEN_SOFT, borderColor: ACTION_GREEN_BORDER }}
+      >
         <div className="flex items-center gap-3 min-w-0">
           <div
-            className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
-            style={{ backgroundColor: BRAND_GREEN_SOFT }}
+            className="w-10 h-10 flex items-center justify-center rounded-xl flex-shrink-0 ring-1 ring-emerald-200 bg-white"
           >
-            <i className="ri-lock-2-line text-base" style={{ color: BRAND_GREEN }}></i>
+            <i className="ri-shield-keyhole-line text-lg" style={{ color: ACTION_GREEN_DARK }}></i>
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-slate-900 tracking-tight leading-none">
-              Secure Payment
-            </p>
-            <p className="text-[11px] text-slate-500 mt-1">
-              256-bit SSL · PCI-DSS compliant
+            <p className="text-base font-bold text-slate-900 tracking-tight leading-tight">
+              Secure Payment · ${totalPrice}
             </p>
           </div>
         </div>
@@ -621,8 +649,8 @@ function SecurePaymentCard({
                   </>
                 ) : (
                   <>
-                    <div className="w-12 h-12 flex items-center justify-center bg-white ring-1 ring-slate-200 rounded-2xl">
-                      <i className="ri-loader-4-line animate-spin text-xl" style={{ color: ACTION_ORANGE }}></i>
+                    <div className="w-12 h-12 flex items-center justify-center bg-white ring-1 ring-emerald-200 rounded-2xl">
+                      <i className="ri-loader-4-line animate-spin text-xl" style={{ color: ACTION_GREEN }}></i>
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-700">
@@ -875,11 +903,11 @@ function MobileSummarySheet({
                   onClose();
                   onCTA();
                 }}
-                className="w-full py-3.5 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 text-white shadow-[0_10px_24px_-10px_rgba(249,115,22,0.55)]"
-                style={{ backgroundColor: ACTION_ORANGE }}
+                className="w-full py-3.5 text-sm font-extrabold rounded-xl flex items-center justify-center gap-1.5 text-white shadow-[0_8px_22px_-10px_rgba(5,150,105,0.45)]"
+                style={{ backgroundColor: ACTION_GREEN }}
               >
-                <i className="ri-lock-2-line text-base"></i>
-                Complete Secure Evaluation
+                <i className="ri-arrow-down-line text-base"></i>
+                Continue to Payment
               </button>
             </div>
           </motion.div>
@@ -947,6 +975,31 @@ export default function Step3Checkout({
   };
 
   const [showMobileSummary, setShowMobileSummary] = useState(false);
+
+  // ── Sticky-CTA visibility ──
+  // The sticky mobile bottom CTA acts as a scroll-helper to the payment form,
+  // not as a second pay button. While the payment surface (card form / Klarna)
+  // is itself on screen we hide the sticky bar so the user only sees ONE
+  // primary payment button at a time — removes the "two buttons, which is
+  // real?" trust-killer reported on mobile screenshots.
+  const [paymentVisible, setPaymentVisible] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById(PAYMENT_SECTION_ID);
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        // Show the sticky helper only when the payment surface is mostly off
+        // screen. 25% threshold gives a soft handoff so the bar doesn't
+        // flicker as the user scrolls past it.
+        setPaymentVisible(entry.intersectionRatio > 0.25);
+      },
+      { threshold: [0, 0.15, 0.25, 0.4, 0.6] },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   // ── State-law compliance acknowledgment (AR/CA/IA/LA/MT) ────────────────
   // Local-only: re-acknowledged each Step 3 session. Source-of-truth for
@@ -1045,7 +1098,7 @@ export default function Step3Checkout({
       )}
 
       {/* ── Mobile-only compact order summary banner — tap to expand ── */}
-      <div className={`lg:hidden mb-5 ${cardClass}`}>
+      <div className={`lg:hidden mb-4 ${cardClass}`}>
         <button
           type="button"
           onClick={() => setShowMobileSummary(true)}
@@ -1059,30 +1112,34 @@ export default function Step3Checkout({
               <i className="ri-file-text-line text-base" style={{ color: BRAND_GREEN }}></i>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-[0.18em]">
-                ESA Letter Package
+              <p className="text-sm font-bold text-slate-900 leading-tight tracking-tight">
+                ESA Letter + Provider Review
               </p>
-              <p className="text-xs text-slate-700 font-medium mt-0.5 flex items-center gap-1">
-                Tap to view details
-                <i className="ri-arrow-right-s-line text-sm text-slate-400"></i>
+              <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                <i className="ri-eye-line text-[10px]"></i>
+                View what&apos;s included
               </p>
             </div>
           </div>
           <div className="flex-shrink-0 text-right">
             {couponDiscount > 0 && (
-              <p className="text-[10px] text-slate-400 line-through">
+              <p className="text-[10px] text-slate-400 line-through leading-none">
                 ${priceBeforeDiscount}.00
               </p>
             )}
-            <p className="text-xl font-bold text-slate-900 tracking-tight">
-              ${totalPrice}.00
+            <p className="text-xl font-extrabold text-slate-900 tracking-tight leading-none mt-0.5">
+              ${totalPrice}<span className="text-sm font-bold">.00</span>
             </p>
-            <p className="text-[10px] text-slate-500">
-              {selectedPlan === "subscription" ? "per year" : "one-time"}
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              {selectedPlan === "subscription" ? "per year · total" : "one-time · total"}
             </p>
           </div>
         </button>
       </div>
+
+      {/* The mobile-only state-aware reassurance chip has been moved into the
+          right column AFTER the SecurePaymentCard so the top of mobile
+          checkout stays focused on the order summary + payment surface. */}
 
       {/* ── Main grid ── */}
       <div className="flex flex-col lg:grid lg:grid-cols-5 lg:items-start gap-5 lg:gap-8">
@@ -1091,7 +1148,7 @@ export default function Step3Checkout({
           <div className="lg:sticky lg:top-28 space-y-4 lg:space-y-5">
             {/* ── Desktop-only order summary ── */}
             <div className={`hidden lg:block ${cardClass}`}>
-              <div className="px-5 py-4 flex items-center justify-between gap-3 border-b border-slate-100">
+              <div className="px-5 py-4 flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50">
                 <div className="min-w-0">
                   <SectionLabel>Order Summary</SectionLabel>
                   <p className="text-base font-bold text-slate-900 leading-snug tracking-tight">
@@ -1207,9 +1264,9 @@ export default function Step3Checkout({
               </div>
             </div>
 
-            {/* ── Plan Toggle ── ORANGE = action ── */}
+            {/* ── Plan Toggle ── */}
             <div className={cardClass}>
-              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                 <SectionLabel>Choose Your Plan</SectionLabel>
                 <span
                   className="text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
@@ -1236,9 +1293,9 @@ export default function Step3Checkout({
                   style={
                     selectedPlan === "subscription"
                       ? {
-                          borderColor: ACTION_ORANGE,
-                          boxShadow: `0 0 0 4px ${ACTION_ORANGE_SOFT}, 0 10px 24px -14px rgba(249,115,22,0.35)`,
-                          backgroundColor: "#FFFBF5",
+                          borderColor: ACTION_GREEN,
+                          boxShadow: `0 0 0 4px ${ACTION_GREEN_SOFT}, 0 10px 24px -14px rgba(5,150,105,0.28)`,
+                          backgroundColor: "#F6FCF9",
                         }
                       : undefined
                   }
@@ -1249,9 +1306,9 @@ export default function Step3Checkout({
                         className="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
                         style={{
                           borderColor:
-                            selectedPlan === "subscription" ? ACTION_ORANGE : "#CBD5E1",
+                            selectedPlan === "subscription" ? ACTION_GREEN : "#CBD5E1",
                           backgroundColor:
-                            selectedPlan === "subscription" ? ACTION_ORANGE : "transparent",
+                            selectedPlan === "subscription" ? ACTION_GREEN : "transparent",
                         }}
                       >
                         {selectedPlan === "subscription" && (
@@ -1271,7 +1328,7 @@ export default function Step3Checkout({
                       <span
                         className="text-[9px] font-bold px-1.5 py-0.5 rounded-full block mb-1 whitespace-nowrap uppercase tracking-wider"
                         style={{
-                          backgroundColor: ACTION_ORANGE,
+                          backgroundColor: ACTION_GREEN,
                           color: "white",
                         }}
                       >
@@ -1299,9 +1356,9 @@ export default function Step3Checkout({
                   style={
                     selectedPlan === "one-time"
                       ? {
-                          borderColor: ACTION_ORANGE,
-                          boxShadow: `0 0 0 4px ${ACTION_ORANGE_SOFT}, 0 10px 24px -14px rgba(249,115,22,0.35)`,
-                          backgroundColor: "#FFFBF5",
+                          borderColor: ACTION_GREEN,
+                          boxShadow: `0 0 0 4px ${ACTION_GREEN_SOFT}, 0 10px 24px -14px rgba(5,150,105,0.28)`,
+                          backgroundColor: "#F6FCF9",
                         }
                       : undefined
                   }
@@ -1312,9 +1369,9 @@ export default function Step3Checkout({
                         className="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
                         style={{
                           borderColor:
-                            selectedPlan === "one-time" ? ACTION_ORANGE : "#CBD5E1",
+                            selectedPlan === "one-time" ? ACTION_GREEN : "#CBD5E1",
                           backgroundColor:
-                            selectedPlan === "one-time" ? ACTION_ORANGE : "transparent",
+                            selectedPlan === "one-time" ? ACTION_GREEN : "transparent",
                         }}
                       >
                         {selectedPlan === "one-time" && (
@@ -1396,7 +1453,71 @@ export default function Step3Checkout({
 
             <SecurePaymentCard {...paymentCardProps} />
 
-            {/* Compact post-payment timeline — calm reassurance below the Pay button */}
+            {/* Mobile-only state-aware reassurance chip — sits directly under
+                the payment card so the state trust signal anchors the section
+                that just charged the customer. Hidden on desktop where the
+                left trust column already covers regional reassurance. */}
+            {step2.state && (
+              <div className="lg:hidden flex items-center gap-2.5 rounded-xl border border-[#CFE2DC] bg-[#E8F1EE]/60 px-3.5 py-2.5">
+                <div
+                  className="w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0"
+                  style={{ backgroundColor: "#ffffff" }}
+                >
+                  <i className="ri-map-pin-line text-sm" style={{ color: BRAND_GREEN }}></i>
+                </div>
+                <p className="text-[11px] text-slate-700 leading-snug min-w-0">
+                  <span className="font-bold text-slate-900">
+                    {US_STATES.find((s) => s.code === step2.state.toUpperCase())?.name ?? step2.state}
+                  </span>{" "}
+                  <span className="text-slate-600">
+                    housing documentation reviewed by a state-licensed provider where clinically appropriate.
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {/* Sample letter — MOBILE-ONLY position. Placed above the "what
+                happens next" timeline so the customer sees what they're
+                paying for first. On desktop the sample stays in the left
+                trust column (rendered separately below). */}
+            <div className={`${cardClass} lg:hidden`}>
+              <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-50">
+                <div className="min-w-0">
+                  <SectionLabel>What You&apos;ll Receive</SectionLabel>
+                  <p className="text-sm font-bold text-slate-900 tracking-tight">
+                    Your Official ESA Letter
+                  </p>
+                </div>
+                <span className="flex-shrink-0 text-[9px] font-semibold tracking-[0.18em] text-slate-500 bg-white ring-1 ring-slate-200 rounded-full px-2 py-0.5 uppercase">
+                  Sample
+                </span>
+              </div>
+              <div className="relative w-full bg-slate-50 px-4 sm:px-8 py-5 sm:py-6">
+                <div className="rounded-lg overflow-hidden shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] ring-1 ring-slate-200 bg-white relative">
+                  <img
+                    src="/images/checkout/esa-sample-letter.svg"
+                    alt="Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature"
+                    className="w-full h-auto block"
+                    loading="lazy"
+                  />
+                  <div className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-white/90 backdrop-blur ring-1 ring-slate-200 text-[9px] font-semibold tracking-[0.24em] text-slate-500 uppercase">
+                    Sample
+                  </div>
+                </div>
+              </div>
+              <div className="px-5 py-3.5 border-t border-slate-100 flex items-start gap-2.5">
+                <i
+                  className="ri-shield-check-line text-sm flex-shrink-0 mt-0.5"
+                  style={{ color: BRAND_GREEN }}
+                ></i>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Each letter includes a unique verification ID. Landlords can confirm authenticity directly — no health information is disclosed.
+                </p>
+              </div>
+            </div>
+
+            {/* Compact post-payment timeline — calm reassurance after the
+                sample letter so the customer knows what happens after Pay. */}
             <CompactWhatHappensNext />
 
             {/* Trust indicators — GREEN */}
@@ -1467,7 +1588,7 @@ export default function Step3Checkout({
               <SectionLabel>Landlord Verification Included</SectionLabel>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {[
-                  { icon: "ri-qr-code-line", text: "Unique Verification ID on every letter" },
+                  { icon: "ri-shield-check-line", text: "Unique Verification ID on every letter" },
                   { icon: "ri-eye-off-line", text: "Landlords verify — no health info disclosed" },
                   { icon: "ri-user-star-line", text: "Signed by a state-licensed provider" },
                   { icon: "ri-home-heart-line", text: "Compliant with the Fair Housing Act" },
@@ -1496,21 +1617,13 @@ export default function Step3Checkout({
                 </Link>
               </div>
             </div>
-
-            <div className="bg-slate-50/70 border-t border-slate-100 px-5 py-3 flex items-center gap-2">
-              <i className="ri-phone-line text-sm" style={{ color: BRAND_GREEN }}></i>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Prefer to call?{" "}
-                <a href="tel:+14099655885" className="font-semibold underline cursor-pointer" style={{ color: BRAND_GREEN }}>
-                  409-965-5885
-                </a>{" "}
-                — complete your evaluation by phone.
-              </p>
-            </div>
           </div>
 
-          {/* Sample letter card — now visible on mobile too */}
-          <div className={cardClass}>
+          {/* Sample letter — DESKTOP-ONLY position. On desktop the sample
+              sits in the left trust column at its original spot. Mobile has
+              its own copy rendered in the right column above so the post-
+              payment flow reads payment → what happens next → sample. */}
+          <div className={`${cardClass} hidden lg:block`}>
             <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 border-b border-slate-100">
               <div className="min-w-0">
                 <SectionLabel>What You&apos;ll Receive</SectionLabel>
@@ -1541,7 +1654,7 @@ export default function Step3Checkout({
                 style={{ color: BRAND_GREEN }}
               ></i>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Each letter includes a unique QR Verification ID. Landlords can confirm authenticity directly — no health information is disclosed.
+                Each letter includes a unique verification ID. Landlords can confirm authenticity directly — no health information is disclosed.
               </p>
             </div>
           </div>
@@ -1581,9 +1694,16 @@ export default function Step3Checkout({
         onCTA={scrollToPayment}
       />
 
-      {/* ── STICKY MOBILE BOTTOM BAR ── CRITICAL for conversion ── */}
+      {/* ── STICKY MOBILE BOTTOM BAR ── scroll-helper, NOT a second pay button ──
+          Hides while the real payment surface (card form / Klarna) is on
+          screen so the user never sees two competing CTAs. Slides back in
+          when the user scrolls away. The button still calls scrollToPayment
+          — it never duplicates payment logic. */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white border-t border-slate-200 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)]"
+        className={`fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white border-t border-slate-200 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)] transition-transform duration-200 ${
+          paymentVisible ? "translate-y-full pointer-events-none" : "translate-y-0"
+        }`}
+        aria-hidden={paymentVisible}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="px-4 py-3 flex items-center gap-3">
@@ -1612,14 +1732,15 @@ export default function Step3Checkout({
           <button
             type="button"
             onClick={scrollToPayment}
-            className="flex-1 min-w-0 py-3.5 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 text-white tracking-tight transition-all active:scale-[0.98]"
+            className="flex-1 min-w-0 py-3.5 text-sm font-extrabold rounded-xl flex items-center justify-center gap-1.5 text-white tracking-tight transition-all active:scale-[0.98]"
             style={{
-              backgroundColor: ACTION_ORANGE,
-              boxShadow: "0 10px 24px -10px rgba(249,115,22,0.55), 0 2px 6px -2px rgba(249,115,22,0.3)",
+              backgroundColor: ACTION_GREEN,
+              boxShadow: "0 8px 22px -10px rgba(5,150,105,0.45), 0 2px 6px -2px rgba(5,150,105,0.22)",
             }}
+            aria-label="Jump to payment"
           >
-            <i className="ri-lock-2-line text-base"></i>
-            <span className="truncate">Complete Secure Evaluation</span>
+            <i className="ri-arrow-down-line text-base flex-shrink-0"></i>
+            <span className="truncate">Continue to Payment</span>
           </button>
         </div>
       </div>

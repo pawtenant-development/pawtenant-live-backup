@@ -141,7 +141,7 @@ export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = f
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-extrabold text-[#2c5282]">Landlord-Verifiable Letter Included</p>
-          <p className="text-xs text-[#2c5282]/70 mt-0.5">Every PawTenant letter includes a unique QR Verification ID — landlords can confirm authenticity instantly, no health info disclosed.</p>
+          <p className="text-xs text-[#2c5282]/70 mt-0.5">Every PawTenant letter includes a unique verification ID — landlords can confirm authenticity instantly, no health information disclosed.</p>
         </div>
         <a href="/esa-letter-verification" target="_blank" rel="noopener noreferrer"
           className="whitespace-nowrap text-xs font-bold text-[#2c5282] hover:underline cursor-pointer flex-shrink-0 flex items-center gap-1">

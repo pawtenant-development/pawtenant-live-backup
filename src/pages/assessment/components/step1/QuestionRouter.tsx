@@ -111,24 +111,29 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
         </p>
       </div>
 
-      {/* Landlord Verification Badge — identical to legacy */}
-      <div className="mb-5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 flex items-center justify-center bg-[#2c5282] rounded-lg flex-shrink-0">
-          <i className="ri-shield-check-fill text-white text-sm"></i>
+      {/* Landlord Verification Badge — shown only on the first question to
+          reduce vertical noise during the rest of the assessment. The user
+          gets the trust signal once at the intro, then the screen stays
+          focused on the question itself. */}
+      {currentIndex === 0 && (
+        <div className="mb-5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-[#2c5282] rounded-lg flex-shrink-0">
+            <i className="ri-shield-check-fill text-white text-sm"></i>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-extrabold text-[#2c5282]">Landlord-Verifiable Letter Included</p>
+            <p className="text-xs text-[#2c5282]/70 mt-0.5">Every PawTenant letter includes a unique verification ID — landlords can confirm authenticity instantly, no health information disclosed.</p>
+          </div>
+          <a
+            href="/esa-letter-verification"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="whitespace-nowrap text-xs font-bold text-[#2c5282] hover:underline cursor-pointer flex-shrink-0 flex items-center gap-1"
+          >
+            <i className="ri-external-link-line text-xs"></i>Learn more
+          </a>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-extrabold text-[#2c5282]">Landlord-Verifiable Letter Included</p>
-          <p className="text-xs text-[#2c5282]/70 mt-0.5">Every PawTenant letter includes a unique QR Verification ID — landlords can confirm authenticity instantly, no health info disclosed.</p>
-        </div>
-        <a
-          href="/esa-letter-verification"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="whitespace-nowrap text-xs font-bold text-[#2c5282] hover:underline cursor-pointer flex-shrink-0 flex items-center gap-1"
-        >
-          <i className="ri-external-link-line text-xs"></i>Learn more
-        </a>
-      </div>
+      )}
 
       {/* Active question card */}
       <div ref={cardRef}>

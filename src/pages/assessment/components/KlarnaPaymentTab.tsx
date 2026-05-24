@@ -347,17 +347,17 @@ export default function KlarnaPaymentTab({
               type="button"
               onClick={handleContinue}
               disabled={loading || complianceBlocked}
-              className={`whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 text-sm font-extrabold rounded-xl transition-colors ${
+              className={`whitespace-nowrap w-full flex items-center justify-center gap-2 py-4 text-sm font-extrabold rounded-xl transition-colors ${
                 loading || complianceBlocked
                   ? "bg-gray-300 text-white cursor-not-allowed"
-                  : "bg-[#ff679a] hover:bg-[#e85a8c] text-white cursor-pointer"
+                  : "bg-[#ff679a] hover:bg-[#e85a8c] text-white cursor-pointer shadow-[0_8px_22px_-10px_rgba(255,103,154,0.55)]"
               }`}
               aria-describedby={complianceBlocked ? "klarna-compliance-hint" : undefined}
             >
-              <div className="w-16 h-5 flex items-center justify-center bg-white/20 rounded text-[9px] font-extrabold">
+              <div className="w-14 h-5 flex items-center justify-center bg-white/20 rounded text-[9px] font-extrabold">
                 Klarna
               </div>
-              Continue with Klarna
+              Pay 4× ${installment} — Continue
             </button>
 
             {/* Compliance-blocked helper — explains why the button is greyed out
@@ -385,48 +385,59 @@ export default function KlarnaPaymentTab({
           </>
         ) : (
           <div ref={fallbackRef} className="space-y-3">
-            {/* Helper banner — surfaces the fallback CTA when the popup was blocked
-                or the user closed the Klarna tab. Calm, informational, not alarming. */}
-            <div className="flex items-start gap-2.5 bg-[#fff0f5] border border-[#f9c6d8] rounded-xl px-3.5 py-3">
-              <div className="w-6 h-6 flex items-center justify-center bg-white rounded-full flex-shrink-0 ring-1 ring-[#f9c6d8]">
-                <i className="ri-external-link-line text-[#ff679a] text-sm"></i>
+            {/* Calm, clear post-redirect guidance. Many users return to this tab
+                after finishing Klarna and need an obvious "I'm done" path.
+                Two clearly numbered steps reduce confusion on mobile. */}
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3.5 flex items-start gap-2.5">
+              <div className="w-6 h-6 flex items-center justify-center bg-white rounded-full flex-shrink-0 ring-1 ring-emerald-200 mt-0.5">
+                <i className="ri-check-line text-emerald-600 text-sm"></i>
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold text-[#17120e] leading-snug">
-                  Klarna checkout opened in a new tab
+                <p className="text-xs font-bold text-emerald-800 leading-snug">
+                  Your assessment is saved
                 </p>
-                <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
-                  If the tab didn&apos;t open, your browser may have blocked the pop-up. Use the button below to reopen it.
+                <p className="text-[11px] text-emerald-700/90 leading-relaxed mt-0.5">
+                  Finish payment in the Klarna tab, then return here and tap <span className="font-semibold">&quot;I&apos;ve Completed Payment&quot;</span> below to issue your letter.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => window.open(checkoutUrl, "_blank")}
-              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-4 bg-[#ff679a] hover:bg-[#e85a8c] text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer ring-2 ring-[#ffb3c7]/40 shadow-[0_8px_22px_-10px_rgba(255,103,154,0.55)]"
-            >
-              <i className="ri-external-link-line"></i>
-              Reopen Klarna Checkout
-            </button>
+            {/* Primary action — make "I've Completed Payment" the dominant CTA.
+                Most returning users have finished Klarna; only popup-blocked users
+                need the reopen path. */}
             <button
               type="button"
               onClick={checkPaymentStatus}
               disabled={checkingStatus}
-              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white text-sm font-extrabold rounded-xl transition-colors cursor-pointer"
+              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white text-base font-extrabold rounded-xl transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(16,185,129,0.55)] ring-2 ring-emerald-200/40"
             >
               {checkingStatus ? (
                 <>
-                  <i className="ri-loader-4-line animate-spin"></i>
-                  Checking...
+                  <i className="ri-loader-4-line animate-spin text-lg"></i>
+                  Confirming Payment...
                 </>
               ) : (
                 <>
-                  <i className="ri-check-double-line"></i>
+                  <i className="ri-check-double-line text-lg"></i>
                   I&apos;ve Completed Payment
                 </>
               )}
             </button>
+
+            {/* Secondary path for popup-blocked browsers */}
+            <button
+              type="button"
+              onClick={() => window.open(checkoutUrl, "_blank")}
+              className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-white hover:bg-[#fff0f5] border border-[#f9c6d8] text-[#17120e] text-sm font-bold rounded-xl transition-colors cursor-pointer"
+            >
+              <i className="ri-external-link-line text-[#ff679a]"></i>
+              Reopen Klarna checkout
+            </button>
+
+            <p className="text-[11px] text-center text-slate-500 leading-relaxed">
+              Pop-up blocked? Tap &quot;Reopen Klarna checkout&quot; above.
+            </p>
+
             {statusError && (
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
                 <i className="ri-information-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>

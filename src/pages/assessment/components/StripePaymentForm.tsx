@@ -415,7 +415,7 @@ export default function StripePaymentForm({
           disabled={!canSubmit}
           className={`whitespace-nowrap w-full py-4 sm:py-[18px] text-[15px] sm:text-base font-extrabold rounded-xl flex items-center justify-center gap-2.5 transition-all duration-200 tracking-tight ${
             canSubmit
-              ? "bg-[#F97316] text-white hover:bg-[#EA580C] hover:-translate-y-[1px] shadow-[0_10px_28px_-10px_rgba(249,115,22,0.55),0_2px_6px_-2px_rgba(249,115,22,0.25)] hover:shadow-[0_14px_34px_-10px_rgba(249,115,22,0.65),0_3px_8px_-2px_rgba(249,115,22,0.3)] cursor-pointer"
+              ? "bg-[#059669] text-white hover:bg-[#047857] hover:-translate-y-[1px] shadow-[0_8px_22px_-10px_rgba(5,150,105,0.45),0_2px_6px_-2px_rgba(5,150,105,0.22)] hover:shadow-[0_12px_28px_-10px_rgba(5,150,105,0.55),0_3px_8px_-2px_rgba(5,150,105,0.28)] cursor-pointer"
               : "bg-slate-100 border-2 border-dashed border-slate-200 text-slate-400 cursor-not-allowed select-none"
           }`}
         >
