@@ -172,6 +172,10 @@ export default function DoctorsSection() {
                         <img
                           src={doctor.image}
                           alt={doctor.name}
+                          width={96}
+                          height={96}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover object-top"
                           onError={() => markImageBroken(doctor.id)}
                         />

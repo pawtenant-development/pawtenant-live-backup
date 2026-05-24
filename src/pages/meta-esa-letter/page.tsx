@@ -622,6 +622,7 @@ export default function MetaEsaLetterPage() {
               width={1200}
               height={480}
               loading="lazy"
+              decoding="async"
               className="w-full h-auto block aspect-[16/9] md:aspect-[3/2] object-cover object-center"
             />
           </div>
@@ -662,6 +663,7 @@ export default function MetaEsaLetterPage() {
                   width={1200}
                   height={800}
                   loading="lazy"
+                  decoding="async"
                   className="w-full h-auto block aspect-[4/3] md:aspect-[4/5] object-cover object-center"
                 />
               </div>
@@ -763,6 +765,7 @@ export default function MetaEsaLetterPage() {
                   width={800}
                   height={1035}
                   loading="lazy"
+                  decoding="async"
                   className="w-full h-auto block"
                 />
               </div>
@@ -789,6 +792,7 @@ export default function MetaEsaLetterPage() {
                   width={820}
                   height={1110}
                   loading="lazy"
+                  decoding="async"
                   className="w-full h-auto block"
                 />
                 <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-start gap-2.5">
@@ -861,6 +865,7 @@ export default function MetaEsaLetterPage() {
                   width={1200}
                   height={1500}
                   loading="lazy"
+                  decoding="async"
                   className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
                 />
               </div>
@@ -911,6 +916,7 @@ export default function MetaEsaLetterPage() {
                 width={1200}
                 height={900}
                 loading="lazy"
+                decoding="async"
                 className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
               />
             </div>

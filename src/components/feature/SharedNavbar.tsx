@@ -355,6 +355,10 @@ export default function SharedNavbar() {
           <img
             src="/assets/brand/pawtenant-logo-black-02.png"
             alt="PawTenant"
+            width={400}
+            height={160}
+            loading="lazy"
+            decoding="async"
             className="h-9 w-auto object-contain"
           />
           <button

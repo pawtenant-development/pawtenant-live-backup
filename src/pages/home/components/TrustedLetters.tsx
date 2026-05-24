@@ -101,6 +101,10 @@ export default function TrustedLetters() {
                 <img
                   src={s.img}
                   alt={s.title}
+                  width={1200}
+                  height={800}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover object-center"
                 />
               </div>

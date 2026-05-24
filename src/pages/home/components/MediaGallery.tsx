@@ -192,8 +192,11 @@ export default function MediaGallery() {
                 src={img.src}
                 alt={img.alt}
                 title={img.title}
-                className="w-full h-auto object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                width={400}
+                height={500}
                 loading="lazy"
+                decoding="async"
+                className="w-full h-auto object-cover object-top group-hover:scale-105 transition-transform duration-500"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
                 <p className="text-white text-xs font-bold leading-tight">{img.title}</p>

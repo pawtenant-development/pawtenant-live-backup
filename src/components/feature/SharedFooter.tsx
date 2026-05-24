@@ -61,6 +61,10 @@ export default function SharedFooter() {
             <img
               src="/assets/brand/pawtenant-logo-black-02.png"
               alt="PawTenant Logo"
+              width={400}
+              height={160}
+              loading="lazy"
+              decoding="async"
               className="h-12 w-auto object-contain object-left"
             />
           </Link>
@@ -77,6 +81,10 @@ export default function SharedFooter() {
               <img
                 src="/assets/brand/pawtenant-logo-black-02.png"
                 alt="PawTenant Logo"
+                width={400}
+                height={160}
+                loading="lazy"
+                decoding="async"
                 className="h-14 w-auto object-contain object-left"
               />
             </Link>

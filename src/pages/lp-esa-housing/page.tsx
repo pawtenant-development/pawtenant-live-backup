@@ -356,9 +356,10 @@ export default function LpEsaHousingPage() {
               <img
                 src="/assets/lifestyle/woman-with-dog-new-apartment.jpg"
                 alt="Tenant moving into a new apartment with an emotional support dog"
-                loading="lazy"
                 width={1600}
                 height={1067}
+                loading="lazy"
+                decoding="async"
                 className="absolute inset-0 w-full h-full object-cover"
               />
             </div>
@@ -425,6 +426,7 @@ export default function LpEsaHousingPage() {
                   width={1200}
                   height={800}
                   loading="lazy"
+                  decoding="async"
                   className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
                 />
               </div>
@@ -676,9 +678,10 @@ export default function LpEsaHousingPage() {
             <img
               src="/assets/testimonials/couple-with-dog-home.jpg"
               alt="Couple at home embracing their emotional support dog — the bond an ESA letter is designed to protect"
-              loading="lazy"
               width={1280}
               height={960}
+              loading="lazy"
+              decoding="async"
               className="w-full h-auto object-cover aspect-[4/3] object-center"
             />
           </div>
@@ -1253,8 +1256,9 @@ function LetterPreviewCard() {
           alt="Sample PawTenant ESA letter showing the verification ID, provider credentials, and housing-accommodation language. Names and details are placeholders."
           width={800}
           height={1035}
+          loading="lazy"
+          decoding="async"
           className="w-full h-auto block"
-          loading="eager"
         />
       </div>
 
@@ -1380,6 +1384,7 @@ function VerifyMock() {
         width={820}
         height={1110}
         loading="lazy"
+        decoding="async"
         className="w-full h-auto block"
       />
 
@@ -1445,9 +1450,10 @@ function ProviderCard({ name, credential, photo, bio }: { name: string; credenti
           <img
             src={photo}
             alt={`${name}, ${credential}`}
-            loading="lazy"
             width={56}
             height={56}
+            loading="lazy"
+            decoding="async"
             onError={() => setImgFailed(true)}
             className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-100"
           />
