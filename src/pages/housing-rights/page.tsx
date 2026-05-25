@@ -317,7 +317,7 @@ export default function HousingRightsPage() {
                 Options for Denial Accommodation: In some cases, despite presenting the necessary documentation and complying with the FHA, some landlords may deny or delay an ESA accommodation request. Should this happen, there are legal options available to individuals with disabilities who are facing housing discrimination, including those related to ESA accommodations requiring reasonable accommodation under the FHA.
               </p>
               <p className="text-gray-600 text-sm leading-relaxed">
-                Should you fail to get the housing you need, you can contact the HUD for guidance. The NFB often calls out but keeps to this in certain circumstances. By encouraging its activity by organizations, the NFHRC (NFHRC) can help navigate this process ensure your rights are protected.
+                If a housing provider refuses or delays your ESA accommodation request, ask for the reason in writing and keep copies of every communication. You can provide valid ESA documentation from a licensed mental health professional and ask the provider to review it under Fair Housing reasonable-accommodation rules. If the issue remains unresolved, you may contact HUD or your state or local fair housing agency for guidance on next steps.
               </p>
             </div>
           </div>
