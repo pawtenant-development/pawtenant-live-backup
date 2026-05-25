@@ -1,45 +1,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import CustomerPortalPreview from "./CustomerPortalPreview";
-
-interface OrderDocument {
-  id: string;
-  order_id: string;
-  label: string;
-  doc_type: string;
-  file_url: string;
-  uploaded_at: string;
-  sent_to_customer: boolean;
-  customer_visible: boolean;
-}
-
-interface Order {
-  id: string;
-  confirmation_id: string;
-  email: string;
-  first_name: string | null;
-  last_name: string | null;
-  phone: string | null;
-  state: string | null;
-  plan_type: string | null;
-  delivery_speed: string | null;
-  selected_provider: string | null;
-  price: number | null;
-  status: string;
-  doctor_status: string | null;
-  doctor_name: string | null;
-  doctor_email: string | null;
-  letter_url: string | null;
-  signed_letter_url: string | null;
-  patient_notification_sent_at: string | null;
-  assessment_answers: Record<string, unknown> | null;
-  created_at: string;
-  ghl_synced_at: string | null;
-  ghl_sync_error: string | null;
-  user_id: string | null;
-  payment_intent_id: string | null;
-  documents?: OrderDocument[];
-}
+// Canonical Order / OrderDocument / DoctorProfile — see ../types.ts
+import type { Order, OrderDocument } from "../types";
 
 interface DoctorNote {
   id: string;
@@ -60,10 +23,10 @@ interface DoctorNotification {
   created_at: string;
 }
 
-interface DoctorProfile {
-  user_id: string;
-  full_name: string;
-}
+// Local narrow DoctorProfile alias for the small note-author lookup map
+// below. The canonical DoctorProfile in ../types.ts is the full superset;
+// here we only ever read user_id + full_name, so we Pick those.
+type DoctorProfile = { user_id: string; full_name: string };
 
 interface CustomerDetailModalProps {
   email: string;
@@ -822,9 +785,14 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
                     </div>
                   )}
 
-                  {/* Portal View */}
+                  {/* Portal View. CustomerPortalPreview keeps its own slightly
+                      stricter local Order shape (requires additional_documents_requested),
+                      while the canonical Order from ../types.ts marks it optional;
+                      cast at the boundary so CustomerPortalPreview doesn't need
+                      a touch — its read sites already handle null. */}
                   {activeSection === "portal" && (
-                    <CustomerPortalPreview orders={orders} userEmail={email} />
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    <CustomerPortalPreview orders={orders as any} userEmail={email} />
                   )}
                 </div>
               </div>

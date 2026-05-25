@@ -3,34 +3,10 @@ import { useState, useCallback } from "react";
 import OrderNotesPanel from "./OrderNotesPanel";
 import { supabase } from "@/lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-export interface Order {
-  id: string; confirmation_id: string; email: string; phone: string | null;
-  first_name: string | null; last_name: string | null; state: string | null;
-  plan_type: string | null; delivery_speed: string | null; selected_provider: string | null;
-  price: number | null; payment_intent_id: string | null; payment_method: string | null;
-  status: string; doctor_status: string | null; doctor_user_id: string | null;
-  doctor_name: string | null; doctor_email: string | null; letter_url: string | null;
-  signed_letter_url: string | null; patient_notification_sent_at: string | null;
-  assessment_answers: Record<string, unknown> | null; created_at: string;
-  ghl_synced_at: string | null; ghl_sync_error: string | null; last_contacted_at: string | null;
-  email_log?: { type: string; sentAt: string; to: string; success: boolean }[] | null;
-  referred_by: string | null; sent_followup_at?: string | null; addon_services?: string[] | null;
-  refunded_at?: string | null; refund_amount?: number | null; dispute_id?: string | null;
-  dispute_status?: string | null; dispute_reason?: string | null; dispute_created_at?: string | null;
-  fraud_warning?: boolean | null; fraud_warning_at?: string | null;
-  subscription_status?: string | null; letter_type?: string | null;
-  payment_failure_reason?: string | null; payment_failed_at?: string | null;
-  seq_30min_sent_at?: string | null; seq_24h_sent_at?: string | null; seq_3day_sent_at?: string | null;
-  followup_opt_out?: boolean | null; seq_opted_out_at?: string | null;
-}
-
-export interface DoctorContact {
-  id: string; full_name: string; email: string; phone: string | null;
-  licensed_states: string[]; is_active: boolean | null;
-  state_license_numbers?: Record<string, string> | null;
-}
+// Canonical types — see ../types.ts. Re-exported below for back-compat
+// with any existing `import { Order, DoctorContact } from "./OrderCard"`.
+import type { Order, DoctorContact } from "../types";
+export type { Order, DoctorContact };
 
 interface AdminProfile { id: string; user_id: string; full_name: string; email: string | null; role: string | null; }
 interface PendingAssign { confirmationId: string; doctorEmail: string; doctorName: string; }

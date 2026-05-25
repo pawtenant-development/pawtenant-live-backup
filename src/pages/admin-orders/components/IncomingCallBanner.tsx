@@ -3,19 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
-interface Order {
-  id: string;
-  confirmation_id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string;
-  phone: string | null;
-  state: string | null;
-  status: string;
-  payment_intent_id: string | null;
-  doctor_email: string | null;
-  doctor_user_id: string | null;
-}
+// Canonical Order — see ../types.ts
+import type { Order } from "../types";
 
 interface IncomingCall {
   id: string;

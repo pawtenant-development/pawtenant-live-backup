@@ -19,7 +19,7 @@
  * CommunicationsTemplatesPanel for hub clarity.
  */
 import { useState, useEffect, useMemo, useRef } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 
 interface EmailTemplate {
   id: string;

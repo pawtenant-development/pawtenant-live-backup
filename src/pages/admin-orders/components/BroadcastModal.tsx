@@ -6,26 +6,8 @@ import BroadcastHistoryModal from "./BroadcastHistoryModal";
 import { logAudit } from "../../../lib/auditLogger";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 
-interface Order {
-  id: string;
-  confirmation_id: string;
-  phone: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  email: string;
-  state: string | null;
-  payment_intent_id: string | null;
-  doctor_email: string | null;
-  doctor_user_id: string | null;
-  doctor_status: string | null;
-  status: string;
-  created_at: string;
-  letter_type?: string | null;
-  broadcast_opt_out?: boolean | null;
-  last_broadcast_sent_at?: string | null;
-  source_system?: string | null;
-  historical_import?: boolean | null;
-}
+// Canonical Order — see ../types.ts
+import type { Order } from "../types";
 
 interface BroadcastModalProps {
   orders: Order[];

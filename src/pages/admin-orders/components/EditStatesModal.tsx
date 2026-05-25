@@ -192,13 +192,13 @@ export default function EditStatesModal({ doctor, onClose, onSaved }: EditStates
       const updates: Promise<unknown>[] = [];
 
       if (doctor.contactId) {
-        updates.push(supabase.from("doctor_contacts").update({ licensed_states: finalStateCodes }).eq("id", doctor.contactId));
+        updates.push(Promise.resolve(supabase.from("doctor_contacts").update({ licensed_states: finalStateCodes }).eq("id", doctor.contactId)));
       }
       if (doctor.profileId) {
-        updates.push(supabase.from("doctor_profiles").update({
+        updates.push(Promise.resolve(supabase.from("doctor_profiles").update({
           licensed_states: finalStateCodes,
           state_license_numbers: Object.keys(cleanedLicenses).length > 0 ? cleanedLicenses : null,
-        }).eq("id", doctor.profileId));
+        }).eq("id", doctor.profileId)));
       }
 
       const results = await Promise.all(updates);

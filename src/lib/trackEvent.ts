@@ -111,8 +111,7 @@ function fire(
     };
 
     try {
-      void supabase
-        .rpc("record_event", payload)
+      void Promise.resolve(supabase.rpc("record_event", payload))
         .then(({ error }) => {
           if (error && IS_DEV) console.debug("[trackEvent] record_event error:", error.message, payload);
         })

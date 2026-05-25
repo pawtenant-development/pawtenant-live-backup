@@ -76,7 +76,7 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
       if (cancelled) return;
 
       if (prof) {
-        const typed = prof as ProfileData;
+        const typed = prof as unknown as ProfileData;
         setData(typed);
         setBio(typed.bio ?? "");
 

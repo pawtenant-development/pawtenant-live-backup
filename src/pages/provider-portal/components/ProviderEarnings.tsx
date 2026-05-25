@@ -64,7 +64,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
       .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, orders!order_id(status, doctor_status, refunded_at)")
       .eq("id", id)
       .maybeSingle();
-    return (data as Earning | null);
+    return (data as unknown as Earning | null);
   }, []);
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
           .maybeSingle(),
       ]);
 
-      const raw = (earningsRes.data as Earning[]) ?? [];
+      const raw = (earningsRes.data as unknown as Earning[]) ?? [];
       setEarnings(applyVisibilityFilter(raw));
       setPerOrderRate((profileRes.data as { per_order_rate: number | null } | null)?.per_order_rate ?? null);
       setLoading(false);

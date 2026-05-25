@@ -9,40 +9,16 @@ import ProviderDrawer from "./ProviderDrawer";
 import { canDelete, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
 import { US_STATES, normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay } from "../../../lib/usStates";
 
-type AvailabilityStatus = "active" | "at_capacity" | "inactive";
-
-interface DoctorProfile {
-  id: string; user_id: string; full_name: string; title: string | null;
-  email: string | null; phone: string | null; license_number: string | null;
-  bio: string | null; is_admin: boolean; is_active: boolean;
-  availability_status: AvailabilityStatus | null;
-  licensed_states: string[] | null; per_order_rate: number | null;
-  role: string | null; created_at: string; photo_url?: string;
-  lifecycle_status?: string | null;
-  is_published?: boolean | null;
-}
-interface DoctorContact {
-  id: string; full_name: string; email: string; phone: string | null;
-  notes: string | null; licensed_states: string[] | null; is_active: boolean;
-  availability_status: AvailabilityStatus | null;
-  per_order_rate: number | null; photo_url?: string;
-}
-interface WorkloadStats { active: number; completed: number; }
-interface DoctorRow {
-  profile: DoctorProfile | null; contact: DoctorContact | null;
-  email: string; name: string; workload: WorkloadStats;
-}
-interface PendingApplication {
-  id: string; first_name: string; last_name: string; email: string;
-  phone: string | null; license_types: string | null; license_number: string | null;
-  license_state: string | null; additional_states: string | null;
-  years_experience: string | null; practice_name: string | null;
-  practice_type: string | null; specializations: string | null;
-  monthly_capacity: string | null; esa_experience: string | null;
-  telehealth_ready: string | null; profile_url: string | null; bio: string | null;
-  headshot_url: string | null; documents_urls: string[] | null;
-  status: string; created_at: string;
-}
+// Canonical types — see ../types.ts. PendingApplication.npi + .licenses are
+// optional + nullable so legacy applications continue to satisfy the type.
+import type {
+  AvailabilityStatus,
+  DoctorProfile,
+  DoctorContact,
+  DoctorRow,
+  WorkloadStats,
+  PendingApplication,
+} from "../types";
 
 const NON_PROVIDER_ROLES = new Set(["owner", "admin_manager", "support", "finance", "read_only"]);
 
@@ -209,8 +185,8 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
     const newActive = currentAvail === "inactive";
     const newAvailability: AvailabilityStatus = newActive ? "active" : "inactive";
     const updates: Promise<{ error: { message: string } | null }>[] = [];
-    if (doc.profile) updates.push(supabase.from("doctor_profiles").update({ is_active: newActive, availability_status: newAvailability }).eq("id", doc.profile.id));
-    if (doc.contact) updates.push(supabase.from("doctor_contacts").update({ is_active: newActive, availability_status: newAvailability }).eq("id", doc.contact.id));
+    if (doc.profile) updates.push(Promise.resolve(supabase.from("doctor_profiles").update({ is_active: newActive, availability_status: newAvailability }).eq("id", doc.profile.id)) as Promise<{ error: { message: string } | null }>);
+    if (doc.contact) updates.push(Promise.resolve(supabase.from("doctor_contacts").update({ is_active: newActive, availability_status: newAvailability }).eq("id", doc.contact.id)) as Promise<{ error: { message: string } | null }>);
     const results = await Promise.all(updates);
     setTogglingEmail(null);
     const anyErr = results.find((r) => r.error);
@@ -227,8 +203,8 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
     setPublishingEmail(doc.email);
     const newPublished = !(doc.profile.is_published === true);
     const updates: Promise<{ error: { message: string } | null }>[] = [
-      supabase.from("doctor_profiles").update({ is_published: newPublished }).eq("id", doc.profile.id),
-      supabase.from("approved_providers").update({ is_active: newPublished }).eq("email", doc.email),
+      Promise.resolve(supabase.from("doctor_profiles").update({ is_published: newPublished }).eq("id", doc.profile.id)) as Promise<{ error: { message: string } | null }>,
+      Promise.resolve(supabase.from("approved_providers").update({ is_active: newPublished }).eq("email", doc.email)) as Promise<{ error: { message: string } | null }>,
     ];
     const results = await Promise.all(updates);
     setPublishingEmail(null);
@@ -245,9 +221,9 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
       return;
     }
     const deletes: Promise<{ error: { message: string } | null }>[] = [];
-    if (doc.profile) deletes.push(supabase.from("doctor_profiles").delete().eq("id", doc.profile.id));
-    if (doc.contact) deletes.push(supabase.from("doctor_contacts").delete().eq("id", doc.contact.id));
-    deletes.push(supabase.from("approved_providers").update({ is_active: false }).eq("email", doc.email));
+    if (doc.profile) deletes.push(Promise.resolve(supabase.from("doctor_profiles").delete().eq("id", doc.profile.id)) as Promise<{ error: { message: string } | null }>);
+    if (doc.contact) deletes.push(Promise.resolve(supabase.from("doctor_contacts").delete().eq("id", doc.contact.id)) as Promise<{ error: { message: string } | null }>);
+    deletes.push(Promise.resolve(supabase.from("approved_providers").update({ is_active: false }).eq("email", doc.email)) as Promise<{ error: { message: string } | null }>);
     const results = await Promise.all(deletes);
     const anyErr = results.find((r) => r.error);
     setDeleteDoc(null);

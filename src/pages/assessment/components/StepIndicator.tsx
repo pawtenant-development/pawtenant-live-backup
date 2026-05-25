@@ -2,6 +2,14 @@ interface StepIndicatorProps {
   currentStep: number;
   answeredInStep1?: number;
   totalInStep1?: number;
+  /**
+   * Optional caller-provided step labels. Currently ignored at runtime — the
+   * component uses the internal STEPS array unconditionally so ESA and PSD
+   * flows render the same visual chrome. Accepted here so PSD assessment can
+   * pass its labels without a type error; remove this prop once PSD adopts
+   * the shared labels or this component gains real per-flow theming.
+   */
+  steps?: Array<{ label: string; step: number }>;
 }
 
 const STEPS = [

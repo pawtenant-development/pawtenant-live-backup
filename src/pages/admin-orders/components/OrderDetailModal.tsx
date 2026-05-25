@@ -65,6 +65,10 @@ interface Order {
   ghl_synced_at: string | null;
   ghl_sync_error: string | null;
   ghl_contact_id?: string | null;
+  // Required by PaymentHistoryTab's canonical Order. Present on every row
+  // we SELECT today — but typed nullable because legacy rows that have
+  // never been contacted still leave it null.
+  last_contacted_at: string | null;
   email_log?: EmailLogEntry[] | null;
   referred_by: string | null;
   // ATTR-CONSISTENCY-LOCK: only the flat attribution columns the parent
@@ -114,6 +118,9 @@ interface Order {
   refund_amount?: number | null;
   dispute_id?: string | null;
   dispute_status?: string | null;
+  // Read by the disputes section render below (~lines 4008/4011). Optional
+  // + nullable because not every disputed order has a populated reason.
+  dispute_reason?: string | null;
   fraud_warning?: boolean | null;
   letter_type?: string | null;
   coupon_code?: string | null;
@@ -2207,17 +2214,21 @@ export default function OrderDetailModal({
       // them. Supabase returns errors as `{ error }` rather than throwing, so the prior
       // empty try/catch silently let RLS/permission failures pass through and the parent
       // delete then surfaced a vague raw FK error.
+      // PostgrestFilterBuilder is a PromiseLike (no .catch/.finally) so the
+      // runner type Promise<...> rejects it. Wrap each call in
+      // Promise.resolve(...) to satisfy the type without changing the
+      // runtime query — same delete, same eq() filter, same returned shape.
       const cleanups: Array<{ table: string; run: () => Promise<{ error?: { message: string } | null }> }> = [
-        { table: "communications",      run: () => supabase.from("communications").delete().eq("order_id", order.id) },
-        { table: "doctor_earnings",     run: () => supabase.from("doctor_earnings").delete().eq("order_id", order.id) },
-        { table: "order_documents",     run: () => supabase.from("order_documents").delete().eq("order_id", order.id) },
-        { table: "doctor_notes",        run: () => supabase.from("doctor_notes").delete().eq("order_id", order.id) },
-        { table: "order_status_logs",   run: () => supabase.from("order_status_logs").delete().eq("order_id", order.id) },
-        { table: "doctor_notifications",run: () => supabase.from("doctor_notifications").delete().eq("order_id", order.id) },
-        { table: "shared_order_notes",  run: () => supabase.from("shared_order_notes").delete().eq("order_id", order.id) },
-        { table: "letter_verifications",run: () => supabase.from("letter_verifications").delete().eq("order_id", order.id) },
-        { table: "meta_events",         run: () => supabase.from("meta_events").delete().eq("order_id", order.id) },
-        { table: "audit_logs",          run: () => supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id) },
+        { table: "communications",      run: () => Promise.resolve(supabase.from("communications").delete().eq("order_id", order.id)) },
+        { table: "doctor_earnings",     run: () => Promise.resolve(supabase.from("doctor_earnings").delete().eq("order_id", order.id)) },
+        { table: "order_documents",     run: () => Promise.resolve(supabase.from("order_documents").delete().eq("order_id", order.id)) },
+        { table: "doctor_notes",        run: () => Promise.resolve(supabase.from("doctor_notes").delete().eq("order_id", order.id)) },
+        { table: "order_status_logs",   run: () => Promise.resolve(supabase.from("order_status_logs").delete().eq("order_id", order.id)) },
+        { table: "doctor_notifications",run: () => Promise.resolve(supabase.from("doctor_notifications").delete().eq("order_id", order.id)) },
+        { table: "shared_order_notes",  run: () => Promise.resolve(supabase.from("shared_order_notes").delete().eq("order_id", order.id)) },
+        { table: "letter_verifications",run: () => Promise.resolve(supabase.from("letter_verifications").delete().eq("order_id", order.id)) },
+        { table: "meta_events",         run: () => Promise.resolve(supabase.from("meta_events").delete().eq("order_id", order.id)) },
+        { table: "audit_logs",          run: () => Promise.resolve(supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id)) },
       ];
 
       const failedCleanups: string[] = [];
@@ -2731,7 +2742,11 @@ export default function OrderDetailModal({
   }, [order.id]);
 
   useEffect(() => {
-    if (section === "emails" || section === "comms") loadEmailLog();
+    // Legacy "emails" sub-tab was consolidated into "comms" — Section type
+    // no longer includes "emails" so the prior `section === "emails"`
+    // branch was unreachable. loadEmailLog still fires on "comms" which
+    // is the only valid section that surfaces the email log today.
+    if (section === "comms") loadEmailLog();
     if (section === "comms" || section === "notes") onClearUnread?.(order.confirmation_id);
   }, [section, loadEmailLog]);
 

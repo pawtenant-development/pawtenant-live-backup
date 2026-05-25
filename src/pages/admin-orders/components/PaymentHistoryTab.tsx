@@ -19,24 +19,8 @@ interface PaymentAttempt {
   created_at: string;
 }
 
-interface Order {
-  id: string;
-  confirmation_id: string;
-  email: string;
-  first_name: string | null;
-  last_name: string | null;
-  price: number | null;
-  payment_intent_id: string | null;
-  payment_method: string | null;
-  payment_failed_at: string | null;
-  payment_failure_reason: string | null;
-  status: string;
-  letter_type?: string | null;
-  // 2026-05-22 REFUND-CANCEL-FOLLOWUP: surfaced so the useEffect below can
-  // retrigger payment_attempts reload right after a Refund + Cancel finishes.
-  refund_amount?: number | null;
-  refunded_at?: string | null;
-}
+// Canonical Order — see ../types.ts
+import type { Order } from "../types";
 
 interface PaymentHistoryTabProps {
   order: Order;

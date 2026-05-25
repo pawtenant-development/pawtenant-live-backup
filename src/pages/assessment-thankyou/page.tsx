@@ -468,8 +468,14 @@ export default function AssessmentThankYouPage() {
             }
             // Mark gtag as already-handled so the bottom useEffect skips it
             gtagConversionFired.current = true;
+            // Hoisted so trackPaymentSuccess + trackRecoveryConversionIfFlagged
+            // below can read the same conversion value. Previously this const
+            // lived inside the gtag if-block, which meant the later try/catch
+            // referenced an out-of-scope identifier, threw ReferenceError, and
+            // the catch swallowed it — so those two funnel events never fired
+            // on the Stripe redirect path. Calculation is unchanged.
+            const convVal = urlAmount ? parseFloat(urlAmount) : (order.price ?? 0);
             if (typeof window.gtag === "function") {
-              const convVal = urlAmount ? parseFloat(urlAmount) : (order.price ?? 0);
               const txId = urlOrderId ?? order.confirmationId ?? "";
               // Enhanced Conversions: set identity user_data BEFORE the
               // conversion event so Google can match this purchase to the
@@ -674,10 +680,12 @@ export default function AssessmentThankYouPage() {
     // uploadClickConversions skips this order (prevents double-counting).
     const markGoogleTagFired = (txId: string) => {
       if (!txId) return;
-      supabase
-        .from("orders")
-        .update({ google_tag_fired: true })
-        .eq("confirmation_id", txId)
+      Promise.resolve(
+        supabase
+          .from("orders")
+          .update({ google_tag_fired: true })
+          .eq("confirmation_id", txId)
+      )
         .then(() => {
           console.log("[ESA Thank-You] google_tag_fired=true set for", txId);
         })

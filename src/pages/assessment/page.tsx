@@ -1166,8 +1166,8 @@ export default function AssessmentPage() {
       couponCode: appliedCoupon?.code ?? "",
       couponDiscount: appliedCoupon?.discount ?? 0,
       confirmationId: confirmationId.current,
-      _step1: step1 as Record<string, unknown>,
-      _step2: step2 as Record<string, unknown>,
+      _step1: step1 as unknown as Record<string, unknown>,
+      _step2: step2 as unknown as Record<string, unknown>,
       _step3Plan: step3.plan,
     };
     sessionStorage.setItem("esa_pending_order", JSON.stringify(pendingOrder));

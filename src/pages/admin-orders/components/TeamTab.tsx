@@ -686,10 +686,17 @@ export default function TeamTab() {
       let roleUpdated = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
-        const { error: roleErr, count } = await supabase.from("doctor_profiles")
+        // .select() with the count/head options is a valid Supabase v2 call
+        // at runtime, but the typed overload for UpdateBuilder doesn't accept
+        // the options arg. Cast the builder to bypass the type-level mismatch
+        // without changing runtime behavior.
+        const builder = supabase.from("doctor_profiles")
           .update({ role: form.role, is_admin: cfg.isAdmin })
-          .eq("email", form.email.trim())
-          .select("id", { count: "exact", head: true });
+          .eq("email", form.email.trim()) as unknown as {
+            select: (cols: string, opts: { count: "exact"; head: true }) =>
+              Promise<{ error: { message: string } | null; count: number | null }>;
+          };
+        const { error: roleErr, count } = await builder.select("id", { count: "exact", head: true });
         if (!roleErr && (count ?? 0) > 0) { roleUpdated = true; break; }
       }
       if (!roleUpdated) {

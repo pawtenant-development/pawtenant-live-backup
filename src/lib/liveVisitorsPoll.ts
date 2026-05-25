@@ -187,8 +187,8 @@ function ensureRealtime(): void {
     realtimeChannel = supabase
       .channel("admin:live-visitors")
       .on(
-        // @ts-expect-error — supabase-js type narrowing for postgres_changes
-        // payloads is overly strict; the runtime contract is stable.
+        // supabase-js type narrowing for postgres_changes payloads has been
+        // relaxed in recent versions; the runtime contract is stable.
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "visitor_sessions" },
         () => {

@@ -416,10 +416,12 @@ export default function PSDAssessmentThankYouPage() {
     // uploadClickConversions skips this order (prevents double-counting).
     const markGoogleTagFired = (txId: string) => {
       if (!txId) return;
-      supabase
-        .from("orders")
-        .update({ google_tag_fired: true })
-        .eq("confirmation_id", txId)
+      Promise.resolve(
+        supabase
+          .from("orders")
+          .update({ google_tag_fired: true })
+          .eq("confirmation_id", txId)
+      )
         .then(() => {
           console.log("[PSD Thank-You] google_tag_fired=true set for", txId);
         })

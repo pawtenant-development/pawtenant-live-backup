@@ -622,7 +622,7 @@ export function getOrInitFirstTouch(): FirstTouchSnapshot | null {
     // localStorage unavailable / quota — fine, return the in-memory snapshot.
   }
 
-  try { debugLog("first_touch.init", snapshot); } catch { /* ignore */ }
+  try { debugLog("first_touch.init", snapshot as unknown as Record<string, unknown>); } catch { /* ignore */ }
   return snapshot;
 }
 

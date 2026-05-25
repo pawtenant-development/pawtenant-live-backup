@@ -1,42 +1,12 @@
 import { useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
-
-// OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: structured license row shape.
-interface ApplicationLicenseRow {
-  state_code: string;
-  credential: string;
-  license_number: string;
-}
-
-interface ProviderApplication {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string | null;
-  npi: string | null;
-  license_types: string | null;
-  license_number: string | null;
-  license_state: string | null;
-  additional_states: string | null;
-  // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: optional jsonb. New applications
-  // populate it; legacy applications leave it null and fall back to the older
-  // license_state / license_number / license_types fields below.
-  licenses: ApplicationLicenseRow[] | null;
-  years_experience: string | null;
-  practice_name: string | null;
-  practice_type: string | null;
-  specializations: string | null;
-  monthly_capacity: string | null;
-  esa_experience: string | null;
-  telehealth_ready: string | null;
-  profile_url: string | null;
-  bio: string | null;
-  headshot_url: string | null;
-  documents_urls: string[] | null;
-  status: string;
-  created_at: string;
-}
+// Canonical types — see ../types.ts. The shared PendingApplication is a
+// superset of the prior local ProviderApplication (npi + licenses kept
+// optional + nullable so legacy applications still satisfy the type).
+import type {
+  ApplicationLicenseRow,
+  PendingApplication as ProviderApplication,
+} from "../types";
 
 const STATE_NAME_TO_CODE: Record<string, string> = {
   "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",

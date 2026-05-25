@@ -198,8 +198,7 @@ export function ensureVisitorSession(): void {
   };
 
   try {
-    void supabase
-      .rpc("record_visitor_session", payload)
+    void Promise.resolve(supabase.rpc("record_visitor_session", payload))
       .then(({ error }) => {
         if (error) {
           if (IS_DEV) console.debug("[visitorSession] record_visitor_session error:", error.message);
@@ -230,11 +229,10 @@ function markEvent(flagKey: string, event: string): void {
   ssSet(flagKey, "1");
 
   try {
-    void supabase
-      .rpc("mark_visitor_session_event", {
+    void Promise.resolve(supabase.rpc("mark_visitor_session_event", {
         p_session_id: sessionId,
         p_event:      event,
-      })
+      }))
       .then(({ error }) => {
         if (error && IS_DEV) console.debug("[visitorSession] mark_visitor_session_event error:", error.message);
       })
@@ -291,11 +289,10 @@ export function pulseVisitorSession(currentPage?: string | null): void {
   }
 
   try {
-    void supabase
-      .rpc("bump_visitor_pulse", {
+    void Promise.resolve(supabase.rpc("bump_visitor_pulse", {
         p_session_id:   sessionId,
         p_current_page: path,
-      })
+      }))
       .then(({ error }) => {
         if (error && IS_DEV) console.debug("[visitorSession] bump_visitor_pulse error:", error.message);
       })
@@ -337,11 +334,10 @@ export function linkSessionToOrder(confirmationId: string): void {
   if (!sessionId) return;
 
   try {
-    void supabase
-      .rpc("link_session_to_order", {
+    void Promise.resolve(supabase.rpc("link_session_to_order", {
         p_session_id:      sessionId,
         p_confirmation_id: confirmationId,
-      })
+      }))
       .then(({ error }) => {
         if (error && IS_DEV) console.debug("[visitorSession] link_session_to_order error:", error.message);
       })

@@ -37,119 +37,18 @@ import ApprovalsInbox from "./components/ApprovalsInbox";
 import ApprovalNotificationBell from "./components/ApprovalNotificationBell";
 import FinanceOrdersGate from "./components/FinanceOrdersGate";
 import CommunicationsHub from "./components/CommunicationsHub";
+import type {
+  Order,
+  DoctorProfile,
+  DoctorContact,
+  AttributionSnapshot,
+} from "./types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface DoctorProfile {
-  id: string;
-  user_id: string;
-  full_name: string;
-  title: string | null;
-  email: string | null;
-  phone: string | null;
-  is_admin: boolean;
-  is_active: boolean;
-  licensed_states: string[] | null;
-  state_license_numbers?: Record<string, string> | null;
-  role: string | null;
-  custom_tab_access: string[] | null;
-}
-
-interface DoctorContact {
-  id: string;
-  full_name: string;
-  email: string;
-  phone: string | null;
-  licensed_states: string[];
-  is_active: boolean | null;
-  /** Keys are 2-letter state abbrs (e.g. "TX"). Used as fallback eligibility check. */
-  state_license_numbers?: Record<string, string> | null;
-}
-
-interface Order {
-  id: string;
-  confirmation_id: string;
-  email: string;
-  phone: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  state: string | null;
-  plan_type: string | null;
-  delivery_speed: string | null;
-  selected_provider: string | null;
-  price: number | null;
-  payment_intent_id: string | null;
-  payment_method: string | null;
-  status: string;
-  doctor_status: string | null;
-  doctor_user_id: string | null;
-  doctor_name: string | null;
-  doctor_email: string | null;
-  letter_url: string | null;
-  signed_letter_url: string | null;
-  patient_notification_sent_at: string | null;
-  assessment_answers: Record<string, unknown> | null;
-  created_at: string;
-  ghl_synced_at: string | null;
-  ghl_sync_error: string | null;
-  ghl_contact_id?: string | null;
-  last_contacted_at: string | null;
-  email_log?: { type: string; sentAt: string; to: string; success: boolean }[] | null;
-  referred_by: string | null;
-  sent_followup_at?: string | null;
-  addon_services?: string[] | null;
-  refunded_at?: string | null;
-  refund_amount?: number | null;
-  dispute_id?: string | null;
-  dispute_status?: string | null;
-  dispute_reason?: string | null;
-  dispute_created_at?: string | null;
-  fraud_warning?: boolean | null;
-  fraud_warning_at?: string | null;
-  subscription_status?: string | null;
-  letter_type?: string | null;
-  payment_failure_reason?: string | null;
-  payment_failed_at?: string | null;
-  seq_30min_sent_at?: string | null;
-  seq_24h_sent_at?: string | null;
-  seq_3day_sent_at?: string | null;
-  followup_opt_out?: boolean | null;
-  seq_opted_out_at?: string | null;
-  broadcast_opt_out?: boolean | null;
-  last_broadcast_sent_at?: string | null;
-  source_system?: string | null;
-  historical_import?: boolean | null;
-  // Phase K2 — attribution snapshots from analytics_phase1. Optional /
-  // possibly null on historical orders predating the rollout. Shape mirrors
-  // attributionStore.FirstTouchSnapshot; only the fields the classifier
-  // actually reads are declared here to keep the type lean.
-  first_touch_json?: AttributionSnapshot | null;
-  last_touch_json?:  AttributionSnapshot | null;
-}
-
-/**
- * Minimal shape of orders.first_touch_json / last_touch_json — only the
- * fields consumed by the acquisition classifier are declared here. Any
- * other keys in the jsonb blob are ignored at the type level (they still
- * land in the runtime object).
- */
-interface AttributionSnapshot {
-  channel?: string | null;
-  utm_source?: string | null;
-  utm_medium?: string | null;
-  utm_campaign?: string | null;
-  utm_term?: string | null;
-  utm_content?: string | null;
-  gclid?: string | null;
-  gbraid?: string | null;
-  wbraid?: string | null;
-  fbclid?: string | null;
-  msclkid?: string | null;
-  ttclid?: string | null;
-  ref?: string | null;
-  referrer?: string | null;
-  landing_url?: string | null;
-}
+// Order / DoctorProfile / DoctorContact / AttributionSnapshot are now
+// imported from ./types (canonical shapes). Local interfaces removed to
+// stop the duplicate-Order vs Order TypeScript mismatches that fired
+// every time page.tsx passed an order to a non-frozen child component.
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1914,7 +1813,11 @@ export default function AdminOrdersPage() {
           <AnalyticsTab
             orders={orders}
             onViewOrder={(order) => {
-              openOrderDetail(order);
+              // AnalyticsTab is a frozen mega-file with its own local Order
+              // shape; the callback param is typed as AnalyticsTab's local
+              // Order. Cast to the canonical ./types Order at the boundary
+              // — same runtime row, just a structural-compat shim.
+              openOrderDetail(order as unknown as Order);
               setActiveTab("orders");
             }}
           />
@@ -2996,7 +2899,9 @@ export default function AdminOrdersPage() {
         <OrderDetailModal order={orderDetail} doctorContacts={assignableProviders} adminProfile={adminProfile}
           onClose={() => setOrderDetail(null)} onOrderUpdated={handleOrderUpdated} onOrderDeleted={handleOrderDeleted}
           allOrders={filtered}
-          onNavigate={(order) => openOrderDetail(order)}
+          // OrderDetailModal is a frozen mega-file with its own local Order
+          // shape; cast at the callback boundary to the canonical ./types Order.
+          onNavigate={(order) => openOrderDetail(order as unknown as Order)}
           onClearUnread={(cid) => {
             const now = Date.now();
             const updated = { ...lastViewedMap, [cid]: now };

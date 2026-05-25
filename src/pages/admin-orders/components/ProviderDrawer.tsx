@@ -18,30 +18,16 @@ function toStateCodes(raw: string[] | null | undefined): string[] {
   ));
 }
 
-type AvailabilityStatus = "active" | "at_capacity" | "inactive";
+// Canonical types — see ../types.ts. DoctorRow/Profile/Contact are now
+// shared with DoctorsTab so the two stop fighting over duplicate shapes.
+import type {
+  AvailabilityStatus,
+  DoctorProfile,
+  DoctorContact,
+  DoctorRow,
+} from "../types";
 
 interface StateLicense { state: string; license_number: string; }
-
-interface DoctorProfile {
-  id: string; user_id: string; full_name: string; title: string | null;
-  email: string | null; phone: string | null; license_number: string | null;
-  npi_number: string | null; state_license_numbers: Record<string, string> | null;
-  bio: string | null; is_admin: boolean; is_active: boolean;
-  availability_status: AvailabilityStatus | null;
-  licensed_states: string[] | null; per_order_rate: number | null;
-  role: string | null; created_at: string; photo_url?: string;
-}
-interface DoctorContact {
-  id: string; full_name: string; email: string; phone: string | null;
-  notes: string | null; licensed_states: string[] | null; is_active: boolean;
-  availability_status: AvailabilityStatus | null;
-  per_order_rate: number | null; photo_url?: string;
-}
-interface WorkloadStats { active: number; completed: number; }
-interface DoctorRow {
-  profile: DoctorProfile | null; contact: DoctorContact | null;
-  email: string; name: string; workload: WorkloadStats;
-}
 interface ProviderNote {
   id: string; note_body: string; admin_name: string | null; admin_user_id: string | null; created_at: string;
 }
@@ -244,25 +230,25 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     const rate = form.per_order_rate !== "" ? parseInt(form.per_order_rate, 10) : null;
     const safeRate = (rate != null && !isNaN(rate) && rate >= 0) ? rate : null;
     if (doc.profile) {
-      updates.push(supabase.from("doctor_profiles").update({
+      updates.push(Promise.resolve(supabase.from("doctor_profiles").update({
         full_name: form.full_name, phone: form.phone || null, title: form.title || null,
         license_number: form.license_number || null,
         npi_number: form.npi_number || null,
         bio: form.bio || null,
         photo_url: finalPhotoUrl || null, per_order_rate: safeRate,
-      }).eq("id", doc.profile.id));
+      }).eq("id", doc.profile.id)));
     }
     if (doc.contact) {
-      updates.push(supabase.from("doctor_contacts").update({
+      updates.push(Promise.resolve(supabase.from("doctor_contacts").update({
         full_name: form.full_name, phone: form.phone || null,
         notes: form.notes || null, photo_url: finalPhotoUrl || null, per_order_rate: safeRate,
-      }).eq("id", doc.contact.id));
+      }).eq("id", doc.contact.id)));
     } else if (doc.profile) {
-      updates.push(supabase.from("doctor_contacts").upsert({
+      updates.push(Promise.resolve(supabase.from("doctor_contacts").upsert({
         full_name: form.full_name, email: doc.email.toLowerCase(),
         phone: form.phone || null, licensed_states: toStateCodes(doc.profile.licensed_states),
         is_active: doc.profile.is_active, notes: form.notes || null, per_order_rate: safeRate,
-      }, { onConflict: "email" }));
+      }, { onConflict: "email" })));
     }
     await Promise.all(updates);
     setSaving(false);
@@ -276,10 +262,10 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     setAvailSaving(true);
     const newIsActive = status !== "inactive";
     const updates: Promise<unknown>[] = [
-      supabase.from("approved_providers").update({ is_active: newIsActive }).eq("email", doc.email),
+      Promise.resolve(supabase.from("approved_providers").update({ is_active: newIsActive }).eq("email", doc.email)),
     ];
-    if (doc.profile) updates.push(supabase.from("doctor_profiles").update({ is_active: newIsActive, availability_status: status }).eq("id", doc.profile.id));
-    if (doc.contact) updates.push(supabase.from("doctor_contacts").update({ is_active: newIsActive, availability_status: status }).eq("id", doc.contact.id));
+    if (doc.profile) updates.push(Promise.resolve(supabase.from("doctor_profiles").update({ is_active: newIsActive, availability_status: status }).eq("id", doc.profile.id)));
+    if (doc.contact) updates.push(Promise.resolve(supabase.from("doctor_contacts").update({ is_active: newIsActive, availability_status: status }).eq("id", doc.contact.id)));
     await Promise.all(updates);
     setAvailSaving(false);
     const cfg = AVAIL_CONFIG[status];
@@ -413,8 +399,8 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     const parsed = rateInput.trim() !== "" ? parseInt(rateInput, 10) : null;
     const rate = (parsed != null && !isNaN(parsed) && parsed >= 0) ? parsed : null;
     const updates: Promise<unknown>[] = [];
-    if (doc.profile) updates.push(supabase.from("doctor_profiles").update({ per_order_rate: rate }).eq("id", doc.profile.id));
-    if (doc.contact) updates.push(supabase.from("doctor_contacts").update({ per_order_rate: rate }).eq("id", doc.contact.id));
+    if (doc.profile) updates.push(Promise.resolve(supabase.from("doctor_profiles").update({ per_order_rate: rate }).eq("id", doc.profile.id)));
+    if (doc.contact) updates.push(Promise.resolve(supabase.from("doctor_contacts").update({ per_order_rate: rate }).eq("id", doc.contact.id)));
     await Promise.all(updates);
     setSavingRate(false); setRateOpen(false);
     showToast(rate != null ? `Rate set to $${rate}/order for ${doc.name}.` : `Rate cleared for ${doc.name}.`);

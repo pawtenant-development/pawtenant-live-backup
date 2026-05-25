@@ -460,7 +460,7 @@ export default function BlogPostPage() {
                       <i className="ri-shield-check-line text-white"></i>
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-gray-900">{'ctaText' in post && post.ctaText ? post.ctaText : "Learn more about PawTenant's verifiable ESA letters"}</p>
+                      <p className="text-sm font-bold text-gray-900">{'ctaText' in post && post.ctaText ? String(post.ctaText) : "Learn more about PawTenant's verifiable ESA letters"}</p>
                     </div>
                   </div>
                   <Link

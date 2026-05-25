@@ -61,3 +61,21 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
 }
+
+/* ── iOS Safari auto-zoom fix ─────────────────────────────────────────────
+   Mobile Safari (iPhone AND iPad portrait) zooms the viewport (~1.15x)
+   when a form field receives focus IF its computed font-size is < 16px.
+   The zoom persists after blur and across SPA route changes, which is
+   why visitors see the page "stuck zoomed in" after tapping any
+   assessment field. We force >=16px on form fields up to the md
+   Tailwind breakpoint (768px) so iOS never triggers the zoom in the
+   first place. Desktop (>=768px) keeps the original design tokens.
+   The !important is required because Tailwind utility classes
+   (text-sm/text-xs) have higher specificity than an element selector. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
