@@ -88,6 +88,9 @@ const faqs = [
   { q: "What Documents Are Required For Landlords To Accept An ESA?", a: "A valid ESA letter from a licensed mental health professional (LMHP). The letter should be on official letterhead and include the provider's name, license number, and confirmation that the tenant has a qualifying condition." },
   { q: "Can A Landlord Deny An ESA Based On Breed Or Size?", a: "No — under the Fair Housing Act, landlords cannot deny an ESA request based on the breed or size of the animal. The only grounds for denial are if the animal poses a direct threat to safety or if accommodation would cause undue hardship." },
   { q: "Choosing Between An ESA And A Service Animal", a: "Service animals are trained for specific tasks and protected under the ADA in public spaces. ESAs provide emotional comfort and are protected under the FHA for housing. If you need housing protection and emotional support, an ESA letter is the right choice." },
+  { q: "What affects the cost of an ESA letter?", a: "ESA letter pricing reflects the clinical work behind it — a real evaluation by a licensed mental health professional credentialed in your state, the time the provider spends reviewing your assessment, the issuance of a properly formatted letter with license information, and ongoing support if a landlord requests verification. Letters tied to a one-time consultation are typically priced differently from annual subscriptions that include renewal." },
+  { q: "Why are some online ESA letters suspiciously cheap?", a: "Listings well below the standard rate are often a sign that the service is skipping the clinical evaluation entirely — which makes the letter invalid and is one of the most common ESA letter scams. A landlord who suspects an unverified or template letter can deny the accommodation request. Choosing a service with a real licensed mental health professional ESA letter review protects your housing application and avoids having to start over." },
+  { q: "What's included in the price of a PawTenant ESA letter?", a: "Your fee covers the full ESA letter application process: a complete mental health evaluation by a state-licensed provider, a signed letter on professional letterhead with NPI and license details, digital delivery typically within 24 hours, a unique Verification ID your landlord can confirm online, and a 100% refund if you do not qualify after the clinical review." },
 ];
 
 const SAMPLE_IMG = "/images/checkout/esa-sample-letter.svg";
@@ -119,11 +122,11 @@ export default function ESALetterCostPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
         "@type": "FAQPage",
-        "mainEntity": [
-          { "@type": "Question", "name": "What Types of Housing Are Covered By The Fair Housing Act?", "acceptedAnswer": { "@type": "Answer", "text": "The Fair Housing Act covers a broad range of housing options, including rental apartments, condominiums, houses, and even some types of temporary housing. It applies to both public and private housing providers, with limited exceptions." } },
-          { "@type": "Question", "name": "What Documents Are Required For Landlords To Accept An ESA?", "acceptedAnswer": { "@type": "Answer", "text": "A valid ESA letter from a licensed mental health professional (LMHP). The letter should be on official letterhead and include the provider's name, license number, and confirmation that the tenant has a qualifying condition." } },
-          { "@type": "Question", "name": "Can A Landlord Deny An ESA Based On Breed Or Size?", "acceptedAnswer": { "@type": "Answer", "text": "No — under the Fair Housing Act, landlords cannot deny an ESA request based on the breed or size of the animal. The only grounds for denial are if the animal poses a direct safety threat or if accommodation would cause undue hardship." } }
-        ]
+        "mainEntity": faqs.map((f) => ({
+          "@type": "Question",
+          "name": f.q,
+          "acceptedAnswer": { "@type": "Answer", "text": f.a }
+        }))
       }) }} />
 
       <SharedNavbar />

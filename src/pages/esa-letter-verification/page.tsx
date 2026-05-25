@@ -83,11 +83,31 @@ const faqs = [
     q: "Can my landlord request my medical records through this system?",
     a: "No. The verification tool is read-only and returns only what is described above. It cannot be used to request, access, or retrieve any medical records.",
   },
+  {
+    q: "How does my landlord use the Verification ID?",
+    a: "Your landlord visits pawtenant.com/verify, types in the Verification ID printed on your letter, and sees the letter status plus the provider's licensed credentials — name, NPI number, state license, letter type, and issue date. The whole confirmation takes a few seconds and never exposes your health information, diagnosis, or contact details.",
+  },
+  {
+    q: "Why does PawTenant use a Verification ID instead of just a printed letter?",
+    a: "A printed letter alone cannot prove on its own that the provider is real, that the license is active, or that the letter has not been altered. The Verification ID gives landlords a privacy-respecting way to confirm those things directly from PawTenant's records, which makes a valid ESA letter easier to trust and harder to fake — protecting both legitimate tenants and the property owner.",
+  },
 ];
 
 export default function ESALetterVerificationPage() {
   return (
     <>
+      {/* FAQPage JSON-LD for the visible verification FAQ below. Matches the
+          existing pattern used on /how-to-get-esa-letter and the two cost +
+          housing-rights SEO pages. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": faqs.map((f) => ({
+          "@type": "Question",
+          "name": f.q,
+          "acceptedAnswer": { "@type": "Answer", "text": f.a }
+        }))
+      }) }} />
       <SharedNavbar />
 
       <main>
