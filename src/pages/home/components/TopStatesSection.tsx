@@ -150,6 +150,8 @@ export default function TopStatesSection() {
                   src={resolveStateImageByIndex(state.image, index)}
                   alt={`ESA letter ${state.name}`}
                   title={`ESA letter ${state.name} guide`}
+                  width={400}
+                  height={300}
                   className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
                   loading="lazy"
                   decoding="async"
