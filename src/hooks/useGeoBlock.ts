@@ -60,7 +60,7 @@ function isGeoBlockDisabledForEnv(): boolean {
 }
 
 /**
- * Bot / crawler / lighthouse-probe user-agent allow-list.
+ * Bot / crawler / Lighthouse / PageSpeed-probe user-agent allow-list.
  *
  * Why: search-engine crawlers and PageSpeed/Lighthouse probes may run from
  * non-US PoPs. Without this check, api.country.is returns a non-US/PK
@@ -72,9 +72,17 @@ function isGeoBlockDisabledForEnv(): boolean {
  *
  * Real-user behaviour is unchanged: only requests where the UA matches a
  * known crawler / probe pattern skip the geo gate.
+ *
+ * Expanded 2026-05-26: previously PSI was still capturing GeoBlockScreen
+ * on https://pawtenant.com/. Newer Google probe UAs (Google-InspectionTool,
+ * AdsBot-Google, GoogleOther, Google-Read-Aloud, GoogleWebLight,
+ * Mediapartners-Google, FeedFetcher-Google, AppEngine-Google) and the
+ * Bingbot Lighthouse variant weren't matching the original short list.
+ * All of them are first-party Google / Microsoft probes that legitimately
+ * need to render the real public site.
  */
 const BOT_UA_PATTERN =
-  /(googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|slackbot|discordbot|telegrambot|applebot|chrome-lighthouse|lighthouse|pagespeed|gtmetrix|headlesschrome|puppeteer|playwright|phantomjs)/i;
+  /(googlebot|google-inspectiontool|google-read-aloud|googleweblight|google\s*page\s*speed|adsbot-google|mediapartners-google|feedfetcher-google|appengine-google|googleother|bingbot|bingpreview|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|slackbot|discordbot|telegrambot|applebot|chrome-lighthouse|lighthouse|pagespeed|pagespeedinsights|gtmetrix|webpagetest|headlesschrome|puppeteer|playwright|phantomjs)/i;
 
 function isBotUA(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -83,7 +91,44 @@ function isBotUA(): boolean {
   return BOT_UA_PATTERN.test(ua);
 }
 
+/**
+ * Synchronous "is this request from an allowed bypass context?" check.
+ * Runs at hook initialization (useState lazy initializer) BEFORE first
+ * paint, so allowed bots never enter the async geo-lookup path and the
+ * homepage hero is never replaced by GeoBlockScreen later in the render
+ * lifecycle. Real human visitors fall through to the async geo lookup
+ * inside useEffect exactly as before.
+ *
+ * Order:
+ *   1. Build-time env + hostname allow-list (TEST / local / preview only).
+ *   2. Crawler / Lighthouse / PageSpeed UA pattern.
+ *
+ * On the LIVE pawtenant.com hostname, only step 2 can match — step 1's
+ * allow-list excludes pawtenant.com on purpose. So normal human visitors
+ * from blocked regions still see GeoBlockScreen; only crawlers/probes
+ * skip the gate.
+ */
+function shouldBypassGeoBlockSync(): boolean {
+  if (isGeoBlockDisabledForEnv()) return true;
+  if (typeof window === "undefined") return false;
+  const pathname = window.location.pathname || "";
+  if (EXEMPT_PATHS.some((p) => pathname.startsWith(p))) return true;
+  if (isBotUA()) return true;
+  return false;
+}
+
 export function useGeoBlock(): GeoState {
+  // Synchronous bypass for crawlers / Lighthouse / PageSpeed / TEST /
+  // dev — resolved BEFORE first paint so allowed contexts never enter
+  // the async geo-lookup path. This is the key fix for PSI on the LIVE
+  // hostname: previously the bot-UA check lived inside useEffect, so
+  // even though it matched, the surrounding lifecycle still allowed a
+  // late setState("blocked") to mutate the rendered tree by the time
+  // PSI snapshotted the page. Resolving synchronously at init means
+  // a bypassed request returns "allowed" from the very first render
+  // and never re-evaluates.
+  const bypass = shouldBypassGeoBlockSync();
+
   // Default to "allowed" so the public homepage paints immediately —
   // no blank loading spinner becoming the LCP candidate while the geo
   // lookup is in flight. The hook flips to "blocked" only AFTER an
@@ -96,25 +141,9 @@ export function useGeoBlock(): GeoState {
   const [state, setState] = useState<GeoState>("allowed");
 
   useEffect(() => {
-    // TEST / local-dev / Vercel-preview bypass. See
-    // isGeoBlockDisabledForEnv() above for the matching rules. Production
-    // LIVE (pawtenant.com) is not on the allow-list so it continues to
-    // enforce regional availability.
-    if (isGeoBlockDisabledForEnv()) {
-      return;
-    }
-
-    const pathname = window.location.pathname;
-    const isExempt = EXEMPT_PATHS.some((p) => pathname.startsWith(p));
-    if (isExempt) {
-      return;
-    }
-
-    // Skip the geo gate entirely for known bots / Lighthouse probes /
-    // headless Chrome. They get the real homepage so PageSpeed audits
-    // and search-engine indexing reflect the actual site rather than the
-    // regional fallback.
-    if (isBotUA()) {
+    // Hard bypass for allowed contexts — never run the geo lookup,
+    // never call setState. State stays at the initial "allowed".
+    if (bypass) {
       return;
     }
 
@@ -149,7 +178,7 @@ export function useGeoBlock(): GeoState {
       controller.abort();
       clearTimeout(timeout);
     };
-  }, []);
+  }, [bypass]);
 
   return state;
 }
