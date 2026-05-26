@@ -13,6 +13,7 @@ import SEOManager from "./components/feature/SEOManager";
 import { supabase } from "./lib/supabaseClient";
 import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
+import { isGeoRestrictedRoute } from "./lib/geoRestrictedRoutes";
 import { firePageView } from "@/lib/metaPixel";
 import { captureFromUrl } from "@/lib/attributionStore";
 import { ensureVisitorSession, pulseVisitorSession, isInternalAdminPath } from "@/lib/visitorSession";
@@ -241,8 +242,35 @@ function AuthHandler() {
   return null;
 }
 
+/**
+ * GeoGate — route-scoped geo enforcement.
+ *
+ * Pre-2026-05-26 this wrapped the entire public site at the App-root
+ * level. That meant ANY route — homepage, paid landing pages, SEO
+ * pages, blog, FAQs, contact — could render the GeoBlockScreen if the
+ * visitor's IP looked non-US/PK to api.country.is. PageSpeed runs on
+ * https://pawtenant.com/ kept capturing the GeoBlockScreen, dragging
+ * the LCP screenshot and the mobile performance score down to ~63.
+ *
+ * New behaviour (this commit):
+ *   • On every navigation, read the current pathname.
+ *   • If pathname is a public marketing / SEO / informational route,
+ *     render children directly. useGeoBlock is called with
+ *     `enabled: false` so it never even fires the api.country.is
+ *     lookup — no wasted network, no late setState("blocked").
+ *   • If pathname is a service-availability route (/assessment,
+ *     /psd-assessment, /checkout*, /account/checkout*, /r/*),
+ *     enforce the geo gate exactly as before. Blocked users see the
+ *     GeoBlockScreen on those routes only.
+ *
+ * Must be rendered INSIDE BrowserRouter so useLocation() works.
+ */
 function GeoGate({ children }: { children: React.ReactNode }) {
-  const status = useGeoBlock();
+  const { pathname } = useLocation();
+  const isRestricted = isGeoRestrictedRoute(pathname);
+  const status = useGeoBlock({ enabled: isRestricted });
+
+  if (!isRestricted) return <>{children}</>;
 
   if (status === "loading") {
     return (
@@ -298,33 +326,38 @@ function App() {
   return (
     <ErrorBoundary>
       <I18nextProvider i18n={i18n}>
-        <GeoGate>
-          <BrowserRouter basename={__BASE_PATH__}>
-            <AdminChatGate>
-              <MetaPageView />
-              <SEOManager />
-              <ScrollToTop />
-              <UTMCapture />
-              <AuthHandler />
+        <BrowserRouter basename={__BASE_PATH__}>
+          <AdminChatGate>
+            <MetaPageView />
+            <SEOManager />
+            <ScrollToTop />
+            <UTMCapture />
+            <AuthHandler />
+            {/* GeoGate is now INSIDE the router and route-aware. Public
+                marketing / SEO / informational pages render globally; the
+                gate only enforces on service-availability routes
+                (/assessment, /psd-assessment, /checkout*, /account/checkout*,
+                /r/*). See src/lib/geoRestrictedRoutes.ts for the list. */}
+            <GeoGate>
               <AppRoutes />
-              <ScrollTopButton />
-              <Suspense fallback={null}>
-                <CookieBanner />
-              </Suspense>
-              {/* Phase 1 mobile-first cleanup (2026-05-19):
-                  - Removed USResidentsBanner (intrusive bottom black "USA only" banner).
-                  - Removed ConditionalFloatingCTA (intrusive vertical 988 crisis side banner / mobile pill).
-                  Component files kept on disk in case a calm inline safety
-                  section is added later in the footer or FAQ. */}
-              <MobileChatButton />
-              {/* PawChatWidget mounted via DeferredPawChat — lazy module
-                  fetch + requestIdleCallback so ~692 lines of chat code
-                  stay out of the LCP-window JS parse. Bubble still shows
-                  up after first idle just like before. */}
-              <DeferredPawChat />
-            </AdminChatGate>
-          </BrowserRouter>
-        </GeoGate>
+            </GeoGate>
+            <ScrollTopButton />
+            <Suspense fallback={null}>
+              <CookieBanner />
+            </Suspense>
+            {/* Phase 1 mobile-first cleanup (2026-05-19):
+                - Removed USResidentsBanner (intrusive bottom black "USA only" banner).
+                - Removed ConditionalFloatingCTA (intrusive vertical 988 crisis side banner / mobile pill).
+                Component files kept on disk in case a calm inline safety
+                section is added later in the footer or FAQ. */}
+            <MobileChatButton />
+            {/* PawChatWidget mounted via DeferredPawChat — lazy module
+                fetch + requestIdleCallback so ~692 lines of chat code
+                stay out of the LCP-window JS parse. Bubble still shows
+                up after first idle just like before. */}
+            <DeferredPawChat />
+          </AdminChatGate>
+        </BrowserRouter>
       </I18nextProvider>
     </ErrorBoundary>
   );

@@ -117,7 +117,22 @@ function shouldBypassGeoBlockSync(): boolean {
   return false;
 }
 
-export function useGeoBlock(): GeoState {
+/**
+ * useGeoBlock
+ *
+ * @param options.enabled  Default `true`. When `false`, the hook is inert
+ *   — no API call is made and the hook returns `"allowed"` permanently.
+ *   This is how the route-scoped GeoGate skips the geo lookup entirely
+ *   on public marketing / SEO pages: the gate component computes
+ *   `enabled = isGeoRestrictedRoute(pathname)` on every navigation, so
+ *   the lookup only fires on /assessment, /psd-assessment, /checkout,
+ *   /account/checkout, /r/* — the routes where service availability
+ *   actually matters. Public pages (/, landing pages, blog, FAQs, state
+ *   pages) render the same in every region.
+ */
+export function useGeoBlock(options?: { enabled?: boolean }): GeoState {
+  const enabled = options?.enabled ?? true;
+
   // Synchronous bypass for crawlers / Lighthouse / PageSpeed / TEST /
   // dev — resolved BEFORE first paint so allowed contexts never enter
   // the async geo-lookup path. This is the key fix for PSI on the LIVE
@@ -141,6 +156,12 @@ export function useGeoBlock(): GeoState {
   const [state, setState] = useState<GeoState>("allowed");
 
   useEffect(() => {
+    // Hook disabled (public route) — never run the geo lookup. State
+    // stays at the initial "allowed" and the gate renders children.
+    if (!enabled) {
+      return;
+    }
+
     // Hard bypass for allowed contexts — never run the geo lookup,
     // never call setState. State stays at the initial "allowed".
     if (bypass) {
@@ -178,7 +199,7 @@ export function useGeoBlock(): GeoState {
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [bypass]);
+  }, [bypass, enabled]);
 
   return state;
 }
