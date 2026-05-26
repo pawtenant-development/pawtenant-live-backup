@@ -79,18 +79,61 @@ function DeferredPawChat() {
       requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
       cancelIdleCallback?: (handle: number) => void;
     };
-    if (typeof w.requestIdleCallback === "function") {
-      const id = w.requestIdleCallback(() => setReady(true), { timeout: 2500 });
-      return () => {
-        try {
-          if (typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(id);
-        } catch {
-          /* ignore */
-        }
-      };
+
+    // PERF 2026-05-26: stricter delay for the public chat widget.
+    //   1. Wait for window.load — main resources have finished, the
+    //      hero is on screen, LCP is sealed.
+    //   2. Then schedule via requestIdleCallback with a generous 8000 ms
+    //      timeout so even if the page never idles (e.g. ad scripts
+    //      still warming) the widget eventually mounts.
+    //   3. As a hard floor, also wait a minimum of 3500 ms past mount
+    //      so a slow PSI mobile run never sees the chat chunk inside
+    //      the LCP window. (TTFB + render of the homepage finishes
+    //      well under 3500 ms on Vercel for real users.)
+    // The launcher chunk is small; once mounted the actual chat panel
+    // and its Supabase RPCs still wait for the visitor to click open.
+    let handle: number | null = null;
+    let timer: number | null = null;
+    let minTimer: number | null = null;
+    let minElapsed = false;
+    let loaded = typeof document !== "undefined" && document.readyState === "complete";
+
+    const fire = () => setReady(true);
+
+    const tryFire = () => {
+      if (!loaded || !minElapsed) return;
+      if (typeof w.requestIdleCallback === "function") {
+        handle = w.requestIdleCallback(fire, { timeout: 8000 });
+      } else {
+        timer = window.setTimeout(fire, 1500);
+      }
+    };
+
+    const onLoad = () => {
+      loaded = true;
+      tryFire();
+    };
+
+    minTimer = window.setTimeout(() => {
+      minElapsed = true;
+      tryFire();
+    }, 3500);
+
+    if (loaded) {
+      // window.load has already fired by the time React mounted (rare).
+      tryFire();
+    } else {
+      window.addEventListener("load", onLoad, { once: true });
     }
-    const t = window.setTimeout(() => setReady(true), 1500);
-    return () => window.clearTimeout(t);
+
+    return () => {
+      window.removeEventListener("load", onLoad);
+      if (minTimer !== null) window.clearTimeout(minTimer);
+      if (handle !== null && typeof w.cancelIdleCallback === "function") {
+        try { w.cancelIdleCallback(handle); } catch { /* ignore */ }
+      }
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, []);
 
   if (!ready) return null;

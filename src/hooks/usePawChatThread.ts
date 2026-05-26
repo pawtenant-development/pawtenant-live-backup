@@ -232,14 +232,23 @@ export function usePawChatThread(isOpen: boolean): UsePawChatThreadResult {
   }, [sessionId]);
 
   useEffect(() => {
-    void load();
-    // HOTFIX 2026-04-25: only poll while the chat panel is open.
-    // Closed-state polling was saturating the PostgREST pool — admin tabs
-    // (orders / doctor_profiles) would hang waiting behind visitor chat
-    // polls returning HTTP 522 from Cloudflare. A one-shot load() still
-    // runs on mount + on every isOpen flip, so the unread badge hydrates
-    // correctly without a background timer.
+    // PERF 2026-05-26: gate the first thread + attachments load on
+    // isOpen. Previously the hook ran load() on mount (regardless of
+    // isOpen) just to hydrate the unread badge — which fired both
+    // get_visitor_chat_thread AND get_visitor_chat_attachments RPCs
+    // during the LCP window on the public homepage, even though the
+    // user had not opened the chat. PageSpeed flagged these as
+    // critical-path dependencies.
+    //
+    // New behaviour: no RPCs fire until the visitor explicitly opens
+    // the chat panel (isOpen flips true). When the panel opens we
+    // load once immediately and then poll every POLL_OPEN_MS while
+    // it stays open. When the panel closes we stop polling. The
+    // unread badge now hydrates on first open instead of on first
+    // page-load — acceptable UX cost for a large LCP win on public
+    // marketing pages.
     if (!isOpen) return;
+    void load();
     const id = window.setInterval(() => void load(), POLL_OPEN_MS);
     return () => window.clearInterval(id);
   }, [isOpen, load]);
