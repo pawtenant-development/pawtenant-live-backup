@@ -63,6 +63,10 @@ export default function Footer() {
               <img
                 src="/assets/brand/pawtenant-logo-black-02.png"
                 alt="PawTenant"
+                width={400}
+                height={160}
+                loading="lazy"
+                decoding="async"
                 className="h-14 w-auto object-contain"
               />
             </a>

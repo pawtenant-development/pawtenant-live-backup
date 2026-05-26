@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { BrowserRouter, useNavigate, useLocation } from "react-router-dom";
 import { AppRoutes } from "./router";
 import { AdminSubdomainRoutes } from "./router/adminRoutes";
@@ -7,16 +7,9 @@ import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n";
 import ScrollToTop from "./components/feature/ScrollToTop";
 import ScrollTopButton from "./components/feature/ScrollTopButton";
-import CookieBanner from "./components/feature/CookieBanner";
 import MobileChatButton from "./components/feature/MobileChatButton";
-import PawChatWidget from "./components/feature/PawChatWidget";
 import ErrorBoundary from "./components/feature/ErrorBoundary";
 import SEOManager from "./components/feature/SEOManager";
-import AdminChatNotifier from "./components/admin/AdminChatNotifier";
-import MiniChatDock from "./components/admin/MiniChatDock";
-import AdminSoundControls from "./components/admin/AdminSoundControls";
-import VisitorSoundMonitor from "./components/admin/VisitorSoundMonitor";
-import { AdminChatProvider } from "./context/AdminChatContext";
 import { supabase } from "./lib/supabaseClient";
 import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
@@ -25,24 +18,85 @@ import { captureFromUrl } from "@/lib/attributionStore";
 import { ensureVisitorSession, pulseVisitorSession, isInternalAdminPath } from "@/lib/visitorSession";
 import { trackPageView } from "@/lib/trackEvent";
 
+// ── PageSpeed Phase 2 lazy imports ─────────────────────────────────────────
+// AdminChrome holds AdminChatProvider + 4 floating admin components
+// (~3,680 lines of admin-only code + the 973-line useAdminChatNotifier
+// hook + supabase realtime channels + audio buffers). Public routes do
+// not consume useAdminChat, so loading any of this on a public page is
+// pure waste. Lazy-loaded here and only mounted on /admin* paths or on
+// the admin subdomain.
+const AdminChrome = lazy(() => import("./components/admin/AdminChrome"));
+
+// PawChatWidget (~692 lines) is the public visitor chat bubble. It is
+// not LCP-critical and never visible above the fold on first paint, so
+// we defer its module fetch behind requestIdleCallback to keep it out
+// of the homepage initial JS chunk. Once interactive, the bubble shows
+// up exactly as before.
+const PawChatWidget = lazy(() => import("./components/feature/PawChatWidget"));
+
+// CookieBanner is small (~140 lines) but its UI is deliberately delayed
+// 800 ms after mount before rendering. Lazy-load to keep the module
+// itself out of the LCP-window JS parse.
+const CookieBanner = lazy(() => import("./components/feature/CookieBanner"));
+
 /**
- * AdminChatGate — wraps the public router with AdminChatProvider, but only
- * enables polling/alerts on admin pages (/admin-orders, /admin-doctors,
- * /admin-guide, /admin-login, /admin/*). On public pages the provider is
- * mounted with enabled=false so ChatsTab consumers are inert and no
- * session polling occurs.
+ * AdminChatGate — only loads the admin operational chrome on /admin*
+ * routes. Public pages render children directly with no provider, no
+ * polling hook, and no admin component JS in the initial bundle. All
+ * consumers of useAdminChat() live inside admin / admin-orders code
+ * which is itself lazy-loaded via the router, so the no-provider
+ * fallback in AdminChatContext is never reached from a public page.
+ *
+ * On admin routes the entire chrome (provider + 4 floating components)
+ * streams in as a single async chunk via React.lazy(AdminChrome). The
+ * Suspense fallback continues to render the admin page itself so the
+ * UI is never blocked while the chrome resolves.
  */
 function AdminChatGate({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const isAdminRoute = pathname.startsWith("/admin");
+  if (!isAdminRoute) return <>{children}</>;
   return (
-    <AdminChatProvider enabled={isAdminRoute}>
-      {children}
-      <AdminChatNotifier />
-      <MiniChatDock />
-      <AdminSoundControls />
-      <VisitorSoundMonitor />
-    </AdminChatProvider>
+    <Suspense fallback={<>{children}</>}>
+      <AdminChrome>{children}</AdminChrome>
+    </Suspense>
+  );
+}
+
+/**
+ * DeferredPawChat — mounts PawChatWidget only after the page is idle.
+ * Keeps ~692 lines of chat code (plus its supabase RPC bindings and
+ * polling thread) out of the LCP-window JS parse. On idle, the lazy
+ * chunk is fetched and the bubble renders exactly as before.
+ */
+function DeferredPawChat() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(() => setReady(true), { timeout: 2500 });
+      return () => {
+        try {
+          if (typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(id);
+        } catch {
+          /* ignore */
+        }
+      };
+    }
+    const t = window.setTimeout(() => setReady(true), 1500);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  if (!ready) return null;
+  return (
+    <Suspense fallback={null}>
+      <PawChatWidget />
+    </Suspense>
   );
 }
 
@@ -208,23 +262,26 @@ function GeoGate({ children }: { children: React.ReactNode }) {
 /**
  * AdminApp — rendered only on admin.pawtenant.com (when feature flag is on).
  * Strips public-site chrome (Tawk, FloatingCTA, GeoBlock, banners, etc.).
+ *
+ * Phase 2: the four admin floating components plus AdminChatProvider are
+ * now reached through the lazy <AdminChrome> bundle so public-site
+ * builds never even fetch this admin code. Admin-subdomain users still
+ * receive identical chrome — just streamed as a Suspense chunk.
  */
 function AdminApp() {
   return (
     <ErrorBoundary>
       <I18nextProvider i18n={i18n}>
         <BrowserRouter basename={__BASE_PATH__}>
-          <AdminChatProvider enabled>
-            <ScrollToTop />
-            <UTMCapture />
-            <AuthHandler />
-            <AdminSubdomainRoutes />
-            <ScrollTopButton />
-            <AdminChatNotifier />
-            <MiniChatDock />
-            <AdminSoundControls />
-            <VisitorSoundMonitor />
-          </AdminChatProvider>
+          <Suspense fallback={null}>
+            <AdminChrome>
+              <ScrollToTop />
+              <UTMCapture />
+              <AuthHandler />
+              <AdminSubdomainRoutes />
+              <ScrollTopButton />
+            </AdminChrome>
+          </Suspense>
         </BrowserRouter>
       </I18nextProvider>
     </ErrorBoundary>
@@ -251,14 +308,20 @@ function App() {
               <AuthHandler />
               <AppRoutes />
               <ScrollTopButton />
-              <CookieBanner />
+              <Suspense fallback={null}>
+                <CookieBanner />
+              </Suspense>
               {/* Phase 1 mobile-first cleanup (2026-05-19):
                   - Removed USResidentsBanner (intrusive bottom black "USA only" banner).
                   - Removed ConditionalFloatingCTA (intrusive vertical 988 crisis side banner / mobile pill).
                   Component files kept on disk in case a calm inline safety
                   section is added later in the footer or FAQ. */}
               <MobileChatButton />
-              <PawChatWidget />
+              {/* PawChatWidget mounted via DeferredPawChat — lazy module
+                  fetch + requestIdleCallback so ~692 lines of chat code
+                  stay out of the LCP-window JS parse. Bubble still shows
+                  up after first idle just like before. */}
+              <DeferredPawChat />
             </AdminChatGate>
           </BrowserRouter>
         </GeoGate>

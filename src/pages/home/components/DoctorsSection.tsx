@@ -8,7 +8,46 @@ const MAX_STATES_SHOWN = 4;
 const SKELETON_COUNT = 4;
 
 export default function DoctorsSection() {
-  const { doctors: dynamicDoctors, loading, hasProviderRows } = useDynamicDoctors();
+  // Section root — used by the IntersectionObserver below to defer the
+  // three provider Supabase queries (doctor_profiles, approved_providers,
+  // doctor_contacts) and the carousel scroll measurement until the section
+  // is close to the viewport. The section shell itself still renders on
+  // first paint so Speed Index and visual completeness are unaffected.
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  // `nearViewport` flips true once the section is within ~one viewport of
+  // entering the screen. Until then the hook below stays inert so the
+  // three provider REST calls never fire in the LCP path — PageSpeed had
+  // flagged this exact source as the 142 ms forced-reflow.
+  const [nearViewport, setNearViewport] = useState(false);
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      // No IO support (rare) — fall back to immediate enable so legacy
+      // browsers and Googlebot WRS still see provider data.
+      setNearViewport(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setNearViewport(true);
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      // ~one full mobile viewport of lead-time so provider data is ready
+      // by the time the user scrolls the section into view — no skeleton
+      // flash for real users, but no upfront cost on first paint.
+      { rootMargin: "0px 0px 800px 0px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const { doctors: dynamicDoctors, loading, hasProviderRows } = useDynamicDoctors({ enabled: nearViewport });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -62,15 +101,26 @@ export default function DoctorsSection() {
   };
 
   useEffect(() => {
-    checkScroll();
+    // Don't run the carousel layout read or attach listeners until the
+    // section is near the viewport. This is the path PageSpeed flagged
+    // as "Forced reflow ~142 ms" — checkScroll() reads scrollWidth /
+    // clientWidth, which forces a layout if it runs during initial
+    // render. By gating on nearViewport, the measurement runs after
+    // LCP and only when the user can actually see the section.
+    if (!nearViewport) return;
+    // Defer the first measurement one frame so any pending layout
+    // settles first (avoids the layout-read-after-write pattern that
+    // creates the forced reflow).
+    const rafId = window.requestAnimationFrame(checkScroll);
     const el = scrollRef.current;
     el?.addEventListener("scroll", checkScroll, { passive: true });
-    window.addEventListener("resize", checkScroll);
+    window.addEventListener("resize", checkScroll, { passive: true } as AddEventListenerOptions);
     return () => {
+      window.cancelAnimationFrame(rafId);
       el?.removeEventListener("scroll", checkScroll);
       window.removeEventListener("resize", checkScroll);
     };
-  }, [allDoctors.length]);
+  }, [allDoctors.length, nearViewport]);
 
   const scroll = (dir: "left" | "right") => {
     const el = scrollRef.current;
@@ -80,7 +130,7 @@ export default function DoctorsSection() {
   };
 
   return (
-    <section className="py-12 sm:py-20 bg-[#f8f7f4]">
+    <section ref={sectionRef} className="py-12 sm:py-20 bg-[#f8f7f4]">
       <div className="max-w-7xl mx-auto px-5 sm:px-6">
         {/* Header */}
         <div className="flex items-end justify-between mb-8 sm:mb-12 flex-wrap gap-4">
@@ -102,17 +152,19 @@ export default function DoctorsSection() {
                 type="button"
                 onClick={() => scroll("left")}
                 disabled={!canScrollLeft}
+                aria-label="Scroll provider list left"
                 className={`whitespace-nowrap w-10 h-10 flex items-center justify-center rounded-full border transition-all cursor-pointer ${canScrollLeft ? "border-gray-300 text-gray-700 hover:bg-white" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
               >
-                <i className="ri-arrow-left-s-line text-lg"></i>
+                <i className="ri-arrow-left-s-line text-lg" aria-hidden="true"></i>
               </button>
               <button
                 type="button"
                 onClick={() => scroll("right")}
                 disabled={!canScrollRight}
+                aria-label="Scroll provider list right"
                 className={`whitespace-nowrap w-10 h-10 flex items-center justify-center rounded-full border transition-all cursor-pointer ${canScrollRight ? "border-gray-300 text-gray-700 hover:bg-white" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
               >
-                <i className="ri-arrow-right-s-line text-lg"></i>
+                <i className="ri-arrow-right-s-line text-lg" aria-hidden="true"></i>
               </button>
             </div>
           )}

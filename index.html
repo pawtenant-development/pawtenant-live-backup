@@ -180,8 +180,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <noscript><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" /></noscript>
 
-    <!-- Icons — non-render-blocking -->
-    <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" />
+    <!-- Icons — non-render-blocking + dropped the high-priority preload.
+         The remixicon.css bundle is ~19 KiB of unused-by-LCP rules (PSI
+         was flagging this); preload was pulling it into the critical-
+         path priority queue and competing with the hero asset. Without
+         the preload it still loads via the print → all swap below, just
+         after higher-priority above-the-fold assets. Icons that need
+         to render before the font arrives use the inline SVG fallback
+         already present across the codebase. -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" media="print" onload="this.media='all'" />
     <noscript><link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" /></noscript>
 
@@ -203,48 +209,130 @@
       })();
     </script>
 
-    <!-- Google Tags — async/defer to avoid render-blocking -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=GT-P3HVCLCL"></script>
+    <!-- ═══════════════════════════════════════════════════════════════════
+         Tracking bootstrap (idle-load).
+
+         What ships immediately:
+           • window.dataLayer queue
+           • gtag() function pushed to dataLayer (queue stub)
+           • window.fbq queue stub
+           • gtag('config', ...) calls so any analytics IDs are queued
+             before the external scripts arrive.
+
+         What is deferred to requestIdleCallback (timeout 3500ms):
+           • https://www.googletagmanager.com/gtag/js?id=...
+           • https://connect.facebook.net/en_US/fbevents.js
+           • fbq('init') runs the moment fbevents.js is attached so the
+             standard pixel-init path is preserved.
+
+         Why this is safe for Meta CAPI dedup + GA conversion tracking:
+           Both gtag() and fbq() are designed to accept calls before the
+           remote script is loaded — the queued calls flush in order once
+           the script attaches. Conversion event timestamps, eventID
+           dedup keys, and CAPI parity all continue to work because the
+           queued events still carry their original timestamps when they
+           replay against the loaded SDK.
+
+         Conversion-critical pages bypass the idle delay so the GA / Meta
+         conversion event fires the moment the thank-you / checkout
+         page loads. Bypass triggers on first paint, not React mount,
+         so a hard refresh on those pages still tracks immediately.
+         ═══════════════════════════════════════════════════════════════════ -->
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-BYFK1LCQHL');
-      gtag('config', 'AW-11509262282');
-      gtag('config', 'GT-P3HVCLCL');
-      gtag('config', 'GT-55KSTVFH');
-    </script>
+      (function () {
+        // ── Queue stubs — available synchronously so React effects that
+        //     call gtag() or fbq() never NPE before the scripts arrive. ──
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', 'G-BYFK1LCQHL');
+        window.gtag('config', 'AW-11509262282');
+        window.gtag('config', 'GT-P3HVCLCL');
+        window.gtag('config', 'GT-55KSTVFH');
 
-    <!-- Meta Pixel (Facebook) — deferred to avoid render-blocking -->
-    <script defer>
-      !function(f,b,e,v,n,t,s)
-      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-      n.queue=[];t=b.createElement(e);t.async=!0;
-      t.src=v;s=b.getElementsByTagName(e)[0];
-      s.parentNode.insertBefore(t,s)}(window, document,'script',
-      'https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init', '2970753196590228');
-    </script>
-    <noscript><img height="1" width="1" style="display:none"
-      src="https://www.facebook.com/tr?id=2970753196590228&ev=PageView&noscript=1"
-    /></noscript>
+        if (!window.fbq) {
+          var n = window.fbq = function () {
+            n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+          };
+          if (!window._fbq) window._fbq = n;
+          n.push = n;
+          n.loaded = !0;
+          n.version = '2.0';
+          n.queue = [];
+        }
+        window.fbq('init', '2970753196590228');
 
-    <!-- Hide Readdy AI Agent widget — PawTenant native widget is primary live chat -->
-    <style>
-      #vapi-widget-floating-button,
-      #vapi-support-btn,
-      [class*="readdy-widget"],
-      [id*="readdy-widget"],
-      [class*="vapi-widget"],
-      iframe[src*="readdy.ai/api/public/assistant"] {
-        display: none !important;
-        pointer-events: none !important;
-      }
-    </style>
+        // ── External script loaders ───────────────────────────────────
+        var gtagLoaded = false;
+        var fbLoaded = false;
+        function loadGtag() {
+          if (gtagLoaded) return;
+          gtagLoaded = true;
+          var s = document.createElement('script');
+          s.async = true;
+          s.src = 'https://www.googletagmanager.com/gtag/js?id=GT-P3HVCLCL';
+          document.head.appendChild(s);
+        }
+        function loadFbq() {
+          if (fbLoaded) return;
+          fbLoaded = true;
+          var s = document.createElement('script');
+          s.async = true;
+          s.src = 'https://connect.facebook.net/en_US/fbevents.js';
+          var first = document.getElementsByTagName('script')[0];
+          first.parentNode.insertBefore(s, first);
+        }
+        function loadAll() { loadGtag(); loadFbq(); }
+
+        // ── Conversion-critical route detection ───────────────────────
+        //     Thank-you, PSD thank-you, and checkout flows must fire
+        //     conversion events the moment they paint. Hard refresh on
+        //     these pages bypasses the idle delay.
+        var path = (window.location && window.location.pathname) || '';
+        var CONVERSION_PATHS = [
+          '/assessment/thank-you',
+          '/psd-assessment/thank-you',
+          '/account/checkout',
+        ];
+        var isConversionRoute = false;
+        for (var i = 0; i < CONVERSION_PATHS.length; i++) {
+          if (path.indexOf(CONVERSION_PATHS[i]) === 0) {
+            isConversionRoute = true;
+            break;
+          }
+        }
+
+        if (isConversionRoute) {
+          // Load immediately — conversion timestamp must land at paint.
+          loadAll();
+        } else if (typeof window.requestIdleCallback === 'function') {
+          // Idle with 3500 ms timeout — covers slow networks where idle
+          // never reports without a deadline.
+          window.requestIdleCallback(loadAll, { timeout: 3500 });
+        } else {
+          // Safari / older — schedule after page is interactive.
+          if (document.readyState === 'complete') {
+            setTimeout(loadAll, 1500);
+          } else {
+            window.addEventListener('load', function () { setTimeout(loadAll, 1500); }, { once: true });
+          }
+        }
+      })();
+    </script>
+    <!-- Meta Pixel <noscript> img fallback intentionally moved to <body>
+         (see top of <body>). Keeping <noscript><img> inside <head> violates
+         HTML5 parsing rules ("disallowed-content-in-noscript-in-head") and
+         emitted a parse5 warning during vite build. Same pixel fires with
+         the tag in <body>; no tracking regression. -->
   </head>
   <body>
+    <!-- Meta Pixel noindex img fallback — relocated from <head> per HTML5
+         spec (noscript in head may only contain link/style/meta). Identical
+         pixel URL; no tracking regression. -->
+    <noscript><img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=2970753196590228&ev=PageView&noscript=1"
+      alt="" /></noscript>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 
@@ -296,54 +384,12 @@
       })();
     </script>
 
-    <!-- Readdy AI Agent Widget -->
-    <script
-      src="https://readdy.ai/api/public/assistant/widget?projectId=dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491"
-      mode="hybrid"
-      voice-show-transcript="true"
-      theme="light"
-      size="compact"
-      accent-color="#f97316"
-      button-base-color="#111827"
-      button-accent-color="#FFFFFF"
-      main-label="Chat with PawTenant"
-      empty-chat-message="Hi! Ask me anything about ESA letters, pricing, or your housing rights."
-      defer
-    ></script>
-
-    <!-- GHL + SMS Notification when visitor opens AI chat -->
-    <script>
-      (function () {
-        var notified = false;
-        function notifyGHL() {
-          if (notified) return;
-          notified = true;
-          fetch("https://services.leadconnectorhq.com/hooks/bCKXTfd8drHJ5M55g4Gn/webhook-trigger/6feb660d-6ee0-4a71-a2c0-732264440592", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              event: "AI Chat Started",
-              page: window.location.href,
-              timestamp: new Date().toISOString(),
-              leadSource: "Readdy AI Agent",
-              tags: ["AI Chat Started"]
-            })
-          }).catch(function() {});
-        }
-        function attachListener() {
-          var btn = document.querySelector("#vapi-widget-floating-button");
-          if (btn) {
-            btn.addEventListener("click", notifyGHL, { once: true });
-          } else {
-            setTimeout(attachListener, 800);
-          }
-        }
-        if (document.readyState === "loading") {
-          document.addEventListener("DOMContentLoaded", attachListener);
-        } else {
-          attachListener();
-        }
-      })();
-    </script>
+    <!-- Readdy AI Agent widget removed (PageSpeed bundle): PawChatWidget
+         is the production live-chat surface. The Readdy floating button
+         had been display:none + pointer-events:none, so the ~176 KB
+         widget script + ~795 ms LCP CPU cost (and the GHL "AI Chat
+         Started" click listener attached to it) could never run
+         user-visible behaviour. Removing the loader eliminates that
+         cost on every public page. -->
   </body>
 </html>

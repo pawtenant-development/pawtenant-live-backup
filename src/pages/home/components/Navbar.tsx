@@ -49,6 +49,9 @@ export default function Navbar() {
                   : "/assets/brand/pawtenant-logo-white-02.png"
               }
               alt="PawTenant"
+              width={400}
+              height={160}
+              decoding="async"
               className={`h-14 w-auto object-contain transition-all ${!scrolled ? "brightness-0 invert" : ""}`}
             />
           </a>

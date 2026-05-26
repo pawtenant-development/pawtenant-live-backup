@@ -78,12 +78,25 @@ function slugifyName(name: string): string {
     .replace(/-+/g, "-");
 }
 
-export function useDynamicDoctors(): {
+/**
+ * useDynamicDoctors
+ *
+ * @param options.enabled  Default `true`. When `false`, the hook is inert —
+ *   no Supabase queries fire, `loading` stays `true`, and consumers see
+ *   an empty `doctors` array. Used by DoctorsSection on the homepage to
+ *   gate the 3 provider Supabase queries (doctor_profiles,
+ *   approved_providers, doctor_contacts) behind an IntersectionObserver
+ *   so they do not run during the LCP window. Other consumers (e.g.
+ *   /doctors/:id) leave `enabled` at its default and keep firing on
+ *   mount.
+ */
+export function useDynamicDoctors(options?: { enabled?: boolean }): {
   doctors: Doctor[];
   loading: boolean;
   reload: () => void;
   hasProviderRows: boolean;
 } {
+  const enabled = options?.enabled ?? true;
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   // Phase 4 Step 4 — true when at least one provider-eligible doctor_profiles row
@@ -92,6 +105,7 @@ export function useDynamicDoctors(): {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -203,7 +217,7 @@ export function useDynamicDoctors(): {
     };
     load();
     return () => { cancelled = true; };
-  }, [tick]);
+  }, [tick, enabled]);
 
   const reload = () => setTick((t) => t + 1);
   return { doctors, loading, reload, hasProviderRows };
