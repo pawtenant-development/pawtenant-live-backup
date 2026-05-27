@@ -17,7 +17,7 @@ const DESCRIPTION =
 // assets the homepage hero + checkout sample-letter card already ship with,
 // so this guide inherits PawTenant's polished visual language and never
 // depends on an external bucket being reachable.
-const HERO_IMG_MOBILE = "/assets/blog/pawtenant-mobile-hero-pomeranian.webp";
+const HERO_IMG_MOBILE = "/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp";
 const HERO_IMG_DESKTOP = "/assets/blog/fp-woman-sitting-floor-desktop.webp";
 const HERO_IMG_FALLBACK = "/assets/blog/fp-woman-sitting-floor.jpg";
 const ESA_SAMPLE_LETTER = "/images/checkout/esa-sample-letter.svg";

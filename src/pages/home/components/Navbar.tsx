@@ -40,20 +40,36 @@ export default function Navbar() {
         }`}
       >
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          {/* Logo */}
+          {/* Logo — Phase 7 PageSpeed (2026-05-26): swapped 111 KB / 4500×1576
+              PNG for a WebP <picture> with 320 / 640-wide variants (~7 KB
+              and ~16 KB). PNG kept as fallback for legacy browsers and
+              still referenced by email templates. The navbar logo renders
+              at h-14 (56 CSS px ~= 112 device px @2× DPR), so the 320
+              variant is plenty even on retina; the 640 srcSet entry only
+              kicks in at 3×+ DPR. */}
           <a href="/" className="flex items-center gap-2 cursor-pointer">
-            <img
-              src={
-                scrolled
-                  ? "/assets/brand/pawtenant-logo-black-02.png"
-                  : "/assets/brand/pawtenant-logo-white-02.png"
-              }
-              alt="PawTenant"
-              width={400}
-              height={160}
-              decoding="async"
-              className={`h-14 w-auto object-contain transition-all ${!scrolled ? "brightness-0 invert" : ""}`}
-            />
+            <picture>
+              <source
+                type="image/webp"
+                srcSet={
+                  scrolled
+                    ? "/assets/brand/pawtenant-logo-black-320.webp 1x, /assets/brand/pawtenant-logo-black-640.webp 2x"
+                    : "/assets/brand/pawtenant-logo-white-320.webp 1x, /assets/brand/pawtenant-logo-white-640.webp 2x"
+                }
+              />
+              <img
+                src={
+                  scrolled
+                    ? "/assets/brand/pawtenant-logo-black-02.png"
+                    : "/assets/brand/pawtenant-logo-white-02.png"
+                }
+                alt="PawTenant"
+                width={400}
+                height={160}
+                decoding="async"
+                className={`h-14 w-auto object-contain transition-all ${!scrolled ? "brightness-0 invert" : ""}`}
+              />
+            </picture>
           </a>
 
           {/* Desktop Nav */}

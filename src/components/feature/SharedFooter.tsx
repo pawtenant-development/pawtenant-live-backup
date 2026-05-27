@@ -57,16 +57,23 @@ export default function SharedFooter() {
       <div className="max-w-7xl mx-auto px-5 pt-12 pb-8 lg:pt-16 lg:pb-10">
         {/* Brand — always full width on mobile, then in grid on desktop */}
         <div className="mb-8 lg:hidden">
+          {/* Phase 7 PageSpeed (2026-05-26): WebP variants replace 115 KB PNG. */}
           <Link to="/" className="inline-block mb-4 cursor-pointer">
-            <img
-              src="/assets/brand/pawtenant-logo-black-02.png"
-              alt="PawTenant Logo"
-              width={400}
-              height={160}
-              loading="lazy"
-              decoding="async"
-              className="h-12 w-auto object-contain object-left"
-            />
+            <picture>
+              <source
+                type="image/webp"
+                srcSet="/assets/brand/pawtenant-logo-black-320.webp 1x, /assets/brand/pawtenant-logo-black-640.webp 2x"
+              />
+              <img
+                src="/assets/brand/pawtenant-logo-black-02.png"
+                alt="PawTenant Logo"
+                width={400}
+                height={160}
+                loading="lazy"
+                decoding="async"
+                className="h-12 w-auto object-contain object-left"
+              />
+            </picture>
           </Link>
           <p className="text-gray-600 text-sm leading-relaxed max-w-xs">
             Your trusted partner in fast, legitimate ESA Letter consultations — empowering lives through emotional support animals.
@@ -77,16 +84,23 @@ export default function SharedFooter() {
         <div className="hidden lg:grid grid-cols-4 gap-10">
           {/* Brand Col */}
           <div>
+            {/* Phase 7 PageSpeed (2026-05-26): WebP variants replace 115 KB PNG. */}
             <Link to="/" className="inline-block mb-4 cursor-pointer">
-              <img
-                src="/assets/brand/pawtenant-logo-black-02.png"
-                alt="PawTenant Logo"
-                width={400}
-                height={160}
-                loading="lazy"
-                decoding="async"
-                className="h-14 w-auto object-contain object-left"
-              />
+              <picture>
+                <source
+                  type="image/webp"
+                  srcSet="/assets/brand/pawtenant-logo-black-320.webp 1x, /assets/brand/pawtenant-logo-black-640.webp 2x"
+                />
+                <img
+                  src="/assets/brand/pawtenant-logo-black-02.png"
+                  alt="PawTenant Logo"
+                  width={400}
+                  height={160}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-14 w-auto object-contain object-left"
+                />
+              </picture>
             </Link>
             <p className="text-gray-600 text-sm leading-relaxed max-w-[220px]">
               Your trusted partner in providing fast, legitimate Emotional Support Animal Letter consultations, empowering lives through the transformative power of emotional support animals.

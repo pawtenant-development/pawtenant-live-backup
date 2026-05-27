@@ -59,16 +59,24 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
           {/* Brand */}
           <div className="md:col-span-1">
+            {/* Phase 7 PageSpeed (2026-05-26): WebP variants ~8 KB / ~19 KB
+                replace the 115 KB / 4500×1471 PNG. PNG kept as fallback. */}
             <a href="/" className="inline-block mb-4 cursor-pointer">
-              <img
-                src="/assets/brand/pawtenant-logo-black-02.png"
-                alt="PawTenant"
-                width={400}
-                height={160}
-                loading="lazy"
-                decoding="async"
-                className="h-14 w-auto object-contain"
-              />
+              <picture>
+                <source
+                  type="image/webp"
+                  srcSet="/assets/brand/pawtenant-logo-black-320.webp 1x, /assets/brand/pawtenant-logo-black-640.webp 2x"
+                />
+                <img
+                  src="/assets/brand/pawtenant-logo-black-02.png"
+                  alt="PawTenant"
+                  width={400}
+                  height={160}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-14 w-auto object-contain"
+                />
+              </picture>
             </a>
             <p className="text-gray-600 text-sm leading-relaxed mb-5">
               Fast, legitimate ESA letters from licensed professionals. Protect your housing rights and keep your pet by your side.

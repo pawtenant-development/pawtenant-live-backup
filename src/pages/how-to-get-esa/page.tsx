@@ -236,7 +236,7 @@ export default function HowToGetESAPage() {
           <picture>
             <source
               media="(max-width: 768px)"
-              srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian.webp"
+              srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp"
               type="image/webp"
             />
             <source
@@ -501,7 +501,10 @@ export default function HowToGetESAPage() {
               <img
                 src="/assets/testimonials/man-with-dog-home.jpg"
                 alt="Emotional Support Animal"
+                width={1200}
+                height={675}
                 loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover object-top"
               />
             </div>
@@ -522,7 +525,10 @@ export default function HowToGetESAPage() {
               <img
                 src="/assets/testimonials/home-together-with-pet.jpg"
                 alt="Why need an ESA letter"
+                width={1200}
+                height={800}
                 loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover object-top"
               />
             </div>

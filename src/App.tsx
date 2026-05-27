@@ -28,12 +28,14 @@ import { trackPageView } from "@/lib/trackEvent";
 // the admin subdomain.
 const AdminChrome = lazy(() => import("./components/admin/AdminChrome"));
 
-// PawChatWidget (~692 lines) is the public visitor chat bubble. It is
-// not LCP-critical and never visible above the fold on first paint, so
-// we defer its module fetch behind requestIdleCallback to keep it out
-// of the homepage initial JS chunk. Once interactive, the bubble shows
-// up exactly as before.
-const PawChatWidget = lazy(() => import("./components/feature/PawChatWidget"));
+// PawChatLauncher is the TINY public chat bubble. It does NOT import
+// the heavy chat panel, thread hook, attachment view, or any Supabase
+// RPC code on first paint — the panel chunk and chat thread RPCs only
+// load when the visitor clicks the bubble. See PawChatLauncher.tsx +
+// PawChatPanel.tsx for the Phase-6 split.
+const PawChatLauncher = lazy(
+  () => import("./components/feature/PawChatLauncher"),
+);
 
 // CookieBanner is small (~140 lines) but its UI is deliberately delayed
 // 800 ms after mount before rendering. Lazy-load to keep the module
@@ -65,81 +67,72 @@ function AdminChatGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * DeferredPawChat — mounts PawChatWidget only after the page is idle.
- * Keeps ~692 lines of chat code (plus its supabase RPC bindings and
- * polling thread) out of the LCP-window JS parse. On idle, the lazy
- * chunk is fetched and the bubble renders exactly as before.
+ * DeferredPawChat — mounts the TINY PawChatLauncher only after the
+ * page is well past LCP. The launcher itself is lazy-imported here so
+ * even its small chunk is not parsed until after window.load + a 6s
+ * grace period (or requestIdleCallback after window.load, whichever
+ * fires later). The heavy panel + chat thread RPCs only load when the
+ * user actually clicks the bubble.
+ *
+ * Behavior matrix:
+ *   - Before window.load: nothing chat-related parses or fetches.
+ *   - After window.load + 6s (PageSpeed Phase 6): launcher chunk loads,
+ *     bubble renders.
+ *   - On bubble click: PawChatPanel chunk loads, usePawChatThread runs,
+ *     get_visitor_chat_thread + get_visitor_chat_attachments fire.
  */
 function DeferredPawChat() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    const MIN_DELAY_AFTER_LOAD_MS = 6000; // PageSpeed Phase 6 — past LCP.
     const w = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
       cancelIdleCallback?: (handle: number) => void;
     };
 
-    // PERF 2026-05-26: stricter delay for the public chat widget.
-    //   1. Wait for window.load — main resources have finished, the
-    //      hero is on screen, LCP is sealed.
-    //   2. Then schedule via requestIdleCallback with a generous 8000 ms
-    //      timeout so even if the page never idles (e.g. ad scripts
-    //      still warming) the widget eventually mounts.
-    //   3. As a hard floor, also wait a minimum of 3500 ms past mount
-    //      so a slow PSI mobile run never sees the chat chunk inside
-    //      the LCP window. (TTFB + render of the homepage finishes
-    //      well under 3500 ms on Vercel for real users.)
-    // The launcher chunk is small; once mounted the actual chat panel
-    // and its Supabase RPCs still wait for the visitor to click open.
-    let handle: number | null = null;
-    let timer: number | null = null;
-    let minTimer: number | null = null;
-    let minElapsed = false;
-    let loaded = typeof document !== "undefined" && document.readyState === "complete";
+    let idleId: number | null = null;
+    let timeoutId: number | null = null;
 
-    const fire = () => setReady(true);
-
-    const tryFire = () => {
-      if (!loaded || !minElapsed) return;
-      if (typeof w.requestIdleCallback === "function") {
-        handle = w.requestIdleCallback(fire, { timeout: 8000 });
-      } else {
-        timer = window.setTimeout(fire, 1500);
-      }
+    const schedule = () => {
+      timeoutId = window.setTimeout(() => {
+        timeoutId = null;
+        if (typeof w.requestIdleCallback === "function") {
+          idleId = w.requestIdleCallback(() => setReady(true), { timeout: 2500 });
+        } else {
+          timeoutId = window.setTimeout(() => setReady(true), 500);
+        }
+      }, MIN_DELAY_AFTER_LOAD_MS);
     };
 
-    const onLoad = () => {
-      loaded = true;
-      tryFire();
-    };
-
-    minTimer = window.setTimeout(() => {
-      minElapsed = true;
-      tryFire();
-    }, 3500);
-
-    if (loaded) {
-      // window.load has already fired by the time React mounted (rare).
-      tryFire();
+    if (document.readyState === "complete") {
+      schedule();
     } else {
+      const onLoad = () => schedule();
       window.addEventListener("load", onLoad, { once: true });
+      return () => {
+        window.removeEventListener("load", onLoad);
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
+        if (idleId !== null && typeof w.cancelIdleCallback === "function") {
+          try { w.cancelIdleCallback(idleId); } catch { /* ignore */ }
+        }
+      };
     }
 
     return () => {
-      window.removeEventListener("load", onLoad);
-      if (minTimer !== null) window.clearTimeout(minTimer);
-      if (handle !== null && typeof w.cancelIdleCallback === "function") {
-        try { w.cancelIdleCallback(handle); } catch { /* ignore */ }
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      if (idleId !== null && typeof w.cancelIdleCallback === "function") {
+        try { w.cancelIdleCallback(idleId); } catch { /* ignore */ }
       }
-      if (timer !== null) window.clearTimeout(timer);
     };
   }, []);
 
   if (!ready) return null;
   return (
     <Suspense fallback={null}>
-      <PawChatWidget />
+      <PawChatLauncher />
     </Suspense>
   );
 }
@@ -153,11 +146,40 @@ function DeferredPawChat() {
  * an immediate pulse on every route change so current_page lands fast.
  * Pauses on visibilitychange to keep write volume low.
  */
+// PageSpeed Phase 8: conversion-critical routes must have gtag.js +
+// fbevents.js loaded BEFORE the InitiateCheckout / Purchase Pixel +
+// gtag events flush. The index.html bootstrap handles hard loads on
+// these paths; this list handles SPA navigation INTO them by calling
+// window.__ptLoadMarketing() in UTMCapture. Keep in sync with the
+// CONVERSION_PATHS array in index.html.
+const CONVERSION_ROUTE_PREFIXES = [
+  "/assessment/thank-you",
+  "/psd-assessment/thank-you",
+  "/account/checkout",
+];
+
 function UTMCapture() {
   const { pathname, search } = useLocation();
 
   useEffect(() => {
     captureFromUrl(search);
+    // PageSpeed Phase 8: when SPA navigates INTO a conversion-critical
+    // route, force the deferred marketing scripts to attach now so
+    // Purchase / InitiateCheckout Pixel + Google Ads conversion events
+    // fire against a fully-loaded SDK (not just the queue stubs).
+    // Hard loads onto these routes already bypass the delay via the
+    // conversion-path block in index.html — this covers the SPA-nav
+    // case. No-op if scripts are already loaded (the loader is
+    // idempotent).
+    try {
+      const isConversionRoute = CONVERSION_ROUTE_PREFIXES.some((p) =>
+        pathname.startsWith(p),
+      );
+      if (isConversionRoute) {
+        const w = window as unknown as { __ptLoadMarketing?: () => void };
+        if (typeof w.__ptLoadMarketing === "function") w.__ptLoadMarketing();
+      }
+    } catch { /* swallow — analytics must never break navigation */ }
     // Record the visitor session once per browser session (fire-and-forget).
     ensureVisitorSession();
     // Visitor heartbeat — bump last_seen_at + current_page immediately on
@@ -394,10 +416,10 @@ function App() {
                 Component files kept on disk in case a calm inline safety
                 section is added later in the footer or FAQ. */}
             <MobileChatButton />
-            {/* PawChatWidget mounted via DeferredPawChat — lazy module
-                fetch + requestIdleCallback so ~692 lines of chat code
-                stay out of the LCP-window JS parse. Bubble still shows
-                up after first idle just like before. */}
+            {/* PawChatLauncher mounted via DeferredPawChat — tiny
+                launcher chunk loads only after window.load + 6s; the
+                heavy panel + chat thread RPCs only load on click.
+                See PawChatLauncher.tsx + PawChatPanel.tsx (Phase 6). */}
             <DeferredPawChat />
           </AdminChatGate>
         </BrowserRouter>

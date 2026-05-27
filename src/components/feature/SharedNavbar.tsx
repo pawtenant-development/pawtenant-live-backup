@@ -155,17 +155,33 @@ export default function SharedNavbar() {
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between" ref={dropdownRef}>
-          {/* Logo */}
+          {/* Logo — Phase 7 PageSpeed (2026-05-26): same WebP variants as
+              the home Navbar (~7 KB / ~16 KB) replace the 111 KB / 4500×1576
+              PNG. Legacy <img> fallback retained for browsers without WebP
+              support. */}
           <Link to="/" className="flex items-center gap-2 cursor-pointer flex-shrink-0">
-            <img
-              src={
-                scrolled || !isHome
-                  ? "/assets/brand/pawtenant-logo-black-02.png"
-                  : "/assets/brand/pawtenant-logo-white-02.png"
-              }
-              alt="PawTenant"
-              className={`h-10 sm:h-14 w-auto object-contain transition-all ${!scrolled && isHome ? "brightness-0 invert" : ""}`}
-            />
+            <picture>
+              <source
+                type="image/webp"
+                srcSet={
+                  scrolled || !isHome
+                    ? "/assets/brand/pawtenant-logo-black-320.webp 1x, /assets/brand/pawtenant-logo-black-640.webp 2x"
+                    : "/assets/brand/pawtenant-logo-white-320.webp 1x, /assets/brand/pawtenant-logo-white-640.webp 2x"
+                }
+              />
+              <img
+                src={
+                  scrolled || !isHome
+                    ? "/assets/brand/pawtenant-logo-black-02.png"
+                    : "/assets/brand/pawtenant-logo-white-02.png"
+                }
+                alt="PawTenant"
+                width={400}
+                height={160}
+                decoding="async"
+                className={`h-10 sm:h-14 w-auto object-contain transition-all ${!scrolled && isHome ? "brightness-0 invert" : ""}`}
+              />
+            </picture>
           </Link>
 
           {/* Desktop Nav */}
@@ -350,17 +366,23 @@ export default function SharedNavbar() {
         }`}
         style={{ boxShadow: menuOpen ? "-4px 0 24px rgba(0,0,0,0.12)" : "none" }}
       >
-        {/* Panel header */}
+        {/* Panel header — Phase 7 PageSpeed: WebP replaces 115 KB PNG. */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <img
-            src="/assets/brand/pawtenant-logo-black-02.png"
-            alt="PawTenant"
-            width={400}
-            height={160}
-            loading="lazy"
-            decoding="async"
-            className="h-9 w-auto object-contain"
-          />
+          <picture>
+            <source
+              type="image/webp"
+              srcSet="/assets/brand/pawtenant-logo-black-320.webp 1x, /assets/brand/pawtenant-logo-black-640.webp 2x"
+            />
+            <img
+              src="/assets/brand/pawtenant-logo-black-02.png"
+              alt="PawTenant"
+              width={400}
+              height={160}
+              loading="lazy"
+              decoding="async"
+              className="h-9 w-auto object-contain"
+            />
+          </picture>
           <button
             onClick={() => setMenuOpen(false)}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors cursor-pointer"

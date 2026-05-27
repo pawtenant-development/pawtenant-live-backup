@@ -22,17 +22,27 @@ export default function WhatIsESA() {
       <div className="max-w-7xl mx-auto px-5 sm:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-stretch">
           {/* Image — mobile-first: aspect-ratio container prevents CLS and
-              keeps the image from feeling oversized on narrow phones. */}
+              keeps the image from feeling oversized on narrow phones.
+              Phase 7 PageSpeed (2026-05-26): swapped 78 KB / 1300×866 JPG
+              for a 22 KB / 900×600 WebP via <picture>. JPG retained as a
+              fallback for browsers without WebP support. Still lazy-loaded
+              (below the fold). */}
           <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-80">
-            <img
-              src="/assets/breeds/cat-with-owner.jpg"
-              alt="What is an emotional support animal ESA — licensed LMHP letter for mental health housing rights"
-              width={1200}
-              height={900}
-              loading="lazy"
-              decoding="async"
-              className="w-full h-full object-cover object-top"
-            />
+            <picture>
+              <source
+                type="image/webp"
+                srcSet="/assets/breeds/cat-with-owner.webp"
+              />
+              <img
+                src="/assets/breeds/cat-with-owner.jpg"
+                alt="What is an emotional support animal ESA — licensed LMHP letter for mental health housing rights"
+                width={1200}
+                height={900}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover object-top"
+              />
+            </picture>
           </div>
 
           {/* Content */}

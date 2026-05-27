@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
 
-    <link rel="icon" type="image/png" href="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/6e37e8c9-809c-4d69-8421-96689959e310_Favicon-02.png?v=3e7d245d886406c510e9428eba87315a" />
-    <link rel="apple-touch-icon" href="https://storage.readdy-site.link/project_files/dfb46e5c-44ab-4c6d-87e4-adaf8c9bc491/6e37e8c9-809c-4d69-8421-96689959e310_Favicon-02.png?v=3e7d245d886406c510e9428eba87315a" />
+    <link rel="icon" type="image/png" href="/assets/brand/favicon-02.png" />
+    <link rel="apple-touch-icon" href="/assets/brand/favicon-02.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Legitimate ESA Letter Online | Licensed Professionals</title>
     <meta name="description" content="Get a legitimate ESA letter from licensed mental health professionals. Valid in all US states. HIPAA-secure, same-day delivery, 100% money-back guarantee." />
@@ -169,9 +169,15 @@
     }
     </script>
 
-    <!-- Hero Image Preload for LCP — Desktop + Mobile -->
-    <link rel="preload" as="image" href="https://readdy.ai/api/search-image?query=warm%20cozy%20living%20room%20with%20a%20happy%20woman%20sitting%20on%20sofa%20using%20laptop%20while%20her%20golden%20retriever%20dog%20rests%20beside%20her%2C%20soft%20morning%20light%2C%20home%20interior%20with%20plants%2C%20natural%20warm%20tones%2C%20lifestyle%20photography%2C%20shallow%20depth%20of%20field%2C%20professional%20photography&width=1440&height=900&seq=hero001&orientation=landscape" media="(min-width: 768px)" fetchpriority="high" />
-    <link rel="preload" as="image" href="https://readdy.ai/api/search-image?query=warm%20cozy%20living%20room%20with%20a%20happy%20smiling%20woman%20sitting%20on%20sofa%20and%20her%20golden%20retriever%20dog%20sitting%20right%20next%20to%20her%20both%20clearly%20visible%20in%20frame%2C%20soft%20morning%20light%2C%20home%20interior%2C%20natural%20warm%20tones%2C%20lifestyle%20photography%2C%20professional%20photography%2C%20wide%20shot%20showing%20both%20subjects%20equally&width=600&height=900&seq=hero-mobile-v2&orientation=portrait" media="(max-width: 767px)" fetchpriority="high" imagesizes="100vw" />
+    <!-- Hero Image Preload for LCP — Phase 1D responsive WebP delivery.
+         Each browser only preloads the variant that matches its viewport
+         media query; the JPG fallback is still served to legacy browsers
+         (no WebP support) via the <picture> <img> child in HeroSection.tsx.
+         Phase 7 PageSpeed (2026-05-26): mobile preload now points at the
+         760×1140 / ~22 KB variant (was 900×1350 / ~43 KB). Desktop
+         preload unchanged. -->
+    <link rel="preload" as="image" media="(max-width: 768px)" href="/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp" fetchpriority="high" type="image/webp" />
+    <link rel="preload" as="image" media="(min-width: 769px)" href="/assets/blog/fp-woman-sitting-floor-desktop.webp" fetchpriority="high" type="image/webp" />
 
     <!-- Google Fonts — preload critical font subset first -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -210,33 +216,47 @@
     </script>
 
     <!-- ═══════════════════════════════════════════════════════════════════
-         Tracking bootstrap (idle-load).
+         Tracking bootstrap (Phase 8 — interaction-trigger load, 2026-05-27).
 
-         What ships immediately:
+         What ships immediately (always, before LCP):
            • window.dataLayer queue
            • gtag() function pushed to dataLayer (queue stub)
            • window.fbq queue stub
            • gtag('config', ...) calls so any analytics IDs are queued
              before the external scripts arrive.
+           • fbq('init', ...) so the Pixel init call is queued early.
 
-         What is deferred to requestIdleCallback (timeout 3500ms):
-           • https://www.googletagmanager.com/gtag/js?id=...
-           • https://connect.facebook.net/en_US/fbevents.js
-           • fbq('init') runs the moment fbevents.js is attached so the
-             standard pixel-init path is preserved.
+         External scripts (gtag.js + fbevents.js) load on the earliest of:
+           1. Hard-load lands on a conversion-critical route → load now.
+           2. SPA navigates into a conversion-critical route → App.tsx
+              calls window.__ptLoadMarketing() and they load now.
+           3. First meaningful user interaction (pointerdown / touchstart
+              / keydown / scroll) → load now.
+           4. window.load + 8000 ms + requestIdleCallback fallback so
+              they still load eventually even if the user never interacts
+              (preserves background page_view + Meta retargeting).
 
          Why this is safe for Meta CAPI dedup + GA conversion tracking:
            Both gtag() and fbq() are designed to accept calls before the
            remote script is loaded — the queued calls flush in order once
            the script attaches. Conversion event timestamps, eventID
-           dedup keys, and CAPI parity all continue to work because the
-           queued events still carry their original timestamps when they
-           replay against the loaded SDK.
+           dedup keys (e.g. `purchase_<confirmationId>` matched against
+           server-side CAPI in send-meta-capi-event), and Google
+           Enhanced Conversions `gtag('set', 'user_data', ...)` all
+           continue to work because the queued events replay against
+           the loaded SDK in the same order.
 
-         Conversion-critical pages bypass the idle delay so the GA / Meta
-         conversion event fires the moment the thank-you / checkout
-         page loads. Bypass triggers on first paint, not React mount,
-         so a hard refresh on those pages still tracks immediately.
+         Diagnostic override:
+           %VITE_DIAG_DISABLE_MARKETING_TAGS% is substituted at build
+           time by Vite. When set to "true" on TEST, the external
+           gtag.js and fbevents.js scripts are NOT loaded under ANY
+           trigger — used purely to isolate TBT impact in PageSpeed
+           runs. The queue stubs above remain in place so attribution
+           code, gtag()/fbq() callers, and CAPI dedup keys never NPE.
+           When the env var is unset (production default), the literal
+           "%VITE_DIAG_DISABLE_MARKETING_TAGS%" stays in the
+           comparison and evaluates false, so external scripts load
+           per the trigger logic below.
          ═══════════════════════════════════════════════════════════════════ -->
     <script>
       (function () {
@@ -262,60 +282,103 @@
         }
         window.fbq('init', '2970753196590228');
 
-        // ── External script loaders ───────────────────────────────────
-        var gtagLoaded = false;
-        var fbLoaded = false;
-        function loadGtag() {
-          if (gtagLoaded) return;
-          gtagLoaded = true;
-          var s = document.createElement('script');
-          s.async = true;
-          s.src = 'https://www.googletagmanager.com/gtag/js?id=GT-P3HVCLCL';
-          document.head.appendChild(s);
-        }
-        function loadFbq() {
-          if (fbLoaded) return;
-          fbLoaded = true;
-          var s = document.createElement('script');
-          s.async = true;
-          s.src = 'https://connect.facebook.net/en_US/fbevents.js';
-          var first = document.getElementsByTagName('script')[0];
-          first.parentNode.insertBefore(s, first);
-        }
-        function loadAll() { loadGtag(); loadFbq(); }
+        var DIAG_DISABLE_MARKETING_TAGS = '%VITE_DIAG_DISABLE_MARKETING_TAGS%' === 'true';
 
-        // ── Conversion-critical route detection ───────────────────────
+        // ── Single idempotent loader for both gtag.js and fbevents.js ─
+        var loaded = false;
+        function loadAll() {
+          if (loaded) return;
+          if (DIAG_DISABLE_MARKETING_TAGS) return;
+          loaded = true;
+          // gtag.js
+          var g = document.createElement('script');
+          g.async = true;
+          g.src = 'https://www.googletagmanager.com/gtag/js?id=GT-P3HVCLCL';
+          document.head.appendChild(g);
+          // fbevents.js
+          var f = document.createElement('script');
+          f.async = true;
+          f.src = 'https://connect.facebook.net/en_US/fbevents.js';
+          var first = document.getElementsByTagName('script')[0];
+          first.parentNode.insertBefore(f, first);
+        }
+        // Expose for SPA-driven force-load: App.tsx calls this on
+        // route changes into conversion-critical routes so the heavy
+        // scripts attach before the Purchase / InitiateCheckout
+        // Pixel + gtag conversion events flush.
+        window.__ptLoadMarketing = loadAll;
+
+        // ── Conversion-critical route detection (hard-load bypass) ────
         //     Thank-you, PSD thank-you, and checkout flows must fire
         //     conversion events the moment they paint. Hard refresh on
-        //     these pages bypasses the idle delay.
+        //     these pages loads scripts immediately, before any
+        //     delay/interaction trigger logic runs.
         var path = (window.location && window.location.pathname) || '';
         var CONVERSION_PATHS = [
           '/assessment/thank-you',
           '/psd-assessment/thank-you',
           '/account/checkout',
         ];
-        var isConversionRoute = false;
         for (var i = 0; i < CONVERSION_PATHS.length; i++) {
           if (path.indexOf(CONVERSION_PATHS[i]) === 0) {
-            isConversionRoute = true;
-            break;
+            loadAll();
+            return;
           }
         }
 
-        if (isConversionRoute) {
-          // Load immediately — conversion timestamp must land at paint.
+        // ── Interaction trigger ───────────────────────────────────────
+        //     First meaningful USER interaction loads the scripts. A
+        //     CTA click on the homepage naturally triggers this well
+        //     before the user reaches assessment Step 3, so
+        //     InitiateCheckout / Purchase still fire with fbq + gtag
+        //     loaded.
+        //
+        //     We deliberately exclude `scroll` from the trigger list
+        //     because layout settle / image decode / reflow can fire
+        //     a programmatic scroll within the LCP window — a real
+        //     user scroll is preceded by pointerdown/touchstart
+        //     anyway, so the user trigger still fires immediately on
+        //     the very first finger-down or mouse-down.
+        //
+        //     isTrusted filter: rejects synthetic events dispatched
+        //     by React/test code so layout work does not trip the
+        //     loader before the user actually interacts.
+        var INTERACTION_EVENTS = ['pointerdown', 'touchstart', 'keydown'];
+        var listenerOpts = { passive: true, capture: true };
+        function onInteraction(e) {
+          if (e && e.isTrusted === false) return;
           loadAll();
-        } else if (typeof window.requestIdleCallback === 'function') {
-          // Idle with 3500 ms timeout — covers slow networks where idle
-          // never reports without a deadline.
-          window.requestIdleCallback(loadAll, { timeout: 3500 });
-        } else {
-          // Safari / older — schedule after page is interactive.
-          if (document.readyState === 'complete') {
-            setTimeout(loadAll, 1500);
-          } else {
-            window.addEventListener('load', function () { setTimeout(loadAll, 1500); }, { once: true });
+        }
+        for (var j = 0; j < INTERACTION_EVENTS.length; j++) {
+          try {
+            window.addEventListener(INTERACTION_EVENTS[j], onInteraction, listenerOpts);
+          } catch (e) {
+            // Old browsers may reject the options object — fall back
+            // to a boolean capture flag.
+            try { window.addEventListener(INTERACTION_EVENTS[j], onInteraction, true); } catch (e2) {}
           }
+        }
+
+        // ── Idle fallback: window.load + 8s + requestIdleCallback ─────
+        //     If the user never interacts (rare on a marketing page),
+        //     scripts still attach so background page_view + Meta
+        //     retargeting + GA session work as before — just well
+        //     past the LCP/TBT window PageSpeed measures.
+        var BASE_DELAY_MS = 8000;
+        function scheduleIdleLoad() {
+          window.setTimeout(function () {
+            if (loaded) return;
+            if (typeof window.requestIdleCallback === 'function') {
+              window.requestIdleCallback(loadAll, { timeout: 4000 });
+            } else {
+              window.setTimeout(loadAll, 500);
+            }
+          }, BASE_DELAY_MS);
+        }
+        if (document.readyState === 'complete') {
+          scheduleIdleLoad();
+        } else {
+          window.addEventListener('load', scheduleIdleLoad, { once: true });
         }
       })();
     </script>
@@ -324,6 +387,7 @@
          HTML5 parsing rules ("disallowed-content-in-noscript-in-head") and
          emitted a parse5 warning during vite build. Same pixel fires with
          the tag in <body>; no tracking regression. -->
+
   </head>
   <body>
     <!-- Meta Pixel noindex img fallback — relocated from <head> per HTML5
@@ -384,12 +448,12 @@
       })();
     </script>
 
-    <!-- Readdy AI Agent widget removed (PageSpeed bundle): PawChatWidget
-         is the production live-chat surface. The Readdy floating button
-         had been display:none + pointer-events:none, so the ~176 KB
-         widget script + ~795 ms LCP CPU cost (and the GHL "AI Chat
-         Started" click listener attached to it) could never run
-         user-visible behaviour. Removing the loader eliminates that
-         cost on every public page. -->
+    <!-- Readdy AI Agent widget removed 2026-05-26 (Phase 1 PageSpeed):
+         PawChatWidget is the production live-chat surface. The Readdy
+         floating button had been display:none + pointer-events:none for
+         weeks, so the deferred ~176 KB script + ~795 ms LCP CPU cost
+         (and the GHL "AI Chat Started" click listener attached to it)
+         could never run user-visible behaviour. Removing the loader
+         eliminates that cost on every public page. -->
   </body>
 </html>

@@ -9,6 +9,9 @@ export default function HeroSection() {
       className="relative min-h-[100svh] flex items-center overflow-hidden"
     >
       {/* Background Image — Phase 1D responsive WebP delivery (2026-05-18).
+          Phase 7 PageSpeed (2026-05-26): mobile variant downsized from
+          900×1350 / 42.6 KB to 760×1140 / 22.6 KB. Desktop variant
+          unchanged.
           Browsers that support WebP pick the matching <source> based on
           viewport media query; legacy browsers fall back to the JPG <img>.
           The two <source> tags are mime-typed image/webp so a future swap
@@ -17,7 +20,7 @@ export default function HeroSection() {
         <picture>
           <source
             media="(max-width: 768px)"
-            srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian.webp"
+            srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp"
             type="image/webp"
           />
           <source
