@@ -21,6 +21,8 @@ const ALL_TABS = [
   { key: "earnings",       label: "Earnings",      icon: "ri-money-dollar-circle-line" },
   { key: "payments",       label: "Payments",      icon: "ri-bank-card-line" },
   { key: "team",           label: "Team",          icon: "ri-team-line" },
+  { key: "attendance",     label: "Attendance",    icon: "ri-time-line" },
+  { key: "shifts",         label: "Shifts",        icon: "ri-calendar-schedule-line" },
   { key: "settings",       label: "Settings",      icon: "ri-settings-3-line" },
   { key: "audit",          label: "Audit Log",     icon: "ri-file-list-3-line" },
   { key: "health",         label: "System Health", icon: "ri-heart-pulse-line" },
@@ -60,8 +62,8 @@ const COMMS_SUB_KEY_SET = new Set<string>(COMMS_SUB_KEYS);
 // Default tab access per role — mirrors page.tsx getVisibleTabs() defaults
 // with legacy comms/chats/contacts keys collapsed onto "communications".
 const ROLE_DEFAULT_TABS: Record<string, TabKey[]> = {
-  owner:         ["orders","analytics","communications","customers","doctors","earnings","payments","team","settings","audit","health"],
-  admin_manager: ["orders","analytics","communications","customers","doctors","earnings","payments","team","settings","audit","health"],
+  owner:         ["orders","analytics","communications","customers","doctors","earnings","payments","team","attendance","shifts","settings","audit","health"],
+  admin_manager: ["orders","analytics","communications","customers","doctors","earnings","payments","team","attendance","shifts","settings","audit","health"],
   support:       ["orders","analytics","communications","customers","doctors","audit","health"],
   finance:       ["orders","analytics","communications","customers","payments","earnings","audit","health"],
   read_only:     ["orders","analytics","communications","customers","doctors","payments","audit","health"],
