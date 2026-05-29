@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1035" width="800" height="1035" role="img" aria-label="Sample PSD Letter">
+  <defs>
+    <linearGradient id="paperShadowPSD" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f7f8fa"/>
+    </linearGradient>
+    <filter id="softShadowPSD" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+      <feOffset dx="0" dy="3" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.15"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Page -->
+  <rect x="20" y="20" width="760" height="995" rx="10" ry="10" fill="url(#paperShadowPSD)" stroke="#e3e6ec" stroke-width="1" filter="url(#softShadowPSD)"/>
+
+  <!-- Top accent bar (PSD blue) -->
+  <rect x="20" y="20" width="760" height="6" rx="3" ry="3" fill="#2c5282"/>
+
+  <!-- Header: Provider (left) -->
+  <g font-family="Helvetica, Arial, sans-serif">
+    <text x="56" y="78" font-size="19" font-weight="700" fill="#0f172a">Dr. Amelia Hart, PhD, LPC-S</text>
+    <text x="56" y="100" font-size="12" fill="#475569">Licensed Professional Counselor, Licensed Therapist</text>
+    <text x="56" y="118" font-size="12" fill="#475569">Psychiatric Service Dog &amp; ADA Accommodation</text>
+    <text x="56" y="136" font-size="12" fill="#475569">Specialist</text>
+  </g>
+
+  <!-- Verification ID box (top-right) -->
+  <g>
+    <rect x="484" y="48" width="280" height="100" rx="6" ry="6" fill="#eef2f9" stroke="#2c5282" stroke-width="1.5"/>
+    <text x="752" y="68" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#64748b">Verification ID:</text>
+    <text x="752" y="94" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#2c5282" letter-spacing="0.5">PSD-CA-XXXXXX</text>
+    <text x="752" y="116" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#334155">pawtenant.com/verify/PSD-CA-XXXXXX</text>
+    <text x="752" y="134" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8" font-style="italic">Reserved injector-safe area</text>
+  </g>
+
+  <!-- Divider -->
+  <line x1="56" y1="162" x2="744" y2="162" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- Letter meta block -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#1f2937">
+    <text x="56" y="188">Dr. Amelia Hart</text>
+    <text x="56" y="206">License #LPC-204817-CA</text>
+    <text x="56" y="224">April 10, 2026</text>
+    <text x="56" y="242">To Whom It May Concern:</text>
+  </g>
+
+  <!-- Body paragraphs -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#1f2937">
+    <!-- Paragraph 1 -->
+    <text x="56" y="276">
+      <tspan x="56" dy="0">I am a licensed clinician currently treating Jordan Bennett, born March 18, 1994. I have evaluated</tspan>
+      <tspan x="56" dy="17">Jordan and determined they meet the criteria for a disability under the Americans with Disabilities</tspan>
+      <tspan x="56" dy="17">Act (ADA) — a mental health condition that substantially limits one or more major life activities.</tspan>
+    </text>
+
+    <!-- Paragraph 2 -->
+    <text x="56" y="352">
+      <tspan x="56" dy="0">Based on my clinical evaluation, Jordan's psychiatric service dog, Atlas (Labrador Retriever), is</tspan>
+      <tspan x="56" dy="17">individually trained to perform specific tasks directly related to Jordan's disability. These trained</tspan>
+      <tspan x="56" dy="17">tasks include deep-pressure therapy during anxiety episodes, interrupting dissociative behaviors,</tspan>
+      <tspan x="56" dy="17">and guiding Jordan to a safe location when symptoms escalate.</tspan>
+    </text>
+
+    <!-- Paragraph 3 -->
+    <text x="56" y="462">
+      <tspan x="56" dy="0">A Psychiatric Service Dog is distinct from an Emotional Support Animal: the dog must perform</tspan>
+      <tspan x="56" dy="17">disability-related work or tasks the handler cannot reliably perform without assistance. Under the</tspan>
+      <tspan x="56" dy="17">ADA, Jordan and Atlas are entitled to public-access rights in places of public accommodation.</tspan>
+    </text>
+
+    <!-- Paragraph 4 -->
+    <text x="56" y="538">
+      <tspan x="56" dy="0">This letter is provided to confirm Jordan's qualifying disability and the trained-task relationship</tspan>
+      <tspan x="56" dy="17">with their psychiatric service dog. To protect patient confidentiality, detailed diagnostic information</tspan>
+      <tspan x="56" dy="17">is not included. Verification of my credentials may be provided as permitted by law.</tspan>
+    </text>
+  </g>
+
+  <!-- Patient info table -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12">
+    <!-- label column background -->
+    <rect x="56" y="606" width="220" height="120" fill="#eef2f9"/>
+    <!-- outer border -->
+    <rect x="56" y="606" width="688" height="120" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+    <!-- column divider -->
+    <line x1="276" y1="606" x2="276" y2="726" stroke="#cbd5e1"/>
+    <!-- row dividers -->
+    <line x1="56" y1="636" x2="744" y2="636" stroke="#cbd5e1"/>
+    <line x1="56" y1="666" x2="744" y2="666" stroke="#cbd5e1"/>
+    <line x1="56" y1="696" x2="744" y2="696" stroke="#cbd5e1"/>
+
+    <!-- Labels -->
+    <g font-weight="700" fill="#0f172a">
+      <text x="70" y="626">Handler Name</text>
+      <text x="70" y="656">Date of Birth</text>
+      <text x="70" y="686">Service Dog</text>
+      <text x="70" y="716">Letter Purpose</text>
+    </g>
+    <!-- Values -->
+    <g fill="#1f2937">
+      <text x="290" y="626">Jordan Bennett</text>
+      <text x="290" y="656">March 18, 1994</text>
+      <text x="290" y="686">Atlas - Labrador Retriever (Trained PSD)</text>
+      <text x="290" y="716">ADA accommodation &amp; public-access verification</text>
+    </g>
+  </g>
+
+  <!-- Sincerely -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#1f2937">
+    <text x="56" y="764">Sincerely,</text>
+  </g>
+
+  <!-- Signature script -->
+  <text x="56" y="814" font-family="'Brush Script MT', 'Segoe Script', cursive" font-size="34" font-style="italic" fill="#0f172a">Amelia Hart, PhD, LPC-S</text>
+
+  <!-- Signature details -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="11.5" fill="#334155">
+    <text x="56" y="842" fill="#0f172a">Dr. Amelia Hart</text>
+    <text x="56" y="860">Licensed Professional Counselor - California</text>
+    <text x="56" y="878">License #LPC-204817-CA</text>
+    <text x="56" y="900">Phone: (555) 310-2048  |  Email: amelia.hart@exampleclinic.com</text>
+    <text x="56" y="918">Office: 2450 Harbor Avenue, Suite 210, San Diego, CA 92101</text>
+  </g>
+
+  <!-- Footer note -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8" font-style="italic">
+    <line x1="56" y1="960" x2="744" y2="960" stroke="#e2e8f0"/>
+    <text x="56" y="982">Template note: top-right verification box is intentionally reserved as the injected verification ID area.</text>
+    <text x="744" y="982" text-anchor="end" font-style="normal" fill="#64748b">Page 1 of 1</text>
+  </g>
+</svg>
