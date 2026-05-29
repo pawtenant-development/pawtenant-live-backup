@@ -1232,6 +1232,25 @@ function ThreadView({
   const hasGeo = !!geo && (!!geo.city || !!geo.region || !!geo.country);
   const locationLabel = formatGeoLabel(geo);
 
+  // ── Identity enrichment from linked order (CHAT-IDENTITY-ENRICH) ──────────
+  // Prefer the matched order's customer identity for the header/cards; keep the
+  // chat-submitted values as small "submitted as" secondary text when different.
+  const dispName       = displayNameForSession(session); // order-first resolver
+  const hasLinkedName  = !!(session.linked_order_first_name || session.linked_order_last_name);
+  const submittedName  = (session.visitor_name || session.name || "").trim();
+  const nameSub        = hasLinkedName && submittedName && submittedName.toLowerCase() !== dispName.toLowerCase()
+    ? `Submitted as ${submittedName}` : undefined;
+  const dispEmail      = session.linked_order_email || session.visitor_email || session.email || null;
+  const submittedEmail = (session.visitor_email || session.email || "").trim();
+  const emailSub       = !!session.linked_order_email && submittedEmail && submittedEmail.toLowerCase() !== (dispEmail ?? "").toLowerCase()
+    ? `Submitted as ${submittedEmail}` : undefined;
+  const dispProvider   = session.linked_order_provider || session.provider || null;
+  const orderPhone     = session.linked_order_phone || null;
+  const orderState     = session.linked_order_state || null;
+  const dispLocation   = orderState
+    ? (hasGeo ? `${orderState} · ${locationLabel}` : orderState)
+    : (hasGeo ? locationLabel : "—");
+
   // Focus contract (unchanged from Phase 5D):
   //   - Textarea is NEVER disabled during send (disabling strips focus).
   //   - On session change, focus is restored via rAF so the row click doesn't win.
@@ -1344,23 +1363,32 @@ function ThreadView({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5 pb-5 border-b border-gray-100">
         <Meta
           label="Name"
-          value={session.name || "—"}
+          value={dispName}
           icon="ri-user-3-line"
+          sub={nameSub}
           onEdit={() => setIdentityOpen(true)}
           editTitle="Edit visitor name / email"
         />
         <Meta
           label="Email"
-          value={session.email || "—"}
+          value={dispEmail || "—"}
           icon="ri-mail-line"
-          copy={!!session.email}
+          copy={!!dispEmail}
+          sub={emailSub}
           onEdit={() => setIdentityOpen(true)}
           editTitle="Edit visitor name / email"
         />
-        <Meta label="Provider" value={session.provider || "—"} icon="ri-global-line" />
+        <Meta
+          label="Provider"
+          value={dispProvider || "—"}
+          icon={session.linked_order_provider ? "ri-stethoscope-line" : "ri-global-line"}
+        />
+        {orderPhone && (
+          <Meta label="Phone" value={orderPhone} icon="ri-phone-line" copy />
+        )}
         <Meta
           label="Location"
-          value={hasGeo ? locationLabel : "—"}
+          value={dispLocation}
           icon="ri-map-pin-line"
         />
       </div>
@@ -1737,6 +1765,7 @@ function Meta({
   value,
   icon,
   copy,
+  sub,
   onEdit,
   editTitle,
 }: {
@@ -1744,6 +1773,7 @@ function Meta({
   value: string;
   icon: string;
   copy?: boolean;
+  sub?: string;
   onEdit?: () => void;
   editTitle?: string;
 }) {
@@ -1757,6 +1787,7 @@ function Meta({
         <p
           className="text-sm text-gray-800 font-semibold truncate"
           style={{ fontFamily: CHAT_FONT }}
+          title={value}
         >
           {value}
         </p>
@@ -1786,6 +1817,9 @@ function Meta({
           )}
         </div>
       </div>
+      {sub && (
+        <p className="text-[10px] text-gray-400 truncate mt-0.5" title={sub}>{sub}</p>
+      )}
     </div>
   );
 }

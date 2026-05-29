@@ -1,10 +1,13 @@
-﻿import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import AssessmentNavbar from "./components/AssessmentNavbar";
 import StepIndicator from "./components/StepIndicator";
 import Step1Assessment, { type Step1Data } from "./components/Step1Assessment";
 import Step2PersonalInfo, { type Step2Data } from "./components/Step2PersonalInfo";
-import Step3Checkout, { type Step3Data } from "./components/Step3Checkout";
+// Step 3 (payment) is code-split: Stripe.js, Klarna and the payment forms only
+// load when the user reaches Step 3. Type is imported separately (type-only
+// imports are erased at build time and do NOT pull the chunk into Steps 1–2).
+import type { Step3Data } from "./components/Step3Checkout";
 import ExitIntentOverlay from "./components/ExitIntentOverlay";
 import WhatHappensNext from "./components/WhatHappensNext";
 import LiveStatusBanner from "./components/LiveStatusBanner";
@@ -27,6 +30,19 @@ import {
 } from "@/lib/attributionStore";
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
 import { trackAssessmentStepView, trackPaymentAttempted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
+
+// Lazy-loaded Step 3 checkout (payment) — split into its own bundle chunk.
+const Step3Checkout = lazy(() => import("./components/Step3Checkout"));
+
+// Lightweight fallback shown only while the payment chunk loads (usually instant).
+function Step3LoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5]"></i>
+      <p className="mt-3 text-sm font-semibold text-gray-500">Loading secure checkout…</p>
+    </div>
+  );
+}
 
 const defaultStep1: Step1Data = {
   emotionalFrequency: "",
@@ -1495,26 +1511,28 @@ export default function AssessmentPage() {
                 <Step2PersonalInfo data={step2} onChange={setStep2} onNext={goNext} onBack={goBack} />
               )}
               {currentStep === 3 && (
-                <Step3Checkout
-                  step1={step1}
-                  step2={step2}
-                  data={step3}
-                  onChange={setStep3}
-                  onSubmit={handleSubmit}
-                  onBack={goBack}
-                  submitting={submitting}
-                  preSelectedDoctorId={preSelectedDoctorId}
-                  stripeClientSecret={stripeClientSecret}
-                  stripeSecretLoading={stripeSecretLoading}
-                  stripeSecretError={stripeSecretError}
-                  onRetryClientSecret={() => fetchClientSecret(step2, confirmationId.current, appliedCoupon)}
-                  onPaymentSuccess={handlePaymentSuccess}
-                  confirmationId={confirmationId.current}
-                  onCouponApplied={handleCouponApplied}
-                  appliedCoupon={appliedCoupon}
-                  petCount={step2.pets.length}
-                  onBeforeRedirect={handleBeforeRedirect}
-                />
+                <Suspense fallback={<Step3LoadingFallback />}>
+                  <Step3Checkout
+                    step1={step1}
+                    step2={step2}
+                    data={step3}
+                    onChange={setStep3}
+                    onSubmit={handleSubmit}
+                    onBack={goBack}
+                    submitting={submitting}
+                    preSelectedDoctorId={preSelectedDoctorId}
+                    stripeClientSecret={stripeClientSecret}
+                    stripeSecretLoading={stripeSecretLoading}
+                    stripeSecretError={stripeSecretError}
+                    onRetryClientSecret={() => fetchClientSecret(step2, confirmationId.current, appliedCoupon)}
+                    onPaymentSuccess={handlePaymentSuccess}
+                    confirmationId={confirmationId.current}
+                    onCouponApplied={handleCouponApplied}
+                    appliedCoupon={appliedCoupon}
+                    petCount={step2.pets.length}
+                    onBeforeRedirect={handleBeforeRedirect}
+                  />
+                </Suspense>
               )}
             </div>
 

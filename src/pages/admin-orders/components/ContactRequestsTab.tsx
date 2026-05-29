@@ -25,6 +25,8 @@ import { playOpsAlert } from "../../../lib/notificationSounds";
 import { sendContactReply } from "../../../lib/contactSubmit";
 import { getAdminIdentity } from "../../../lib/adminIdentity";
 import { isAdminLevel, type AdminRole } from "../../../lib/adminPermissions";
+import LinkedOrderCard from "./LinkedOrderCard";
+import { findOrdersForContacts, customerName, type LinkedOrder } from "../../../lib/orderLink";
 
 interface ContactSubmission {
   id: string;
@@ -203,6 +205,17 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
     () => items.find((i) => i.id === selectedId) ?? null,
     [items, selectedId],
   );
+
+  // Auto-link enrichment: resolve the best-matching order per submission by
+  // email/phone in ONE batched admin-only RPC call (no N+1). Map keyed by id.
+  const [enrich, setEnrich] = useState<Map<string, LinkedOrder>>(new Map());
+  useEffect(() => {
+    if (items.length === 0) { setEnrich(new Map()); return; }
+    let cancelled = false;
+    void findOrdersForContacts(items.map((i) => ({ id: i.id, email: i.email, phone: i.phone })))
+      .then((m) => { if (!cancelled) setEnrich(m); });
+    return () => { cancelled = true; };
+  }, [items]);
 
   async function markStatus(id: string, next: "viewed" | "resolved") {
     if (updating) return;
@@ -423,13 +436,13 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
                           isNew ? "font-extrabold text-gray-900" : "font-bold text-gray-900"
                         }`}
                       >
-                        {row.name || "Anonymous"}
+                        {enrich.get(row.id) ? customerName(enrich.get(row.id)!) : (row.name || "Anonymous")}
                       </p>
                       <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
                         {fmtRelative(row.created_at)}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 truncate mb-1">{row.email}</p>
+                    <p className="text-xs text-gray-500 truncate mb-1">{enrich.get(row.id)?.email || row.email}</p>
                     {row.subject && (
                       <p className="text-xs text-gray-700 font-semibold truncate mb-1">
                         {row.subject}
@@ -484,6 +497,7 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
           ) : (
             <SubmissionDetail
               row={selected}
+              linkedOrder={enrich.get(selected.id) ?? null}
               replies={replies}
               repliesLoading={repliesLoading}
               updating={updating}
@@ -502,6 +516,7 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
 
 function SubmissionDetail({
   row,
+  linkedOrder,
   replies,
   repliesLoading,
   updating,
@@ -512,6 +527,7 @@ function SubmissionDetail({
   onReplySent,
 }: {
   row: ContactSubmission;
+  linkedOrder?: LinkedOrder | null;
   replies: ContactReplyRow[];
   repliesLoading: boolean;
   updating: boolean;
@@ -552,8 +568,14 @@ function SubmissionDetail({
             Contact Submission
           </p>
           <h2 className="text-lg font-extrabold text-gray-900">
-            {row.name || "Anonymous"}
+            {linkedOrder ? customerName(linkedOrder) : (row.name || "Anonymous")}
           </h2>
+          {linkedOrder && (row.name?.trim() || row.email) && (
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Submitted as {row.name?.trim() || "—"}
+              {row.email ? ` · ${row.email}` : ""}
+            </p>
+          )}
           <p className="text-xs text-gray-500 mt-0.5">
             Received {fmtAbsolute(row.created_at)}
           </p>
@@ -569,16 +591,16 @@ function SubmissionDetail({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5 pb-5 border-b border-gray-100">
         <MetaCell
           label="Email"
-          value={row.email}
+          value={linkedOrder?.email || row.email}
           icon="ri-mail-line"
           copyable
           onCopy={onCopy}
         />
         <MetaCell
           label="Phone"
-          value={row.phone || "—"}
+          value={linkedOrder?.phone || row.phone || "—"}
           icon="ri-phone-line"
-          copyable={!!row.phone}
+          copyable={!!(linkedOrder?.phone || row.phone)}
           onCopy={onCopy}
         />
         <MetaCell
@@ -592,6 +614,9 @@ function SubmissionDetail({
           icon="ri-link"
         />
       </div>
+
+      {/* Auto-linked customer/order context (matched by email/phone). */}
+      <LinkedOrderCard prefetched order={linkedOrder ?? null} email={row.email} phone={row.phone} />
 
       <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-2">
         Message

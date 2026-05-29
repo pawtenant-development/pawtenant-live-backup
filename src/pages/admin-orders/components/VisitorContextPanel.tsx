@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import LinkedOrderCard from "./LinkedOrderCard";
 
 interface PreChatContext {
   chat_session_id: string;
@@ -353,10 +354,9 @@ export default function VisitorContextPanel({
                 type="button"
                 onClick={() => {
                   try { void navigator.clipboard.writeText(matchedOrder.confirmation_id); } catch { /* ignore */ }
-                  window.open("/admin-orders?tab=orders", "_blank", "noopener");
                 }}
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md cursor-pointer hover:opacity-80 ${tone}`}
-                title={`Copy ${matchedOrder.confirmation_id} and open Orders in a new tab`}
+                title={`Copy ${matchedOrder.confirmation_id}`}
               >
                 <i className={icon} style={{ fontSize: "10px" }} />
                 {matchedOrder.confirmation_id}
@@ -364,6 +364,15 @@ export default function VisitorContextPanel({
               </button>
             );
           })()}
+          {/* Fallback auto-link: when the chat has no email-linked order, try to
+              resolve one by chat email + visitor session (deterministic). */}
+          {!matchedOrderId && (
+            <LinkedOrderCard
+              variant="chip"
+              email={ctx.chat_visitor_email}
+              sessionId={ctx.visitor_session_id}
+            />
+          )}
         </div>
 
         <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">

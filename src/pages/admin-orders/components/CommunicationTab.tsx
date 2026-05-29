@@ -28,7 +28,11 @@ const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
 // ── SMS Templates ─────────────────────────────────────────────────────────
 // Loaded from email_templates table (channel='sms'). DB is the single source of truth.
-type SmsTemplateEntry = { label: string; icon: string; color: string; bg: string; getMessage: (fn: string, id: string) => string };
+type SmsTemplateEntry = { id: string; label: string; icon: string; color: string; bg: string; getMessage: (fn: string, id: string) => string };
+
+// Trustpilot review URL — same constant used by the review request edge fn / Trustpilot panel.
+// Kept local so {review_url} renders identically across UI preview and actual SMS send.
+const TRUSTPILOT_REVIEW_URL = "https://www.trustpilot.com/review/pawtenant.com";
 
 function groupStyleForSms(group: string): { icon: string; color: string; bg: string } {
   if (group === "Lead Recovery") return { icon: "ri-mail-send-line", color: "text-orange-600", bg: "bg-orange-50 border-orange-200 hover:border-orange-400" };
@@ -204,6 +208,8 @@ export default function CommunicationTab({
 }: CommunicationTabProps) {
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [smsText, setSmsText] = useState("");
+  const [selectedSmsSlug, setSelectedSmsSlug] = useState<string | null>(null);
+  const [pristineSmsText, setPristineSmsText] = useState<string>("");
   const [dbSmsTemplates, setDbSmsTemplates] = useState<SmsTemplateEntry[] | null>(null);
   const [dbEmailTemplates, setDbEmailTemplates] = useState<EmailTemplate[] | null>(null);
   const [sending, setSending] = useState(false);
@@ -218,6 +224,7 @@ export default function CommunicationTab({
   const [loadingComms, setLoadingComms] = useState(false);
   const [commError, setCommError] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   // Load SMS templates from DB on mount; fallback to hardcoded if empty
   useEffect(() => {
@@ -232,10 +239,14 @@ export default function CommunicationTab({
             const style = groupStyleForSms(r.group as string);
             const body = r.body as string;
             return {
+              id: r.id as string,
               label: r.label as string,
               ...style,
               getMessage: (fn: string, id: string) =>
-                body.replace(/\{name\}/g, fn).replace(/\{order_id\}/g, id),
+                body
+                  .replace(/\{name\}/g, fn)
+                  .replace(/\{order_id\}/g, id)
+                  .replace(/\{review_url\}/g, TRUSTPILOT_REVIEW_URL),
             };
           });
           setDbSmsTemplates(mapped);
@@ -366,10 +377,16 @@ export default function CommunicationTab({
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime()
   );
 
-  // Scroll to bottom when logs load
+  // Auto-scroll the chat list to the newest message when logs load.
+  // IMPORTANT: scroll ONLY this inner container via scrollTop — never scrollIntoView.
+  // scrollIntoView bubbles to EVERY scrollable ancestor, which dragged the whole
+  // Order Detail Modal to the bottom on open. Keeping the scroll scoped to the
+  // message list fixes the modal-opens-at-bottom bug and keeps "jump to latest"
+  // confined to the chat history only.
   useEffect(() => {
     if (allLogs.length > 0) {
-      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      const el = chatScrollRef.current;
+      if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     }
   }, [allLogs.length]);
 
@@ -383,18 +400,48 @@ export default function CommunicationTab({
   });
 
   // ── Send SMS ───────────────────────────────────────────────────────────
+  // If a template slug is bound and the textbox is unchanged from the rendered
+  // template (no manual override), re-fetch the DB row at send time and render
+  // it. This makes hub edits actually drive outgoing SMS. Otherwise (manual
+  // edit, or no template picked), send the textbox content as-is. If the DB
+  // re-fetch fails for any reason, fall back to the textbox content so the
+  // send is never blocked.
   const handleSendSMS = async () => {
     if (!phone || !smsText.trim()) return;
     setSending(true); setSendMsg("");
     try {
+      let messageToSend = smsText.trim();
+      const isUneditedTemplate = !!selectedSmsSlug && smsText === pristineSmsText;
+      if (isUneditedTemplate && selectedSmsSlug) {
+        const { data, error } = await supabase
+          .from("email_templates")
+          .select("body")
+          .eq("id", selectedSmsSlug)
+          .eq("channel", "sms")
+          .maybeSingle();
+        const freshBody = !error && data?.body ? String(data.body) : null;
+        if (freshBody) {
+          messageToSend = freshBody
+            .replace(/\{name\}/g, firstName)
+            .replace(/\{order_id\}/g, confirmationId)
+            .replace(/\{review_url\}/g, TRUSTPILOT_REVIEW_URL)
+            .slice(0, 320);
+        }
+      }
       const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ghl-send-sms`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ orderId, confirmationId, toPhone: phone, message: smsText.trim(), sentBy: adminName }),
+        body: JSON.stringify({ orderId, confirmationId, toPhone: phone, message: messageToSend, sentBy: adminName }),
       });
       const result = await res.json() as { ok: boolean; error?: string };
-      if (result.ok) { setSmsText(""); setSendMsg("Sent!"); loadCommLogs(); }
+      if (result.ok) {
+        setSmsText("");
+        setPristineSmsText("");
+        setSelectedSmsSlug(null);
+        setSendMsg("Sent!");
+        loadCommLogs();
+      }
       else { setSendMsg(result.error ?? "Failed to send"); }
     } catch { setSendMsg("Network error"); }
     setSending(false);
@@ -465,192 +512,8 @@ export default function CommunicationTab({
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
 
-      {/* ── Compose action bar (3 collapsible cards) ── */}
-      <div className="px-5 pt-4 pb-3 border-b border-gray-100 space-y-2 flex-shrink-0">
-        <div className="flex gap-2 overflow-x-auto scrollbar-none" style={{ scrollbarWidth: "none" }}>
-          {/* SMS toggle */}
-          <button
-            type="button"
-            onClick={() => togglePanel("sms")}
-            className={`whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${activePanel === "sms" ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "bg-[#e8f0f9] text-[#3b6ea5] border-[#b8cce4] hover:border-[#3b6ea5]"}`}
-          >
-            <i className="ri-message-3-line text-sm"></i>
-            Send SMS
-            <i className={`text-sm ${activePanel === "sms" ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}`}></i>
-          </button>
-          {/* Email toggle */}
-          <button
-            type="button"
-            onClick={() => togglePanel("email")}
-            className={`whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${activePanel === "email" ? "bg-amber-500 text-white border-amber-500" : "bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400"}`}
-          >
-            <i className="ri-mail-send-line text-sm"></i>
-            Send Email
-            <i className={`text-sm ${activePanel === "email" ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}`}></i>
-          </button>
-          {/* Call toggle */}
-          <button
-            type="button"
-            onClick={() => togglePanel("call")}
-            className={`whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${activePanel === "call" ? "bg-sky-600 text-white border-sky-600" : "bg-sky-50 text-sky-700 border-sky-200 hover:border-sky-400"}`}
-          >
-            <i className="ri-phone-line text-sm"></i>
-            Call
-            <i className={`text-sm ${activePanel === "call" ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}`}></i>
-          </button>
-        </div>
-
-        {/* ── SMS Panel ── */}
-        {activePanel === "sms" && (
-          <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl p-4 space-y-3">
-            {!phone && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                <i className="ri-alert-line text-amber-500 text-sm flex-shrink-0"></i>
-                <p className="text-xs text-amber-700 font-semibold">No phone number — add one to enable SMS</p>
-              </div>
-            )}
-            {phone && <p className="text-xs text-[#3b6ea5]/70 font-mono">{phone}</p>}
-            <button type="button" onClick={() => setShowTemplates((v) => !v)}
-              className="whitespace-nowrap w-full flex items-center justify-between px-3 py-2 bg-white border border-[#b8cce4] rounded-lg text-xs font-semibold text-[#3b6ea5] hover:bg-[#eaf6f2] transition-colors cursor-pointer">
-              <span className="flex items-center gap-1.5"><i className="ri-layout-grid-line text-sm"></i>Quick Templates</span>
-              <i className={showTemplates ? "ri-arrow-up-s-line text-sm" : "ri-arrow-down-s-line text-sm"}></i>
-            </button>
-            {showTemplates && (
-              dbSmsTemplates === null ? (
-                <div className="flex items-center justify-center py-3 text-xs text-gray-400">
-                  <i className="ri-loader-4-line animate-spin mr-1.5"></i>Loading templates...
-                </div>
-              ) : SMS_TEMPLATES.length === 0 ? (
-                <div className="px-3 py-3 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-xs text-gray-500 text-center">
-                  No SMS templates yet — add them in <strong>Settings → Communications</strong>.
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
-                  {SMS_TEMPLATES.map((tpl) => (
-                    <button key={tpl.label} type="button" disabled={!phone}
-                      onClick={() => { setSmsText(tpl.getMessage(firstName, confirmationId)); setShowTemplates(false); }}
-                      className={`whitespace-nowrap flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${tpl.bg} ${tpl.color}`}>
-                      <i className={`${tpl.icon} text-sm flex-shrink-0`}></i>
-                      <span className="truncate">{tpl.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )
-            )}
-            <textarea value={smsText} onChange={(e) => setSmsText(e.target.value.slice(0, 320))} rows={3}
-              placeholder={`Message to ${firstName}...`} disabled={!phone}
-              className="w-full px-3 py-2.5 border border-[#b8cce4] rounded-lg text-sm bg-white focus:outline-none focus:border-[#3b6ea5] resize-none disabled:opacity-50" />
-            <div className="flex items-center justify-between">
-              <button type="button" onClick={handleSendSMS} disabled={sending || !phone || !smsText.trim()}
-                className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
-                {sending ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-send-plane-line"></i>Send SMS</>}
-              </button>
-              <span className="text-xs text-gray-400">{smsText.length}/320</span>
-            </div>
-            {sendMsg && (
-              <p className={`text-xs font-semibold flex items-center gap-1 ${sendMsg === "Sent!" ? "text-[#3b6ea5]" : "text-red-500"}`}>
-                <i className={sendMsg === "Sent!" ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{sendMsg}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* ── Email Panel (DB-driven — single source of truth: email_templates) ── */}
-        {activePanel === "email" && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-            <p className="text-xs text-amber-600/70 font-mono truncate">{email}</p>
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-              {dbEmailTemplates === null ? (
-                <div className="flex items-center justify-center py-3 text-xs text-gray-400">
-                  <i className="ri-loader-4-line animate-spin mr-1.5"></i>Loading templates...
-                </div>
-              ) : emailGroups.length === 0 ? (
-                <div className="px-3 py-3 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-xs text-gray-500 text-center">
-                  No email templates yet — add them in <strong>Settings → Communications</strong>.
-                </div>
-              ) : (
-                emailGroups.map((group) => (
-                  <div key={group.group}>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1 mb-1 px-0.5">
-                      <i className={`${group.icon} text-xs`}></i>{group.group}
-                    </p>
-                    {group.options.map((opt) => {
-                      const isDisabled = opt.slug === "letter_ready" && !hasDocuments;
-                      return (
-                        <label key={opt.slug}
-                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors mb-1 ${emailType === opt.slug ? "bg-white border-amber-400" : "bg-amber-50/50 border-transparent hover:border-amber-200"} ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}>
-                          <input type="radio" name="emailType" value={opt.slug} checked={emailType === opt.slug}
-                            onChange={() => setEmailType(opt.slug)} disabled={isDisabled}
-                            className="mt-0.5 accent-amber-500 cursor-pointer flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-gray-700 leading-none">{opt.label}</p>
-                            {opt.subject && <p className="text-xs text-gray-400 leading-snug mt-0.5 truncate">{opt.subject}</p>}
-                            <p className="text-[10px] text-gray-300 mt-0.5 font-mono">slug: {opt.slug}</p>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
-            {isRecoveryType && (
-              <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
-                <i className="ri-cursor-line text-orange-500 text-sm flex-shrink-0 mt-0.5"></i>
-                <p className="text-xs text-orange-700 leading-relaxed">
-                  Recovery emails resolve <code>{`{resume_url}`}</code> to: <span className="font-mono text-[10px] break-all">{resumeUrl}</span>
-                </p>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={handleSendEmail}
-                disabled={sendingEmail || !emailType || (emailType === "letter_ready" && !hasDocuments)}
-                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-500 text-white text-sm font-bold rounded-lg hover:bg-amber-600 disabled:opacity-50 cursor-pointer transition-colors">
-                {sendingEmail ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send Email</>}
-              </button>
-              {selectedTemplate && <p className="text-xs text-gray-400 italic">→ {email}</p>}
-            </div>
-            {emailMsg && (
-              <p className={`text-xs font-semibold flex items-center gap-1 ${emailMsg.includes("sent") || emailMsg.includes("Sent") ? "text-amber-700" : emailMsg.includes("Skipped") ? "text-gray-500" : "text-red-500"}`}>
-                <i className={emailMsg.includes("sent") || emailMsg.includes("Sent") ? "ri-checkbox-circle-fill" : emailMsg.includes("Skipped") ? "ri-information-line" : "ri-error-warning-line"}></i>
-                {emailMsg}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* ── Call Panel ── */}
-        {activePanel === "call" && (
-          <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                {phone
-                  ? <><p className="text-sm font-bold text-gray-800 font-mono">{phone}</p><p className="text-xs text-gray-500">{patientName}</p></>
-                  : <p className="text-xs text-amber-600 font-semibold">No phone number on file</p>
-                }
-              </div>
-              {price != null && (
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-400">Amount</p>
-                  <p className="text-sm font-bold text-gray-700">${price}</p>
-                </div>
-              )}
-            </div>
-            <button type="button" onClick={handleCall} disabled={calling || !phone}
-              className="whitespace-nowrap w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-sky-600 text-white text-sm font-bold rounded-lg hover:bg-sky-700 disabled:opacity-50 cursor-pointer transition-colors">
-              {calling ? <><i className="ri-loader-4-line animate-spin"></i>Calling...</> : <><i className="ri-phone-line"></i>Call {firstName} Now</>}
-            </button>
-            {callMsg && (
-              <p className={`text-xs font-semibold flex items-center gap-1 ${callMsg.includes("connecting") ? "text-sky-600" : "text-red-500"}`}>
-                <i className={callMsg.includes("connecting") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{callMsg}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Chat History ── */}
-      <div className="flex-1 overflow-y-auto bg-[#f5f5f0]" style={{ minHeight: 0 }}>
+      {/* ── Chat History (primary area — scrolls internally only) ── */}
+      <div ref={chatScrollRef} className="flex-1 overflow-y-auto bg-[#f5f5f0]" style={{ minHeight: 0 }}>
         {loadingComms && allLogs.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
@@ -817,9 +680,9 @@ export default function CommunicationTab({
         )}
       </div>
 
-      {/* ── Chat footer: count + refresh ── */}
+      {/* ── Slim footer: count + refresh ── */}
       {allLogs.length > 0 && (
-        <div className="flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-white flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-1.5 border-t border-gray-100 bg-white flex-shrink-0">
           <p className="text-[10px] text-gray-400 font-semibold">{allLogs.length} communication{allLogs.length !== 1 ? "s" : ""} logged</p>
           <button type="button" onClick={loadCommLogs}
             className="whitespace-nowrap flex items-center gap-1 text-[10px] text-gray-400 hover:text-[#3b6ea5] cursor-pointer transition-colors">
@@ -827,6 +690,207 @@ export default function CommunicationTab({
           </button>
         </div>
       )}
+
+      {/* ── Composer dock (bottom, WhatsApp-style) ──────────────────────────── */}
+      <div className="flex-shrink-0 border-t border-gray-200 bg-white">
+
+        {/* Email panel — pops up above the input */}
+        {activePanel === "email" && (
+          <div className="border-b border-gray-100 p-3 max-h-[55vh] overflow-y-auto bg-amber-50/40">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5"><i className="ri-mail-send-line text-xs"></i>Send Email</span>
+              <button type="button" onClick={() => setActivePanel(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><i className="ri-close-line"></i></button>
+            </div>
+            <p className="text-xs text-amber-600/70 font-mono truncate mb-2">{email}</p>
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+              {dbEmailTemplates === null ? (
+                <div className="flex items-center justify-center py-3 text-xs text-gray-400">
+                  <i className="ri-loader-4-line animate-spin mr-1.5"></i>Loading templates...
+                </div>
+              ) : emailGroups.length === 0 ? (
+                <div className="px-3 py-3 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-xs text-gray-500 text-center">
+                  No email templates yet — add them in <strong>Settings → Communications</strong>.
+                </div>
+              ) : (
+                emailGroups.map((group) => (
+                  <div key={group.group}>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1 mb-1 px-0.5">
+                      <i className={`${group.icon} text-xs`}></i>{group.group}
+                    </p>
+                    {group.options.map((opt) => {
+                      const isDisabled = opt.slug === "letter_ready" && !hasDocuments;
+                      return (
+                        <label key={opt.slug}
+                          className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors mb-1 ${emailType === opt.slug ? "bg-white border-amber-400" : "bg-amber-50/50 border-transparent hover:border-amber-200"} ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}`}>
+                          <input type="radio" name="emailType" value={opt.slug} checked={emailType === opt.slug}
+                            onChange={() => setEmailType(opt.slug)} disabled={isDisabled}
+                            className="mt-0.5 accent-amber-500 cursor-pointer flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-gray-700 leading-none">{opt.label}</p>
+                            {opt.subject && <p className="text-xs text-gray-400 leading-snug mt-0.5 truncate">{opt.subject}</p>}
+                            <p className="text-[10px] text-gray-300 mt-0.5 font-mono">slug: {opt.slug}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+            {isRecoveryType && (
+              <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg mt-2">
+                <i className="ri-cursor-line text-orange-500 text-sm flex-shrink-0 mt-0.5"></i>
+                <p className="text-xs text-orange-700 leading-relaxed">
+                  Recovery emails resolve <code>{`{resume_url}`}</code> to: <span className="font-mono text-[10px] break-all">{resumeUrl}</span>
+                </p>
+              </div>
+            )}
+            <div className="flex items-center gap-2 mt-2">
+              <button type="button" onClick={handleSendEmail}
+                disabled={sendingEmail || !emailType || (emailType === "letter_ready" && !hasDocuments)}
+                className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-500 text-white text-sm font-bold rounded-lg hover:bg-amber-600 disabled:opacity-50 cursor-pointer transition-colors">
+                {sendingEmail ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send Email</>}
+              </button>
+              {selectedTemplate && <p className="text-xs text-gray-400 italic">→ {email}</p>}
+            </div>
+            {emailMsg && (
+              <p className={`text-xs font-semibold flex items-center gap-1 mt-2 ${emailMsg.includes("sent") || emailMsg.includes("Sent") ? "text-amber-700" : emailMsg.includes("Skipped") ? "text-gray-500" : "text-red-500"}`}>
+                <i className={emailMsg.includes("sent") || emailMsg.includes("Sent") ? "ri-checkbox-circle-fill" : emailMsg.includes("Skipped") ? "ri-information-line" : "ri-error-warning-line"}></i>
+                {emailMsg}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Call panel — pops up above the input */}
+        {activePanel === "call" && (
+          <div className="border-b border-gray-100 p-3 bg-sky-50/40">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[11px] font-bold text-sky-700 uppercase tracking-wider flex items-center gap-1.5"><i className="ri-phone-line text-xs"></i>Call</span>
+              <button type="button" onClick={() => setActivePanel(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><i className="ri-close-line"></i></button>
+            </div>
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  {phone
+                    ? <><p className="text-sm font-bold text-gray-800 font-mono">{phone}</p><p className="text-xs text-gray-500">{patientName}</p></>
+                    : <p className="text-xs text-amber-600 font-semibold">No phone number on file</p>
+                  }
+                </div>
+                {price != null && (
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400">Amount</p>
+                    <p className="text-sm font-bold text-gray-700">${price}</p>
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={handleCall} disabled={calling || !phone}
+                className="whitespace-nowrap w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-sky-600 text-white text-sm font-bold rounded-lg hover:bg-sky-700 disabled:opacity-50 cursor-pointer transition-colors">
+                {calling ? <><i className="ri-loader-4-line animate-spin"></i>Calling...</> : <><i className="ri-phone-line"></i>Call {firstName} Now</>}
+              </button>
+              {callMsg && (
+                <p className={`text-xs font-semibold flex items-center gap-1 ${callMsg.includes("connecting") ? "text-sky-600" : "text-red-500"}`}>
+                  <i className={callMsg.includes("connecting") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{callMsg}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Quick templates popover — pops up above the input */}
+        {showTemplates && (
+          <div className="border-b border-gray-100 p-3 bg-[#e8f0f9]/40">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[11px] font-bold text-[#3b6ea5] uppercase tracking-wider flex items-center gap-1.5"><i className="ri-layout-grid-line text-xs"></i>Quick Templates</span>
+              <button type="button" onClick={() => setShowTemplates(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><i className="ri-close-line"></i></button>
+            </div>
+            {dbSmsTemplates === null ? (
+              <div className="flex items-center justify-center py-3 text-xs text-gray-400">
+                <i className="ri-loader-4-line animate-spin mr-1.5"></i>Loading templates...
+              </div>
+            ) : SMS_TEMPLATES.length === 0 ? (
+              <div className="px-3 py-3 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-xs text-gray-500 text-center">
+                No SMS templates yet — add them in <strong>Settings → Communications</strong>.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                {SMS_TEMPLATES.map((tpl) => (
+                  <button key={tpl.id} type="button" disabled={!phone}
+                    onClick={() => {
+                      const rendered = tpl.getMessage(firstName, confirmationId);
+                      setSmsText(rendered);
+                      setPristineSmsText(rendered);
+                      setSelectedSmsSlug(tpl.id);
+                      setShowTemplates(false);
+                    }}
+                    className={`whitespace-nowrap flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${tpl.bg} ${tpl.color}`}>
+                    <i className={`${tpl.icon} text-sm flex-shrink-0`}></i>
+                    <span className="truncate">{tpl.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SMS send status */}
+        {sendMsg && (
+          <p className={`px-4 pt-2 text-xs font-semibold flex items-center gap-1 ${sendMsg === "Sent!" ? "text-[#3b6ea5]" : "text-red-500"}`}>
+            <i className={sendMsg === "Sent!" ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{sendMsg}
+          </p>
+        )}
+
+        {/* Composer input row — SMS textbox sits at the bottom */}
+        <div className="flex items-end gap-2 px-3 py-2.5">
+          {/* + : Quick templates */}
+          <button type="button" title="Quick templates"
+            onClick={() => { setShowTemplates((v) => !v); setActivePanel(null); }}
+            className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full border text-base transition-colors cursor-pointer ${showTemplates ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "bg-white text-[#3b6ea5] border-[#b8cce4] hover:border-[#3b6ea5]"}`}>
+            <i className="ri-add-line"></i>
+          </button>
+          {/* Email */}
+          <button type="button" title="Send email"
+            onClick={() => { togglePanel("email"); setShowTemplates(false); }}
+            className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full border text-base transition-colors cursor-pointer ${activePanel === "email" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-amber-600 border-amber-200 hover:border-amber-400"}`}>
+            <i className="ri-mail-send-line"></i>
+          </button>
+          {/* Call */}
+          <button type="button" title="Call customer"
+            onClick={() => { togglePanel("call"); setShowTemplates(false); }}
+            className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full border text-base transition-colors cursor-pointer ${activePanel === "call" ? "bg-sky-600 text-white border-sky-600" : "bg-white text-sky-600 border-sky-200 hover:border-sky-400"}`}>
+            <i className="ri-phone-line"></i>
+          </button>
+          {/* SMS textbox */}
+          <textarea value={smsText}
+            onChange={(e) => {
+              const next = e.target.value.slice(0, 320);
+              setSmsText(next);
+              // Manual edit clears slug binding so send falls back to textbox content.
+              if (selectedSmsSlug && next !== pristineSmsText) setSelectedSmsSlug(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendSMS(); }
+            }}
+            rows={1}
+            placeholder={phone ? `Message ${firstName}…` : "No phone number on this order"}
+            disabled={!phone}
+            className="flex-1 px-3.5 py-2 border border-gray-200 rounded-2xl text-sm bg-gray-50 focus:outline-none focus:border-[#3b6ea5] focus:bg-white resize-none disabled:opacity-50 max-h-32" />
+          {/* Send */}
+          <button type="button" onClick={handleSendSMS} disabled={sending || !phone || !smsText.trim()}
+            title="Send SMS"
+            className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-[#3b6ea5] text-white rounded-full hover:bg-[#2d5a8e] disabled:opacity-40 cursor-pointer transition-colors">
+            {sending ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-send-plane-fill"></i>}
+          </button>
+        </div>
+
+        {/* Hint + char counter */}
+        <div className="flex items-center justify-between px-4 pb-2 -mt-1">
+          {!phone
+            ? <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-1"><i className="ri-alert-line"></i>Add a phone number to enable SMS</span>
+            : <span className="text-[10px] text-gray-300">Enter to send · Shift+Enter for new line</span>}
+          <span className="text-[10px] text-gray-400">{smsText.length}/320</span>
+        </div>
+      </div>
     </div>
   );
 }

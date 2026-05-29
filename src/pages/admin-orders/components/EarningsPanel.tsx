@@ -358,9 +358,12 @@ export default function EarningsPanel() {
   const loadEarnings = useCallback(async () => {
     const [earningsRes, profilesRes, completedOrdersRes] = await Promise.all([
       supabase.from("doctor_earnings").select("*").order("created_at", { ascending: false }),
+      // Real, licensed providers only — exclude employees/admins/owner/support/Company OS users.
       supabase
         .from("doctor_profiles")
         .select("user_id, full_name, email, per_order_rate")
+        .eq("is_admin", false)
+        .eq("role", "provider")
         .order("full_name"),
       supabase
         .from("orders")
@@ -721,7 +724,7 @@ export default function EarningsPanel() {
                 <p className="text-sm font-bold text-gray-900">Payout Reminder Email</p>
               </div>
               <p className="text-xs text-gray-500 ml-7">
-                Sends a full breakdown to <strong>pawtenant@gmail.com</strong> + GHL. Auto-scheduled on the 1st &amp; 15th of each month.
+                Sends a full breakdown to <strong>pawtenant@gmail.com</strong> + GHL. Auto-scheduled on the 12th &amp; 27th of each month.
               </p>
               {lastReminderSent && (
                 <p className="text-xs text-gray-400 ml-7 mt-0.5 flex items-center gap-1">

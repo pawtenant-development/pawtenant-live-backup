@@ -1,8 +1,8 @@
-﻿import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import PSDAssessmentNavbar from "./components/PSDAssessmentNavbar";
 import PSDStep1, { PSDStep1Data } from "./components/PSDStep1";
-import PSDStep3Checkout from "./components/PSDStep3Checkout";
+// Step 3 (payment) is code-split — Stripe.js / Klarna / payment forms load only at Step 3.
 import Step2PersonalInfo, { Step2Data } from "../assessment/components/Step2PersonalInfo";
 import StepIndicator from "../assessment/components/StepIndicator";
 import ExitIntentOverlay from "../assessment/components/ExitIntentOverlay";
@@ -16,6 +16,19 @@ import {
   setConfirmationId as storeSetConfirmationId,
   buildFullSource,
 } from "@/lib/attributionStore";
+
+// Lazy-loaded PSD Step 3 checkout (payment) — split into its own bundle chunk.
+const PSDStep3Checkout = lazy(() => import("./components/PSDStep3Checkout"));
+
+// Lightweight fallback shown only while the payment chunk loads (usually instant).
+function PSDStep3LoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5]"></i>
+      <p className="mt-3 text-sm font-semibold text-gray-500">Loading secure checkout…</p>
+    </div>
+  );
+}
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -511,12 +524,14 @@ export default function PSDAssessmentPage() {
               )}
 
               {step === 3 && (
-                <PSDStep3Checkout
-                  step1={step1}
-                  step2={step2}
-                  confirmationId={confirmationId}
-                  onBack={() => setStep(2)}
-                />
+                <Suspense fallback={<PSDStep3LoadingFallback />}>
+                  <PSDStep3Checkout
+                    step1={step1}
+                    step2={step2}
+                    confirmationId={confirmationId}
+                    onBack={() => setStep(2)}
+                  />
+                </Suspense>
               )}
             </>
           )}

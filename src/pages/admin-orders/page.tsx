@@ -123,6 +123,13 @@ function isPriorityOrder(order: Pick<Order, "price">): boolean {
   return (order.price ?? 0) > 130;
 }
 
+// Legacy / imported (WordPress) orders. Excluded from CURRENT operational counts
+// (unpaid leads, sequence stages) so old imports don't inflate today's pipeline.
+// They are never deleted and still appear in the list / dedicated legacy views.
+function isLegacyOrder(order: Pick<Order, "source_system" | "historical_import">): boolean {
+  return order.source_system === "wordpress_legacy" || order.historical_import === true;
+}
+
 // ─── Combined order status — maps payment + doctor state to 4-stage user-facing labels ──
 
 function getOrderDisplayStatus(order: Order) {
@@ -1873,7 +1880,7 @@ export default function AdminOrdersPage() {
                 {[
                   {
                     label: "Lead (Unpaid)",
-                    value: orders.filter((o) => o.status !== "cancelled" && (!o.payment_intent_id || o.status === "lead")).length,
+                    value: orders.filter((o) => o.status !== "cancelled" && !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead")).length,
                     icon: "ri-user-follow-line",
                     color: "text-amber-600",
                     filter: "lead_unpaid",
@@ -2062,14 +2069,14 @@ export default function AdminOrdersPage() {
                   {hideRecentFollowup ? "Hiding sent within 7d" : "Hide sent within 7 days"}
                 </button>
                 <span className="text-xs text-gray-400">
-                  {orders.filter((o) => (!o.payment_intent_id || o.status === "lead") && o.sent_followup_at && Date.now() - new Date(o.sent_followup_at).getTime() <= 7 * 24 * 60 * 60 * 1000).length} leads received follow-up in last 7d
+                  {orders.filter((o) => !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead") && o.sent_followup_at && Date.now() - new Date(o.sent_followup_at).getTime() <= 7 * 24 * 60 * 60 * 1000).length} leads received follow-up in last 7d
                 </span>
               </div>
             )}
 
             {/* ── Sequence quick-filter chip bar (always visible on orders tab) ── */}
             {!loading && (() => {
-              const leads = orders.filter((o) => !o.payment_intent_id || o.status === "lead");
+              const leads = orders.filter((o) => !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead"));
               const counts = {
                 all: leads.length,
                 no_sequence: leads.filter((o) => !o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at && !o.followup_opt_out).length,

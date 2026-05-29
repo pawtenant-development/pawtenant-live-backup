@@ -82,6 +82,7 @@ interface EarningRow {
   doctor_user_id: string;
   doctor_name: string | null;
   doctor_email: string | null;
+  order_id: string | null;
   confirmation_id: string | null;
   patient_name: string | null;
   patient_state: string | null;
@@ -265,6 +266,9 @@ Deno.serve(async (req: Request) => {
   // ── Date gate: only run on 12th or 27th (unless forced) ─────────────────
   const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
   const force = body?.force === true;
+  // dryRun = compute + return the breakdown WITHOUT sending any email or GHL webhook.
+  // Safe manual test path: nothing is delivered to any recipient.
+  const dryRun = body?.dryRun === true;
   const today = new Date();
   const dayOfMonth = today.getDate();
 
@@ -276,19 +280,53 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // ── Fetch pending earnings ───────────────────────────────────────────────
-  const { data: pendingEarnings, error: earningsErr } = await supabase
-    .from("doctor_earnings")
-    .select("*")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true });
+  // ── Fetch pending earnings, real providers & completed (eligible) orders ──
+  // Payout eligibility (single source of truth, mirrors the admin Earnings panel):
+  //   • status = pending AND a payout amount is set
+  //   • belongs to a REAL provider (doctor_profiles.is_admin = false AND role = 'provider')
+  //     → never employees / admins / owner / support / Company OS users
+  //   • the order is COMPLETED (doctor_status = 'patient_notified') — never under-review
+  //   • the order is NOT legacy/imported (source_system <> 'wordpress_legacy', historical_import <> true)
+  //   • manual earnings with no order link are kept (admin-entered payouts for real providers)
+  const [earningsRes, providersRes, completedOrdersRes] = await Promise.all([
+    supabase
+      .from("doctor_earnings")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("doctor_profiles")
+      .select("user_id")
+      .eq("is_admin", false)
+      .eq("role", "provider"),
+    supabase
+      .from("orders")
+      .select("id, confirmation_id, source_system, historical_import")
+      .eq("doctor_status", "patient_notified"),
+  ]);
 
-  if (earningsErr) return json({ error: `Failed to fetch earnings: ${earningsErr.message}` }, 500);
+  if (earningsRes.error) return json({ error: `Failed to fetch earnings: ${earningsRes.error.message}` }, 500);
 
-  const earnings = (pendingEarnings as EarningRow[]) ?? [];
+  const allPending = (earningsRes.data as EarningRow[]) ?? [];
+  const realProviderIds = new Set(((providersRes.data ?? []) as { user_id: string }[]).map((p) => p.user_id));
+
+  type OrderRef = { id: string; confirmation_id: string | null; source_system: string | null; historical_import: boolean | null };
+  const completedRows = ((completedOrdersRes.data ?? []) as OrderRef[])
+    .filter((o) => o.source_system !== "wordpress_legacy" && o.historical_import !== true);
+  const completedOrderIds = new Set(completedRows.map((o) => o.id));
+  const completedConfirmIds = new Set(completedRows.map((o) => o.confirmation_id).filter(Boolean) as string[]);
+
+  const earnings = allPending.filter((e) => {
+    if (e.doctor_amount == null) return false;
+    if (!realProviderIds.has(e.doctor_user_id)) return false;
+    if (!e.order_id && !e.confirmation_id) return true; // manual payout entry for a real provider
+    if (e.order_id && completedOrderIds.has(e.order_id)) return true;
+    if (e.confirmation_id && completedConfirmIds.has(e.confirmation_id)) return true;
+    return false;
+  });
 
   if (earnings.length === 0) {
-    return json({ ok: true, message: "No pending payouts — nothing to remind about", count: 0 });
+    return json({ ok: true, message: "No eligible pending payouts — nothing to remind about", count: 0 });
   }
 
   // ── Build per-doctor summaries ───────────────────────────────────────────
@@ -349,6 +387,25 @@ Deno.serve(async (req: Request) => {
   const csvContent = buildCsv(summaries, triggerDate);
   const csvBase64 = btoa(unescape(encodeURIComponent(csvContent)));
   const csvFilename = `payout-report-${today.toISOString().slice(0, 10)}.csv`;
+
+  // ── Dry run: return the computed breakdown without delivering anything ────
+  if (dryRun) {
+    return json({
+      ok: true,
+      dryRun: true,
+      message: `DRY RUN — would notify ${toList.length} recipient${toList.length !== 1 ? "s" : ""} about ${summaries.length} provider${summaries.length !== 1 ? "s" : ""} (${formatCurrency(grandTotal)}). No email or webhook sent.`,
+      totalUnpaid: grandTotal,
+      providersCount: summaries.length,
+      pendingOrdersCount: earnings.length,
+      wouldSendTo: toList,
+      providers: summaries.map((s) => ({
+        name: s.doctorName,
+        email: s.doctorEmail,
+        ordersCount: s.pendingOrders.length,
+        amountDue: s.totalUnpaid,
+      })),
+    });
+  }
 
   const emailSent = await sendViaResend({
     to: toList,

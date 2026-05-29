@@ -87,6 +87,10 @@ export interface ChatSession {
   linked_order_last_name: string | null;
   linked_order_email: string | null;
   linked_order_confirmation_id: string | null;
+  // Extended order context for the conversation header/cards.
+  linked_order_phone: string | null;
+  linked_order_state: string | null;
+  linked_order_provider: string | null;
 }
 
 export type NotifPermission = "default" | "granted" | "denied" | "unsupported";
@@ -572,21 +576,21 @@ export function useAdminChatNotifier(
           new Set(rawRows.map((r) => r.visitor_session_id).filter((v): v is string => !!v)),
         );
 
-        const byMatched      = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null }>();
-        const byVisitor      = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null }>();
+        const byMatched      = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null; phone: string | null; state: string | null; prov: string | null }>();
+        const byVisitor      = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null; phone: string | null; state: string | null; prov: string | null }>();
         // CHAT-RESUME-ORDER-IDENTITY-SYNC (2026-05-19): third lookup
         // path keyed by visitor_session_id → visitor_sessions.confirmation_id
         // → orders.confirmation_id. Required for resume / recovery
         // sessions where orders.session_id is sticky-pinned to the
         // ORIGINAL Session 1 id but visitor_sessions.confirmation_id
         // on Session 2 carries the link.
-        const byConfirmation = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null }>();
+        const byConfirmation = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null; phone: string | null; state: string | null; prov: string | null }>();
 
         try {
           if (moIds.length > 0) {
             const { data: ordersByMo } = await supabase
               .from("orders")
-              .select("id, first_name, last_name, email, confirmation_id")
+              .select("id, first_name, last_name, email, confirmation_id, phone, state, doctor_name")
               .in("id", moIds);
             for (const o of (ordersByMo ?? []) as Array<{
               id: string;
@@ -594,12 +598,18 @@ export function useAdminChatNotifier(
               last_name: string | null;
               email: string | null;
               confirmation_id: string | null;
+              phone: string | null;
+              state: string | null;
+              doctor_name: string | null;
             }>) {
               byMatched.set(o.id, {
                 fn: o.first_name,
                 ln: o.last_name,
                 em: o.email,
                 cid: o.confirmation_id,
+                phone: o.phone,
+                state: o.state,
+                prov: o.doctor_name,
               });
             }
           }
@@ -632,7 +642,7 @@ export function useAdminChatNotifier(
           if (vsIds.length > 0) {
             const { data: ordersByVs } = await supabase
               .from("orders")
-              .select("session_id, first_name, last_name, email, confirmation_id, paid_at, created_at, status")
+              .select("session_id, first_name, last_name, email, confirmation_id, paid_at, created_at, status, phone, state, doctor_name")
               .in("session_id", vsIds)
               .not("status", "in", `("archived","refunded","cancelled")`);
             // Prefer paid > most-recent when multiple orders share a session.
@@ -645,6 +655,9 @@ export function useAdminChatNotifier(
               paid_at: string | null;
               created_at: string;
               status: string | null;
+              phone: string | null;
+              state: string | null;
+              doctor_name: string | null;
             }>) {
               if (!o.session_id) continue;
               const existing = byVisitor.get(o.session_id);
@@ -654,6 +667,9 @@ export function useAdminChatNotifier(
                   ln: o.last_name,
                   em: o.email,
                   cid: o.confirmation_id,
+                  phone: o.phone,
+                  state: o.state,
+                  prov: o.doctor_name,
                 });
                 continue;
               }
@@ -663,6 +679,9 @@ export function useAdminChatNotifier(
                   ln: o.last_name,
                   em: o.email,
                   cid: o.confirmation_id,
+                  phone: o.phone,
+                  state: o.state,
+                  prov: o.doctor_name,
                 });
               }
             }
@@ -678,10 +697,10 @@ export function useAdminChatNotifier(
           if (confIds.length > 0) {
             const { data: ordersByCid } = await supabase
               .from("orders")
-              .select("confirmation_id, first_name, last_name, email, paid_at, status")
+              .select("confirmation_id, first_name, last_name, email, paid_at, status, phone, state, doctor_name")
               .in("confirmation_id", confIds)
               .not("status", "in", `("archived","refunded","cancelled")`);
-            const cidToOrder = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null; paid: string | null }>();
+            const cidToOrder = new Map<string, { fn: string | null; ln: string | null; em: string | null; cid: string | null; paid: string | null; phone: string | null; state: string | null; prov: string | null }>();
             for (const o of (ordersByCid ?? []) as Array<{
               confirmation_id: string | null;
               first_name: string | null;
@@ -689,10 +708,13 @@ export function useAdminChatNotifier(
               email: string | null;
               paid_at: string | null;
               status: string | null;
+              phone: string | null;
+              state: string | null;
+              doctor_name: string | null;
             }>) {
               if (!o.confirmation_id) continue;
               const existing = cidToOrder.get(o.confirmation_id);
-              const incoming = { fn: o.first_name, ln: o.last_name, em: o.email, cid: o.confirmation_id, paid: o.paid_at };
+              const incoming = { fn: o.first_name, ln: o.last_name, em: o.email, cid: o.confirmation_id, paid: o.paid_at, phone: o.phone, state: o.state, prov: o.doctor_name };
               if (!existing) {
                 cidToOrder.set(o.confirmation_id, incoming);
               } else if (incoming.paid && !existing.paid) {
@@ -704,6 +726,7 @@ export function useAdminChatNotifier(
               if (order) {
                 byConfirmation.set(vsid, {
                   fn: order.fn, ln: order.ln, em: order.em, cid: order.cid,
+                  phone: order.phone, state: order.state, prov: order.prov,
                 });
               }
             }
@@ -730,6 +753,9 @@ export function useAdminChatNotifier(
               linked_order_last_name: null,
               linked_order_email: null,
               linked_order_confirmation_id: null,
+              linked_order_phone: null,
+              linked_order_state: null,
+              linked_order_provider: null,
             };
           }
           return {
@@ -738,6 +764,9 @@ export function useAdminChatNotifier(
             linked_order_last_name: pick.ln,
             linked_order_email: pick.em,
             linked_order_confirmation_id: pick.cid,
+            linked_order_phone: pick.phone,
+            linked_order_state: pick.state,
+            linked_order_provider: pick.prov,
           };
         });
         const initial = !initialLoadedRef.current;
