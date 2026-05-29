@@ -3,7 +3,7 @@ import { useAdminChat } from "../../../context/AdminChatContext";
 
 type TabKey =
   | "dashboard" | "orders" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors"
-  | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
+  | "earnings" | "payments" | "team" | "attendance" | "shifts" | "audit" | "settings" | "health";
 
 interface AdminSidebarProps {
   activeTab: TabKey;
@@ -33,6 +33,8 @@ const TAB_CONFIG: { key: TabKey; label: string; icon: string }[] = [
   { key: "earnings",  label: "Earnings",       icon: "ri-money-dollar-circle-line" },
   { key: "payments",  label: "Payments",       icon: "ri-bank-card-line" },
   { key: "team",      label: "Team",           icon: "ri-shield-keyhole-line" },
+  { key: "attendance",label: "Attendance",     icon: "ri-time-line" },
+  { key: "shifts",    label: "Shifts",         icon: "ri-calendar-schedule-line" },
   { key: "audit",     label: "Audit",          icon: "ri-list-check-2" },
   { key: "settings",  label: "Settings",       icon: "ri-settings-3-line" },
   { key: "health",    label: "Health",         icon: "ri-pulse-line" },

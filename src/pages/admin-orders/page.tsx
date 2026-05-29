@@ -12,6 +12,8 @@ import CustomersTab from "./components/CustomersTab";
 import ChatsTab from "./components/ChatsTab";
 import ContactRequestsTab from "./components/ContactRequestsTab";
 import TeamTab from "./components/TeamTab";
+import AttendanceTab from "./components/AttendanceTab";
+import ShiftsTab from "./components/ShiftsTab";
 import PaymentsTab from "./components/PaymentsTab";
 import ChangePasswordModal from "./components/ChangePasswordModal";
 import OrderNotesPanel from "./components/OrderNotesPanel";
@@ -174,12 +176,12 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
 
 // ─── Role-based tab visibility ─────────────────────────────────────────────
 
-type TabKey = "dashboard" | "orders" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors" | "earnings" | "payments" | "team" | "audit" | "settings" | "health";
+type TabKey = "dashboard" | "orders" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors" | "earnings" | "payments" | "team" | "attendance" | "shifts" | "audit" | "settings" | "health";
 
 // Phase A note: "communications" is the new umbrella hub. Old "comms" / "chats"
 // / "contacts" stay intact so this rollout is purely additive. Hiding them
 // happens in a later phase only after the hub has been validated.
-const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "audit", "settings", "health"];
+const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "attendance", "shifts", "audit", "settings", "health"];
 
 function getVisibleTabs(role: string | null, customTabAccess?: string[] | null): TabKey[] {
   // ── Canonical permission model ──────────────────────────────────────────
@@ -245,7 +247,8 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
     case "read_only":
       return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "payments", "audit", "health"];
     default:
-      return ALL_TABS;
+      // Attendance + Shifts (Company OS) are restricted to owner / admin_manager.
+      return ALL_TABS.filter((t) => t !== "attendance" && t !== "shifts");
   }
 }
 
@@ -1776,6 +1779,8 @@ export default function AdminOrdersPage() {
              activeTab === "earnings" ? "Earnings" :
              activeTab === "payments" ? "Payments" :
              activeTab === "team" ? "Team" :
+             activeTab === "attendance" ? "Attendance" :
+             activeTab === "shifts" ? "Shifts" :
              activeTab === "audit" ? "Audit Log" :
              activeTab === "settings" ? "Settings" : "System Health"}
           </h1>
@@ -2526,6 +2531,12 @@ export default function AdminOrdersPage() {
 
         {/* ── TEAM TAB ── */}
         {activeTab === "team" && isTabVisible("team") && <TeamTab />}
+
+        {/* ── ATTENDANCE TAB (Company OS) ── */}
+        {activeTab === "attendance" && isTabVisible("attendance") && <AttendanceTab />}
+
+        {/* ── SHIFTS TAB (Company OS) ── */}
+        {activeTab === "shifts" && isTabVisible("shifts") && <ShiftsTab />}
 
         {/* ── AUDIT LOG TAB ── */}
         {activeTab === "audit" && (
