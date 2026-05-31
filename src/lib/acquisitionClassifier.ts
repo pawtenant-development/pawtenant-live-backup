@@ -425,6 +425,47 @@ export function classifyOrder(order: OrderLikeAttribution): AcquisitionClassific
   return classifyAcquisition(buildOrderAcquisitionInputs(order));
 }
 
+// ── Canonical channel mapping (LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR) ──
+//
+// The tracker writes a server-built canonical channel onto every paid order
+// (orders.attribution_json.channel) and every visitor session
+// (visitor_sessions.channel). Values seen on LIVE: google_ads, facebook_ads,
+// organic_search, social_organic, direct, chatgpt.com (+ a few legacy/raw
+// strings like "th" or a un-interpolated "{{site_source_name}}").
+//
+// The analytics surface used to RE-derive a label from raw click-IDs / UTMs,
+// but the analytics order feed does not carry gclid/fbclid, so true paid
+// Google/Facebook orders collapsed into "Direct / Unknown" and visitor-side
+// vs order-side numbers never reconciled. Reading the canonical channel
+// directly fixes that. We map it onto the existing AcquisitionLabel set so
+// the icons, colors, and vocabulary stay identical to Orders pills + Live
+// Visitors chips — no new visual map, no vocabulary fork.
+//
+// Returns null ONLY for an empty value, so callers can fall back to the
+// raw-signal classifier for legacy rows that never got a canonical channel.
+export function canonicalChannelToLabel(raw: string | null | undefined): AcquisitionLabel | null {
+  const v = (raw ?? "").toString().trim().toLowerCase();
+  if (!v || v === "{{site_source_name}}") return null;
+  if (v === "google_ads")     return "Google Ads";
+  if (v === "facebook_ads")   return "Facebook Paid";
+  if (v === "organic_search") return "Google Organic";
+  if (v === "social_organic") return "Facebook Organic";
+  if (v === "direct")         return "Direct / Unknown";
+  if (v.includes("chatgpt") || v.includes("openai"))                 return "ChatGPT";
+  if (v.includes("claude")  || v.includes("anthropic"))              return "Claude";
+  if (v.includes("gemini")  || v.includes("bard"))                   return "Gemini";
+  if (v.includes("perplexity"))                                      return "Perplexity";
+  if (v.includes("google"))                                          return "Google Ads";
+  if (v.includes("facebook") || v.includes("meta") || v === "fb")    return "Facebook Paid";
+  if (v.includes("instagram") || v === "ig")                         return "Instagram";
+  if (v.includes("tiktok"))                                          return "TikTok";
+  if (v.includes("reddit"))                                          return "Reddit";
+  if (v.includes("organic") || v.includes("seo"))                    return "Google Organic";
+  if (v.includes("email") || v.startsWith("seq_") || v.includes("recovery")) return "Email Recovery";
+  // Recognized-but-uncategorized canonical value (e.g. "th") → Referral.
+  return "Referral";
+}
+
 /**
  * The full canonical list of normalized labels, in the order that
  * dropdowns and dashboards should render them. Exposed so consumers

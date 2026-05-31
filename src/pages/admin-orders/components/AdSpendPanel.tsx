@@ -51,7 +51,10 @@ const PLATFORMS = [
     bgColor: "bg-blue-50",
     borderColor: "border-blue-200",
     chartColor: "#1877F2",
-    revenueKey: "Facebook / Instagram Ads",
+    // Must match the canonical AcquisitionLabel produced by orderChannelLabel
+    // (facebook_ads → "Facebook Paid"). The old "Facebook / Instagram Ads"
+    // key matched nothing, so Facebook revenue always read $0.
+    revenueKey: "Facebook Paid",
     fields: [
       { key: "access_token", label: "Access Token", placeholder: "EAAxxxxxxxxxxxxxxx...", type: "password", hint: "From Meta Business Suite → Settings → System Users → Generate Token (with ads_read permission)" },
       { key: "account_id", label: "Ad Account ID", placeholder: "123456789 or act_123456789", type: "text", hint: "Found in Meta Ads Manager URL: business.facebook.com/adsmanager/manage/campaigns?act=XXXXXXX" },
@@ -81,13 +84,27 @@ const PLATFORMS = [
     bgColor: "bg-gray-100",
     borderColor: "border-gray-300",
     chartColor: "#111827",
-    revenueKey: "TikTok Ads",
+    // Match the canonical AcquisitionLabel ("TikTok"), not "TikTok Ads".
+    revenueKey: "TikTok",
     fields: [
       { key: "access_token", label: "Access Token", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", type: "password", hint: "From TikTok for Business → My Apps → App Details → Access Token" },
       { key: "account_id", label: "Advertiser ID", placeholder: "7123456789012345678", type: "text", hint: "Found in TikTok Ads Manager URL or Account Settings" },
     ],
   },
 ];
+
+// ── Fixed FX rate (LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR) ──────────────────
+// Google Ads reports spend in PKR; order revenue is tracked in USD. Per owner
+// decision we reconcile with a FIXED rate so ROAS/ROI/CPA/CPC are always
+// shown (never N/A) and clearly labelled. Update this single constant if the
+// business rate changes.
+const FX_USD_TO_PKR = 280;
+const usdToPkr = (usd: number) => usd * FX_USD_TO_PKR;
+const pkrToUsd = (pkr: number) => pkr / FX_USD_TO_PKR;
+/** Convert any spend amount in its reported currency into USD. */
+function spendToUsd(amount: number, currency: string): number {
+  return currency === "PKR" ? pkrToUsd(amount) : amount;
+}
 
 function fmtCurrency(n: number, currency = "USD") {
   // For PKR and other non-USD currencies, show the currency code explicitly
@@ -149,7 +166,12 @@ function CampaignRow({ campaign, totalSpend, currency = "USD" }: { campaign: Cam
         </div>
       </div>
       <div className="text-right flex-shrink-0 space-y-0.5">
-        <p className="text-xs font-bold text-gray-900">{fmtCurrency(campaign.spend, currency)}</p>
+        <p className="text-xs font-bold text-gray-900">
+          {fmtCurrency(campaign.spend, currency)}
+          {currency === "PKR" && (
+            <span className="text-[10px] font-normal text-gray-400"> · ≈ {fmtCurrency(pkrToUsd(campaign.spend), "USD")}</span>
+          )}
+        </p>
         <p className="text-[10px] text-gray-400">
           {fmtNum(campaign.impressions)} imp · {fmtNum(campaign.clicks)} clicks
         </p>
@@ -195,13 +217,28 @@ function PlatformCard({
     ? !!settings?.account_id
     : !!(settings?.access_token && settings?.account_id);
   const currency = spendData?.currency ?? "USD";
-  const spend = spendData?.spend ?? 0;
-  const profit = revenue - spend;
-  const roas = spend > 0 ? revenue / spend : 0;
-  const roi = spend > 0 ? ((revenue - spend) / spend) * 100 : 0;
-  const cpc = (spendData?.clicks ?? 0) > 0 ? spend / (spendData?.clicks ?? 1) : 0;
-  const ctr = (spendData?.impressions ?? 0) > 0 ? ((spendData?.clicks ?? 0) / (spendData?.impressions ?? 1)) * 100 : 0;
-  const cpa = paidOrders > 0 && spend > 0 ? spend / paidOrders : 0;
+  const isPKR = currency === "PKR";
+  const spend = spendData?.spend ?? 0;            // reported in `currency`
+  const clicks = spendData?.clicks ?? 0;
+  const impressions = spendData?.impressions ?? 0;
+
+  // Revenue from orders is USD. Compute ROAS/ROI/CPA/CPC in the SPEND currency
+  // (fixed FX for PKR) so they're always valid — never N/A — then expose USD
+  // equivalents. See FX_USD_TO_PKR above.
+  const revenueUSD    = revenue;
+  const revenuePKR    = usdToPkr(revenueUSD);
+  const revenueNative = isPKR ? revenuePKR : revenueUSD;
+  const profitNative  = revenueNative - spend;
+  const profitUSD     = isPKR ? pkrToUsd(profitNative) : profitNative;
+  const spendUSD      = isPKR ? pkrToUsd(spend) : spend;
+  const roas = spend > 0 ? revenueNative / spend : 0;
+  const roi  = spend > 0 ? ((revenueNative - spend) / spend) * 100 : 0;
+  const cpc  = clicks > 0 ? spend / clicks : 0;
+  const cpcUSD = isPKR ? pkrToUsd(cpc) : cpc;
+  const ctr  = impressions > 0 ? (clicks / impressions) * 100 : 0;
+  const cpa  = paidOrders > 0 && spend > 0 ? spend / paidOrders : 0;
+  const cpaUSD = isPKR ? pkrToUsd(cpa) : cpa;
+  const avgOrderUSD = paidOrders > 0 ? revenueUSD / paidOrders : 0;
 
   const handleSave = async () => {
     // Google Ads: no access_token stored in DB (uses shared OAuth secrets)
@@ -410,71 +447,71 @@ function PlatformCard({
                 {spendData.campaigns.length > 0 && (
                   <span className="text-xs text-gray-400">{spendData.campaigns.length} campaigns</span>
                 )}
-                {currency !== "USD" && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold rounded-lg">
-                    <i className="ri-information-line"></i>
-                    Amounts in {currency} — not USD
+                {isPKR && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 border border-sky-200 text-sky-700 text-[10px] font-bold rounded-lg">
+                    <i className="ri-exchange-dollar-line"></i>
+                    Using fixed FX rate: 1 USD = PKR {FX_USD_TO_PKR}
                   </span>
                 )}
               </div>
 
-              {/* KPI grid */}
+              {/* KPI grid — PKR-native math with USD equivalents (fixed FX) */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <RoiMetric
-                  label={`Ad Spend${currency !== "USD" ? ` (${currency})` : ""}`}
+                  label={`Ad Spend${isPKR ? " (PKR)" : ""}`}
                   value={fmtCurrency(spend, currency)}
                   icon="ri-money-dollar-circle-line"
                   color="text-red-600"
-                  sub={`Total spent on ads${currency !== "USD" ? ` · ${currency}` : ""}`}
+                  sub={isPKR ? `≈ ${fmtCurrency(spendUSD, "USD")} · fixed FX` : "Total spent on ads"}
                 />
                 <RoiMetric
                   label="Revenue (from orders)"
-                  value={fmtCurrency(revenue)}
+                  value={fmtCurrency(revenueUSD, "USD")}
                   icon="ri-line-chart-line"
                   color="text-emerald-600"
-                  sub={`From ${platform.revenueKey} channel`}
+                  sub={isPKR ? `≈ ${fmtCurrency(revenuePKR, "PKR")} · ${platform.revenueKey}` : `From ${platform.revenueKey} channel`}
                 />
                 <RoiMetric
-                  label={`Gross Profit${currency !== "USD" ? " *" : ""}`}
-                  value={currency !== "USD" ? "N/A" : fmtCurrency(profit)}
+                  label={`Gross Profit${isPKR ? " (PKR)" : ""}`}
+                  value={fmtCurrency(profitNative, currency)}
                   icon="ri-funds-line"
-                  color={currency !== "USD" ? "text-gray-400" : profit >= 0 ? "text-emerald-700" : "text-red-600"}
-                  sub={currency !== "USD" ? `Can't compare ${currency} spend vs USD revenue` : profit >= 0 ? "Revenue minus ad spend" : "Currently at a loss"}
+                  color={profitNative >= 0 ? "text-emerald-700" : "text-red-600"}
+                  sub={isPKR ? `≈ ${fmtCurrency(profitUSD, "USD")} · revenue − spend` : profitNative >= 0 ? "Revenue minus ad spend" : "Currently at a loss"}
                 />
                 <RoiMetric
                   label="ROAS"
-                  value={currency !== "USD" ? "N/A" : spend > 0 ? `${roas.toFixed(2)}x` : "—"}
+                  value={spend > 0 ? `${roas.toFixed(2)}x` : "—"}
                   icon="ri-percent-line"
-                  color={currency !== "USD" ? "text-gray-400" : roas >= 3 ? "text-emerald-600" : roas >= 1 ? "text-amber-600" : "text-red-600"}
-                  sub={currency !== "USD" ? `Requires same currency` : roas >= 3 ? "Excellent" : roas >= 2 ? "Good" : roas >= 1 ? "Break-even zone" : "Below break-even"}
+                  color={roas >= 3 ? "text-emerald-600" : roas >= 1 ? "text-amber-600" : "text-red-600"}
+                  sub={isPKR ? "revenue PKR ÷ spend PKR" : roas >= 3 ? "Excellent" : roas >= 2 ? "Good" : roas >= 1 ? "Break-even zone" : "Below break-even"}
                 />
                 <RoiMetric
                   label="ROI"
-                  value={currency !== "USD" ? "N/A" : spend > 0 ? `${roi.toFixed(0)}%` : "—"}
+                  value={spend > 0 ? `${roi.toFixed(0)}%` : "—"}
                   icon="ri-arrow-up-circle-line"
-                  color={currency !== "USD" ? "text-gray-400" : roi >= 100 ? "text-emerald-600" : roi >= 0 ? "text-amber-600" : "text-red-600"}
-                  sub={currency !== "USD" ? "Requires same currency" : "Return on ad investment"}
+                  color={roi >= 100 ? "text-emerald-600" : roi >= 0 ? "text-amber-600" : "text-red-600"}
+                  sub={isPKR ? "(revenue − spend) ÷ spend, PKR" : "Return on ad investment"}
                 />
                 <RoiMetric
-                  label={`Cost Per Acquisition${currency !== "USD" ? ` (${currency})` : ""}`}
+                  label={`Cost Per Acquisition${isPKR ? " (PKR)" : ""}`}
                   value={cpa > 0 ? fmtCurrency(cpa, currency) : "—"}
                   icon="ri-user-received-line"
-                  color={cpa > 0 && currency === "USD" && revenue > 0 && cpa < (revenue / Math.max(paidOrders, 1)) ? "text-emerald-600" : cpa > 0 ? "text-amber-600" : "text-gray-400"}
-                  sub={paidOrders > 0 ? `${paidOrders} paid order${paidOrders !== 1 ? "s" : ""} · spend ÷ conversions` : "No paid orders yet"}
+                  color={cpa > 0 ? "text-amber-600" : "text-gray-400"}
+                  sub={paidOrders > 0 ? `${isPKR && cpa > 0 ? `≈ ${fmtCurrency(cpaUSD, "USD")} · ` : ""}${paidOrders} paid order${paidOrders !== 1 ? "s" : ""}` : "No paid orders yet"}
                 />
                 <RoiMetric
-                  label={`Cost Per Click${currency !== "USD" ? ` (${currency})` : ""}`}
+                  label={`Cost Per Click${isPKR ? " (PKR)" : ""}`}
                   value={cpc > 0 ? fmtCurrency(cpc, currency) : "—"}
                   icon="ri-cursor-line"
                   color="text-gray-700"
-                  sub={`CTR: ${ctr.toFixed(2)}%`}
+                  sub={`CTR: ${ctr.toFixed(2)}%${isPKR && cpc > 0 ? ` · ≈ ${fmtCurrency(cpcUSD, "USD")}` : ""}`}
                 />
                 <RoiMetric
                   label="Paid Orders"
                   value={paidOrders > 0 ? String(paidOrders) : "—"}
                   icon="ri-shopping-bag-line"
                   color="text-[#3b6ea5]"
-                  sub={`Avg. order: ${paidOrders > 0 && revenue > 0 ? fmtCurrency(revenue / paidOrders) : "—"}`}
+                  sub={`Avg. order: ${paidOrders > 0 && revenueUSD > 0 ? fmtCurrency(avgOrderUSD, "USD") : "—"}`}
                 />
               </div>
 
@@ -500,11 +537,10 @@ function PlatformCard({
                 </div>
               </div>
 
-              {/* ROAS visual indicator — only show for same-currency */}
-              {currency === "USD" && (
+              {/* ROAS visual indicator — always shown (PKR reconciled via fixed FX) */}
               <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-600">ROAS Performance</span>
+                  <span className="text-xs font-bold text-gray-600">ROAS Performance{isPKR ? " (fixed FX)" : ""}</span>
                   <span className={`text-xs font-extrabold ${roas >= 3 ? "text-emerald-600" : roas >= 1 ? "text-amber-600" : "text-red-600"}`}>
                     {spend > 0 ? `${roas.toFixed(2)}x` : "No spend data"}
                   </span>
@@ -530,19 +566,18 @@ function PlatformCard({
                   <span>3x+ (Profitable)</span>
                 </div>
               </div>
-              )}
 
-              {/* Currency mismatch notice for non-USD */}
-              {currency !== "USD" && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              {/* Fixed-FX reconciliation note for non-USD spend (e.g. PKR) */}
+              {isPKR && (
+                <div className="bg-sky-50 border border-sky-200 rounded-xl p-4">
                   <div className="flex items-start gap-2">
-                    <i className="ri-exchange-dollar-line text-amber-600 flex-shrink-0 mt-0.5"></i>
+                    <i className="ri-exchange-dollar-line text-sky-600 flex-shrink-0 mt-0.5"></i>
                     <div>
-                      <p className="text-xs font-bold text-amber-800">Currency Mismatch — {currency} vs USD</p>
-                      <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                        Your Google Ads account reports spend in <strong>{currency}</strong>, but your order revenue is tracked in USD.
-                        ROAS, ROI, and Profit calculations are disabled to avoid misleading comparisons.
-                        To enable them, change your Google Ads account currency to USD in Google Ads settings, or convert the spend manually.
+                      <p className="text-xs font-bold text-sky-800">Using fixed FX rate: 1 USD = PKR {FX_USD_TO_PKR}</p>
+                      <p className="text-xs text-sky-700 mt-1 leading-relaxed">
+                        Google Ads reports spend in <strong>PKR</strong>; order revenue is tracked in USD. ROAS, ROI, Profit, CPA and CPC are
+                        computed in PKR (revenue converted at the fixed rate above) and shown with USD equivalents. These are estimates based
+                        on a fixed rate — they will not exactly match live market FX.
                       </p>
                     </div>
                   </div>
@@ -705,19 +740,19 @@ export default function AdSpendPanel({ revenueByChannel, paidOrdersByChannel, da
     setLoadingPlatform((prev) => ({ ...prev, [platform]: false }));
   }, [supabaseUrl, dateFrom, dateTo]);
 
-  // Total spend across all platforms — only include USD platforms in combined totals
-  const hasMixedCurrencies = PLATFORMS.some(
+  // Combined totals are computed in USD: non-USD spend (Google Ads PKR) is
+  // converted at the fixed FX rate so Google is INCLUDED, not excluded.
+  const hasNonUsdSpend = PLATFORMS.some(
     (p) => spendData[p.key] && !spendData[p.key].error && spendData[p.key].currency !== "USD"
   );
-  // USD-only spend for accurate combined metrics
-  const totalSpendUSD = PLATFORMS.reduce((s, p) => {
-    const d = spendData[p.key];
-    if (!d || d.error || d.currency !== "USD") return s;
-    return s + d.spend;
-  }, 0);
-  // Raw total spend (all currencies, for display only when mixed)
+  // Gate: is there any spend data at all (any currency)?
   const totalSpendRaw = PLATFORMS.reduce((s, p) => s + (spendData[p.key]?.spend ?? 0), 0);
-  const totalSpend = hasMixedCurrencies ? totalSpendUSD : totalSpendRaw;
+  // All spend normalized to USD.
+  const totalSpend = PLATFORMS.reduce((s, p) => {
+    const d = spendData[p.key];
+    if (!d || d.error) return s;
+    return s + spendToUsd(d.spend, d.currency);
+  }, 0);
   const totalRevenue = PLATFORMS.reduce((s, p) => s + (revenueByChannel[p.revenueKey] ?? 0), 0);
   const totalProfit = totalRevenue - totalSpend;
   const overallRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
@@ -748,17 +783,17 @@ export default function AdSpendPanel({ revenueByChannel, paidOrdersByChannel, da
       {/* Overall summary strip — only if any platform has data */}
       {totalSpendRaw > 0 && (
         <>
-        {hasMixedCurrencies && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-            <i className="ri-information-line text-amber-600 flex-shrink-0"></i>
-            <p className="text-[10px] text-amber-700 font-semibold">
-              Mixed currencies detected — Google Ads spend is in PKR and excluded from combined USD totals below.
+        {hasNonUsdSpend && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-sky-50 border border-sky-200 rounded-lg">
+            <i className="ri-exchange-dollar-line text-sky-600 flex-shrink-0"></i>
+            <p className="text-[10px] text-sky-700 font-semibold">
+              Combined totals in USD · Google Ads PKR spend converted at fixed rate 1 USD = PKR {FX_USD_TO_PKR}.
             </p>
           </div>
         )}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { label: hasMixedCurrencies ? "Total Ad Spend (USD only)" : "Total Ad Spend", value: fmtCurrency(totalSpend), icon: "ri-money-dollar-circle-line", color: "text-red-600", bg: "bg-red-50 border-red-100" },
+            { label: "Total Ad Spend (USD)", value: fmtCurrency(totalSpend), icon: "ri-money-dollar-circle-line", color: "text-red-600", bg: "bg-red-50 border-red-100" },
             { label: "Total Revenue", value: fmtCurrency(totalRevenue), icon: "ri-line-chart-line", color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100" },
             { label: "Total Profit", value: fmtCurrency(totalProfit), icon: "ri-funds-line", color: totalProfit >= 0 ? "text-emerald-700" : "text-red-600", bg: totalProfit >= 0 ? "bg-emerald-50 border-emerald-100" : "bg-red-50 border-red-100" },
             { label: "Overall ROAS", value: `${overallRoas.toFixed(2)}x`, icon: "ri-percent-line", color: overallRoas >= 3 ? "text-emerald-600" : overallRoas >= 1 ? "text-amber-600" : "text-red-600", bg: "bg-gray-50 border-gray-100" },
