@@ -27,6 +27,7 @@ import AssessmentIntakeModal from "./components/AssessmentIntakeModal";
 import AdminDashboard from "./components/AdminDashboard";
 import AnalyticsTab from "./components/AnalyticsTab";
 import IncomingCallBanner from "./components/IncomingCallBanner";
+import { exportOrdersToCSV, type ExportableOrder } from "../../lib/exportOrders";
 import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
 import CommunicationsPanel from "./components/CommunicationsPanel";
@@ -2752,6 +2753,17 @@ export default function AdminOrdersPage() {
                     </button>
                   ) : null;
                 })()}
+                {/* Export the currently SELECTED orders (loaded rows) as a rich CSV */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selected = orders.filter((o) => selectedOrders.has(o.confirmation_id));
+                    exportOrdersToCSV(selected as unknown as ExportableOrder[], "orders-selected");
+                  }}
+                  className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <i className="ri-download-2-line"></i>Export Selected CSV
+                </button>
                 {/* ── Bulk GHL Sync — beside Stop Sequence ── */}
                 {!bulkGhlSyncDone ? (
                   <button
