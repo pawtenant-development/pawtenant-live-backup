@@ -16,17 +16,17 @@ const categories = [
   {
     title: "Housing",
     icon: "ri-home-heart-line",
-    desc: "Landlords are expected to accept documentation of emotional support animals and waive smoking along with their pets or similar restrictions, along with their owners, even in buildings that do not allow service animals. Employers are responsible for waiving policies or special accommodations whilst without additional consideration on top of that outside their landlord owns, though the landlord may be responsible for the service the animals to be in housing without additional recommendations results credible documentation from the tenant.",
+    desc: "This is where ESA protections are strongest. Under the federal Fair Housing Act, most housing providers must consider a reasonable-accommodation request for a qualifying emotional support animal, even in buildings with a \"no pets\" policy, and pet fees or deposits generally do not apply. A landlord may ask for a valid letter from a licensed provider but cannot demand your specific diagnosis or medical records. Each request is reviewed individually — a valid letter supports your request but does not guarantee approval.",
   },
   {
     title: "Employment",
     icon: "ri-briefcase-line",
-    desc: "Employees can petition to appeal for a fair ESA accommodation to their employer and must provide documentation regarding their emotional support animal without undue hardship. The employer can suggest or require alternative accommodations unless the employee has provided documentation of their condition. However, employees cannot ask an employee on information regarding their disabilities or charges, paperwork or presentations.",
+    desc: "Workplace rules are separate from housing. There is no automatic right to bring an emotional support animal to work. An employee may request an accommodation, and the employer weighs it case by case under applicable disability law and may offer alternatives or decline if it would cause undue hardship. Always check your employer's policy and your state's rules.",
   },
   {
     title: "Public Place",
     icon: "ri-store-line",
-    desc: "Service animals are allowed in public places, but emotional support animals must be controlled. Businesses don't necessarily need to accept ESAs unless there are direct legal requirements. If they are to be in the store at all times, they can be 2 positions at a time, to accommodate their guests with disabilities while avoiding other guests and shopping areas. However, businesses cannot ask an employee regarding their disabilities or charge for paperwork or presentations.",
+    desc: "An ESA letter does not give your animal public-access rights. Access to stores, restaurants, hotels, and other businesses is reserved for trained service dogs under the Americans with Disabilities Act (ADA) — not emotional support animals. Any service claiming an ESA letter grants public access is misleading. ESA protections center on housing.",
   },
 ];
 
@@ -466,6 +466,20 @@ export default function HousingRightsPage() {
             </p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <Link
+              to="/esa-laws"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                ESA Laws &amp; Requirements
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                What the Fair Housing Act requires, what a valid ESA letter needs, and what it can and cannot do.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
             <Link
               to="/how-to-get-esa-letter"
               className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"

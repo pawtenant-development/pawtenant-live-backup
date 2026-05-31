@@ -149,6 +149,7 @@ export default function TermsOfUsePage() {
                 <p>The Pawtenant site is designed solely for educational and informational purposes. It does not offer medical or psychological advice, diagnoses, or treatment. Viewing the site or interacting with its content does not establish a professional relationship between you and Pawtenant or any affiliated individuals or Providers.</p>
                 <p>Even if individuals providing information on the site hold professional credentials or reference clinical studies, they only provide educational content and not clinical services. The information available should not replace professional medical advice or be used to diagnose or treat any conditions.</p>
                 <p>Providers using the site are fully responsible for the services they deliver, subject to Pawtenant's quality control guidelines. Pawtenant and any third parties linked to the site are not responsible for any damages arising from professional advice or services you receive through the site.</p>
+                <p>Provider availability and response times are not guaranteed and may vary. Any timeframes mentioned on the site are estimates, not promises.</p>
               </div>
             </div>
 

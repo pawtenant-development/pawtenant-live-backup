@@ -66,6 +66,12 @@ const MetaEsaLetterPage = lazy(() => import("../pages/meta-esa-letter/page"));
 const RecoveryClickBridge = lazy(() => import("../pages/r/page"));
 // Consultation Slot Recovery Funnel — unpaid lead recovery V1
 const ConsultationRequestPage = lazy(() => import("../pages/consultation-request/page"));
+// ESA laws / compliance content pages (informational, indexable).
+const ESALawsPage = lazy(() => import("../pages/esa-laws/page"));
+const AreOnlineESALettersLegitPage = lazy(() => import("../pages/are-online-esa-letters-legit/page"));
+const CaliforniaESA30DayRulePage = lazy(() => import("../pages/california-esa-letter-30-day-rule/page"));
+const IowaESAHousingRulesPage = lazy(() => import("../pages/iowa-esa-letter-housing-rules/page"));
+const FloridaESAHousingRulesPage = lazy(() => import("../pages/florida-esa-letter-housing-rules/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -107,6 +113,12 @@ const routes: RouteObject[] = [
   { path: "/everything-you-need-to-know-about-obtaining-an-esa-letter-online", element: <P C={EverythingEsaOnlinePage} /> },
   { path: "/housing-rights-esa", element: <P C={HousingRightsPage} /> },
   { path: "/esa-letter-cost", element: <P C={ESALetterCostPage} /> },
+  // ESA laws / compliance content pages (informational, indexable).
+  { path: "/esa-laws", element: <P C={ESALawsPage} /> },
+  { path: "/are-online-esa-letters-legit", element: <P C={AreOnlineESALettersLegitPage} /> },
+  { path: "/california-esa-letter-30-day-rule", element: <P C={CaliforniaESA30DayRulePage} /> },
+  { path: "/iowa-esa-letter-housing-rules", element: <P C={IowaESAHousingRulesPage} /> },
+  { path: "/florida-esa-letter-housing-rules", element: <P C={FloridaESAHousingRulesPage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
   // PRIMARY route — /esa-letter/[state] format
   { path: "/esa-letter/:state", element: <P C={StateESAPage} /> },
