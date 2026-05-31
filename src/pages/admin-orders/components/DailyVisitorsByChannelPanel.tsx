@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   classifyAcquisition,
+  canonicalChannelToLabel,
   ACQUISITION_VISUAL,
   type AcquisitionLabel,
 } from "@/lib/acquisitionClassifier";
@@ -22,6 +23,7 @@ import {
 interface VisitorRow {
   session_id:            string;
   created_at:            string;
+  channel:               string | null;
   utm_source:            string | null;
   utm_medium:            string | null;
   utm_campaign:          string | null;
@@ -65,16 +67,21 @@ function dayLabel(key: string): string {
 }
 
 function classifyVisitor(v: VisitorRow): AcquisitionLabel {
-  return classifyAcquisition({
-    utm_source:   v.utm_source,
-    utm_medium:   v.utm_medium,
-    utm_campaign: v.utm_campaign,
-    gclid:        v.gclid,
-    fbclid:       v.fbclid,
-    ref:          v.ref,
-    referrer:     v.referrer,
-    landing_url:  v.landing_url,
-  }).label;
+  // Canonical server-built channel is source of truth; fall back to the
+  // raw-signal classifier only for legacy sessions with no channel set.
+  return (
+    canonicalChannelToLabel(v.channel) ??
+    classifyAcquisition({
+      utm_source:   v.utm_source,
+      utm_medium:   v.utm_medium,
+      utm_campaign: v.utm_campaign,
+      gclid:        v.gclid,
+      fbclid:       v.fbclid,
+      ref:          v.ref,
+      referrer:     v.referrer,
+      landing_url:  v.landing_url,
+    }).label
+  );
 }
 
 export default function DailyVisitorsByChannelPanel({

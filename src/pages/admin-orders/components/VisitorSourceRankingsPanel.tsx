@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   classifyAcquisition,
   classifyOrder,
+  canonicalChannelToLabel,
   ACQUISITION_VISUAL,
   ACQUISITION_LABELS,
   type AcquisitionLabel,
@@ -53,6 +54,10 @@ interface OrderLite {
   payment_intent_id:     string | null;
   price:                 number | null;
   created_at:            string;
+  /** Canonical server-built channel (orders.attribution_json.channel),
+   *  enriched by the parent AnalyticsTab. Source of truth for order-side
+   *  attribution. */
+  attribution_channel?:  string | null;
   utm_source?:           string | null;
   utm_medium?:           string | null;
   utm_campaign?:         string | null;
@@ -84,16 +89,38 @@ interface SourceRow {
 }
 
 function classifyVisitor(v: VisitorSourceRow): AcquisitionLabel {
-  return classifyAcquisition({
-    utm_source:   v.utm_source,
-    utm_medium:   v.utm_medium,
-    utm_campaign: v.utm_campaign,
-    gclid:        v.gclid,
-    fbclid:       v.fbclid,
-    ref:          v.ref,
-    referrer:     v.referrer,
-    landing_url:  v.landing_url,
-  }).label;
+  // Canonical server-built channel is source of truth; fall back to the
+  // raw-signal classifier only for legacy sessions with no channel set.
+  return (
+    canonicalChannelToLabel(v.channel) ??
+    classifyAcquisition({
+      utm_source:   v.utm_source,
+      utm_medium:   v.utm_medium,
+      utm_campaign: v.utm_campaign,
+      gclid:        v.gclid,
+      fbclid:       v.fbclid,
+      ref:          v.ref,
+      referrer:     v.referrer,
+      landing_url:  v.landing_url,
+    }).label
+  );
+}
+
+/** Order-side label. Canonical order channel (attribution_json.channel)
+ *  first — populated on every paid order — then the raw-signal classifier
+ *  as a fallback for legacy orders that predate canonical capture. */
+function classifyOrderRow(o: OrderLite): AcquisitionLabel {
+  return (
+    canonicalChannelToLabel(o.attribution_channel) ??
+    classifyOrder({
+      utm_source:   o.utm_source ?? null,
+      utm_medium:   o.utm_medium ?? null,
+      utm_campaign: o.utm_campaign ?? null,
+      gclid:        o.gclid       ?? null,
+      fbclid:       o.fbclid      ?? null,
+      referred_by:  o.referred_by ?? null,
+    }).label
+  );
 }
 
 function aggregate(
@@ -134,20 +161,15 @@ function aggregate(
     byLabel.set(label, bucket);
   }
 
-  // Fold orders in by classifying each order with the SAME classifier so
-  // visitor-side and order-side numbers line up by label.
+  // Fold PAID orders in by their canonical channel. Paid Orders + Revenue
+  // are order-attributed (every paid order has a canonical channel), so a
+  // paid order with no visitor-session link still counts toward its
+  // channel. This is why Paid Orders can exceed a source's visitor count.
   for (const o of orders) {
     const created = new Date(o.created_at);
     if (created < rangeFrom || created > rangeTo) continue;
     if (!o.payment_intent_id) continue;
-    const label = classifyOrder({
-      utm_source:   o.utm_source ?? null,
-      utm_medium:   o.utm_medium ?? null,
-      utm_campaign: o.utm_campaign ?? null,
-      gclid:        o.gclid       ?? null,
-      fbclid:       o.fbclid      ?? null,
-      referred_by:  o.referred_by ?? null,
-    }).label;
+    const label = classifyOrderRow(o);
     const bucket = byLabel.get(label) ?? init();
     bucket.orderPaid    += 1;
     bucket.orderRevenue += o.price ?? 0;
@@ -260,20 +282,19 @@ export default function VisitorSourceRankingsPanel({
     [visitors, orders, rangeFrom, rangeTo],
   );
 
-  const totalVisitors    = rows.reduce((s, r) => s + r.visitors, 0);
-  const totalVisitorPaid = rows.reduce((s, r) => s + r.visitorPaid, 0);
-  const totalOrders      = rows.reduce((s, r) => s + r.orderPaid, 0);
-  const totalRevenue     = rows.reduce((s, r) => s + r.orderRevenue, 0);
-  const topRow           = rows[0] ?? null;
-  const aiRows           = rows.filter((r) => r.label === "ChatGPT" || r.label === "Claude" || r.label === "Gemini" || r.label === "Perplexity");
-  const aiVisitors       = aiRows.reduce((s, r) => s + r.visitors, 0);
-  // LIVE hotfix 2026-05-15: "Highest conv." now ranks by visitor-internal
-  // conversion (visitor_sessions.paid_at flag / visitors) instead of the
-  // previous broken `orderPaid / visitors` which mixed two unrelated
-  // populations and routinely returned >100%.
-  const highestConv      = [...rows]
+  const totalVisitors     = rows.reduce((s, r) => s + r.visitors, 0);
+  const totalAssessments  = rows.reduce((s, r) => s + r.assessmentsStarted, 0);
+  const totalOrders       = rows.reduce((s, r) => s + r.orderPaid, 0);
+  const totalRevenue      = rows.reduce((s, r) => s + r.orderRevenue, 0);
+  const topRow            = rows[0] ?? null;
+  const aiRows            = rows.filter((r) => r.label === "ChatGPT" || r.label === "Claude" || r.label === "Gemini" || r.label === "Perplexity");
+  const aiVisitors        = aiRows.reduce((s, r) => s + r.visitors, 0);
+  // "Best converting" ranks by order conversion (paid orders / visitors).
+  // Only channels with a meaningful visitor base qualify so a 1-visitor /
+  // 1-order fluke doesn't win.
+  const highestConv       = [...rows]
     .filter((r) => r.visitors >= 5)
-    .sort((a, b) => (b.visitorPaid / Math.max(b.visitors, 1)) - (a.visitorPaid / Math.max(a.visitors, 1)))[0]
+    .sort((a, b) => (b.orderPaid / Math.max(b.visitors, 1)) - (a.orderPaid / Math.max(a.visitors, 1)))[0]
     ?? null;
 
   return (
@@ -290,7 +311,7 @@ export default function VisitorSourceRankingsPanel({
               Classified via shared <span className="font-semibold">acquisitionClassifier</span> · {visitors.length.toLocaleString()} visitors · <span className="text-gray-500">{rangeSummary(rangeFrom, rangeTo)}</span>
             </p>
             <p className="text-[10px] text-gray-400 mt-0.5 leading-snug max-w-2xl">
-              Visitors and Orders are independent attribution lenses. Conversion is visitor-internal. Orders show classifier-attributed sales and may include returning customers.
+              Visitors &amp; Assessments are session-attributed. Paid Orders &amp; Revenue are order-attributed via the canonical order channel — a paid order with no session link still counts for its channel, so Order Conversion is directional, not exact.
             </p>
           </div>
         </div>
@@ -319,10 +340,10 @@ export default function VisitorSourceRankingsPanel({
             <SummaryChip
               icon="ri-flashlight-line"
               tint="sky"
-              label="Highest conv."
+              label="Best converting"
               valueIcon={ACQUISITION_VISUAL[highestConv.label].icon}
               valueText={highestConv.label}
-              sub={`${Math.round(Math.min(100, (highestConv.visitorPaid / Math.max(highestConv.visitors, 1)) * 100))}% visitor conv.`}
+              sub={`${Math.round(Math.min(100, (highestConv.orderPaid / Math.max(highestConv.visitors, 1)) * 100))}% order conv.`}
             />
           )}
           {aiVisitors > 0 && (
@@ -378,10 +399,9 @@ export default function VisitorSourceRankingsPanel({
               <tr className="text-[10px] uppercase tracking-widest text-gray-400 font-bold border-b border-gray-100">
                 <th className="text-left  py-2 px-2">Source</th>
                 <th className="text-right py-2 px-2">Visitors</th>
-                <th className="text-right py-2 px-2 hidden sm:table-cell">Assess.</th>
-                <th className="text-right py-2 px-2" title="Visitor sessions whose paid_at flag was set in this range">Vis. Paid</th>
-                <th className="text-right py-2 px-2" title="Visitor-internal conversion: visitor paid sessions / visitors">Vis. Conv.</th>
-                <th className="text-right py-2 px-2 hidden sm:table-cell" title="Classifier-attributed orders in this range — separate population from Visitors">Orders</th>
+                <th className="text-right py-2 px-2 hidden sm:table-cell" title="Assessment starts attributed to this source in range">Assess.</th>
+                <th className="text-right py-2 px-2" title="Paid orders attributed to this source via the canonical order channel">Paid Orders</th>
+                <th className="text-right py-2 px-2" title="Order conversion: paid orders ÷ visitors (directional — orders are order-attributed, visitors are session-attributed)">Order Conv.</th>
                 <th className="text-right py-2 px-2 hidden md:table-cell">Revenue</th>
                 <th className="text-left  py-2 px-2 hidden lg:table-cell">Top landing</th>
               </tr>
@@ -389,10 +409,11 @@ export default function VisitorSourceRankingsPanel({
             <tbody>
               {rows.map((r) => {
                 const vis = ACQUISITION_VISUAL[r.label];
-                // LIVE hotfix 2026-05-15: visitor-internal conversion only.
-                // Capped at 100% even though visitor_sessions.paid_at is a
-                // boolean flag (paid <= visitors by definition) — defensive.
-                const visConv = r.visitors > 0 ? Math.min(100, (r.visitorPaid / r.visitors) * 100) : 0;
+                // Order conversion = paid orders / visitors. Capped at 100%
+                // for display: orders are order-attributed and visitors are
+                // session-attributed, so a low-traffic channel with linkless
+                // paid orders could otherwise read >100%.
+                const orderConv = r.visitors > 0 ? Math.min(100, (r.orderPaid / r.visitors) * 100) : 0;
                 const visitorShare = totalVisitors > 0 ? (r.visitors / totalVisitors) * 100 : 0;
                 return (
                   <tr key={r.label} className="border-b border-gray-50 last:border-b-0">
@@ -415,18 +436,13 @@ export default function VisitorSourceRankingsPanel({
                     <td className="py-2.5 px-2 text-right font-bold text-gray-900 tabular-nums">{r.visitors.toLocaleString()}</td>
                     <td className="py-2.5 px-2 text-right text-gray-600 tabular-nums hidden sm:table-cell">{r.assessmentsStarted.toLocaleString()}</td>
                     <td className="py-2.5 px-2 text-right tabular-nums">
-                      <span className={r.visitorPaid > 0 ? "font-bold text-emerald-700" : "text-gray-400"}>
-                        {r.visitorPaid.toLocaleString()}
+                      <span className={r.orderPaid > 0 ? "font-bold text-emerald-700" : "text-gray-400"}>
+                        {r.orderPaid.toLocaleString()}
                       </span>
                     </td>
                     <td className="py-2.5 px-2 text-right tabular-nums">
-                      <span className={visConv >= 5 ? "text-emerald-700 font-bold" : visConv > 0 ? "text-gray-700" : "text-gray-300"}>
-                        {visConv.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-2 text-right tabular-nums hidden sm:table-cell">
-                      <span className={r.orderPaid > 0 ? "font-semibold text-gray-700" : "text-gray-300"}>
-                        {r.orderPaid.toLocaleString()}
+                      <span className={orderConv >= 5 ? "text-emerald-700 font-bold" : orderConv > 0 ? "text-gray-700" : "text-gray-300"}>
+                        {r.visitors > 0 ? `${orderConv.toFixed(1)}%` : "—"}
                       </span>
                     </td>
                     <td className="py-2.5 px-2 text-right tabular-nums hidden md:table-cell">
@@ -452,15 +468,14 @@ export default function VisitorSourceRankingsPanel({
                 <td className="py-2 px-2 text-[11px] uppercase tracking-widest text-gray-500">Total</td>
                 <td className="py-2 px-2 text-right tabular-nums text-gray-900">{totalVisitors.toLocaleString()}</td>
                 <td className="py-2 px-2 text-right tabular-nums text-gray-500 hidden sm:table-cell">
-                  {rows.reduce((s, r) => s + r.assessmentsStarted, 0).toLocaleString()}
+                  {totalAssessments.toLocaleString()}
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums text-emerald-700">{totalVisitorPaid.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right tabular-nums text-emerald-700">{totalOrders.toLocaleString()}</td>
                 <td className="py-2 px-2 text-right tabular-nums text-gray-700">
                   {totalVisitors > 0
-                    ? `${Math.min(100, (totalVisitorPaid / totalVisitors) * 100).toFixed(1)}%`
+                    ? `${Math.min(100, (totalOrders / totalVisitors) * 100).toFixed(1)}%`
                     : "—"}
                 </td>
-                <td className="py-2 px-2 text-right tabular-nums text-gray-700 hidden sm:table-cell">{totalOrders.toLocaleString()}</td>
                 <td className="py-2 px-2 text-right tabular-nums text-emerald-700 hidden md:table-cell">
                   {totalRevenue > 0 ? `$${totalRevenue.toLocaleString()}` : "—"}
                 </td>

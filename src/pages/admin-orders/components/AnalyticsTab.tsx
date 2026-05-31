@@ -15,6 +15,8 @@ import SmartInsightsPanel from "./SmartInsightsPanel";
 import { analyticsScopeLabel } from "./analyticsScope";
 import {
   classifyOrder,
+  classifyAcquisition,
+  canonicalChannelToLabel,
   ACQUISITION_VISUAL,
   type AcquisitionLabel,
 } from "@/lib/acquisitionClassifier";
@@ -41,6 +43,10 @@ interface Order {
   utm_source?: string | null;
   utm_medium?: string | null;
   utm_campaign?: string | null;
+  /** Canonical server-built channel (orders.attribution_json.channel),
+   *  enriched in-tab by orderChannelById. Source of truth for order-side
+   *  attribution — see LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR. */
+  attribution_channel?: string | null;
 }
 
 interface AnalyticsTabProps {
@@ -122,12 +128,18 @@ const LABEL_CHART_COLOR: Record<AcquisitionLabel, string> = {
  *  referred_by + (when present) first_touch/last_touch snapshots. Always
  *  returns one of the 15 ACQUISITION_LABELS. */
 function orderChannelLabel(o: Order): string {
-  // LIVE's local Order interface declares a narrower subset of fields than
-  // classifyOrder's OrderLikeAttribution input. The missing fields
-  // (gclid / fbclid / ref / first_touch_json / last_touch_json) are all
-  // optional on the classifier side — TypeScript's structural typing
-  // accepts the narrower object, but we cast explicitly to make the
-  // intent obvious to future readers.
+  // LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR (2026-05-31):
+  // Prefer the canonical server-built channel (orders.attribution_json.channel,
+  // enriched onto each order in-tab). It is populated on every paid order, so
+  // order-side attribution now agrees with the visitor-side canonical channel
+  // and all 161 paid orders are attributed — instead of collapsing into
+  // "Direct / Unknown" because the analytics order feed carries no gclid/fbclid.
+  //
+  // Falls back to the raw-signal classifier only for legacy orders with no
+  // canonical channel. classifyOrder's input fields are all optional, so the
+  // narrower local Order shape satisfies it structurally.
+  const canon = canonicalChannelToLabel(o.attribution_channel);
+  if (canon) return canon;
   return classifyOrder(o as Parameters<typeof classifyOrder>[0]).label;
 }
 
@@ -186,6 +198,31 @@ function normalizeCanonicalChannel(raw: unknown): string {
   return "other";
 }
 
+// ── Visitor row shape returned by get_visitor_source_data (tab-level agg) ──
+interface VisitorAggRow {
+  channel: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  gclid: string | null;
+  fbclid: string | null;
+  ref: string | null;
+  referrer: string | null;
+  landing_url: string | null;
+  assessment_started_at: string | null;
+}
+
+/** Path-only form of a landing URL (drops querystring + origin). */
+function landingPath(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : `https://example.com${url.startsWith("/") ? url : `/${url}`}`);
+    return u.pathname || "/";
+  } catch {
+    return url.split("?")[0] || null;
+  }
+}
+
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function fmtShort(ts: string) {
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -195,9 +232,21 @@ function getDateRange(preset: string): { from: Date; to: Date } {
   const now = new Date();
   const to = new Date(now);
   switch (preset) {
+    case "today": {
+      const from = new Date(now);
+      from.setHours(0, 0, 0, 0);
+      return { from, to };
+    }
     case "7d": return { from: new Date(now.getTime() - 7 * 86400000), to };
     case "30d": return { from: new Date(now.getTime() - 30 * 86400000), to };
     case "90d": return { from: new Date(now.getTime() - 90 * 86400000), to };
+    case "mtd": return { from: new Date(now.getFullYear(), now.getMonth(), 1), to };
+    case "lastmonth": {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      // Last day of the previous month, end-of-day.
+      const lastTo = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      return { from, to: lastTo };
+    }
     case "ytd": return { from: new Date(now.getFullYear(), 0, 1), to };
     default: return { from: new Date(0), to };
   }
@@ -614,9 +663,58 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     return getDateRange(datePreset);
   }, [datePreset, customFrom, customTo]);
 
+  // ── Canonical order channel (LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR) ───
+  // Enrich each order with orders.attribution_json.channel — the canonical
+  // server-built channel populated on every paid order. The parent order feed
+  // doesn't carry it (nor gclid/fbclid), so without this every paid Google /
+  // Facebook order collapsed into "Direct / Unknown". One lightweight read-only
+  // select. No writes, no checkout/payment/tracking touch.
+  const [orderChannelById, setOrderChannelById] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("orders")
+      .select("id, attribution_json")
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const map: Record<string, string> = {};
+        for (const row of data as { id: string; attribution_json: { channel?: string | null } | null }[]) {
+          const ch = row.attribution_json?.channel;
+          if (ch) map[row.id] = ch;
+        }
+        setOrderChannelById(map);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const ordersEnriched = useMemo<Order[]>(
+    () => orders.map((o) => ({ ...o, attribution_channel: orderChannelById[o.id] ?? null })),
+    [orders, orderChannelById],
+  );
+
+  // ── Visitor sessions for the selected range (Period Summary + Channel Mix) ──
+  // Same admin-only RPC the visitor panels use (read-only). Powers tab-level
+  // visitor totals so Period Summary + Channel Mix reconcile with the Visitor
+  // Source Rankings panel and respect the selected date range.
+  const [visitorRows, setVisitorRows] = useState<VisitorAggRow[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .rpc("get_visitor_source_data", {
+        p_from: rangeFrom.toISOString(),
+        p_to: rangeTo.toISOString(),
+        p_limit: 20000,
+      })
+      .then(
+        ({ data }) => { if (!cancelled) setVisitorRows((data as VisitorAggRow[]) ?? []); },
+        () => { if (!cancelled) setVisitorRows([]); },
+      );
+    return () => { cancelled = true; };
+  }, [rangeFrom, rangeTo]);
+
   // ── Filtered orders ───────────────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
+    return ordersEnriched.filter((o) => {
       const created = new Date(o.created_at);
       if (created < rangeFrom || created > rangeTo) return false;
       if (orderTypeFilter === "paid" && !o.payment_intent_id) return false;
@@ -628,7 +726,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       if (channelFilter !== "all" && ch !== channelFilter) return false;
       return true;
     });
-  }, [orders, rangeFrom, rangeTo, orderTypeFilter, letterTypeFilter, stateFilter, channelFilter]);
+  }, [ordersEnriched, rangeFrom, rangeTo, orderTypeFilter, letterTypeFilter, stateFilter, channelFilter]);
 
   // ── Channel breakdown ─────────────────────────────────────────────────────
   const channelStats = useMemo(() => {
@@ -706,10 +804,50 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     return map;
   }, [filteredOrders, reviewStats.reviewSentByOrderId]);
 
-  // ── Donut segments ────────────────────────────────────────────────────────
+  // ── Visitor aggregates by canonical channel (Period Summary + Channel Mix) ──
+  const visitorAgg = useMemo(() => {
+    const byLabel = new Map<string, { visitors: number; assessments: number }>();
+    const landingCounts = new Map<string, number>();
+    let totalVisitors = 0;
+    let totalAssessments = 0;
+    for (const v of visitorRows) {
+      const label =
+        canonicalChannelToLabel(v.channel) ??
+        classifyAcquisition({
+          utm_source: v.utm_source, utm_medium: v.utm_medium, utm_campaign: v.utm_campaign,
+          gclid: v.gclid, fbclid: v.fbclid, ref: v.ref, referrer: v.referrer, landing_url: v.landing_url,
+        }).label;
+      const b = byLabel.get(label) ?? { visitors: 0, assessments: 0 };
+      b.visitors += 1;
+      totalVisitors += 1;
+      if (v.assessment_started_at) { b.assessments += 1; totalAssessments += 1; }
+      byLabel.set(label, b);
+      const p = landingPath(v.landing_url);
+      if (p) landingCounts.set(p, (landingCounts.get(p) ?? 0) + 1);
+    }
+    const perChannel = [...byLabel.entries()]
+      .map(([label, s]) => ({ label, ...s }))
+      .sort((a, b) => b.visitors - a.visitors);
+    let topLanding: string | null = null;
+    let topLandingCount = 0;
+    for (const [p, c] of landingCounts.entries()) {
+      if (c > topLandingCount) { topLanding = p; topLandingCount = c; }
+    }
+    return { perChannel, totalVisitors, totalAssessments, topLanding, topLandingCount };
+  }, [visitorRows]);
+
+  // ── Donut segments — visitor traffic share by canonical source ───────────
+  // Channel Mix now shows TRAFFIC share (visitor sessions) by source, which is
+  // the useful "where do visitors come from" view and reconciles with the
+  // Visitor Source Rankings panel. (Previously it counted orders via the
+  // starved classifier and was dominated by "Direct / Unknown".)
   const donutSegments = useMemo(() =>
-    channelStats.map((c) => ({ label: c.cfg.label, value: c.total, color: c.cfg.chartColor })),
-    [channelStats]
+    visitorAgg.perChannel.map((c) => ({
+      label: orderChannelConfig(c.label).label,
+      value: c.visitors,
+      color: orderChannelConfig(c.label).chartColor,
+    })),
+    [visitorAgg]
   );
 
   // ── Top channels for stacked chart ───────────────────────────────────────
@@ -721,11 +859,19 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   // ── Revenue trend buckets ─────────────────────────────────────────────────
   const trendBuckets = useMemo((): TrendBucket[] => {
     if (trendGranularity === "daily") {
-      const days = datePreset === "7d" ? 7 : datePreset === "30d" ? 30 : datePreset === "90d" ? 90 : 30;
+      // LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR: bucket across the actual
+      // selected range (rangeFrom→rangeTo) instead of a hardcoded 7/30/90
+      // window that ignored Today / MTD / Last month / Custom / YTD / All.
+      // Daily resolution is capped at 92 days ending at rangeTo; longer
+      // ranges should use the Weekly toggle.
+      const MS = 86400000;
+      const MAX_DAYS = 92;
+      const end = new Date(rangeTo); end.setHours(0, 0, 0, 0);
+      let start = new Date(rangeFrom); start.setHours(0, 0, 0, 0);
+      const span = Math.floor((end.getTime() - start.getTime()) / MS) + 1;
+      if (span > MAX_DAYS) start = new Date(end.getTime() - (MAX_DAYS - 1) * MS);
       const buckets: Record<string, TrendBucket> = {};
-      for (let i = days - 1; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
+      for (let d = new Date(start); d <= end; d = new Date(d.getTime() + MS)) {
         const key = d.toISOString().slice(0, 10);
         buckets[key] = {
           label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
@@ -779,7 +925,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       });
       return Object.values(weekMap).sort((a, b) => a.date.localeCompare(b.date));
     }
-  }, [filteredOrders, trendGranularity, datePreset]);
+  }, [filteredOrders, trendGranularity, rangeFrom, rangeTo]);
 
   // ── Orders for selected channel ───────────────────────────────────────────
   const channelOrders = useMemo(() => {
@@ -810,9 +956,9 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
 
   // ── All unique channels for filter ───────────────────────────────────────
   const allChannels = useMemo(() => {
-    const s = new Set(orders.map((o) => orderChannelLabel(o)));
+    const s = new Set(ordersEnriched.map((o) => orderChannelLabel(o)));
     return Array.from(s).sort();
-  }, [orders]);
+  }, [ordersEnriched]);
 
   // ── Revenue by channel (for AdSpendPanel ROI calc) ───────────────────────
   const revenueByChannel = useMemo(() => {
@@ -1156,8 +1302,11 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           {/* Date presets */}
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             {[
+              { value: "today", label: "Today" },
               { value: "7d", label: "7 Days" },
               { value: "30d", label: "30 Days" },
+              { value: "mtd", label: "Month to Date" },
+              { value: "lastmonth", label: "Last Month" },
               { value: "90d", label: "90 Days" },
               { value: "ytd", label: "Year to Date" },
               { value: "all", label: "All Time" },
@@ -1314,7 +1463,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         <VisitorSourceRankingsPanel
           rangeFrom={rangeFrom}
           rangeTo={rangeTo}
-          orders={orders}
+          orders={ordersEnriched}
         />
       </section>
 
@@ -1398,21 +1547,30 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
            mounted above. The selectedChannel state still drives the Order
            list channel filter further down the page. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Channel Mix donut */}
+        {/* Channel Mix donut — visitor traffic share by source */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-sm font-extrabold text-gray-900 mb-4">Channel Mix</h3>
+            <h3 className="text-sm font-extrabold text-gray-900">Channel Mix</h3>
+            <p className="text-xs text-gray-400 mb-4">Traffic share by source · {visitorAgg.totalVisitors.toLocaleString()} visitors in range</p>
             <div className="flex items-center gap-4">
               <DonutChart segments={donutSegments} />
               <div className="flex-1 space-y-2 min-w-0">
-                {channelStats.slice(0, 6).map((ch) => (
-                  <div key={ch.channel} className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ch.cfg.chartColor }}></div>
-                    <span className="text-xs text-gray-600 truncate flex-1">{ch.cfg.label}</span>
-                    <span className="text-xs font-bold text-gray-900 flex-shrink-0">{ch.total}</span>
-                  </div>
-                ))}
-                {channelStats.length > 6 && (
-                  <p className="text-xs text-gray-400">+{channelStats.length - 6} more channels</p>
+                {visitorAgg.perChannel.slice(0, 6).map((ch) => {
+                  const cfg = orderChannelConfig(ch.label);
+                  const pct = visitorAgg.totalVisitors > 0 ? Math.round((ch.visitors / visitorAgg.totalVisitors) * 100) : 0;
+                  return (
+                    <div key={ch.label} className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.chartColor }}></div>
+                      <span className="text-xs text-gray-600 truncate flex-1">{cfg.label}</span>
+                      <span className="text-xs font-bold text-gray-900 flex-shrink-0">{ch.visitors.toLocaleString()}</span>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0 w-8 text-right">{pct}%</span>
+                    </div>
+                  );
+                })}
+                {visitorAgg.perChannel.length === 0 && (
+                  <p className="text-xs text-gray-400">No visitor data in this range.</p>
+                )}
+                {visitorAgg.perChannel.length > 6 && (
+                  <p className="text-xs text-gray-400">+{visitorAgg.perChannel.length - 6} more sources</p>
                 )}
               </div>
             </div>
@@ -1423,29 +1581,51 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             <h3 className="text-sm font-extrabold text-gray-900 mb-4">Period Summary</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Avg. Revenue / Paid Order</span>
-                <span className="text-xs font-bold text-gray-900">
-                  {kpis.paid > 0 ? `$${Math.round(kpis.revenue / kpis.paid)}` : "—"}
-                </span>
+                <span className="text-xs text-gray-500">Total Visitors</span>
+                <span className="text-xs font-bold text-gray-900">{visitorAgg.totalVisitors.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Best Channel (Revenue)</span>
-                <span className="text-xs font-bold text-gray-900 truncate max-w-[120px]">
-                  {channelStats.sort((a, b) => b.revenue - a.revenue)[0]?.cfg.label ?? "—"}
-                </span>
+                <span className="text-xs text-gray-500">Assessments Started</span>
+                <span className="text-xs font-bold text-gray-900">{visitorAgg.totalAssessments.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Best Conversion Rate</span>
+                <span className="text-xs text-gray-500">Paid Orders</span>
+                <span className="text-xs font-bold text-gray-900">{kpis.paid.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Revenue</span>
+                <span className="text-xs font-bold text-emerald-700">${kpis.revenue.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500" title="Paid orders ÷ total visitors (directional — orders are order-attributed, visitors session-attributed)">Visitor → Paid Conversion</span>
                 <span className="text-xs font-bold text-emerald-600">
-                  {channelStats.filter((c) => c.total >= 3).sort((a, b) => b.conversionRate - a.conversionRate)[0]
-                    ? `${channelStats.filter((c) => c.total >= 3).sort((a, b) => b.conversionRate - a.conversionRate)[0].conversionRate}%`
+                  {visitorAgg.totalVisitors > 0
+                    ? `${Math.min(100, (kpis.paid / visitorAgg.totalVisitors) * 100).toFixed(1)}%`
                     : "—"}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Trend Period</span>
-                <span className="text-xs font-bold text-gray-900">
-                  {trendBuckets.length > 0 ? `${fmtShort(trendBuckets[0].date)} – ${fmtShort(trendBuckets[trendBuckets.length - 1].date)}` : "—"}
+                <span className="text-xs text-gray-500">Top Source (Paid Orders)</span>
+                <span className="text-xs font-bold text-gray-900 truncate max-w-[140px]">
+                  {(() => {
+                    const t = [...channelStats].filter((c) => c.paid > 0).sort((a, b) => b.paid - a.paid)[0];
+                    return t ? `${t.cfg.label} · ${t.paid}` : "—";
+                  })()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Top Source (Revenue)</span>
+                <span className="text-xs font-bold text-gray-900 truncate max-w-[140px]">
+                  {(() => {
+                    const t = [...channelStats].filter((c) => c.revenue > 0).sort((a, b) => b.revenue - a.revenue)[0];
+                    return t ? `${t.cfg.label} · $${t.revenue.toLocaleString()}` : "—";
+                  })()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Top Landing Page</span>
+                <span className="text-xs font-bold text-gray-900 font-mono truncate max-w-[140px]" title={visitorAgg.topLanding ?? undefined}>
+                  {visitorAgg.topLanding ?? "—"}
                 </span>
               </div>
               <div className="border-t border-gray-100 pt-3 mt-1">
