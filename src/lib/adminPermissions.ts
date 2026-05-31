@@ -47,6 +47,28 @@ export function isAdminLevel(role: AdminRole): boolean {
 }
 
 /**
+ * True for the roles allowed to send broadcasts (owner / admin_manager).
+ *
+ * NOTE: the canonical role set in doctor_profiles.role has no separate
+ * "manager" / "operations manager" role — admin_manager IS the manager
+ * tier. Support / finance / read_only are intentionally excluded here, so
+ * the Broadcast entry point is hidden from them (the modal itself still
+ * keeps its internal support-approval flow, it's just no longer surfaced).
+ */
+export function canAccessBroadcast(role: AdminRole): boolean {
+  return !!role && ADMIN_ROLES.has(role);
+}
+
+/**
+ * True for the roles allowed to review approval requests
+ * (owner / admin_manager, plus anyone flagged is_admin). Mirrors the
+ * existing reviewer check used for the pending-approval count + inbox.
+ */
+export function canAccessApprovals(role: AdminRole, isAdmin?: boolean | null): boolean {
+  return (!!role && ADMIN_ROLES.has(role)) || !!isAdmin;
+}
+
+/**
  * Standard tooltip/disabled label to surface next to gated buttons.
  * Kept consistent across Team/Chats/Contacts/Orders tabs.
  */

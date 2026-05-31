@@ -37,6 +37,8 @@ import NotificationsBell from "./components/NotificationsBell";
 import ApprovalRequestModal from "./components/ApprovalRequestModal";
 import ApprovalsInbox from "./components/ApprovalsInbox";
 import ApprovalNotificationBell from "./components/ApprovalNotificationBell";
+import AdminProfileMenu from "./components/AdminProfileMenu";
+import EmployeePresenceBar from "./components/EmployeePresenceBar";
 import FinanceOrdersGate from "./components/FinanceOrdersGate";
 import CommunicationsHub from "./components/CommunicationsHub";
 import type {
@@ -1648,13 +1650,7 @@ export default function AdminOrdersPage() {
             alt="PawTenant" className="h-8 sm:h-10 w-auto object-contain" />
         </Link>
         <div className="flex items-center gap-1.5 sm:gap-3">
-          {/* Desktop-only extras */}
-          <Link to="/admin-guide" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3b6ea5] transition-colors cursor-pointer">
-            <i className="ri-book-2-line"></i> Runbook
-          </Link>
-          <Link to="/admin-doctors" className="whitespace-nowrap hidden lg:flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3b6ea5] transition-colors cursor-pointer">
-            <i className="ri-stethoscope-line"></i> Providers
-          </Link>
+          {/* Runbook + Providers now live in the profile dropdown (Shortcuts). */}
 
           {/* Sync indicator */}
           <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-[#e8f0f9] border border-[#b8cce4] rounded-lg" title={lastSyncedAt ? `Last synced: ${lastSyncedAt.toLocaleTimeString()}` : "Connecting…"}>
@@ -1667,31 +1663,10 @@ export default function AdminOrdersPage() {
             </span>
           </div>
 
-          {/* Name/role — hidden on smallest screens */}
-          {adminProfile && (
-            <div className="hidden md:flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-700">{adminProfile.full_name}</span>
-              {roleBadge(adminProfile.role ?? null)}
-            </div>
-          )}
+          {/* Name/role now shown in the profile dropdown header.
+              Manager Approvals inbox moved to Team tab → Manager Tools. */}
 
-          {/* Approvals inbox button — only for owner/admin_manager */}
-          {adminProfile && (adminProfile.role === "owner" || adminProfile.role === "admin_manager" || adminProfile.is_admin) && (
-            <button
-              type="button"
-              onClick={() => setShowApprovalsInbox(true)}
-              title="Approvals Inbox"
-              className="relative whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm border border-slate-200 text-slate-600 hover:text-[#3b6ea5] hover:border-[#3b6ea5] hover:bg-[#e8f0f9]"
-            >
-              <i className="ri-shield-check-line text-sm"></i>
-              <span className="hidden sm:inline text-xs font-bold">Approvals</span>
-              {pendingApprovalCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-extrabold rounded-full">
-                  {pendingApprovalCount > 9 ? "9+" : pendingApprovalCount}
-                </span>
-              )}
-            </button>
-          )}
+          <EmployeePresenceBar />
 
           <NotificationsBell
             onViewOrder={(confirmationId) => {
@@ -1712,27 +1687,8 @@ export default function AdminOrdersPage() {
             />
           )}
 
-          {/* Broadcast button — hidden for Finance role entirely */}
-          {adminProfile?.role !== "finance" && (
-            <button type="button" onClick={() => setShowBroadcast(true)}
-              title={adminProfile?.role === "support" ? "Broadcast (requires approval)" : "Broadcast Message"}
-              className={`whitespace-nowrap flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer px-2 sm:px-3 py-1.5 rounded-lg text-sm ${adminProfile?.role === "support" ? "text-slate-500 bg-slate-100 hover:bg-slate-200" : "text-white bg-[#3b6ea5] hover:bg-[#2d5a8e]"}`}>
-              <i className={`text-sm ${adminProfile?.role === "support" ? "ri-lock-line" : "ri-broadcast-line"}`}></i>
-              <span className="hidden sm:inline text-xs font-bold">Broadcast</span>
-            </button>
-          )}
-
-          <button type="button" onClick={() => setShowChangePassword(true)} title="Change Password"
-            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#3b6ea5] transition-colors cursor-pointer px-2 py-1.5 rounded-lg hover:bg-slate-50">
-            <i className="ri-lock-password-line"></i>
-            <span className="hidden md:inline text-xs font-semibold">Password</span>
-          </button>
-
-          <button type="button" onClick={async () => { await supabase.auth.signOut(); navigate("/admin-login"); }}
-            className="whitespace-nowrap flex items-center gap-1 sm:gap-1.5 text-sm text-gray-600 hover:text-red-500 transition-colors cursor-pointer">
-            <i className="ri-logout-box-line"></i>
-            <span className="hidden sm:inline text-xs">Sign Out</span>
-          </button>
+          {/* Broadcast now lives in the Communications tab.
+              Password + Sign Out moved into the profile dropdown (AdminProfileMenu). */}
 
           <button
             type="button"
@@ -1749,6 +1705,13 @@ export default function AdminOrdersPage() {
               <i className="ri-checkbox-circle-fill"></i>{refreshSyncMsg}
             </span>
           )}
+
+          <AdminProfileMenu
+            name={adminProfile?.full_name ?? adminProfile?.email ?? "Admin"}
+            role={adminProfile?.role ?? null}
+            onChangePassword={() => setShowChangePassword(true)}
+            onSignOut={async () => { await supabase.auth.signOut(); navigate("/admin-login"); }}
+          />
         </div>
       </nav>
 
@@ -2530,7 +2493,13 @@ export default function AdminOrdersPage() {
         {activeTab === "payments" && isTabVisible("payments") && <PaymentsTab />}
 
         {/* ── TEAM TAB ── */}
-        {activeTab === "team" && isTabVisible("team") && <TeamTab />}
+        {activeTab === "team" && isTabVisible("team") && (
+          <TeamTab
+            canSeeApprovals={!!adminProfile && (adminProfile.role === "owner" || adminProfile.role === "admin_manager" || !!adminProfile.is_admin)}
+            pendingApprovalCount={pendingApprovalCount}
+            onOpenApprovals={() => setShowApprovalsInbox(true)}
+          />
+        )}
 
         {/* ── ATTENDANCE TAB (Company OS) ── */}
         {activeTab === "attendance" && isTabVisible("attendance") && <AttendanceTab />}

@@ -33,6 +33,7 @@ import CommunicationsPanel from "./CommunicationsPanel";
 import ConsultationRequestsPanel from "./ConsultationRequestsPanel";
 import BroadcastModal from "./BroadcastModal";
 import BroadcastHistoryModal from "./BroadcastHistoryModal";
+import { canAccessBroadcast } from "../../../lib/adminPermissions";
 import CommunicationsTemplatesPanel, {
   RecoverySequencePanel,
 } from "./CommunicationsTemplatesPanel";
@@ -329,6 +330,9 @@ export default function CommunicationsHub({
               admin click + confirmation — no automatic sends. */}
         {localActive === "sms" && (
           <div className="flex flex-col gap-4">
+            {/* Broadcast actions are owner/admin_manager only — support /
+                finance / read_only can use SMS/Calls but not broadcast. */}
+            {canAccessBroadcast(adminRole) && (
             <div className="bg-white rounded-lg border border-gray-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
@@ -360,6 +364,7 @@ export default function CommunicationsHub({
                 </button>
               </div>
             </div>
+            )}
 
             <CommunicationsPanel
               orders={orders ?? []}

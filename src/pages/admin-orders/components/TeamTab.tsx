@@ -422,7 +422,16 @@ function TabAccessEditor({
   );
 }
 
-export default function TeamTab() {
+interface TeamTabProps {
+  // Manager Tools → Approvals inbox. Wired from page.tsx, which owns the
+  // ApprovalsInbox modal + pending-count subscription. Optional so the tab
+  // still renders if mounted without them.
+  canSeeApprovals?: boolean;
+  pendingApprovalCount?: number;
+  onOpenApprovals?: () => void;
+}
+
+export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount = 0, onOpenApprovals }: TeamTabProps = {}) {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -772,6 +781,33 @@ export default function TeamTab() {
         <div className="mb-4 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-3">
           <i className="ri-checkbox-circle-fill text-[#3b6ea5] text-base mt-0.5 flex-shrink-0"></i>
           <p className="text-sm text-[#3b6ea5] font-semibold">{successMsg}</p>
+        </div>
+      )}
+
+      {/* Manager Tools — approvals inbox, owner/admin_manager/is_admin only.
+          The inbox modal + pending-count subscription live in page.tsx; this
+          card is just the role-gated entry point (moved out of the top bar). */}
+      {canSeeApprovals && onOpenApprovals && (
+        <div className="mb-5 bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0">
+              <i className="ri-shield-check-line text-[#3b6ea5] text-base"></i>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold text-gray-900">Manager Tools</p>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">Review and approve pending requests from support &amp; finance.</p>
+            </div>
+          </div>
+          <button type="button" onClick={onOpenApprovals}
+            className="relative whitespace-nowrap flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border border-slate-200 text-slate-600 hover:text-[#3b6ea5] hover:border-[#3b6ea5] hover:bg-[#e8f0f9] cursor-pointer transition-colors flex-shrink-0">
+            <i className="ri-inbox-archive-line"></i>
+            <span>Approvals Inbox</span>
+            {pendingApprovalCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold">
+                {pendingApprovalCount > 9 ? "9+" : pendingApprovalCount}
+              </span>
+            )}
+          </button>
         </div>
       )}
 

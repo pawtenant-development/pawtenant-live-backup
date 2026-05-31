@@ -22,20 +22,29 @@
  *   provider mounted with `enabled` so polling fires on admin routes,
  *   followed by the four floating chrome components inside the provider.
  */
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { AdminChatProvider } from "../../context/AdminChatContext";
 import AdminChatNotifier from "./AdminChatNotifier";
 import MiniChatDock from "./MiniChatDock";
-import AdminSoundControls from "./AdminSoundControls";
 import VisitorSoundMonitor from "./VisitorSoundMonitor";
+import { preloadSounds } from "../../lib/soundPlayer";
 
+// NOTE: the floating <AdminSoundControls /> button was removed — sound settings
+// now live in the top-bar profile dropdown (AdminProfileMenu). The sound ENGINE
+// is unchanged: AdminChatNotifier / VisitorSoundMonitor drive alerts, soundPlayer
+// auto-unlocks on the first user gesture, and preferences persist in soundPrefs
+// (localStorage). We still preload the MP3 set here — that warm-up previously
+// lived inside AdminSoundControls — so the first real alert is instant.
 export default function AdminChrome({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    preloadSounds();
+  }, []);
+
   return (
     <AdminChatProvider enabled>
       {children}
       <AdminChatNotifier />
       <MiniChatDock />
-      <AdminSoundControls />
       <VisitorSoundMonitor />
     </AdminChatProvider>
   );
