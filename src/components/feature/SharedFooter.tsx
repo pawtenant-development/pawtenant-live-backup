@@ -22,6 +22,8 @@ const footerCols = [
       { label: "Airline Pet Policy", href: "/airline-pet-policy" },
       { label: "College Pet Policy", href: "/college-pet-policy" },
       { label: "Service Animal vs ESA", href: "/service-animal-vs-esa" },
+      { label: "ESA Laws & Requirements", href: "/esa-laws" },
+      { label: "Are Online ESA Letters Legit?", href: "/are-online-esa-letters-legit" },
       { label: "Blog", href: "/blog" },
       { label: "Sitemap", href: "/sitemap" },
     ],

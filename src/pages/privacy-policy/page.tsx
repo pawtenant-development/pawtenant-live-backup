@@ -122,6 +122,7 @@ export default function PrivacyPolicyPage() {
                       { label: "Transactional Information:", desc: "Payment details and purchase history when using our Services." },
                       { label: "Photographs:", desc: "If you apply for a Pawtenant scholarship." },
                       { label: "Health Information:", desc: "Mental health details submitted through ESA or PSD service questionnaires." },
+                      { label: "Animal & Housing Details:", desc: "Information about your emotional support or service animal and your housing situation that you provide to support a documentation or reasonable-accommodation request." },
                       { label: "Demographic Data:", desc: "Age, gender, race, or ethnicity when requested by your mental health provider." },
                       { label: "Employment and Educational Information:", desc: "When relevant for scholarships or ESA/PSD services." },
                     ].map((item) => (
@@ -183,7 +184,7 @@ export default function PrivacyPolicyPage() {
                 </ul>
                 <p>We rely on partners like <strong className="text-gray-800">Google Analytics</strong> to gather usage data and measure how our Services are performing. You can learn about Google Analytics' data practices <a href="https://support.google.com/analytics/answer/6004245" className="text-orange-500 hover:underline" rel="nofollow noreferrer" target="_blank">here</a> and opt out with their <a href="https://tools.google.com/dlpage/gaoptout" className="text-orange-500 hover:underline" rel="nofollow noreferrer" target="_blank">browser add-on</a>.</p>
                 <p>We also use <strong className="text-gray-800">Google Ads</strong> and <strong className="text-gray-800">Facebook Pixel</strong> to tailor advertising based on your behavior across different websites. Learn more about <a href="https://policies.google.com/privacy" className="text-orange-500 hover:underline" rel="nofollow noreferrer" target="_blank">Google's advertising policies</a> and <a href="https://www.facebook.com/privacy/policy" className="text-orange-500 hover:underline" rel="nofollow noreferrer" target="_blank">Facebook's here</a>.</p>
-                <p>You can control how cookies are used by visiting our cookie management page or adjusting your browser settings. Additional opt-out options are available at <a href="https://app.retention.com/optout" className="text-orange-500 hover:underline" rel="nofollow noreferrer" target="_blank">Retention.com Opt-Out</a>.</p>
+                <p>You can control cookies through your browser settings and, where available, through any cookie or privacy controls we provide on the site. Additional opt-out options are available at <a href="https://app.retention.com/optout" className="text-orange-500 hover:underline" rel="nofollow noreferrer" target="_blank">Retention.com Opt-Out</a>.</p>
               </div>
             </div>
 
@@ -247,6 +248,7 @@ export default function PrivacyPolicyPage() {
               <div className="text-gray-600 text-sm leading-relaxed space-y-3">
                 <p>We implement a mix of physical, technical, and administrative safeguards to protect the personal information we collect through our Services.</p>
                 <p>While we take appropriate measures to protect your information, no system, server, or network is completely secure. We cannot guarantee the absolute security of any information transmitted to or stored by Pawtenant or its third-party partners.</p>
+                <p>Pawtenant operates in the United States. Your information may be processed and stored in the U.S. and by the service providers we use to operate the Services, which may be located in other jurisdictions.</p>
               </div>
             </div>
 
@@ -289,7 +291,7 @@ export default function PrivacyPolicyPage() {
                   <p className="font-bold text-gray-800 mb-2">Cookies and Tracking:</p>
                   <ul className="space-y-1.5">
                     {[
-                      "Use our cookie management tool to set your cookie preferences.",
+                      "Use any cookie or privacy controls we provide on the site, where available, to set your cookie preferences.",
                       "Adjust your browser settings to block or limit cookies.",
                       "Note: Disabling cookies may affect certain features on our Services.",
                       "Mobile device users can manage interest-based advertising settings through their device's operating system.",
@@ -399,7 +401,7 @@ export default function PrivacyPolicyPage() {
                     </li>
                   ))}
                 </ul>
-                <p>You or your authorized agent can submit a request by emailing <a href="mailto:hello@pawtenant.com" className="text-orange-500 hover:underline">hello@pawtenant.com</a> or visiting <a href="https://pawtenant.com/rights-request" className="text-orange-500 hover:underline" rel="nofollow noreferrer" target="_blank">pawtenant.com/rights-request</a>.</p>
+                <p>You or your authorized agent can submit a request by emailing <a href="mailto:hello@pawtenant.com" className="text-orange-500 hover:underline">hello@pawtenant.com</a>. Please include enough detail for us to verify your identity and respond to your request.</p>
               </div>
             </div>
 

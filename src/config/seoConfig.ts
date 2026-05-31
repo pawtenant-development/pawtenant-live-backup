@@ -63,6 +63,32 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Find ESA letter requirements for your state. PawTenant connects you with licensed professionals in all 50 US states. Know your rights and get your letter today.",
   },
+  // ── ESA laws / compliance content pages (informational, indexable) ─────────
+  "/esa-laws": {
+    title: "ESA Laws & ESA Letter Requirements Explained | PawTenant",
+    description:
+      "Understand ESA laws and what a valid ESA letter requires. Learn how the Fair Housing Act protects emotional support animal owners — and what an ESA letter can and cannot do.",
+  },
+  "/are-online-esa-letters-legit": {
+    title: "Are Online ESA Letters Legit? How to Tell | PawTenant",
+    description:
+      "Online ESA letters can be legitimate when a licensed provider does a real evaluation. Learn the green flags, the warning signs, and how to avoid fake ESA registrations.",
+  },
+  "/california-esa-letter-30-day-rule": {
+    title: "California ESA Letter & the 30-Day Rule (AB 468) | PawTenant",
+    description:
+      "California's AB 468 requires a 30-day provider relationship and a clinical evaluation before an ESA letter is issued. Learn what the law requires and how to comply.",
+  },
+  "/iowa-esa-letter-housing-rules": {
+    title: "Iowa ESA Letter & Housing Rules (§ 216.8B) | PawTenant",
+    description:
+      "Iowa protects assistance animals in housing under Code § 216.8B, with 2024 documentation standards (SF 2268). Learn what an Iowa landlord can ask and what the law requires.",
+  },
+  "/florida-esa-letter-housing-rules": {
+    title: "Florida ESA Letter & Housing Rules (§ 760.27) | PawTenant",
+    description:
+      "Florida Statute 760.27 sets the rules for ESA documentation in housing — who can write it and what a landlord can ask. Learn how to stay compliant in Florida.",
+  },
   "/all-about-service-dogs": {
     title: "Psychiatric Service Dog Letter Online 2026 — PSD Letter vs ESA Letter | PawTenant",
     description:
