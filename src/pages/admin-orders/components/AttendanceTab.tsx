@@ -9,6 +9,10 @@ import {
 } from "../../../lib/attendanceAdmin";
 import { pktDateString, pktTimeString } from "../../../lib/timezones";
 import AttendanceSummaryPanel from "./AttendanceSummaryPanel";
+import AttendanceNetSummaryPanel from "./AttendanceNetSummaryPanel";
+import AdjustedTimesheetReport from "./AdjustedTimesheetReport";
+import AttendanceCorrectionsAdmin from "./AttendanceCorrectionsAdmin";
+import TimesheetAdjustmentsAdmin from "./TimesheetAdjustmentsAdmin";
 
 /**
  * AttendanceTab — Admin Attendance view (COS-048 Phase 2c).
@@ -274,6 +278,18 @@ export default function AttendanceTab() {
           </button>
         </div>
       ) : null}
+
+      {/* Net worked time (gross − break) per employee for a selected date. */}
+      <AttendanceNetSummaryPanel />
+
+      {/* Adjusted timesheet report + CSV export for a date range (read-only, no pay). */}
+      <AdjustedTimesheetReport />
+
+      {/* Employee attendance correction requests (approve/reject + apply to timesheet). */}
+      <AttendanceCorrectionsAdmin />
+
+      {/* Applied timesheet adjustment ledger (auditable overlay). */}
+      <TimesheetAdjustmentsAdmin />
 
       {/* COS-052: Daily summary recompute foundation. */}
       <AttendanceSummaryPanel />

@@ -1,6 +1,13 @@
 import { Link } from "react-router-dom";
 import type { TeamMember } from "../../../lib/teamMembers";
 import { Widget } from "./TeamWidget";
+import MyProfilePanel from "./MyProfilePanel";
+import TeamDirectory from "./TeamDirectory";
+import MyDocumentsPanel from "./MyDocumentsPanel";
+import MyLeavePanel from "./MyLeavePanel";
+import AttendanceCorrectionPanel from "./AttendanceCorrectionPanel";
+import BreakHistoryCard from "./BreakHistoryCard";
+import NetWorkedSummary from "./NetWorkedSummary";
 import SalarySnapshotWidget from "./SalarySnapshotWidget";
 import BenefitsWidget from "./BenefitsWidget";
 import PoliciesWidget from "./PoliciesWidget";
@@ -14,6 +21,7 @@ interface CompanySectionContentProps {
   section: string;
   member: TeamMember;
   reloadToken?: number;
+  isManager?: boolean;
 }
 
 /**
@@ -24,7 +32,15 @@ interface CompanySectionContentProps {
  * Salary and Benefits panels. Home keeps only a basic salary snapshot widget.
  * All backends here are placeholders/fast-follow as labelled.
  */
-export default function CompanySectionContent({ section, member, reloadToken }: CompanySectionContentProps) {
+export default function CompanySectionContent({ section, member, reloadToken, isManager }: CompanySectionContentProps) {
+  if (section === "myprofile") {
+    return <MyProfilePanel member={member} />;
+  }
+
+  if (section === "team") {
+    return <TeamDirectory isManager={!!isManager} reloadToken={reloadToken} />;
+  }
+
   if (section === "performance") {
     return (
       <div className="space-y-6">
@@ -34,6 +50,12 @@ export default function CompanySectionContent({ section, member, reloadToken }: 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
             <TodayAttendanceCard teamMemberId={member.id} reloadToken={reloadToken} />
             <TodayShiftCard teamMemberId={member.id} reloadToken={reloadToken} />
+          </div>
+          <div className="mt-4">
+            <NetWorkedSummary reloadToken={reloadToken} />
+          </div>
+          <div className="mt-4 max-w-md">
+            <BreakHistoryCard teamMemberId={member.id} reloadToken={reloadToken} />
           </div>
         </SectionShell>
 
@@ -91,6 +113,15 @@ export default function CompanySectionContent({ section, member, reloadToken }: 
     return (
       <SectionShell title="HR / Forms" subtitle="Self-service requests & employee resources">
         <div className="space-y-4 max-w-3xl">
+          <div className="max-w-md">
+            <MyLeavePanel teamMemberId={member.id} />
+          </div>
+          <div className="max-w-md">
+            <AttendanceCorrectionPanel teamMemberId={member.id} />
+          </div>
+          <div className="max-w-md">
+            <MyDocumentsPanel teamMemberId={member.id} />
+          </div>
           <div className="max-w-md">
             <MyFormsWidget />
           </div>

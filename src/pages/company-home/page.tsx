@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import {
   fetchCurrentTeamMember,
+  fetchMyAdminContext,
   type TeamMember,
 } from "../../lib/teamMembers";
 import CompanyTopBar from "./components/CompanyTopBar";
@@ -18,7 +19,7 @@ import EnterWorkstationButton from "./components/EnterWorkstationButton";
 
 type LoadState = "loading" | "no-auth" | "no-profile" | "ready";
 
-const SECTIONS = ["home", "performance", "forms", "policies", "help"];
+const SECTIONS = ["home", "myprofile", "team", "performance", "forms", "policies", "help"];
 
 /**
  * Company Home — employee self-service portal (/company).
@@ -37,6 +38,7 @@ export default function CompanyHomePage() {
   const [member, setMember] = useState<TeamMember | null>(null);
   const [authedEmail, setAuthedEmail] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [isManager, setIsManager] = useState(false);
 
   const rawSection = searchParams.get("section") || "home";
   const section = SECTIONS.includes(rawSection) ? rawSection : "home";
@@ -63,6 +65,7 @@ export default function CompanyHomePage() {
         return;
       }
       if (!cancelled) setAuthedEmail(session.user.email ?? null);
+      fetchMyAdminContext().then((ctx) => { if (!cancelled) setIsManager(ctx.isManager); });
       const row = await fetchCurrentTeamMember();
       if (cancelled) return;
       if (row) {
@@ -155,7 +158,7 @@ export default function CompanyHomePage() {
                 </div>
               </div>
             ) : (
-              <CompanySectionContent section={section} member={member} reloadToken={reloadToken} />
+              <CompanySectionContent section={section} member={member} reloadToken={reloadToken} isManager={isManager} />
             )}
           </div>
         </main>

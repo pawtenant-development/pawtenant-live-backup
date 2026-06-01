@@ -20,6 +20,7 @@ import {
 import { isClockInAllowed, useDeviceType } from "../../../lib/deviceType";
 import { pktTimeString } from "../../../lib/timezones";
 import type { TeamMember } from "../../../lib/teamMembers";
+import BreakControls from "./BreakControls";
 
 interface CompanyTopBarProps {
   member: TeamMember;
@@ -190,12 +191,11 @@ export default function CompanyTopBar({ member, onChange, onNavigate }: CompanyT
               {fmtHM(workedMinutes(ctx, today, nowMs))}
             </span>
           </span>
-          <span className="inline-flex items-center gap-1.5" title="Break tracking arrives in a later phase">
-            <span className="text-stone-500">Break</span>
-            <span className="rounded bg-amber-500 px-1.5 h-5 inline-flex items-center font-mono font-semibold text-white leading-none">
-              00:00
-            </span>
-          </span>
+          <BreakControls
+            teamMemberId={member.id}
+            clockedIn={clockedIn}
+            onChange={() => { load(); onChange?.(); }}
+          />
         </div>
 
         <div className="hidden lg:block h-6 w-px bg-stone-200" />
@@ -277,7 +277,7 @@ export default function CompanyTopBar({ member, onChange, onNavigate }: CompanyT
               ))}
 
               <div className="border-t border-stone-100 my-1" />
-              <MenuLink icon="ri-user-line" label="My Profile" onClick={() => { onNavigate?.("home"); setMenu(null); }} />
+              <MenuLink icon="ri-user-line" label="My Profile" onClick={() => { onNavigate?.("myprofile"); setMenu(null); }} />
               <MenuLink icon="ri-file-list-3-line" label="Policies" onClick={() => { onNavigate?.("policies"); setMenu(null); }} />
               <a
                 href="/admin-orders"

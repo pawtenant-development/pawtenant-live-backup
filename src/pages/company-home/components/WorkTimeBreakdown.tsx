@@ -5,6 +5,12 @@ import {
   type TodayShiftContext,
   type TodayAttendanceEntry,
 } from "../../../lib/attendance";
+import {
+  fetchMyBreakRecords,
+  todayBreakSeconds,
+  activeBreak,
+  type BreakRecord,
+} from "../../../lib/employeeBreaks";
 
 interface WorkTimeBreakdownProps {
   teamMemberId: string;
@@ -14,6 +20,10 @@ interface WorkTimeBreakdownProps {
 function fmtHM(totalMin: number): string {
   const m = Math.max(0, Math.floor(totalMin));
   return `${String(Math.floor(m / 60)).padStart(2, "0")}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+function fmtHMfromSec(totalSec: number): string {
+  return fmtHM(Math.floor(totalSec / 60));
 }
 
 function workedMinutes(
@@ -35,18 +45,22 @@ function workedMinutes(
 export default function WorkTimeBreakdown({ teamMemberId, reloadToken }: WorkTimeBreakdownProps) {
   const [ctx, setCtx] = useState<TodayShiftContext | null>(null);
   const [today, setToday] = useState<TodayAttendanceEntry | null>(null);
+  const [breaks, setBreaks] = useState<BreakRecord[]>([]);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const tickRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchTodayShiftContext(teamMemberId), fetchMyTodayAttendance(teamMemberId)]).then(
-      ([c, e]) => {
-        if (cancelled) return;
-        setCtx(c);
-        setToday(e);
-      },
-    );
+    Promise.all([
+      fetchTodayShiftContext(teamMemberId),
+      fetchMyTodayAttendance(teamMemberId),
+      fetchMyBreakRecords(teamMemberId),
+    ]).then(([c, e, b]) => {
+      if (cancelled) return;
+      setCtx(c);
+      setToday(e);
+      setBreaks(b);
+    });
     return () => {
       cancelled = true;
     };
@@ -60,17 +74,34 @@ export default function WorkTimeBreakdown({ teamMemberId, reloadToken }: WorkTim
   }, []);
 
   const clockedIn = !!ctx?.openEntry;
+  const onBreak = !!activeBreak(breaks);
+  const grossMin = workedMinutes(ctx, today, nowMs);
+  const breakSec = todayBreakSeconds(breaks, nowMs);
+  const netMin = Math.max(0, grossMin - breakSec / 60);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl">
       <Stat
         icon="ri-computer-line"
-        label="Computer Hours"
-        value={fmtHM(workedMinutes(ctx, today, nowMs))}
-        tone="emerald"
+        label="Gross Time"
+        value={fmtHM(grossMin)}
+        tone="stone"
         sub={clockedIn ? "Running" : "Today"}
       />
-      <Stat icon="ri-cup-line" label="Break Time" value="00h 00m" tone="amber" sub="Coming soon" />
+      <Stat
+        icon="ri-cup-line"
+        label="Break Time"
+        value={fmtHMfromSec(breakSec)}
+        tone="amber"
+        sub={onBreak ? "On break" : "Today"}
+      />
+      <Stat
+        icon="ri-timer-flash-line"
+        label="Net Worked"
+        value={fmtHM(netMin)}
+        tone="emerald"
+        sub="Gross − break"
+      />
       <Stat
         icon="ri-login-circle-line"
         label="Sessions"

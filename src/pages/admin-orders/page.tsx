@@ -39,6 +39,7 @@ import ApprovalRequestModal from "./components/ApprovalRequestModal";
 import ApprovalsInbox from "./components/ApprovalsInbox";
 import ApprovalNotificationBell from "./components/ApprovalNotificationBell";
 import AdminProfileMenu from "./components/AdminProfileMenu";
+import HrRequestsBell from "./components/HrRequestsBell";
 import EmployeePresenceBar from "./components/EmployeePresenceBar";
 import FinanceOrdersGate from "./components/FinanceOrdersGate";
 import CommunicationsHub from "./components/CommunicationsHub";
@@ -1676,6 +1677,11 @@ export default function AdminOrdersPage() {
             }}
           />
 
+          {/* HR requests bell — actionable Company OS requests, managers only */}
+          {adminProfile && (adminProfile.role === "owner" || adminProfile.role === "admin_manager") && (
+            <HrRequestsBell onNavigate={(tab) => setActiveTab(tab as TabKey)} />
+          )}
+
           {/* Approval notification bell — only for restricted roles */}
           {adminProfile && (
             adminProfile.role === "support" ||
@@ -2480,7 +2486,7 @@ export default function AdminOrdersPage() {
         {activeTab === "doctors" && isTabVisible("doctors") && <DoctorsTab onProviderAdded={loadOrderData} />}
 
         {/* ── EARNINGS TAB ── */}
-        {activeTab === "earnings" && (
+        {activeTab === "earnings" && isTabVisible("earnings") && (
           <div>
             <div className="mb-6">
               <h2 className="text-base font-extrabold text-gray-900">Provider Earnings &amp; Payouts</h2>
@@ -2509,7 +2515,7 @@ export default function AdminOrdersPage() {
         {activeTab === "shifts" && isTabVisible("shifts") && <ShiftsTab />}
 
         {/* ── AUDIT LOG TAB ── */}
-        {activeTab === "audit" && (
+        {activeTab === "audit" && isTabVisible("audit") && (
           <div>
             <div className="mb-5">
               <h2 className="text-base font-extrabold text-gray-900">System Audit Log</h2>
@@ -2520,10 +2526,10 @@ export default function AdminOrdersPage() {
         )}
 
         {/* ── SETTINGS TAB ── */}
-        {activeTab === "settings" && <SettingsTab adminRole={adminProfile?.role ?? null} />}
+        {activeTab === "settings" && isTabVisible("settings") && <SettingsTab adminRole={adminProfile?.role ?? null} />}
 
         {/* ── SYSTEM HEALTH TAB ── */}
-        {activeTab === "health" && <SystemHealthTab />}
+        {activeTab === "health" && isTabVisible("health") && <SystemHealthTab />}
       </div>
 
       {/* ── BULK ASSIGN BAR ── */}

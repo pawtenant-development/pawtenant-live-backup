@@ -198,7 +198,7 @@ export default function AdminSidebar({
       {/* ── DESKTOP SIDEBAR ─────────────────────────────────────────────── */}
       <aside
         className="hidden lg:flex flex-col fixed left-0 top-14 bottom-0 bg-[#1e3a5f] z-40 overflow-hidden"
-        style={{ width: collapsed ? 56 : 220, transition: "width 200ms ease" }}
+        style={{ width: collapsed ? 56 : 208, transition: "width 200ms ease" }}
       >
         {/* Header row: label + toggle button */}
         <div

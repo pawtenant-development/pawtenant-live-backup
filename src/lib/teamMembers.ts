@@ -20,7 +20,68 @@ export interface TeamMember {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Employee Master / HR profile fields (non-sensitive; self-readable via RLS).
+  // Sensitive salary / HR notes live in employee_hr_private (admin-only) and are
+  // intentionally NOT part of this type.
+  personal_email: string | null;
+  phone: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  date_of_birth: string | null;
+  joining_date: string | null;
+  employment_type: string | null;
+  employment_status: string | null;
+  address: string | null;
+  company_id: string | null;
+  /** Company OS role hierarchy level (labeling only; does not grant access). */
+  domain_role: string | null;
 }
+
+/** Company OS role hierarchy (labeling). owner = Boss/Owner/Super Admin. */
+export const DOMAIN_ROLES = [
+  "owner",
+  "domain_owner",
+  "sub_domain_owner",
+  "team_coordinator",
+  "user",
+] as const;
+
+export const DOMAIN_ROLE_LABEL: Record<string, string> = {
+  owner: "Owner / Super Admin",
+  domain_owner: "Domain Owner",
+  sub_domain_owner: "Sub-Domain Owner",
+  team_coordinator: "Team Coordinator",
+  user: "User",
+};
+
+/** Allowed employee status / employment-type values (mirror DB check constraints). */
+export const EMPLOYMENT_TYPES = [
+  "full_time",
+  "part_time",
+  "contractor",
+  "intern",
+  "temporary",
+] as const;
+export const EMPLOYMENT_STATUSES = [
+  "active",
+  "inactive",
+  "terminated",
+  "on_leave",
+] as const;
+
+export const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
+  full_time: "Full-time",
+  part_time: "Part-time",
+  contractor: "Contractor",
+  intern: "Intern",
+  temporary: "Temporary",
+};
+export const EMPLOYMENT_STATUS_LABEL: Record<string, string> = {
+  active: "Active",
+  inactive: "Inactive",
+  terminated: "Terminated",
+  on_leave: "On Leave",
+};
 
 /**
  * Fetch the current authenticated user's `team_members` row, if any.
@@ -50,6 +111,55 @@ export async function fetchCurrentTeamMember(): Promise<TeamMember | null> {
     return null;
   }
 
+  return (data as TeamMember | null) ?? null;
+}
+
+/**
+ * Current user's admin context from `doctor_profiles` (self-readable). Used by
+ * the Company Portal to decide manager-level visibility. "Manager" here mirrors
+ * the team_members / employee_hr_private RLS: is_admin AND role in
+ * (owner, admin_manager) — so the richer reads the UI offers are actually
+ * permitted by the database.
+ */
+export interface MyAdminContext {
+  role: string | null;
+  is_admin: boolean;
+  isManager: boolean;
+}
+
+export async function fetchMyAdminContext(): Promise<MyAdminContext> {
+  const empty: MyAdminContext = { role: null, is_admin: false, isManager: false };
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData?.session?.user?.id;
+  if (!userId) return empty;
+  const { data, error } = await supabase
+    .from("doctor_profiles")
+    .select("role, is_admin")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) return empty;
+  const role = (data as { role: string | null }).role ?? null;
+  const is_admin = (data as { is_admin: boolean | null }).is_admin === true;
+  const isManager = is_admin && (role === "owner" || role === "admin_manager");
+  return { role, is_admin, isManager };
+}
+
+/**
+ * Fetch one full team_members row by id. Returns the row only when RLS permits
+ * (own row via self_read, or any row for owner/admin_manager via admin_read).
+ * Used by the manager "View Profile" drawer. Salary / HR notes are NOT here —
+ * they live in employee_hr_private (admin-only) and are not surfaced in the portal.
+ */
+export async function fetchTeamMemberById(id: string): Promise<TeamMember | null> {
+  const { data, error } = await supabase
+    .from("team_members")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    console.warn("[team_members] fetchTeamMemberById error", error);
+    return null;
+  }
   return (data as TeamMember | null) ?? null;
 }
 

@@ -16,6 +16,8 @@ type RailItem =
 
 const ITEMS: RailItem[] = [
   { kind: "section", id: "home", icon: "ri-home-5-line", label: "Home" },
+  { kind: "section", id: "myprofile", icon: "ri-id-card-line", label: "My Profile" },
+  { kind: "section", id: "team", icon: "ri-team-line", label: "Team Directory" },
   { kind: "tab", href: "/admin-orders", icon: "ri-computer-line", label: "Workstation" },
   { kind: "section", id: "performance", icon: "ri-bar-chart-2-line", label: "Performance" },
   { kind: "section", id: "forms", icon: "ri-survey-line", label: "HR / Forms" },

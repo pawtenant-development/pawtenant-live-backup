@@ -12,6 +12,8 @@ export interface PresenceRow {
   display_name: string;
   employee_code: string | null;
   display_picture_url: string | null;
+  title: string | null;
+  department: string | null;
   is_clocked_in: boolean;
   away_status: AwayStatus;
   away_reason: string | null;

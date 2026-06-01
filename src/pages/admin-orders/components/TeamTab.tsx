@@ -3,6 +3,10 @@ import { useState, useEffect, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import { logAudit } from "../../../lib/auditLogger";
 import { canManageTeam, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
+import EmployeeHrDirectory from "./EmployeeHrDirectory";
+import LeaveRequestsAdmin from "./LeaveRequestsAdmin";
+import LeaveCorrectionsAdmin from "./LeaveCorrectionsAdmin";
+import BreaksAdmin from "./BreaksAdmin";
 
 // All admin portal top-level tabs that can be toggled per member.
 // Keys MUST match the TabKey union in ../page.tsx + AdminSidebar's
@@ -464,6 +468,12 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showMatrix, setShowMatrix] = useState(false);
+  // Employee HR sub-view (Employee Master / HR Profile). Owner/admin_manager only.
+  const [hrView, setHrView] = useState(false);
+  // Leave Requests sub-view. Owner/admin_manager only (also enforced by RLS/RPC).
+  const [leaveView, setLeaveView] = useState(false);
+  // Live Breaks sub-view. Owner/admin_manager only (also enforced by RLS).
+  const [breaksView, setBreaksView] = useState(false);
   const [form, setForm] = useState<AddMemberForm>(INIT_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -783,8 +793,61 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
   // read-only staff directory.
   const canManage = canManageTeam(currentUser?.role ?? null);
 
+  // Sub-view switch: "Roles & Access" (this component's existing UI, driven by
+  // doctor_profiles) vs "Employee HR Profiles" (team_members + employee_hr_private).
+  // Only owner/admin_manager may manage HR records (also enforced by RLS).
+  const hrToggle = canManage ? (
+    <div className="mb-5 inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1">
+      <button type="button" onClick={() => { setHrView(false); setLeaveView(false); setBreaksView(false); }}
+        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${!hrView && !leaveView && !breaksView ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-50"}`}>
+        <i className="ri-shield-user-line mr-1" />Roles &amp; Access
+      </button>
+      <button type="button" onClick={() => { setHrView(true); setLeaveView(false); setBreaksView(false); }}
+        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${hrView ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-50"}`}>
+        <i className="ri-id-card-line mr-1" />Employee HR Profiles
+      </button>
+      <button type="button" onClick={() => { setLeaveView(true); setHrView(false); setBreaksView(false); }}
+        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${leaveView ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-50"}`}>
+        <i className="ri-calendar-event-line mr-1" />Leave Requests
+      </button>
+      <button type="button" onClick={() => { setBreaksView(true); setHrView(false); setLeaveView(false); }}
+        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${breaksView ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-50"}`}>
+        <i className="ri-cup-line mr-1" />Live Breaks
+      </button>
+    </div>
+  ) : null;
+
+  if (breaksView && canManage) {
+    return (
+      <div>
+        {hrToggle}
+        <BreaksAdmin />
+      </div>
+    );
+  }
+
+  if (leaveView && canManage) {
+    return (
+      <div>
+        {hrToggle}
+        <LeaveRequestsAdmin />
+        <LeaveCorrectionsAdmin />
+      </div>
+    );
+  }
+
+  if (hrView && canManage) {
+    return (
+      <div>
+        {hrToggle}
+        <EmployeeHrDirectory />
+      </div>
+    );
+  }
+
   return (
     <div>
+      {hrToggle}
       {/* Stats */}
       {!loading && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
