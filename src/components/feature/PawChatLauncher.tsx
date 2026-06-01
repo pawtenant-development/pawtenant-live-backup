@@ -44,6 +44,8 @@ const HIDDEN_ROUTE_PREFIXES = [
   "/customer-login",
   "/reset-password",
   "/account/checkout",
+  // Company OS employee portal — internal, must not show the customer chat bubble.
+  "/company",
 ];
 
 const BRAND_PRIMARY = "#FF6A2B";

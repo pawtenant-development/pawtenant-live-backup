@@ -58,6 +58,7 @@ const VerifyEntryPage = lazy(() => import("../pages/verify/page"));
 const VerifyResultPage = lazy(() => import("../pages/verify-result/page"));
 const ESALetterVerificationPage = lazy(() => import("../pages/esa-letter-verification/page"));
 const AccountCheckoutPage = lazy(() => import("../pages/account-checkout/page"));
+const CompanyHomePage = lazy(() => import("../pages/company-home/page"));
 // Google Ads paid landing page — noindex, not in nav, not in sitemap.
 const LpEsaHousingPage = lazy(() => import("../pages/lp-esa-housing/page"));
 // Meta/Facebook Ads paid landing page — noindex, not in nav, not in sitemap.
@@ -150,6 +151,7 @@ const routes: RouteObject[] = [
   // Declared before /admin-orders so the more specific match is unambiguous.
   { path: "/admin-orders/live", element: <P C={AdminLiveVisitorsPage} /> },
   { path: "/admin-orders", element: <P C={AdminOrdersPage} /> },
+  { path: "/company", element: <P C={CompanyHomePage} /> },
   { path: "/admin-doctors", element: <P C={AdminDoctorsPage} /> },
   { path: "/provider-login", element: <P C={ProviderLoginPage} /> },
   { path: "/provider-portal", element: <P C={ProviderPortalPage} /> },

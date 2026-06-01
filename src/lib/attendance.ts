@@ -132,3 +132,63 @@ export async function clockOutCurrentUser(): Promise<string | null> {
   }
   return (data as string | null) ?? null;
 }
+
+/** A single time-clock entry for the employee dashboard's attendance card. */
+export interface TodayAttendanceEntry {
+  id: string;
+  clock_in_at: string;
+  clock_out_at: string | null;
+  was_late: boolean | null;
+  late_minutes: number | null;
+}
+
+/**
+ * Read the caller's most recent `time_clock_entries` row whose PKT `work_date`
+ * is today. Returns the row whether it is open (in progress) or closed.
+ *
+ * Self-only by RLS (`tce_self_read`). Returns `null` when there is no entry for
+ * today or on error. Used by the /company "Today's Attendance" card.
+ */
+export async function fetchMyTodayAttendance(
+  teamMemberId: string,
+): Promise<TodayAttendanceEntry | null> {
+  const todayPkt = pktDateString(new Date());
+  const { data, error } = await supabase
+    .from("time_clock_entries")
+    .select("id, clock_in_at, clock_out_at, was_late, late_minutes")
+    .eq("team_member_id", teamMemberId)
+    .eq("work_date", todayPkt)
+    .order("clock_in_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[attendance] fetchMyTodayAttendance error", error);
+    return null;
+  }
+  return (data as TodayAttendanceEntry | null) ?? null;
+}
+
+/**
+ * True when the caller currently has an OPEN time-clock session (any
+ * `time_clock_entries` row with `clock_out_at IS NULL`), regardless of which
+ * `work_date` it belongs to. Mirrors the `is_clocked_in` flag computed by
+ * `get_team_presence()` so the employee presence dot stays consistent.
+ *
+ * Self-only by RLS. Returns `false` on error.
+ */
+export async function isCurrentlyClockedIn(teamMemberId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("time_clock_entries")
+    .select("id")
+    .eq("team_member_id", teamMemberId)
+    .is("clock_out_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[attendance] isCurrentlyClockedIn error", error);
+    return false;
+  }
+  return !!data;
+}

@@ -11,6 +11,7 @@ export interface PresenceRow {
   team_member_id: string;
   display_name: string;
   employee_code: string | null;
+  display_picture_url: string | null;
   is_clocked_in: boolean;
   away_status: AwayStatus;
   away_reason: string | null;
@@ -54,6 +55,27 @@ export async function setMyPresence(status: AwayStatus, reason?: string | null):
     p_reason: reason ?? null,
   });
   return !error;
+}
+
+// The caller's own presence row (self-read via RLS ep_self_read). Returns null
+// when no presence row exists yet (defaults to "available") or on error.
+export interface MyPresence {
+  status: AwayStatus;
+  away_reason: string | null;
+  updated_at: string | null;
+}
+
+export async function fetchMyPresence(teamMemberId: string): Promise<MyPresence | null> {
+  const { data, error } = await supabase
+    .from("employee_presence")
+    .select("status, away_reason, updated_at")
+    .eq("team_member_id", teamMemberId)
+    .maybeSingle();
+  if (error) {
+    console.warn("[presence] fetchMyPresence error", error);
+    return null;
+  }
+  return (data as MyPresence | null) ?? null;
 }
 
 // Resolve the current user's own team_member id (null if they are not a team member).
