@@ -1,0 +1,459 @@
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  listExpenses, addExpense, deleteExpense, cancelExpense, fetchSalaryExpense, fetchSalaryDetail,
+  resolveRange, resolutionToClassification,
+  EXPENSE_CATEGORIES, CATEGORY_LABEL, MARKETING_CATEGORIES,
+  type CompanyExpense, type ExpenseCategory, type SalaryExpenseSummaryRow, type SalaryDetailRow,
+  type ChargePayoutResolution,
+} from "../../../lib/companyExpenses";
+import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAccounts";
+
+// Minimal shapes mirrored from PaymentsTab (avoids cross-file type coupling).
+interface MiniSummary {
+  total_revenue: number;
+  total_refunded: number;
+  total_fees?: number;
+  net_after_fees?: number;
+  net_revenue: number;
+}
+interface MiniCharge {
+  amount: number;
+  fee?: number;
+  net?: number;
+  amount_refunded: number;
+  payment_intent: string | null;
+  status: string;
+  customer_name: string | null;
+  customer_email: string | null;
+}
+
+interface Props {
+  period: "7d" | "30d" | "90d";
+  customActive: boolean;
+  customFrom: string;
+  customTo: string;
+  rangeLabel: string;
+  summary: MiniSummary | undefined;
+  charges: MiniCharge[] | undefined;
+  resolutionMap: Record<string, ChargePayoutResolution>;
+}
+
+const DEFAULT_PKR_PER_USD = 280; // explicit, editable — not a hidden conversion.
+const fmtUSD = (v: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(v);
+const fmtUSD2 = (v: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(v);
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+export default function PaymentsAccountsPanel({
+  period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap,
+}: Props) {
+  const range = useMemo(
+    () => resolveRange(period, customActive, customFrom, customTo),
+    [period, customActive, customFrom, customTo],
+  );
+
+  const [expenses, setExpenses] = useState<CompanyExpense[]>([]);
+  const [salaryRows, setSalaryRows] = useState<SalaryExpenseSummaryRow[]>([]);
+  const [salaryDetail, setSalaryDetail] = useState<SalaryDetailRow[]>([]);
+  const [showSalaryDetail, setShowSalaryDetail] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [fxRate, setFxRate] = useState<number>(DEFAULT_PKR_PER_USD);
+
+  // Add-expense form
+  const [showForm, setShowForm] = useState(false);
+  const [fDate, setFDate] = useState(todayIso());
+  const [fCategory, setFCategory] = useState<ExpenseCategory>("subscription");
+  const [fVendor, setFVendor] = useState("");
+  const [fDesc, setFDesc] = useState("");
+  const [fAmount, setFAmount] = useState("");
+  const [fCurrency, setFCurrency] = useState("USD");
+  const [fRecurring, setFRecurring] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | ExpenseCategory>("all");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+    const [exp, sal, salDetail] = await Promise.all([
+      listExpenses(range.from, range.to),
+      fetchSalaryExpense(range.from, range.to),
+      fetchSalaryDetail(range.from, range.to),
+    ]);
+    setExpenses(exp);
+    setSalaryRows(sal);
+    setSalaryDetail(salDetail);
+    setLoading(false);
+  }, [range.from, range.to]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // ── Revenue / direct-cost side (USD) ─────────────────────────────────────
+  const gross = summary?.total_revenue ?? 0;
+  const stripeFees = summary?.total_fees ?? 0;
+  const refunds = summary?.total_refunded ?? 0;
+  const netAfterFees = summary?.net_after_fees ?? (summary ? summary.net_revenue : 0);
+
+  // Provider payouts — ONLY completed provider work (doctor_status='patient_notified')
+  // is deducted from contribution margin. Pending/assigned work is advisory only.
+  const { providerPayouts, providerPending } = useMemo(() => {
+    let deducted = 0, pending = 0;
+    for (const c of charges ?? []) {
+      const res = c.payment_intent ? resolutionMap[c.payment_intent] : undefined;
+      const pc = resolutionToClassification(res, c.amount_refunded > 0);
+      deducted += pc.deducted;
+      pending += pc.estimated;
+    }
+    return { providerPayouts: deducted, providerPending: pending };
+  }, [charges, resolutionMap]);
+
+  const contributionMargin = netAfterFees - providerPayouts;
+
+  // ── Expense side (USD) ───────────────────────────────────────────────────
+  const activeExpenses = useMemo(() => expenses.filter((e) => e.status !== "cancelled"), [expenses]);
+
+  const expenseToUsd = useCallback((e: CompanyExpense): number => {
+    if ((e.currency || "USD").toUpperCase() === "PKR") return fxRate > 0 ? e.amount / fxRate : 0;
+    return e.amount;
+  }, [fxRate]);
+
+  const manualMarketing = useMemo(
+    () => activeExpenses.filter((e) => MARKETING_CATEGORIES.includes(e.category)).reduce((s, e) => s + expenseToUsd(e), 0),
+    [activeExpenses, expenseToUsd],
+  );
+  const manualOther = useMemo(
+    () => activeExpenses.filter((e) => !MARKETING_CATEGORIES.includes(e.category)).reduce((s, e) => s + expenseToUsd(e), 0),
+    [activeExpenses, expenseToUsd],
+  );
+  const manualTotal = manualMarketing + manualOther;
+
+  // Estimated salary expense — prorated, grouped by currency; PKR converted at fxRate.
+  const salaryPkr = useMemo(() => salaryRows.filter((r) => r.currency === "PKR").reduce((s, r) => s + r.prorated_total, 0), [salaryRows]);
+  const salaryUsdNative = useMemo(() => salaryRows.filter((r) => r.currency === "USD").reduce((s, r) => s + r.prorated_total, 0), [salaryRows]);
+  const salaryUsd = salaryUsdNative + (fxRate > 0 ? salaryPkr / fxRate : 0);
+  const salaryCount = useMemo(() => salaryRows.reduce((s, r) => s + r.employee_count, 0), [salaryRows]);
+  const ownerExcludedCount = useMemo(() => salaryDetail.filter((r) => r.exclude_reason === "owner_compensation_excluded").length, [salaryDetail]);
+
+  const totalExpenses = manualTotal + salaryUsd;
+  const operatingNet = contributionMargin - totalExpenses;
+
+  // ── Add expense ──────────────────────────────────────────────────────────
+  const handleAdd = async () => {
+    const amt = parseFloat(fAmount);
+    if (!fDate || isNaN(amt) || amt <= 0) { setErr("Enter a valid date and amount."); return; }
+    setSaving(true);
+    const res = await addExpense({
+      expense_date: fDate, category: fCategory, vendor: fVendor || null, description: fDesc || null,
+      amount: amt, currency: fCurrency, source: "manual", status: "confirmed", recurring: fRecurring,
+    });
+    setSaving(false);
+    if (!res.ok) { setErr(res.error ?? "Failed to add expense"); return; }
+    setShowForm(false);
+    setFVendor(""); setFDesc(""); setFAmount(""); setFRecurring(false);
+    load();
+  };
+
+  const handleDelete = async (id: string) => {
+    const res = await deleteExpense(id);
+    if (!res.ok) { setErr(res.error ?? "Failed to delete"); return; }
+    load();
+  };
+  const handleCancel = async (id: string) => {
+    const res = await cancelExpense(id);
+    if (!res.ok) { setErr(res.error ?? "Failed to cancel"); return; }
+    load();
+  };
+
+  const filteredExpenses = categoryFilter === "all" ? expenses : expenses.filter((e) => e.category === categoryFilter);
+
+  // ── Export ───────────────────────────────────────────────────────────────
+  const handleExport = () => {
+    const profitability: ProfitabilityRow[] = (charges ?? []).map((c) => {
+      const res = c.payment_intent ? resolutionMap[c.payment_intent] : undefined;
+      const fee = typeof c.fee === "number" ? c.fee : 0;
+      const net = typeof c.net === "number" ? c.net : c.amount - fee;
+      const pc = resolutionToClassification(res, c.amount_refunded > 0);
+      return {
+        order_id: res?.confirmation_id ?? "",
+        customer: c.customer_name ?? c.customer_email ?? "",
+        gross: c.amount,
+        stripe_fee: fee,
+        provider: pc.name ?? "",
+        provider_payout: pc.deducted,
+        payout_basis: pc.classification, // none | pending_estimated | confirmed_completed | confirmed_completed_refunded | cancelled*
+        business_net: net - c.amount_refunded - pc.deducted,
+        refund: c.amount_refunded,
+        status: c.status,
+      };
+    });
+    exportAccountsCSV({
+      rangeLabel,
+      generatedAt: new Date().toISOString(),
+      summary: [
+        { label: "Gross Revenue", amount: gross },
+        { label: "Stripe Fees", amount: -stripeFees },
+        { label: "Refunds", amount: -refunds },
+        { label: "Provider Payouts (confirmed)", amount: -providerPayouts, note: "Completed provider work only" },
+        { label: "Contribution Margin", amount: contributionMargin, note: "After Stripe, refunds & confirmed provider payouts" },
+        { label: "Pending Provider Payouts (advisory)", amount: -providerPending, note: "Not yet completed — NOT deducted from margin/net" },
+        { label: "Salary Expenses (est.)", amount: -salaryUsd, note: salaryPkr > 0 ? `Incl. PKR ${Math.round(salaryPkr).toLocaleString()} @ ${fxRate}/USD` : "" },
+        { label: "Marketing Expenses", amount: -manualMarketing },
+        { label: "Other Manual Expenses", amount: -manualOther },
+        { label: "Total Expenses", amount: -totalExpenses },
+        { label: "Operating Net / Estimated Profit", amount: operatingNet, note: "Contribution margin − company expenses" },
+      ],
+      expenses,
+      profitability,
+    });
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  const revenueCards = [
+    { label: "Gross Revenue", value: fmtUSD(gross), color: "text-emerald-600", icon: "ri-money-dollar-circle-line" },
+    { label: "Stripe Fees", value: `−${fmtUSD(stripeFees)}`, color: "text-rose-500", icon: "ri-bank-card-2-line" },
+    { label: "Refunds", value: `−${fmtUSD(refunds)}`, color: "text-orange-500", icon: "ri-refund-2-line" },
+    { label: "Provider Payouts", value: `−${fmtUSD(providerPayouts)}`, color: "text-purple-500", icon: "ri-user-shared-line" },
+    { label: "Contribution Margin", value: fmtUSD(contributionMargin), color: "text-[#3b6ea5]", icon: "ri-funds-line" },
+  ];
+  // Provider Payouts card shows CONFIRMED (completed) only; pending is advisory.
+
+  return (
+    <div>
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h2 className="text-base font-extrabold text-gray-900">Accounts &amp; Estimated P&amp;L</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Internal management accounting for <span className="font-semibold">{rangeLabel}</span>. Figures are estimates, not finalized accounting.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-2">
+            <span className="text-xs font-bold text-gray-500">PKR → USD</span>
+            <input type="number" value={fxRate} min={1} onChange={(e) => setFxRate(Math.max(1, parseFloat(e.target.value) || 1))}
+              className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-[#3b6ea5]" />
+          </div>
+          <button type="button" onClick={handleExport}
+            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+            <i className="ri-file-excel-2-line text-emerald-600"></i>Export Excel CSV
+          </button>
+        </div>
+      </div>
+
+      {err && (
+        <div className="mb-4 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+          <i className="ri-error-warning-line"></i>{err}
+        </div>
+      )}
+
+      {/* Revenue / direct-cost cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+        {revenueCards.map((c) => (
+          <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <i className={`${c.icon} ${c.color} text-base`}></i>
+              <span className="text-xs text-gray-500 font-medium">{c.label}</span>
+            </div>
+            <p className={`text-2xl font-extrabold ${c.color}`}>{c.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Expenses + Operating Net */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-start">
+        {/* Expense ledger */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between p-3 border-b border-gray-100 bg-gray-50 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-extrabold text-gray-900">Company Expenses</h3>
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as "all" | ExpenseCategory)}
+                className="appearance-none pl-2 pr-6 py-1 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 bg-white focus:outline-none cursor-pointer">
+                <option value="all">All categories</option>
+                {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+              </select>
+            </div>
+            <button type="button" onClick={() => setShowForm((s) => !s)}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors">
+              <i className={showForm ? "ri-close-line" : "ri-add-line"}></i>{showForm ? "Close" : "Add Expense"}
+            </button>
+          </div>
+
+          {showForm && (
+            <div className="p-4 border-b border-gray-100 bg-gray-50/50 grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Date</label>
+                <input type="date" value={fDate} onChange={(e) => setFDate(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Category</label>
+                <select value={fCategory} onChange={(e) => setFCategory(e.target.value as ExpenseCategory)}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:border-[#3b6ea5]">
+                  {EXPENSE_CATEGORIES.filter((c) => c !== "employee_salary" && c !== "provider_payout").map((c) => (
+                    <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Amount</label>
+                <input type="number" value={fAmount} onChange={(e) => setFAmount(e.target.value)} placeholder="0.00"
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Currency</label>
+                <select value={fCurrency} onChange={(e) => setFCurrency(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:border-[#3b6ea5]">
+                  <option value="USD">USD</option>
+                  <option value="PKR">PKR</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Vendor</label>
+                <input type="text" value={fVendor} onChange={(e) => setFVendor(e.target.value)} placeholder="Optional"
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 mb-1">Description</label>
+                <input type="text" value={fDesc} onChange={(e) => setFDesc(e.target.value)} placeholder="Optional"
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
+              </div>
+              <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                <input type="checkbox" checked={fRecurring} onChange={(e) => setFRecurring(e.target.checked)} />Recurring
+              </label>
+              <div className="col-span-2 md:col-span-1 flex items-end">
+                <button type="button" onClick={handleAdd} disabled={saving}
+                  className="whitespace-nowrap w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
+                  {saving ? <><i className="ri-loader-4-line animate-spin"></i>Saving</> : <><i className="ri-check-line"></i>Save Expense</>}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Salary system row — estimated, based on active employee base salaries */}
+          {(salaryPkr > 0 || salaryUsdNative > 0) && (
+            <div className="border-b border-gray-100 bg-[#f8fdfc]">
+              <div className="px-5 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <i className="ri-team-line text-[#3b6ea5]"></i>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-800">Estimated Salary Expense</p>
+                    <p className="text-xs text-gray-400">
+                      Estimated, based on {salaryCount} active employee base salar{salaryCount === 1 ? "y" : "ies"}, prorated to range.
+                      {salaryPkr > 0 ? ` PKR ${Math.round(salaryPkr).toLocaleString()} @ ${fxRate}/USD.` : ""}
+                      {ownerExcludedCount > 0 ? " Owner compensation excluded." : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-extrabold text-rose-500">−{fmtUSD2(salaryUsd)}</p>
+                  <button type="button" onClick={() => setShowSalaryDetail((s) => !s)}
+                    className="text-[10px] font-semibold text-[#3b6ea5] hover:underline cursor-pointer">
+                    {showSalaryDetail ? "Hide" : "Breakdown"} <i className={showSalaryDetail ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}></i>
+                  </button>
+                </div>
+              </div>
+              {showSalaryDetail && (
+                <div className="px-5 pb-3">
+                  <div className="rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                      <span>Employee</span><span className="text-right">Salary</span><span>Status</span><span className="text-right">Prorated</span>
+                    </div>
+                    {salaryDetail.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-gray-400">No salary records.</p>
+                    ) : salaryDetail.map((r) => (
+                      <div key={r.team_member_id} className={`grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 text-xs border-t border-gray-100 ${r.included ? "" : "opacity-50"}`}>
+                        <span className="truncate text-gray-700">{r.display_name ?? r.employee_code ?? "—"}</span>
+                        <span className="text-right text-gray-700">{Math.round(r.base_salary).toLocaleString()} {r.salary_currency}</span>
+                        <span className="text-gray-500">{r.included ? r.employment_status : (r.exclude_reason ?? "excluded")}</span>
+                        <span className="text-right font-semibold text-gray-700">{r.included ? `${Math.round(r.prorated_amount).toLocaleString()} ${r.salary_currency}` : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-gray-400">Admin-only diagnostic. Salaries never shown in the employee portal.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="p-10 text-center text-sm text-gray-400"><i className="ri-loader-4-line animate-spin text-2xl block mb-2"></i>Loading expenses…</div>
+          ) : filteredExpenses.length === 0 ? (
+            <div className="p-10 text-center text-sm text-gray-400">No manual expenses in this range. Use “Add Expense”.</div>
+          ) : (
+            <div className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
+              {filteredExpenses.map((e) => (
+                <div key={e.id} className={`flex items-center justify-between gap-3 px-5 py-3 ${e.status === "cancelled" ? "opacity-50" : ""}`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-gray-800">{CATEGORY_LABEL[e.category]}</p>
+                      <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{e.source}</span>
+                      {e.status !== "confirmed" && (
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${e.status === "cancelled" ? "bg-gray-200 text-gray-500" : "bg-amber-100 text-amber-700"}`}>{e.status}</span>
+                      )}
+                      {e.recurring && <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">recurring</span>}
+                    </div>
+                    <p className="text-xs text-gray-400 truncate">
+                      {e.expense_date}{e.vendor ? ` · ${e.vendor}` : ""}{e.description ? ` · ${e.description}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <p className="text-sm font-extrabold text-rose-500">
+                      −{e.currency === "USD" ? fmtUSD2(e.amount) : `${e.amount.toFixed(2)} ${e.currency}`}
+                    </p>
+                    {e.status !== "cancelled" && (
+                      <button type="button" onClick={() => handleCancel(e.id)} title="Cancel (keep record)"
+                        className="text-gray-300 hover:text-amber-500 cursor-pointer"><i className="ri-close-circle-line"></i></button>
+                    )}
+                    <button type="button" onClick={() => handleDelete(e.id)} title="Delete permanently"
+                      className="text-gray-300 hover:text-red-500 cursor-pointer"><i className="ri-delete-bin-line"></i></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* P&L summary panel */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 sticky top-4">
+          <p className="text-xs font-bold text-gray-700 uppercase tracking-widest mb-4">Estimated P&amp;L</p>
+          <dl className="space-y-2.5 text-sm">
+            <Row label="Contribution Margin" value={fmtUSD2(contributionMargin)} strong />
+            <Row label="Salary Expenses (est.)" value={`−${fmtUSD2(salaryUsd)}`} tone="rose" />
+            <Row label="Marketing Expenses" value={`−${fmtUSD2(manualMarketing)}`} tone="rose" />
+            <Row label="Other Expenses" value={`−${fmtUSD2(manualOther)}`} tone="rose" />
+            <div className="border-t border-gray-100 pt-2.5">
+              <Row label="Total Expenses" value={`−${fmtUSD2(totalExpenses)}`} tone="rose" strong />
+            </div>
+            <div className="border-t-2 border-gray-200 pt-3 mt-1">
+              <div className="flex items-center justify-between">
+                <dt className="text-sm font-extrabold text-gray-900">Operating Net</dt>
+                <dd className={`text-lg font-extrabold ${operatingNet >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmtUSD2(operatingNet)}</dd>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">Estimated profit = contribution margin − company expenses.</p>
+            </div>
+          </dl>
+          {salaryPkr > 0 && (
+            <p className="mt-4 text-[11px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Salaries are stored in PKR and converted at an editable rate ({fxRate} PKR/USD). Adjust the rate above; this is an estimate, not a finalized FX conversion.
+            </p>
+          )}
+          {providerPending > 0 && (
+            <p className="mt-3 text-[11px] leading-snug text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+              {fmtUSD2(providerPending)} of provider payouts are pending (work not yet completed) and are <strong>not</strong> deducted from contribution margin.
+            </p>
+          )}
+          <p className="mt-3 text-[11px] leading-snug text-gray-400">
+            Provider payouts deduct only after the provider completes the order (letter delivered). Marketing/ad spend is manual entry; automated Google/Meta import is future work.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, tone, strong }: { label: string; value: string; tone?: "rose"; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <dt className={`text-xs ${strong ? "font-bold text-gray-700" : "text-gray-500"}`}>{label}</dt>
+      <dd className={`${strong ? "text-sm font-extrabold" : "text-sm font-semibold"} ${tone === "rose" ? "text-rose-500" : "text-gray-800"}`}>{value}</dd>
+    </div>
+  );
+}

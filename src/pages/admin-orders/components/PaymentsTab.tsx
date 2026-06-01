@@ -4,6 +4,11 @@ import { getAdminToken } from "../../../lib/supabaseClient";
 import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
+import PaymentsAccountsPanel from "./PaymentsAccountsPanel";
+import {
+  fetchChargePayouts, resolutionToClassification, payoutLabel,
+  type ChargePayoutResolution, type PayoutClassification,
+} from "../../../lib/companyExpenses";
 
 interface ChargeSummary {
   id: string;
@@ -63,7 +68,18 @@ interface PaymentData {
 }
 
 type Period = "7d" | "30d" | "90d";
-type ActiveView = "payments" | "reconciliation";
+type ActiveView = "payments" | "reconciliation" | "accounts";
+
+// Classify a charge's provider payout for Business Net, using the server-side
+// resolver (resolve_charge_payouts) which walks the parent_order_id recovery
+// chain. Payout deducts ONLY when the order/chain is completed.
+function classifyCharge(
+  charge: ChargeSummary,
+  resolutionMap: Record<string, ChargePayoutResolution>,
+): PayoutClassification {
+  const res = charge.payment_intent ? resolutionMap[charge.payment_intent] : undefined;
+  return resolutionToClassification(res, charge.refunded || charge.amount_refunded > 0);
+}
 
 const PERIOD_LABELS: Record<Period, string> = {
   "7d": "Last 7 Days",
@@ -88,18 +104,29 @@ function chargeFee(c: ChargeSummary): { fee: number; estimated: boolean } {
   return { fee: c.status === "succeeded" ? estFee(c.amount) : 0, estimated: c.status === "succeeded" };
 }
 
-function downloadCSV(data: ChargeSummary[], refunds: RefundItem[], label: string) {
+function downloadCSV(
+  data: ChargeSummary[],
+  refunds: RefundItem[],
+  label: string,
+  resolutionMap: Record<string, ChargePayoutResolution>,
+) {
   const headers = [
-    "Charge ID", "Date", "Customer Name", "Customer Email", "Description",
+    "Charge ID", "Order ID", "Date", "Customer Name", "Customer Email", "Description",
     "Charge Status", "Refund Status", "Payment Method",
     "Gross (USD)", "Stripe Fee (USD)", "Fee Basis", "Net After Fee (USD)",
-    "Amount Refunded (USD)", "Net Collected (USD)", "Payment Intent", "Receipt URL",
+    "Provider Name", "Provider Payout (USD)", "Payout Classification", "Payout Deducted",
+    "Payout Source", "Pending Est. Payout (USD)", "Provider Completed", "Business Net (USD)",
+    "Duplicate Chain Charges", "Amount Refunded (USD)", "Net Collected (USD)", "Payment Intent", "Receipt URL",
   ];
   const rows = data.map((c) => {
     const { fee, estimated } = chargeFee(c);
     const net = typeof c.net === "number" ? c.net : c.amount - fee;
+    const res = c.payment_intent ? resolutionMap[c.payment_intent] : undefined;
+    const pc = classifyCharge(c, resolutionMap);
+    const businessNet = net - c.amount_refunded - pc.deducted;
     return [
       c.id,
+      res?.confirmation_id ?? "",
       new Date(c.created * 1000).toLocaleDateString("en-US"),
       c.customer_name ?? "",
       c.customer_email ?? "",
@@ -111,6 +138,15 @@ function downloadCSV(data: ChargeSummary[], refunds: RefundItem[], label: string
       fee.toFixed(2),
       estimated ? "Estimated" : "Actual (Stripe)",
       net.toFixed(2),
+      pc.name ?? "",
+      pc.amount.toFixed(2),
+      pc.classification,
+      pc.deducted > 0 ? "Yes" : "No",
+      pc.source ?? "none",
+      pc.estimated.toFixed(2),
+      res?.completed ? "Yes" : "No",
+      businessNet.toFixed(2),
+      res && res.chain_paid_count > 1 ? String(res.chain_paid_count) : "",
       c.amount_refunded.toFixed(2),
       (c.amount - c.amount_refunded).toFixed(2),
       c.payment_intent ?? "",
@@ -163,6 +199,7 @@ export default function PaymentsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [orderMap, setOrderMap] = useState<Record<string, string>>({});
+  const [resolutionMap, setResolutionMap] = useState<Record<string, ChargePayoutResolution>>({});
 
   // ── Bulk delete for payments (owner/admin only) ──
   const [selectedChargeIds, setSelectedChargeIds] = useState<Set<string>>(new Set());
@@ -276,12 +313,13 @@ export default function PaymentsTab() {
     else fetchData(`period=${period}`);
   };
 
-  // Cross-reference payment_intent_id → confirmation_id
+  // Cross-reference payment_intent_id → confirmation_id (Order ID chip + refund modal).
   useEffect(() => {
     supabase
       .from("orders")
       .select("payment_intent_id, confirmation_id")
       .not("payment_intent_id", "is", null)
+      .limit(5000)
       .then(({ data: orders }) => {
         if (!orders) return;
         const map: Record<string, string> = {};
@@ -291,6 +329,33 @@ export default function PaymentsTab() {
         setOrderMap(map);
       });
   }, []);
+
+  // Provider payout resolution for the visible charges (server-side, parent-chain aware).
+  useEffect(() => {
+    if (!data?.charges) return;
+    const pis = data.charges.map((c) => c.payment_intent).filter((v): v is string => !!v);
+    if (pis.length === 0) return;
+    let cancelled = false;
+    fetchChargePayouts(pis).then((m) => { if (!cancelled) setResolutionMap(m); });
+    return () => { cancelled = true; };
+  }, [data?.charges]);
+
+  // Provider payout rollups for the period (whole charge set). Only payouts for
+  // COMPLETED provider work are deducted from Business Net; the rest is advisory.
+  const providerPayoutTotal = (data?.charges ?? []).reduce(
+    (sum, c) => sum + classifyCharge(c, resolutionMap).deducted, 0,
+  );
+  const providerPendingTotal = (data?.charges ?? []).reduce(
+    (sum, c) => sum + classifyCharge(c, resolutionMap).estimated, 0,
+  );
+  // Completed orders whose payout amount couldn't be found — admin attention needed.
+  const providerMissingCount = (data?.charges ?? []).filter(
+    (c) => classifyCharge(c, resolutionMap).classification === "payout_missing_completed",
+  ).length;
+  // Charges that belong to a multi-charge recovery chain (likely duplicate/over-charge).
+  const duplicateChainCount = (data?.charges ?? []).filter(
+    (c) => (c.payment_intent ? resolutionMap[c.payment_intent]?.chain_paid_count ?? 1 : 1) > 1,
+  ).length;
 
   const handleRefunded = (chargeId: string, newRefundedAmount: number) => {
     setData((prev) => {
@@ -340,6 +405,8 @@ export default function PaymentsTab() {
   const feesEstimated = data?.summary.fees_include_estimates ?? false;
   const totalFees = data?.summary.total_fees ?? 0;
   const netAfterFees = data?.summary.net_after_fees ?? (data ? data.summary.net_revenue : 0);
+  // Business net = net after Stripe & refunds, minus provider payouts.
+  const businessNetTotal = netAfterFees - providerPayoutTotal;
 
   return (
     <div>
@@ -353,10 +420,28 @@ export default function PaymentsTab() {
           className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "reconciliation" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-link-m"></i>Reconciliation Tool
         </button>
+        <button type="button" onClick={() => setActiveView("accounts")}
+          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "accounts" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+          <i className="ri-line-chart-line"></i>Accounts
+        </button>
       </div>
 
       {/* Reconciliation view */}
       {activeView === "reconciliation" && <PaymentReconciliationPanel />}
+
+      {/* Accounts / P&L view */}
+      {activeView === "accounts" && (
+        <PaymentsAccountsPanel
+          period={period}
+          customActive={customActive}
+          customFrom={customFrom}
+          customTo={customTo}
+          rangeLabel={rangeLabel}
+          summary={data?.summary}
+          charges={data?.charges}
+          resolutionMap={resolutionMap}
+        />
+      )}
 
       {/* Payments view */}
       {activeView === "payments" && <>
@@ -368,7 +453,7 @@ export default function PaymentsTab() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {data && (
-            <button type="button" onClick={() => downloadCSV(filteredCharges, data.refunds, fileLabel)}
+            <button type="button" onClick={() => downloadCSV(filteredCharges, data.refunds, fileLabel, resolutionMap)}
               className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
               <i className="ri-download-2-line text-[#3b6ea5]"></i>Export CSV
             </button>
@@ -428,11 +513,13 @@ export default function PaymentsTab() {
       ) : data ? (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-5">
             {[
               { label: "Gross Revenue", value: formatCurrency(data.summary.total_revenue), icon: "ri-money-dollar-circle-line", color: "text-emerald-600", sub: `${data.summary.charge_count} transactions` },
               { label: feesEstimated ? "Stripe Fees (est.)" : "Stripe Fees", value: formatCurrency2(totalFees), icon: "ri-bank-card-2-line", color: "text-rose-500", sub: feesEstimated ? "Some estimated" : "Actual (Stripe)" },
+              { label: "Provider Payouts", value: formatCurrency(providerPayoutTotal), icon: "ri-user-shared-line", color: "text-purple-500", sub: providerPendingTotal > 0 ? `${formatCurrency(providerPendingTotal)} pending (not deducted)` : "Confirmed completed only" },
               { label: "Net After Fees", value: formatCurrency(netAfterFees), icon: "ri-funds-line", color: "text-[#3b6ea5]", sub: "After fees & refunds" },
+              { label: "Business Net", value: formatCurrency(businessNetTotal), icon: "ri-line-chart-line", color: "text-[#0f766e]", sub: "After Stripe, refunds & confirmed payouts" },
               { label: "Total Refunded", value: formatCurrency(data.summary.total_refunded), icon: "ri-refund-2-line", color: "text-orange-500", sub: `${data.summary.refund_count} refunds` },
               { label: "Available Balance", value: formatCurrency(data.summary.available_balance), icon: "ri-bank-line", color: "text-teal-600", sub: `${formatCurrency(data.summary.pending_balance)} pending` },
             ].map((s) => (
@@ -453,6 +540,20 @@ export default function PaymentsTab() {
             <div className="mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
               <i className="ri-information-line"></i>
               Some Stripe fees are <strong>estimated</strong> (2.9% + $0.30) because their balance transaction is still pending. Actual fees replace estimates automatically once Stripe settles.
+            </div>
+          )}
+
+          {providerMissingCount > 0 && (
+            <div className="mb-5 px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-800 flex items-center gap-2">
+              <i className="ri-error-warning-line"></i>
+              <strong>{providerMissingCount}</strong> completed order{providerMissingCount !== 1 ? "s have" : " has"} no provider payout record found — Business Net is not reduced for {providerMissingCount !== 1 ? "these" : "this"}. Check the provider Earnings panel.
+            </div>
+          )}
+
+          {duplicateChainCount > 0 && (
+            <div className="mb-5 px-4 py-2.5 bg-yellow-50 border border-yellow-300 rounded-xl text-xs text-yellow-800 flex items-center gap-2">
+              <i className="ri-file-copy-2-line"></i>
+              <strong>{duplicateChainCount}</strong> charge{duplicateChainCount !== 1 ? "s belong" : " belongs"} to recovery/retry chains with multiple paid charges (possible duplicate over-charges). Review for refunds — each completed charge still deducts its provider payout.
             </div>
           )}
 
@@ -517,12 +618,14 @@ export default function PaymentsTab() {
                 {filteredCharges.length === 0 ? (
                   <div className="p-12 text-center text-sm text-gray-400">No charges match your filters</div>
                 ) : (
-                  <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
+                  <div className="divide-y divide-gray-200 max-h-[500px] overflow-y-auto">
                     {filteredCharges.map((charge) => {
                       const fullyRefunded = charge.amount_refunded >= charge.amount;
                       const canRefund = !fullyRefunded && charge.status === "succeeded";
                       const { fee, estimated } = chargeFee(charge);
                       const net = typeof charge.net === "number" ? charge.net : charge.amount - fee;
+                      const payout = classifyCharge(charge, resolutionMap);
+                      const businessNet = net - charge.amount_refunded - payout.deducted;
 
                       return (
                         <div key={charge.id} className="grid grid-cols-1 md:grid-cols-[32px_2fr_1fr_1fr_1.3fr_200px] gap-2 md:gap-4 px-5 py-3 items-center hover:bg-gray-50/50 transition-colors">
@@ -557,7 +660,7 @@ export default function PaymentsTab() {
                           </div>
                           <div className="text-xs text-gray-500">{formatDate(charge.created)}</div>
                           <div>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLE[charge.status] ?? "bg-gray-100 text-gray-500"}`}>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${charge.refunded ? "bg-red-100 text-red-600" : charge.amount_refunded > 0 ? "bg-orange-100 text-orange-700" : (STATUS_STYLE[charge.status] ?? "bg-gray-100 text-gray-500")}`}>
                               {charge.refunded ? "Refunded" : charge.amount_refunded > 0 ? "Partial Refund" : charge.status.charAt(0).toUpperCase() + charge.status.slice(1)}
                             </span>
                           </div>
@@ -567,7 +670,12 @@ export default function PaymentsTab() {
                             </p>
                             {charge.status === "succeeded" && (
                               <p className="text-xs text-gray-400">
-                                fee {formatCurrency2(fee)}{estimated ? " (est.)" : ""} · net <span className="font-semibold text-[#3b6ea5]">{formatCurrency2(net)}</span>
+                                fee {formatCurrency2(fee)}{estimated ? " (est.)" : ""} · stripe net <span className="font-semibold text-[#3b6ea5]">{formatCurrency2(net)}</span>
+                              </p>
+                            )}
+                            {charge.status === "succeeded" && (
+                              <p className="text-xs text-gray-400">
+                                {payout.name ? `${payout.name} · ` : ""}{payoutLabel(payout)} · business net <span className="font-semibold text-[#0f766e]">{formatCurrency2(businessNet)}</span>
                               </p>
                             )}
                             {charge.amount_refunded > 0 && (

@@ -21,12 +21,26 @@ const ALL_TABS = [
   { key: "earnings",       label: "Earnings",      icon: "ri-money-dollar-circle-line" },
   { key: "payments",       label: "Payments",      icon: "ri-bank-card-line" },
   { key: "team",           label: "Team",          icon: "ri-team-line" },
+  // HR child tabs (grouped under "HR" in the sidebar). MUST be present here so
+  // editing a member's access never silently drops these grants on save.
   { key: "attendance",     label: "Attendance",    icon: "ri-time-line" },
   { key: "shifts",         label: "Shifts",        icon: "ri-calendar-schedule-line" },
   { key: "settings",       label: "Settings",      icon: "ri-settings-3-line" },
   { key: "audit",          label: "Audit Log",     icon: "ri-file-list-3-line" },
   { key: "health",         label: "System Health", icon: "ri-heart-pulse-line" },
 ] as const;
+
+// Grouped layout for the Tab Access modal — mirrors the consolidated admin
+// sidebar (HR = Team/Attendance/Shifts, Accounts = Earnings/Payments). HR and
+// Accounts are visual groups only; access is controlled by the child tab keys
+// (a group appears in the sidebar when any child is granted). Keys here must
+// exist in ALL_TABS above.
+const TAB_GROUPS: { label: string; hint?: string; keys: string[] }[] = [
+  { label: "Core", keys: ["orders", "analytics", "communications", "customers", "doctors"] },
+  { label: "HR", hint: "Sidebar shows HR when any child below is granted", keys: ["team", "attendance", "shifts"] },
+  { label: "Accounts", hint: "Sidebar shows Accounts when any child below is granted", keys: ["earnings", "payments"] },
+  { label: "Admin & System", keys: ["audit", "settings", "health"] },
+];
 
 type TabKey = typeof ALL_TABS[number]["key"];
 
@@ -294,40 +308,54 @@ function TabAccessEditor({
             </button>
           </div>
 
-          {/* Tab toggles */}
-          <div className="grid grid-cols-2 gap-2">
-            {ALL_TABS.map((tab) => {
-              const isOn = selected.has(tab.key);
-              const isDefault = roleDefaults.includes(tab.key);
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => toggle(tab.key)}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-all cursor-pointer text-left ${
-                    isOn
-                      ? "border-[#3b6ea5] bg-[#e8f0f9]"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
-                >
-                  <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${isOn ? "bg-[#3b6ea5]/10" : "bg-gray-100"}`}>
-                    <i className={`${tab.icon} text-sm ${isOn ? "text-[#3b6ea5]" : "text-gray-400"}`}></i>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold leading-tight ${isOn ? "text-[#3b6ea5]" : "text-gray-600"}`}>{tab.label}</p>
-                    {!isDefault && isOn && (
-                      <p className="text-xs text-amber-600 leading-tight mt-0.5">Custom</p>
-                    )}
-                    {isDefault && !isOn && (
-                      <p className="text-xs text-gray-400 leading-tight mt-0.5">Removed</p>
-                    )}
-                  </div>
-                  <div className={`w-4 h-4 flex items-center justify-center rounded-full flex-shrink-0 ${isOn ? "bg-[#3b6ea5]" : "bg-gray-200"}`}>
-                    {isOn && <i className="ri-check-line text-white" style={{ fontSize: "9px" }}></i>}
-                  </div>
-                </button>
-              );
-            })}
+          {/* Tab toggles — grouped to mirror the consolidated admin sidebar
+              (Core · HR · Accounts · Admin & System). HR/Accounts are visual
+              groups; access is per child tab. */}
+          <div className="space-y-3">
+            {TAB_GROUPS.map((group) => (
+              <div key={group.label}>
+                <div className="flex flex-wrap items-baseline gap-x-2 mb-1.5">
+                  <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">{group.label}</p>
+                  {group.hint ? <span className="text-[10px] text-gray-400 normal-case">· {group.hint}</span> : null}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {group.keys.map((key) => {
+                    const tab = ALL_TABS.find((t) => t.key === key);
+                    if (!tab) return null;
+                    const isOn = selected.has(tab.key);
+                    const isDefault = roleDefaults.includes(tab.key);
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => toggle(tab.key)}
+                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 transition-all cursor-pointer text-left ${
+                          isOn
+                            ? "border-[#3b6ea5] bg-[#e8f0f9]"
+                            : "border-gray-200 bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <div className={`w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0 ${isOn ? "bg-[#3b6ea5]/10" : "bg-gray-100"}`}>
+                          <i className={`${tab.icon} text-sm ${isOn ? "text-[#3b6ea5]" : "text-gray-400"}`}></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-bold leading-tight ${isOn ? "text-[#3b6ea5]" : "text-gray-600"}`}>{tab.label}</p>
+                          {!isDefault && isOn && (
+                            <p className="text-xs text-amber-600 leading-tight mt-0.5">Custom</p>
+                          )}
+                          {isDefault && !isOn && (
+                            <p className="text-xs text-gray-400 leading-tight mt-0.5">Removed</p>
+                          )}
+                        </div>
+                        <div className={`w-4 h-4 flex items-center justify-center rounded-full flex-shrink-0 ${isOn ? "bg-[#3b6ea5]" : "bg-gray-200"}`}>
+                          {isOn && <i className="ri-check-line text-white" style={{ fontSize: "9px" }}></i>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Communications sub-permissions — only meaningful when the parent

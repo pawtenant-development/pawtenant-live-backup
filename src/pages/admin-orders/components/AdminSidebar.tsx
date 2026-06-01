@@ -83,7 +83,6 @@ export default function AdminSidebar({
     return 0;
   };
 
-  const visibleItems = TAB_CONFIG.filter((t) => visibleTabs.includes(t.key));
   const mobilePrimaryItems = TAB_CONFIG.filter(
     (t) => MOBILE_PRIMARY_TABS.includes(t.key) && visibleTabs.includes(t.key)
   );
@@ -91,6 +90,108 @@ export default function AdminSidebar({
   const mobileMoreItems = TAB_CONFIG.filter(
     (t) => !MOBILE_PRIMARY_TABS.includes(t.key) && visibleTabs.includes(t.key)
   );
+
+  // ── Grouped desktop nav (HR + Accounts) ─────────────────────────────────
+  // Child tab keys keep their original values so URLs / ?tab= params and the
+  // page.tsx tab router are unchanged. Groups only restructure the sidebar.
+  const cfgByKey = (k: TabKey) => TAB_CONFIG.find((t) => t.key === k);
+  const HR_CHILDREN: TabKey[] = ["team", "attendance", "shifts"];
+  const ACCOUNTS_CHILDREN: TabKey[] = ["earnings", "payments"];
+  const GROUPED = new Set<TabKey>([...HR_CHILDREN, ...ACCOUNTS_CHILDREN]);
+  const GROUPS: { key: "hr" | "accounts"; label: string; icon: string; children: TabKey[] }[] = [
+    { key: "hr", label: "HR", icon: "ri-team-line", children: HR_CHILDREN },
+    { key: "accounts", label: "Accounts", icon: "ri-wallet-3-line", children: ACCOUNTS_CHILDREN },
+  ];
+  // Desktop order: ungrouped top-levels, with the two group blocks slotted in.
+  const DESKTOP_ORDER: (TabKey | "group:hr" | "group:accounts")[] = [
+    "dashboard", "orders", "analytics", "communications", "customers", "doctors",
+    "group:hr", "group:accounts", "audit", "settings", "health",
+  ];
+
+  const isChildActive = (children: TabKey[]) => children.some((c) => c === activeTab);
+
+  // A group starts expanded when one of its children is the active tab; the
+  // admin can also toggle it open/closed manually.
+  const [manualGroups, setManualGroups] = useState<Record<string, boolean>>({});
+  const groupOpen = (g: { key: string; children: TabKey[] }) =>
+    manualGroups[g.key] ?? isChildActive(g.children);
+
+  const renderNavButton = (
+    tab: { key: TabKey; label: string; icon: string },
+    isChild: boolean,
+  ) => {
+    const badge = getBadge(tab.key);
+    const isActive = activeTab === tab.key;
+    return (
+      <button
+        key={tab.key}
+        type="button"
+        onClick={() => onTabChange(tab.key)}
+        title={collapsed ? tab.label : undefined}
+        className={`whitespace-nowrap w-full flex items-center rounded-lg transition-colors cursor-pointer relative overflow-hidden ${
+          isActive
+            ? "bg-[#3b6ea5] text-white font-semibold"
+            : "text-white/50 hover:bg-white/10 hover:text-white font-medium"
+        }`}
+        style={{
+          padding: collapsed ? "7px 0" : isChild ? "6px 12px 6px 30px" : "7px 12px",
+          justifyContent: collapsed ? "center" : "flex-start",
+          gap: collapsed ? 0 : 12,
+        }}
+      >
+        <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+          <i className={`${tab.icon} ${isChild ? "text-sm" : "text-base"}`}></i>
+        </div>
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left text-sm truncate">{tab.label}</span>
+            {badge > 0 && (
+              <span className={`flex-shrink-0 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-extrabold ${
+                isActive ? "bg-white/20 text-white" : "bg-amber-400 text-white"
+              }`}>{badge}</span>
+            )}
+          </>
+        )}
+        {collapsed && badge > 0 && (
+          <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full border-2 border-[#1e3a5f] flex-shrink-0"></span>
+        )}
+      </button>
+    );
+  };
+
+  const renderGroup = (g: { key: "hr" | "accounts"; label: string; icon: string; children: TabKey[] }) => {
+    const children = g.children.map(cfgByKey).filter((c): c is { key: TabKey; label: string; icon: string } => !!c && visibleTabs.includes(c.key));
+    if (children.length === 0) return null;
+    // Collapsed (icon-only) sidebar: render children as flat icons, no header.
+    if (collapsed) return <div key={g.key}>{children.map((c) => renderNavButton(c, false))}</div>;
+
+    const childActive = isChildActive(g.children);
+    const expanded = groupOpen(g);
+    return (
+      <div key={g.key}>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !expanded;
+            setManualGroups((m) => ({ ...m, [g.key]: next }));
+            // Opening the group and not already on one of its children → jump to first child.
+            if (next && !childActive && children[0]) onTabChange(children[0].key);
+          }}
+          className={`whitespace-nowrap w-full flex items-center rounded-lg transition-colors cursor-pointer ${
+            childActive ? "text-white font-semibold" : "text-white/50 hover:bg-white/10 hover:text-white font-medium"
+          }`}
+          style={{ padding: "7px 12px", gap: 12 }}
+        >
+          <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+            <i className={`${g.icon} text-base`}></i>
+          </div>
+          <span className="flex-1 text-left text-sm truncate">{g.label}</span>
+          <i className={`ri-arrow-down-s-line text-base flex-shrink-0 transition-transform ${expanded ? "" : "-rotate-90"}`}></i>
+        </button>
+        {expanded && <div className="mt-0.5 space-y-0.5">{children.map((c) => renderNavButton(c, true))}</div>}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -126,62 +227,16 @@ export default function AdminSidebar({
 
         {/* Nav items */}
         <nav
-          className="flex-1 overflow-y-auto overflow-x-hidden py-2.5 space-y-0.5"
-          style={{ padding: collapsed ? "10px 6px" : "10px 10px" }}
+          className="flex-1 overflow-y-auto overflow-x-hidden py-2 space-y-0.5"
+          style={{ padding: collapsed ? "8px 6px" : "8px 10px" }}
         >
-          {visibleItems.map((tab) => {
-            const badge = getBadge(tab.key);
-            const isActive = activeTab === tab.key;
-
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onTabChange(tab.key)}
-                title={collapsed ? tab.label : undefined}
-                className={`whitespace-nowrap w-full flex items-center rounded-lg transition-colors cursor-pointer relative overflow-hidden ${
-                  isActive
-                    ? "bg-[#3b6ea5] text-white font-semibold"
-                    : "text-white/50 hover:bg-white/10 hover:text-white font-medium"
-                }`}
-                style={{
-                  padding: collapsed ? "9px 0" : "9px 12px",
-                  justifyContent: collapsed ? "center" : "flex-start",
-                  gap: collapsed ? 0 : 12,
-                }}
-              >
-                {/* Icon */}
-                <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                  <i className={`${tab.icon} text-base`}></i>
-                </div>
-
-                {/* Label + badge — only when expanded */}
-                {!collapsed && (
-                  <>
-                    <span
-                      className="flex-1 text-left text-sm truncate"
-                      style={{ opacity: collapsed ? 0 : 1, transition: "opacity 150ms ease" }}
-                    >
-                      {tab.label}
-                    </span>
-                    {badge > 0 && (
-                      <span
-                        className={`flex-shrink-0 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-extrabold ${
-                          isActive ? "bg-white/20 text-white" : "bg-amber-400 text-white"
-                        }`}
-                      >
-                        {badge}
-                      </span>
-                    )}
-                  </>
-                )}
-
-                {/* Collapsed badge dot */}
-                {collapsed && badge > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full border-2 border-[#1e3a5f] flex-shrink-0"></span>
-                )}
-              </button>
-            );
+          {DESKTOP_ORDER.map((entry) => {
+            if (entry === "group:hr") return renderGroup(GROUPS[0]);
+            if (entry === "group:accounts") return renderGroup(GROUPS[1]);
+            // Plain top-level tab — only if visible and not a grouped child.
+            const tab = cfgByKey(entry as TabKey);
+            if (!tab || GROUPED.has(tab.key) || !visibleTabs.includes(tab.key)) return null;
+            return renderNavButton(tab, false);
           })}
         </nav>
 
