@@ -6,6 +6,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// READ-ONLY reporting function. It only LISTS Stripe data. It never creates,
+// captures, refunds, or modifies any charge / PaymentIntent. Do not add writes here.
+
+// Stripe US standard pricing — used ONLY as a fallback estimate when the real
+// balance_transaction fee is not yet available (e.g. pending charges).
+const EST_FEE_RATE = 0.029;
+const EST_FEE_FIXED = 0.30;
+
+function estimateFee(amount: number): number {
+  if (amount <= 0) return 0;
+  return Math.round((amount * EST_FEE_RATE + EST_FEE_FIXED) * 100) / 100;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -46,30 +59,90 @@ Deno.serve(async (req) => {
 
     const url = new URL(req.url);
     const period = url.searchParams.get("period") ?? "30d";
-    const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
-    const since = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
 
-    // Fetch charges and refunds in parallel
+    // Optional explicit custom range (YYYY-MM-DD). Takes precedence over period.
+    const fromParam = url.searchParams.get("from");
+    const toParam = url.searchParams.get("to");
+
+    let since: number;
+    let until: number | null = null;
+    let days: number;
+
+    if (fromParam) {
+      const fromTs = Math.floor(new Date(`${fromParam}T00:00:00Z`).getTime() / 1000);
+      since = isNaN(fromTs) ? Math.floor(Date.now() / 1000) - 30 * 86400 : fromTs;
+      if (toParam) {
+        const toTs = Math.floor(new Date(`${toParam}T23:59:59Z`).getTime() / 1000);
+        until = isNaN(toTs) ? null : toTs;
+      }
+      const span = (until ?? Math.floor(Date.now() / 1000)) - since;
+      days = Math.max(1, Math.ceil(span / 86400));
+    } else {
+      days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
+      since = Math.floor(Date.now() / 1000) - days * 86400;
+    }
+
+    const createdFilter: Record<string, number> = { gte: since };
+    if (until) createdFilter.lte = until;
+
+    // Fetch charges (with balance_transaction expanded for REAL fees), refunds, balance.
     const [chargesRes, refundsRes, balanceRes] = await Promise.all([
-      stripe.charges.list({ limit: 100, created: { gte: since } }),
-      stripe.refunds.list({ limit: 50, created: { gte: since } }),
+      stripe.charges.list({
+        limit: 100,
+        created: createdFilter,
+        expand: ["data.balance_transaction"],
+      }),
+      stripe.refunds.list({ limit: 100, created: createdFilter }),
       stripe.balance.retrieve(),
     ]);
 
-    const charges = chargesRes.data.map((c) => ({
-      id: c.id,
-      amount: c.amount / 100,
-      currency: c.currency.toUpperCase(),
-      status: c.status,
-      description: c.description,
-      customer_email: c.billing_details?.email ?? c.metadata?.email ?? null,
-      customer_name: c.billing_details?.name ?? null,
-      created: c.created,
-      refunded: c.refunded,
-      amount_refunded: (c.amount_refunded ?? 0) / 100,
-      receipt_url: c.receipt_url,
-      payment_intent: typeof c.payment_intent === "string" ? c.payment_intent : null,
-    }));
+    let anyEstimated = false;
+
+    const charges = chargesRes.data.map((c) => {
+      const amount = c.amount / 100;
+      // balance_transaction is an object when expanded & available.
+      const bt = (typeof c.balance_transaction === "object" && c.balance_transaction)
+        ? c.balance_transaction as { fee?: number; net?: number }
+        : null;
+
+      let fee: number;
+      let net: number;
+      let feeEstimated: boolean;
+
+      if (bt && typeof bt.fee === "number") {
+        fee = bt.fee / 100;
+        net = typeof bt.net === "number" ? bt.net / 100 : amount - fee;
+        feeEstimated = false;
+      } else {
+        fee = c.status === "succeeded" ? estimateFee(amount) : 0;
+        net = amount - fee;
+        feeEstimated = c.status === "succeeded";
+        if (feeEstimated) anyEstimated = true;
+      }
+
+      return {
+        id: c.id,
+        amount,
+        currency: c.currency.toUpperCase(),
+        status: c.status,
+        description: c.description,
+        customer_email: c.billing_details?.email ?? c.metadata?.email ?? null,
+        customer_name: c.billing_details?.name ?? null,
+        created: c.created,
+        refunded: c.refunded,
+        amount_refunded: (c.amount_refunded ?? 0) / 100,
+        receipt_url: c.receipt_url,
+        payment_intent: typeof c.payment_intent === "string" ? c.payment_intent : null,
+        // NEW additive fields:
+        fee,
+        net,
+        fee_estimated: feeEstimated,
+        payment_method_brand:
+          c.payment_method_details?.card?.brand ??
+          (c.payment_method_details?.type ?? null),
+        payment_method_last4: c.payment_method_details?.card?.last4 ?? null,
+      };
+    });
 
     const refunds = refundsRes.data.map((r) => ({
       id: r.id,
@@ -84,12 +157,16 @@ Deno.serve(async (req) => {
     const successfulCharges = charges.filter((c) => c.status === "succeeded" && !c.refunded);
     const totalRevenue = successfulCharges.reduce((s, c) => s + c.amount, 0);
     const totalRefunded = refunds.reduce((s, r) => s + r.amount, 0);
+    // Fees across all succeeded charges (incl. ones later refunded — the fee was still paid).
+    const totalFees = charges
+      .filter((c) => c.status === "succeeded")
+      .reduce((s, c) => s + (c.fee ?? 0), 0);
 
     // Build daily revenue buckets
     const dailyMap: Record<string, number> = {};
     for (let i = 0; i < days; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+      const d = new Date((until ?? Math.floor(Date.now() / 1000)) * 1000);
+      d.setUTCDate(d.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
       dailyMap[key] = 0;
     }
@@ -112,6 +189,10 @@ Deno.serve(async (req) => {
           total_revenue: totalRevenue,
           total_refunded: totalRefunded,
           net_revenue: totalRevenue - totalRefunded,
+          // NEW additive fields:
+          total_fees: Math.round(totalFees * 100) / 100,
+          net_after_fees: Math.round((totalRevenue - totalRefunded - totalFees) * 100) / 100,
+          fees_include_estimates: anyEstimated,
           charge_count: successfulCharges.length,
           refund_count: refunds.length,
           available_balance: availableBalance,

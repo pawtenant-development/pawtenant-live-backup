@@ -18,6 +18,12 @@ interface ChargeSummary {
   amount_refunded: number;
   receipt_url: string | null;
   payment_intent: string | null;
+  // Net-after-Stripe-fee fields (added by stripe-payment-history edge fn).
+  fee?: number;
+  net?: number;
+  fee_estimated?: boolean;
+  payment_method_brand?: string | null;
+  payment_method_last4?: string | null;
 }
 
 interface RefundItem {
@@ -39,6 +45,9 @@ interface PaymentSummary {
   total_revenue: number;
   total_refunded: number;
   net_revenue: number;
+  total_fees?: number;
+  net_after_fees?: number;
+  fees_include_estimates?: boolean;
   charge_count: number;
   refund_count: number;
   available_balance: number;
@@ -68,25 +77,46 @@ const STATUS_STYLE: Record<string, string> = {
   failed: "bg-red-100 text-red-600",
 };
 
-function downloadCSV(data: ChargeSummary[], refunds: RefundItem[], period: Period) {
+// Fallback estimate (matches edge fn) — only used to label values the UI computes itself.
+function estFee(amount: number): number {
+  if (amount <= 0) return 0;
+  return Math.round((amount * 0.029 + 0.3) * 100) / 100;
+}
+
+function chargeFee(c: ChargeSummary): { fee: number; estimated: boolean } {
+  if (typeof c.fee === "number") return { fee: c.fee, estimated: !!c.fee_estimated };
+  return { fee: c.status === "succeeded" ? estFee(c.amount) : 0, estimated: c.status === "succeeded" };
+}
+
+function downloadCSV(data: ChargeSummary[], refunds: RefundItem[], label: string) {
   const headers = [
     "Charge ID", "Date", "Customer Name", "Customer Email", "Description",
-    "Charge Status", "Refund Status", "Amount (USD)", "Amount Refunded (USD)",
-    "Net Collected (USD)", "Receipt URL"
+    "Charge Status", "Refund Status", "Payment Method",
+    "Gross (USD)", "Stripe Fee (USD)", "Fee Basis", "Net After Fee (USD)",
+    "Amount Refunded (USD)", "Net Collected (USD)", "Payment Intent", "Receipt URL",
   ];
-  const rows = data.map((c) => [
-    c.id,
-    new Date(c.created * 1000).toLocaleDateString("en-US"),
-    c.customer_name ?? "",
-    c.customer_email ?? "",
-    c.description ?? "",
-    c.status,
-    c.refunded ? "Fully Refunded" : c.amount_refunded > 0 ? "Partially Refunded" : "Not Refunded",
-    c.amount.toFixed(2),
-    c.amount_refunded.toFixed(2),
-    (c.amount - c.amount_refunded).toFixed(2),
-    c.receipt_url ?? "",
-  ]);
+  const rows = data.map((c) => {
+    const { fee, estimated } = chargeFee(c);
+    const net = typeof c.net === "number" ? c.net : c.amount - fee;
+    return [
+      c.id,
+      new Date(c.created * 1000).toLocaleDateString("en-US"),
+      c.customer_name ?? "",
+      c.customer_email ?? "",
+      c.description ?? "",
+      c.status,
+      c.refunded ? "Fully Refunded" : c.amount_refunded > 0 ? "Partially Refunded" : "Not Refunded",
+      c.payment_method_brand ? `${c.payment_method_brand}${c.payment_method_last4 ? ` ••${c.payment_method_last4}` : ""}` : "",
+      c.amount.toFixed(2),
+      fee.toFixed(2),
+      estimated ? "Estimated" : "Actual (Stripe)",
+      net.toFixed(2),
+      c.amount_refunded.toFixed(2),
+      (c.amount - c.amount_refunded).toFixed(2),
+      c.payment_intent ?? "",
+      c.receipt_url ?? "",
+    ];
+  });
 
   const refundRows: string[][] = [];
   if (refunds.length > 0) {
@@ -111,7 +141,7 @@ function downloadCSV(data: ChargeSummary[], refunds: RefundItem[], period: Perio
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `pawtenant-payments-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `pawtenant-payments-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -121,6 +151,10 @@ function downloadCSV(data: ChargeSummary[], refunds: RefundItem[], period: Perio
 export default function PaymentsTab() {
   const [activeView, setActiveView] = useState<ActiveView>("payments");
   const [period, setPeriod] = useState<Period>("30d");
+  // Custom date range (overrides preset when active)
+  const [customActive, setCustomActive] = useState(false);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [data, setData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -144,6 +178,8 @@ export default function PaymentsTab() {
   const [refundApprovalCharge, setRefundApprovalCharge] = useState<ChargeSummary | null>(null);
 
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+  const rangeLabel = customActive ? "Custom Range" : PERIOD_LABELS[period];
+  const fileLabel = customActive ? `${customFrom || "start"}_to_${customTo || "today"}` : period;
 
   // Load admin role on mount
   useEffect(() => {
@@ -196,13 +232,13 @@ export default function PaymentsTab() {
     setTimeout(() => setBulkDeletePayMsg(""), 8000);
   };
 
-  const fetchData = useCallback(async (p: Period) => {
+  const fetchData = useCallback(async (qs: string) => {
     setLoading(true);
     setError("");
     try {
       const token = await getAdminToken();
       const res = await fetch(
-        `${supabaseUrl}/functions/v1/stripe-payment-history?period=${p}`,
+        `${supabaseUrl}/functions/v1/stripe-payment-history?${qs}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const result = await res.json() as PaymentData & { ok: boolean; error?: string };
@@ -214,7 +250,31 @@ export default function PaymentsTab() {
     setLoading(false);
   }, [supabaseUrl]);
 
-  useEffect(() => { fetchData(period); }, [fetchData, period]);
+  // Preset-driven load (skips when a custom range is active)
+  useEffect(() => {
+    if (customActive) return;
+    fetchData(`period=${period}`);
+  }, [fetchData, period, customActive]);
+
+  const applyCustomRange = () => {
+    if (!customFrom) return;
+    setCustomActive(true);
+    fetchData(`from=${customFrom}${customTo ? `&to=${customTo}` : ""}`);
+  };
+
+  const clearFilters = () => {
+    setCustomActive(false);
+    setCustomFrom("");
+    setCustomTo("");
+    setSearchQuery("");
+    setStatusFilter("all");
+    setPeriod("30d");
+  };
+
+  const reload = () => {
+    if (customActive) fetchData(`from=${customFrom}${customTo ? `&to=${customTo}` : ""}`);
+    else fetchData(`period=${period}`);
+  };
 
   // Cross-reference payment_intent_id → confirmation_id
   useEffect(() => {
@@ -257,6 +317,8 @@ export default function PaymentsTab() {
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(v);
+  const formatCurrency2 = (v: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(v);
 
   const formatDate = (ts: number) =>
     new Date(ts * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -274,6 +336,10 @@ export default function PaymentsTab() {
       (statusFilter === "partial" && !c.refunded && c.amount_refunded > 0);
     return matchSearch && matchStatus;
   }) ?? [];
+
+  const feesEstimated = data?.summary.fees_include_estimates ?? false;
+  const totalFees = data?.summary.total_fees ?? 0;
+  const netAfterFees = data?.summary.net_after_fees ?? (data ? data.summary.net_revenue : 0);
 
   return (
     <div>
@@ -295,27 +361,53 @@ export default function PaymentsTab() {
       {/* Payments view */}
       {activeView === "payments" && <>
       {/* Header + controls */}
-      <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-3">
         <div>
           <h2 className="text-base font-extrabold text-gray-900">Payments &amp; Refunds</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Live data from Stripe. Issue refunds directly from this panel.</p>
+          <p className="text-xs text-gray-500 mt-0.5">Live data from Stripe. Net is after Stripe fees &amp; refunds. Issue refunds directly from this panel.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {data && (
-            <button type="button" onClick={() => downloadCSV(data.charges, data.refunds, period)}
+            <button type="button" onClick={() => downloadCSV(filteredCharges, data.refunds, fileLabel)}
               className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
               <i className="ri-download-2-line text-[#3b6ea5]"></i>Export CSV
             </button>
           )}
           <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1">
             {(["7d", "30d", "90d"] as Period[]).map((p) => (
-              <button key={p} type="button" onClick={() => setPeriod(p)}
-                className={`whitespace-nowrap px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${period === p ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+              <button key={p} type="button" onClick={() => { setCustomActive(false); setPeriod(p); }}
+                className={`whitespace-nowrap px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${!customActive && period === p ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-50"}`}>
                 {PERIOD_LABELS[p]}
               </button>
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Custom date range */}
+      <div className="flex items-center gap-2 flex-wrap mb-5 bg-white border border-gray-200 rounded-xl px-3 py-2 w-fit">
+        <i className="ri-calendar-2-line text-gray-400 text-sm"></i>
+        <span className="text-xs font-bold text-gray-500">Custom range</span>
+        <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+          className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-[#3b6ea5]" />
+        <span className="text-xs text-gray-400">to</span>
+        <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+          className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-[#3b6ea5]" />
+        <button type="button" onClick={applyCustomRange} disabled={!customFrom}
+          className="whitespace-nowrap px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors">
+          Apply
+        </button>
+        {(customActive || customFrom || customTo || searchQuery || statusFilter !== "all") && (
+          <button type="button" onClick={clearFilters}
+            className="whitespace-nowrap px-3 py-1.5 border border-gray-200 text-gray-500 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+            Clear filters
+          </button>
+        )}
+        {customActive && (
+          <span className="text-xs font-semibold text-[#3b6ea5] bg-[#e8f0f9] border border-[#b8cce4] rounded-full px-2 py-0.5">
+            {customFrom || "start"} → {customTo || "today"}
+          </span>
+        )}
       </div>
 
       {loading ? (
@@ -330,16 +422,17 @@ export default function PaymentsTab() {
           <i className="ri-error-warning-line text-red-400 text-2xl block mb-2"></i>
           <p className="text-sm font-bold text-red-700 mb-1">Could not load payment data</p>
           <p className="text-xs text-red-500">{error}</p>
-          <button type="button" onClick={() => fetchData(period)}
+          <button type="button" onClick={reload}
             className="whitespace-nowrap mt-4 px-4 py-2 bg-red-500 text-white text-sm font-bold rounded-lg cursor-pointer">Retry</button>
         </div>
       ) : data ? (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
             {[
               { label: "Gross Revenue", value: formatCurrency(data.summary.total_revenue), icon: "ri-money-dollar-circle-line", color: "text-emerald-600", sub: `${data.summary.charge_count} transactions` },
-              { label: "Net Revenue", value: formatCurrency(data.summary.net_revenue), icon: "ri-funds-line", color: "text-[#3b6ea5]", sub: "After refunds" },
+              { label: feesEstimated ? "Stripe Fees (est.)" : "Stripe Fees", value: formatCurrency2(totalFees), icon: "ri-bank-card-2-line", color: "text-rose-500", sub: feesEstimated ? "Some estimated" : "Actual (Stripe)" },
+              { label: "Net After Fees", value: formatCurrency(netAfterFees), icon: "ri-funds-line", color: "text-[#3b6ea5]", sub: "After fees & refunds" },
               { label: "Total Refunded", value: formatCurrency(data.summary.total_refunded), icon: "ri-refund-2-line", color: "text-orange-500", sub: `${data.summary.refund_count} refunds` },
               { label: "Available Balance", value: formatCurrency(data.summary.available_balance), icon: "ri-bank-line", color: "text-teal-600", sub: `${formatCurrency(data.summary.pending_balance)} pending` },
             ].map((s) => (
@@ -355,6 +448,13 @@ export default function PaymentsTab() {
               </div>
             ))}
           </div>
+
+          {feesEstimated && (
+            <div className="mb-5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+              <i className="ri-information-line"></i>
+              Some Stripe fees are <strong>estimated</strong> (2.9% + $0.30) because their balance transaction is still pending. Actual fees replace estimates automatically once Stripe settles.
+            </div>
+          )}
 
           {/* Charges / Refunds tabs */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -410,9 +510,9 @@ export default function PaymentsTab() {
                     <i className="ri-checkbox-circle-fill"></i>{bulkDeletePayMsg}
                   </div>
                 )}
-                <div className="hidden md:grid grid-cols-[32px_2fr_1fr_1fr_1fr_200px] gap-4 px-5 py-3 bg-gray-50/50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <div className="hidden md:grid grid-cols-[32px_2fr_1fr_1fr_1.3fr_200px] gap-4 px-5 py-3 bg-gray-50/50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
                   {canBulkDelete && <span></span>}
-                  <span>Customer</span><span>Date</span><span>Status</span><span className="text-right">Amount</span><span>Actions</span>
+                  <span>Customer</span><span>Date</span><span>Status</span><span className="text-right">Amount / Net</span><span>Actions</span>
                 </div>
                 {filteredCharges.length === 0 ? (
                   <div className="p-12 text-center text-sm text-gray-400">No charges match your filters</div>
@@ -421,9 +521,11 @@ export default function PaymentsTab() {
                     {filteredCharges.map((charge) => {
                       const fullyRefunded = charge.amount_refunded >= charge.amount;
                       const canRefund = !fullyRefunded && charge.status === "succeeded";
+                      const { fee, estimated } = chargeFee(charge);
+                      const net = typeof charge.net === "number" ? charge.net : charge.amount - fee;
 
                       return (
-                        <div key={charge.id} className="grid grid-cols-1 md:grid-cols-[32px_2fr_1fr_1fr_1fr_200px] gap-2 md:gap-4 px-5 py-3 items-center hover:bg-gray-50/50 transition-colors">
+                        <div key={charge.id} className="grid grid-cols-1 md:grid-cols-[32px_2fr_1fr_1fr_1.3fr_200px] gap-2 md:gap-4 px-5 py-3 items-center hover:bg-gray-50/50 transition-colors">
                           {canBulkDelete && (
                             <div className="hidden md:flex items-center">
                               <button type="button" onClick={() => setSelectedChargeIds((prev) => { const n = new Set(prev); n.has(charge.id) ? n.delete(charge.id) : n.add(charge.id); return n; })}
@@ -436,10 +538,12 @@ export default function PaymentsTab() {
                             <p className="text-sm font-semibold text-gray-900 truncate">{charge.customer_name ?? charge.customer_email ?? "Anonymous"}</p>
                             {charge.customer_name && charge.customer_email && <p className="text-xs text-gray-400 truncate">{charge.customer_email}</p>}
                             {charge.description && <p className="text-xs text-gray-400 truncate">{charge.description}</p>}
+                            {charge.payment_method_brand && (
+                              <p className="text-xs text-gray-400 capitalize">{charge.payment_method_brand}{charge.payment_method_last4 ? ` ••${charge.payment_method_last4}` : ""}</p>
+                            )}
                             <p className="text-xs font-mono text-gray-300 mt-0.5">{charge.id.slice(0, 20)}&hellip;</p>
                             {/* Order ID cross-reference */}
                             {(() => {
-                              // Match via payment_intent on the charge (pi_...) → order confirmation
                               const orderId = charge.payment_intent ? orderMap[charge.payment_intent] : undefined;
                               if (orderId) {
                                 return (
@@ -459,10 +563,15 @@ export default function PaymentsTab() {
                           </div>
                           <div className="text-right">
                             <p className={`text-sm font-extrabold ${fullyRefunded ? "text-gray-400 line-through" : "text-emerald-600"}`}>
-                              {formatCurrency(charge.amount)}
+                              {formatCurrency2(charge.amount)}
                             </p>
+                            {charge.status === "succeeded" && (
+                              <p className="text-xs text-gray-400">
+                                fee {formatCurrency2(fee)}{estimated ? " (est.)" : ""} · net <span className="font-semibold text-[#3b6ea5]">{formatCurrency2(net)}</span>
+                              </p>
+                            )}
                             {charge.amount_refunded > 0 && (
-                              <p className="text-xs text-orange-500">-{formatCurrency(charge.amount_refunded)}</p>
+                              <p className="text-xs text-orange-500">-{formatCurrency2(charge.amount_refunded)} refunded</p>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
@@ -522,7 +631,7 @@ export default function PaymentsTab() {
                           </span>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-extrabold text-orange-500">-{formatCurrency(refund.amount)}</p>
+                          <p className="text-sm font-extrabold text-orange-500">-{formatCurrency2(refund.amount)}</p>
                         </div>
                       </div>
                     ))}
@@ -537,13 +646,13 @@ export default function PaymentsTab() {
       {/* Revenue chart — pinned to bottom */}
       {data && !loading && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 mt-5">
-          <p className="text-xs font-bold text-gray-700 uppercase tracking-widest mb-4">Daily Revenue — {PERIOD_LABELS[period]}</p>
+          <p className="text-xs font-bold text-gray-700 uppercase tracking-widest mb-4">Daily Revenue — {rangeLabel}</p>
           <div className="flex items-end gap-1 h-32 overflow-x-auto">
             {data.daily.map((d) => {
               const heightPct = maxDaily > 0 ? (d.revenue / maxDaily) * 100 : 0;
               const isToday = d.date === new Date().toISOString().slice(0, 10);
               return (
-                <div key={d.date} className="flex flex-col items-center gap-1 flex-shrink-0" style={{ minWidth: period === "90d" ? "10px" : "20px" }}>
+                <div key={d.date} className="flex flex-col items-center gap-1 flex-shrink-0" style={{ minWidth: (data.daily.length > 45) ? "10px" : "20px" }}>
                   <div className="relative group w-full">
                     {d.revenue > 0 && (
                       <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-gray-800 text-white text-xs px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
@@ -560,7 +669,7 @@ export default function PaymentsTab() {
           </div>
           <div className="flex justify-between mt-2 text-xs text-gray-400">
             <span>{data.daily[0]?.date ? new Date(data.daily[0].date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
-            <span>Today</span>
+            <span>{data.daily[data.daily.length - 1]?.date ? new Date(data.daily[data.daily.length - 1].date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
           </div>
         </div>
       )}
