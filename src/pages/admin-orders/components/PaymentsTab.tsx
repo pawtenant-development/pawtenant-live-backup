@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken } from "../../../lib/supabaseClient";
+import { presetRange, ACCOUNTS_PRESET_BUTTONS, type AccountsPreset } from "../../../lib/accountsPeriods";
 import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
@@ -191,6 +192,11 @@ export default function PaymentsTab() {
   const [customActive, setCustomActive] = useState(false);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  // Accounts "monthly books" range: a label override + active preset. The Accounts
+  // view defaults to the current calendar month (auto-applied on first open).
+  const [customLabel, setCustomLabel] = useState("");
+  const [accountsPreset, setAccountsPreset] = useState<AccountsPreset>("current_month");
+  const accountsInit = useRef(false);
   const [data, setData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -215,7 +221,7 @@ export default function PaymentsTab() {
   const [refundApprovalCharge, setRefundApprovalCharge] = useState<ChargeSummary | null>(null);
 
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-  const rangeLabel = customActive ? "Custom Range" : PERIOD_LABELS[period];
+  const rangeLabel = customLabel || (customActive ? "Custom Range" : PERIOD_LABELS[period]);
   const fileLabel = customActive ? `${customFrom || "start"}_to_${customTo || "today"}` : period;
 
   // Load admin role on mount
@@ -235,6 +241,8 @@ export default function PaymentsTab() {
   }, []);
 
   const canBulkDelete = adminRole === "owner" || adminRole === "admin_manager";
+  // Accounts close/lock tier (server RPCs re-check; this just gates the buttons).
+  const canManageBooks = adminRole === "owner" || adminRole === "admin_manager" || adminRole === "finance";
   // Finance role cannot issue refunds directly — must request approval
   const isFinanceRole = adminRole === "finance";
 
@@ -296,6 +304,7 @@ export default function PaymentsTab() {
   const applyCustomRange = () => {
     if (!customFrom) return;
     setCustomActive(true);
+    setCustomLabel("");
     fetchData(`from=${customFrom}${customTo ? `&to=${customTo}` : ""}`);
   };
 
@@ -303,6 +312,7 @@ export default function PaymentsTab() {
     setCustomActive(false);
     setCustomFrom("");
     setCustomTo("");
+    setCustomLabel("");
     setSearchQuery("");
     setStatusFilter("all");
     setPeriod("30d");
@@ -312,6 +322,35 @@ export default function PaymentsTab() {
     if (customActive) fetchData(`from=${customFrom}${customTo ? `&to=${customTo}` : ""}`);
     else fetchData(`period=${period}`);
   };
+
+  // ── Accounts monthly-books range controls ───────────────────────────────
+  const applyAccountsPreset = useCallback((preset: AccountsPreset) => {
+    const r = presetRange(preset);
+    setAccountsPreset(preset);
+    setCustomActive(true);
+    setCustomFrom(r.from);
+    setCustomTo(r.to);
+    setCustomLabel(r.label);
+    fetchData(`from=${r.from}&to=${r.to}`);
+  }, [fetchData]);
+
+  const applyAccountsCustom = useCallback(() => {
+    if (!customFrom) return;
+    const to = customTo || new Date().toISOString().slice(0, 10);
+    setAccountsPreset("custom");
+    setCustomActive(true);
+    setCustomLabel(`Custom: ${customFrom} → ${to}`);
+    fetchData(`from=${customFrom}&to=${to}`);
+  }, [customFrom, customTo, fetchData]);
+
+  // Accounts view defaults to the current calendar month on first open. Each new
+  // month this naturally resolves to the new month with no manual reset needed.
+  useEffect(() => {
+    if (activeView === "accounts" && !accountsInit.current) {
+      accountsInit.current = true;
+      applyAccountsPreset("current_month");
+    }
+  }, [activeView, applyAccountsPreset]);
 
   // Cross-reference payment_intent_id → confirmation_id (Order ID chip + refund modal).
   useEffect(() => {
@@ -431,16 +470,59 @@ export default function PaymentsTab() {
 
       {/* Accounts / P&L view */}
       {activeView === "accounts" && (
-        <PaymentsAccountsPanel
-          period={period}
-          customActive={customActive}
-          customFrom={customFrom}
-          customTo={customTo}
-          rangeLabel={rangeLabel}
-          summary={data?.summary}
-          charges={data?.charges}
-          resolutionMap={resolutionMap}
-        />
+        <>
+          {/* Monthly books date-range controls (defaults to current month) */}
+          <div className="mb-4 bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <i className="ri-calendar-2-line text-[#3b6ea5] text-sm"></i>
+              <div className="flex items-center gap-1 flex-wrap">
+                {ACCOUNTS_PRESET_BUTTONS.map((b) => (
+                  <button key={b.key} type="button" onClick={() => applyAccountsPreset(b.key)}
+                    className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${accountsPreset === b.key ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-50 border border-gray-200"}`}>
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+              <span className="ml-auto text-xs font-semibold text-[#3b6ea5] bg-[#e8f0f9] border border-[#b8cce4] rounded-full px-3 py-1">
+                {rangeLabel}{customFrom ? ` · ${customFrom} → ${customTo || "today"}` : ""}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap border-t border-gray-100 pt-2.5">
+              <span className="text-xs font-bold text-gray-500">Custom</span>
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-[#3b6ea5]" />
+              <span className="text-xs text-gray-400">to</span>
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-[#3b6ea5]" />
+              <button type="button" onClick={applyAccountsCustom} disabled={!customFrom}
+                className="whitespace-nowrap px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors">
+                Apply
+              </button>
+              <button type="button" onClick={() => applyAccountsPreset("current_month")}
+                className="whitespace-nowrap px-3 py-1.5 border border-gray-200 text-gray-500 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                Reset to Current Month
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="text-center"><i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i><p className="text-sm text-gray-500">Loading accounts…</p></div>
+            </div>
+          ) : (
+            <PaymentsAccountsPanel
+              period={period}
+              customActive={customActive}
+              customFrom={customFrom}
+              customTo={customTo}
+              rangeLabel={rangeLabel}
+              summary={data?.summary}
+              charges={data?.charges}
+              resolutionMap={resolutionMap}
+              canManageBooks={canManageBooks}
+            />
+          )}
+        </>
       )}
 
       {/* Payments view */}
@@ -460,7 +542,7 @@ export default function PaymentsTab() {
           )}
           <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 p-1">
             {(["7d", "30d", "90d"] as Period[]).map((p) => (
-              <button key={p} type="button" onClick={() => { setCustomActive(false); setPeriod(p); }}
+              <button key={p} type="button" onClick={() => { setCustomActive(false); setCustomLabel(""); setPeriod(p); }}
                 className={`whitespace-nowrap px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${!customActive && period === p ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:bg-gray-50"}`}>
                 {PERIOD_LABELS[p]}
               </button>

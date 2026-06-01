@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  listExpenses, addExpense, deleteExpense, cancelExpense, fetchSalaryExpense, fetchSalaryDetail,
+  fetchEffectiveExpenses, addExpense, deleteExpense, cancelExpense, fetchSalaryExpense, fetchSalaryDetail,
   resolveRange, resolutionToClassification,
   EXPENSE_CATEGORIES, CATEGORY_LABEL, MARKETING_CATEGORIES,
-  type CompanyExpense, type ExpenseCategory, type SalaryExpenseSummaryRow, type SalaryDetailRow,
-  type ChargePayoutResolution,
+  type ExpenseCategory, type SalaryExpenseSummaryRow, type SalaryDetailRow,
+  type EffectiveExpense, type ChargePayoutResolution,
 } from "../../../lib/companyExpenses";
 import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAccounts";
+import MonthlyBooksSummary from "./MonthlyBooksSummary";
 
 // Minimal shapes mirrored from PaymentsTab (avoids cross-file type coupling).
 interface MiniSummary {
@@ -36,6 +37,7 @@ interface Props {
   summary: MiniSummary | undefined;
   charges: MiniCharge[] | undefined;
   resolutionMap: Record<string, ChargePayoutResolution>;
+  canManageBooks?: boolean;
 }
 
 const DEFAULT_PKR_PER_USD = 280; // explicit, editable — not a hidden conversion.
@@ -44,14 +46,14 @@ const fmtUSD2 = (v: number) => new Intl.NumberFormat("en-US", { style: "currency
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export default function PaymentsAccountsPanel({
-  period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap,
+  period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap, canManageBooks = false,
 }: Props) {
   const range = useMemo(
     () => resolveRange(period, customActive, customFrom, customTo),
     [period, customActive, customFrom, customTo],
   );
 
-  const [expenses, setExpenses] = useState<CompanyExpense[]>([]);
+  const [expenses, setExpenses] = useState<EffectiveExpense[]>([]);
   const [salaryRows, setSalaryRows] = useState<SalaryExpenseSummaryRow[]>([]);
   const [salaryDetail, setSalaryDetail] = useState<SalaryDetailRow[]>([]);
   const [showSalaryDetail, setShowSalaryDetail] = useState(false);
@@ -75,7 +77,7 @@ export default function PaymentsAccountsPanel({
     setLoading(true);
     setErr("");
     const [exp, sal, salDetail] = await Promise.all([
-      listExpenses(range.from, range.to),
+      fetchEffectiveExpenses(range.from, range.to),
       fetchSalaryExpense(range.from, range.to),
       fetchSalaryDetail(range.from, range.to),
     ]);
@@ -111,7 +113,7 @@ export default function PaymentsAccountsPanel({
   // ── Expense side (USD) ───────────────────────────────────────────────────
   const activeExpenses = useMemo(() => expenses.filter((e) => e.status !== "cancelled"), [expenses]);
 
-  const expenseToUsd = useCallback((e: CompanyExpense): number => {
+  const expenseToUsd = useCallback((e: EffectiveExpense): number => {
     if ((e.currency || "USD").toUpperCase() === "PKR") return fxRate > 0 ? e.amount / fxRate : 0;
     return e.amount;
   }, [fxRate]);
@@ -380,7 +382,7 @@ export default function PaymentsAccountsPanel({
           ) : (
             <div className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
               {filteredExpenses.map((e) => (
-                <div key={e.id} className={`flex items-center justify-between gap-3 px-5 py-3 ${e.status === "cancelled" ? "opacity-50" : ""}`}>
+                <div key={`${e.id}-${e._occurrence_date}`} className={`flex items-center justify-between gap-3 px-5 py-3 ${e.status === "cancelled" ? "opacity-50" : ""}`}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-gray-800">{CATEGORY_LABEL[e.category]}</p>
@@ -388,22 +390,33 @@ export default function PaymentsAccountsPanel({
                       {e.status !== "confirmed" && (
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${e.status === "cancelled" ? "bg-gray-200 text-gray-500" : "bg-amber-100 text-amber-700"}`}>{e.status}</span>
                       )}
-                      {e.recurring && <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">recurring</span>}
+                      {e.recurring && (
+                        <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">
+                          {e._projected ? "recurring · auto" : "recurring"}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-400 truncate">
-                      {e.expense_date}{e.vendor ? ` · ${e.vendor}` : ""}{e.description ? ` · ${e.description}` : ""}
+                      {e._occurrence_date}{e.vendor ? ` · ${e.vendor}` : ""}{e.description ? ` · ${e.description}` : ""}
+                      {e._projected ? " · projected from recurring entry" : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <p className="text-sm font-extrabold text-rose-500">
                       −{e.currency === "USD" ? fmtUSD2(e.amount) : `${e.amount.toFixed(2)} ${e.currency}`}
                     </p>
-                    {e.status !== "cancelled" && (
-                      <button type="button" onClick={() => handleCancel(e.id)} title="Cancel (keep record)"
-                        className="text-gray-300 hover:text-amber-500 cursor-pointer"><i className="ri-close-circle-line"></i></button>
+                    {e._projected ? (
+                      <span className="text-[10px] text-gray-300" title="Edit the original recurring entry in its own month">auto</span>
+                    ) : (
+                      <>
+                        {e.status !== "cancelled" && (
+                          <button type="button" onClick={() => handleCancel(e.id)} title="Cancel (keep record)"
+                            className="text-gray-300 hover:text-amber-500 cursor-pointer"><i className="ri-close-circle-line"></i></button>
+                        )}
+                        <button type="button" onClick={() => handleDelete(e.id)} title="Delete permanently"
+                          className="text-gray-300 hover:text-red-500 cursor-pointer"><i className="ri-delete-bin-line"></i></button>
+                      </>
                     )}
-                    <button type="button" onClick={() => handleDelete(e.id)} title="Delete permanently"
-                      className="text-gray-300 hover:text-red-500 cursor-pointer"><i className="ri-delete-bin-line"></i></button>
                   </div>
                 </div>
               ))}
@@ -443,8 +456,14 @@ export default function PaymentsAccountsPanel({
           <p className="mt-3 text-[11px] leading-snug text-gray-400">
             Provider payouts deduct only after the provider completes the order (letter delivered). Marketing/ad spend is manual entry; automated Google/Meta import is future work.
           </p>
+          <p className="mt-3 text-[11px] leading-snug text-gray-400">
+            Recurring subscriptions persist into each new month, so a fresh month opens with its fixed costs already applied. Monthly close/lock is a future feature.
+          </p>
         </div>
       </div>
+
+      {/* Previous months' books (collapsible) */}
+      <MonthlyBooksSummary fxRate={fxRate} canManage={canManageBooks} />
     </div>
   );
 }

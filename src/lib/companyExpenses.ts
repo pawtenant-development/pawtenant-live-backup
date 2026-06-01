@@ -272,6 +272,74 @@ export async function listExpenses(from: string, to: string): Promise<CompanyExp
   return (data ?? []) as CompanyExpense[];
 }
 
+// ── Recurring-aware effective expenses ────────────────────────────────────
+// A recurring subscription entered once should keep costing the business every
+// month it stays active — so the new month opens with its fixed costs already
+// applied (operating net can be negative on day 1, then improves as sales land).
+// projectRecurringExpenses expands recurring rows into one occurrence per
+// calendar month the selected range touches; non-recurring rows appear only in
+// their own month. Cancelled rows are always excluded from totals.
+export interface EffectiveExpense extends CompanyExpense {
+  _projected: boolean;       // true = virtual recurrence (not the origin DB row)
+  _occurrence_date: string;  // YYYY-MM-DD date used for this occurrence
+}
+
+export function projectRecurringExpenses(all: CompanyExpense[], from: string, to: string): EffectiveExpense[] {
+  const fromD = new Date(`${from}T00:00:00`);
+  const toD = new Date(`${to}T00:00:00`);
+  const iso = (d: Date) => {
+    const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
+  const out: EffectiveExpense[] = [];
+  for (const e of all) {
+    if (e.status === "cancelled") continue;
+    const origin = new Date(`${e.expense_date}T00:00:00`);
+    if (!e.recurring) {
+      if (origin >= fromD && origin <= toD) out.push({ ...e, _projected: false, _occurrence_date: e.expense_date });
+      continue;
+    }
+    const period = (e.recurring_period || "monthly").toLowerCase();
+    // Walk each calendar month touched by [from,to].
+    const cursor = new Date(fromD.getFullYear(), fromD.getMonth(), 1);
+    const lastMonth = new Date(toD.getFullYear(), toD.getMonth(), 1);
+    while (cursor <= lastMonth) {
+      const y = cursor.getFullYear(); const mi = cursor.getMonth();
+      const monthEnd = new Date(y, mi + 1, 0);
+      const startedByNow = monthEnd >= origin; // recurrence active this month
+      const yearlyOk = period !== "yearly" || (mi === origin.getMonth() && y >= origin.getFullYear());
+      if (startedByNow && yearlyOk) {
+        const isOrigin = y === origin.getFullYear() && mi === origin.getMonth();
+        let occ = new Date(y, mi, Math.min(origin.getDate(), monthEnd.getDate()));
+        if (occ < origin) occ = new Date(origin);
+        if (occ < fromD) occ = new Date(fromD);
+        if (occ <= toD) out.push({ ...e, _projected: !isOrigin, _occurrence_date: iso(occ) });
+      }
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  }
+  return out.sort((a, b) => (a._occurrence_date < b._occurrence_date ? 1 : -1));
+}
+
+// Fetch all non-cancelled expenses dated on/before `to` (needed so recurring
+// rows that started in a prior month can be projected into the selected range).
+export async function fetchExpensesUpTo(to: string): Promise<CompanyExpense[]> {
+  const { data, error } = await supabase
+    .from("company_expenses")
+    .select("*")
+    .lte("expense_date", to)
+    .order("expense_date", { ascending: false });
+  if (error) { console.warn("[companyExpenses] fetchExpensesUpTo error", error); return []; }
+  return (data ?? []) as CompanyExpense[];
+}
+
+// Effective expenses for a range, recurring-aware. Use this for the Accounts
+// ledger + P&L totals so monthly subscriptions persist into new months.
+export async function fetchEffectiveExpenses(from: string, to: string): Promise<EffectiveExpense[]> {
+  const all = await fetchExpensesUpTo(to);
+  return projectRecurringExpenses(all, from, to);
+}
+
 export async function addExpense(input: ExpenseInput): Promise<{ ok: boolean; error?: string; row?: CompanyExpense }> {
   const { data: sess } = await supabase.auth.getSession();
   const uid = sess?.session?.user?.id ?? null;
