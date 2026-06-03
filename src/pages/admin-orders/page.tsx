@@ -2772,7 +2772,7 @@ export default function AdminOrdersPage() {
                   type="button"
                   onClick={() => {
                     const selected = orders.filter((o) => selectedOrders.has(o.confirmation_id));
-                    exportOrdersToCSV(selected as unknown as ExportableOrder[], "orders-selected");
+                    exportOrdersToCSV(selected as unknown as ExportableOrder[], "pawtenant-orders-export-selected");
                   }}
                   className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                 >

@@ -60,6 +60,34 @@ function refundDisputeStatus(o: ExportableOrder): string {
   return parts.join(" | ");
 }
 
+// Derived: letter/document delivery stage from the order's document timestamps
+// (operational status only — no clinical content).
+function documentStatus(o: ExportableOrder): string {
+  if (o.patient_notification_sent_at) return "Delivered";
+  if (o.signed_letter_url) return "Signed — Not Delivered";
+  if (o.letter_url) return "Draft Generated";
+  return "Pending";
+}
+
+// Derived: gross minus refund (operational net; Stripe-fee net + provider payout
+// live in the Accounts / Payments export, not on the order record).
+function netAfterRefund(o: ExportableOrder): string {
+  const price = typeof o.price === "number" ? o.price : parseFloat(str(o.price));
+  if (isNaN(price)) return "";
+  const refund = typeof o.refund_amount === "number" ? o.refund_amount : parseFloat(str(o.refund_amount));
+  const net = price - (isNaN(refund) ? 0 : refund);
+  return (Math.round(net * 100) / 100).toFixed(2);
+}
+
+// addon_services may be a JSON array/object or a string — render readably.
+function addons(o: ExportableOrder): string {
+  const v = o.addon_services;
+  if (v === null || v === undefined || v === "") return "";
+  if (Array.isArray(v)) return v.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join("; ");
+  if (typeof v === "object") return JSON.stringify(v);
+  return str(v);
+}
+
 // label : value accessor. Order here is the column order in the CSV.
 const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder) => unknown }[] = [
   { label: "First Name", get: (o) => o.first_name },
@@ -77,14 +105,19 @@ const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder) => unknown }[] 
   { label: "Payment Method", get: (o) => o.payment_method },
   { label: "Stripe Payment Intent", get: (o) => o.payment_intent_id },
   { label: "Refund Amount (USD)", get: (o) => o.refund_amount },
+  { label: "Net After Refund (USD)", get: (o) => netAfterRefund(o) },
+  { label: "Coupon Code", get: (o) => o.coupon_code },
+  { label: "Coupon Discount (USD)", get: (o) => o.coupon_discount },
   { label: "Refund / Dispute", get: (o) => refundDisputeStatus(o) },
   { label: "Order Status", get: (o) => o.status },
   { label: "Provider Status", get: (o) => o.doctor_status },
   { label: "Assigned Provider", get: (o) => o.doctor_name },
   { label: "Requested Provider (ID)", get: (o) => o.selected_provider },
+  { label: "Document Status", get: (o) => documentStatus(o) },
   { label: "State", get: (o) => o.state },
   { label: "Service Type", get: (o) => serviceType(o) },
   { label: "Plan Type", get: (o) => o.plan_type },
+  { label: "Add-on Services", get: (o) => addons(o) },
   { label: "Delivery Speed", get: (o) => o.delivery_speed },
   { label: "Traffic Source", get: (o) => o.referred_by },
   { label: "UTM Source", get: (o) => o.utm_source },

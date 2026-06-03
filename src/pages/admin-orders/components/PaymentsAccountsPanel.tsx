@@ -208,16 +208,19 @@ export default function PaymentsAccountsPanel({
       const fee = typeof c.fee === "number" ? c.fee : 0;
       const net = typeof c.net === "number" ? c.net : c.amount - fee;
       const pc = resolutionToClassification(res, c.amount_refunded > 0);
+      const netAfterFees = net - c.amount_refunded; // after Stripe fee + refund, before payout
       return {
         order_id: res?.confirmation_id ?? "",
         customer: c.customer_name ?? c.customer_email ?? "",
         gross: c.amount,
         stripe_fee: fee,
+        refund: c.amount_refunded,
+        net_after_fees: netAfterFees,
         provider: pc.name ?? "",
         provider_payout: pc.deducted,
         payout_basis: pc.classification, // none | pending_estimated | confirmed_completed | confirmed_completed_refunded | cancelled*
-        business_net: net - c.amount_refunded - pc.deducted,
-        refund: c.amount_refunded,
+        business_net: netAfterFees - pc.deducted,
+        chain_paid_count: pc.chainPaidCount ?? 1,
         status: c.status,
       };
     });

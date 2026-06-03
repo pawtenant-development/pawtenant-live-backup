@@ -19,11 +19,13 @@ export interface ProfitabilityRow {
   customer: string;
   gross: number;
   stripe_fee: number;
+  refund: number;
+  net_after_fees: number; // gross − Stripe fee − refund (before provider payout)
   provider: string;
   provider_payout: number;
   payout_basis: string; // confirmed | estimated | none
-  business_net: number;
-  refund: number;
+  business_net: number;  // net_after_fees − confirmed provider payout
+  chain_paid_count: number; // paid charges in this recovery chain (>1 = duplicate advisory)
   status: string;
 }
 
@@ -71,17 +73,22 @@ export function exportAccountsCSV(data: AccountsExportData): void {
   // ── Section 3: Payment profitability detail ──
   rows.push([]);
   rows.push(["--- PAYMENT PROFITABILITY (USD) ---"]);
-  rows.push(["Order ID", "Customer", "Gross", "Stripe Fee", "Provider", "Provider Payout", "Payout Basis", "Business Net", "Refund", "Status"]);
+  rows.push(["Business Net = Gross − Stripe Fee − Refund − confirmed Provider Payout (per charge)."]);
+  rows.push(["This is the per-order direct margin. It is NOT Contribution Margin or Operating Net (those are range totals in the SUMMARY section above, after company expenses & salary)."]);
+  rows.push(["Chain Paid = paid charges sharing this charge's recovery chain; >1 is a duplicate/over-charge advisory only and does not change the payout deduction."]);
+  rows.push(["Order ID", "Customer", "Gross", "Stripe Fee", "Refund", "Net After Fees & Refunds", "Provider", "Provider Payout", "Payout Basis", "Business Net", "Chain Paid", "Status"]);
   data.profitability.forEach((p) => rows.push([
     p.order_id,
     p.customer,
     money(p.gross),
     money(p.stripe_fee),
+    money(p.refund),
+    money(p.net_after_fees),
     p.provider,
     money(p.provider_payout),
     p.payout_basis,
     money(p.business_net),
-    money(p.refund),
+    String(p.chain_paid_count ?? 1),
     p.status,
   ]));
 
