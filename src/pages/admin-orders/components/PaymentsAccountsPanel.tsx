@@ -7,6 +7,7 @@ import {
   type EffectiveExpense, type ChargePayoutResolution,
 } from "../../../lib/companyExpenses";
 import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAccounts";
+import { fetchAccountingPeriods, type AccountingPeriod } from "../../../lib/accountsBooks";
 import MonthlyBooksSummary from "./MonthlyBooksSummary";
 
 // Minimal shapes mirrored from PaymentsTab (avoids cross-file type coupling).
@@ -38,6 +39,7 @@ interface Props {
   charges: MiniCharge[] | undefined;
   resolutionMap: Record<string, ChargePayoutResolution>;
   canManageBooks?: boolean;
+  onOpenMonth?: (from: string, to: string, label: string) => void;
 }
 
 const DEFAULT_PKR_PER_USD = 280; // explicit, editable — not a hidden conversion.
@@ -46,7 +48,7 @@ const fmtUSD2 = (v: number) => new Intl.NumberFormat("en-US", { style: "currency
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export default function PaymentsAccountsPanel({
-  period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap, canManageBooks = false,
+  period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap, canManageBooks = false, onOpenMonth,
 }: Props) {
   const range = useMemo(
     () => resolveRange(period, customActive, customFrom, customTo),
@@ -72,22 +74,39 @@ export default function PaymentsAccountsPanel({
   const [fRecurring, setFRecurring] = useState(false);
   const [saving, setSaving] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<"all" | ExpenseCategory>("all");
+  // Closed-period guard: when the selected range exactly matches a closed month,
+  // the ledger is read-only until the month is reopened (from Monthly Books Summary).
+  const [closedPeriod, setClosedPeriod] = useState<AccountingPeriod | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
-    const [exp, sal, salDetail] = await Promise.all([
+    const [exp, sal, salDetail, periods] = await Promise.all([
       fetchEffectiveExpenses(range.from, range.to),
       fetchSalaryExpense(range.from, range.to),
       fetchSalaryDetail(range.from, range.to),
+      fetchAccountingPeriods(range.from, range.to),
     ]);
     setExpenses(exp);
     setSalaryRows(sal);
     setSalaryDetail(salDetail);
+    // Exact-match closed period for the viewed range → lock editing.
+    setClosedPeriod(periods.find((p) => p.period_start === range.from && p.period_end === range.to && p.status === "closed") ?? null);
     setLoading(false);
   }, [range.from, range.to]);
 
   useEffect(() => { load(); }, [load]);
+
+  const isClosed = !!closedPeriod;
+  const canEdit = canManageBooks && !isClosed; // gate add/edit/delete (RLS also enforces)
+
+  // Default the Add-Expense date inside the selected range: today if today is in
+  // range, otherwise the range end (so prior-month books don't default to today).
+  useEffect(() => {
+    const t = todayIso();
+    setFDate(t >= range.from && t <= range.to ? t : range.to);
+    if (isClosed) setShowForm(false);
+  }, [range.from, range.to, isClosed]);
 
   // ── Revenue / direct-cost side (USD) ─────────────────────────────────────
   const gross = summary?.total_revenue ?? 0;
@@ -140,6 +159,7 @@ export default function PaymentsAccountsPanel({
 
   // ── Add expense ──────────────────────────────────────────────────────────
   const handleAdd = async () => {
+    if (isClosed) { setErr("This month is closed. Reopen it to make corrections."); return; }
     const amt = parseFloat(fAmount);
     if (!fDate || isNaN(amt) || amt <= 0) { setErr("Enter a valid date and amount."); return; }
     setSaving(true);
@@ -272,13 +292,19 @@ export default function PaymentsAccountsPanel({
                 {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
               </select>
             </div>
-            <button type="button" onClick={() => setShowForm((s) => !s)}
-              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors">
-              <i className={showForm ? "ri-close-line" : "ri-add-line"}></i>{showForm ? "Close" : "Add Expense"}
-            </button>
+            {isClosed ? (
+              <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+                <i className="ri-lock-2-line"></i>This month is closed. Reopen it to make corrections.
+              </span>
+            ) : canEdit ? (
+              <button type="button" onClick={() => setShowForm((s) => !s)}
+                className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors">
+                <i className={showForm ? "ri-close-line" : "ri-add-line"}></i>{showForm ? "Close" : "Add Expense"}
+              </button>
+            ) : null}
           </div>
 
-          {showForm && (
+          {showForm && canEdit && (
             <div className="p-4 border-b border-gray-100 bg-gray-50/50 grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">Date</label>
@@ -378,7 +404,7 @@ export default function PaymentsAccountsPanel({
           {loading ? (
             <div className="p-10 text-center text-sm text-gray-400"><i className="ri-loader-4-line animate-spin text-2xl block mb-2"></i>Loading expenses…</div>
           ) : filteredExpenses.length === 0 ? (
-            <div className="p-10 text-center text-sm text-gray-400">No manual expenses in this range. Use “Add Expense”.</div>
+            <div className="p-10 text-center text-sm text-gray-400">No manual expenses in this range.{!isClosed && canEdit ? " Use “Add Expense”." : ""}</div>
           ) : (
             <div className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
               {filteredExpenses.map((e) => (
@@ -407,7 +433,7 @@ export default function PaymentsAccountsPanel({
                     </p>
                     {e._projected ? (
                       <span className="text-[10px] text-gray-300" title="Edit the original recurring entry in its own month">auto</span>
-                    ) : (
+                    ) : canEdit ? (
                       <>
                         {e.status !== "cancelled" && (
                           <button type="button" onClick={() => handleCancel(e.id)} title="Cancel (keep record)"
@@ -416,7 +442,9 @@ export default function PaymentsAccountsPanel({
                         <button type="button" onClick={() => handleDelete(e.id)} title="Delete permanently"
                           className="text-gray-300 hover:text-red-500 cursor-pointer"><i className="ri-delete-bin-line"></i></button>
                       </>
-                    )}
+                    ) : isClosed ? (
+                      <i className="ri-lock-2-line text-gray-300" title="Month closed — reopen to edit"></i>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -463,7 +491,7 @@ export default function PaymentsAccountsPanel({
       </div>
 
       {/* Previous months' books (collapsible) */}
-      <MonthlyBooksSummary fxRate={fxRate} canManage={canManageBooks} />
+      <MonthlyBooksSummary fxRate={fxRate} canManage={canManageBooks} onOpenMonth={onOpenMonth} onBooksChanged={load} />
     </div>
   );
 }

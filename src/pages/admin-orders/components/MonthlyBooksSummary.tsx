@@ -36,7 +36,15 @@ function expenseUsd(e: CompanyExpense, fxRate: number): number {
   return e.amount;
 }
 
-export default function MonthlyBooksSummary({ fxRate, canManage = false, monthsToShow = 6 }: { fxRate: number; canManage?: boolean; monthsToShow?: number }) {
+export default function MonthlyBooksSummary({
+  fxRate, canManage = false, monthsToShow = 6, onOpenMonth, onBooksChanged,
+}: {
+  fxRate: number;
+  canManage?: boolean;
+  monthsToShow?: number;
+  onOpenMonth?: (from: string, to: string, label: string) => void;
+  onBooksChanged?: () => void; // lets the parent Accounts panel re-evaluate its closed-lock state
+}) {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -118,6 +126,7 @@ export default function MonthlyBooksSummary({ fxRate, canManage = false, monthsT
     setBusyKey("");
     if (!res.ok) { setErr(res.error ?? "Failed to close month"); return; }
     build();
+    onBooksChanged?.();
   };
 
   const handleReopen = async (r: MonthRow) => {
@@ -128,6 +137,7 @@ export default function MonthlyBooksSummary({ fxRate, canManage = false, monthsT
     setBusyKey("");
     if (!res.ok) { setErr(res.error ?? "Failed to reopen month"); return; }
     build();
+    onBooksChanged?.();
   };
 
   const statusBadge = (r: MonthRow) => {
@@ -169,13 +179,20 @@ export default function MonthlyBooksSummary({ fxRate, canManage = false, monthsT
                       <th className="text-right py-2 px-2">Salary (est.)</th>
                       <th className="text-right py-2 px-2">Operating Net</th>
                       <th className="text-center py-2 px-2">Status</th>
-                      {canManage && <th className="text-right py-2 pl-2">Action</th>}
+                      <th className="text-right py-2 pl-2">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r) => (
                       <tr key={r.key} className="border-b border-gray-100 last:border-0">
-                        <td className="py-2 pr-3 font-semibold text-gray-800 whitespace-nowrap">{r.label}</td>
+                        <td className="py-2 pr-3 font-semibold whitespace-nowrap">
+                          {onOpenMonth ? (
+                            <button type="button" onClick={() => onOpenMonth(r.from, r.to, `${r.label} Books`)}
+                              title="Open this month's books in Accounts" className="text-[#3b6ea5] hover:underline cursor-pointer">
+                              {r.label}
+                            </button>
+                          ) : <span className="text-gray-800">{r.label}</span>}
+                        </td>
                         <td className="text-right py-2 px-2 text-emerald-600 font-semibold">{fmt(r.gross)}</td>
                         <td className="text-right py-2 px-2 text-gray-400">−{fmt(r.fees)}</td>
                         <td className="text-right py-2 px-2 text-gray-400">−{fmt(r.refunds)}</td>
@@ -185,19 +202,23 @@ export default function MonthlyBooksSummary({ fxRate, canManage = false, monthsT
                         <td className="text-right py-2 px-2 text-gray-400">−{fmt(r.salary)}</td>
                         <td className={`text-right py-2 px-2 font-extrabold ${r.operatingNet >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmt(r.operatingNet)}</td>
                         <td className="text-center py-2 px-2">{statusBadge(r)}</td>
-                        {canManage && (
-                          <td className="text-right py-2 pl-2 whitespace-nowrap">
-                            {busyKey === r.key ? (
+                        <td className="text-right py-2 pl-2 whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-2">
+                            {onOpenMonth && (
+                              <button type="button" onClick={() => onOpenMonth(r.from, r.to, `${r.label} Books`)}
+                                className="text-[10px] font-semibold text-[#3b6ea5] hover:underline cursor-pointer">View / Edit</button>
+                            )}
+                            {canManage && (busyKey === r.key ? (
                               <i className="ri-loader-4-line animate-spin text-gray-400"></i>
                             ) : r.rowStatus === "closed" ? (
                               <button type="button" onClick={() => handleReopen(r)}
                                 className="text-[10px] font-semibold text-amber-600 hover:underline cursor-pointer">Reopen</button>
                             ) : (
                               <button type="button" onClick={() => handleClose(r)}
-                                className="text-[10px] font-semibold text-[#3b6ea5] hover:underline cursor-pointer">Close</button>
-                            )}
-                          </td>
-                        )}
+                                className="text-[10px] font-semibold text-gray-500 hover:text-[#3b6ea5] hover:underline cursor-pointer">Close</button>
+                            ))}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

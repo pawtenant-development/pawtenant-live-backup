@@ -343,6 +343,17 @@ export default function PaymentsTab() {
     fetchData(`from=${customFrom}&to=${to}`);
   }, [customFrom, customTo, fetchData]);
 
+  // Open a specific month's books from the Monthly Books Summary (View / Edit).
+  // Sets the main Accounts range to that month and refetches revenue + expenses.
+  const openAccountsMonth = useCallback((from: string, to: string, label: string) => {
+    setAccountsPreset("custom");
+    setCustomActive(true);
+    setCustomFrom(from);
+    setCustomTo(to);
+    setCustomLabel(label);
+    fetchData(`from=${from}&to=${to}`);
+  }, [fetchData]);
+
   // Accounts view defaults to the current calendar month on first open. Each new
   // month this naturally resolves to the new month with no manual reset needed.
   useEffect(() => {
@@ -520,6 +531,7 @@ export default function PaymentsTab() {
               charges={data?.charges}
               resolutionMap={resolutionMap}
               canManageBooks={canManageBooks}
+              onOpenMonth={openAccountsMonth}
             />
           )}
         </>
