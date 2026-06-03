@@ -6,6 +6,7 @@ import EditStatesModal from "./EditStatesModal";
 import DeleteProviderModal from "./DeleteProviderModal";
 import ProviderApplicationModal from "./ProviderApplicationModal";
 import ProviderDrawer from "./ProviderDrawer";
+import ProviderRecruitmentTab from "./ProviderRecruitmentTab";
 import { canDelete, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
 import { US_STATES, normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay } from "../../../lib/usStates";
 
@@ -36,7 +37,11 @@ const lifecycleBadge = (raw: string | null | undefined) => {
   return LIFECYCLE_BADGE[key] ?? { label: raw, cls: "bg-gray-100 text-gray-500 border-gray-200" };
 };
 
-export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () => void }) {
+export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProviderAdded?: () => void; adminProfile?: DoctorProfile | null }) {
+  // PAWTENANT-PROVIDER-RECRUITMENT-V2: Provider Recruitment now lives as a
+  // sub-tab inside Providers (no standalone sidebar item). 'roster' is the
+  // existing provider list; 'recruitment' mounts the outreach tool.
+  const [subTab, setSubTab] = useState<"roster" | "recruitment">("roster");
   const [doctors, setDoctors] = useState<DoctorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savedMsg, setSavedMsg] = useState("");
@@ -354,8 +359,41 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
     return matchesSearch && matchesStatus && matchesState;
   });
 
+  // PAWTENANT-PROVIDER-RECRUITMENT-V2: sub-tab bar shared by both views.
+  // Recruitment is owner/admin_manager only (canDeleteProviders === canDelete).
+  const subTabBar = (
+    <div className="flex items-center gap-1 mb-5 border-b border-gray-200">
+      <button
+        type="button"
+        onClick={() => setSubTab("roster")}
+        className={`whitespace-nowrap px-4 py-2.5 text-sm font-bold border-b-2 -mb-px cursor-pointer transition-colors ${subTab === "roster" ? "border-[#3b6ea5] text-[#3b6ea5]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+      >
+        <i className="ri-stethoscope-line mr-1.5"></i>Provider Roster
+      </button>
+      {canDeleteProviders && (
+        <button
+          type="button"
+          onClick={() => setSubTab("recruitment")}
+          className={`whitespace-nowrap px-4 py-2.5 text-sm font-bold border-b-2 -mb-px cursor-pointer transition-colors ${subTab === "recruitment" ? "border-[#3b6ea5] text-[#3b6ea5]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          <i className="ri-user-add-line mr-1.5"></i>Recruitment
+        </button>
+      )}
+    </div>
+  );
+
+  if (subTab === "recruitment" && canDeleteProviders) {
+    return (
+      <div>
+        {subTabBar}
+        <ProviderRecruitmentTab adminProfile={adminProfile ?? null} />
+      </div>
+    );
+  }
+
   return (
     <div>
+      {subTabBar}
       {/* ── Pending Applications ── */}
       {pendingApps.length > 0 && (
         <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
@@ -565,6 +603,13 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
             const isActive = availStatus !== "inactive";
             const isContactOnly = !doc.profile && !!doc.contact;
             const isPendingSetup = !!doc.profile && pendingSetupIds.has(doc.profile.user_id);
+            // PROVIDER-ASSIGNMENT-READINESS: a portal provider can only receive
+            // new assignments once they have accessed the provider portal at
+            // least once (portal_first_accessed_at). Surface the providers the
+            // assignment gate blocks (active, has portal account, not yet
+            // accessed) that aren't already flagged as Pending setup.
+            const hasAccessedPortal = !!doc.profile?.portal_first_accessed_at;
+            const notAssignmentReady = !!doc.profile?.user_id && isActive && !hasAccessedPortal && !isPendingSetup;
             const isToggling = togglingEmail === doc.email;
             const isPublishing = publishingEmail === doc.email;
             const currentRate = doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null;
@@ -595,6 +640,7 @@ export default function DoctorsTab({ onProviderAdded }: { onProviderAdded?: () =
                       {availStatus === "inactive" && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-xs font-bold rounded">Inactive</span>}
                       {availStatus === "at_capacity" && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded hidden sm:inline">At Capacity</span>}
                       {isPendingSetup && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded hidden sm:inline">Pending setup</span>}
+                      {notAssignmentReady && <span title="Has not accessed the provider portal yet — cannot receive new assignments until they log in." className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-bold rounded hidden sm:inline">Not accessed portal</span>}
                       {isContactOnly && <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-xs font-bold rounded hidden sm:inline">No Portal</span>}
                       {lifecycle && (
                         <span

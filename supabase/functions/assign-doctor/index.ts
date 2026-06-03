@@ -119,8 +119,14 @@ Deno.serve(async (req: Request) => {
   let doctorIsActive = true;
   let doctorAvailabilityStatus = "active";
   let doctorRate: number | null = null;
+  // Readiness gate: portal providers (doctor_profiles) must have accessed the
+  // provider portal at least once before they can receive assignments. Legacy
+  // doctor_contacts providers have no portal account and are exempt (stays
+  // null → gate skipped).
+  let isPortalProvider = false;
+  let doctorPortalAccessed = true;
 
-  const { data: profileDoctor } = await supabase.from("doctor_profiles").select("user_id, full_name, title, email, phone, is_active, availability_status, per_order_rate").eq("email", normalizedEmail).maybeSingle();
+  const { data: profileDoctor } = await supabase.from("doctor_profiles").select("user_id, full_name, title, email, phone, is_active, availability_status, per_order_rate, portal_first_accessed_at").eq("email", normalizedEmail).maybeSingle();
 
   if (profileDoctor) {
     doctorUserId = profileDoctor.user_id;
@@ -129,6 +135,8 @@ Deno.serve(async (req: Request) => {
     doctorIsActive = profileDoctor.is_active !== false;
     doctorAvailabilityStatus = profileDoctor.availability_status ?? "active";
     doctorRate = profileDoctor.per_order_rate ?? null;
+    isPortalProvider = true;
+    doctorPortalAccessed = profileDoctor.portal_first_accessed_at != null;
   } else {
     const { data: contactDoctor } = await supabase.from("doctor_contacts").select("id, full_name, email, phone, is_active, availability_status, per_order_rate").eq("email", normalizedEmail).maybeSingle();
     if (!contactDoctor) {
@@ -148,6 +156,7 @@ Deno.serve(async (req: Request) => {
 
   if (!doctorIsActive) return json({ error: `Provider ${doctorName} (${normalizedEmail}) is deactivated and cannot receive new assignments.` }, 400);
   if (doctorAvailabilityStatus === "at_capacity") return json({ error: `Provider ${doctorName} (${normalizedEmail}) is currently at capacity and not accepting new assignments.`, availability_status: "at_capacity" }, 400);
+  if (isPortalProvider && !doctorPortalAccessed) return json({ error: `Provider ${doctorName} must complete account setup and access the portal before receiving orders.`, reason: "pending_account_setup" }, 400);
 
   const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, additional_documents_requested, delivery_speed, price, payment_intent_id, status, letter_type, addon_services").eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);

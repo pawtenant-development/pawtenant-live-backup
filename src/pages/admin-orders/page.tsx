@@ -501,7 +501,10 @@ export default function AdminOrdersPage() {
 
   // ── Merged assignable provider list (doctorContacts + provider-role doctorProfiles) ──
   const assignableProviders = useMemo<DoctorContact[]>(() => {
-    const result: DoctorContact[] = doctorContacts.filter((d) => d.is_active !== false);
+    // Legacy doctor_contacts have no portal account → always assignment-ready.
+    const result: DoctorContact[] = doctorContacts
+      .filter((d) => d.is_active !== false)
+      .map((d) => ({ ...d, assignment_ready: true }));
     doctorProfiles
       .filter((p) =>
         p.is_active !== false &&
@@ -517,6 +520,11 @@ export default function AdminOrdersPage() {
           licensed_states: p.licensed_states ?? [],
           is_active: p.is_active,
           state_license_numbers: p.state_license_numbers ?? null,
+          // PROVIDER-ASSIGNMENT-READINESS: a portal provider is assignment-ready
+          // only after they have accessed the provider portal at least once.
+          user_id: p.user_id,
+          portal_first_accessed_at: p.portal_first_accessed_at ?? null,
+          assignment_ready: p.portal_first_accessed_at != null,
         });
       });
     return result.sort((a, b) => a.full_name.localeCompare(b.full_name));
@@ -634,7 +642,7 @@ export default function AdminOrdersPage() {
         // pill hierarchy needs on every paid order.
         supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json").order("created_at", { ascending: false }),
         supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
-        supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
+        supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role, portal_first_accessed_at").order("full_name"),
       ]);
 
       let loadedOrders: Order[] = [];
@@ -878,7 +886,7 @@ export default function AdminOrdersPage() {
     if (activeTab !== "orders") return;
     Promise.all([
       supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
-      supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role").order("full_name"),
+      supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role, portal_first_accessed_at").order("full_name"),
     ]).then(([contactsRes, profilesRes]) => {
       if (contactsRes.data) setDoctorContacts(contactsRes.data as DoctorContact[]);
       if (profilesRes.data) setDoctorProfiles(profilesRes.data as DoctorProfile[]);
@@ -889,7 +897,7 @@ export default function AdminOrdersPage() {
     setShowCreateModal(false);
     setCreateSuccessMsg(`${result.full_name} (${result.email}) — provider added to the panel successfully.`);
     setTimeout(() => setCreateSuccessMsg(""), 7000);
-    supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers").order("full_name")
+    supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, portal_first_accessed_at").order("full_name")
       .then(({ data }) => { if (data) setDoctorProfiles(data as DoctorProfile[]); });
     supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name")
       .then(({ data }) => { if (data) setDoctorContacts(data as DoctorContact[]); });
@@ -2482,8 +2490,8 @@ export default function AdminOrdersPage() {
 
         {activeTab === "customers" && isTabVisible("customers") && <CustomersTab />}
 
-        {/* ── DOCTORS TAB ── */}
-        {activeTab === "doctors" && isTabVisible("doctors") && <DoctorsTab onProviderAdded={loadOrderData} />}
+        {/* ── DOCTORS TAB (Providers — roster + Recruitment sub-tab) ── */}
+        {activeTab === "doctors" && isTabVisible("doctors") && <DoctorsTab onProviderAdded={loadOrderData} adminProfile={adminProfile} />}
 
         {/* ── EARNINGS TAB ── */}
         {activeTab === "earnings" && isTabVisible("earnings") && (

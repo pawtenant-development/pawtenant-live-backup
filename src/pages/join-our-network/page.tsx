@@ -540,22 +540,20 @@ export default function JoinOurNetworkPage() {
       documentsCount: docUrls.length || undefined,
     };
 
-    const legacyData = new URLSearchParams();
-    formData.forEach((value, key) => { legacyData.append(key, value as string); });
-    legacyData.append("specializations", selectedSpecs.join(", "));
-    legacyData.append("licenseTypes", selectedLicenses.join(", "));
-
+    // PROVIDER-APPLICATION-READDY-CLEANUP: the legacy Readdy form POST
+    // (https://readdy.ai/api/form/...) was removed. It was the source of the
+    // generic "Your form submission has been received" email branded for
+    // ukswgt.readdy.co. Provider applications now submit ONLY through
+    // PawTenant/Supabase: the row is written to provider_applications and
+    // notify-provider-application sends the PawTenant-branded applicant
+    // confirmation + internal admin notification. The GHL CRM lead proxy is a
+    // PawTenant-owned Supabase function (lead nurture) and is kept.
     await Promise.allSettled([
       supabase.from("provider_applications").insert(appPayload),
       fetch(`${SUPABASE_URL}/functions/v1/notify-provider-application`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
         body: JSON.stringify(emailPayload),
-      }),
-      fetch("https://readdy.ai/api/form/d6tkt024of3kuoicn7c0", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: legacyData.toString(),
       }),
       fetch(`${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`, {
         method: "POST",
@@ -764,7 +762,7 @@ export default function JoinOurNetworkPage() {
               </div>
             </div>
           ) : (
-            <form data-readdy-form onSubmit={handleSubmit} noValidate className="bg-white rounded-2xl border border-orange-100 p-8 space-y-8">
+            <form onSubmit={handleSubmit} noValidate className="bg-white rounded-2xl border border-orange-100 p-8 space-y-8">
               {/* Section 1 — Personal Info */}
               <div>
                 <h3 className="text-sm font-bold text-gray-900 mb-5 pb-3 border-b border-gray-100 flex items-center gap-2">

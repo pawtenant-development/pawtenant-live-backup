@@ -147,6 +147,9 @@ interface DoctorContact {
   licensed_states?: string[];
   is_active?: boolean | null;
   state_license_numbers?: Record<string, string> | null;
+  // PROVIDER-ASSIGNMENT-READINESS: false → provider hasn't accessed the portal
+  // yet and cannot receive new assignments. Computed in assignableProviders.
+  assignment_ready?: boolean;
 }
 
 interface AdminProfile {
@@ -2320,6 +2323,12 @@ export default function OrderDetailModal({
   const eligibleDoctors = doctorContacts.filter((d) =>
     isProviderEligibleForState(d, orderStateCode)
   );
+  // PROVIDER-ASSIGNMENT-READINESS: only providers who have completed account
+  // setup and accessed the portal (assignment_ready) can be selected. Providers
+  // pending setup are shown disabled so admin sees why they're unavailable.
+  // The backend assign-doctor function enforces the same rule authoritatively.
+  const readyDoctors = eligibleDoctors.filter((d) => d.assignment_ready !== false);
+  const pendingSetupDoctors = eligibleDoctors.filter((d) => d.assignment_ready === false);
 
   // ── Remove Provider / Mark Unassigned state ──
   const [removingProvider, setRemovingProvider] = useState(false);
@@ -4080,7 +4089,8 @@ export default function OrderDetailModal({
                         <select value={assignEmail} onChange={(e) => setAssignEmail(e.target.value)}
                           className="w-full appearance-none pl-3 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                           <option value="">— {order.doctor_name ? "Select to Reassign" : "Select Provider"} —</option>
-                          {eligibleDoctors.map((doc) => <option key={doc.id} value={doc.email}>{doc.full_name}</option>)}
+                          {readyDoctors.map((doc) => <option key={doc.id} value={doc.email}>{doc.full_name}</option>)}
+                          {pendingSetupDoctors.map((doc) => <option key={doc.id} value={doc.email} disabled>{doc.full_name} — Pending account setup</option>)}
                         </select>
                         <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
                           <i className="ri-arrow-down-s-line text-gray-400 text-sm"></i>
@@ -4095,6 +4105,12 @@ export default function OrderDetailModal({
                       <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
                         <i className="ri-filter-3-line"></i>
                         Showing {eligibleDoctors.length} of {doctorContacts.filter(d => d.is_active !== false).length} active providers licensed in {orderStateName}
+                      </p>
+                    )}
+                    {pendingSetupDoctors.length > 0 && (
+                      <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                        <i className="ri-time-line"></i>
+                        {pendingSetupDoctors.length} approved provider{pendingSetupDoctors.length === 1 ? " is" : "s are"} pending account setup — they can be assigned once they log in to the provider portal.
                       </p>
                     )}
                     {assignMsg && (

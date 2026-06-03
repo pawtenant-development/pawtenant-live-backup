@@ -352,6 +352,55 @@ async function sendProviderInviteEmail(toEmail: string, providerName: string, se
   } catch (e) { console.warn("[approve-provider-application] Resend error:", e); return false; }
 }
 
+// PAWTENANT-PROVIDER-RECRUITMENT-V2: branded final onboarding / welcome email.
+// Renders the editable Communications Template Hub template
+// `provider_final_onboarding_welcome` (substitutes {name}, {per_order_rate},
+// {company_name}) and sends via Resend. Falls back to a minimal inline body if
+// the template is missing. Non-fatal — approval succeeds regardless.
+async function sendOnboardingWelcomeEmail(
+  adminClient: ReturnType<typeof createClient>,
+  toEmail: string,
+  providerName: string,
+  perOrderRate: number,
+): Promise<boolean> {
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  if (!resendKey) { console.warn("[approve-provider-application] RESEND_API_KEY not set (onboarding)"); return false; }
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const vars: Record<string, string> = {
+    name: esc(providerName || "there"),
+    per_order_rate: String(perOrderRate),
+    company_name: COMPANY_NAME,
+  };
+  const subst = (s: string) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+  let subject = "Welcome to PawTenant — Final Onboarding Steps";
+  let html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#374151;">`
+    + `<p>Hi <strong>${vars.name}</strong>,</p>`
+    + `<p>Your application has been approved — welcome to the ${COMPANY_NAME} provider network. Your confirmed rate is <strong>$${perOrderRate} per completed, approved case</strong>.</p>`
+    + `<p>Please reply with a voided check (or ACH details) for payouts, your LinkedIn (optional), and your availability for a short onboarding call. Please also confirm your headshot, license details, and preferred display name.</p>`
+    + `<p>Welcome again,<br/>The ${COMPANY_NAME} Provider Partnerships Team<br/>${SUPPORT_EMAIL}</p></body></html>`;
+  try {
+    const { data: tpl } = await adminClient
+      .from("email_templates")
+      .select("subject, body, archived")
+      .eq("slug", "provider_final_onboarding_welcome").eq("channel", "email").maybeSingle();
+    if (tpl && !tpl.archived && tpl.body) {
+      if (tpl.subject) subject = subst(tpl.subject as string);
+      html = subst(tpl.body as string);
+    }
+  } catch (e) { console.warn("[approve-provider-application] onboarding template load failed:", e); }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: FROM_ADDRESS, to: [toEmail], subject, html, reply_to: SUPPORT_EMAIL }),
+    });
+    if (res.ok) { console.log(`[approve-provider-application] Onboarding welcome sent to ${toEmail}`); return true; }
+    const t = await res.text();
+    console.warn(`[approve-provider-application] Onboarding Resend failed ${res.status}: ${t}`);
+    return false;
+  } catch (e) { console.warn("[approve-provider-application] Onboarding Resend error:", e); return false; }
+}
+
 async function getSetupLink(adminClient: ReturnType<typeof createClient>, email: string, redirectTo: string): Promise<string> {
   for (const linkType of ["magiclink", "recovery"] as const) {
     try {
@@ -451,6 +500,13 @@ Deno.serve(async (req) => {
     if (!applicationId || typeof applicationId !== "string") {
       return jsonResponse({ ok: false, success: false, error: "applicationId is required." });
     }
+
+    // PAWTENANT-PROVIDER-RECRUITMENT-V2: admin-confirmed per-order payout rate.
+    // Defaults to $30 but is editable per provider at approval time. Stored on
+    // doctor_profiles.per_order_rate; the payout resolver reads it for completed
+    // work (classification 'confirmed_from_rate'). Clamped to a sane integer.
+    const rawRate = Number(body.perOrderRate ?? body.per_order_rate ?? 30);
+    const perOrderRate = Number.isFinite(rawRate) && rawRate >= 0 ? Math.round(rawRate) : 30;
 
     // ── Load application ─────────────────────────────────────────────────────
     const { data: application, error: appErr } = await adminClient
@@ -735,6 +791,8 @@ Deno.serve(async (req) => {
         lifecycle_status: "approved",
         is_published: false,
         application_id: applicationId,
+        // PAWTENANT-PROVIDER-RECRUITMENT-V2: admin-confirmed per-order payout rate.
+        per_order_rate: perOrderRate,
       })
       .select("id")
       .maybeSingle();
@@ -808,6 +866,10 @@ Deno.serve(async (req) => {
       emailSent = await sendProviderInviteEmail(appEmail, fullName, setupLink);
     }
 
+    // PAWTENANT-PROVIDER-RECRUITMENT-V2: branded final onboarding/welcome email
+    // (confirms the per-order rate + requests final details). Non-fatal.
+    const onboardingSent = await sendOnboardingWelcomeEmail(adminClient, appEmail, fullName, perOrderRate);
+
     return jsonResponse({
       ok: true,
       success: true,
@@ -815,6 +877,8 @@ Deno.serve(async (req) => {
       provider_id: insertedProfile.id,
       email: appEmail,
       full_name: fullName,
+      per_order_rate: perOrderRate,
+      onboarding_email_sent: onboardingSent,
       invite_sent: !alreadyActivated,
       welcome_email_sent: emailSent,
       already_activated: alreadyActivated,

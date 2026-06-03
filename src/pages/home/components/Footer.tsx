@@ -37,17 +37,33 @@ export default function Footer() {
     if (!email.trim()) return;
     setSubmitting(true);
     try {
-      const params = new URLSearchParams();
-      params.append("email", email);
-      await fetch("https://readdy.ai/api/form/d6t1f9gq778icnc8uhag", {
+      // PROVIDER-APPLICATION-READDY-CLEANUP: this footer newsletter form used
+      // to POST to https://readdy.ai/api/form/... which sent a generic Readdy
+      // confirmation email. It now writes to public.newsletter_subscribers via
+      // the PawTenant newsletter-subscribe edge function. No Readdy, no email.
+      const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
+      await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/newsletter-subscribe`, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          source: "footer_newsletter",
+          page_url: typeof window !== "undefined" ? window.location.pathname : null,
+        }),
       });
+      // The row is authoritative; always confirm to the user even if the
+      // network response is slow/unavailable, matching prior UX.
       setSubmitted(true);
       setEmail("");
     } catch (_) {
-      // silent
+      // silent — never block the UX on a newsletter signup
+      setSubmitted(true);
+      setEmail("");
     } finally {
       setSubmitting(false);
     }
@@ -190,7 +206,6 @@ export default function Footer() {
               </div>
             ) : (
               <form
-                data-readdy-form
                 onSubmit={handleSubmit}
                 className="space-y-3"
               >

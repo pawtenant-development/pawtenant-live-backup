@@ -61,6 +61,10 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
     bio: application.bio ?? "",
     photo_url: application.headshot_url ?? "",
     verification_url: application.profile_url ?? "https://pawtenant.com/join-our-network",
+    // PAWTENANT-PROVIDER-RECRUITMENT-V2: admin-confirmed per-order payout rate
+    // (default $30, editable). Sent to approve-provider-application and stored
+    // on doctor_profiles.per_order_rate.
+    per_order_rate: "30",
   });
   const [selectedStates, setSelectedStates] = useState<Set<string>>(new Set(initialStates));
   const [rejectReason, setRejectReason] = useState("");
@@ -81,12 +85,17 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
       setError("Full name and at least one licensed state are required.");
       return;
     }
+    const parsedRate = parseInt(approvalForm.per_order_rate, 10);
+    if (isNaN(parsedRate) || parsedRate < 0) {
+      setError("Enter a valid per-order rate (whole dollars, e.g. 30).");
+      return;
+    }
     setError("");
     setProcessing(true);
 
     try {
       const { data, error: fnErr } = await supabase.functions.invoke("approve-provider-application", {
-        body: { applicationId: application.id },
+        body: { applicationId: application.id, perOrderRate: parsedRate },
       });
 
       setProcessing(false);
@@ -101,6 +110,8 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
         error?: string;
         already_existed?: boolean;
         welcome_email_sent?: boolean;
+        onboarding_email_sent?: boolean;
+        per_order_rate?: number;
       } | null;
 
       if (!result || result.ok === false) {
@@ -111,7 +122,7 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
       const name = approvalForm.full_name;
       const msg = result.already_existed
         ? `${name} already had a provider account — invite email resent.`
-        : `${name} approved. Provider account created${result.welcome_email_sent === false ? "" : " and invite email sent"}.`;
+        : `${name} approved at $${result.per_order_rate ?? parsedRate}/case. Provider account created${result.welcome_email_sent === false ? "" : ", invite sent"}${result.onboarding_email_sent ? ", onboarding welcome email sent" : ""}.`;
       onDone(msg);
     } catch (err) {
       setProcessing(false);
@@ -339,6 +350,30 @@ export default function ProviderApplicationModal({ application, onClose, onDone 
                   Cancel
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* PAWTENANT-PROVIDER-RECRUITMENT-V2: confirm per-order payout rate
+              before approval. Default $30; stored on the new provider profile
+              and stated in the onboarding welcome email. */}
+          {!showReject && (
+            <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-4">
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Confirm Per-Order Rate <span className="text-gray-400 font-normal">— paid per completed, approved case</span>
+              </label>
+              <div className="flex items-center gap-2 max-w-[220px]">
+                <span className="text-gray-500 text-sm font-bold">$</span>
+                <input
+                  type="number" min="0" step="1"
+                  value={approvalForm.per_order_rate}
+                  onChange={(e) => setApprovalForm((f) => ({ ...f, per_order_rate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white"
+                />
+                <span className="text-gray-500 text-xs whitespace-nowrap">/ case</span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                This rate is stored on the provider&rsquo;s profile and confirmed in their onboarding welcome email. You can adjust it later in the provider drawer.
+              </p>
             </div>
           )}
 

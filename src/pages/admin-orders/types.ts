@@ -149,6 +149,11 @@ export interface DoctorProfile {
   photo_url?: string;
   lifecycle_status?: string | null;
   is_published?: boolean | null;
+  // Provider account-readiness (portal access) — see migration
+  // 20260605120000_provider_assignment_readiness.sql
+  portal_first_accessed_at?: string | null;
+  portal_last_accessed_at?: string | null;
+  account_setup_completed_at?: string | null;
 }
 
 export interface DoctorContact {
@@ -164,6 +169,13 @@ export interface DoctorContact {
   availability_status?: AvailabilityStatus | null;
   per_order_rate?: number | null;
   photo_url?: string;
+  // Provider account-readiness. `assignment_ready` is computed in the
+  // assignableProviders memo: legacy doctor_contacts (no portal account) are
+  // always ready; doctor_profiles providers are ready only once they have
+  // accessed the provider portal (portal_first_accessed_at != null).
+  user_id?: string | null;
+  portal_first_accessed_at?: string | null;
+  assignment_ready?: boolean;
 }
 
 export interface WorkloadStats { active: number; completed: number; }

@@ -147,6 +147,22 @@ export default function ProviderPortalPage() {
       if (prof.is_active === false) { await supabase.auth.signOut(); navigate("/provider-login"); return; }
       setProfile(prof as DoctorProfile);
       setLoading(false);
+
+      // PROVIDER-ASSIGNMENT-READINESS: mark that this provider has accessed the
+      // portal. Sets portal_first_accessed_at / account_setup_completed_at the
+      // first time and refreshes portal_last_accessed_at. The RPC only touches
+      // the caller's own row (security definer, scoped to auth.uid()). Guarded
+      // to one write per browser session to avoid excessive writes per render.
+      try {
+        const guardKey = `pt_portal_access_marked_${session.user.id}`;
+        if (typeof window === "undefined" || !window.sessionStorage.getItem(guardKey)) {
+          await supabase.rpc("mark_provider_portal_access");
+          if (typeof window !== "undefined") window.sessionStorage.setItem(guardKey, "1");
+        }
+      } catch (e) {
+        // Non-fatal — readiness marking must never block portal access.
+        console.warn("[provider-portal] mark_provider_portal_access failed:", e);
+      }
     };
     auth();
   }, [navigate]);
