@@ -17,6 +17,10 @@ interface MiniSummary {
   total_fees?: number;
   net_after_fees?: number;
   net_revenue: number;
+  // Counts from stripe-payment-history (respect the selected range). Used for the
+  // Gross Revenue / Refunds card badges — same dataset basis as the amounts.
+  charge_count?: number;
+  refund_count?: number;
 }
 interface MiniCharge {
   amount: number;
@@ -77,6 +81,9 @@ export default function PaymentsAccountsPanel({
   // Closed-period guard: when the selected range exactly matches a closed month,
   // the ledger is read-only until the month is reopened (from Monthly Books Summary).
   const [closedPeriod, setClosedPeriod] = useState<AccountingPeriod | null>(null);
+  // Bumped after any expense mutation so the (possibly already-open) Monthly Books
+  // Summary rebuilds and reflects current figures — keeps it in sync with this panel.
+  const [booksReloadSignal, setBooksReloadSignal] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +103,13 @@ export default function PaymentsAccountsPanel({
   }, [range.from, range.to]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Reload this panel AND signal the Monthly Books Summary to rebuild, so an
+  // expense change here is immediately reflected in the summary row for the month.
+  const refreshAll = useCallback(async () => {
+    await load();
+    setBooksReloadSignal((n) => n + 1);
+  }, [load]);
 
   const isClosed = !!closedPeriod;
   const canEdit = canManageBooks && !isClosed; // gate add/edit/delete (RLS also enforces)
@@ -171,18 +185,18 @@ export default function PaymentsAccountsPanel({
     if (!res.ok) { setErr(res.error ?? "Failed to add expense"); return; }
     setShowForm(false);
     setFVendor(""); setFDesc(""); setFAmount(""); setFRecurring(false);
-    load();
+    refreshAll();
   };
 
   const handleDelete = async (id: string) => {
     const res = await deleteExpense(id);
     if (!res.ok) { setErr(res.error ?? "Failed to delete"); return; }
-    load();
+    refreshAll();
   };
   const handleCancel = async (id: string) => {
     const res = await cancelExpense(id);
     if (!res.ok) { setErr(res.error ?? "Failed to cancel"); return; }
-    load();
+    refreshAll();
   };
 
   const filteredExpenses = categoryFilter === "all" ? expenses : expenses.filter((e) => e.category === categoryFilter);
@@ -229,12 +243,29 @@ export default function PaymentsAccountsPanel({
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
-  const revenueCards = [
-    { label: "Gross Revenue", value: fmtUSD(gross), color: "text-emerald-600", icon: "ri-money-dollar-circle-line" },
+  // Badge counts use the SAME range-scoped dataset as the amounts: charge_count
+  // = paid Stripe charges in gross revenue; refund_count = refunds in the refund
+  // total. Unpaid leads are never counted (the edge fn only counts succeeded
+  // charges / refund records).
+  const chargeCount = summary?.charge_count ?? 0;
+  const refundCount = summary?.refund_count ?? 0;
+  const revenueCards: {
+    label: string; value: string; color: string; icon: string; badge?: string; tooltip?: string;
+  }[] = [
+    {
+      label: "Gross Revenue", value: fmtUSD(gross), color: "text-emerald-600", icon: "ri-money-dollar-circle-line",
+      badge: chargeCount > 0 ? `${chargeCount} paid order${chargeCount === 1 ? "" : "s"}` : undefined,
+    },
     { label: "Stripe Fees", value: `−${fmtUSD(stripeFees)}`, color: "text-rose-500", icon: "ri-bank-card-2-line" },
-    { label: "Refunds", value: `−${fmtUSD(refunds)}`, color: "text-orange-500", icon: "ri-refund-2-line" },
+    {
+      label: "Refunds", value: `−${fmtUSD(refunds)}`, color: "text-orange-500", icon: "ri-refund-2-line",
+      badge: refundCount > 0 ? `${refundCount} refund${refundCount === 1 ? "" : "s"}` : undefined,
+    },
     { label: "Provider Payouts", value: `−${fmtUSD(providerPayouts)}`, color: "text-purple-500", icon: "ri-user-shared-line" },
-    { label: "Contribution Margin", value: fmtUSD(contributionMargin), color: "text-[#3b6ea5]", icon: "ri-funds-line" },
+    {
+      label: "Contribution Margin", value: fmtUSD(contributionMargin), color: "text-[#3b6ea5]", icon: "ri-funds-line",
+      tooltip: "Contribution Margin = gross revenue minus Stripe fees, refunds, and confirmed provider payouts. It does not include company expenses like salary, marketing, subscriptions, or other operating expenses.",
+    },
   ];
   // Provider Payouts card shows CONFIRMED (completed) only; pending is advisory.
 
@@ -270,9 +301,24 @@ export default function PaymentsAccountsPanel({
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
         {revenueCards.map((c) => (
           <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <i className={`${c.icon} ${c.color} text-base`}></i>
-              <span className="text-xs text-gray-500 font-medium">{c.label}</span>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <i className={`${c.icon} ${c.color} text-base`}></i>
+                <span className="text-xs text-gray-500 font-medium truncate">{c.label}</span>
+                {c.tooltip && (
+                  <span className="relative group shrink-0">
+                    <i className="ri-information-line text-gray-300 hover:text-gray-400 cursor-help text-sm"></i>
+                    <span className="pointer-events-none absolute left-0 bottom-full mb-1.5 w-60 z-10 rounded-lg bg-gray-900 text-white text-[10px] leading-snug font-normal px-2.5 py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                      {c.tooltip}
+                    </span>
+                  </span>
+                )}
+              </div>
+              {c.badge && (
+                <span className="shrink-0 text-[10px] font-bold text-[#3b6ea5] bg-[#eef4fa] border border-[#d6e4f0] rounded-full px-2 py-0.5 whitespace-nowrap">
+                  {c.badge}
+                </span>
+              )}
             </div>
             <p className={`text-2xl font-extrabold ${c.color}`}>{c.value}</p>
           </div>
@@ -491,7 +537,7 @@ export default function PaymentsAccountsPanel({
       </div>
 
       {/* Previous months' books (collapsible) */}
-      <MonthlyBooksSummary fxRate={fxRate} canManage={canManageBooks} onOpenMonth={onOpenMonth} onBooksChanged={load} />
+      <MonthlyBooksSummary fxRate={fxRate} canManage={canManageBooks} onOpenMonth={onOpenMonth} onBooksChanged={load} reloadSignal={booksReloadSignal} />
     </div>
   );
 }

@@ -76,6 +76,67 @@ export async function resolveBooksPayouts(charges: BooksCharge[]): Promise<Recor
   return fetchChargePayouts(pis);
 }
 
+// One month's books computed from the SAME source the Accounts panel uses, so the
+// Monthly Books Summary row matches the panel exactly:
+//   • gross / fees / refunds / counts come straight from the stripe-payment-history
+//     SUMMARY (refunds counted by REFUND date, like the panel — NOT by the charge's
+//     created month, which is what bucketChargesByMonth did and why refunds drifted).
+//   • businessNet = net_after_fees − confirmed provider payouts == panel contributionMargin.
+//   • payouts use the same parent-chain-aware resolver + completed-only deduction.
+export interface PanelMonthAgg {
+  gross: number;        // summary.total_revenue
+  fees: number;         // summary.total_fees
+  refunds: number;      // summary.total_refunded (by refund date)
+  netAfterFees: number; // summary.net_after_fees (gross − refunds − fees)
+  payouts: number;      // confirmed provider payouts deducted
+  businessNet: number;  // netAfterFees − payouts  (== panel Contribution Margin)
+  chargeCount: number;  // summary.charge_count (paid orders)
+  refundCount: number;  // summary.refund_count
+}
+
+const EMPTY_MONTH_AGG: PanelMonthAgg = {
+  gross: 0, fees: 0, refunds: 0, netAfterFees: 0, payouts: 0, businessNet: 0, chargeCount: 0, refundCount: 0,
+};
+
+export async function fetchBooksMonthAgg(from: string, to: string): Promise<PanelMonthAgg> {
+  try {
+    const token = await getAdminToken();
+    const res = await fetch(`${supabaseUrl}/functions/v1/stripe-payment-history?from=${from}&to=${to}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json() as {
+      ok: boolean;
+      summary?: {
+        total_revenue: number; total_fees?: number; total_refunded: number;
+        net_after_fees?: number; net_revenue: number; charge_count: number; refund_count: number;
+      };
+      charges?: BooksCharge[];
+      error?: string;
+    };
+    if (!json.ok || !json.summary) { console.warn("[accountsBooks] month agg error", json.error); return { ...EMPTY_MONTH_AGG }; }
+    const s = json.summary;
+    const charges = (json.charges ?? []) as BooksCharge[];
+    const resMap = await resolveBooksPayouts(charges);
+    let payouts = 0;
+    for (const c of charges) {
+      const r = c.payment_intent ? resMap[c.payment_intent] : undefined;
+      payouts += resolutionToClassification(r, c.amount_refunded > 0).deducted;
+    }
+    const gross = s.total_revenue;
+    const fees = s.total_fees ?? 0;
+    const refunds = s.total_refunded;
+    const netAfterFees = s.net_after_fees ?? (gross - refunds - fees);
+    return {
+      gross, fees, refunds, netAfterFees, payouts,
+      businessNet: netAfterFees - payouts,
+      chargeCount: s.charge_count, refundCount: s.refund_count,
+    };
+  } catch (err) {
+    console.warn("[accountsBooks] month agg fetch error", err);
+    return { ...EMPTY_MONTH_AGG };
+  }
+}
+
 // ── Monthly close / lock ───────────────────────────────────────────────────
 // A closed month stores a JSON snapshot of its figures; source data is never
 // mutated. Admin/finance gated server-side (close/reopen RPCs re-check role).
