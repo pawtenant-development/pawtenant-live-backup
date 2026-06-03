@@ -713,28 +713,6 @@ export default function JoinOurNetworkPage() {
         </div>
       </section>
 
-      {/* ===== SOCIAL PROOF ===== */}
-      <section className="py-14 bg-white">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            {[
-              { value: "200+", label: "Licensed Therapists", icon: "ri-user-star-line" },
-              { value: "50", label: "States Covered", icon: "ri-map-pin-2-line" },
-              { value: "48hr", label: "Avg. Onboarding Time", icon: "ri-time-line" },
-              { value: "4.9★", label: "Therapist Satisfaction", icon: "ri-heart-line" },
-            ].map((stat) => (
-              <div key={stat.label} className="flex flex-col items-center">
-                <div className="w-10 h-10 flex items-center justify-center bg-orange-50 rounded-full mb-3">
-                  <i className={`${stat.icon} text-orange-500 text-lg`}></i>
-                </div>
-                <p className="text-2xl font-extrabold text-gray-900 mb-1">{stat.value}</p>
-                <p className="text-xs text-gray-500">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ===== APPLICATION FORM ===== */}
       <section id="application-form" ref={applicationSectionRef} className="py-16 bg-[#fdf8f3]">
         <div className="max-w-3xl mx-auto px-6">
