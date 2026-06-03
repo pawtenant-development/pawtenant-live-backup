@@ -89,6 +89,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Florida Statute 760.27 sets the rules for ESA documentation in housing — who can write it and what a landlord can ask. Learn how to stay compliant in Florida.",
   },
+  "/landlord-denied-esa-letter": {
+    title: "Landlord Denied Your ESA? Housing Rights by State | PawTenant",
+    description:
+      "If your landlord denied your emotional support animal request, learn your Fair Housing Act rights, state-by-state guidance, and calm, practical next steps.",
+  },
   "/all-about-service-dogs": {
     title: "Psychiatric Service Dog Letter Online 2026 — PSD Letter vs ESA Letter | PawTenant",
     description:

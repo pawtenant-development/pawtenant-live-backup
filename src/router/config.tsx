@@ -73,6 +73,7 @@ const AreOnlineESALettersLegitPage = lazy(() => import("../pages/are-online-esa-
 const CaliforniaESA30DayRulePage = lazy(() => import("../pages/california-esa-letter-30-day-rule/page"));
 const IowaESAHousingRulesPage = lazy(() => import("../pages/iowa-esa-letter-housing-rules/page"));
 const FloridaESAHousingRulesPage = lazy(() => import("../pages/florida-esa-letter-housing-rules/page"));
+const LandlordDeniedESALetterPage = lazy(() => import("../pages/landlord-denied-esa-letter/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -120,6 +121,8 @@ const routes: RouteObject[] = [
   { path: "/california-esa-letter-30-day-rule", element: <P C={CaliforniaESA30DayRulePage} /> },
   { path: "/iowa-esa-letter-housing-rules", element: <P C={IowaESAHousingRulesPage} /> },
   { path: "/florida-esa-letter-housing-rules", element: <P C={FloridaESAHousingRulesPage} /> },
+  // Landlord-denial ESA housing-rights page (informational, indexable).
+  { path: "/landlord-denied-esa-letter", element: <P C={LandlordDeniedESALetterPage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
   // PRIMARY route — /esa-letter/[state] format
   { path: "/esa-letter/:state", element: <P C={StateESAPage} /> },
