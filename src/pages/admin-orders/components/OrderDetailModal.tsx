@@ -2995,9 +2995,17 @@ export default function OrderDetailModal({
                         2026-05-22 REFUND-CANCEL-FOLLOWUP-2: only show for PAID
                         orders. Unpaid leads (no payment_intent AND no paid_at)
                         must not see a refund flow — they're handled via the
-                        existing Archive/Void path in the Danger zone below. */}
+                        existing Archive/Void path in the Danger zone below.
+
+                        PAWTENANT-COMPLETED-ORDER-REFUND-WORKFLOW: the
+                        completed/delivered exclusion (doctor_status ===
+                        'patient_notified') was removed so the SAME Refund +
+                        Cancel flow is available on completed orders. create-refund
+                        preserves doctor_earnings for completed work and the
+                        Accounts payout resolver keys off doctor_status (not
+                        order.status), so the provider payout stays deducted and
+                        the refund is deducted — Business Net rule unchanged. */}
                     {(order.payment_intent_id || order.paid_at) &&
-                     order.doctor_status !== "patient_notified" &&
                      order.status !== "refunded" &&
                      !order.refunded_at &&
                      order.status !== "cancelled" && (
@@ -4328,10 +4336,11 @@ export default function OrderDetailModal({
                     </div>
                     )}
 
-                    {/* ── Refund + Cancel — shown for paid orders only that aren't completed/refunded/already cancelled.
+                    {/* ── Refund + Cancel — shown for paid orders (incl. completed) that aren't refunded/already cancelled.
                          2026-05-22 REFUND-CANCEL-FOLLOWUP-2: same gating as the More-menu entry so the body and the
-                         dropdown never disagree. Unpaid leads use Archive/Void in the More-menu Danger zone. ── */}
-                    {(order.payment_intent_id || order.paid_at) && order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
+                         dropdown never disagree. Unpaid leads use Archive/Void in the More-menu Danger zone.
+                         PAWTENANT-COMPLETED-ORDER-REFUND-WORKFLOW: completed-order exclusion removed (see More-menu note). ── */}
+                    {(order.payment_intent_id || order.paid_at) && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
                     <div className="border-t border-dashed border-orange-200 mt-1 pt-3">
                       <p className="text-xs text-orange-500 mb-2 flex items-center gap-1 font-semibold">
                         <i className="ri-refund-2-line"></i>Refund + Cancel
