@@ -94,6 +94,27 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "If your landlord denied your emotional support animal request, learn your Fair Housing Act rights, state-by-state guidance, and calm, practical next steps.",
   },
+  // ── AI-SEO answer-library pages (high-intent ESA queries) ──────────────────
+  "/best-online-esa-letter-service": {
+    title: "Best Online ESA Letter Service: How to Choose | PawTenant",
+    description:
+      "How to choose the best online ESA letter service: licensed provider review, transparent pricing, state compliance, housing focus, and verifiable letters — explained honestly.",
+  },
+  "/how-to-get-esa-letter-online": {
+    title: "How to Get an ESA Letter Online (Step-by-Step) | PawTenant",
+    description:
+      "How to get an ESA letter online in 4 steps: complete a short assessment, get reviewed by a licensed provider, receive your letter if appropriate, and use it for housing.",
+  },
+  "/esa-letter-for-landlord": {
+    title: "ESA Letter for Your Landlord: Housing Guide | PawTenant",
+    description:
+      "How to use an ESA letter with your landlord: how housing accommodation works, what to send, what not to say, and common landlord questions answered.",
+  },
+  "/is-pawtenant-legit": {
+    title: "Is PawTenant Legit? How the ESA Letter Service Works",
+    description:
+      "Is PawTenant legit? PawTenant connects you with licensed providers for ESA letters, with transparent pricing, verifiable letters, and a refund if you don't qualify.",
+  },
   "/all-about-service-dogs": {
     title: "Psychiatric Service Dog Letter Online 2026 — PSD Letter vs ESA Letter | PawTenant",
     description:

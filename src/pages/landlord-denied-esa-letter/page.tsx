@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
+import EsaPricingMini from "../../components/feature/EsaPricingMini";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   ESA_LANDLORD_DENIAL_LAWS,
@@ -591,10 +592,10 @@ export default function LandlordDeniedESALetterPage() {
                 <i className="ri-stethoscope-line"></i> Start My ESA Evaluation
               </Link>
               <Link
-                to="/esa-letter-verification"
+                to="/esa-letter-for-landlord"
                 className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3.5 bg-orange-400/30 text-white font-bold rounded-xl border border-white/40 hover:bg-orange-400/50 transition-colors text-sm"
               >
-                <i className="ri-shield-check-line"></i> How landlords verify letters
+                <i className="ri-home-heart-line"></i> Using an ESA letter with a landlord
               </Link>
             </div>
           </div>
@@ -614,6 +615,9 @@ export default function LandlordDeniedESALetterPage() {
           </div>
         </div>
       </section>
+
+      {/* ===== PRICING / KLARNA — reusable cost section ===== */}
+      <EsaPricingMini className="bg-[#fafafa] border-t border-gray-100" />
 
       {/* ===== FAQ ===== */}
       <section className="py-16 bg-white">

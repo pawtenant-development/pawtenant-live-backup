@@ -5,6 +5,8 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import VerificationPillarsSection from "../../components/feature/VerificationPillarsSection";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
+import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import { LifestyleImageSection } from "../../components/feature/SeoKit";
 
 const heroBadges = [
   { icon: "ri-shield-check-line", label: "HIPAA-secure intake" },
@@ -141,12 +143,24 @@ export default function ESALawsPage() {
               <h1 className="text-[28px] sm:text-4xl md:text-5xl font-bold text-gray-900 mb-5 leading-[1.12]">
                 ESA Laws &amp; What a Valid ESA Letter Actually Requires
               </h1>
-              <p className="text-gray-600 text-[15px] sm:text-lg leading-relaxed max-w-xl mb-6">
+
+              {/* Mobile-only hero visual — right after the H1 so the sample
+                  letter is visible early on phones. Desktop uses the right
+                  column instead. */}
+              <div className="lg:hidden mt-6 mb-5 relative max-w-[250px] mx-auto">
+                <div aria-hidden="true" className="absolute -inset-4 bg-orange-100/50 rounded-[2rem] blur-2xl"></div>
+                <div className="relative">
+                  <SampleLetterCard eager />
+                </div>
+              </div>
+
+              {/* Long paragraph hidden on phones to keep the hero compact */}
+              <p className="hidden sm:block text-gray-600 text-[15px] sm:text-lg leading-relaxed max-w-xl mb-6">
                 A clear, honest explanation of how emotional support animals are protected under the federal Fair Housing Act — what a legitimate ESA letter needs, what it can do, and what it cannot do.
               </p>
               <div className="flex flex-wrap gap-2 mb-7">
-                {heroBadges.map((b) => (
-                  <span key={b.label} className="inline-flex items-center gap-1.5 bg-white/70 border border-gray-200 rounded-full px-3 py-1.5 text-xs font-semibold text-gray-700">
+                {heroBadges.map((b, i) => (
+                  <span key={b.label} className={`${i >= 3 ? "hidden sm:inline-flex" : "inline-flex"} items-center gap-1.5 bg-white/70 border border-gray-200 rounded-full px-3 py-1.5 text-xs font-semibold text-gray-700`}>
                     <i className={`${b.icon} text-orange-500`}></i>
                     {b.label}
                   </span>
@@ -172,12 +186,37 @@ export default function ESALawsPage() {
                 A licensed provider decides whether an ESA is clinically appropriate — approval is never guaranteed.
               </p>
             </div>
-            <div className="lg:col-span-5 hidden lg:block">
-              <SampleLetterCard className="max-w-[300px] mx-auto rotate-[1.5deg]" />
+            {/* Desktop sample letter (right column). Mobile uses the in-flow
+                copy after the H1 above. */}
+            <div className="hidden lg:block lg:col-span-5">
+              <div className="relative max-w-[440px] mx-auto w-full">
+                <div aria-hidden="true" className="absolute -inset-6 bg-orange-100/50 rounded-[2.5rem] blur-2xl"></div>
+                <div className="relative">
+                  <SampleLetterCard eager />
+                  <p className="text-center text-[11px] text-gray-400 mt-3 leading-relaxed">
+                    Sample ESA letter — names &amp; details are placeholders.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Emotional lifestyle visual — right after hero, before the legal text */}
+      <LifestyleImageSection
+        className="bg-[#fafafa] border-y border-gray-100"
+        image="/assets/testimonials/home-together-with-pet.jpg"
+        alt="A tenant relaxing at home with their emotional support animal"
+        eyebrow="Why it matters"
+        heading="ESA law is really about keeping you and your animal at home together"
+        body="Behind the statutes is a simple goal: letting people who rely on an emotional support animal keep that companion where they live. Here's what the law actually requires — in plain language."
+        bullets={[
+          "An ESA is treated as an assistance animal for housing, not an ordinary pet.",
+          "A qualifying request can be honored even under a “no pets” policy.",
+          "Pet fees and deposits generally don't apply to assistance animals.",
+        ]}
+      />
 
       {/* What the law protects */}
       <section className="py-16 bg-white">
@@ -257,8 +296,11 @@ export default function ESALawsPage() {
 
       <VerificationPillarsSection variant="compact" showCTA showPrivacyNote className="bg-[#fafbfb]" />
 
+      {/* PRICING / KLARNA — reusable cost section */}
+      <EsaPricingMini className="bg-white border-t border-gray-100" />
+
       {/* FAQ */}
-      <section className="py-16 bg-white">
+      <section className="py-16 bg-[#fafafa]">
         <div className="max-w-3xl mx-auto px-5 sm:px-6">
           <div className="text-center mb-10">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">

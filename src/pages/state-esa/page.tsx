@@ -1226,7 +1226,7 @@ export default function StateESAPage() {
               Helpful guides for the rest of your ESA letter process.
             </p>
           </div>
-          <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <Link
               to="/esa-letter-cost"
               className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
@@ -1250,6 +1250,48 @@ export default function StateESAPage() {
               </div>
               <p className="text-[12.5px] text-slate-600 leading-relaxed">
                 Common questions about ESA letters, housing rights, eligibility, and the clinical review process.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/how-to-get-esa-letter-online"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                How to Get an ESA Letter Online
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                The 4-step process from a short assessment to a licensed provider&rsquo;s letter.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/esa-letter-for-landlord"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                ESA Letter for Your Landlord
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                How housing accommodation works and exactly what to send your landlord.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/landlord-denied-esa-letter"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                Landlord Denied Your ESA?
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Your Fair Housing Act rights and calm next steps if a request is denied.
               </p>
               <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
                 Read more <i className="ri-arrow-right-line" />

@@ -5,6 +5,8 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import VerificationPillarsSection from "../../components/feature/VerificationPillarsSection";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
+import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import { LifestyleImageSection } from "../../components/feature/SeoKit";
 
 const heroBadges = [
   { icon: "ri-shield-check-line", label: "HIPAA-secure intake" },
@@ -121,12 +123,24 @@ export default function AreOnlineESALettersLegitPage() {
               <h1 className="text-[28px] sm:text-4xl md:text-5xl font-bold text-gray-900 mb-5 leading-[1.12]">
                 Are Online ESA Letters Legit?
               </h1>
-              <p className="text-gray-600 text-[15px] sm:text-lg leading-relaxed max-w-xl mb-6">
+
+              {/* Mobile-only hero visual — right after the H1 so the sample
+                  letter is visible early on phones. Desktop uses the right
+                  column instead. */}
+              <div className="lg:hidden mt-6 mb-5 relative max-w-[250px] mx-auto">
+                <div aria-hidden="true" className="absolute -inset-4 bg-orange-100/50 rounded-[2rem] blur-2xl"></div>
+                <div className="relative">
+                  <SampleLetterCard eager />
+                </div>
+              </div>
+
+              {/* Long paragraph hidden on phones to keep the hero compact */}
+              <p className="hidden sm:block text-gray-600 text-[15px] sm:text-lg leading-relaxed max-w-xl mb-6">
                 The honest answer: an online ESA letter can be completely legitimate — or completely worthless. The difference comes down to whether a real, licensed provider performed a real evaluation. Here&rsquo;s how to tell them apart.
               </p>
               <div className="flex flex-wrap gap-2 mb-7">
-                {heroBadges.map((b) => (
-                  <span key={b.label} className="inline-flex items-center gap-1.5 bg-white/70 border border-gray-200 rounded-full px-3 py-1.5 text-xs font-semibold text-gray-700">
+                {heroBadges.map((b, i) => (
+                  <span key={b.label} className={`${i >= 3 ? "hidden sm:inline-flex" : "inline-flex"} items-center gap-1.5 bg-white/70 border border-gray-200 rounded-full px-3 py-1.5 text-xs font-semibold text-gray-700`}>
                     <i className={`${b.icon} text-orange-500`}></i>
                     {b.label}
                   </span>
@@ -152,8 +166,18 @@ export default function AreOnlineESALettersLegitPage() {
                 A licensed provider decides whether an ESA is clinically appropriate — approval is never guaranteed.
               </p>
             </div>
-            <div className="lg:col-span-5 hidden lg:block">
-              <SampleLetterCard className="max-w-[300px] mx-auto -rotate-[1.5deg]" />
+            {/* Desktop sample letter (right column). Mobile uses the in-flow
+                copy after the H1 above. */}
+            <div className="hidden lg:block lg:col-span-5">
+              <div className="relative max-w-[440px] mx-auto w-full">
+                <div aria-hidden="true" className="absolute -inset-6 bg-orange-100/50 rounded-[2.5rem] blur-2xl"></div>
+                <div className="relative">
+                  <SampleLetterCard eager />
+                  <p className="text-center text-[11px] text-gray-400 mt-3 leading-relaxed">
+                    Sample ESA letter — names &amp; details are placeholders.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -170,6 +194,22 @@ export default function AreOnlineESALettersLegitPage() {
           </div>
         </div>
       </section>
+
+      {/* Emotional/trust lifestyle visual — licensed provider telehealth review */}
+      <LifestyleImageSection
+        reverse
+        className="bg-white"
+        image="/assets/therapists/clinician-tablet-with-pet.jpg"
+        alt="A licensed mental health provider reviewing a case during a telehealth visit, with a pet nearby"
+        eyebrow="A real review, not a download"
+        heading="What makes it legitimate: a licensed provider who actually evaluates you"
+        body="A genuine online ESA letter comes from a mental health provider licensed in your state who reviews your situation over telehealth — a recognized way to deliver care. The letter names the provider and can be verified. That's the difference between a real letter and a worthless “instant” one."
+        bullets={[
+          "Reviewed by a Licensed Mental Health Practitioner credentialed in your state.",
+          "Provider's name, license number, and NPI printed on the letter.",
+          "A unique Verification ID your landlord can confirm.",
+        ]}
+      />
 
       {/* Green / red flags */}
       <section className="py-16 bg-[#fafafa] border-y border-gray-100">
@@ -209,8 +249,11 @@ export default function AreOnlineESALettersLegitPage() {
 
       <VerificationPillarsSection variant="compact" showCTA showPrivacyNote className="bg-white" />
 
+      {/* PRICING / KLARNA — reusable cost section */}
+      <EsaPricingMini className="bg-[#fafafa] border-y border-gray-100" />
+
       {/* FAQ */}
-      <section className="py-16 bg-[#fafafa]">
+      <section className="py-16 bg-white">
         <div className="max-w-3xl mx-auto px-5 sm:px-6">
           <div className="text-center mb-10">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">

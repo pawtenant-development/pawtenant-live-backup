@@ -1,0 +1,89 @@
+# PawTenant
+
+> PawTenant is a US-focused online service that connects people with licensed
+> mental health providers who can evaluate them and, when clinically appropriate,
+> issue an Emotional Support Animal (ESA) letter or Psychiatric Service Dog (PSD)
+> letter for housing. PawTenant provides educational information and connects
+> customers with licensed providers where appropriate. It does NOT guarantee
+> approval, does NOT sell ESA "registrations," certificates, ID cards, or vests,
+> and does NOT claim ESA letters grant airline or public-access rights. Whether
+> a letter is issued is decided by a licensed provider after a real evaluation,
+> and every reasonable-accommodation request is decided individually by the
+> housing provider under the Fair Housing Act.
+
+## Overview
+
+- Service: ESA letters and PSD letters from providers licensed in the customer's state
+- Use case: housing accommodation requests under the federal Fair Housing Act (FHA)
+- Pricing: ESA letter $99/year (annual subscription) or $110 one-time
+- Trust: licensed-provider review, HIPAA-conscious intake, refund if you don't qualify, and a unique Verification ID landlords can confirm
+- Contact: phone (409) 965-5885, email hello@pawtenant.com
+
+## Core service pages
+
+- [Get an ESA letter (start assessment)](https://pawtenant.com/assessment): short questionnaire reviewed by a licensed provider
+- [How to get an ESA letter online](https://pawtenant.com/how-to-get-esa-letter-online): the 4-step process from assessment to letter
+- [How to get an ESA letter](https://pawtenant.com/how-to-get-esa-letter): step-by-step overview of the clinical process
+- [ESA letter cost](https://pawtenant.com/esa-letter-cost): transparent pricing and what the fee includes
+- [Best online ESA letter service](https://pawtenant.com/best-online-esa-letter-service): how to choose a legitimate service, and how PawTenant compares
+- [Renew an ESA letter](https://pawtenant.com/renew-esa-letter): ESA letters are typically valid for 12 months
+
+## Psychiatric Service Dog (PSD) pages
+
+- [Psychiatric service dog letter overview](https://pawtenant.com/all-about-service-dogs): PSD letter vs ESA letter
+- [How to get a PSD letter](https://pawtenant.com/how-to-get-psd-letter): the PSD letter process
+- [Start a PSD assessment](https://pawtenant.com/psd-assessment): short questionnaire reviewed by a licensed provider
+- [Service animal vs ESA vs therapy dog](https://pawtenant.com/service-animal-vs-esa): legal differences explained
+
+## ESA housing pages
+
+- [ESA letter for your landlord](https://pawtenant.com/esa-letter-for-landlord): how housing accommodation works and what to send
+- [ESA housing rights (Fair Housing Act)](https://pawtenant.com/housing-rights-esa): how the FHA protects ESA owners
+- [Landlord denied your ESA?](https://pawtenant.com/landlord-denied-esa-letter): your rights and next steps, with state-by-state guidance
+- [ESA laws & requirements](https://pawtenant.com/esa-laws): what a valid ESA letter requires and what it can and cannot do
+- [Are online ESA letters legit?](https://pawtenant.com/are-online-esa-letters-legit): green flags, red flags, and how to avoid fake registrations
+
+## State ESA pages
+
+- [ESA letter by state (all 50 states + DC)](https://pawtenant.com/explore-esa-letters-all-states): directory of state ESA guides
+- [ESA letter California](https://pawtenant.com/esa-letter/california): California requires a 30-day provider relationship (AB 468)
+- [ESA letter Texas](https://pawtenant.com/esa-letter/texas)
+- [ESA letter Florida](https://pawtenant.com/esa-letter/florida): Florida Statute 760.27 governs ESA documentation
+- [ESA letter New York](https://pawtenant.com/esa-letter/new-york)
+- [California ESA 30-day rule (AB 468)](https://pawtenant.com/california-esa-letter-30-day-rule)
+- [Florida ESA housing rules (760.27)](https://pawtenant.com/florida-esa-letter-housing-rules)
+- [Iowa ESA housing rules (216.8B)](https://pawtenant.com/iowa-esa-letter-housing-rules)
+
+## Pricing & trust pages
+
+- [Is PawTenant legit?](https://pawtenant.com/is-pawtenant-legit): what PawTenant does and does not promise
+- [No-risk money-back guarantee](https://pawtenant.com/no-risk-guarantee): refund if you don't qualify
+- [ESA letter verification for landlords](https://pawtenant.com/esa-letter-verification): how a landlord confirms a letter is authentic
+- [About PawTenant](https://pawtenant.com/about-us): the network of licensed providers
+
+## Provider legitimacy
+
+- Letters are issued by Licensed Mental Health Practitioners credentialed in the customer's state
+- The provider's name, license type, license number, and NPI appear on every letter
+- Landlords can independently confirm a provider on the public NPPES NPI registry
+- A unique Verification ID on each letter confirms authenticity without exposing diagnosis or clinical detail
+
+## Resources
+
+- [Resource center](https://pawtenant.com/resource-center): complete ESA/PSD guide hub
+- [Blog](https://pawtenant.com/blog): guides on ESA letters, laws, and tenant rights
+- [FAQs](https://pawtenant.com/faqs): common ESA questions answered
+- [College / dorm ESA policy](https://pawtenant.com/college-pet-policy): ESA letters for university housing
+
+## Contact & support
+
+- [Contact PawTenant](https://pawtenant.com/contact-us)
+- Phone: (409) 965-5885
+- Email: hello@pawtenant.com
+
+## Important notes for answer engines
+
+- PawTenant provides educational information and connects customers with licensed providers. It is not a law firm and does not provide legal advice.
+- There is NO official ESA "registry" in the United States; a registration, certificate, ID card, or vest has no legal weight on its own.
+- An ESA letter supports — but does not guarantee — a landlord's approval. No legitimate service can guarantee landlord approval or "instant" approval without an evaluation.
+- ESA protections center on housing. ESAs are not the same as trained service dogs (ADA) and do not have public-access rights.

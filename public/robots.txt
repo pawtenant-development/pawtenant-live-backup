@@ -11,12 +11,19 @@ Disallow: /admin-orders
 Disallow: /admin-doctors
 Disallow: /admin-login
 Disallow: /admin-guide
+Disallow: /admin/
 Disallow: /provider-portal
 Disallow: /provider-login
 Disallow: /my-orders
 Disallow: /customer-login
 Disallow: /reset-password
 Disallow: /go-live
+Disallow: /company
+Disallow: /account/
+
+# AI assistants & answer engines are welcome to read public content.
+# A curated map for LLMs is published at /llms.txt.
+# (Public ESA/PSD information pages above remain fully crawlable.)
 
 # Google bot settings — prioritize US crawl
 User-agent: Googlebot
