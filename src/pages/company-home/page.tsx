@@ -13,6 +13,7 @@ import CompanyFeed from "./components/CompanyFeed";
 import CompanySectionContent from "./components/CompanySectionContent";
 import TeamWidget from "./components/TeamWidget";
 import TodaySummaryWidget from "./components/TodaySummaryWidget";
+import MyRequestsWidget from "./components/MyRequestsWidget";
 import SalarySnapshotWidget from "./components/SalarySnapshotWidget";
 import QuickLinks from "./components/QuickLinks";
 import EnterWorkstationButton from "./components/EnterWorkstationButton";
@@ -152,6 +153,7 @@ export default function CompanyHomePage() {
                   <div className="space-y-5">
                     <TeamWidget reloadToken={reloadToken} />
                     <TodaySummaryWidget teamMemberId={member.id} reloadToken={reloadToken} />
+                    <MyRequestsWidget teamMemberId={member.id} reloadToken={reloadToken} onNavigate={goSection} />
                     <SalarySnapshotWidget />
                     <QuickLinks onNavigate={goSection} />
                   </div>
