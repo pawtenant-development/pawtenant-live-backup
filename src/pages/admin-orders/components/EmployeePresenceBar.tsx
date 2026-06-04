@@ -115,8 +115,12 @@ export default function EmployeePresenceBar() {
               filtered.map((r) => (
                 <div key={r.team_member_id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50">
                   <span className="relative flex-shrink-0">
-                    <span className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-[11px] font-bold">
-                      {initials(r.display_name)}
+                    <span className="w-8 h-8 overflow-hidden flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-[11px] font-bold">
+                      {r.display_picture_url ? (
+                        <img src={r.display_picture_url} alt={r.display_name} className="w-full h-full object-cover" />
+                      ) : (
+                        initials(r.display_name)
+                      )}
                     </span>
                     <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${PRESENCE_DOT[r.presence]}`}></span>
                   </span>
