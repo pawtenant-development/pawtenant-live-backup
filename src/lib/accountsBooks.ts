@@ -3,7 +3,7 @@
 // by calendar month, so previous months' books can be shown without N requests.
 // Read-only. No salary/payroll amounts are fetched here (salary is layered on by
 // the caller from the admin-only aggregate RPC).
-import { supabase, getAdminToken } from "./supabaseClient";
+import { supabase, getAdminToken, getAdminUserToken } from "./supabaseClient";
 import { monthKeyOfUnix } from "./accountsPeriods";
 import { fetchChargePayouts, resolutionToClassification, type ChargePayoutResolution } from "./companyExpenses";
 
@@ -193,4 +193,76 @@ export async function reopenAccountingPeriod(id: string, reason?: string): Promi
   const { error } = await supabase.rpc("reopen_company_accounting_period", { p_id: id, p_reason: reason ?? null });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+// ── Monthly payroll summary email ──────────────────────────────────────────
+// Internal owner/admin notification only. Calls the send-payroll-summary-email
+// edge function, which builds the summary from the SAME salary RPC the Accounts
+// panel uses (owners excluded server-side) and emails the fixed recipients below.
+// This never moves money and never triggers payroll processing.
+export const PAYROLL_RECIPIENTS = ["eservices.dm@gmail.com", "omer_kam@yahoo.com"];
+
+export interface PayrollSendResult {
+  ok: boolean;
+  dryRun?: boolean;
+  message?: string;
+  error?: string;
+  employeeCount?: number;
+  totalPkr?: number;
+  totalUsd?: number;
+  recipients?: string[];
+  sentAt?: string;
+}
+
+export async function sendPayrollSummaryEmail(args: {
+  periodStart: string; periodEnd: string; periodLabel: string; fxRate: number; dryRun?: boolean;
+}): Promise<PayrollSendResult> {
+  // verify_jwt is on for this function → must send a real admin user JWT (not anon).
+  const token = await getAdminUserToken();
+  if (!token) return { ok: false, error: "Your admin session expired. Please re-login and try again." };
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/send-payroll-summary-email`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        period_start: args.periodStart, period_end: args.periodEnd,
+        period_label: args.periodLabel, fx_rate: args.fxRate, dryRun: args.dryRun ?? false,
+      }),
+    });
+    const json = await res.json().catch(() => ({})) as PayrollSendResult & { error?: string };
+    if (!res.ok || json.ok === false) {
+      return { ...json, ok: false, error: json.error ?? `Send failed (${res.status})` };
+    }
+    return { ...json, ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Network error sending payroll summary" };
+  }
+}
+
+export interface PayrollSendLogRow {
+  period_start: string;
+  period_end: string;
+  status: string;
+  sent_at: string;
+  recipient_emails: string[];
+  employee_count: number;
+}
+
+// Latest successful send per period within [from,to], keyed "start__end".
+// RLS-gated (admin/finance) — returns {} for non-admins.
+export async function fetchPayrollSendLog(from: string, to: string): Promise<Record<string, PayrollSendLogRow>> {
+  const { data, error } = await supabase
+    .from("payroll_email_log")
+    .select("period_start, period_end, status, sent_at, recipient_emails, employee_count")
+    .gte("period_start", from)
+    .lte("period_end", to)
+    .eq("status", "sent")
+    .order("sent_at", { ascending: false });
+  if (error) { console.warn("[accountsBooks] payroll log error", error); return {}; }
+  const map: Record<string, PayrollSendLogRow> = {};
+  for (const r of (data ?? []) as PayrollSendLogRow[]) {
+    const key = `${r.period_start}__${r.period_end}`;
+    if (!map[key]) map[key] = r; // first row per period = newest (ordered desc)
+  }
+  return map;
 }

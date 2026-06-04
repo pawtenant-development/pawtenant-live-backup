@@ -7,7 +7,8 @@ import {
 import {
   fetchBooksMonthAgg,
   fetchAccountingPeriods, closeAccountingPeriod, reopenAccountingPeriod,
-  type PanelMonthAgg, type AccountingPeriod, type BooksSnapshot,
+  sendPayrollSummaryEmail, fetchPayrollSendLog, PAYROLL_RECIPIENTS,
+  type PanelMonthAgg, type AccountingPeriod, type BooksSnapshot, type PayrollSendLogRow,
 } from "../../../lib/accountsBooks";
 
 // The eight P&L figures a snapshot stores — used to recompute current books for a
@@ -77,6 +78,12 @@ export default function MonthlyBooksSummary({
   const [rows, setRows] = useState<MonthRow[]>([]);
   const [err, setErr] = useState("");
   const [busyKey, setBusyKey] = useState("");
+  // Payroll summary email: last-sent log (keyed "start__end"), confirm modal,
+  // in-flight send guard, and a transient success/error toast.
+  const [payrollSends, setPayrollSends] = useState<Record<string, PayrollSendLogRow>>({});
+  const [payrollConfirm, setPayrollConfirm] = useState<MonthRow | null>(null);
+  const [payrollSending, setPayrollSending] = useState(false);
+  const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
 
   const build = useCallback(async () => {
     setLoading(true); setErr("");
@@ -165,11 +172,18 @@ export default function MonthlyBooksSummary({
       });
       setRows(built);
       setLoaded(true);
+
+      // Last payroll-email send per month (admin/finance only; returns {} otherwise)
+      // so closed rows can show a "Payroll sent …" marker.
+      if (canManage) {
+        try { setPayrollSends(await fetchPayrollSendLog(oldest.from, newest.to)); }
+        catch { /* non-fatal */ }
+      }
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to load monthly books");
     }
     setLoading(false);
-  }, [fxRate, monthsToShow]);
+  }, [fxRate, monthsToShow, canManage]);
 
   const toggle = () => {
     const next = !open;
@@ -237,6 +251,36 @@ export default function MonthlyBooksSummary({
     onBooksChanged?.();
   };
 
+  // Send the monthly payroll summary email for a CLOSED month. Real send only
+  // (no books are touched). Guarded against double-clicks via payrollSending.
+  const handleSendPayroll = async () => {
+    const r = payrollConfirm;
+    if (!r || payrollSending) return;
+    setPayrollSending(true);
+    const res = await sendPayrollSummaryEmail({
+      periodStart: r.from, periodEnd: r.to, periodLabel: r.label, fxRate,
+    });
+    setPayrollSending(false);
+    setPayrollConfirm(null);
+    if (res.ok) {
+      setToast({
+        type: "ok",
+        msg: `Payroll summary for ${r.label} sent to ${PAYROLL_RECIPIENTS.join(" and ")} (${res.employeeCount ?? 0} employees, PKR ${Math.round(res.totalPkr ?? 0).toLocaleString()}).`,
+      });
+      try { setPayrollSends(await fetchPayrollSendLog(rows[rows.length - 1]?.from ?? r.from, rows[0]?.to ?? r.to)); }
+      catch { /* non-fatal */ }
+    } else {
+      setToast({ type: "err", msg: res.error ?? "Failed to send payroll summary." });
+    }
+  };
+
+  // Auto-dismiss the toast after a few seconds.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const statusBadge = (r: MonthRow) => {
     if (r.rowStatus === "closed") return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-200 text-gray-600" title={r.closedAt ? `Closed ${new Date(r.closedAt).toLocaleString()}` : ""}>Closed{r.closedAt ? ` · ${fmtDate(r.closedAt)}` : ""}</span>;
     if (r.rowStatus === "open") return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Open</span>;
@@ -258,6 +302,13 @@ export default function MonthlyBooksSummary({
       {open && (
         <div className="p-3">
           {err && <div className="mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">{err}</div>}
+          {toast && (
+            <div className={`mb-2 px-4 py-2 rounded-lg text-xs flex items-center gap-2 border ${toast.type === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+              <i className={toast.type === "ok" ? "ri-checkbox-circle-line" : "ri-error-warning-line"}></i>
+              <span className="flex-1">{toast.msg}</span>
+              <button type="button" onClick={() => setToast(null)} className="text-current opacity-60 hover:opacity-100 cursor-pointer"><i className="ri-close-line"></i></button>
+            </div>
+          )}
           {!loading && rows.some((r) => r.snapshotDrift) && (
             <div className="mb-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-center gap-2">
               <i className="ri-error-warning-line"></i>
@@ -314,6 +365,14 @@ export default function MonthlyBooksSummary({
                               </span>
                             </div>
                           )}
+                          {canManage && r.rowStatus === "closed" && payrollSends[`${r.from}__${r.to}`] && (
+                            <div className="mt-0.5">
+                              <span title={`Payroll summary emailed ${new Date(payrollSends[`${r.from}__${r.to}`].sent_at).toLocaleString()}`}
+                                className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-[#1a5c4f]">
+                                <i className="ri-mail-check-line"></i> Payroll sent {fmtDate(payrollSends[`${r.from}__${r.to}`].sent_at)}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="text-right py-2 pl-2 whitespace-nowrap">
                           <div className="flex items-center justify-end gap-2">
@@ -332,10 +391,21 @@ export default function MonthlyBooksSummary({
                                 )}
                                 <button type="button" onClick={() => handleReopen(r)}
                                   className="text-[10px] font-semibold text-amber-600 hover:underline cursor-pointer">Reopen</button>
+                                <button type="button" onClick={() => setPayrollConfirm(r)}
+                                  title="Email the monthly payroll summary to the owners"
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#1a5c4f] hover:underline cursor-pointer">
+                                  <i className="ri-mail-send-line"></i> Send Payroll
+                                </button>
                               </>
                             ) : (
-                              <button type="button" onClick={() => handleClose(r)}
-                                className="text-[10px] font-semibold text-gray-500 hover:text-[#3b6ea5] hover:underline cursor-pointer">Close</button>
+                              <>
+                                <button type="button" onClick={() => handleClose(r)}
+                                  className="text-[10px] font-semibold text-gray-500 hover:text-[#3b6ea5] hover:underline cursor-pointer">Close</button>
+                                <span title="Close books before sending payroll summary."
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-gray-300 cursor-not-allowed select-none">
+                                  <i className="ri-mail-send-line"></i> Send Payroll
+                                </span>
+                              </>
                             ))}
                           </div>
                         </td>
@@ -352,6 +422,37 @@ export default function MonthlyBooksSummary({
               </p>
             </>
           )}
+        </div>
+      )}
+
+      {/* Confirm-before-send modal — prevents accidental payroll emails. */}
+      {payrollConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!payrollSending) setPayrollConfirm(null); }}>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-9 h-9 rounded-full bg-[#1a5c4f]/10 flex items-center justify-center">
+                <i className="ri-mail-send-line text-[#1a5c4f]"></i>
+              </div>
+              <h4 className="text-sm font-extrabold text-gray-900">Send Payroll Summary</h4>
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed mb-3">
+              Send payroll summary for <strong>{payrollConfirm.label}</strong> to{" "}
+              <strong>{PAYROLL_RECIPIENTS[0]}</strong> and <strong>{PAYROLL_RECIPIENTS[1]}</strong>?
+            </p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-4 text-[11px] text-gray-500 leading-snug">
+              Internal owner/admin notification only. Active non-owner employees only; owner/co-owner compensation is excluded.
+              This does not move money or process payroll. Books values are not changed.
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" disabled={payrollSending} onClick={() => setPayrollConfirm(null)}
+                className="px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={payrollSending} onClick={handleSendPayroll}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#1a5c4f] rounded-lg hover:bg-[#164a40] cursor-pointer disabled:opacity-60 inline-flex items-center gap-1.5">
+                {payrollSending ? (<><i className="ri-loader-4-line animate-spin"></i> Sending…</>) : (<><i className="ri-mail-send-line"></i> Send Payroll Email</>)}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
