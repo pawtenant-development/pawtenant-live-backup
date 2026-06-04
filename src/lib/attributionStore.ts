@@ -93,6 +93,21 @@ export interface AttributionData {
   utm_term: string | null;
   utm_content: string | null;
 
+  // Ad campaign / keyword params (Google Ads ValueTrack + Meta dynamic).
+  // These are only present when the ad final-URL suffix passes them through;
+  // we capture them verbatim and NEVER invent a value. Stored session-scoped
+  // alongside the UTMs so they survive SPA navigation into checkout.
+  gad_source: string | null;   // Google Ads gad_source param
+  keyword: string | null;      // {keyword} ValueTrack (search keyword)
+  search_term: string | null;  // explicit search/query term when passed
+  matchtype: string | null;    // {matchtype} — e (exact), p (phrase), b (broad)
+  network: string | null;      // {network} — g (search), s (search partner), d (display)
+  device: string | null;       // {device} — m / t / c
+  placement: string | null;    // {placement} — display/site placement
+  campaign_id: string | null;  // numeric campaign id (Google/Meta)
+  adset_id: string | null;     // ad set / ad group id
+  ad_id: string | null;        // ad / creative id
+
   // Custom ref
   ref: string | null;
 
@@ -126,6 +141,16 @@ const KEYS: Record<keyof AttributionData, string> = {
   utm_campaign:    "utm_campaign",
   utm_term:        "utm_term",
   utm_content:     "utm_content",
+  gad_source:      "gad_source",
+  keyword:         "kw",
+  search_term:     "search_term",
+  matchtype:       "matchtype",
+  network:         "adnetwork",
+  device:          "addevice",
+  placement:       "placement",
+  campaign_id:     "campaign_id",
+  adset_id:        "adset_id",
+  ad_id:           "ad_id",
   ref:             "esa_referred_by",
   landing_url:     "landing_url",
   referrer:        "referrer",
@@ -156,6 +181,29 @@ const ONCE_KEYS: Set<keyof AttributionData> = new Set([
   "first_seen_at",
   "session_id",
 ]);
+
+// Ad campaign / keyword params and the URL query aliases we accept for each.
+// Google Ads ValueTrack ({keyword}, {matchtype}, {network}, {device},
+// {placement}, {campaignid}, {adgroupid}, {creative}) and Meta dynamic
+// ({{campaign.id}}, {{adset.id}}, {{ad.id}}) commonly arrive under several
+// different param names depending on how the final-URL suffix was set up,
+// so each canonical field matches a small alias list. First non-empty wins.
+const AD_PARAM_ALIASES: Array<[keyof AttributionData, string[]]> = [
+  ["gad_source",  ["gad_source", "gad"]],
+  ["keyword",     ["keyword", "kw", "adgroup_keyword"]],
+  ["search_term", ["search_term", "searchterm", "q_term", "matched_query"]],
+  ["matchtype",   ["matchtype", "match_type"]],
+  ["network",     ["network", "adnetwork", "net"]],
+  ["device",      ["device", "addevice", "dev"]],
+  ["placement",   ["placement", "adplacement"]],
+  ["campaign_id", ["campaign_id", "campaignid", "utm_campaign_id"]],
+  ["adset_id",    ["adset_id", "adsetid", "adgroupid", "ad_group_id", "adgroup_id"]],
+  ["ad_id",       ["ad_id", "adid", "creative", "creativeid", "ad_name_id"]],
+];
+
+// Stale ad params from a PRIOR channel must be cleared when a fresh click ID
+// from a DIFFERENT channel arrives (mirrors the existing utm_* clear logic).
+const AD_PARAM_KEYS: string[] = AD_PARAM_ALIASES.map(([field]) => KEYS[field]);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -269,16 +317,18 @@ export function captureFromUrl(search: string): void {
       if (clearBoth(k)) cleared.push(k);
     });
   } else if (urlFbclid) {
-    // Fresh fbclid wins over stale gclid and stale utm_*.
+    // Fresh fbclid wins over stale gclid and stale utm_* / ad params.
     [KEYS.gclid, KEYS.gbraid, KEYS.wbraid,
-     KEYS.utm_source, KEYS.utm_medium, KEYS.utm_campaign, KEYS.utm_term, KEYS.utm_content].forEach((k) => {
+     KEYS.utm_source, KEYS.utm_medium, KEYS.utm_campaign, KEYS.utm_term, KEYS.utm_content,
+     ...AD_PARAM_KEYS].forEach((k) => {
       if (clearBoth(k)) cleared.push(k);
     });
     ssDel("utm_captured");
   } else if (urlGclid) {
-    // Fresh gclid wins over stale fbclid and stale utm_*.
+    // Fresh gclid wins over stale fbclid and stale utm_* / ad params.
     [KEYS.fbclid, KEYS.fbc, KEYS.fbclid_ts,
-     KEYS.utm_source, KEYS.utm_medium, KEYS.utm_campaign, KEYS.utm_term, KEYS.utm_content].forEach((k) => {
+     KEYS.utm_source, KEYS.utm_medium, KEYS.utm_campaign, KEYS.utm_term, KEYS.utm_content,
+     ...AD_PARAM_KEYS].forEach((k) => {
       if (clearBoth(k)) cleared.push(k);
     });
     ssDel("utm_captured");
@@ -421,6 +471,32 @@ export function captureFromUrl(search: string): void {
     });
   }
 
+  // ── 5b. Ad campaign / keyword params (Google ValueTrack + Meta dynamic) ───
+  //        Captured verbatim — never invented. A fresh campaign signal in
+  //        THIS url (utm_source / fbclid / gclid) allows overriding stale
+  //        values; otherwise we fill-missing (set-once) so later internal
+  //        navigation doesn't blank them. Mirrors the UTM precedence above.
+  {
+    const freshCampaign = !!(urlUtmSource || urlFbclid || urlGclid);
+    AD_PARAM_ALIASES.forEach(([field, aliases]) => {
+      let val: string | null = null;
+      for (const alias of aliases) {
+        const v = params.get(alias);
+        if (v) { val = v; break; }
+      }
+      if (!val) return;
+      const existing = ssGet(KEYS[field]);
+      if (!existing) {
+        ssSet(KEYS[field], val);
+        captured[field] = val;
+      } else if (freshCampaign && existing !== val) {
+        ssSet(KEYS[field], val);
+        captured[field] = val;
+        skipped[`${field}_overwrote`] = `replaced "${existing}" with "${val}"`;
+      }
+    });
+  }
+
   // landing_url and referrer — set once
   if (!ssGet(KEYS.landing_url)) {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -490,6 +566,16 @@ export function getAttribution(): AttributionData {
     utm_campaign:    get("utm_campaign"),
     utm_term:        get("utm_term"),
     utm_content:     get("utm_content"),
+    gad_source:      get("gad_source"),
+    keyword:         get("keyword"),
+    search_term:     get("search_term"),
+    matchtype:       get("matchtype"),
+    network:         get("network"),
+    device:          get("device"),
+    placement:       get("placement"),
+    campaign_id:     get("campaign_id"),
+    adset_id:        get("adset_id"),
+    ad_id:           get("ad_id"),
     ref:             get("ref"),
     landing_url:     get("landing_url"),
     referrer:        get("referrer"),
@@ -554,6 +640,16 @@ interface FirstTouchSnapshot {
   utm_campaign: string | null;
   utm_term: string | null;
   utm_content: string | null;
+  gad_source: string | null;
+  keyword: string | null;
+  search_term: string | null;
+  matchtype: string | null;
+  network: string | null;
+  device: string | null;
+  placement: string | null;
+  campaign_id: string | null;
+  adset_id: string | null;
+  ad_id: string | null;
   ref: string | null;
   landing_url: string | null;
   referrer: string | null;
@@ -607,6 +703,16 @@ export function getOrInitFirstTouch(): FirstTouchSnapshot | null {
       utm_campaign:  data.utm_campaign,
       utm_term:      data.utm_term,
       utm_content:   data.utm_content,
+      gad_source:    data.gad_source,
+      keyword:       data.keyword,
+      search_term:   data.search_term,
+      matchtype:     data.matchtype,
+      network:       data.network,
+      device:        data.device,
+      placement:     data.placement,
+      campaign_id:   data.campaign_id,
+      adset_id:      data.adset_id,
+      ad_id:         data.ad_id,
       ref:           data.ref,
       landing_url:   data.landing_url,
       referrer:      data.referrer,
@@ -662,6 +768,16 @@ export function getLastTouch(): FirstTouchSnapshot | null {
       utm_campaign:  data.utm_campaign,
       utm_term:      data.utm_term,
       utm_content:   data.utm_content,
+      gad_source:    data.gad_source,
+      keyword:       data.keyword,
+      search_term:   data.search_term,
+      matchtype:     data.matchtype,
+      network:       data.network,
+      device:        data.device,
+      placement:     data.placement,
+      campaign_id:   data.campaign_id,
+      adset_id:      data.adset_id,
+      ad_id:         data.ad_id,
       ref:           data.ref,
       landing_url:   data.landing_url,
       referrer:      data.referrer,
@@ -708,6 +824,8 @@ export function buildAttributionJson(stage: string): Record<string, unknown> {
     "gclid", "gbraid", "wbraid",
     "msclkid", "ttclid",
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+    "gad_source", "keyword", "search_term", "matchtype", "network", "device",
+    "placement", "campaign_id", "adset_id", "ad_id",
     "ref", "landing_url", "referrer",
     "confirmation_id", "coupon_code", "selected_state",
   ];
@@ -837,6 +955,16 @@ export function buildAttributionQueryString(existingQuery?: string): string {
     ["utm_campaign", data.utm_campaign],
     ["utm_term",     data.utm_term],
     ["utm_content",  data.utm_content],
+    ["gad_source",   data.gad_source],
+    ["kw",           data.keyword],
+    ["search_term",  data.search_term],
+    ["matchtype",    data.matchtype],
+    ["adnetwork",    data.network],
+    ["addevice",     data.device],
+    ["placement",    data.placement],
+    ["campaign_id",  data.campaign_id],
+    ["adset_id",     data.adset_id],
+    ["ad_id",        data.ad_id],
     ["ref",      data.ref],
   ];
 

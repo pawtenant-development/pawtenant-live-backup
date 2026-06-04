@@ -24,6 +24,7 @@ import {
   type AcquisitionInputs,
   visualFor as visualForAcquisition,
 } from "../../lib/acquisitionClassifier";
+import type { ResolvedAttribution } from "../../lib/attributionResolver";
 
 interface Props {
   open: boolean;
@@ -34,6 +35,13 @@ interface Props {
    * "Visitor · #ab123". Helps admin remember which row they clicked.
    */
   contextLabel?: string;
+  /**
+   * Optional resolved attribution (orders only). When provided, the popover
+   * additionally surfaces the strict source/keyword/campaign/landing view so
+   * admin can trust the marketing data without opening the export. Live
+   * Visitors rows pass nothing here and render the classifier view only.
+   */
+  resolved?: ResolvedAttribution | null;
 }
 
 const CONFIDENCE_VISUAL: Record<AcquisitionClassification["confidence"], { label: string; bg: string; text: string }> = {
@@ -96,6 +104,7 @@ export default function AttributionDetailsPopover({
   classification,
   onClose,
   contextLabel,
+  resolved,
 }: Props) {
   // Close on Escape. Avoids the user being stuck if backdrop click misses.
   useEffect(() => {
@@ -167,6 +176,25 @@ export default function AttributionDetailsPopover({
           <Row label="Ref param"  value={nonEmpty(inputs.ref) ?? "—"} />
           <Row label="referred_by" value={nonEmpty(inputs.referred_by) ?? "—"} />
         </dl>
+
+        {resolved && (
+          <>
+            <p className="mt-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              Strict source &amp; keyword
+            </p>
+            <dl className="text-xs text-gray-700 space-y-1.5">
+              <Row label="Source (final)" value={nonEmpty(resolved.traffic_source_final) ?? "—"} />
+              <Row label="Channel"        value={nonEmpty(resolved.traffic_channel_final) ?? "—"} />
+              <Row label="Keyword"        value={nonEmpty(resolved.keyword) ?? "Unknown"} />
+              <Row label="Search term"    value={nonEmpty(resolved.search_term) ?? "—"} />
+              <Row label="Campaign"       value={nonEmpty(resolved.utm_campaign) ?? nonEmpty(resolved.campaign_id) ?? "—"} />
+              <Row label="Ad set / Ad"    value={[nonEmpty(resolved.adset_id), nonEmpty(resolved.ad_id)].filter(Boolean).join(" / ") || "—"} />
+              <Row label="First landing"  value={pathOnly(resolved.first_landing_page_url) + (nonEmpty(resolved.first_landing_page_type) ? ` (${resolved.first_landing_page_type})` : "")} />
+              <Row label="Raw source"     value={nonEmpty(resolved.traffic_source_raw) ?? "—"} />
+              <Row label="Data coverage"  value={nonEmpty(resolved.attribution_data_completeness) ?? "—"} />
+            </dl>
+          </>
+        )}
 
         <p className="mt-3 text-[10px] text-gray-400 leading-relaxed">
           Classification is computed client-side from the raw attribution signals above. No new data is fetched when this popover opens.

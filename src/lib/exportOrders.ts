@@ -2,8 +2,22 @@
 // Column order is explicit and stable so the CSV never leaks unexpected fields
 // and so downstream spreadsheets keep a predictable shape.
 
+import { resolveOrderAttribution, type ResolvedAttribution, type ResolvableOrder } from "./attributionResolver";
+import { extractDob, dobBirthYear, dobToAge } from "./dob";
+
 export interface ExportableOrder {
   [key: string]: unknown;
+}
+
+// Resolve clean attribution (source vs landing page) ONCE per order row and
+// memoize, so the many attribution columns below don't recompute per cell.
+const _attrCache = new WeakMap<object, ResolvedAttribution>();
+function attr(o: ExportableOrder): ResolvedAttribution {
+  const cached = _attrCache.get(o as object);
+  if (cached) return cached;
+  const resolved = resolveOrderAttribution(o as ResolvableOrder);
+  _attrCache.set(o as object, resolved);
+  return resolved;
 }
 
 function csvEscape(value: unknown): string {
@@ -95,6 +109,12 @@ const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder) => unknown }[] 
   { label: "Full Name", get: (o) => `${str(o.first_name)} ${str(o.last_name)}`.trim() },
   { label: "Email", get: (o) => o.email },
   { label: "Phone", get: (o) => o.phone },
+  // Date of Birth lives in assessment_answers.dob ("YYYY-MM-DD"); Age is
+  // calculated at export time from DOB. All three stay blank when DOB is
+  // missing/invalid — we never invent these values. (Admin-only export.)
+  { label: "Date of Birth", get: (o) => extractDob(o) },
+  { label: "Birth Year", get: (o) => dobBirthYear(extractDob(o)) },
+  { label: "Age", get: (o) => dobToAge(extractDob(o)) },
   { label: "Confirmation ID", get: (o) => o.confirmation_id },
   { label: "Order ID", get: (o) => o.id },
   { label: "Verification / Letter ID", get: (o) => o.letter_id },
@@ -119,12 +139,47 @@ const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder) => unknown }[] 
   { label: "Plan Type", get: (o) => o.plan_type },
   { label: "Add-on Services", get: (o) => addons(o) },
   { label: "Delivery Speed", get: (o) => o.delivery_speed },
-  { label: "Traffic Source", get: (o) => o.referred_by },
+  // Raw legacy value preserved (may contain landing labels like "state-page").
+  { label: "Traffic Source (Raw)", get: (o) => o.referred_by },
+  // Clean, marketing-ready attribution — source separated from landing page.
+  { label: "Traffic Source Final", get: (o) => attr(o).traffic_source_final },
+  { label: "Traffic Channel Final", get: (o) => attr(o).traffic_channel_final },
+  { label: "Attribution Rule Reason", get: (o) => attr(o).attribution_rule_reason },
+  { label: "Attribution Confidence", get: (o) => attr(o).attribution_confidence },
+  { label: "Source Confidence", get: (o) => attr(o).attribution_confidence },
+  { label: "Attribution Data Completeness", get: (o) => attr(o).attribution_data_completeness },
   { label: "UTM Source", get: (o) => o.utm_source },
   { label: "UTM Medium", get: (o) => o.utm_medium },
   { label: "UTM Campaign", get: (o) => o.utm_campaign },
+  { label: "UTM Term", get: (o) => attr(o).utm_term },
+  { label: "UTM Content", get: (o) => attr(o).utm_content },
+  // Keyword / search term — verbatim from capture; blank when unavailable
+  // (Google Ads keyword is not always exposed to the browser).
+  { label: "Keyword", get: (o) => attr(o).keyword },
+  { label: "Search Term", get: (o) => attr(o).search_term },
+  // Campaign / ad-set / ad identifiers + Google ValueTrack signals.
+  { label: "Campaign ID", get: (o) => attr(o).campaign_id },
+  { label: "Ad Set ID", get: (o) => attr(o).adset_id },
+  { label: "Ad ID", get: (o) => attr(o).ad_id },
+  { label: "Network", get: (o) => attr(o).network },
+  { label: "Match Type", get: (o) => attr(o).match_type },
+  { label: "Device", get: (o) => attr(o).device },
+  { label: "Placement", get: (o) => attr(o).placement },
   { label: "gclid", get: (o) => o.gclid },
   { label: "fbclid", get: (o) => o.fbclid },
+  { label: "gad_source", get: (o) => attr(o).gad_source },
+  // Landing pages — where the visitor landed (kept separate from source).
+  { label: "First Landing Page", get: (o) => attr(o).first_landing_page_url },
+  { label: "First Landing Page Path", get: (o) => attr(o).first_landing_page_path },
+  { label: "First Landing Page Type", get: (o) => attr(o).first_landing_page_type },
+  { label: "Last Landing Page", get: (o) => attr(o).last_landing_page_url },
+  { label: "Last Landing Page Path", get: (o) => attr(o).last_landing_page_path },
+  { label: "Last Landing Page Type", get: (o) => attr(o).last_landing_page_type },
+  { label: "First Referrer", get: (o) => attr(o).first_referrer },
+  { label: "Last Referrer", get: (o) => attr(o).last_referrer },
+  { label: "Session ID", get: (o) => attr(o).session_id },
+  { label: "Time to Payment (min)", get: (o) => attr(o).time_to_payment_minutes },
+  { label: "Time First Visit to Order (min)", get: (o) => attr(o).time_first_visit_to_order_minutes },
   { label: "Sequence Stage", get: (o) => sequenceStage(o) },
   { label: "GHL Contact ID", get: (o) => o.ghl_contact_id },
   { label: "Last Activity", get: (o) => fmtDate(o.last_contacted_at) },

@@ -29,6 +29,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import AnalyticsTab from "./components/AnalyticsTab";
 import IncomingCallBanner from "./components/IncomingCallBanner";
 import { exportOrdersToCSV, type ExportableOrder } from "../../lib/exportOrders";
+import { exportMetaAudienceToCSV, type MetaAudienceOrder, type MetaAudienceMode } from "../../lib/exportMetaAudience";
 import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
 import CommunicationsPanel from "./components/CommunicationsPanel";
@@ -389,6 +390,9 @@ export default function AdminOrdersPage() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [showNonGhlOnly, setShowNonGhlOnly] = useState(false);
+  // Meta Custom Audience export (identifiers-only, paid clients) — see lib/exportMetaAudience.ts
+  const [audienceExporting, setAudienceExporting] = useState(false);
+  const [audienceMsg, setAudienceMsg] = useState("");
 
   const [assigning, setAssigning] = useState<string | null>(null);
   const [assignMsg, setAssignMsg] = useState<Record<string, string>>({});
@@ -1302,6 +1306,28 @@ export default function AdminOrdersPage() {
   // ── Pagination: slice filtered to visibleCount ───────────────────────────
   const visibleOrders = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
+
+  // Meta Custom Audience export — identifiers-only, paid clients.
+  // LIVE adaptation: the orders list query loads the full matching set into
+  // `orders`, and `filtered` already applies the current admin filters, so we
+  // export straight from `filtered` (no extra re-query). exportMetaAudienceToCSV
+  // restricts to paid (or paid+refunded) and dedupes by email/phone.
+  // Privacy: never includes order/payment/service/attribution fields.
+  const exportMetaAudience = useCallback((mode: MetaAudienceMode) => {
+    setAudienceExporting(true);
+    setAudienceMsg("");
+    try {
+      const count = exportMetaAudienceToCSV(filtered as unknown as MetaAudienceOrder[], mode);
+      setAudienceMsg(count > 0 ? `Exported ${count} contact${count === 1 ? "" : "s"}` : "No matching contacts");
+      setTimeout(() => setAudienceMsg(""), 6000);
+    } catch (e) {
+      console.error("[exportMetaAudience] failed", e);
+      setAudienceMsg("Export failed — see console");
+      setTimeout(() => setAudienceMsg(""), 6000);
+    } finally {
+      setAudienceExporting(false);
+    }
+  }, [filtered]);
 
   const activeFilterCount = [
     stateFilterAdv !== "all",
@@ -2293,6 +2319,30 @@ export default function AdminOrdersPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
+                    {/* Meta Custom Audience export — identifiers-only, paid clients.
+                        Respects current filters. See lib/exportMetaAudience.ts */}
+                    {audienceMsg && (
+                      <span className="hidden sm:inline font-semibold text-emerald-600">{audienceMsg}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => exportMetaAudience("paid")}
+                      disabled={audienceExporting}
+                      title="Download an identifiers-only CSV (email, phone, name, state, country, DOB/year/age) of PAID clients for a Meta Custom Audience. No health/ESA/order data included. Respects current filters."
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#345f8f] cursor-pointer transition-colors disabled:opacity-60"
+                    >
+                      <i className={audienceExporting ? "ri-loader-4-line animate-spin" : "ri-contacts-book-2-line"}></i>
+                      Export Meta Audience — Paid
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportMetaAudience("paid_or_refunded")}
+                      disabled={audienceExporting}
+                      title="Same identifiers-only Meta audience export, including refunded clients as well as paid."
+                      className="whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-60"
+                    >
+                      <i className="ri-add-line"></i>+ Refunded
+                    </button>
                     <span className="font-semibold text-gray-700">{filtered.length}</span>
                     <span>of</span>
                     <span className="font-semibold text-gray-700">{orders.length}</span>

@@ -52,6 +52,9 @@ import {
 // Phase K4.5 — click-to-open attribution detail popover. Reuses the
 // classifier output already computed for the chip; no new fetches.
 import AttributionDetailsPopover from "../../../components/attribution/AttributionDetailsPopover";
+// Strict source/keyword resolver — same canonical view used by the CSV
+// export. Pure, no fetch; reads the order's flat columns + touch snapshots.
+import { resolveOrderAttribution, type ResolvableOrder } from "../../../lib/attributionResolver";
 
 /**
  * Minimal shape of orders.first_touch_json / last_touch_json that the
@@ -274,6 +277,22 @@ export default function OrderCard({
     acqInputs.ref || acqInputs.referred_by || acqInputs.referrer
   );
   const acqClassification = acqHasSignal ? classifyAcquisition(acqInputs) : null;
+  // Strict resolved view (source vs landing vs keyword) for the chip tooltip
+  // and the detail popover. Cheap pure computation — only when a chip shows.
+  const resolvedAttr = acqClassification
+    ? resolveOrderAttribution(order as unknown as ResolvableOrder)
+    : null;
+  const attrTitle = resolvedAttr
+    ? [
+        `Source: ${resolvedAttr.traffic_source_final}`,
+        `Confidence: ${resolvedAttr.attribution_confidence}`,
+        `Reason: ${resolvedAttr.attribution_rule_reason}`,
+        `Keyword: ${resolvedAttr.keyword || "Unknown"}`,
+        `Campaign: ${resolvedAttr.utm_campaign || resolvedAttr.campaign_id || "—"}`,
+        `First landing: ${resolvedAttr.first_landing_page_path || "—"}`,
+        `Raw source: ${resolvedAttr.traffic_source_raw || "—"}`,
+      ].join("\n")
+    : "";
   const [attrPopoverOpen, setAttrPopoverOpen] = useState(false);
   const borderAccent = hasPaymentFailure
     ? "border-l-4 border-l-red-400"
@@ -515,7 +534,7 @@ export default function OrderCard({
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setAttrPopoverOpen(true); }}
                     className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] font-extrabold cursor-pointer hover:opacity-80 ${v.color}`}
-                    title={explainAcquisition(acqClassification)}
+                    title={attrTitle || explainAcquisition(acqClassification)}
                   >
                     <i className={v.icon} style={{ fontSize: "8px" }}></i>
                     {v.shortLabel}
@@ -599,7 +618,7 @@ export default function OrderCard({
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setAttrPopoverOpen(true); }}
                       className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.5 rounded border cursor-pointer hover:opacity-80 ${v.color}`}
-                      title={explainAcquisition(acqClassification)}
+                      title={attrTitle || explainAcquisition(acqClassification)}
                     >
                       <i className={v.icon} style={{ fontSize: "8px" }}></i>
                       {v.shortLabel}
@@ -749,6 +768,7 @@ export default function OrderCard({
           classification={acqClassification}
           onClose={() => setAttrPopoverOpen(false)}
           contextLabel={`Order ${order.confirmation_id}`}
+          resolved={resolvedAttr}
         />
       )}
     </>
