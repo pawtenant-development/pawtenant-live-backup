@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken } from "../../../lib/supabaseClient";
 import { presetRange, ACCOUNTS_PRESET_BUTTONS, type AccountsPreset } from "../../../lib/accountsPeriods";
+import { can } from "../../../lib/adminPermissions";
 import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
@@ -240,9 +241,14 @@ export default function PaymentsTab() {
     });
   }, []);
 
-  const canBulkDelete = adminRole === "owner" || adminRole === "admin_manager";
-  // Accounts close/lock tier (server RPCs re-check; this just gates the buttons).
-  const canManageBooks = adminRole === "owner" || adminRole === "admin_manager" || adminRole === "finance";
+  // Unified capability layer (lib/adminPermissions) — single definition of these
+  // gates instead of inline role literals. Server RPCs/RLS remain the real
+  // enforcement; these only gate the buttons. Behaviour is unchanged:
+  //   accounts.payments.manage = owner/admin_manager
+  //   accounts.books.close      = owner/admin_manager/finance
+  const canBulkDelete = can({ role: adminRole }, "accounts.payments.manage");
+  // Accounts close/lock tier also gates expenses edit + payroll send downstream.
+  const canManageBooks = can({ role: adminRole }, "accounts.books.close");
   // Finance role cannot issue refunds directly — must request approval
   const isFinanceRole = adminRole === "finance";
 

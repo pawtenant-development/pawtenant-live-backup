@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import { canAccessApprovals } from "../../lib/adminPermissions";
 // Phase K3 — shared normalized classifier so the Orders filter, the
 // AdminDashboard aggregation, and the OrderCard pill all use the same
 // label taxonomy.
@@ -1517,7 +1518,7 @@ export default function AdminOrdersPage() {
   // ── Load pending approval count for owners/admins ──
   useEffect(() => {
     if (!adminProfile) return;
-    const isReviewer = adminProfile.role === "owner" || adminProfile.role === "admin_manager" || adminProfile.is_admin;
+    const isReviewer = canAccessApprovals(adminProfile.role, adminProfile.is_admin);
     if (!isReviewer) return;
 
     const fetchCount = async () => {
@@ -2510,7 +2511,7 @@ export default function AdminOrdersPage() {
         {/* ── TEAM TAB ── */}
         {activeTab === "team" && isTabVisible("team") && (
           <TeamTab
-            canSeeApprovals={!!adminProfile && (adminProfile.role === "owner" || adminProfile.role === "admin_manager" || !!adminProfile.is_admin)}
+            canSeeApprovals={!!adminProfile && canAccessApprovals(adminProfile.role, adminProfile.is_admin)}
             pendingApprovalCount={pendingApprovalCount}
             onOpenApprovals={() => setShowApprovalsInbox(true)}
           />
