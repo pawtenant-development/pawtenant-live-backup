@@ -20,6 +20,10 @@ type SupabaseClient = ReturnType<typeof createClient>;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+// Service-role key used to invoke PawTenant's existing Comms SMS transport
+// (the ghl-send-sms Edge Function used by Order Details -> Comms) for the
+// 5-minute recovery SMS. LIVE sends SMS via GHL, not Twilio.
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
 const SITE_URL = "https://www.pawtenant.com";
@@ -27,6 +31,11 @@ const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e6353
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 const DISCOUNT_CODE = "20PAW";
+// SMS recovery discount code (task spec). Must exist as a Stripe coupon/promotion
+// code for the $20 off to apply at checkout.
+const SMS_DISCOUNT_CODE = "PAW20";
+// Safe fallback when an order has no pet name in assessment data.
+const PET_FALLBACK = "your pet";
 
 const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
@@ -47,6 +56,7 @@ export interface SequenceResults {
   step1_30min: number;
   step2_24h: number;
   step3_3day: number;
+  sms_5min: number;
   skipped: number;
   opted_out: number;
   expired: number;
@@ -61,7 +71,7 @@ export interface SequenceRunResult {
 }
 
 function emptyResults(): SequenceResults {
-  return { step1_30min: 0, step2_24h: 0, step3_3day: 0, skipped: 0, opted_out: 0, expired: 0, dedup_skipped: 0 };
+  return { step1_30min: 0, step2_24h: 0, step3_3day: 0, sms_5min: 0, skipped: 0, opted_out: 0, expired: 0, dedup_skipped: 0 };
 }
 
 export function escapeHtml(v = ""): string {
@@ -98,6 +108,61 @@ async function sendEmail(to: string, subject: string, html: string): Promise<{ s
   }
   const data = await res.json() as { id?: string };
   return { sent: true, resend_id: data.id };
+}
+
+// Resolve the pet's name from assessment data (orders.assessment_answers JSONB).
+// Mirrors how first_name is read, with support for pets[0].name or a flat
+// pet_name. Returns "" if missing — caller applies PET_FALLBACK.
+export function resolvePetName(assessment: unknown): string {
+  try {
+    const a = assessment as { pets?: Array<{ name?: string | null }>; pet_name?: string | null } | null;
+    const fromArray = a?.pets?.[0]?.name ?? "";
+    const flat = a?.pet_name ?? "";
+    return String(fromArray || flat || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+// Render the 5-minute recovery SMS. Short, safe, no diagnosis / ESA / PSD /
+// disability / "doctor" wording. Pet name falls back to "your pet". The resume
+// link carries the promo so the discount auto-applies at checkout.
+function buildRecoverySms(firstName: string, petName: string, resumeUrl: string): string {
+  const name = (firstName || "").trim() || "there";
+  const pet = (petName || "").trim() || PET_FALLBACK;
+  const url = `${resumeUrl}&promo=${encodeURIComponent(SMS_DISCOUNT_CODE)}`;
+  return `Hi ${name}, we saved your PawTenant checkout for ${pet}. Use code ${SMS_DISCOUNT_CODE} for $20 off and complete it securely here: ${url}. Reply STOP to opt out.`;
+}
+
+// Send the recovery SMS through PawTenant's EXISTING Comms SMS transport —
+// the same ghl-send-sms Edge Function used by Order Details -> Comms. That
+// function performs the GHL send AND writes the `communications` row (status,
+// sent_by, twilio_sid=ghl:<id>), so we do NOT log here (avoids double logging).
+// Called with the service-role key as bearer. Never throws.
+async function sendRecoverySmsViaComms(
+  opts: { orderId: string; confirmationId: string; toPhone: string; message: string; sentBy: string },
+): Promise<{ sent: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ghl-send-sms`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+        "apikey": SERVICE_ROLE_KEY,
+      },
+      body: JSON.stringify({
+        orderId: opts.orderId,
+        confirmationId: opts.confirmationId,
+        toPhone: opts.toPhone,
+        message: opts.message,
+        sentBy: opts.sentBy,
+      }),
+    });
+    const data = await res.json().catch(() => ({ ok: false, error: "invalid response" })) as { ok?: boolean; error?: string };
+    return { sent: !!data.ok, error: data.ok ? undefined : (data.error ?? `ghl-send-sms HTTP ${res.status}`) };
+  } catch (err) {
+    return { sent: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export async function writeAuditLog(
@@ -178,15 +243,17 @@ async function loadMasterLayout(supabase: SupabaseClient): Promise<string | null
 
 function buildEmailFromTemplate(
   tmpl: { subject: string; body: string; ctaLabel: string; ctaUrl: string },
-  vars: { name: string; letter_type: string; resume_url: string; discount_code?: string },
+  vars: { name: string; letter_type: string; resume_url: string; discount_code?: string; petname?: string },
   badge: string,
   heading: string,
   subheading: string,
   orderId: string,
   masterLayout?: string | null,
 ): string {
+  const petName = (vars.petname ?? "").trim() || PET_FALLBACK;
   const sub = (s: string) =>
     s.replace(/\{name\}/g, escapeHtml(vars.name))
+     .replace(/\{petname\}/g, escapeHtml(petName))
      .replace(/\{letter_type\}/g, vars.letter_type)
      .replace(/\{resume_url\}/g, vars.resume_url)
      .replace(/\{discount_code\}/g, vars.discount_code ?? DISCOUNT_CODE)
@@ -411,7 +478,7 @@ export async function runLeadFollowupSequence(
 
     const { data: leads, error } = await supabase
       .from("orders")
-      .select("id, confirmation_id, email, first_name, phone, letter_type, created_at, seq_30min_sent_at, seq_24h_sent_at, seq_3day_sent_at, payment_intent_id, status, paid_at, followup_opt_out")
+      .select("id, confirmation_id, email, first_name, phone, letter_type, created_at, seq_30min_sent_at, seq_24h_sent_at, seq_3day_sent_at, sms_5min_sent_at, sms_opted_out, assessment_answers, payment_intent_id, status, paid_at, followup_opt_out")
       .is("payment_intent_id", null)
       .is("paid_at", null)
       .neq("status", "completed")
@@ -419,7 +486,7 @@ export async function runLeadFollowupSequence(
       .neq("status", "refunded")
       .not("email", "is", null)
       .gte("created_at", maxAgeDate)
-      .or("seq_30min_sent_at.is.null,seq_24h_sent_at.is.null,seq_3day_sent_at.is.null");
+      .or("seq_30min_sent_at.is.null,seq_24h_sent_at.is.null,seq_3day_sent_at.is.null,sms_5min_sent_at.is.null");
 
     if (error) return { ok: false, processed: 0, results: emptyResults(), error: error.message };
 
@@ -442,18 +509,49 @@ export async function runLeadFollowupSequence(
       const assessmentPath = letterType === "psd" ? "psd-assessment" : "assessment";
       const resumeLink = `${SITE_URL}/${assessmentPath}?resume=${encodeURIComponent(lead.confirmation_id as string)}`;
       const firstName = (lead.first_name as string) || "";
+      const petName = resolvePetName(lead.assessment_answers);
+      const phone = ((lead.phone as string | null) ?? "").trim();
       const email = lead.email as string;
       const orderId = lead.id as string;
       const confirmationId = lead.confirmation_id as string;
 
-      if (ageMin >= 30 && !lead.seq_30min_sent_at) {
+      // ── 5-minute SMS recovery (independent of the email stage) ───────────────
+      // Strict trigger: unpaid (already filtered above), age >= 5 min, has phone,
+      // not SMS-opted-out, and not already sent. Idempotency uses an ATOMIC claim
+      // (flip sms_5min_sent_at null -> now) so concurrent/repeated cron runs send
+      // at most one 5-minute SMS per lead.
+      if (ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
+        const { data: claimed, error: claimErr } = await supabase
+          .from("orders")
+          .update({ sms_5min_sent_at: new Date().toISOString() })
+          .eq("id", orderId)
+          .is("sms_5min_sent_at", null)
+          .select("id");
+        if (!claimErr && claimed && claimed.length > 0) {
+          const smsMsg = buildRecoverySms(firstName, petName, resumeLink);
+          const smsRes = await sendRecoverySmsViaComms({
+            orderId, confirmationId, toPhone: phone, message: smsMsg, sentBy: "auto_sequence:sms_5min",
+          });
+          await writeAuditLog(supabase, {
+            action: "sms_5min_sent",
+            description: `5-min recovery SMS ${smsRes.sent ? "sent" : "failed"} to order ${confirmationId}`,
+            object_id: confirmationId,
+            metadata: { order_id: orderId, sms_sent: smsRes.sent, step: "sms_5min", error: smsRes.error ?? null },
+          });
+          if (smsRes.sent) results.sms_5min++;
+        } else {
+          results.dedup_skipped++;
+        }
+      }
+
+      if (ageMin >= 5 && !lead.seq_30min_sent_at) {
         const dbTmpl30 = await loadSeqTemplate(supabase, "seq_30min");
         const label = letterType === "psd" ? "PSD Letter" : "ESA Letter";
         const subject = dbTmpl30
           ? dbTmpl30.subject.replace(/\{letter_type\}/g, label)
           : `Complete Your ${letterType === "psd" ? "PSD" : "ESA"} Letter — Your answers are saved`;
         const html30 = dbTmpl30
-          ? buildEmailFromTemplate(dbTmpl30, { name: firstName, letter_type: label, resume_url: resumeLink }, "Incomplete Application", `Your ${label} is waiting!`, "Your assessment answers have been saved — pick up where you left off", orderId, masterLayout)
+          ? buildEmailFromTemplate(dbTmpl30, { name: firstName, letter_type: label, resume_url: resumeLink, petname: petName }, "Incomplete Application", `Your ${label} is waiting!`, "Your assessment answers have been saved — pick up where you left off", orderId, masterLayout)
           : build30MinEmail(firstName, resumeLink, letterType, orderId);
 
         const r = await sendSequenceStep(supabase, {
@@ -479,7 +577,7 @@ export async function runLeadFollowupSequence(
           ? dbTmpl24.subject.replace(/\{letter_type\}/g, label24)
           : `Still thinking? Get your ${letterType === "psd" ? "PSD" : "ESA"} letter today and avoid housing issues.`;
         const html24 = dbTmpl24
-          ? buildEmailFromTemplate(dbTmpl24, { name: firstName, letter_type: label24, resume_url: resumeLink }, "Still Thinking?", "Get your ESA letter today and avoid housing issues.", "Your assessment is saved — complete checkout in under 2 minutes", orderId, masterLayout)
+          ? buildEmailFromTemplate(dbTmpl24, { name: firstName, letter_type: label24, resume_url: resumeLink, petname: petName }, "Still Thinking?", "Get your ESA letter today and avoid housing issues.", "Your assessment is saved — complete checkout in under 2 minutes", orderId, masterLayout)
           : build24hEmail(firstName, resumeLink, letterType, orderId);
 
         const r = await sendSequenceStep(supabase, {
@@ -505,7 +603,7 @@ export async function runLeadFollowupSequence(
           ? dbTmpl3d.subject.replace(/\{letter_type\}/g, label3d).replace(/\{discount_code\}/g, DISCOUNT_CODE)
           : `Here's $20 off your ${letterType === "psd" ? "PSD" : "ESA"} letter (limited time) — Discount code: ${DISCOUNT_CODE}`;
         const html3d = dbTmpl3d
-          ? buildEmailFromTemplate(dbTmpl3d, { name: firstName, letter_type: label3d, resume_url: resumeLink, discount_code: DISCOUNT_CODE }, "Limited Time Offer", `Here's $20 off your ${label3d}!`, "Exclusive discount — expires in 48 hours", orderId, masterLayout)
+          ? buildEmailFromTemplate(dbTmpl3d, { name: firstName, letter_type: label3d, resume_url: resumeLink, discount_code: DISCOUNT_CODE, petname: petName }, "Limited Time Offer", `Here's $20 off your ${label3d}!`, "Exclusive discount — expires in 48 hours", orderId, masterLayout)
           : build3DayEmail(firstName, resumeLink, letterType, orderId);
 
         const r = await sendSequenceStep(supabase, {
@@ -527,11 +625,11 @@ export async function runLeadFollowupSequence(
       results.skipped++;
     }
 
-    const totalFired = results.step1_30min + results.step2_24h + results.step3_3day;
+    const totalFired = results.step1_30min + results.step2_24h + results.step3_3day + results.sms_5min;
     if (totalFired > 0 || results.dedup_skipped > 0) {
       await writeAuditLog(supabase, {
         action: "seq_run_complete",
-        description: `Sequence run: ${totalFired} sent, ${results.dedup_skipped} dedup-skipped — 30min: ${results.step1_30min}, 24h: ${results.step2_24h}, 3day: ${results.step3_3day}`,
+        description: `Sequence run: ${totalFired} sent, ${results.dedup_skipped} dedup-skipped — 5min-email: ${results.step1_30min}, sms-5min: ${results.sms_5min}, 24h: ${results.step2_24h}, 3day: ${results.step3_3day}`,
         object_id: "system",
         metadata: { ...results, total_leads: leads?.length ?? 0 },
       });
