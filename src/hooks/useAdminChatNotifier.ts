@@ -260,6 +260,15 @@ export function useAdminChatNotifier(
   const sessionsReqRef      = useRef(0);
   const mountedRef          = useRef(true);
   const initialLoadedRef    = useRef(false);
+  // 2026-06-05 ADMIN-LOAD-CONTENTION: the 5s poll interval previously
+  // launched a new chat_sessions fetch (+ up to 4 follow-up order lookups)
+  // even while the prior poll was still in flight. Under network congestion
+  // each poll can run up to its 15s abort timeout, so 3+ poll cycles would
+  // overlap and exhaust the browser's connection budget to Supabase —
+  // starving the admin dashboard's own boot queries and leaving it stuck on
+  // "Loading dashboard...". This flag lets the interval skip a tick while a
+  // poll is already running (manual refresh + initial load still run).
+  const pollInFlightRef     = useRef(false);
 
   const prevUnreadRef       = useRef<Map<string, number>>(new Map());
   const firstSeenRef        = useRef<Map<string, boolean>>(new Map());
@@ -540,6 +549,7 @@ export function useAdminChatNotifier(
         setError(null);
       }
 
+      pollInFlightRef.current = true;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -889,6 +899,7 @@ export function useAdminChatNotifier(
         }
       } finally {
         clearTimeout(timeoutId);
+        pollInFlightRef.current = false;
         if (isLatest() && !background) setRefreshing(false);
       }
     },
@@ -948,6 +959,10 @@ export function useAdminChatNotifier(
     void loadSessions(false);
     const id = window.setInterval(() => {
       if (!mountedRef.current) return;
+      // Skip this tick if the previous poll (or initial/manual load) is
+      // still running — prevents overlapping in-flight fetches from
+      // saturating the Supabase connection budget under congestion.
+      if (pollInFlightRef.current) return;
       void loadSessions(true);
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(id);

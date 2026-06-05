@@ -1466,7 +1466,19 @@ export default function AdminOrdersPage() {
         setAdminProfile(adminProfileData);
 
         try {
-          await loadOrderData();
+          // 2026-06-05 ADMIN-LOAD-CONTENTION: loadOrderData runs orders +
+          // doctor_contacts + doctor_profiles in parallel, but under browser→
+          // Supabase connection congestion the secondary queries can be
+          // starved for tens of seconds, which used to hold the whole
+          // dashboard on "Loading dashboard..." because the loader only drops
+          // after this await resolves. Race it against an 8s cap: loadOrderData
+          // keeps running and its setState calls still populate the UI when the
+          // data lands (and the 30s auto-refresh re-pulls), but the loader is
+          // never held hostage by a slow secondary query.
+          await Promise.race([
+            loadOrderData(),
+            new Promise<void>((resolve) => setTimeout(resolve, 8000)),
+          ]);
         } catch (dataErr) {
           console.error("[admin-orders] initial data load failed (shell will still render):", dataErr);
         }
