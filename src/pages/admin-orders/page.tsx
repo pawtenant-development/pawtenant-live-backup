@@ -369,6 +369,12 @@ export default function AdminOrdersPage() {
   const [doctorContacts, setDoctorContacts] = useState<DoctorContact[]>([]);
   const [doctorProfiles, setDoctorProfiles] = useState<DoctorProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  // True when the PRIMARY orders fetch failed and we have nothing to show —
+  // drives a retry affordance instead of a misleading "No orders" empty state.
+  const [ordersError, setOrdersError] = useState(false);
+  // Monotonic sequence so a slower, older orders fetch can never overwrite a
+  // newer one (boot + 30s auto-refresh + manual Refresh can overlap).
+  const loadSeqRef = useRef(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSyncMsg, setRefreshSyncMsg] = useState("");
   const [search, setSearch] = useState("");
@@ -620,86 +626,94 @@ export default function AdminOrdersPage() {
   // 2026-04-25: allSettled so one failing query (e.g. 522 from pool
   // saturation) doesn't unwind the whole admin boot into an infinite loader.
   const loadOrderData = useCallback(async () => {
+    // 2026-06-06 ADMIN-ORDERS-ZERO-ORDERS: the orders fetch is the PRIMARY
+    // signal that gates Orders-tab + dashboard readiness, so it is awaited on
+    // its own. The provider rosters (doctor_contacts/doctor_profiles) and note
+    // counts are SECONDARY — under browser->Supabase connection congestion they
+    // can lag for tens of seconds, and awaiting them was what used to hang the
+    // whole admin. They now run fire-and-forget so they fill the UI when they
+    // land without holding the loader, and orders is never presented empty
+    // before its query actually finished.
+    const seq = ++loadSeqRef.current;
+    const isLatest = () => seq === loadSeqRef.current;
+
     try {
-      const [ordersSettled, contactsSettled, profilesSettled] = await Promise.allSettled([
-        // ATTR-CONSISTENCY-LOCK 2026-05-23 (owner-approved follow-up to the
-        // ATTR-CONSISTENCY-LOCK modal mirror): restore the seven attribution
-        // columns the acquisition classifier consumes for both the Overview
-        // source badge AND the OrderCard list pill. Without these the order
-        // row arrives at the classifier with no paid-signal data, so the
-        // pill / Overview chip collapses to the legacy referred_by salvage
-        // label (Dayana case: gclid set + referred_by="State page" rendered
-        // as "Referral" outside the modal, "Google Ads" inside the
-        // Attribution / Journey tab — a documented three-way disagreement).
-        //
-        // Previous 2026-05-15 hotfix removed these columns after the SELECT
-        // returned 400 and emptied Orders + Dashboard + Analytics. That
-        // failure mode is no longer reproducible — AttributionJourneyTab's
-        // separate self-fetch (this same repo, this same LIVE Supabase) has
-        // been pulling the identical column set successfully every day
-        // since. Restoring here closes Dayana parity without touching any
-        // of the unrelated systems that benefit from the rest of the row.
-        //
-        // If the 400 returns under load, the safest minimal revert is to
-        // drop ONLY the two json columns (first_touch_json,last_touch_json);
-        // the five flat columns (utm_source,utm_medium,utm_campaign,gclid,
-        // fbclid) MUST stay because they carry the click-ID signals the
-        // pill hierarchy needs on every paid order.
-        supabase.from("orders").select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json").order("created_at", { ascending: false }),
-        supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
-        supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role, portal_first_accessed_at").order("full_name"),
-      ]);
+      // ── PRIMARY: orders ────────────────────────────────────────────────
+      // ATTR-CONSISTENCY-LOCK 2026-05-23: keep the attribution columns the
+      // acquisition classifier consumes (utm_source,utm_medium,utm_campaign,
+      // gclid,fbclid,first_touch_json,last_touch_json). If a 400 returns under
+      // load, drop ONLY first_touch_json,last_touch_json — the five flat
+      // utm/click-id columns MUST stay (paid-signal for the pill hierarchy).
+      const ordersRes = await supabase
+        .from("orders")
+        .select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json")
+        .order("created_at", { ascending: false });
 
-      let loadedOrders: Order[] = [];
-      if (ordersSettled.status === "fulfilled" && !ordersSettled.value.error) {
-        loadedOrders = (ordersSettled.value.data as Order[]) ?? [];
-        setOrders(loadedOrders);
-      } else {
-        console.error(
-          "[admin-orders] orders query failed:",
-          ordersSettled.status === "rejected" ? ordersSettled.reason : ordersSettled.value.error,
-        );
-      }
+      if (!ordersRes.error) {
+        const loadedOrders = (ordersRes.data as Order[]) ?? [];
+        // Sequence guard: a stale older fetch must never overwrite a newer one.
+        if (isLatest()) {
+          setOrders(loadedOrders);
+          setOrdersError(false);
+        }
 
-      if (contactsSettled.status === "fulfilled" && !contactsSettled.value.error) {
-        setDoctorContacts((contactsSettled.value.data as DoctorContact[]) ?? []);
+        // Note counts depend on the loaded order ids — SECONDARY, non-blocking.
+        if (loadedOrders.length > 0) {
+          void (async () => {
+            try {
+              const { data: notesData } = await supabase
+                .from("doctor_notes")
+                .select("order_id")
+                .in("order_id", loadedOrders.map((o) => o.id));
+              if (notesData && isLatest()) {
+                const counts: Record<string, number> = {};
+                (notesData as { order_id: string }[]).forEach((n) => {
+                  counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
+                });
+                setOrderNoteCounts(counts);
+              }
+            } catch (notesErr) {
+              console.error("[admin-orders] doctor_notes query failed:", notesErr);
+            }
+          })();
+        }
       } else {
-        console.error(
-          "[admin-orders] doctor_contacts query failed:",
-          contactsSettled.status === "rejected" ? contactsSettled.reason : contactsSettled.value.error,
-        );
-      }
-
-      if (profilesSettled.status === "fulfilled" && !profilesSettled.value.error) {
-        setDoctorProfiles((profilesSettled.value.data as DoctorProfile[]) ?? []);
-      } else {
-        console.error(
-          "[admin-orders] doctor_profiles query failed:",
-          profilesSettled.status === "rejected" ? profilesSettled.reason : profilesSettled.value.error,
-        );
+        // Do NOT clear existing orders on failure. Flag it so the Orders tab
+        // shows a retry affordance instead of a misleading empty state; the
+        // 30s auto-refresh keeps retrying.
+        console.error("[admin-orders] orders query failed:", ordersRes.error);
+        if (isLatest()) setOrdersError(true);
       }
 
       setLastSyncedAt(new Date());
 
-      if (loadedOrders.length > 0) {
-        try {
-          const { data: notesData } = await supabase
-            .from("doctor_notes")
-            .select("order_id")
-            .in("order_id", loadedOrders.map((o) => o.id));
-          if (notesData) {
-            const counts: Record<string, number> = {};
-            (notesData as { order_id: string }[]).forEach((n) => {
-              counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
-            });
-            setOrderNoteCounts(counts);
-          }
-        } catch (notesErr) {
-          console.error("[admin-orders] doctor_notes query failed:", notesErr);
+      // ── SECONDARY: provider rosters (fire-and-forget, never blocks loader) ─
+      void (async () => {
+        const [contactsSettled, profilesSettled] = await Promise.allSettled([
+          supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
+          supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role, portal_first_accessed_at").order("full_name"),
+        ]);
+        if (!isLatest()) return;
+        if (contactsSettled.status === "fulfilled" && !contactsSettled.value.error) {
+          setDoctorContacts((contactsSettled.value.data as DoctorContact[]) ?? []);
+        } else {
+          console.error(
+            "[admin-orders] doctor_contacts query failed:",
+            contactsSettled.status === "rejected" ? contactsSettled.reason : contactsSettled.value.error,
+          );
         }
-      }
+        if (profilesSettled.status === "fulfilled" && !profilesSettled.value.error) {
+          setDoctorProfiles((profilesSettled.value.data as DoctorProfile[]) ?? []);
+        } else {
+          console.error(
+            "[admin-orders] doctor_profiles query failed:",
+            profilesSettled.status === "rejected" ? profilesSettled.reason : profilesSettled.value.error,
+          );
+        }
+      })();
     } catch (outerErr) {
       console.error("[admin-orders] loadOrderData failed:", outerErr);
+      if (isLatest()) setOrdersError(true);
     }
   }, []);
 
@@ -1466,19 +1480,13 @@ export default function AdminOrdersPage() {
         setAdminProfile(adminProfileData);
 
         try {
-          // 2026-06-05 ADMIN-LOAD-CONTENTION: loadOrderData runs orders +
-          // doctor_contacts + doctor_profiles in parallel, but under browser→
-          // Supabase connection congestion the secondary queries can be
-          // starved for tens of seconds, which used to hold the whole
-          // dashboard on "Loading dashboard..." because the loader only drops
-          // after this await resolves. Race it against an 8s cap: loadOrderData
-          // keeps running and its setState calls still populate the UI when the
-          // data lands (and the 30s auto-refresh re-pulls), but the loader is
-          // never held hostage by a slow secondary query.
-          await Promise.race([
-            loadOrderData(),
-            new Promise<void>((resolve) => setTimeout(resolve, 8000)),
-          ]);
+          // 2026-06-06 ADMIN-ORDERS-ZERO-ORDERS: await loadOrderData — it now
+          // resolves as soon as the PRIMARY orders query completes (provider
+          // rosters + note counts run fire-and-forget inside it), so the loader
+          // drops with REAL orders in hand and never flashes an empty list.
+          // The previous 8s race dropped the loader before orders arrived,
+          // which made the Orders tab show "No orders match your filters".
+          await loadOrderData();
         } catch (dataErr) {
           console.error("[admin-orders] initial data load failed (shell will still render):", dataErr);
         }
@@ -2292,6 +2300,19 @@ export default function AdminOrdersPage() {
                   <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
                   <p className="text-sm text-gray-500">Loading all orders...</p>
                 </div>
+              </div>
+            ) : ordersError && orders.length === 0 ? (
+              <div className="bg-white rounded-xl border border-red-200 p-12 text-center">
+                <div className="w-14 h-14 flex items-center justify-center bg-red-50 rounded-full mx-auto mb-3">
+                  <i className="ri-wifi-off-line text-red-400 text-2xl"></i>
+                </div>
+                <p className="text-sm font-bold text-gray-700">Couldn’t load orders</p>
+                <p className="text-xs text-gray-500 mt-1">The orders list failed to load. Your data is safe — this is a connection issue.</p>
+                <button type="button"
+                  onClick={() => { setOrdersError(false); setLoading(true); loadOrderData().finally(() => setLoading(false)); }}
+                  className="whitespace-nowrap mt-3 px-4 py-2 bg-[#3b6ea5] text-white text-sm font-semibold rounded-lg cursor-pointer hover:bg-[#33608f]">
+                  Retry
+                </button>
               </div>
             ) : filtered.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
