@@ -32,10 +32,19 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 const DISCOUNT_CODE = "20PAW";
 // SMS recovery discount code (task spec). Must exist as a Stripe coupon/promotion
-// code for the $20 off to apply at checkout.
+// code for the $20 off to apply at checkout. Admin-overridable via
+// comms_settings key `recovery_sms_promo_code`.
 const SMS_DISCOUNT_CODE = "PAW20";
 // Safe fallback when an order has no pet name in assessment data.
 const PET_FALLBACK = "your pet";
+// Default 5-minute recovery SMS template. Admin-overridable via comms_settings
+// key `recovery_sms_5min_template`. Merge tags: {name}/{first_name}, {petname}
+// (falls back to "your pet"), {promo_code} (defaults to PAW20), {resume_url}
+// (the substituted link already carries &promo=<code> so the discount applies).
+// MUST stay byte-identical to RECOVERY_TEXT_DEFAULTS.recovery_sms_5min_template
+// in CommunicationsTemplatesPanel.tsx so the admin "reset to default" matches.
+const DEFAULT_SMS_TEMPLATE =
+  "Hi {first_name}, we saved your PawTenant checkout for {petname}. Use code {promo_code} for $20 off and complete it securely here: {resume_url}. Reply STOP to opt out.";
 
 const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
@@ -124,14 +133,53 @@ export function resolvePetName(assessment: unknown): string {
   }
 }
 
-// Render the 5-minute recovery SMS. Short, safe, no diagnosis / ESA / PSD /
-// disability / "doctor" wording. Pet name falls back to "your pet". The resume
-// link carries the promo so the discount auto-applies at checkout.
-function buildRecoverySms(firstName: string, petName: string, resumeUrl: string): string {
-  const name = (firstName || "").trim() || "there";
-  const pet = (petName || "").trim() || PET_FALLBACK;
-  const url = `${resumeUrl}&promo=${encodeURIComponent(SMS_DISCOUNT_CODE)}`;
-  return `Hi ${name}, we saved your PawTenant checkout for ${pet}. Use code ${SMS_DISCOUNT_CODE} for $20 off and complete it securely here: ${url}. Reply STOP to opt out.`;
+// Admin-configurable SMS recovery config, read from comms_settings. Defaults
+// preserve the current LIVE behavior (SMS enabled, default template, PAW20).
+// Any read failure degrades to defaults so the sequence never breaks.
+interface RecoverySmsConfig { enabled: boolean; template: string; promoCode: string; }
+
+async function loadRecoverySmsConfig(supabase: SupabaseClient): Promise<RecoverySmsConfig> {
+  const defaults: RecoverySmsConfig = { enabled: true, template: DEFAULT_SMS_TEMPLATE, promoCode: SMS_DISCOUNT_CODE };
+  try {
+    const { data, error } = await supabase
+      .from("comms_settings")
+      .select("key, value")
+      .in("key", ["recovery_sms_enabled", "recovery_sms_5min_template", "recovery_sms_promo_code"]);
+    if (error || !data) return defaults;
+    const map = new Map<string, string | null>((data as Array<{ key: string; value: string | null }>).map((r) => [r.key, r.value]));
+    // enabled: default TRUE unless an explicit falsey value is stored.
+    let enabled = true;
+    if (map.has("recovery_sms_enabled")) {
+      const v = (map.get("recovery_sms_enabled") ?? "").trim().toLowerCase();
+      enabled = v === "true" || v === "1" || v === "yes" || v === "on";
+    }
+    const template = (map.get("recovery_sms_5min_template") ?? "").trim() || DEFAULT_SMS_TEMPLATE;
+    const promoCode = (map.get("recovery_sms_promo_code") ?? "").trim() || SMS_DISCOUNT_CODE;
+    return { enabled, template, promoCode };
+  } catch {
+    return defaults;
+  }
+}
+
+// Render the 5-minute recovery SMS from the (admin-editable) template. Short,
+// safe, no diagnosis / ESA / PSD / disability / "doctor" wording. {petname}
+// falls back to "your pet"; {promo_code} defaults to PAW20; {resume_url} is
+// substituted WITH &promo=<code> appended so the discount auto-applies at
+// checkout. {name} and {first_name} both map to the lead's first name.
+function renderRecoverySms(
+  template: string,
+  vars: { firstName: string; petName: string; resumeUrl: string; promoCode: string },
+): string {
+  const name = (vars.firstName || "").trim() || "there";
+  const pet = (vars.petName || "").trim() || PET_FALLBACK;
+  const promo = (vars.promoCode || "").trim() || SMS_DISCOUNT_CODE;
+  const urlWithPromo = `${vars.resumeUrl}&promo=${encodeURIComponent(promo)}`;
+  return (template && template.trim() ? template : DEFAULT_SMS_TEMPLATE)
+    .replace(/\{first_name\}/g, name)
+    .replace(/\{name\}/g, name)
+    .replace(/\{petname\}/g, pet)
+    .replace(/\{promo_code\}/g, promo)
+    .replace(/\{resume_url\}/g, urlWithPromo);
 }
 
 // Send the recovery SMS through PawTenant's EXISTING Comms SMS transport —
@@ -492,6 +540,9 @@ export async function runLeadFollowupSequence(
 
     const results = emptyResults();
     const masterLayout = await loadMasterLayout(supabase);
+    // Admin-configurable 5-minute SMS recovery (enable toggle + template + promo).
+    // Read once per run. Email stages are UNAFFECTED by this config.
+    const smsConfig = await loadRecoverySmsConfig(supabase);
 
     for (const lead of (leads ?? [])) {
       if (lead.payment_intent_id || lead.paid_at || lead.status === "completed") { results.skipped++; continue; }
@@ -516,11 +567,14 @@ export async function runLeadFollowupSequence(
       const confirmationId = lead.confirmation_id as string;
 
       // ── 5-minute SMS recovery (independent of the email stage) ───────────────
-      // Strict trigger: unpaid (already filtered above), age >= 5 min, has phone,
-      // not SMS-opted-out, and not already sent. Idempotency uses an ATOMIC claim
-      // (flip sms_5min_sent_at null -> now) so concurrent/repeated cron runs send
-      // at most one 5-minute SMS per lead.
-      if (ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
+      // Strict trigger: SMS recovery enabled (admin toggle), unpaid (already
+      // filtered above), age >= 5 min, has phone, not SMS-opted-out, and not
+      // already sent. Idempotency uses an ATOMIC claim (flip sms_5min_sent_at
+      // null -> now) so concurrent/repeated cron runs send at most one 5-minute
+      // SMS per lead. When the toggle is OFF we skip entirely (no claim, no
+      // send) — email stages below are unaffected, and manual Order->Comms SMS
+      // is a separate path that this never touches.
+      if (smsConfig.enabled && ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
         const { data: claimed, error: claimErr } = await supabase
           .from("orders")
           .update({ sms_5min_sent_at: new Date().toISOString() })
@@ -528,7 +582,7 @@ export async function runLeadFollowupSequence(
           .is("sms_5min_sent_at", null)
           .select("id");
         if (!claimErr && claimed && claimed.length > 0) {
-          const smsMsg = buildRecoverySms(firstName, petName, resumeLink);
+          const smsMsg = renderRecoverySms(smsConfig.template, { firstName, petName, resumeUrl: resumeLink, promoCode: smsConfig.promoCode });
           const smsRes = await sendRecoverySmsViaComms({
             orderId, confirmationId, toPhone: phone, message: smsMsg, sentBy: "auto_sequence:sms_5min",
           });

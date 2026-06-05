@@ -547,15 +547,22 @@ export function MasterEmailLayoutPanel() {
 // data is lost; they simply do not appear in the UI.
 type RecoveryToggleKey =
   | "recovery_enabled"
-  | "recovery_email_enabled";
+  | "recovery_email_enabled"
+  | "recovery_sms_enabled";
 
 type RecoveryNumKey =
   | "recovery_stage_1_minutes"
   | "recovery_stage_2_hours"
   | "recovery_stage_4_days";
 
+type RecoveryTextKey =
+  | "recovery_sms_5min_template"
+  | "recovery_sms_promo_code";
+
 const RECOVERY_NUM_DEFAULTS: Record<RecoveryNumKey, number> = {
-  recovery_stage_1_minutes: 30,
+  // Stage 1 fires at 5 minutes (backend: lead-followup-sequence/core.ts
+  // sends the first recovery email AND the one-time SMS at age >= 5 min).
+  recovery_stage_1_minutes: 5,
   recovery_stage_2_hours:   24,
   recovery_stage_4_days:    3,
 };
@@ -563,6 +570,19 @@ const RECOVERY_NUM_DEFAULTS: Record<RecoveryNumKey, number> = {
 const RECOVERY_TOGGLE_DEFAULTS: Record<RecoveryToggleKey, boolean> = {
   recovery_enabled:       true,
   recovery_email_enabled: true,
+  // SMS recovery is LIVE and intended ON. Controls ONLY the automatic 5-minute
+  // SMS — turning it off does NOT affect the email sequence or manual
+  // Order Details -> Comms SMS. Backend default is also TRUE when unset.
+  recovery_sms_enabled:   true,
+};
+
+// Text settings (free-text, not validated as numbers). Default template MUST
+// stay byte-identical to DEFAULT_SMS_TEMPLATE in
+// supabase/functions/lead-followup-sequence/core.ts.
+const RECOVERY_TEXT_DEFAULTS: Record<RecoveryTextKey, string> = {
+  recovery_sms_5min_template:
+    "Hi {first_name}, we saved your PawTenant checkout for {petname}. Use code {promo_code} for $20 off and complete it securely here: {resume_url}. Reply STOP to opt out.",
+  recovery_sms_promo_code: "PAW20",
 };
 
 // Phase G hotfix — re-exported alongside MasterEmailLayoutPanel for the
@@ -580,12 +600,14 @@ export function RecoverySequencePanel() {
     }
     return init as Record<RecoveryNumKey, string>;
   });
+  const [texts, setTexts]     = useState<Record<RecoveryTextKey, string>>({ ...RECOVERY_TEXT_DEFAULTS });
 
   useEffect(() => {
     (async () => {
       const allKeys = [
         ...Object.keys(RECOVERY_TOGGLE_DEFAULTS),
         ...Object.keys(RECOVERY_NUM_DEFAULTS),
+        ...Object.keys(RECOVERY_TEXT_DEFAULTS),
       ];
       const { data, error } = await supabase
         .from("comms_settings")
@@ -618,6 +640,15 @@ export function RecoverySequencePanel() {
           }
           return next;
         });
+
+        setTexts((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(RECOVERY_TEXT_DEFAULTS) as RecoveryTextKey[]) {
+            const v = map.get(k);
+            if (v !== undefined && v.trim() !== "") next[k] = v;
+          }
+          return next;
+        });
       }
       setLoading(false);
     })();
@@ -641,6 +672,25 @@ export function RecoverySequencePanel() {
       setTimeout(() => setStatus(null), 4000);
       return;
     }
+    // Light validation for the SMS template: must be non-empty and keep the
+    // {resume_url} tag (otherwise the recovery link is lost). Promo code must
+    // be non-empty.
+    const smsTmpl = texts.recovery_sms_5min_template.trim();
+    if (!smsTmpl) {
+      setStatus({ kind: "err", msg: "SMS template cannot be empty" });
+      setTimeout(() => setStatus(null), 4000);
+      return;
+    }
+    if (!smsTmpl.includes("{resume_url}")) {
+      setStatus({ kind: "err", msg: "SMS template must include {resume_url}" });
+      setTimeout(() => setStatus(null), 4000);
+      return;
+    }
+    if (!texts.recovery_sms_promo_code.trim()) {
+      setStatus({ kind: "err", msg: "Promo code cannot be empty" });
+      setTimeout(() => setStatus(null), 4000);
+      return;
+    }
     setSaving(true);
     setStatus(null);
 
@@ -654,6 +704,11 @@ export function RecoverySequencePanel() {
       ...(Object.keys(RECOVERY_NUM_DEFAULTS) as RecoveryNumKey[]).map((k) => ({
         key: k,
         value: String(Number(nums[k])),
+        updated_at: nowIso,
+      })),
+      ...(Object.keys(RECOVERY_TEXT_DEFAULTS) as RecoveryTextKey[]).map((k) => ({
+        key: k,
+        value: texts[k].trim(),
         updated_at: nowIso,
       })),
     ];
@@ -720,12 +775,12 @@ export function RecoverySequencePanel() {
 
   return (
     <div className="space-y-4">
-      {/* Active-stage banner — backend currently supports 3 email stages only */}
-      <div className="px-3 py-2.5 rounded-md border border-amber-200 bg-amber-50">
-        <p className="text-[12px] text-amber-900 leading-relaxed">
-          <strong>Active 3-stage email recovery.</strong> Only the 30-minute, 24-hour,
-          and 3-day recovery emails are currently active. Additional email/SMS stages
-          should not be enabled until backend support is implemented.
+      {/* Active-stage banner — reflects the live backend (5min email + 5min SMS, 24h + 3day email) */}
+      <div className="px-3 py-2.5 rounded-md border border-emerald-200 bg-emerald-50">
+        <p className="text-[12px] text-emerald-900 leading-relaxed">
+          <strong>Active recovery sequence:</strong> 5-minute email + one 5-minute SMS,
+          then 24-hour and 3-day email follow-ups. The SMS sends only once and stops if
+          the order is paid, cancelled, refunded, opted out, or already contacted.
         </p>
       </div>
 
@@ -738,16 +793,54 @@ export function RecoverySequencePanel() {
       <div className="space-y-2">
         <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Master Toggles</p>
         <Toggle label="Recovery Sequence Enabled" sub="Master switch — turns the entire automated sequence on or off" k="recovery_enabled" />
-        <Toggle label="Email Recovery Enabled"    sub="Controls all 3 active email stages"                            k="recovery_email_enabled" />
+        <Toggle label="Email Recovery Enabled"    sub="Controls the email stages (5-minute, 24-hour, 3-day)"          k="recovery_email_enabled" />
+        <Toggle label="SMS Recovery Enabled"      sub="Controls ONLY the one-time 5-minute recovery SMS. Off = no auto SMS; the email sequence and manual Order → Comms SMS are unaffected." k="recovery_sms_enabled" />
       </div>
 
-      {/* Email stages — 3 active stages only */}
+      {/* Email stages */}
       <div className="space-y-2">
         <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Email Stage Timings</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <NumField label="30-minute follow-up" suffix="minutes" k="recovery_stage_1_minutes" />
-          <NumField label="24-hour follow-up"   suffix="hours"   k="recovery_stage_2_hours" />
-          <NumField label="3-day follow-up"     suffix="days"    k="recovery_stage_4_days" />
+          <NumField label="5-minute follow-up" suffix="minutes" k="recovery_stage_1_minutes" />
+          <NumField label="24-hour follow-up"  suffix="hours"   k="recovery_stage_2_hours" />
+          <NumField label="3-day follow-up"    suffix="days"    k="recovery_stage_4_days" />
+        </div>
+      </div>
+
+      {/* SMS recovery (5-minute) — the one-time automatic SMS */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">SMS Recovery (5-minute)</p>
+        <div className="px-3 py-3 rounded-lg border border-gray-200 bg-white space-y-2.5">
+          <div>
+            <label className="text-xs font-semibold text-gray-700">5-minute SMS template</label>
+            <textarea
+              rows={3}
+              value={texts.recovery_sms_5min_template}
+              onChange={(e) => setTexts((p) => ({ ...p, recovery_sms_5min_template: e.target.value }))}
+              className="mt-1 w-full px-2.5 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:border-[#3b6ea5] font-mono leading-relaxed"
+              placeholder={RECOVERY_TEXT_DEFAULTS.recovery_sms_5min_template}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-xs font-semibold text-gray-700">Promo code</label>
+            <input
+              type="text"
+              value={texts.recovery_sms_promo_code}
+              onChange={(e) => setTexts((p) => ({ ...p, recovery_sms_promo_code: e.target.value.trim() }))}
+              className="w-32 px-2 py-1 text-xs border border-gray-300 rounded-md text-right focus:outline-none focus:border-[#3b6ea5] uppercase"
+              placeholder="PAW20"
+            />
+          </div>
+          <div className="rounded-md bg-gray-50 border border-gray-100 px-2.5 py-2">
+            <p className="text-[11px] font-semibold text-gray-600 mb-1">Merge tags</p>
+            <ul className="text-[11px] text-gray-500 space-y-0.5">
+              <li><code className="text-gray-700">{"{name}"}</code> / <code className="text-gray-700">{"{first_name}"}</code> — lead's first name (falls back to “there”)</li>
+              <li><code className="text-gray-700">{"{petname}"}</code> — pet name (falls back to “your pet”)</li>
+              <li><code className="text-gray-700">{"{resume_url}"}</code> — secure resume link (the promo is auto-appended)</li>
+              <li><code className="text-gray-700">{"{promo_code}"}</code> — defaults to <span className="font-semibold text-gray-700">PAW20</span></li>
+            </ul>
+            <p className="text-[10px] text-gray-400 mt-1.5">One SMS only, sent ~5 minutes after an unpaid lead with a phone number is created. Never re-sent.</p>
+          </div>
         </div>
       </div>
 
@@ -772,8 +865,8 @@ export function RecoverySequencePanel() {
       <div className="mt-3 px-3 py-2 rounded-md border border-dashed border-gray-300 bg-gray-50">
         <p className="text-[11px] text-gray-500">
           <strong className="text-gray-600">Planned (not yet wired):</strong> additional email stages
-          (48-hour, 5-day) and SMS recovery (3 stages). UI controls will return here once the backend
-          sequence engine implements them.
+          (48-hour, 5-day). By design there is only ONE automatic SMS (the 5-minute stage above) — no
+          24-hour, 3-day, or repeating SMS.
         </p>
       </div>
     </div>
