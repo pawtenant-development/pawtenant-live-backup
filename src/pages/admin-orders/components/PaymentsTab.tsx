@@ -7,6 +7,7 @@ import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 import PaymentsAccountsPanel from "./PaymentsAccountsPanel";
+import MarketingSpendPanel from "./MarketingSpendPanel";
 import {
   fetchChargePayouts, resolutionToClassification, payoutLabel,
   type ChargePayoutResolution, type PayoutClassification,
@@ -527,18 +528,28 @@ export default function PaymentsTab() {
               <div className="text-center"><i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i><p className="text-sm text-gray-500">Loading accounts…</p></div>
             </div>
           ) : (
-            <PaymentsAccountsPanel
-              period={period}
-              customActive={customActive}
-              customFrom={customFrom}
-              customTo={customTo}
-              rangeLabel={rangeLabel}
-              summary={data?.summary}
-              charges={data?.charges}
-              resolutionMap={resolutionMap}
-              canManageBooks={canManageBooks}
-              onOpenMonth={openAccountsMonth}
-            />
+            <>
+              <PaymentsAccountsPanel
+                period={period}
+                customActive={customActive}
+                customFrom={customFrom}
+                customTo={customTo}
+                rangeLabel={rangeLabel}
+                summary={data?.summary}
+                charges={data?.charges}
+                resolutionMap={resolutionMap}
+                canManageBooks={canManageBooks}
+                onOpenMonth={openAccountsMonth}
+              />
+              {/* Marketing spend / ROI layer — separate from Business Net. */}
+              <MarketingSpendPanel
+                from={customFrom || new Date().toISOString().slice(0, 10)}
+                to={customTo || new Date().toISOString().slice(0, 10)}
+                businessNet={businessNetTotal}
+                rangeLabel={rangeLabel}
+                canSync={canManageBooks}
+              />
+            </>
           )}
         </>
       )}
