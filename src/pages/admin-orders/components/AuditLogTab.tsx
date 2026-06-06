@@ -67,7 +67,7 @@ const ACTION_FRIENDLY: Record<string, string> = {
   doctor_assigned:       "Doctor assigned",
   doctor_reassigned:     "Doctor reassigned",
   order_status_updated:  "Order status updated",
-  seq_30min_sent:        "30-min follow-up sent",
+  seq_30min_sent:        "5-min follow-up sent",
   seq_24h_sent:          "24-hour follow-up sent",
   seq_3day_sent:         "3-day follow-up + $20 discount sent",
   seq_run_complete:      "Sequence run completed",

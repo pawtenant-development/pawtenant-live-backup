@@ -62,7 +62,7 @@ function sequenceStage(o: ExportableOrder): string {
   if (o.followup_opt_out || o.seq_opted_out_at) return "Opted Out";
   if (o.seq_3day_sent_at) return "3-Day Sent";
   if (o.seq_24h_sent_at) return "24h Sent";
-  if (o.seq_30min_sent_at) return "30min Sent";
+  if (o.seq_30min_sent_at) return "5min Sent";
   return "Not Started";
 }
 

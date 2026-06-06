@@ -2118,7 +2118,7 @@ export default function AdminOrdersPage() {
               const chips: { value: string; label: string; icon: string; activeColor: string; count: number }[] = [
                 { value: "all",          label: "All Leads",      icon: "ri-group-line",          activeColor: "bg-gray-700 text-white border-gray-700",          count: counts.all },
                 { value: "no_sequence",  label: "Not Started",    icon: "ri-time-line",            activeColor: "bg-gray-500 text-white border-gray-500",          count: counts.no_sequence },
-                { value: "30min_sent",   label: "30min Sent",     icon: "ri-mail-check-line",      activeColor: "bg-sky-600 text-white border-sky-600",            count: counts["30min_sent"] },
+                { value: "30min_sent",   label: "5min Sent",      icon: "ri-mail-check-line",      activeColor: "bg-sky-600 text-white border-sky-600",            count: counts["30min_sent"] },
                 { value: "24h_sent",     label: "24h Sent",       icon: "ri-mail-send-line",       activeColor: "bg-amber-500 text-white border-amber-500",        count: counts["24h_sent"] },
                 { value: "3day_sent",    label: "3-Day Sent",     icon: "ri-gift-line",            activeColor: "bg-violet-600 text-white border-violet-600",      count: counts["3day_sent"] },
                 { value: "opted_out",    label: "Opted Out",      icon: "ri-forbid-line",          activeColor: "bg-red-500 text-white border-red-500",            count: counts.opted_out },
@@ -2259,7 +2259,7 @@ export default function AdminOrdersPage() {
                         className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                         <option value="all">All Sequences</option>
                         <option value="no_sequence">No Sequence Sent</option>
-                        <option value="30min_sent">30min Email Sent</option>
+                        <option value="30min_sent">5min Email Sent</option>
                         <option value="24h_sent">24h Email Sent</option>
                         <option value="3day_sent">3-Day Email Sent</option>
                         <option value="opted_out">Opted Out</option>

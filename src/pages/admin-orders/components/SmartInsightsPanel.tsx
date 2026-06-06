@@ -109,7 +109,7 @@ function fallbackCard(title: string, icon: string): InsightCard {
 
 // Friendly stage label for recovery slugs.
 const STAGE_LABEL: Record<string, string> = {
-  seq_30min:           "30-minute email",
+  seq_30min:           "5-minute email",
   seq_24h:             "24-hour email",
   seq_48h:             "48-hour email",
   seq_3day:            "3-day email",

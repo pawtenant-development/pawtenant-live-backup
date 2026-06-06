@@ -1711,7 +1711,7 @@ function ManualSequenceRunPanel({ supabaseUrl }: { supabaseUrl: string }) {
         <div className="text-xs text-amber-800 leading-relaxed space-y-1">
           <p><strong>Emergency recovery tool.</strong> Use this if the automated cron has stopped firing.</p>
           <p>This continues eligible unpaid leads from their current sequence state. It will <strong>not reset previous sends</strong>, will <strong>not email paid orders</strong>, and respects opt-outs and existing dedupe protections.</p>
-          <p>If a lead got the 30-min email but missed the 24-hour, this will send the 24-hour. If it got the 24-hour but missed the 3-day, it sends the 3-day. Each run only sends what is genuinely due.</p>
+          <p>If a lead got the 5-min email but missed the 24-hour, this will send the 24-hour. If it got the 24-hour but missed the 3-day, it sends the 3-day. Each run only sends what is genuinely due.</p>
         </div>
       </div>
 
@@ -1762,7 +1762,7 @@ function ManualSequenceRunPanel({ supabaseUrl }: { supabaseUrl: string }) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { label: "Processed", value: result.processed ?? 0, color: "text-gray-700" },
-                { label: "Stage 1 (30min)", value: r.step1_30min ?? 0, color: "text-sky-600" },
+                { label: "Stage 1 (5min)", value: r.step1_30min ?? 0, color: "text-sky-600" },
                 { label: "Stage 2 (24h)", value: r.step2_24h ?? 0, color: "text-amber-600" },
                 { label: "Stage 3 (3-day)", value: r.step3_3day ?? 0, color: "text-violet-600" },
                 { label: "Skipped", value: r.skipped ?? 0, color: "text-gray-400" },
@@ -1883,7 +1883,7 @@ function SequenceManagementPanel() {
   const getSeqStepLabel = (o: SeqOrderInfo) => {
     if (o.seq_3day_sent_at) return "3-day sent";
     if (o.seq_24h_sent_at) return "24h sent";
-    if (o.seq_30min_sent_at) return "30min sent";
+    if (o.seq_30min_sent_at) return "5min sent";
     return "Not started";
   };
 
@@ -1903,7 +1903,7 @@ function SequenceManagementPanel() {
       <div className="bg-sky-50 border border-sky-100 rounded-xl p-4 flex items-start gap-3">
         <i className="ri-information-line text-sky-500 text-sm mt-0.5 flex-shrink-0"></i>
         <div className="text-xs text-sky-700 leading-relaxed space-y-1">
-          <p><strong>Automated Sequence:</strong> Lead orders automatically receive 3 follow-up emails — 30 minutes, 24 hours, and 3 days after assessment submission.</p>
+          <p><strong>Automated Sequence:</strong> Lead orders automatically receive 3 follow-up emails — 5 minutes, 24 hours, and 3 days after assessment submission.</p>
           <p><strong>Add to sequence:</strong> Resets all sequence steps so the order re-enters from the beginning on the next scheduler run.</p>
           <p><strong>Remove from sequence:</strong> Sets opt-out flag — no further follow-up emails will be sent for that order.</p>
         </div>

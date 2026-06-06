@@ -29,7 +29,7 @@ interface StageConfig {
 }
 
 const STAGES: StageConfig[] = [
-  { slug: "seq_30min",            label: "30-min email",        channel: "email", discount: "PAW20" },
+  { slug: "seq_30min",            label: "5-min email",         channel: "email", discount: "PAW20" },
   { slug: "seq_24h",              label: "24-hour email",       channel: "email", discount: "PAW20" },
   { slug: "seq_48h",              label: "48-hour email",       channel: "email", discount: "SPRING30" },
   { slug: "seq_3day",             label: "3-day email",         channel: "email", discount: "SPRING30" },

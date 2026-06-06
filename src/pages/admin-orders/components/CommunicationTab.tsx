@@ -147,7 +147,7 @@ function getChatConfig(entry: UnifiedLogEntry): {
     checkout_recovery: "Abandoned Checkout Recovery",
     followup_lead: "Lead Follow-up",
     consultation_booking: "Consultation Booking",
-    seq_30min: "Auto-Sequence: 30-Min",
+    seq_30min: "Auto-Sequence: 5-Min",
     seq_24h: "Auto-Sequence: 24-Hour",
     seq_3day: "Auto-Sequence: 3-Day",
     provider_assigned_customer: "Provider Assigned",
@@ -617,7 +617,7 @@ export default function CommunicationTab({
                     entry.type === "checkout_recovery" ? "Abandoned checkout recovery email with resume link sent." :
                     entry.type === "followup_lead" ? "Lead follow-up nudge email sent." :
                     entry.type === "consultation_booking" ? "Consultation booking confirmation email sent." :
-                    entry.type === "seq_30min" ? "Automated 30-minute follow-up sequence email sent." :
+                    entry.type === "seq_30min" ? "Automated 5-minute follow-up sequence email sent." :
                     entry.type === "seq_24h" ? "Automated 24-hour follow-up sequence email sent." :
                     entry.type === "seq_3day" ? "Automated 3-day follow-up sequence email sent." :
                     entry.type === "refund" ? "Refund confirmation email sent to customer." :

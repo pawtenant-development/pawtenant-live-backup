@@ -218,7 +218,7 @@ function getSeqStatus(o: Order): { label: string; color: string; icon: string } 
   if (o.followup_opt_out) return { label: "Opted Out", color: "bg-gray-100 text-gray-400", icon: "ri-mail-forbid-line" };
   if (o.seq_3day_sent_at) return { label: "3-day sent", color: "bg-violet-100 text-violet-700", icon: "ri-coupon-3-line" };
   if (o.seq_24h_sent_at) return { label: "24h sent", color: "bg-amber-100 text-amber-700", icon: "ri-time-line" };
-  if (o.seq_30min_sent_at) return { label: "30min sent", color: "bg-sky-100 text-sky-700", icon: "ri-mail-send-line" };
+  if (o.seq_30min_sent_at) return { label: "5min sent", color: "bg-sky-100 text-sky-700", icon: "ri-mail-send-line" };
   return null;
 }
 function doctorStatusLabel(s: string | null, assigned: boolean) {

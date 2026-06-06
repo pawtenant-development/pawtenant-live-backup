@@ -550,7 +550,7 @@ export default function SystemHealthTab() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-gray-900">Sequence Results</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Auto follow-up performance — emails &amp; SMS sent by the 30min / 24h / 3-day sequence</p>
+              <p className="text-xs text-gray-400 mt-0.5">Auto follow-up performance — emails &amp; SMS sent by the 5min / 24h / 3-day sequence</p>
             </div>
           </div>
           <button
@@ -579,7 +579,7 @@ export default function SystemHealthTab() {
                 {[
                   { label: "Emails Sent", value: seqStats.emails_24h, icon: "ri-mail-line", color: "text-[#3b6ea5]", bg: "bg-[#e8f0f9]" },
                   { label: "SMS Sent", value: seqStats.sms_24h, icon: "ri-message-2-line", color: "text-sky-600", bg: "bg-sky-50" },
-                  { label: "Step 1 (30min)", value: seqStats.step1_count, icon: "ri-time-line", color: "text-gray-600", bg: "bg-gray-50" },
+                  { label: "Step 1 (5min)", value: seqStats.step1_count, icon: "ri-time-line", color: "text-gray-600", bg: "bg-gray-50" },
                   { label: "Step 2 (24h)", value: seqStats.step2_count, icon: "ri-calendar-line", color: "text-amber-600", bg: "bg-amber-50" },
                 ].map(s => (
                   <div key={s.label} className={`${s.bg} rounded-xl border border-gray-200 p-4`}>
@@ -631,7 +631,7 @@ export default function SystemHealthTab() {
 
             <div className="flex items-start gap-2 text-xs text-gray-400">
               <i className="ri-information-line flex-shrink-0 mt-0.5"></i>
-              <p>Sequence fires every 30 minutes via pg_cron. &quot;Last 24h&quot; counts are based on when each step was sent. &quot;Converted&quot; = leads that received at least the 30min email and later paid.</p>
+              <p>Sequence fires every 30 minutes via pg_cron. &quot;Last 24h&quot; counts are based on when each step was sent. &quot;Converted&quot; = leads that received at least the 5min email and later paid.</p>
             </div>
           </div>
         ) : (
