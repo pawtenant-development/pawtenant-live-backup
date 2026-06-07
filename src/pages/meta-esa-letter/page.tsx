@@ -1,86 +1,48 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
+import MobileStickyApplyCTA from "@/components/feature/MobileStickyApplyCTA";
+import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
+import { ESA_PRICE_LABELS } from "@/config/pricing";
 
-type Short = {
-  /** YouTube video ID (from /shorts/<id>) */
-  id: string;
-  /** Caption / title shown under the card */
-  title: string;
-  /**
-   * Optional local override for the thumbnail.
-   * If you drop a JPG/WEBP at /public/assets/meta/shorts/<filename>.jpg
-   * and reference it here, it will be used instead of YouTube's CDN thumb.
-   */
-  thumb?: string;
-};
+/*
+ * Meta / Facebook Ads paid landing page — /meta-esa-letter
+ *
+ * 2026-06-06 redesign: rebuilt to mirror the PawTenant homepage — clean
+ * dark-cover hero, mobile-first, conversion-focused, NOT a text-heavy SEO
+ * page. Optimized for 90+ mobile PageSpeed:
+ *   - LCP hero reuses the homepage's responsive WebP <picture>
+ *     (mobile variant ≈23 KB) instead of the prior 166 KB eager JPG.
+ *   - Eager surface trimmed to hero + light sections; only the hero image
+ *     is eager (fetchPriority high). All other imagery is lazy + fixed
+ *     aspect to avoid CLS.
+ *   - Heavy below-fold imagery (lifestyle JPGs, 251 KB verification PNG)
+ *     removed; proof now uses the 7 KB sample-letter SVG + a text/icon
+ *     verification card.
+ *   - SEO/meta head mutation deferred past LCP via requestIdleCallback.
+ *
+ * Page stays noindex,nofollow (paid LP, not in sitemap/nav). Attribution,
+ * Meta Pixel, marketing scripts, and PawChat are all handled + deferred
+ * globally in App.tsx, so plain /assessment links keep tracking intact.
+ *
+ * Wording rules: no customer-facing "doctor"; use "Licensed Mental Health
+ * Provider/Practitioner". No guaranteed-approval / everyone-qualifies
+ * claims. Housing-focused; PSD offered as the public-access alternative.
+ */
 
-// YouTube Shorts testimonial reels.
-// Order rule: the real-person / own-footage Short leads the carousel.
-// AI-avatar / HeyGen-style testimonial reels follow it, never lead.
-// Owner-confirmed: `_2sX3zf9qdk` (process walkthrough) is the real-person
-// asset. The others are stylized testimonial reels and are kept for
-// supporting variety but must not appear before the real-person card.
-// To override a thumbnail, save a vertical JPG/WEBP into
-// /public/assets/meta/shorts/ and set `thumb: "/assets/meta/shorts/<file>.jpg"`.
-
-// Hide the AI-style testimonial Shorts carousel per mobile-cleanup pass.
-// Component + assets intentionally kept in source so this can be flipped
-// back without restoring code. Toggle to true to show the carousel again.
-const SHOW_SHORTS_CAROUSEL = false;
-
-const SHORTS: Short[] = [
-  {
-    // /shorts/_2sX3zf9qdk — real-person process walkthrough Short.
-    // Always first: real proof leads the carousel.
-    id: "_2sX3zf9qdk",
-    title: "A closer look at the process",
-  },
-  {
-    id: "HpEBlaqhO7o",
-    title: "“My landlord said no pets.”",
-    // thumb: "/assets/meta/shorts/no-pets.jpg",
-  },
-  {
-    id: "ouXRsTDrh3s",
-    title: "“We almost lost Teddy.”",
-    // thumb: "/assets/meta/shorts/teddy.jpg",
-  },
-  {
-    id: "v4OpIlJZMeY",
-    title: "“I have panic attacks.”",
-    // thumb: "/assets/meta/shorts/panic-attacks.jpg",
-  },
-  {
-    id: "tSr6-MCSx4w",
-    title: "“This looked sketchy at first…”",
-    thumb: "/assets/meta/shorts/thumb_v2_evelyn.jpg",
-  },
-];
-
-// SEO / social-share meta. The page is `noindex, nofollow` for organic
-// search (it is a paid Meta ad landing page), but title + description +
-// Open Graph + Twitter Card meta still matter for the browser tab,
-// social shares, and any internal link previews. Keywords are spread
-// naturally: ESA letter, emotional support animal letter, housing
-// accommodation, Licensed Mental Health Practitioner, Fair Housing Act,
-// PSD letter, online ESA evaluation.
 const META_TITLE =
   "ESA Letter Online for Housing | Licensed Practitioner Review | PawTenant";
 const META_DESC =
-  "Get an ESA letter online from a Licensed Mental Health Practitioner. Housing-focused emotional support animal documentation for Fair Housing Act accommodation. PSD letters also available.";
-const META_KEYWORDS =
-  "ESA letter online, emotional support animal letter, ESA letter for housing, Licensed Mental Health Practitioner, Fair Housing Act ESA, reasonable accommodation, psychiatric service dog letter, PSD letter, ESA evaluation online, ESA documentation, no-pet apartment ESA, ESA housing rights";
+  "Get an ESA letter online from a Licensed Mental Health Practitioner. Housing-focused emotional support animal documentation for Fair Housing Act accommodation.";
 const META_OG_IMAGE =
-  "https://pawtenant.com/assets/blog/fp-woman-dog-floor.jpg";
+  "https://pawtenant.com/assets/blog/fp-woman-sitting-floor.jpg";
 
 const ASSESSMENT_HREF = "/assessment";
 const PSD_ASSESSMENT_HREF = "/psd-assessment";
 
-// State pills are now linked to the canonical /esa-letter/[slug] route
-// (same route used by the Google LP). Slugs match the lowercase, hyphenated
-// format the StateESAPage route expects.
+// Popular states → canonical /esa-letter/<slug> route (same route the state
+// pages + Google LP use). Slugs are lowercase, hyphenated.
 const STATES: Array<{ name: string; slug: string }> = [
   { name: "California", slug: "california" },
   { name: "Texas", slug: "texas" },
@@ -88,231 +50,142 @@ const STATES: Array<{ name: string; slug: string }> = [
   { name: "New York", slug: "new-york" },
   { name: "Illinois", slug: "illinois" },
   { name: "Pennsylvania", slug: "pennsylvania" },
+  { name: "Ohio", slug: "ohio" },
   { name: "Georgia", slug: "georgia" },
   { name: "North Carolina", slug: "north-carolina" },
-  { name: "Ohio", slug: "ohio" },
+  { name: "Michigan", slug: "michigan" },
+  { name: "New Jersey", slug: "new-jersey" },
+  { name: "Virginia", slug: "virginia" },
+  { name: "Washington", slug: "washington" },
   { name: "Arizona", slug: "arizona" },
-];
-
-// Story → emotional pain. Reused from prior version, refined wording.
-const STORY_CARDS = [
-  {
-    title: "No-pet apartments",
-    body: "Many leases ban pets outright. A reasonable accommodation request can change that conversation.",
-  },
-  {
-    title: "Pet rent and pet deposits",
-    body: "Tenants with qualifying ESA documentation are typically not charged pet rent or pet deposits.",
-  },
-  {
-    title: "Breed and size restrictions",
-    body: "Breed and size limits often don't apply to qualifying Emotional Support Animals under federal housing law.",
-  },
-  {
-    title: "Fear of rehoming your animal",
-    body: "Real documentation can help you advocate to keep your support animal with you when housing matters.",
-  },
-  {
-    title: "Moving into a new apartment",
-    body: "Starting a lease is stressful enough. Documentation gives you a calm, paper-based way to ask.",
-  },
-  {
-    title: "Real letter, not a fake certificate",
-    body: "Documentation is reviewed and issued by a licensed mental health professional — not a $5 online certificate.",
-  },
+  { name: "Massachusetts", slug: "massachusetts" },
+  { name: "Colorado", slug: "colorado" },
 ];
 
 const HOW_STEPS = [
   {
     n: 1,
-    title: "Complete the assessment",
-    body: "A confidential clinical questionnaire. About 5 minutes on your phone.",
+    title: "Answer a few questions",
+    body: "A short, confidential assessment — about 5 minutes from your phone.",
   },
   {
     n: 2,
-    title: "Licensed professional review",
-    body: "A provider licensed in your state evaluates your case. Typically within 24 hours.",
+    title: "Licensed provider review",
+    body: "A Licensed Mental Health Practitioner credentialed in your state reviews your case, typically within 24 hours.",
   },
   {
     n: 3,
-    title: "Receive ESA documentation if clinically approved",
-    body: "When clinically appropriate, you receive housing-focused ESA documentation as a PDF.",
-  },
-  {
-    n: 4,
-    title: "Use it for housing accommodation requests",
-    body: "Share your documentation with your landlord as part of a reasonable accommodation request.",
+    title: "Receive your letter if qualified",
+    body: "When clinically appropriate, you receive housing-focused ESA documentation as a secure PDF.",
   },
 ];
 
-const TRUST_PILLARS = [
+// "Why Choose PawTenant" — adapted from /esa-letter-cost (icon + title + short
+// desc). Copy kept concise + compliance-safe (no overpromise / guarantee of
+// approval). Icons are remix-icon classes (loaded async globally).
+const WHY_CHOOSE = [
   {
-    icon: "shield",
-    title: "Licensed mental health professionals",
-    body: "Every reviewing provider holds an active license in your state.",
+    icon: "ri-home-heart-line",
+    title: "Housing-focused letters",
+    desc: "Built to help you keep your pet in rentals, dorms, and no-pet buildings.",
   },
   {
-    icon: "lock",
-    title: "Secure private process",
-    body: "Your information is handled in alignment with HIPAA-aligned data standards.",
+    icon: "ri-scales-3-line",
+    title: "Fair Housing aligned",
+    desc: "Written to support a reasonable accommodation request under the federal Fair Housing Act.",
   },
   {
-    icon: "home",
-    title: "Fair Housing focused documentation",
-    body: "Documentation is written for housing accommodation context, not generic templates.",
+    icon: "ri-shield-check-line",
+    title: "Licensed provider review",
+    desc: "Every letter is reviewed and signed by a Licensed Mental Health Practitioner credentialed in your state.",
   },
   {
-    icon: "badge",
-    title: "Verification support when needed",
-    body: "If your landlord asks, your documentation can be verified through proper channels.",
-  },
-];
-
-// Why-people-seek-ESA cards. Bodies kept to a single short sentence each
-// so the grid reads as a scannable situation list, not a wall of text.
-// The clinical context (LMHP review, housing-only scope, no public-access)
-// lives in the intro trust lines above the cards — not duplicated here.
-const MENTAL_HEALTH_USES = [
-  {
-    title: "Anxiety and panic",
-    body: "A support animal can help with grounding during anxious or panic episodes at home.",
+    icon: "ri-refund-2-line",
+    title: "Refund if you don't qualify",
+    desc: "If you don't qualify after review, you're refunded — no risk to start.",
   },
   {
-    title: "Depression",
-    body: "Daily routine and connection with a pet can be part of how some renters cope with depression.",
+    icon: "ri-customer-service-2-line",
+    title: "Dedicated support",
+    desc: "Real help through the process — including if your landlord has questions.",
   },
   {
-    title: "PTSD and trauma",
-    body: "A familiar, steady presence can help during stress responses related to trauma.",
-  },
-  {
-    title: "Major life transitions",
-    body: "Moves, loss, or chronic stress are common moments renters seek an ESA evaluation.",
+    icon: "ri-lock-2-line",
+    title: "Private & verifiable",
+    desc: "Your information stays confidential, and your letter can be verified through proper channels.",
   },
 ];
 
-// FHA-protected housing rights. Wording mirrors the page footer + FAQ.
-// Bodies expanded with natural keyword spread (ESA letter, emotional
-// support animal, Fair Housing Act, reasonable accommodation, ESA
-// housing rights) for SEO + reader clarity. Do not invent new legal
-// claims; these reflect federal Fair Housing Act reasonable-accommodation
-// guidance. State and local laws may add more.
-const HOUSING_RIGHTS = [
-  {
-    title: "Federal Fair Housing Act protection",
-    body: "Landlords subject to the federal Fair Housing Act must consider reasonable accommodation requests for tenants with a qualifying emotional support animal. ESA housing rights apply broadly to rental properties, including apartments, condos, and many HOA communities — not just pet-friendly buildings.",
-  },
-  {
-    title: "Even in no-pet buildings",
-    body: "A qualifying ESA is not treated as a pet under the Fair Housing Act, so a no-pets clause is not, on its own, a valid reason to deny housing. With valid ESA documentation, a reasonable accommodation request may apply even in strict no-pet apartments.",
-  },
-  {
-    title: "No pet rent or pet deposits",
-    body: "Tenants with valid ESA documentation are typically not charged additional pet rent, pet deposits, or breed-based fees on covered rental units. ESA housing protections are about equal access — not about extra costs for the same housing other tenants receive.",
-  },
-  {
-    title: "Documentation, not medical records",
-    body: "A landlord may ask for the ESA letter itself, but cannot demand a specific diagnosis or your full medical history. PawTenant's ESA documentation is written to support a reasonable accommodation request while protecting your medical privacy.",
-  },
-];
-
-// Compliance-honest guidance. These cards screen the page for the right
-// fit before checkout: most eligible customers can be supported, and the
-// boundaries are stated up front in positive language. We do not promise
-// guaranteed approval, public access, or airline travel — those would be
-// overpromises. Mirrors the language used in the page footer + FAQ.
-type HonestLimit = {
-  title: string;
-  body: string;
-  /** Optional supportive link rendered as an inline anchor inside the card body. */
-  linkHref?: string;
-  linkLabel?: string;
-};
-
-const HONEST_LIMITS: HonestLimit[] = [
-  {
-    title: "Most eligible customers can be supported.",
-    body: "Final eligibility is determined by a Licensed Mental Health Practitioner after review. If you do not qualify, your payment is refunded — no risk to start.",
-  },
-  {
-    title: "Need public-access support?",
-    body: "A Psychiatric Service Dog (PSD) letter may be the better fit. ESA documentation is housing-focused; public-access rights are handled separately through trained service-dog needs.",
-    linkHref: "/how-to-get-psd-letter",
-    linkLabel: "See PSD letter guidance",
-  },
-  {
-    title: "Built for housing, not airline travel.",
-    body: "Under current US DOT rules, ESAs are no longer treated as service animals on flights. This documentation is purpose-built for housing accommodation requests.",
-  },
-  {
-    title: "A real clinical review, every time.",
-    body: "There is no shortcut — every letter is reviewed by a Licensed Mental Health Practitioner credentialed in your state.",
-  },
-];
-
-// FAQ items expanded for SEO + trust coverage on the Meta LP. Each new
-// entry naturally surfaces a high-intent search query (online legitimacy,
-// ESA letter for a dog, getting an ESA letter from a doctor/licensed
-// provider, cost, ESA vs PSD). Wording stays clinical and compliance-safe
-// — no overclaim, no guaranteed-approval language, no public-access or
-// airline implications.
 const FAQ_ITEMS = [
   {
-    q: "Are online ESA letters legit?",
-    a: "Yes — when issued by a Licensed Mental Health Practitioner after a real clinical review. A legitimate ESA evaluation online is conducted by a provider licensed in the state where you live, and every letter includes the provider's name, license number, and signature. PawTenant follows this standard for every letter. Services that issue letters without a real clinical review — sometimes marketed as instant or guaranteed — are not legitimate, and many landlords have learned to spot them.",
-  },
-  {
-    q: "I need an ESA letter for my dog — how does the process work?",
-    a: "You complete a confidential clinical assessment (about 5 minutes on your phone), a Licensed Mental Health Practitioner in your state reviews it, and — if clinically appropriate — you receive a housing ESA letter as a secure PDF that names your dog and includes the provider's credentials. If you don't qualify after review, your payment is refunded. The process is the same whether your emotional support animal is a dog, cat, or other domesticated animal.",
-  },
-  {
-    q: "How do I get an ESA letter from a doctor or licensed provider?",
-    a: "ESA letters are issued by a Licensed Mental Health Practitioner — a therapist, psychologist, LCSW, LPC, or LMHP — not a general-practice doctor. PawTenant matches your assessment with a licensed provider credentialed in your state, who conducts a clinical review and signs the letter when an emotional support animal is clinically appropriate for your situation.",
-  },
-  {
-    q: "What does an ESA letter cost?",
-    a: "PawTenant's housing ESA letter is $110 for one pet, valid for one year, with additional pets at $25 each. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Flexible payment options including Klarna may be available at checkout where eligible.",
-  },
-  {
-    q: "How do I know if an online ESA letter provider is legitimate?",
-    a: "A legitimate online ESA letter provider connects you with a Licensed Mental Health Practitioner who is credentialed in your state and signs the letter after a real clinical review. Look for the provider's full name, license number, and signature on the document. Avoid services that promise instant approval, guaranteed letters, or skip the clinical review — those documents are commonly rejected by landlords.",
-  },
-  {
-    q: "Can an ESA letter help with housing?",
-    a: "An emotional support animal letter from a licensed mental health professional may support a reasonable accommodation request under the federal Fair Housing Act. Whether a specific landlord grants the accommodation depends on the property type, applicable law, and the landlord's review process. PawTenant documentation is written specifically for the housing accommodation context.",
-  },
-  {
-    q: "Is this accepted by landlords?",
-    a: "Most landlords subject to the Fair Housing Act are required to consider reasonable accommodation requests for tenants with a qualifying emotional support animal. PawTenant documentation is written to align with FHA standards and includes the provider's license details, which housing providers may verify before approving accommodation.",
+    q: "Is this legal?",
+    a: "Yes. An ESA letter from a Licensed Mental Health Practitioner may support a reasonable accommodation request under the federal Fair Housing Act. Every letter includes the provider's name, license number, and signature, and is issued only after a real clinical review.",
   },
   {
     q: "How fast can I start?",
     a: "You can begin the assessment in about five minutes. Most assessments are reviewed within 24 hours, and documentation is delivered as a PDF when a licensed provider determines it's clinically appropriate.",
   },
   {
+    q: "What if my landlord asks questions?",
+    a: "Your documentation includes the provider's credentials and license details, which housing providers may verify through proper channels. Most landlords subject to the Fair Housing Act are required to consider reasonable accommodation requests for a qualifying emotional support animal.",
+  },
+  {
     q: "Is my information private?",
     a: "Yes. Your assessment is confidential and handled in alignment with HIPAA-aligned data standards. Diagnosis and clinical detail are never shared on any verification page or with your landlord.",
   },
-  {
-    q: "What's the difference between an ESA letter and a PSD letter?",
-    a: "An ESA letter supports a housing accommodation request under the Fair Housing Act — no specialized training required. A Psychiatric Service Dog (PSD) letter is for a dog individually trained to perform specific tasks for a psychiatric disability and supports housing plus air-travel documentation. Both are issued by a Licensed Mental Health Practitioner. Most renters seeking housing accommodation start with the ESA evaluation.",
-  },
 ];
 
+/**
+ * Defer the SEO/meta head mutation past the LCP paint (requestIdleCallback
+ * with a setTimeout fallback). Mirrors the homepage's scheduleSeoWork.
+ */
+function scheduleSeoWork(fn: () => void): () => void {
+  const w = window as unknown as {
+    requestIdleCallback?: (cb: () => void) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof w.requestIdleCallback === "function") {
+    const id = w.requestIdleCallback(fn);
+    return () => {
+      try {
+        if (typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(id);
+      } catch {
+        /* ignore */
+      }
+    };
+  }
+  const id = window.setTimeout(fn, 120);
+  return () => window.clearTimeout(id);
+}
+
 export default function MetaEsaLetterPage() {
-  // Mobile-only: show first 4 FAQs initially, rest behind "Show more questions".
-  // All FAQ items stay in the DOM regardless (display:none only) so SEO/schema
-  // and desktop layout are unchanged.
-  const [showAllMobile, setShowAllMobile] = useState(false);
+  // Defer rendering the below-the-fold tree until AFTER the first paint so the
+  // first React commit only mounts the hero (the LCP element) — keeping the
+  // skeleton→React hero swap fast and LCP low on throttled mobile. Mirrors the
+  // homepage's lazy below-fold strategy without code-splitting this one file.
+  // requestAnimationFrame ×2 fires right after the hero paints; a setTimeout
+  // fallback guarantees the content renders even if rAF is throttled.
+  const [showBelow, setShowBelow] = useState(false);
+  useEffect(() => {
+    let raf1 = 0;
+    let raf2 = 0;
+    const timer = window.setTimeout(() => setShowBelow(true), 250);
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setShowBelow(true));
+    });
+    return () => {
+      window.clearTimeout(timer);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
 
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = META_TITLE;
 
-    // ensureMeta supports both `name=` (standard meta) and `property=`
-    // (Open Graph). Pass useProperty=true for og:* tags. Each call
-    // returns a restore function so cleanup walks the meta tree back
-    // to whatever was rendered before this page mounted.
+    // ensureMeta supports both name= (standard) and property= (Open Graph).
+    // Returns a restore fn so cleanup walks the head back to its prior state.
+    const restores: Array<() => void> = [];
     const ensureMeta = (key: string, content: string, useProperty = false) => {
       const attr = useProperty ? "property" : "name";
       let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
@@ -324,491 +197,304 @@ export default function MetaEsaLetterPage() {
       }
       const prev = el.getAttribute("content");
       el.setAttribute("content", content);
-      return () => {
+      restores.push(() => {
         if (created) el!.remove();
         else if (prev !== null) el!.setAttribute("content", prev);
-      };
+      });
     };
 
-    // Standard SEO meta. robots stays noindex/nofollow — this is a paid
-    // Meta ad LP, intentionally out of the organic search index.
-    const restoreRobots = ensureMeta("robots", "noindex, nofollow");
-    const restoreDesc = ensureMeta("description", META_DESC);
-    const restoreKw = ensureMeta("keywords", META_KEYWORDS);
-
-    // Open Graph meta — drives Facebook/LinkedIn/Slack/iMessage link
-    // previews even when the page is noindex.
-    const restoreOgTitle = ensureMeta("og:title", META_TITLE, true);
-    const restoreOgDesc = ensureMeta("og:description", META_DESC, true);
-    const restoreOgType = ensureMeta("og:type", "website", true);
-    const restoreOgImage = ensureMeta("og:image", META_OG_IMAGE, true);
-    const restoreOgImageAlt = ensureMeta(
-      "og:image:alt",
-      "Person at home with their emotional support animal, completing an online ESA assessment",
-      true,
-    );
-
-    // Twitter Card meta — drives the rich preview on Twitter/X shares.
-    const restoreTwCard = ensureMeta("twitter:card", "summary_large_image");
-    const restoreTwTitle = ensureMeta("twitter:title", META_TITLE);
-    const restoreTwDesc = ensureMeta("twitter:description", META_DESC);
-    const restoreTwImage = ensureMeta("twitter:image", META_OG_IMAGE);
+    const cancel = scheduleSeoWork(() => {
+      document.title = META_TITLE;
+      // Paid LP — stays out of the organic index.
+      ensureMeta("robots", "noindex, nofollow");
+      ensureMeta("description", META_DESC);
+      ensureMeta("og:title", META_TITLE, true);
+      ensureMeta("og:description", META_DESC, true);
+      ensureMeta("og:type", "website", true);
+      ensureMeta("og:image", META_OG_IMAGE, true);
+      ensureMeta("twitter:card", "summary_large_image");
+      ensureMeta("twitter:title", META_TITLE);
+      ensureMeta("twitter:description", META_DESC);
+      ensureMeta("twitter:image", META_OG_IMAGE);
+    });
 
     return () => {
+      cancel();
       document.title = prevTitle;
-      restoreRobots();
-      restoreDesc();
-      restoreKw();
-      restoreOgTitle();
-      restoreOgDesc();
-      restoreOgType();
-      restoreOgImage();
-      restoreOgImageAlt();
-      restoreTwCard();
-      restoreTwTitle();
-      restoreTwDesc();
-      restoreTwImage();
+      restores.forEach((r) => r());
     };
   }, []);
 
   return (
-    <main className="bg-[#FAFAFA] text-slate-900 antialiased">
+    <main className="bg-white text-slate-900 antialiased">
       <SharedNavbar />
 
-      {/* ─────────── 1. HERO — warm emotional, Meta-friendly ─────────── */}
-      <section className="relative bg-gradient-to-b from-[#FFF7ED] via-white to-[#FAFAFA] border-b border-slate-200 overflow-hidden">
-        {/* Layered warm radial gradients for depth */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse at 80% 10%, rgba(249,115,22,0.10) 0%, transparent 55%), radial-gradient(ellipse at 10% 90%, rgba(16,185,129,0.06) 0%, transparent 50%)",
-          }}
-        />
-        {/* Soft top emerald wash */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full opacity-30 blur-3xl"
-          style={{ background: "radial-gradient(circle, rgba(255,237,213,0.9) 0%, transparent 70%)" }}
-        />
+      {/* ─────────── 1. HERO — homepage-style dark cover ─────────── */}
+      <section className="relative min-h-[100svh] flex items-center overflow-hidden">
+        {/* LCP image — reuses the homepage responsive WebP hero (mobile
+            variant ≈23 KB). Only eager image on the page. */}
+        <div className="absolute inset-0">
+          <picture>
+            <source
+              media="(max-width: 768px)"
+              srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp"
+              type="image/webp"
+            />
+            <source
+              media="(min-width: 769px)"
+              srcSet="/assets/blog/fp-woman-sitting-floor-desktop.webp"
+              type="image/webp"
+            />
+            <img
+              src="/assets/blog/fp-woman-sitting-floor.jpg"
+              alt="Pet owner at home with their dog, applying for an ESA letter online"
+              className="w-full h-full object-cover object-center opacity-80"
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+              width={1920}
+              height={1280}
+            />
+          </picture>
+          <div className="absolute inset-0 bg-gradient-to-r from-gray-900/85 via-gray-900/65 to-gray-900/25" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-gray-900/70 to-transparent md:hidden" />
+        </div>
 
-        {/* SharedNavbar is fixed top-0 with h-16 (64px) on mobile and sm:h-20
-            (80px) on tablet+. Hero top padding clears the navbar plus adds
-            ~32px of breathing room so the green pill and the hero image
-            never sit under the navbar. */}
-        <div className="relative max-w-6xl mx-auto px-5 pt-24 md:pt-28 pb-14 md:pb-20 min-h-[100svh] grid md:grid-cols-12 gap-10 md:gap-14 items-center">
-          <div className="md:col-span-6">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              ESA evaluation for housing
-            </span>
-            <h1 className="text-[28px] sm:text-[32px] md:text-[40px] lg:text-[44px] leading-[1.12] font-bold tracking-tight text-slate-900 mb-4">
-              Keep Your Emotional Support Animal With You
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 py-20 sm:py-28 md:py-32">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
+              <i className="ri-shield-check-line" />
+              HIPAA-Compliant · Licensed Provider Review
+            </div>
+
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
+              Keep Your <span className="text-orange-400">Pet at Home</span> With a
+              <br className="hidden sm:block" />
+              {" "}Legitimate ESA Letter
             </h1>
-            <p className="text-[16px] md:text-[17px] leading-relaxed text-slate-600 mb-7 max-w-xl">
-              Connect with a licensed mental health professional for an ESA evaluation and receive housing documentation when clinically appropriate.
+
+            <p className="text-gray-200 text-base sm:text-lg mb-7 leading-relaxed">
+              Get your <strong className="text-white font-semibold">ESA letter online</strong> from a Licensed Mental Health Practitioner — housing-focused documentation for Fair Housing Act accommodation, when clinically appropriate.
             </p>
 
             <Link
               to={ASSESSMENT_HREF}
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold text-[15px] md:text-[16px] px-7 py-4 rounded-md transition w-full sm:w-auto shadow-[0_4px_12px_rgba(249,115,22,0.3)]"
+              className="w-full sm:w-auto px-8 py-4 sm:py-3.5 bg-orange-400 text-white font-bold text-base sm:text-sm rounded-md hover:bg-orange-500 transition-colors inline-flex items-center justify-center gap-2 shadow-lg shadow-orange-400/25"
+            >
+              Start Your ESA Evaluation
+              <i className="ri-arrow-right-line" />
+            </Link>
+
+            {/* Trust badges */}
+            <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-white/90">
+              <span className="inline-flex items-center gap-1.5">
+                <HeroCheck /> HIPAA-compliant
+              </span>
+              <span className="text-white/30">•</span>
+              <span className="inline-flex items-center gap-1.5">
+                <HeroCheck /> Licensed provider review
+              </span>
+              <span className="text-white/30">•</span>
+              <span className="inline-flex items-center gap-1.5">
+                <HeroCheck /> Secure checkout
+              </span>
+            </div>
+
+            {/* Mobile refund line */}
+            <p className="sm:hidden text-white/85 text-[13px] leading-snug mt-5 text-center">
+              <i className="ri-shield-check-line text-orange-300 mr-1.5" />
+              <strong className="font-bold text-white">Full refund</strong> if you don&rsquo;t qualify
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ─────────── 2. HOW IT WORKS — 3 simple steps ─────────── */}
+      <section className="bg-white border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 py-14 md:py-20">
+          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
+            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+              How it works
+            </span>
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
+              Three simple steps.
+            </h2>
+            <p className="text-[15px] text-slate-600 leading-relaxed">
+              Supportive, private, and clinically reviewed from start to finish.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-4 md:gap-5">
+            {HOW_STEPS.map((s) => (
+              <div key={s.n} className="bg-slate-50 border border-slate-200 rounded-xl p-5 md:p-6">
+                <div className="w-10 h-10 rounded-full bg-[#0E2A47] text-white flex items-center justify-center text-[15px] font-semibold mb-4">
+                  {s.n}
+                </div>
+                <div className="text-[15px] font-semibold text-slate-900 mb-1 leading-snug">{s.title}</div>
+                <p className="text-[13px] text-slate-600 leading-relaxed">{s.body}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mt-10">
+            <Link
+              to={ASSESSMENT_HREF}
+              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold text-[15px] px-7 py-3.5 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
             >
               Start Your ESA Evaluation
               <span aria-hidden>→</span>
             </Link>
-
-            {/* Klarna "Pay in 4" hero badge — Klarna brand pink (#FFA8CD) on
-                a white pill with a soft Klarna-pink shadow. Two-line layout
-                keeps the value prop ("4 interest-free payments") on the
-                first line and the compliance qualifier on the second line.
-                Same K. emblem treatment used in the pricing trust panel
-                below for visual consistency. */}
-            <div className="mt-4 inline-flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-full bg-white border border-[#FFA8CD] shadow-[0_2px_8px_rgba(255,168,205,0.30)]">
-              <span
-                aria-hidden
-                className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[#FFA8CD] text-[#1A0A12] font-extrabold text-[11px] leading-none tracking-tight flex-shrink-0"
-              >
-                K.
-              </span>
-              <div className="text-left leading-tight">
-                <div className="text-[11.5px] font-semibold text-slate-900">
-                  Pay in 4 interest-free with{" "}
-                  <span className="text-[#7A3F5F]">Klarna</span>
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  Where eligible at checkout · approval not guaranteed
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] text-slate-600">
-              <span className="inline-flex items-center gap-1.5">
-                <CheckDot /> Licensed professionals
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="inline-flex items-center gap-1.5">
-                <CheckDot /> Secure process
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="inline-flex items-center gap-1.5">
-                <CheckDot /> Housing-focused ESA letters
-              </span>
-            </div>
-
-            {/* Mobile-only refund trust pill — mirrors the desktop floating
-                pill content but renders inline inside the hero text column.
-                Subtle, non-overlapping, above the fold on a 375px viewport.
-                Hidden on md+ where the floating pill on the hero image is
-                visible instead. */}
-            <div className="md:hidden mt-4 inline-flex items-center gap-2 bg-white border border-slate-200 rounded-full pl-2 pr-3.5 py-1.5 shadow-[0_2px_8px_rgba(15,23,42,0.06)]">
-              <span className="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  <path d="m9 12 2 2 4-4" />
-                </svg>
-              </span>
-              <span className="text-[11.5px] leading-tight">
-                <span className="font-semibold text-slate-900">No risk to start</span>
-                <span className="text-slate-500"> — refund if you don't qualify</span>
-              </span>
-            </div>
           </div>
+        </div>
+      </section>
 
-          {/* Warm hero photo — cover-style, both person + pet clearly visible.
-              Switched from woman-with-dog-new-apartment.jpg (subjects at the
-              left+right edges → portrait crop chopped both) to
-              fp-woman-dog-floor.jpg (subjects mid-frame, happy, telehealth-
-              coded, real not AI). Column widened from md:col-span-5 to
-              md:col-span-6 so the image reads as a hero cover, not a tiny
-              side image. Desktop aspect 5/4 (slightly taller landscape)
-              instead of 4/5 (portrait) to better suit the source composition
-              and keep both subjects intact. object-position: center keeps the
-              dog and person framed during cover-crop. */}
-          <div className="md:col-span-6">
-            <div className="relative">
-              {/* Soft warm glow behind image */}
-              <div
-                aria-hidden
-                className="absolute -inset-3 rounded-3xl blur-2xl opacity-50 pointer-events-none"
-                style={{ background: "radial-gradient(ellipse, rgba(249,115,22,0.15), transparent 70%)" }}
-              />
-              <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-[0_8px_28px_rgba(15,23,42,0.10)] bg-white">
+      {/* Below-the-fold tree — deferred to a post-paint commit (see showBelow)
+          so the hero LCP stays fast. The min-height keeps the scrollbar/layout
+          stable until it mounts (a beat after first paint). */}
+      {!showBelow && <div aria-hidden className="min-h-[40vh]" />}
+      {showBelow && (
+        <>
+      {/* ─────────── EMOTIONAL 1 — stay together at home (image left) ─────────── */}
+      <section className="bg-[#FFFBF5] border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 py-14 md:py-20">
+          <div className="grid md:grid-cols-12 gap-8 md:gap-12 items-center">
+            <div className="md:col-span-6 order-2 md:order-1">
+              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-[0_8px_28px_rgba(15,23,42,0.10)]">
                 <img
-                  src="/assets/blog/fp-woman-dog-floor.jpg"
-                  alt="Person at home with their emotional support animal, completing an online ESA assessment on a laptop"
+                  src="/assets/lifestyle/woman-with-dog-new-apartment.jpg"
+                  alt="Pet owner relaxing at home with their dog after moving into a new apartment"
                   width={1200}
-                  height={800}
-                  loading="eager"
-                  className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
-                />
-                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent p-4">
-                  <div className="text-white text-[13px] font-medium leading-snug">
-                    Housing-focused ESA documentation, when clinically appropriate.
-                  </div>
-                </div>
-              </div>
-
-              {/* Floating reassurance pill */}
-              <div className="hidden md:flex absolute -bottom-5 -left-5 items-center gap-2.5 bg-white border border-slate-200 rounded-full pl-2.5 pr-4 py-2 shadow-[0_6px_18px_rgba(15,23,42,0.10)]">
-                <span className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <path d="m9 12 2 2 4-4" />
-                  </svg>
-                </span>
-                <div className="leading-tight">
-                  <div className="text-[11px] text-slate-500">Refund if you don't qualify</div>
-                  <div className="text-[12.5px] font-semibold text-slate-900">No risk to start</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─────────── 2. WHAT YOU RECEIVE — answers "What do I get?" up-front.
-          Replaces the prior italic transitions + emotional Story Opener;
-          surfaces the four core trust pillars (Licensed practitioner, secure
-          process, housing-focused documentation, verification support) right
-          after the hero so skeptical Meta traffic sees the answer to "What
-          do I actually receive?" before scrolling further. The deeper Trust
-          Pillars section that used to sit lower in the page is removed —
-          this section absorbs that role. */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-12 md:py-16">
-          <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              What you receive
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              A clear, simple package — built around licensed care.
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              Everything you need for a housing accommodation request, with nothing oversold.
-            </p>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {TRUST_PILLARS.map((p) => (
-              <div key={p.title} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-emerald-200 transition">
-                <span className="w-11 h-11 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mb-4">
-                  {p.icon === "shield" && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      <path d="m9 12 2 2 4-4" />
-                    </svg>
-                  )}
-                  {p.icon === "lock" && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                  )}
-                  {p.icon === "home" && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z" />
-                    </svg>
-                  )}
-                  {p.icon === "badge" && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <circle cx="12" cy="8" r="6" />
-                      <path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5" />
-                    </svg>
-                  )}
-                </span>
-                <div className="text-[14.5px] font-semibold text-slate-900 mb-1 leading-snug">{p.title}</div>
-                <p className="text-[12.5px] text-slate-600 leading-relaxed">{p.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─────────── 3. BUILT FOR REAL HOUSING SITUATIONS — was the emotional
-          pain section, now reframed as a scannable housing-situations card
-          grid. Same six situations, neutral header, no emotional storytelling.
-          Added a tasteful housing-coded banner image above the cards to
-          balance the page (lazy-loaded, fixed aspect to prevent CLS). */}
-      <section className="bg-slate-50 border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              Real housing situations
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              Built for the situations renters actually face.
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              ESA documentation may help in housing scenarios like these — when clinically appropriate.
-            </p>
-          </div>
-
-          {/* Slim housing-coded banner — warm apartment scene with person + pet.
-              Switched from fp-windowsill-dog.jpg (vertical-leaning composition
-              whose face was being chopped by the 3/1 panoramic crop) to
-              fp-woman-dog-couch.jpg, a natively landscape composition where
-              both subjects span the full frame width and survive a wide
-              center-crop intact. Desktop aspect also pulled back from 3/1
-              (50% vertical crop) to 5/2 (40% vertical crop) so neither
-              subject is clipped. Lazy-loaded; intrinsic dims set to prevent
-              layout shift. */}
-          <div className="max-w-4xl mx-auto mb-10 md:mb-12 rounded-2xl overflow-hidden border border-slate-200 shadow-[0_4px_16px_rgba(15,23,42,0.05)]">
-            <img
-              src="/assets/blog/fp-woman-dog-couch.jpg"
-              alt="Person at home on a couch with their pet — a calm housing scene"
-              width={1200}
-              height={480}
-              loading="lazy"
-              decoding="async"
-              className="w-full h-auto block aspect-[16/9] md:aspect-[3/2] object-cover object-center"
-            />
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-            {STORY_CARDS.map((c) => (
-              <CollapsibleCard
-                key={c.title}
-                title={c.title}
-                body={c.body}
-                iconBg="bg-orange-50 border border-orange-200 text-orange-600"
-                iconSvg={
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                  </svg>
-                }
-                hoverClass="hover:border-orange-200 hover:shadow-[0_4px_14px_rgba(249,115,22,0.08)]"
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─────────── 3b. WHEN PETS HELP WITH MENTAL HEALTH — emotional + clinical
-          framing for why renters seek ESA documentation. Image-left + text-right
-          on desktop, stacks on mobile. 4 cards below describe common situations.
-          Compliance: cards describe situations renters present with, not
-          claims that an ESA will treat or cure anything — that determination
-          is the practitioner's. */}
-      <section className="bg-white border-y border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-          <div className="grid md:grid-cols-12 gap-8 md:gap-12 items-center mb-10 md:mb-12">
-            <div className="md:col-span-5 order-2 md:order-1">
-              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
-                <img
-                  src="/assets/blog/fp-curly-woman-fun-dog.jpg"
-                  alt="Person at home embracing their support animal — calm, supportive moment"
-                  width={1200}
-                  height={800}
+                  height={900}
                   loading="lazy"
                   decoding="async"
-                  className="w-full h-auto block aspect-[4/3] md:aspect-[4/5] object-cover object-center"
+                  className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
                 />
               </div>
             </div>
-            <div className="md:col-span-7 order-1 md:order-2 text-center md:text-left">
-              <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                Why renters seek ESA documentation
+            <div className="md:col-span-6 order-1 md:order-2 text-center md:text-left">
+              <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-orange-600 bg-orange-50 border border-orange-200 px-2.5 py-1 rounded-full mb-4">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                Home comfort
               </span>
               <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-                When pets help with anxiety, depression, or PTSD.
+                Stay together at home with the pet who supports you.
               </h2>
-              <p className="text-[15px] md:text-[16px] text-slate-600 leading-relaxed max-w-xl mx-auto md:mx-0">
-                Renters often describe their support animal as part of how they cope at home. A Licensed Mental Health Practitioner determines whether an ESA letter is clinically appropriate for your situation — never an algorithm.
+              <p className="text-[15px] md:text-[16px] text-slate-600 leading-relaxed max-w-xl mx-auto md:mx-0 mb-6">
+                For many renters, a pet is part of how they cope day to day. A housing-focused ESA letter helps you request a reasonable accommodation so you and your animal can stay together — even in no-pet buildings.
               </p>
-
-              {/* Three short trust lines that absorb the context previously
-                  duplicated across the four card bodies. Reuses the hero's
-                  CheckDot pattern for visual consistency. Centered with the
-                  rest of this column on mobile, left-aligned on md+. */}
-              <ul className="mt-4 grid gap-1.5 text-[13.5px] md:text-[14px] text-slate-600 max-w-xl mx-auto md:mx-0">
-                <li className="flex items-start gap-2 justify-center md:justify-start text-left">
-                  <span className="mt-0.5"><CheckDot /></span>
-                  <span className="leading-relaxed">ESA letters may support housing accommodation requests when clinically appropriate.</span>
-                </li>
-                <li className="flex items-start gap-2 justify-center md:justify-start text-left">
-                  <span className="mt-0.5"><CheckDot /></span>
-                  <span className="leading-relaxed">Every evaluation is reviewed by a Licensed Mental Health Practitioner credentialed in your state.</span>
-                </li>
-                <li className="flex items-start gap-2 justify-center md:justify-start text-left">
-                  <span className="mt-0.5"><CheckDot /></span>
-                  <span className="leading-relaxed">This documentation is built for housing support — not public-access rights.</span>
-                </li>
-              </ul>
+              <Link
+                to={ASSESSMENT_HREF}
+                className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold text-[15px] px-7 py-3.5 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
+              >
+                Start Your ESA Evaluation
+                <span aria-hidden>→</span>
+              </Link>
             </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {MENTAL_HEALTH_USES.map((c) => (
-              <CollapsibleCard
-                key={c.title}
-                title={c.title}
-                body={c.body}
-                iconBg="bg-emerald-50 border border-emerald-200 text-emerald-700"
-                iconSvg={
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                  </svg>
-                }
-                hoverClass="hover:border-emerald-200"
-              />
-            ))}
           </div>
         </div>
       </section>
 
-      {/* Shorts carousel relocated to just before the Final CTA. Earlier
-          revisions placed it above the sample letter, but with the page
-          now content-dense up front (What You Receive, housing situations,
-          mental-health context, sample letter, housing rights, how-works,
-          clear expectations, states, pricing, FAQ), the reels work better
-          as a final emotional push right before the closing CTA. */}
-
-      {/* ─────────── 5. SAMPLE LETTER + VERIFICATION PREVIEW — proof ─────────── */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
+      {/* ─────────── 3. PROOF — sample letter + verification ─────────── */}
+      <section className="bg-slate-50 border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 py-14 md:py-20">
           <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
-            <div className="text-[12.5px] tracking-[0.14em] uppercase text-orange-600 font-semibold mb-3">
-              Verifiable documentation.
-            </div>
             <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-[#0E2A47] bg-[#0E2A47]/5 border border-[#0E2A47]/15 px-2.5 py-1 rounded-full mb-3">
               <span className="w-1.5 h-1.5 rounded-full bg-[#0E2A47]" />
               What you actually receive
             </span>
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              Documentation from a Licensed Mental Health Practitioner — not a generic template.
+              A real letter from a licensed provider.
             </h2>
             <p className="text-[15px] text-slate-600 leading-relaxed">
-              Your documentation includes provider details and housing-focused information commonly requested for ESA accommodation requests.
+              Your documentation includes provider credentials and housing-focused language — not a generic certificate.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8 items-start">
-            {/* Sample letter mock */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden">
-              <div className="flex items-center justify-between bg-slate-50 px-3 py-2 border-b border-slate-200">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-slate-300" />
-                  <span className="w-2 h-2 rounded-full bg-slate-300" />
-                  <span className="w-2 h-2 rounded-full bg-slate-300" />
+          <div className="grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
+            {/* Sample letter — /esa-letter-cost card style (orange accent + Sample pill). */}
+            <div className="relative w-full">
+              <div className="relative rounded-2xl overflow-hidden ring-1 ring-slate-200 bg-white shadow-[0_4px_0_0_#f97316,0_12px_28px_-8px_rgba(122,78,45,0.18),0_4px_12px_-4px_rgba(0,0,0,0.08)] sm:shadow-[0_4px_0_0_#f97316,0_24px_64px_-8px_rgba(122,78,45,0.22),0_8px_24px_-4px_rgba(0,0,0,0.10)]">
+                <div className="absolute top-3 right-3 z-20 bg-white/95 backdrop-blur-sm border border-orange-200 text-orange-600 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full">
+                  Sample
                 </div>
-                <div className="font-mono text-[10px] text-slate-500">esa-letter-sample.pdf</div>
-                <div className="w-8" />
-              </div>
-              <div className="bg-white p-3 md:p-4">
                 <img
                   src="/images/checkout/esa-sample-letter.svg"
-                  alt="Sample PawTenant ESA letter showing provider credentials and housing-accommodation language. Names and details are placeholders."
+                  alt="Sample PawTenant ESA letter showing the licensed provider signature, license number, and housing-accommodation language. Names and details are placeholders."
                   width={800}
                   height={1035}
                   loading="lazy"
                   decoding="async"
-                  className="w-full h-auto block"
+                  className="w-full h-auto object-top block"
                 />
               </div>
-              <div className="text-center text-[10px] text-slate-400 py-2 px-3 bg-white border-t border-slate-100">
-                Sample template · placeholder names · housing-accommodation language only.
-              </div>
+              <p className="text-center text-[11px] text-slate-400 mt-3 leading-relaxed">
+                Sample ESA letter — your letter will include your name, pet, and licensed provider details.
+              </p>
             </div>
 
-            {/* Verification preview mock */}
-            <div className="space-y-4">
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
-                <div className="flex items-center justify-between bg-slate-50 px-3 py-2 border-b border-slate-200">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-slate-300" />
-                    <span className="w-2 h-2 rounded-full bg-slate-300" />
-                    <span className="w-2 h-2 rounded-full bg-slate-300" />
-                  </div>
-                  <div className="font-mono text-[10px] text-slate-500">pawtenant.com/verify</div>
-                  <div className="w-6" />
+            {/* Four trust boxes (2×2 on desktop) — fills the space beside the letter. */}
+            <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Housing-focused letter details */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
+                  <span className="w-9 h-9 rounded-full bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center mb-3">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z" />
+                    </svg>
+                  </span>
+                  <div className="text-[14px] font-semibold text-slate-900 mb-1 leading-snug">Housing-focused letter details</div>
+                  <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                    Provider credentials, license number, issue date, and clear recommendation language written for a Fair Housing Act accommodation request.
+                  </p>
                 </div>
-                <img
-                  src="/assets/ui/verification-cropped.png"
-                  alt="PawTenant verification result confirming a letter ID is authentic. Shows letter type, state, issue and expiration dates, issuing provider, NPI, and license. No patient health information is displayed."
-                  width={820}
-                  height={1110}
-                  loading="lazy"
-                  decoding="async"
-                  className="w-full h-auto block"
-                />
-                <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-start gap-2.5">
-                  <span className="w-6 h-6 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+
+                {/* Secure delivery + support */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
+                  <span className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mb-3">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <path d="M14 2v6h6" />
+                      <path d="m9 15 2 2 4-4" />
+                    </svg>
+                  </span>
+                  <div className="text-[14px] font-semibold text-slate-900 mb-1 leading-snug">Secure delivery + support</div>
+                  <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                    Delivered as a secure PDF, typically within 24 hours. If your landlord has questions, our support team can help.
+                  </p>
+                </div>
+
+                {/* Verifiable */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
+                  <span className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mb-3">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      <path d="m9 12 2 2 4-4" />
+                    </svg>
+                  </span>
+                  <div className="text-[14px] font-semibold text-slate-900 mb-1 leading-snug">Verifiable when your landlord asks</div>
+                  <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                    Each letter can be verified through proper channels — verification confirms authenticity only, never your medical details.
+                  </p>
+                </div>
+
+                {/* Private by design */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
+                  <span className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mb-3">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   </span>
-                  <div className="text-[11.5px] text-slate-600 leading-relaxed">
-                    Verification confirms <span className="text-slate-900 font-medium">authenticity only</span>. No patient health information is displayed.
-                  </div>
+                  <div className="text-[14px] font-semibold text-slate-900 mb-1 leading-snug">Private by design</div>
+                  <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                    Your assessment is confidential and handled in alignment with HIPAA-aligned data standards — no diagnosis is shown to your landlord.
+                  </p>
                 </div>
               </div>
 
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+              {/* Clinical-review reassurance banner */}
+              <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
                 <span className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -816,9 +502,9 @@ export default function MetaEsaLetterPage() {
                   </svg>
                 </span>
                 <div className="min-w-0">
-                  <div className="text-[13.5px] font-semibold text-emerald-900 leading-snug mb-0.5">If your landlord asks, you have answers.</div>
+                  <div className="text-[13.5px] font-semibold text-emerald-900 leading-snug mb-0.5">A real clinical review, every time</div>
                   <div className="text-[12.5px] text-emerald-800/85 leading-relaxed">
-                    Documentation includes the provider's credentials and license details, and can be verified through proper channels when required.
+                    Every letter is reviewed and signed by a Licensed Mental Health Practitioner credentialed in your state — no shortcuts.
                   </div>
                 </div>
               </div>
@@ -827,43 +513,43 @@ export default function MetaEsaLetterPage() {
         </div>
       </section>
 
-      {/* ─────────── 5b. HOUSING RIGHTS YOU CAN RELY ON — FHA-protected trust
-          section. Image-right + text-left (mirrors the mental-health section's
-          image-left to give the page a left-right reading rhythm). 4 cards
-          describe FHA reasonable-accommodation protections; do not invent
-          new legal claims beyond what's in the page footer + FAQ. Warm
-          off-white background to soften the legal tone. */}
-      <section className="bg-[#FFFBF5] border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-          <div className="grid md:grid-cols-12 gap-8 md:gap-12 items-center mb-10 md:mb-12">
+      {/* ─────────── EMOTIONAL 2 — provider review + support (image right) ─────────── */}
+      <section className="bg-white border-y border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 py-14 md:py-20">
+          <div className="grid md:grid-cols-12 gap-8 md:gap-12 items-center">
             <div className="md:col-span-6 text-center md:text-left">
               <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                Fair Housing Act protections
+                Licensed provider review
               </span>
               <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-                Housing rights you can rely on.
+                Reviewed by a licensed provider — with support if your landlord asks.
               </h2>
-              <p className="text-[15px] md:text-[16px] text-slate-600 leading-relaxed max-w-xl mx-auto md:mx-0">
-                When clinically appropriate, ESA documentation supports your right to request a reasonable accommodation under the federal Fair Housing Act — even in no-pet buildings.
+              <p className="text-[15px] md:text-[16px] text-slate-600 leading-relaxed max-w-xl mx-auto md:mx-0 mb-6">
+                A Licensed Mental Health Practitioner credentialed in your state reviews your assessment — never an algorithm. And if your landlord has questions about your documentation, our support team is here to help.
               </p>
+              <ul className="grid gap-2 text-[13.5px] md:text-[14px] text-slate-600 max-w-xl mx-auto md:mx-0 text-left">
+                <li className="flex items-start gap-2 justify-center md:justify-start">
+                  <span className="mt-0.5"><HeroCheck /></span>
+                  <span className="leading-relaxed">Real clinical review by a licensed provider in your state.</span>
+                </li>
+                <li className="flex items-start gap-2 justify-center md:justify-start">
+                  <span className="mt-0.5"><HeroCheck /></span>
+                  <span className="leading-relaxed">Verifiable documentation, with landlord-question support.</span>
+                </li>
+                <li className="flex items-start gap-2 justify-center md:justify-start">
+                  <span className="mt-0.5"><HeroCheck /></span>
+                  <span className="leading-relaxed">Refund if you don't qualify after review.</span>
+                </li>
+              </ul>
             </div>
-            {/* Image switched from hands-typing-paperwork.jpg (natively 2.58
-                panoramic — could not show both subjects at the desired 5/4
-                container height without horizontal cropping) to
-                fp-woman-jeans-living-room.jpg, a natively portrait-leaning
-                housing-coded photo (woman + corgi puppy in a living room)
-                where both subjects sit comfortably inside a 5/4 frame.
-                Aspect now matches the How-PawTenant-Works section image
-                (4/3 mobile, 5/4 desktop) so the two side-images read at
-                similar visual weight. */}
             <div className="md:col-span-6">
-              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
+              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-[0_8px_28px_rgba(15,23,42,0.10)]">
                 <img
-                  src="/assets/blog/fp-woman-jeans-living-room.jpg"
-                  alt="Person at home in their living room with their support animal — a calm housing scene"
+                  src="/assets/lifestyle/woman-telehealth-with-dog.jpg"
+                  alt="Pet owner at home with their dog during an online consultation with a licensed provider"
                   width={1200}
-                  height={1500}
+                  height={900}
                   loading="lazy"
                   decoding="async"
                   className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
@@ -871,75 +557,37 @@ export default function MetaEsaLetterPage() {
               </div>
             </div>
           </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {HOUSING_RIGHTS.map((c) => (
-              <CollapsibleCard
-                key={c.title}
-                title={c.title}
-                body={c.body}
-                iconBg="bg-emerald-50 border border-emerald-200 text-emerald-700"
-                iconSvg={
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z" />
-                  </svg>
-                }
-                hoverClass="hover:border-emerald-200"
-              />
-            ))}
-          </div>
         </div>
       </section>
 
-      {/* ─────────── 6. HOW PAWTENANT WORKS — process explainer.
-          Desktop: image on the left + step list on the right (md:grid-cols-2).
-          Mobile: image stacks on top of the steps list. Image is a calm
-          telehealth-at-home scene that maps to Step 1 (Complete the
-          assessment) and supports the "from your phone" message. */}
-      <section className="bg-white border-y border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
+      {/* ─────────── 4. WHY CHOOSE PAWTENANT — adapted from /esa-letter-cost ─────────── */}
+      <section className="bg-slate-50 border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-5 py-14 md:py-20">
           <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              How PawTenant Works
+              Why Choose PawTenant
             </h2>
             <p className="text-[15px] text-slate-600 leading-relaxed">
-              A simple, four-step process — designed to be supportive and clinically rigorous.
+              Trusted, licensed, and built around keeping you and your pet together.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center mb-10 md:mb-12">
-            {/* Supporting image — telehealth at home, lazy-loaded, fixed aspect */}
-            <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
-              <img
-                src="/assets/lifestyle/woman-telehealth-with-dog.jpg"
-                alt="Person at home with their pet, completing an ESA assessment online"
-                width={1200}
-                height={900}
-                loading="lazy"
-                decoding="async"
-                className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
-              />
-            </div>
-
-            <ol className="space-y-4">
-              {HOW_STEPS.map((s) => (
-                <li key={s.n} className="flex gap-4 items-start bg-slate-50 border border-slate-200 rounded-xl p-4 md:p-5">
-                  <div className="w-9 h-9 rounded-full bg-[#0E2A47] text-white flex items-center justify-center text-[14px] font-semibold flex-shrink-0">
-                    {s.n}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[14.5px] font-semibold text-slate-900 mb-0.5 leading-snug">{s.title}</div>
-                    <p className="text-[13px] text-slate-600 leading-relaxed">{s.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+            {WHY_CHOOSE.map((item) => (
+              <div key={item.title} className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 hover:border-orange-200 transition">
+                <div className="w-10 h-10 flex items-center justify-center bg-orange-50 rounded-lg mb-3">
+                  <i className={`${item.icon} text-orange-500 text-xl`} />
+                </div>
+                <h3 className="font-bold text-slate-900 mb-1.5 text-[14.5px] leading-snug">{item.title}</h3>
+                <p className="text-slate-600 text-[13px] leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
           </div>
 
-          <div className="text-center">
+          <div className="text-center mt-9 md:mt-11">
             <Link
               to={ASSESSMENT_HREF}
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
+              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold text-[15px] px-7 py-3.5 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
             >
               Start Your ESA Evaluation
               <span aria-hidden>→</span>
@@ -948,151 +596,59 @@ export default function MetaEsaLetterPage() {
         </div>
       </section>
 
-      {/* ─────────── 7. CLEAR EXPECTATIONS — guiding compliance section.
-          Surfaces honest, positive guidance up-front so cold Meta traffic
-          can self-screen for the right fit before checkout. Cards use
-          neutral slate tone (not orange) — this section is guidance, not
-          a sales pitch. PSD card carries an inline link to the PSD route
-          for users whose actual need is public-access support. */}
+      {/* ─────────── 5. PRICING + PAYMENT — ESA (one-time + annual) & PSD ─────────── */}
       <section className="bg-slate-50 border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-full mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-              Know before you apply
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              Clear expectations.
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              Honest guidance, so you can decide with confidence before you start.
-            </p>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4 md:gap-5">
-            {HONEST_LIMITS.map((c) => (
-              <div key={c.title} className="bg-white border border-slate-200 rounded-xl p-5 md:p-6">
-                <div className="flex items-start gap-3">
-                  {/* Neutral info icon — slate, not emerald. This section is
-                      informational/transparency, not a celebratory trust grid,
-                      so the icon visually signals "guidance" rather than
-                      "win". Outlined info circle avoids the positive-check
-                      visual that the What-You-Receive grid uses. */}
-                  <span className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="16" x2="12" y2="12" />
-                      <line x1="12" y1="8" x2="12.01" y2="8" />
-                    </svg>
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-[14.5px] font-semibold text-slate-900 mb-1 leading-snug">{c.title}</div>
-                    <p className="text-[13px] text-slate-600 leading-relaxed">{c.body}</p>
-                    {c.linkHref && c.linkLabel && (
-                      <Link
-                        to={c.linkHref}
-                        className="inline-flex items-center gap-1 mt-2 text-[12px] font-semibold text-slate-700 hover:text-[#0E2A47] transition"
-                      >
-                        {c.linkLabel}
-                        <span aria-hidden>→</span>
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─────────── 8. POPULAR STATES ─────────── */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              ESA Letter Support Across All 50 States
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              Our licensed providers can evaluate your situation and provide ESA documentation when clinically appropriate — in compliance with Fair Housing guidelines.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 max-w-4xl mx-auto mb-7">
-            {STATES.map((s) => (
-              <Link
-                key={s.slug}
-                to={`/esa-letter/${s.slug}`}
-                className="group flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[13px] font-medium hover:border-emerald-400 hover:bg-emerald-50 hover:text-[#0E2A47] hover:shadow-[0_2px_8px_rgba(16,185,129,0.12)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600 group-hover:text-emerald-700" aria-hidden>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                <span>{s.name}</span>
-              </Link>
-            ))}
-          </div>
-
-          <p className="text-center text-[12.5px] text-slate-500 leading-relaxed max-w-xl mx-auto">
-            Requirements may vary by state, but ESA housing rights are federally protected under the Fair Housing Act.
-          </p>
-        </div>
-      </section>
-
-      {/* ─────────── 9. PRICING — ESA + PSD side-by-side.
-          ESA Letter is the recommended option for this Meta LP audience
-          (housing-focused). PSD Letter is presented as the alternative for
-          users with trained psychiatric service dogs whose need is
-          public-access / airline travel rather than housing accommodation.
-          Both reviewed by a Licensed Mental Health Practitioner. PSD pricing
-          mirrors the existing /faqs and /blog-post wording ("from $120"). */}
-      <section className="bg-slate-50 border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-5 py-16 md:py-20">
+        <div className="max-w-5xl mx-auto px-5 py-14 md:py-20">
           <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
             <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
               Refund if you don't qualify
             </span>
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 leading-[1.18] mb-3">
-              Pick the right letter for you.
+              Simple, honest pricing.
             </h2>
             <p className="text-[15px] text-slate-600 leading-relaxed">
-              Both options reviewed by a Licensed Mental Health Practitioner. If you do not qualify after review, your payment is refunded.
+              Both reviewed by a Licensed Mental Health Practitioner. If you don't qualify after review, your payment is refunded.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8 mb-6">
-            {/* ESA Letter card — recommended for the housing-focused Meta audience */}
+          <div className="grid md:grid-cols-2 gap-6 md:gap-8">
+            {/* ESA card — recommended for housing; shows BOTH plans */}
             <div className="relative bg-white border-2 border-[#0E2A47] rounded-2xl p-7 md:p-8 shadow-[0_8px_24px_rgba(15,23,42,0.08)] flex flex-col">
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] font-medium bg-emerald-600 text-white px-3 py-1 rounded-full shadow-sm">
                 <span className="w-1.5 h-1.5 rounded-full bg-white" />
                 Recommended for housing
               </span>
 
-              <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-2">ESA Letter — one-time</div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <div className="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">$110</div>
-                <div className="text-xs text-slate-500">for 1 pet · valid 1 year</div>
-              </div>
-              <div className="text-xs text-slate-500 mb-3">
-                Add additional pets at <span className="text-slate-900 font-medium">+$25 each</span>
+              <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-3">ESA Letter</div>
+
+              {/* Two plans: one-time + annual — stack on mobile to avoid overflow */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-3xl font-bold tracking-tight text-slate-900">{ESA_PRICE_LABELS.oneTime}</div>
+                  <div className="text-[12px] font-semibold text-slate-700 mt-1">One-time</div>
+                  <div className="text-[11px] text-slate-500 leading-snug mt-0.5">valid 1 year</div>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="text-3xl font-bold tracking-tight text-slate-900">{ESA_PRICE_LABELS.subscription}<span className="text-base font-semibold text-slate-500">{ESA_PRICE_LABELS.subscriptionSuffix}</span></div>
+                  <div className="text-[12px] font-semibold text-slate-700 mt-1">Annual</div>
+                  <div className="text-[11px] text-slate-500 leading-snug mt-0.5">renews yearly</div>
+                </div>
               </div>
 
-              {/* Klarna payment-method chip — Klarna brand pink/purple tints */}
-              <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
+              {/* Klarna — established payment option, display-only */}
+              <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60 self-start">
                 <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                <span className="text-[10px] text-slate-700">Pay later — where eligible</span>
+                <span className="text-[10px] text-slate-700">Pay in 4 — interest-free where eligible</span>
               </div>
 
-              <ul className="grid gap-3 mb-7 border-t border-slate-100 pt-5">
+              <ul className="grid gap-2.5 mb-7 border-t border-slate-100 pt-5">
                 {[
                   "Reviewed by a Licensed Mental Health Practitioner",
                   "Housing-focused ESA documentation when clinically appropriate",
                   "Provider's credentials and license details on the document",
-                  "Verification ID with landlord verification support",
                   "Secure PDF delivery — typically within 24 hours",
                   "Refund if you do not qualify after review",
-                  "Add additional pets at +$25 each",
-                  "Flexible payment options including Klarna where eligible",
                 ].map((feat) => (
                   <li key={feat} className="flex gap-2 items-start text-[12.5px] text-slate-700 leading-relaxed">
                     <span className="text-emerald-600 font-medium flex-shrink-0">✓</span>
@@ -1108,44 +664,49 @@ export default function MetaEsaLetterPage() {
                 Start Your ESA Evaluation →
               </Link>
               <div className="text-center text-[11px] text-slate-500 mt-3">
-                For renters seeking housing accommodation under the Fair Housing Act.
+                For renters seeking housing accommodation under the Fair Housing Act. Approval is not guaranteed.
               </div>
             </div>
 
-            {/* PSD Letter card — alternative for trained psychiatric service dogs */}
+            {/* PSD card — alternative for trained psychiatric service dogs */}
             <div className="relative bg-white border border-slate-200 rounded-2xl p-7 md:p-8 shadow-[0_2px_8px_rgba(15,23,42,0.05)] flex flex-col">
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] font-medium bg-slate-700 text-white px-3 py-1 rounded-full shadow-sm">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] font-medium bg-[#4A8472] text-white px-3 py-1 rounded-full shadow-sm">
                 <span className="w-1.5 h-1.5 rounded-full bg-white" />
                 For trained service dogs
               </span>
 
-              <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-2">PSD Letter — one-time</div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <div className="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">From $120</div>
-              </div>
-              <div className="text-xs text-slate-500 mb-3">
-                For 1 trained psychiatric service dog · <span className="text-slate-900 font-medium">+$20 per extra dog</span>
+              <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-3">PSD Letter</div>
+
+              {/* Two plans: one-time + annual — stack on mobile to avoid overflow */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-3xl font-bold tracking-tight text-slate-900">From&nbsp;$120</div>
+                  <div className="text-[12px] font-semibold text-slate-700 mt-1">One-time</div>
+                  <div className="text-[11px] text-slate-500 leading-snug mt-0.5">for a trained dog</div>
+                </div>
+                <div className="rounded-xl border border-[#4A8472]/30 bg-[#4A8472]/10 p-4">
+                  <div className="text-3xl font-bold tracking-tight text-slate-900">From&nbsp;$99<span className="text-base font-semibold text-slate-500">/year</span></div>
+                  <div className="text-[12px] font-semibold text-slate-700 mt-1">Annual</div>
+                  <div className="text-[11px] text-slate-500 leading-snug mt-0.5">renews yearly</div>
+                </div>
               </div>
 
-              {/* Klarna payment-method chip — Klarna brand pink/purple tints */}
-              <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
+              {/* Klarna — established payment option, display-only */}
+              <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60 self-start">
                 <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
                 <span className="text-[10px] text-slate-700">Pay later — where eligible</span>
               </div>
 
-              <ul className="grid gap-3 mb-7 border-t border-slate-100 pt-5">
+              <ul className="grid gap-2.5 mb-7 border-t border-slate-100 pt-5">
                 {[
                   "Reviewed by a Licensed Mental Health Practitioner",
-                  "Psychiatric Service Dog (PSD) letter for trained service dogs",
-                  "Supports housing accommodation requests under FHA",
+                  "Psychiatric Service Dog letter for trained service dogs",
+                  "Supports housing accommodation under the Fair Housing Act",
                   "Eligible for air-travel documentation (DOT Service Animal form)",
-                  "Provider's credentials and license details on the document",
-                  "Secure PDF delivery — typically within 24 hours",
                   "Refund if you do not qualify after review",
-                  "Flexible payment options including Klarna where eligible",
                 ].map((feat) => (
                   <li key={feat} className="flex gap-2 items-start text-[12.5px] text-slate-700 leading-relaxed">
-                    <span className="text-emerald-600 font-medium flex-shrink-0">✓</span>
+                    <span className="text-[#4A8472] font-medium flex-shrink-0">✓</span>
                     <span>{feat}</span>
                   </li>
                 ))}
@@ -1158,39 +719,66 @@ export default function MetaEsaLetterPage() {
                 Start Your PSD Evaluation →
               </Link>
               <div className="text-center text-[11px] text-slate-500 mt-3">
-                For handlers of trained psychiatric service dogs.
+                For handlers of trained psychiatric service dogs. Approval is not guaranteed.
               </div>
             </div>
           </div>
 
-          {/* Klarna trust panel — branded with Klarna's iconic soft pink/purple
-              palette (#FFA8CD light, #B8527F darker for text contrast on
-              white). Display-only: actual Klarna eligibility is determined
-              at checkout by Klarna's own logic; we never make Klarna's
-              approval decision for them. The chip + word "Klarna" use the
-              brand color; the body copy stays neutral. */}
-          <div className="mt-2 max-w-2xl mx-auto bg-gradient-to-br from-[#FFF5FA] to-[#FFE9F1] border border-[#FFA8CD] rounded-xl p-5 flex items-start gap-3 shadow-[0_2px_12px_rgba(255,168,205,0.20)]">
-            <span
-              aria-hidden
-              className="w-10 h-10 rounded-lg bg-[#FFA8CD] text-[#1A0A12] flex items-center justify-center flex-shrink-0 font-black text-lg leading-none tracking-tight shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
-            >
-              K.
+          <p className="text-center text-[12px] text-slate-500 mt-7 max-w-xl mx-auto leading-relaxed">
+            Final price may vary by delivery speed and selected plan. If you don't qualify after review, your payment is refunded.
+          </p>
+        </div>
+      </section>
+
+      {/* ─────────── 6. ESA vs PSD — reusable comparison ─────────── */}
+      <EsaVsPsdCard className="bg-white border-b border-slate-200" />
+
+      {/* ─────────── 7. AVAILABLE NATIONWIDE — state links ─────────── */}
+      <section className="bg-slate-50 border-b border-slate-200">
+        <div className="max-w-5xl mx-auto px-5 py-14 md:py-20">
+          <div className="text-center max-w-2xl mx-auto mb-9 md:mb-11">
+            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+              Available in all 50 states
             </span>
-            <div className="min-w-0">
-              <div className="text-[14px] font-semibold text-slate-900 leading-snug mb-1">
-                Pay later with <span className="text-[#B8527F]">Klarna</span> — interest-free at checkout.
-              </div>
-              <div className="text-[12.5px] text-slate-600 leading-relaxed">
-                Split your payment into installments where eligible. Eligibility is shown at checkout and is determined by Klarna — approval is not guaranteed.
-              </div>
-            </div>
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
+              Licensed providers across the country.
+            </h2>
+            <p className="text-[15px] text-slate-600 leading-relaxed">
+              ESA housing rights are federally protected under the Fair Housing Act. See guidance for your state:
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-w-3xl mx-auto mb-7">
+            {STATES.map((s) => (
+              <Link
+                key={s.slug}
+                to={`/esa-letter/${s.slug}`}
+                className="group flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[13px] font-medium hover:border-emerald-400 hover:bg-emerald-50 hover:text-[#0E2A47] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600 group-hover:text-emerald-700" aria-hidden>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>{s.name}</span>
+              </Link>
+            ))}
+          </div>
+
+          <div className="text-center">
+            <Link
+              to="/explore-esa-letters-all-states"
+              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#0E2A47] hover:text-[#091B30] underline-offset-2 hover:underline"
+            >
+              View all 50 states
+              <span aria-hidden>→</span>
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* ─────────── 10. FAQ ─────────── */}
+      {/* ─────────── 6. FAQ — short ─────────── */}
       <section className="bg-white border-b border-slate-200">
-        <div className="max-w-3xl mx-auto px-5 py-16 md:py-20">
+        <div className="max-w-3xl mx-auto px-5 py-14 md:py-20">
           <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-8 text-center leading-[1.18]">
             Common questions.
           </h2>
@@ -1199,9 +787,7 @@ export default function MetaEsaLetterPage() {
               <details
                 key={item.q}
                 open={i === 0}
-                className={`group rounded-lg px-4 py-3 border border-slate-200 bg-white ${
-                  i >= 4 && !showAllMobile ? "hidden sm:block" : ""
-                }`}
+                className="group rounded-lg px-4 py-3 border border-slate-200 bg-white"
               >
                 <summary className="flex items-center justify-between gap-3 cursor-pointer list-none">
                   <span className="text-[13.5px] font-semibold text-slate-900 leading-snug">{item.q}</span>
@@ -1211,29 +797,10 @@ export default function MetaEsaLetterPage() {
               </details>
             ))}
           </div>
-          {!showAllMobile && FAQ_ITEMS.length > 4 && (
-            <div className="sm:hidden pt-4 text-center">
-              <button
-                type="button"
-                onClick={() => setShowAllMobile(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                Show more questions
-                <i className="ri-arrow-down-s-line"></i>
-              </button>
-            </div>
-          )}
         </div>
       </section>
 
-      {/* ─────────── REAL STORIES — YouTube Shorts carousel.
-          Now positioned just before the Final CTA as a last emotional push.
-          The user has read pricing, FAQ, and all trust content above — the
-          reels here serve as social proof "people like you who chose this"
-          right before the closing assessment button. */}
-      {SHOW_SHORTS_CAROUSEL && <MetaShortsCarousel />}
-
-      {/* ─────────── 11. FINAL CTA ─────────── */}
+      {/* ─────────── 7. FINAL CTA ─────────── */}
       <section className="relative bg-gradient-to-b from-[#0E2A47] to-[#091B30] text-white overflow-hidden">
         <div
           aria-hidden
@@ -1245,7 +812,7 @@ export default function MetaEsaLetterPage() {
             See If You Qualify Today
           </h2>
           <p className="text-[14px] text-slate-300 leading-relaxed mb-6 max-w-xl mx-auto">
-            Reviewed by a licensed mental health professional in your state. ESA documentation issued only when clinically appropriate. Refund if you don't qualify.
+            Reviewed by a Licensed Mental Health Practitioner in your state. ESA documentation issued only when clinically appropriate. Refund if you don&rsquo;t qualify.
           </p>
           <Link
             to={ASSESSMENT_HREF}
@@ -1258,320 +825,22 @@ export default function MetaEsaLetterPage() {
       </section>
 
       <SharedFooter />
+        </>
+      )}
+
+      {/* Mobile sticky CTA — appears after the hero scrolls out. Reuses the
+          homepage component (label "Get Your ESA Letter — From $99"). */}
+      <MobileStickyApplyCTA showAfterPx={500} />
     </main>
   );
 }
 
-function CheckDot() {
+function HeroCheck() {
   return (
-    <span className="w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+    <span className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
       <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <polyline points="20 6 9 17 4 12" />
       </svg>
     </span>
-  );
-}
-
-/**
- * Mobile-only collapsible card for content-dense card grids.
- *
- * Why: on a 375px mobile viewport the three card grids (housing situations,
- * mental-health context, housing rights) total 14 cards = lots of vertical
- * paint. Collapsing each card to its title on mobile lets users scan
- * quickly and tap to expand the bodies they care about.
- *
- * Behavior:
- *   - Mobile (<768px): card renders title row only. Tap to expand body.
- *     A "+" affordance rotates to "×" on open.
- *   - Desktop (≥768px): card always shows title + body (open=true), button
- *     is pointer-events-none, "+" affordance is hidden.
- *
- * Initial `open` is derived from window.matchMedia synchronously so there
- * is no flash-of-collapsed on desktop first paint. A media-query listener
- * keeps it synced across resize.
- */
-function CollapsibleCard({
-  title,
-  body,
-  iconBg,
-  iconSvg,
-  hoverClass,
-}: {
-  title: string;
-  body: string;
-  iconBg: string;
-  iconSvg: React.ReactNode;
-  hoverClass?: string;
-}) {
-  const [open, setOpen] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia("(min-width: 768px)").matches;
-  });
-
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)");
-    const sync = () => setOpen(mq.matches);
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  return (
-    <div
-      className={`bg-white border border-slate-200 rounded-xl p-5 md:p-6 transition ${hoverClass ?? "hover:border-emerald-200"}`}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex items-start gap-3 w-full text-left md:pointer-events-none md:cursor-default"
-      >
-        <span
-          className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${iconBg}`}
-        >
-          {iconSvg}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[14.5px] md:text-[15px] font-semibold text-slate-900 leading-snug">
-              {title}
-            </span>
-            <span
-              aria-hidden
-              className={`md:hidden flex-shrink-0 text-slate-500 text-xl leading-none transition-transform duration-200 ${open ? "rotate-45 text-emerald-600" : ""}`}
-            >
-              +
-            </span>
-          </div>
-          {open && (
-            <p className="text-[13px] text-slate-600 leading-relaxed mt-2">
-              {body}
-            </p>
-          )}
-        </div>
-      </button>
-    </div>
-  );
-}
-
-/**
- * Lite YouTube Shorts carousel.
- *
- * Each card is a vertical 9:16 thumbnail (lazy <img>) with a play overlay.
- * On click, the thumbnail is swapped for a real YouTube <iframe> only for
- * that card — so the page stays light until the user actually engages.
- *
- * Layout uses native CSS scroll-snap (no carousel package). On mobile the
- * user swipes the row; on desktop they can also use the floating arrows.
- */
-function MetaShortsCarousel() {
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
-  // Track which Shorts have been activated (iframe mounted).
-  const [activated, setActivated] = useState<Record<string, boolean>>({});
-
-  const activate = (id: string) => {
-    setActivated((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
-  };
-
-  const scrollByCards = (dir: 1 | -1) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    // Approximate card width incl. gap; matches Tailwind w-[260px] + gap-4.
-    const card = el.querySelector("[data-short-card]") as HTMLElement | null;
-    const step = card ? card.offsetWidth + 16 : 280;
-    el.scrollBy({ left: dir * step, behavior: "smooth" });
-  };
-
-  return (
-    <section className="relative bg-gradient-to-b from-[#FFFBF5] to-[#FFF7ED] border-b border-slate-200">
-      <div className="max-w-6xl mx-auto px-5 py-12 md:py-20">
-        <div className="text-center max-w-2xl mx-auto mb-8 md:mb-10">
-          <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-            Real stories from pet owners
-          </span>
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-            Real Stories From Pet Owners
-          </h2>
-          <p className="text-[14.5px] md:text-[15px] text-slate-600 leading-relaxed">
-            See how PawTenant helped people navigate housing and ESA evaluations online.
-          </p>
-        </div>
-
-        <div className="relative">
-          {/* Prev / Next arrows — desktop only.
-              On mobile the arrows previously overlapped the cards' play
-              buttons / top-left "Short" pill at the snap-start position;
-              hiding them on mobile resolves the overlap and the native
-              swipe with snap-mandatory is sufficient for touch users. */}
-          <button
-            type="button"
-            onClick={() => scrollByCards(-1)}
-            aria-label="Scroll testimonials left"
-            className="hidden md:flex absolute top-1/2 md:-left-3 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/95 backdrop-blur-sm border border-slate-200 text-slate-700 hover:text-slate-900 hover:border-slate-300 active:bg-slate-50 shadow-[0_4px_12px_rgba(15,23,42,0.10)] items-center justify-center transition"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollByCards(1)}
-            aria-label="Scroll testimonials right"
-            className="hidden md:flex absolute top-1/2 md:-right-3 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/95 backdrop-blur-sm border border-slate-200 text-slate-700 hover:text-slate-900 hover:border-slate-300 active:bg-slate-50 shadow-[0_4px_12px_rgba(15,23,42,0.10)] items-center justify-center transition"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-
-          {/* Scroll snap row.
-              `snap-x snap-mandatory` gives swipe-friendly mobile UX.
-              Padding-right ensures the last card has breathing room and that
-              users can see a "peek" of the next card on desktop. */}
-          <div
-            ref={scrollerRef}
-            className="flex gap-4 md:gap-5 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-3 -mx-5 px-5 md:mx-0 md:px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            role="region"
-            aria-label="Customer testimonial reels"
-          >
-            {SHORTS.map((s) => (
-              <ShortCard
-                key={s.id}
-                short={s}
-                isActive={!!activated[s.id]}
-                onActivate={() => activate(s.id)}
-              />
-            ))}
-            {/* Trailing spacer so last card can snap to start with peek */}
-            <div className="shrink-0 w-3 md:w-6" aria-hidden />
-          </div>
-        </div>
-
-        <div className="mt-7 md:mt-9 text-center">
-          <Link
-            to={ASSESSMENT_HREF}
-            className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-          >
-            Start Your ESA Evaluation
-            <span aria-hidden>→</span>
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ShortCard({
-  short,
-  isActive,
-  onActivate,
-}: {
-  short: Short;
-  isActive: boolean;
-  onActivate: () => void;
-}) {
-  // Prefer a local thumbnail if provided (drop a JPG into
-  // /public/assets/meta/shorts/). If the local file isn't there, fall back
-  // to YouTube's maxresdefault.jpg, which on Shorts returns the
-  // creator-uploaded custom thumbnail if one was set in YT Studio.
-  // The <img onError> chain below downgrades gracefully when needed.
-  const thumbSrc =
-    short.thumb || `https://i.ytimg.com/vi/${short.id}/maxresdefault.jpg`;
-  const embedSrc = `https://www.youtube.com/embed/${short.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1`;
-  const watchUrl = `https://www.youtube.com/shorts/${short.id}`;
-
-  return (
-    <div
-      data-short-card
-      className="snap-start shrink-0 w-[240px] sm:w-[260px] md:w-[280px]"
-    >
-      <div className="relative aspect-[9/16] overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.10)]">
-        {isActive ? (
-          <iframe
-            src={embedSrc}
-            title={short.title}
-            loading="lazy"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-            className="absolute inset-0 w-full h-full border-0"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={onActivate}
-            aria-label={`Play customer story: ${short.title}`}
-            className="group absolute inset-0 w-full h-full block"
-          >
-            {/* Thumbnail. width/height set to prevent layout shift. */}
-            <img
-              src={thumbSrc}
-              alt={short.title}
-              width={480}
-              height={854}
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              className="absolute inset-0 w-full h-full object-cover transition group-hover:scale-[1.02]"
-              onError={(e) => {
-                // Fallback chain:
-                //   local thumb (if set) -> maxresdefault -> hqdefault -> mqdefault
-                // YouTube's maxresdefault.jpg is missing on some Shorts, and
-                // creator-uploaded local files may not exist yet — degrade quietly.
-                const img = e.currentTarget as HTMLImageElement;
-                const tried = img.dataset.fallbackStep || "0";
-                const next = (parseInt(tried, 10) || 0) + 1;
-                img.dataset.fallbackStep = String(next);
-                if (next === 1) {
-                  img.src = `https://i.ytimg.com/vi/${short.id}/maxresdefault.jpg`;
-                } else if (next === 2) {
-                  img.src = `https://i.ytimg.com/vi/${short.id}/hqdefault.jpg`;
-                } else if (next === 3) {
-                  img.src = `https://i.ytimg.com/vi/${short.id}/mqdefault.jpg`;
-                }
-              }}
-            />
-            {/* Soft bottom gradient for legibility of the play affordance */}
-            <div
-              aria-hidden
-              className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/0 to-black/0"
-            />
-            {/* Play badge */}
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="w-14 h-14 rounded-full bg-white/95 backdrop-blur-sm shadow-lg flex items-center justify-center transition group-hover:scale-110">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-orange-500 ml-0.5" aria-hidden>
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </span>
-            </span>
-            {/* Top-left "Shorts" pill */}
-            <span className="absolute top-3 left-3 inline-flex items-center gap-1 text-[10px] font-semibold tracking-wide uppercase bg-white/90 backdrop-blur-sm text-slate-800 px-2 py-1 rounded-full">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              Short
-            </span>
-          </button>
-        )}
-      </div>
-
-      <div className="mt-3 px-1">
-        <div className="text-[13.5px] md:text-[14px] font-semibold text-slate-900 leading-snug">
-          {short.title}
-        </div>
-        <a
-          href={watchUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 mt-1 text-[11.5px] text-slate-500 hover:text-orange-600 transition"
-        >
-          Watch on YouTube
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M7 17 17 7" />
-            <path d="M7 7h10v10" />
-          </svg>
-        </a>
-      </div>
-    </div>
   );
 }
