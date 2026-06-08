@@ -5,9 +5,6 @@ import AdSpendPanel from "./AdSpendPanel";
 import GoogleAdsSyncPanel from "./GoogleAdsSyncPanel";
 import MetaCAPIPanel from "./MetaCAPIPanel";
 import UnifiedBackfillPanel from "./UnifiedBackfillPanel";
-import VisitorSourceRankingsPanel from "./VisitorSourceRankingsPanel";
-import DailyVisitorsByChannelPanel from "./DailyVisitorsByChannelPanel";
-import LandingPagePerformancePanel from "./LandingPagePerformancePanel";
 import OwnerKpiStrip from "./OwnerKpiStrip";
 import Phase2AnalyticsPanel from "./Phase2AnalyticsPanel";
 import RecoveryPerformancePanel from "./RecoveryPerformancePanel";
@@ -21,6 +18,7 @@ import {
   ACQUISITION_VISUAL,
   type AcquisitionLabel,
 } from "@/lib/acquisitionClassifier";
+import { computeOrderMetrics } from "@/lib/analyticsMetrics";
 
 interface Order {
   id: string;
@@ -229,6 +227,17 @@ function fmtShort(ts: string) {
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// Shared reporting-preset display labels (Current Month is the default).
+const DATE_PRESET_LABEL: Record<string, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  "7d": "Last 7 Days",
+  "30d": "Last 30 Days",
+  mtd: "Current Month",
+  lastmonth: "Previous Month",
+  custom: "Custom",
+};
+
 function getDateRange(preset: string): { from: Date; to: Date } {
   const now = new Date();
   const to = new Date(now);
@@ -237,6 +246,11 @@ function getDateRange(preset: string): { from: Date; to: Date } {
       const from = new Date(now);
       from.setHours(0, 0, 0, 0);
       return { from, to };
+    }
+    case "yesterday": {
+      const from = new Date(now); from.setDate(from.getDate() - 1); from.setHours(0, 0, 0, 0);
+      const yTo = new Date(now); yTo.setDate(yTo.getDate() - 1); yTo.setHours(23, 59, 59, 999);
+      return { from, to: yTo };
     }
     case "7d": return { from: new Date(now.getTime() - 7 * 86400000), to };
     case "30d": return { from: new Date(now.getTime() - 30 * 86400000), to };
@@ -313,207 +327,7 @@ function DonutChart({ segments }: { segments: { label: string; value: number; co
 }
 
 // ── Revenue Trend Bar Chart ───────────────────────────────────────────────────
-interface TrendBucket {
-  label: string;
-  date: string;
-  revenue: number;
-  paid: number;
-  leads: number;
-  byChannel: Record<string, number>;
-}
 
-function RevenueTrendChart({
-  buckets,
-  granularity,
-  onGranularityChange,
-  topChannels,
-}: {
-  buckets: TrendBucket[];
-  granularity: "daily" | "weekly";
-  onGranularityChange: (g: "daily" | "weekly") => void;
-  topChannels: { channel: string; cfg: ChannelConfig }[];
-}) {
-  const [metric, setMetric] = useState<"revenue" | "orders">("revenue");
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-
-  const maxVal = useMemo(() => {
-    if (metric === "revenue") return Math.max(...buckets.map((b) => b.revenue), 1);
-    return Math.max(...buckets.map((b) => b.paid + b.leads), 1);
-  }, [buckets, metric]);
-
-  const totalRevenue = buckets.reduce((s, b) => s + b.revenue, 0);
-  const totalOrders = buckets.reduce((s, b) => s + b.paid + b.leads, 0);
-
-  if (buckets.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <i className="ri-bar-chart-2-line text-gray-200 text-4xl mb-2"></i>
-        <p className="text-sm text-gray-400">No data for this period</p>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      {/* Controls */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-            {(["revenue", "orders"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMetric(m)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${metric === m ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                {m === "revenue" ? "Revenue ($)" : "Orders (#)"}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-            {(["daily", "weekly"] as const).map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => onGranularityChange(g)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${granularity === g ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                {g === "daily" ? "Daily" : "Weekly"}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-4 text-xs">
-          <span className="text-gray-500">Total: <strong className="text-gray-900">{metric === "revenue" ? `$${totalRevenue.toLocaleString()}` : totalOrders}</strong></span>
-          <span className="text-gray-400">{buckets.length} {granularity === "daily" ? "days" : "weeks"}</span>
-        </div>
-      </div>
-
-      {/* Chart */}
-      <div className="relative">
-        {/* Y-axis labels */}
-        <div className="flex">
-          <div className="w-12 flex-shrink-0 flex flex-col justify-between text-right pr-2 pb-6" style={{ height: "160px" }}>
-            {[1, 0.75, 0.5, 0.25, 0].map((pct) => (
-              <span key={pct} className="text-[9px] text-gray-300 leading-none">
-                {metric === "revenue" ? `$${Math.round(maxVal * pct).toLocaleString()}` : Math.round(maxVal * pct)}
-              </span>
-            ))}
-          </div>
-
-          {/* Bars */}
-          <div className="flex-1 relative" style={{ height: "160px" }}>
-            {/* Grid lines */}
-            {[0, 0.25, 0.5, 0.75, 1].map((pct) => (
-              <div
-                key={pct}
-                className="absolute left-0 right-0 border-t border-gray-100"
-                style={{ bottom: `${pct * 100}%` }}
-              ></div>
-            ))}
-
-            {/* Bar columns */}
-            <div className="absolute inset-0 flex items-end gap-px overflow-hidden">
-              {buckets.map((bucket, idx) => {
-                const val = metric === "revenue" ? bucket.revenue : bucket.paid + bucket.leads;
-                const heightPct = maxVal > 0 ? (val / maxVal) * 100 : 0;
-                const isHovered = hoveredIdx === idx;
-
-                return (
-                  <div
-                    key={bucket.date}
-                    className="flex-1 flex flex-col justify-end relative group cursor-pointer"
-                    style={{ height: "100%" }}
-                    onMouseEnter={() => setHoveredIdx(idx)}
-                    onMouseLeave={() => setHoveredIdx(null)}
-                  >
-                    {/* Tooltip */}
-                    {isHovered && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 bg-gray-900 text-white rounded-lg px-3 py-2 text-xs whitespace-nowrap pointer-events-none shadow-lg">
-                        <p className="font-bold mb-1">{bucket.label}</p>
-                        <p className="text-emerald-400">Revenue: ${bucket.revenue.toLocaleString()}</p>
-                        <p className="text-sky-400">Paid: {bucket.paid}</p>
-                        <p className="text-amber-400">Leads: {bucket.leads}</p>
-                        {topChannels.slice(0, 3).map((ch) => {
-                          const chVal = bucket.byChannel[ch.channel] ?? 0;
-                          if (!chVal) return null;
-                          return (
-                            <p key={ch.channel} style={{ color: ch.cfg.chartColor }}>
-                              {ch.cfg.label}: {chVal}
-                            </p>
-                          );
-                        })}
-                        {/* Arrow */}
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                      </div>
-                    )}
-
-                    {/* Stacked bar by channel */}
-                    <div
-                      className="w-full rounded-t-sm transition-all duration-200 overflow-hidden"
-                      style={{ height: `${heightPct}%`, minHeight: val > 0 ? "2px" : "0" }}
-                    >
-                      {metric === "orders" && topChannels.length > 0 ? (
-                        // Stacked by channel
-                        <div className="w-full h-full flex flex-col-reverse">
-                          {topChannels.map((ch) => {
-                            const chCount = bucket.byChannel[ch.channel] ?? 0;
-                            const chPct = val > 0 ? (chCount / val) * 100 : 0;
-                            return (
-                              <div
-                                key={ch.channel}
-                                style={{ height: `${chPct}%`, backgroundColor: ch.cfg.chartColor, opacity: isHovered ? 1 : 0.85 }}
-                              ></div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div
-                          className="w-full h-full rounded-t-sm transition-opacity"
-                          style={{ backgroundColor: "#3b6ea5", opacity: isHovered ? 1 : 0.75 }}
-                        ></div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* X-axis labels */}
-        <div className="flex ml-12 mt-1">
-          {buckets.map((bucket, idx) => {
-            // Show label every N buckets to avoid crowding
-            const showEvery = buckets.length > 60 ? 14 : buckets.length > 30 ? 7 : buckets.length > 14 ? 3 : 1;
-            const show = idx % showEvery === 0 || idx === buckets.length - 1;
-            return (
-              <div key={bucket.date} className="flex-1 text-center">
-                {show && (
-                  <span className="text-[9px] text-gray-300 whitespace-nowrap">
-                    {bucket.label}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Channel legend */}
-      {metric === "orders" && topChannels.length > 0 && (
-        <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100">
-          {topChannels.map((ch) => (
-            <div key={ch.channel} className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: ch.cfg.chartColor }}></div>
-              <span className="text-xs text-gray-500">{ch.cfg.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── CSV Export ────────────────────────────────────────────────────────────────
 function exportToCSV(orders: Order[], filename: string) {
@@ -573,7 +387,7 @@ function exportToCSV(orders: Order[], filename: string) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps) {
-  const [datePreset, setDatePreset] = useState("30d");
+  const [datePreset, setDatePreset] = useState("mtd");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [channelFilter, setChannelFilter] = useState("all");
@@ -582,7 +396,6 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const [stateFilter, setStateFilter] = useState("all");
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [orderListPage, setOrderListPage] = useState(1);
-  const [trendGranularity, setTrendGranularity] = useState<"daily" | "weekly">("daily");
   const [csvExporting, setCsvExporting] = useState(false);
   const [reviewLogs, setReviewLogs] = useState<{ object_id: string; action: string; created_at: string }[]>([]);
   const [analyticsView, setAnalyticsView] = useState<"overview" | "funnel" | "ad_roi" | "google_ads_sync" | "meta_capi" | "backfill">("overview");
@@ -663,6 +476,15 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     }
     return getDateRange(datePreset);
   }, [datePreset, customFrom, customTo]);
+
+  // Single human-readable label for the shared reporting period, e.g.
+  // "Current Month — Jun 1, 2026 to Jun 8, 2026". Reused across sections so
+  // they all advertise the SAME window.
+  const reportingLabel = useMemo(() => {
+    const fmt = (d: Date) => d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    const name = datePreset === "custom" ? "Custom" : (DATE_PRESET_LABEL[datePreset] ?? "Current Month");
+    return `${name} — ${fmt(rangeFrom)} to ${fmt(rangeTo)}`;
+  }, [datePreset, rangeFrom, rangeTo]);
 
   // ── Canonical order channel (LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR) ───
   // Enrich each order with orders.attribution_json.channel — the canonical
@@ -757,13 +579,24 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const maxTotal = Math.max(...channelStats.map((c) => c.total), 1);
 
   // ── Summary KPIs ──────────────────────────────────────────────────────────
+  // Canonical metric definitions shared with Owner Dashboard + Conversion
+  // Analytics via lib/analyticsMetrics. Paid = payment happened (incl. later
+  // refunded); revenue here is GROSS. Net Paid / Net Revenue exclude refunds.
   const kpis = useMemo(() => {
-    const paid = filteredOrders.filter((o) => !!o.payment_intent_id);
-    const leads = filteredOrders.filter((o) => !o.payment_intent_id);
-    const revenue = paid.reduce((s, o) => s + (o.price ?? 0), 0);
-    const completed = filteredOrders.filter((o) => o.doctor_status === "patient_notified").length;
-    const convRate = filteredOrders.length > 0 ? Math.round((paid.length / filteredOrders.length) * 100) : 0;
-    return { total: filteredOrders.length, paid: paid.length, leads: leads.length, revenue, completed, convRate };
+    const m = computeOrderMetrics(filteredOrders);
+    return {
+      total: m.total,
+      paid: m.paid,
+      netPaid: m.netPaid,
+      leads: m.leads,
+      completed: m.completed,
+      revenue: m.grossRevenue,
+      netRevenue: m.netRevenue,
+      refunds: m.refunds,
+      paidRate: Math.round(m.paidRate),
+      netPaidRate: Math.round(m.netPaidRate),
+      aov: Math.round(m.aov),
+    };
   }, [filteredOrders]);
 
   // ── Review request stats ──────────────────────────────────────────────────
@@ -851,82 +684,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     [visitorAgg]
   );
 
-  // ── Top channels for stacked chart ───────────────────────────────────────
-  const topChannels = useMemo(() =>
-    channelStats.slice(0, 6).map((c) => ({ channel: c.channel, cfg: c.cfg })),
-    [channelStats]
-  );
 
-  // ── Revenue trend buckets ─────────────────────────────────────────────────
-  const trendBuckets = useMemo((): TrendBucket[] => {
-    if (trendGranularity === "daily") {
-      // LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR: bucket across the actual
-      // selected range (rangeFrom→rangeTo) instead of a hardcoded 7/30/90
-      // window that ignored Today / MTD / Last month / Custom / YTD / All.
-      // Daily resolution is capped at 92 days ending at rangeTo; longer
-      // ranges should use the Weekly toggle.
-      const MS = 86400000;
-      const MAX_DAYS = 92;
-      const end = new Date(rangeTo); end.setHours(0, 0, 0, 0);
-      let start = new Date(rangeFrom); start.setHours(0, 0, 0, 0);
-      const span = Math.floor((end.getTime() - start.getTime()) / MS) + 1;
-      if (span > MAX_DAYS) start = new Date(end.getTime() - (MAX_DAYS - 1) * MS);
-      const buckets: Record<string, TrendBucket> = {};
-      for (let d = new Date(start); d <= end; d = new Date(d.getTime() + MS)) {
-        const key = d.toISOString().slice(0, 10);
-        buckets[key] = {
-          label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-          date: key,
-          revenue: 0,
-          paid: 0,
-          leads: 0,
-          byChannel: {},
-        };
-      }
-      filteredOrders.forEach((o) => {
-        const key = o.created_at.slice(0, 10);
-        if (!buckets[key]) return;
-        const ch = orderChannelLabel(o);
-        if (o.payment_intent_id) {
-          buckets[key].paid++;
-          buckets[key].revenue += o.price ?? 0;
-        } else {
-          buckets[key].leads++;
-        }
-        buckets[key].byChannel[ch] = (buckets[key].byChannel[ch] ?? 0) + 1;
-      });
-      return Object.values(buckets);
-    } else {
-      // Weekly buckets
-      const weekMap: Record<string, TrendBucket> = {};
-      filteredOrders.forEach((o) => {
-        const d = new Date(o.created_at);
-        const dayOfWeek = d.getDay();
-        const monday = new Date(d);
-        monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
-        const key = monday.toISOString().slice(0, 10);
-        if (!weekMap[key]) {
-          weekMap[key] = {
-            label: monday.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-            date: key,
-            revenue: 0,
-            paid: 0,
-            leads: 0,
-            byChannel: {},
-          };
-        }
-        const ch = orderChannelLabel(o);
-        if (o.payment_intent_id) {
-          weekMap[key].paid++;
-          weekMap[key].revenue += o.price ?? 0;
-        } else {
-          weekMap[key].leads++;
-        }
-        weekMap[key].byChannel[ch] = (weekMap[key].byChannel[ch] ?? 0) + 1;
-      });
-      return Object.values(weekMap).sort((a, b) => a.date.localeCompare(b.date));
-    }
-  }, [filteredOrders, trendGranularity, rangeFrom, rangeTo]);
 
   // ── Orders for selected channel ───────────────────────────────────────────
   const channelOrders = useMemo(() => {
@@ -1267,7 +1025,11 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
            lib/analyticsMetrics + lib/analyticsNormalize + the existing
            attributionResolver. Isolated additive mount — no other section changed. */}
       <section className="mb-4">
-        <SourceLandingPaidRatePanel />
+        <SourceLandingPaidRatePanel
+          globalFrom={rangeFrom}
+          globalTo={rangeTo}
+          globalLabel={reportingLabel}
+        />
       </section>
 
       {/* ── Owner Dashboard (Phase 2.b) ──
@@ -1282,9 +1044,13 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             <i className="ri-dashboard-3-line text-base"></i>
           </span>
           <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">Owner Dashboard</h2>
-          <span className="text-[11px] text-gray-400 ml-1">· {analyticsScopeLabel()}</span>
+          <span className="text-[11px] text-gray-400 ml-1">· {reportingLabel}</span>
         </div>
-        <OwnerKpiStrip />
+        <OwnerKpiStrip
+          dateFromIso={rangeFrom.toISOString()}
+          dateToIso={rangeTo.toISOString()}
+          rangeLabel={reportingLabel}
+        />
       </section>
 
       {/* ── Smart Insights (Phase 2.d) ──
@@ -1306,7 +1072,10 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Smart Insights</h2>
           <span className="text-[11px] text-gray-400 ml-1">· Auto-generated from your data</span>
         </div>
-        <SmartInsightsPanel />
+        <SmartInsightsPanel
+          dateFromIso={rangeFrom.toISOString()}
+          dateToIso={rangeTo.toISOString()}
+        />
       </section>
 
       {/* ── Filter bar ── */}
@@ -1316,13 +1085,11 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             {[
               { value: "today", label: "Today" },
-              { value: "7d", label: "7 Days" },
-              { value: "30d", label: "30 Days" },
-              { value: "mtd", label: "Month to Date" },
-              { value: "lastmonth", label: "Last Month" },
-              { value: "90d", label: "90 Days" },
-              { value: "ytd", label: "Year to Date" },
-              { value: "all", label: "All Time" },
+              { value: "yesterday", label: "Yesterday" },
+              { value: "7d", label: "Last 7 Days" },
+              { value: "30d", label: "Last 30 Days" },
+              { value: "mtd", label: "Current Month" },
+              { value: "lastmonth", label: "Previous Month" },
               { value: "custom", label: "Custom" },
             ].map((p) => (
               <button
@@ -1398,7 +1165,8 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           </div>
 
           <span className="text-xs text-gray-400 ml-auto">
-            <strong className="text-gray-700">{filteredOrders.length}</strong> orders in range
+            Reporting period: <strong className="text-gray-700">{reportingLabel}</strong>
+            <span className="hidden sm:inline"> · <strong className="text-gray-700">{filteredOrders.length}</strong> orders</span>
           </span>
         </div>
       </div>
@@ -1410,8 +1178,8 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           { label: "Paid Orders", value: kpis.paid, icon: "ri-bank-card-line", color: "text-emerald-600", bg: "bg-emerald-50", sub: null },
           { label: "Unpaid Leads", value: kpis.leads, icon: "ri-user-follow-line", color: "text-amber-600", bg: "bg-amber-50", sub: null },
           { label: "Completed", value: kpis.completed, icon: "ri-checkbox-circle-line", color: "text-[#3b6ea5]", bg: "bg-[#e8f0f9]", sub: null },
-          { label: "Conversion Rate", value: `${kpis.convRate}%`, icon: "ri-percent-line", color: "text-violet-600", bg: "bg-violet-50", sub: null },
-          { label: "Total Revenue", value: `$${kpis.revenue.toLocaleString()}`, icon: "ri-money-dollar-circle-line", color: "text-emerald-700", bg: "bg-emerald-50", sub: null },
+          { label: "Paid Rate", value: `${kpis.paidRate}%`, icon: "ri-percent-line", color: "text-violet-600", bg: "bg-violet-50", sub: null },
+          { label: "Revenue (gross)", value: `$${kpis.revenue.toLocaleString()}`, icon: "ri-money-dollar-circle-line", color: "text-emerald-700", bg: "bg-emerald-50", sub: null },
           {
             label: "Reviews Requested",
             value: reviewStats.totalSent,
@@ -1466,46 +1234,6 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         />
       </section>
 
-      {/* ── Visitor Source Rankings (Phase A) ──
-           Read-only ranking of normalized visitor sources for the same
-           Overview-view date window. Uses get_visitor_source_data RPC +
-           shared acquisitionClassifier so labels agree with Orders pills
-           + Live Visitors chips. Gracefully degrades to "Insufficient
-           attribution data" if the RPC is missing or RLS rejects. */}
-      <section>
-        <VisitorSourceRankingsPanel
-          rangeFrom={rangeFrom}
-          rangeTo={rangeTo}
-          orders={ordersEnriched}
-        />
-      </section>
-
-      {/* ── Daily Visitors by Source (Traffic Intelligence) ──
-           Stacked daily-bar chart. Date window is parent-driven via
-           rangeFrom/rangeTo so the chart always matches the selected
-           Analytics filter — no competing internal preset. */}
-      <section>
-        <DailyVisitorsByChannelPanel rangeFrom={rangeFrom} rangeTo={rangeTo} />
-      </section>
-
-      {/* ── Landing Page Performance (Traffic Intelligence) ──
-           Two-mode panel (Rankings / Source × Page matrix). Date window
-           is parent-driven via rangeFrom/rangeTo. Visitor-level metrics
-           only (visitor_sessions.paid_at). */}
-      <section>
-        <LandingPagePerformancePanel rangeFrom={rangeFrom} rangeTo={rangeTo} />
-      </section>
-
-      {/* ── Marketing ROI (Phase 2.b — Phase2AnalyticsPanel "marketing" mode) ──
-           Renders the Ad Spend & ROI breakdown + per-channel performance
-           cards from analytics_roi_summary view (now on LIVE via Phase 2.a).
-           Panel handles empty ROI gracefully — shows
-           "Insert spend rows into ad_spend_meta or ad_spend_google to
-           populate this view" until operators add data. No conflict with
-           the existing Channel Mix donut or Period Summary below. */}
-      <section>
-        <Phase2AnalyticsPanel mode="marketing" />
-      </section>
 
       {/* ── Recovery Performance (Phase 2.c) ──
            Reads from public.communications (slug = seq_30min / seq_24h /
@@ -1520,36 +1248,6 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         <RecoveryPerformancePanel />
       </section>
 
-      {/* ── Revenue Trend Chart ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-extrabold text-gray-900">Revenue Trend</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Daily / weekly revenue and order volume over time</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-3 text-xs text-gray-400">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-[#3b6ea5] inline-block"></span>Revenue
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 inline-block"></span>Paid
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block"></span>Leads
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="px-5 py-5">
-          <RevenueTrendChart
-            buckets={trendBuckets}
-            granularity={trendGranularity}
-            onGranularityChange={setTrendGranularity}
-            topChannels={topChannels}
-          />
-        </div>
-      </div>
 
       {/* ── Channel Mix + Period Summary ──
            Legacy "Traffic Source Breakdown" table was retired by the

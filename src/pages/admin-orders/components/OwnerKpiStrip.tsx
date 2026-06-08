@@ -15,10 +15,18 @@ import { supabase } from "@/lib/supabaseClient";
 import { analyticsScopeRange, analyticsScopeLabel } from "./analyticsScope";
 
 interface StripData {
-  revenue: number;
-  orders: number;
-  conversionRate: number | null;   // 0–100
+  revenue: number;        // GROSS revenue from paid orders (incl. later refunded)
+  orders: number;         // Paid Orders (gross) — payment happened
+  paidRate: number | null; // Paid Orders / Total Orders, 0–100
   blendedCpa: number | null;
+}
+
+interface OwnerKpiStripProps {
+  /** Shared global reporting range from AnalyticsTab. Falls back to the
+   *  canonical analytics scope window when not provided. */
+  dateFromIso?: string | null;
+  dateToIso?: string | null;
+  rangeLabel?: string | null;
 }
 
 function num(v: unknown): number {
@@ -53,31 +61,37 @@ function HeroKpi({ icon, iconBg, iconFg, label, value, subtitle }: {
   );
 }
 
-export default function OwnerKpiStrip() {
+export default function OwnerKpiStrip({ dateFromIso = null, dateToIso = null, rangeLabel = null }: OwnerKpiStripProps = {}) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<StripData>({
     revenue: 0,
     orders: 0,
-    conversionRate: null,
+    paidRate: null,
     blendedCpa: null,
   });
 
   const load = useCallback(async () => {
     setLoading(true);
 
-    const { fromIso } = analyticsScopeRange();
+    const scope = analyticsScopeRange();
+    const fromIso = dateFromIso ?? scope.fromIso;
+    const toIso = dateToIso ?? scope.toIso;
 
-    const [ordersRes, sessionsRes, roiRes] = await Promise.all([
-      // PAID orders inside the scope window — same shape as Business Snapshot.
+    const [paidRes, totalRes, roiRes] = await Promise.all([
+      // PAID orders (gross) inside the selected range — canonical "Paid Orders"
+      // definition shared with Business Snapshot / Conversion Analytics:
+      // a successful payment happened (payment_intent_id OR paid_at present),
+      // INCLUDING later-refunded orders.
       supabase.from("orders")
         .select("id, price")
-        .not("payment_intent_id", "is", null)
-        .not("status", "in", "(\"refunded\",\"cancelled\",\"archived\")")
-        .gte("created_at", fromIso),
-      // Visitor sessions inside the scope window for conversion-rate denominator.
-      supabase.from("visitor_sessions")
-        .select("session_id", { count: "exact", head: true })
-        .gte("created_at", fromIso),
+        .or("payment_intent_id.not.is.null,paid_at.not.is.null")
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso),
+      // Total orders in the selected range — denominator for Paid Rate.
+      supabase.from("orders")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso),
       supabase.from("analytics_roi_summary").select("*"),
     ]).then((arr) => arr).catch(() => [
       { data: [] }, { count: 0 }, { data: [] },
@@ -90,13 +104,13 @@ export default function OwnerKpiStrip() {
     let revenue = 0;
     let paidCount = 0;
     try {
-      const paidOrders = (ordersRes?.data ?? []) as PaidOrder[];
+      const paidOrders = (paidRes?.data ?? []) as PaidOrder[];
       paidCount = paidOrders.length;
       revenue = paidOrders.reduce((acc, r) => acc + num(r?.price), 0);
     } catch { /* ignore */ }
 
-    const totalSessions = num((sessionsRes as { count?: number })?.count ?? 0);
-    const conversionRate = totalSessions > 0 ? (paidCount / totalSessions) * 100 : null;
+    const totalOrdersInRange = num((totalRes as { count?: number })?.count ?? 0);
+    const paidRate = totalOrdersInRange > 0 ? (paidCount / totalOrdersInRange) * 100 : null;
 
     let blendedCpa: number | null = null;
     try {
@@ -109,11 +123,11 @@ export default function OwnerKpiStrip() {
     setData({
       revenue,
       orders: paidCount,
-      conversionRate,
+      paidRate,
       blendedCpa,
     });
     setLoading(false);
-  }, []);
+  }, [dateFromIso, dateToIso]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -124,7 +138,7 @@ export default function OwnerKpiStrip() {
       {/* Scope badge — explains what's in scope */}
       <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-[11px] font-bold text-gray-600">
         <i className="ri-calendar-line text-gray-400"></i>
-        Reporting period: {analyticsScopeLabel()}
+        Reporting period: {rangeLabel ?? analyticsScopeLabel()}
       </div>
 
       {/* 4 LARGE KPIs */}
@@ -133,25 +147,25 @@ export default function OwnerKpiStrip() {
           icon="ri-money-dollar-circle-line"
           iconBg="bg-emerald-50"
           iconFg="text-emerald-600"
-          label="Revenue"
+          label="Revenue (gross)"
           value={loading ? placeholder : fmtUsd(data.revenue)}
-          subtitle="Total earned from paid orders"
+          subtitle="Gross from paid orders (incl. refunded)"
         />
         <HeroKpi
           icon="ri-shopping-bag-line"
           iconBg="bg-sky-50"
           iconFg="text-sky-600"
-          label="Orders"
+          label="Paid Orders"
           value={loading ? placeholder : data.orders.toLocaleString()}
-          subtitle="Customers who paid"
+          subtitle="Orders with a successful payment"
         />
         <HeroKpi
           icon="ri-percent-line"
           iconBg="bg-violet-50"
           iconFg="text-violet-600"
-          label="Conversion Rate"
-          value={loading ? placeholder : fmtPct(data.conversionRate)}
-          subtitle="How many visitors become customers"
+          label="Paid Rate"
+          value={loading ? placeholder : fmtPct(data.paidRate)}
+          subtitle="Paid orders ÷ total orders"
         />
         <HeroKpi
           icon="ri-bank-card-line"

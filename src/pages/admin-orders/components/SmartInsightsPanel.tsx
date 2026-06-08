@@ -409,7 +409,14 @@ function displayPath(raw: string): string {
 // Component
 // ─────────────────────────────────────────────────────────────────────────
 
-export default function SmartInsightsPanel() {
+interface SmartInsightsPanelProps {
+  /** Shared global reporting range from AnalyticsTab. Falls back to the
+   *  canonical analytics scope window when not provided. */
+  dateFromIso?: string | null;
+  dateToIso?: string | null;
+}
+
+export default function SmartInsightsPanel({ dateFromIso = null, dateToIso = null }: SmartInsightsPanelProps = {}) {
   const [loading, setLoading] = useState(true);
   const [paidOrders, setPaidOrders] = useState<PaidOrder[]>([]);
   const [revenue, setRevenue] = useState(0);
@@ -421,21 +428,25 @@ export default function SmartInsightsPanel() {
   const load = useCallback(async () => {
     setLoading(true);
 
-    const { fromIso } = analyticsScopeRange();
+    const scope = analyticsScopeRange();
+    const fromIso = dateFromIso ?? scope.fromIso;
+    const toIso = dateToIso ?? scope.toIso;
 
     const [ordersRes, funnelRes, roiRes, pagesRes, commsRes] = await Promise.all([
       supabase.from("orders")
         .select("price, gclid, fbclid, utm_source, utm_medium, attribution_json, last_touch_json")
         .not("payment_intent_id", "is", null)
         .not("status", "in", "(\"refunded\",\"cancelled\",\"archived\")")
-        .gte("created_at", fromIso),
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso),
       supabase.from("funnel_summary").select("*").maybeSingle(),
       supabase.from("analytics_roi_summary").select("*"),
       supabase.from("landing_page_performance").select("*"),
       supabase.from("communications")
         .select("slug, status, created_at")
         .like("slug", "seq_%")
-        .gte("created_at", fromIso),
+        .gte("created_at", fromIso)
+        .lte("created_at", toIso),
     ]).then((arr) => arr).catch(() => [
       { data: [] }, { data: null }, { data: [] }, { data: [] }, { data: [] },
     ] as const);
@@ -449,7 +460,7 @@ export default function SmartInsightsPanel() {
     setComms((commsRes?.data ?? []) as CommsRow[]);
 
     setLoading(false);
-  }, []);
+  }, [dateFromIso, dateToIso]);
 
   useEffect(() => { void load(); }, [load]);
 
