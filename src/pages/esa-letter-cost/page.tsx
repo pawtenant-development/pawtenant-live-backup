@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { Link } from "react-router-dom";
+import { VeteransSupportSection } from "../../components/feature/SeoKit";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
 
 const pricingPlans = [
@@ -378,6 +379,13 @@ export default function ESALetterCostPage() {
           </div>
         </div>
       </section>
+
+      {/* Veterans support — emotional-first, savings secondary (SeoKit) */}
+      <VeteransSupportSection
+        className="bg-[#f7f6f3] border-t border-gray-100"
+        image="/assets/veterans/man-on-porch-with-dog.jpg"
+        alt="A veteran on his porch with his dog on a calm afternoon"
+      />
 
       {/* CTA — mobile: full-width button + clearer hierarchy. */}
       <section className="py-12 sm:py-16 bg-white">

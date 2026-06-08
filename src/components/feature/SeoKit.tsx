@@ -329,6 +329,113 @@ export function LifestyleImageSection({
   );
 }
 
+/* ── VeteransSupportSection ──────────────────────────────────────────────── */
+export interface VeteransSupportSectionProps {
+  /** Respectful veteran / pet / home image — reuses local /assets/veterans/* assets. */
+  image?: string;
+  alt?: string;
+  /** Section heading. Defaults to the warm, emotional headline. */
+  heading?: string;
+  /** Assessment CTA href — pass an attribution-wrapped path where the page tracks it. */
+  assessmentHref?: string;
+  /** Put the image on the right (desktop). On mobile the image is always first. */
+  reverse?: boolean;
+  className?: string;
+}
+
+/**
+ * Emotional, respectful veterans-support section for non-homepage public /
+ * SEO pages. The emotional message comes FIRST; the veteran savings note is
+ * secondary and deliberately understated (never a coupon banner).
+ *
+ * Compliance guardrails baked in (do NOT loosen without owner sign-off):
+ *  - No VA / government affiliation or endorsement.
+ *  - No guaranteed approval / guaranteed landlord acceptance.
+ *  - No claim that pets "treat" any condition, and no claim that every
+ *    veteran qualifies — eligibility is decided by a licensed provider.
+ *  - No invented discount amount — savings are referenced, never quantified.
+ *
+ * Presentational only: reuses existing local optimized assets, no new deps,
+ * lazy-loaded image with a fixed aspect ratio (no CLS).
+ */
+export function VeteransSupportSection({
+  image = "/assets/veterans/man-on-porch-with-dog.jpg",
+  alt = "A veteran spending a calm moment at home with their dog",
+  heading = "Supporting Veterans and the Pets Who Support Them",
+  assessmentHref = "/assessment",
+  reverse = false,
+  className,
+}: VeteransSupportSectionProps) {
+  return (
+    <section className={`py-12 sm:py-16 ${className || "bg-[#f7f6f3]"}`}>
+      <div className="max-w-6xl mx-auto px-5 sm:px-6">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+          {/* Image — mobile-first (renders first on mobile) */}
+          <div className={`order-1 ${reverse ? "lg:order-2" : "lg:order-1"}`}>
+            <div className="rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] aspect-[4/3]">
+              <img
+                src={image}
+                alt={alt}
+                width={1000}
+                height={750}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover object-center"
+              />
+            </div>
+          </div>
+
+          {/* Copy */}
+          <div className={`order-2 text-center lg:text-left ${reverse ? "lg:order-1" : "lg:order-2"}`}>
+            <span className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold uppercase tracking-widest text-orange-600 mb-3">
+              <i className="ri-home-heart-line"></i>
+              Veteran-friendly support
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight mb-3">
+              {heading}
+            </h2>
+            <p className="text-gray-600 text-sm sm:text-[15px] leading-relaxed mb-4 max-w-xl mx-auto lg:mx-0">
+              Many veterans find that the bond with a pet brings comfort, routine, and a steadier
+              sense of home. PawTenant&rsquo;s licensed telehealth team understands how much that
+              connection can matter — especially when housing rules add stress or uncertainty. If
+              you&rsquo;re a veteran seeking ESA housing documentation, our team is here to guide you
+              through the process with care, privacy, and respect.
+            </p>
+
+            {/* Savings note — secondary, understated, no amount */}
+            <div className="rounded-xl border border-orange-100 bg-white/70 px-4 py-3 mb-5 max-w-xl mx-auto lg:mx-0">
+              <p className="text-[13px] sm:text-sm text-gray-600 leading-relaxed flex items-start gap-2 text-left">
+                <i className="ri-shield-heart-line text-orange-500 mt-0.5 flex-shrink-0"></i>
+                <span>
+                  PawTenant also offers special savings for veterans and service members. Ask our
+                  support team about available veteran pricing before or during your assessment.
+                </span>
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3">
+              <Link
+                to={assessmentHref}
+                className="whitespace-nowrap inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[14px] sm:text-sm shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
+              >
+                <i className="ri-file-text-line"></i>
+                Start ESA Assessment
+              </Link>
+              <Link
+                to="/contact-us"
+                className="whitespace-nowrap inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 py-3.5 bg-white text-gray-800 font-semibold rounded-md border border-gray-200 hover:border-orange-200 hover:text-orange-600 transition-colors cursor-pointer text-[14px] sm:text-sm"
+              >
+                <i className="ri-customer-service-2-line"></i>
+                Ask About Veteran Savings
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── PsdCrossLink ────────────────────────────────────────────────────────── */
 /**
  * Compact ESA→PSD cross-link banner. Keeps ESA pages ESA-focused while

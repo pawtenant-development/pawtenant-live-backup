@@ -14,6 +14,7 @@ import {
   EducationalDisclaimer,
   PsdCrossLink,
   LifestyleImageSection,
+  VeteransSupportSection,
   JsonLd,
 } from "../../components/feature/SeoKit";
 import {
@@ -334,6 +335,15 @@ export default function HowToGetESALetterOnlinePage() {
           </div>
         </div>
       </section>
+
+      {/* Veterans support — emotional-first, savings secondary (SeoKit) */}
+      <VeteransSupportSection
+        className="bg-[#f7f6f3] border-t border-gray-100"
+        image="/assets/veterans/senior-with-pets.jpg"
+        alt="An older veteran at home spending a quiet moment with their pets"
+        assessmentHref={withAttribution("/assessment")}
+        reverse
+      />
 
       {/* PRICING / KLARNA — reusable cost section */}
       <EsaPricingMini className="bg-white border-t border-gray-100" />

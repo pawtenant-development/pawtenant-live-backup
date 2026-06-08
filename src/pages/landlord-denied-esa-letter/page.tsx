@@ -4,6 +4,7 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import { VeteransSupportSection } from "../../components/feature/SeoKit";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   ESA_LANDLORD_DENIAL_LAWS,
@@ -618,6 +619,14 @@ export default function LandlordDeniedESALetterPage() {
 
       {/* ===== PRICING / KLARNA — reusable cost section ===== */}
       <EsaPricingMini className="bg-[#fafafa] border-t border-gray-100" />
+
+      {/* ===== VETERANS SUPPORT — emotional-first, savings secondary (SeoKit) ===== */}
+      <VeteransSupportSection
+        className="bg-[#f7f6f3] border-t border-gray-100"
+        image="/assets/veterans/man-with-puppy-portrait.jpg"
+        alt="A veteran sharing a quiet, supportive moment with his puppy"
+        assessmentHref={withAttribution("/assessment")}
+      />
 
       {/* ===== FAQ ===== */}
       <section className="py-16 bg-white">
