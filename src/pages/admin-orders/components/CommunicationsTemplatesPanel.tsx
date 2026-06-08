@@ -384,6 +384,268 @@ const DEFAULT_SMS_TEMPLATES: SmsTemplate[] = [
   { id: "sms_refund_processed",    label: "Refund Processed",       group: "Transactional", body: "Hi {name}, your refund has been processed and should appear in your account within 3-5 business days. Thank you for your patience." },
 ];
 
+// ── Merge-tag legend dataset ────────────────────────────────────────────────
+//
+// COMMS-TEMPLATE-HUB-MERGE-TAGS (2026-05-23): visible guide for admins
+// composing or editing a template. Documents which placeholders the email
+// pipeline substitutes, where they can appear (subject / body / CTA label
+// / CTA URL), a sample value, and whether the tag is available on every
+// template or only on the templates whose Edge Function injects it.
+//
+// Important:
+//   - This is DISPLAY-ONLY metadata. It does not change the rendering
+//     pipeline or buildEmailHtml() in any way — admins still type the
+//     literal `{tag}` text into Subject / Body / CTA fields, and the
+//     existing Edge Functions still own the substitution.
+//   - "Global" = always available on every template send (the variable
+//     is injected from order data or comms_settings before the email
+//     goes out).
+//   - "Template-specific" = only injected when the originating flow
+//     supplies the value (refund flow injects {amount}+{reason},
+//     recovery flow injects {discount_code}+{discount_savings}+
+//     {resume_url_with_promo}, consultation flow injects
+//     {appointment_date}+{appointment_time}). If used outside that
+//     flow the literal `{tag}` is delivered to the customer — admins
+//     should treat these as opt-in per template.
+//
+// To extend: append a new MergeTag below. Do not remove rows — old
+// templates may reference any tag declared here.
+interface MergeTag {
+  tag:     string;
+  meaning: string;
+  sample:  string;
+  scope:   "global" | "template-specific";
+}
+
+const MERGE_TAGS: MergeTag[] = [
+  // Global — every send substitutes these from order data.
+  { tag: "{name}",              meaning: "Customer first name (auto-filled from order; falls back to last name or 'there').", sample: "Jane",                                                                  scope: "global" },
+  { tag: "{first_name}",        meaning: "Same as {name} — alias for templates that already used the longer form.",          sample: "Jane",                                                                  scope: "global" },
+  { tag: "{petname}",           meaning: "Pet's name from the order's assessment answers. Falls back to 'your pet' if missing.", sample: "Buddy",                                                               scope: "global" },
+  { tag: "{order_id}",          meaning: "Order confirmation ID (PT-XXXX format).",                                            sample: "PT-12345",                                                              scope: "global" },
+  { tag: "{letter_type}",       meaning: "ESA or PSD letter type for this order.",                                             sample: "ESA",                                                                   scope: "global" },
+  { tag: "{resume_url}",        meaning: "Resume checkout link for the customer's lead, no promo applied.",                    sample: "https://pawtenant.com/assessment?resume=PT-12345",                      scope: "global" },
+  { tag: "{portal_url}",        meaning: "Customer portal where the order, letter, and history live.",                         sample: "https://pawtenant.com/my-orders",                                       scope: "global" },
+  { tag: "{verification_url}",  meaning: "Landlord-facing verification page for this customer's letter.",                       sample: "https://pawtenant.com/esa-letter-verification",                         scope: "global" },
+  { tag: "{provider_name}",     meaning: "Assigned LMHP / PSD provider's display name (blank if unassigned).",                 sample: "Dr. Alex Stone",                                                        scope: "global" },
+  // Template-specific — only injected by the originating Edge Function.
+  { tag: "{amount}",             meaning: "Refund or payment amount (USD). Refund + cancellation templates only.",             sample: "$99.00",                                                                scope: "template-specific" },
+  { tag: "{reason}",             meaning: "Cancellation / refund reason text entered by admin at refund time.",                sample: "Customer request",                                                      scope: "template-specific" },
+  { tag: "{discount_code}",      meaning: "Recovery discount code (injected by lead-followup-sequence).",                       sample: "SAVE20",                                                                scope: "template-specific" },
+  { tag: "{discount_savings}",   meaning: "Dollar amount the discount saves.",                                                  sample: "$20",                                                                   scope: "template-specific" },
+  { tag: "{resume_url_with_promo}", meaning: "Resume checkout link with the recovery discount code pre-applied.",               sample: "https://pawtenant.com/assessment?resume=PT-12345&promo=SAVE20",         scope: "template-specific" },
+  { tag: "{appointment_date}",   meaning: "Consultation / Zoom call slot date (consultation funnel only).",                    sample: "Apr 8, 2026",                                                           scope: "template-specific" },
+  { tag: "{appointment_time}",   meaning: "Consultation / Zoom call slot time (consultation funnel only).",                    sample: "2:30 PM CT",                                                            scope: "template-specific" },
+];
+
+// Self-contained collapsible legend. No external props — pulls only the
+// editor's current previewName so the "Preview as" line is in sync. Kept
+// inside this file so the entire merge-tag knowledge surface stays in one
+// place that admins reach via the editor itself.
+function MergeTagLegend({ previewName }: { previewName: string }) {
+  const [open, setOpen]     = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const handleCopy = (tag: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    navigator.clipboard.writeText(tag).then(() => {
+      setCopied(tag);
+      window.setTimeout(() => setCopied((c) => (c === tag ? null : c)), 1400);
+    }).catch(() => { /* swallow — no fallback needed for an admin convenience tool */ });
+  };
+
+  const globalTags     = MERGE_TAGS.filter((t) => t.scope === "global");
+  const templateTags   = MERGE_TAGS.filter((t) => t.scope === "template-specific");
+
+  return (
+    <div className="border border-gray-200 rounded-lg bg-gray-50/60 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-gray-100/70 transition-colors cursor-pointer"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <i className="ri-braces-line text-[#3b6ea5] text-sm flex-shrink-0"></i>
+          <span className="text-xs font-bold text-gray-700 truncate">Variables / Merge Tags</span>
+          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] font-bold text-gray-500 flex-shrink-0">
+            {MERGE_TAGS.length}
+          </span>
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] text-gray-400 flex-shrink-0">
+          <span className="hidden sm:inline">{open ? "Hide" : "Show"}</span>
+          <i className={`ri-arrow-${open ? "up" : "down"}-s-line text-base`}></i>
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-gray-200 bg-white px-4 py-3 space-y-3">
+          <div className="text-[11px] text-gray-600 leading-relaxed">
+            <p>
+              Type any tag below into the <span className="font-semibold">Subject line</span>, <span className="font-semibold">Body</span>, <span className="font-semibold">CTA Button Label</span>, or <span className="font-semibold">CTA URL</span> fields. The email pipeline substitutes the live value at send time.
+            </p>
+            <p className="mt-1">
+              <span className="font-semibold">Preview as &ldquo;{previewName}&rdquo;:</span> the iframe preview replaces <span className="font-mono bg-gray-100 px-1 rounded">&#123;name&#125;</span> only. Other tags appear as literal text in the preview — they substitute correctly at real send time.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Global &mdash; always available
+            </p>
+            <ul className="space-y-1">
+              {globalTags.map((t) => (
+                <MergeTagRow key={t.tag} tag={t} copied={copied === t.tag} onCopy={() => handleCopy(t.tag)} />
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              Template-specific &mdash; only injected by the originating flow
+            </p>
+            <ul className="space-y-1">
+              {templateTags.map((t) => (
+                <MergeTagRow key={t.tag} tag={t} copied={copied === t.tag} onCopy={() => handleCopy(t.tag)} />
+              ))}
+            </ul>
+            <p className="mt-1.5 text-[10px] text-amber-700 leading-relaxed">
+              If used on a template whose flow does not inject these values, the literal <span className="font-mono">&#123;tag&#125;</span> ships to the customer. Reserve these for the matching template (refund, recovery, consultation).
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// COMMS-TEMPLATE-HUB-ACTIVE-SLOTS 2026-05-23 — compact selector that lets
+// the admin assign exactly one template per automation slot. Eligible
+// slots are filtered by template group so a Sequence template can only
+// be picked for a Sequence slot, etc. Writes to comms_settings via the
+// onChange handler; rendering of "Active" vs "Prepared" badges happens
+// elsewhere in the panel based on the same pointer state.
+function SlotAssignmentRow({
+  templateId,
+  templateGroup,
+  slotPointers,
+  saving,
+  status,
+  onChange,
+}: {
+  templateId:    string;
+  templateGroup: string;
+  slotPointers:  Record<string, string | null>;
+  saving:        string | null;
+  status:        { key: string; kind: "ok" | "err"; msg: string } | null;
+  onChange:      (pointerKey: string, templateId: string | null) => void;
+}) {
+  // Filter slots to those whose group matches the template's group. If the
+  // template's group does not match any slot ("Transactional", "Marketing",
+  // "Broadcast"), the panel renders a "no slot eligible" hint instead of a
+  // selector — automation slots are recovery flows only.
+  const eligibleSlots = AUTOMATION_SLOTS.filter((s) => s.group === templateGroup);
+
+  // Slots this template is CURRENTLY assigned to (one is the practical max
+  // but we render any matches defensively).
+  const assignedSlot = eligibleSlots.find((s) => slotPointers[s.pointerKey] === templateId) ?? null;
+
+  if (eligibleSlots.length === 0) {
+    return (
+      <div className="border border-dashed border-gray-200 rounded-lg bg-gray-50/60 px-4 py-2.5 flex items-center gap-2">
+        <i className="ri-flashlight-line text-gray-400 text-sm"></i>
+        <p className="text-[11px] text-gray-500 leading-snug">
+          No automation slot applies to <span className="font-semibold">{templateGroup}</span> templates. Move this template to a <span className="font-semibold">Sequence</span> or <span className="font-semibold">Lead Recovery</span> group to assign it.
+        </p>
+      </div>
+    );
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value;
+    // If the same slot is selected, also covers the no-op case.
+    if (!next) {
+      // "Not assigned" — clear whichever slot currently holds this template.
+      if (assignedSlot) onChange(assignedSlot.pointerKey, null);
+      return;
+    }
+    onChange(next, templateId);
+    // If the template was previously assigned to a DIFFERENT slot, also
+    // clear that older pointer so the template is Active for exactly one
+    // slot at a time (defensive — the upsert path already enforces unique
+    // pointer per key, but a stale pointer with the same template id on a
+    // different slot would otherwise paint two badges).
+    const prior = eligibleSlots.find((s) => s.pointerKey !== next && slotPointers[s.pointerKey] === templateId);
+    if (prior) onChange(prior.pointerKey, null);
+  };
+
+  return (
+    <div className="border border-gray-200 rounded-lg bg-white px-4 py-3">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+          <i className="ri-flashlight-line text-[#3b6ea5]"></i>
+          Automation Slot
+        </span>
+        {status && (
+          <span className={`text-[10px] font-semibold ${status.kind === "ok" ? "text-emerald-700" : "text-red-600"}`}>
+            {status.msg}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          value={assignedSlot?.pointerKey ?? ""}
+          onChange={handleChange}
+          disabled={saving !== null}
+          className="flex-1 min-w-[180px] px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer disabled:opacity-60"
+        >
+          <option value="">Not assigned (Saved only)</option>
+          {eligibleSlots.map((s) => (
+            <option key={s.pointerKey} value={s.pointerKey}>
+              {s.label}{s.wired ? "" : " — Prepared (sender not wired yet)"}
+            </option>
+          ))}
+        </select>
+        {saving && (
+          <span className="text-[10px] text-gray-500 flex items-center gap-1">
+            <i className="ri-loader-4-line animate-spin"></i>Saving…
+          </span>
+        )}
+      </div>
+      <p className="text-[10px] text-gray-500 leading-relaxed mt-1.5">
+        Picking a slot makes this template the Active template for that automation. Only one template can be Active per slot. Slots marked <span className="font-semibold">Prepared</span> save the pointer but no Edge Function reads it yet — a follow-up code change will activate them. Clearing the selection falls back to the engine&rsquo;s built-in default slug.
+      </p>
+    </div>
+  );
+}
+
+function MergeTagRow({ tag, copied, onCopy }: { tag: MergeTag; copied: boolean; onCopy: () => void }) {
+  return (
+    <li className="flex items-start gap-2 py-1">
+      <button
+        type="button"
+        onClick={onCopy}
+        title={copied ? "Copied!" : "Click to copy"}
+        className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[11px] font-semibold border transition-colors cursor-pointer ${
+          copied
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : "bg-white border-gray-200 text-gray-700 hover:border-[#3b6ea5] hover:text-[#3b6ea5]"
+        }`}
+      >
+        <i className={copied ? "ri-check-line text-[11px]" : "ri-file-copy-line text-[11px]"}></i>
+        {tag.tag}
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] text-gray-600 leading-snug">{tag.meaning}</p>
+        <p className="text-[10px] text-gray-400 leading-snug">
+          <span className="font-semibold">Sample:</span> <span className="font-mono">{tag.sample}</span>
+        </p>
+      </div>
+    </li>
+  );
+}
+
 const DEFAULT_MASTER_LAYOUT = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
@@ -877,13 +1139,13 @@ export function RecoverySequencePanel() {
 // Anything NOT in this set is admin-editable but currently lives only as a preset
 // (not wired to any automatic transactional flow yet).
 //
-// IMPORTANT — keep in sync with the backend reality. The lead-followup-sequence
-// engine (supabase/functions/lead-followup-sequence/core.ts) currently sends
-// ONLY the 3 active recovery stages (seq_30min, seq_24h, seq_3day). seq_48h,
-// seq_5day, and the seq_sms_* slugs are template presets without wired
-// senders — do NOT mark them as DB-managed or admins will believe edits go
-// live when they do not.
-const DB_MANAGED_EMAIL_SLUGS = new Set<string>([
+// IMPORTANT — keep in sync with the backend reality. Membership in this set
+// means an Edge Function reads the row by `slug` directly (not via the
+// comms_settings active-pointer). Editing a template whose slug is here
+// changes the live send the next time the function fires. Templates whose
+// id is bound to an automation slot via comms_settings.seq_template_<slot>
+// are handled separately via AUTOMATION_SLOTS below.
+const WIRED_EMAIL_SLUGS = new Set<string>([
   "review_request",
   "checkout_recovery",
   "checkout_recovery_discount",
@@ -895,9 +1157,44 @@ const DB_MANAGED_EMAIL_SLUGS = new Set<string>([
   // to the hardcoded layout when missing. Admin edits go live.
   "letter_delivery",
 ]);
-const DB_MANAGED_SMS_SLUGS = new Set<string>([
+const WIRED_SMS_SLUGS = new Set<string>([
   "review_request_sms",
 ]);
+
+// COMMS-TEMPLATE-HUB-ACTIVE-SLOTS 2026-05-23 — automation-slot registry.
+// Each slot maps to a comms_settings key (`seq_template_<id>`) whose value
+// is the email_templates.id of the Active template for that slot.
+//
+// `wired` is the SOURCE OF TRUTH for the UI badge: when true, a live Edge
+// Function consults the pointer at send time (lead-followup-sequence does
+// this after migration 20260523120000) — those templates render the green
+// "Active" badge. When false, the pointer can still be set by the admin,
+// but no sender consults it yet — those templates render "Prepared"
+// (violet). Flipping a slot to `wired: true` is intentionally a code
+// change so we never accidentally claim a flow is live when it isn't.
+interface AutomationSlot {
+  id:                  string;  // pointer key suffix
+  pointerKey:          string;  // `seq_template_<id>`
+  label:               string;  // human-readable slot name
+  group:               string;  // matches the EmailTemplate.group of compatible templates
+  defaultTemplateSlug: string;  // slug used when no pointer / pointer invalid
+  channel:             "email" | "sms";
+  wired:               boolean;
+}
+
+const AUTOMATION_SLOTS: AutomationSlot[] = [
+  // Wired today via lead-followup-sequence/core.ts → loadSeqTemplate(pointer).
+  { id: "30min",                       pointerKey: "seq_template_30min",                       label: "30-Min Sequence",              group: "Sequence",      defaultTemplateSlug: "seq_30min",                  channel: "email", wired: true  },
+  { id: "24h",                         pointerKey: "seq_template_24h",                         label: "24-Hour Sequence",             group: "Sequence",      defaultTemplateSlug: "seq_24h",                    channel: "email", wired: true  },
+  { id: "3day",                        pointerKey: "seq_template_3day",                        label: "3-Day Sequence + Discount",    group: "Sequence",      defaultTemplateSlug: "seq_3day",                   channel: "email", wired: true  },
+  // Pointer rows exist via migration 20260523120000 but no sender consults
+  // them yet — admin can mark Active, but automation will NOT fire it.
+  { id: "48h",                         pointerKey: "seq_template_48h",                         label: "48-Hour Sequence + Discount",  group: "Sequence",      defaultTemplateSlug: "seq_48h",                    channel: "email", wired: false },
+  { id: "5day",                        pointerKey: "seq_template_5day",                        label: "5-Day Sequence + Final Offer", group: "Sequence",      defaultTemplateSlug: "seq_5day",                   channel: "email", wired: false },
+  { id: "checkout_recovery",           pointerKey: "seq_template_checkout_recovery",           label: "Checkout Recovery",            group: "Lead Recovery", defaultTemplateSlug: "checkout_recovery",          channel: "email", wired: false },
+  { id: "checkout_recovery_discount",  pointerKey: "seq_template_checkout_recovery_discount",  label: "Checkout Recovery + Discount", group: "Lead Recovery", defaultTemplateSlug: "checkout_recovery_discount", channel: "email", wired: false },
+  { id: "consultation_offer",          pointerKey: "seq_template_consultation_offer",          label: "Consultation Window Offer",    group: "Lead Recovery", defaultTemplateSlug: "",                           channel: "email", wired: false },
+];
 
 // COMMS-TEMPLATE-HUB-RESIZABLE-SIDEBAR (2026-05-19): horizontal drag-to-
 // resize bounds for the template-picker sidebar. Below SIDEBAR_MOBILE_BP
@@ -947,6 +1244,14 @@ export default function CommunicationsTemplatesPanel() {
   const [testStatus, setTestStatus] = useState<"idle" | "sent" | "error">("idle");
   const [testError, setTestError] = useState("");
   const [testCooldown, setTestCooldown] = useState(0);
+
+  // COMMS-TEMPLATE-HUB-ACTIVE-SLOTS 2026-05-23 — comms_settings.seq_template_*
+  // pointer rows hydrate once on mount. Map<pointerKey, templateId|null>.
+  // Updated optimistically when admin assigns / clears a slot. Save handler
+  // upserts the value into comms_settings.
+  const [slotPointers, setSlotPointers] = useState<Record<string, string | null>>({});
+  const [slotSaving, setSlotSaving]     = useState<string | null>(null);
+  const [slotStatus, setSlotStatus]     = useState<{ key: string; kind: "ok" | "err"; msg: string } | null>(null);
 
   // COMMS-TEMPLATE-HUB-RESIZABLE-SIDEBAR (2026-05-19) ────────────────────
   // Sidebar width is admin-resizable on desktop via a drag handle. Width
@@ -1054,17 +1359,119 @@ export default function CommunicationsTemplatesPanel() {
     load();
   }, []);
 
+  // COMMS-TEMPLATE-HUB-ACTIVE-SLOTS 2026-05-23 — hydrate the
+  // comms_settings.seq_template_* pointer rows so the Active / Prepared
+  // badges and the Slot Assignment selector render the current state.
+  useEffect(() => {
+    const keys = AUTOMATION_SLOTS.map((s) => s.pointerKey);
+    if (keys.length === 0) return;
+    let cancelled = false;
+    supabase
+      .from("comms_settings")
+      .select("key, value")
+      .in("key", keys)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data) return;
+        const next: Record<string, string | null> = {};
+        for (const row of data as Array<{ key: string; value: string | null }>) {
+          next[row.key] = (row.value ?? null);
+        }
+        setSlotPointers((prev) => ({ ...prev, ...next }));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Persist a single pointer change to comms_settings. NULL value = clear.
+  // Falls back to slug-based loading in lead-followup-sequence/core.ts.
+  const setSlotActiveTemplate = async (pointerKey: string, templateId: string | null) => {
+    setSlotSaving(pointerKey);
+    setSlotStatus(null);
+    // Optimistic local update so the badge flips immediately.
+    setSlotPointers((prev) => ({ ...prev, [pointerKey]: templateId }));
+    try {
+      const { error } = await supabase
+        .from("comms_settings")
+        .upsert(
+          { key: pointerKey, value: templateId, updated_at: new Date().toISOString() },
+          { onConflict: "key" },
+        );
+      if (error) throw error;
+      setSlotStatus({ key: pointerKey, kind: "ok", msg: templateId ? "Saved" : "Cleared" });
+    } catch (err) {
+      setSlotStatus({ key: pointerKey, kind: "err", msg: err instanceof Error ? err.message : "Save failed" });
+    } finally {
+      setSlotSaving(null);
+      window.setTimeout(() => setSlotStatus((s) => (s && s.key === pointerKey ? null : s)), 2500);
+    }
+  };
+
+  // Resolve the badge a single template should render. Active wins over
+  // Prepared wins over Wired. No badge = the template is Saved-only (the
+  // implicit default for every loaded row).
+  type SlotBadgeKind = "active" | "prepared" | "wired";
+  interface SlotBadge {
+    kind:    SlotBadgeKind;
+    label:   string;
+    tooltip: string;
+    chip:    string; // tailwind classes for the chip itself
+    dot:     string; // tailwind classes for the leading dot
+  }
+  const badgeForTemplate = (templateId: string, channel: "email" | "sms"): SlotBadge | null => {
+    // 1. Active / Prepared via slot pointer
+    const slot = AUTOMATION_SLOTS.find(
+      (s) => s.channel === channel && slotPointers[s.pointerKey] === templateId
+    );
+    if (slot) {
+      if (slot.wired) {
+        return {
+          kind:    "active",
+          label:   "Active",
+          tooltip: `Active template for ${slot.label}. Automation uses this template at send time. Only one template can be Active per slot.`,
+          chip:    "bg-emerald-100 text-emerald-700",
+          dot:     "bg-emerald-600",
+        };
+      }
+      return {
+        kind:    "prepared",
+        label:   "Prepared",
+        tooltip: `Pre-selected as the Active template for ${slot.label}. Automation does NOT consult this slot yet — once the sender is wired in a follow-up commit, this template will be used.`,
+        chip:    "bg-violet-100 text-violet-700",
+        dot:     "bg-violet-600",
+      };
+    }
+    // 2. Wired (slug-based) — Edge Function reads the row by slug directly.
+    if ((channel === "email" && WIRED_EMAIL_SLUGS.has(templateId)) ||
+        (channel === "sms"   && WIRED_SMS_SLUGS.has(templateId))) {
+      return {
+        kind:    "wired",
+        label:   "Wired",
+        tooltip: "A live Edge Function reads this template by slug. Edits go live immediately on the next send.",
+        chip:    "bg-amber-100 text-amber-700",
+        dot:     "bg-amber-600",
+      };
+    }
+    return null;
+  };
+
   const saveAllToDb = async () => {
     setSaving(true);
     setSaveStatus("idle");
     try {
+      // COMMS-TEMPLATE-HUB-AUTO-SLUG 2026-05-23 — every row gets slug=id on
+      // save so that new admin-created custom templates show up in the
+      // OrderDetail → Communications tab picker (which loads templates
+      // where slug IS NOT NULL). For seeded rows id and slug already
+      // match, so this upsert is idempotent. No admin action is needed
+      // and no slug-aware Edge Function changes behaviour (the wired
+      // slugs are the ones admins do not edit by hand).
       const emailRows = emailTemplates.map((t) => ({
-        id: t.id, label: t.label, group: t.group, subject: t.subject,
+        id: t.id, slug: t.id, label: t.label, group: t.group, subject: t.subject,
         body: t.body, cta_label: t.ctaLabel, cta_url: t.ctaUrl,
         channel: "email", updated_at: new Date().toISOString(),
       }));
       const smsRows = smsTemplates.map((t) => ({
-        id: t.id, label: t.label, group: t.group, subject: "",
+        id: t.id, slug: t.id, label: t.label, group: t.group, subject: "",
         body: t.body, cta_label: "", cta_url: "",
         channel: "sms", updated_at: new Date().toISOString(),
       }));
@@ -1125,6 +1532,44 @@ export default function CommunicationsTemplatesPanel() {
     }
     setAddingNew(false);
     setNewLabel("");
+    setEditMode(true);
+  };
+
+  // COMMS-TEMPLATE-HUB-CLONE 2026-05-24 — Duplicate an existing template
+  // into a new editable row. The clone keeps the original group (so a
+  // Sequence template's clone lands in Sequence and is immediately
+  // eligible for slot assignment) and inherits subject / body / CTA, but
+  // gets a fresh id/slug so saveAllToDb does not collide. The clone is
+  // explicitly NOT assigned to any automation slot — admins must
+  // promote it to Active via the Slot Assignment selector.
+  const duplicateEmailTemplate = (id: string) => {
+    const src = emailTemplates.find((t) => t.id === id);
+    if (!src) return;
+    const newId = `custom_${Date.now()}`;
+    setEmailTemplates((prev) => [
+      ...prev,
+      {
+        ...src,
+        id: newId,
+        label: `${src.label} (Copy)`,
+      },
+    ]);
+    setSelectedEmailId(newId);
+    setEditMode(true);
+  };
+  const duplicateSmsTemplate = (id: string) => {
+    const src = smsTemplates.find((t) => t.id === id);
+    if (!src) return;
+    const newId = `custom_${Date.now()}`;
+    setSmsTemplates((prev) => [
+      ...prev,
+      {
+        ...src,
+        id: newId,
+        label: `${src.label} (Copy)`,
+      },
+    ]);
+    setSelectedSmsId(newId);
     setEditMode(true);
   };
 
@@ -1190,18 +1635,26 @@ export default function CommunicationsTemplatesPanel() {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
+      {/* Header — COMMS-TEMPLATE-HUB-UI 2026-05-23 overlap fix. The
+          title block and action toolbar are both flex children of a
+          flex-wrap row. Without min-w-0 + flex-1 on the title block,
+          the long subtitle could not shrink and collided with the
+          action toolbar at mid-tablet widths. The toolbar is now
+          flex-shrink-0 so its buttons never compress, and the title
+          subtitle truncates cleanly instead of overlapping. */}
+      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="w-10 h-10 flex items-center justify-center bg-[#e8f0f9] rounded-xl flex-shrink-0">
             <i className="ri-message-2-line text-[#3b6ea5] text-lg"></i>
           </div>
-          <div>
-            <h3 className="text-sm font-extrabold text-gray-900">Communications Templates Hub</h3>
-            <p className="text-xs text-gray-400">Edit DB-managed templates here. Some transactional emails still use legacy hardcoded templates until migrated.</p>
+          <div className="min-w-0">
+            <h3 className="text-sm font-extrabold text-gray-900 truncate">Communications Templates Hub</h3>
+            <p className="text-xs text-gray-400 truncate" title="Edit DB-managed templates here. Some transactional emails still use legacy hardcoded templates until migrated.">
+              Edit DB-managed templates here. Some transactional emails still use legacy hardcoded templates until migrated.
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
           <button type="button" onClick={() => { setAddingNew(true); setEditMode(false); }}
             className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#e8f0f9] text-[#3b6ea5] hover:bg-[#b8cce4] transition-colors cursor-pointer">
             <i className="ri-add-line"></i> Add Template
@@ -1273,10 +1726,18 @@ export default function CommunicationsTemplatesPanel() {
           <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
             placeholder="Template name..." autoFocus
             className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white w-48" />
+          {/* COMMS-TEMPLATE-HUB-CREATE-GROUPS 2026-05-24: Sequence + Lead
+              Recovery groups added to the email create dropdown so admins
+              can build new automation-eligible templates. The Automation
+              Slot selector inside the editor filters slot options by the
+              template's group, so picking Sequence here unlocks the
+              30-Min / 24-Hour / 3-Day / 48-Hour / 5-Day slots, and
+              picking Lead Recovery unlocks Checkout Recovery / Checkout
+              Recovery + Discount / Consultation Window Offer. */}
           <select value={newGroup} onChange={(e) => setNewGroup(e.target.value)}
             className="px-3 py-1.5 border border-[#b8cce4] rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
             {activeChannel === "email"
-              ? <><option>Transactional</option><option>Marketing</option><option>Broadcast</option></>
+              ? <><option>Sequence</option><option>Lead Recovery</option><option>Transactional</option><option>Marketing</option><option>Broadcast</option></>
               : <><option>Transactional</option><option>Lead Recovery</option><option>General</option></>}
           </select>
           <button type="button" onClick={addTemplate} className="whitespace-nowrap px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] transition-colors cursor-pointer">Create</button>
@@ -1318,29 +1779,40 @@ export default function CommunicationsTemplatesPanel() {
                     {grp}
                   </p>
                   <div className="space-y-1">
-                    {emailTemplates.filter((t) => t.group === grp).map((t) => (
+                    {emailTemplates.filter((t) => t.group === grp).map((t) => {
+                      const badge = badgeForTemplate(t.id, "email");
+                      const isSelected = selectedEmailId === t.id;
+                      return (
                       <div key={t.id} className="flex items-center gap-1">
                         <button type="button" onClick={() => setSelectedEmailId(t.id)}
-                          className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${selectedEmailId === t.id ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-                          <span className="flex items-center justify-between gap-1.5">
-                            <span className="truncate">{t.label}</span>
-                            {DB_MANAGED_EMAIL_SLUGS.has(t.id) && (
-                              <span title="Wired to an Edge Function — edits go live"
-                                className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${selectedEmailId === t.id ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700"}`}>
-                                <span className={`w-1 h-1 rounded-full ${selectedEmailId === t.id ? "bg-white" : "bg-emerald-600"}`}></span>
-                                DB
+                          title={t.label}
+                          className={`flex-1 min-w-0 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isSelected ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
+                          <span className="flex items-center justify-between gap-1.5 min-w-0">
+                            <span className="truncate min-w-0">{t.label}</span>
+                            {badge && (
+                              <span title={badge.tooltip}
+                                className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${isSelected ? "bg-white/20 text-white" : badge.chip}`}>
+                                <span className={`w-1 h-1 rounded-full ${isSelected ? "bg-white" : badge.dot}`}></span>
+                                {badge.label}
                               </span>
                             )}
                           </span>
                         </button>
                         {editMode && (
-                          <button type="button" onClick={() => deleteEmailTemplate(t.id)} title="Delete"
-                            className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0">
-                            <i className="ri-delete-bin-line text-xs"></i>
-                          </button>
+                          <>
+                            <button type="button" onClick={() => duplicateEmailTemplate(t.id)} title="Duplicate / Clone"
+                              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-[#3b6ea5] hover:bg-[#e8f0f9] transition-colors cursor-pointer flex-shrink-0">
+                              <i className="ri-file-copy-2-line text-xs"></i>
+                            </button>
+                            <button type="button" onClick={() => deleteEmailTemplate(t.id)} title="Delete"
+                              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0">
+                              <i className="ri-delete-bin-line text-xs"></i>
+                            </button>
+                          </>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -1401,6 +1873,30 @@ export default function CommunicationsTemplatesPanel() {
                   </span>
                   <span className={`ml-auto flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedEmail.group === "Transactional" ? "bg-[#e8f0f9] text-[#3b6ea5]" : selectedEmail.group === "Marketing" ? "bg-amber-50 text-amber-700" : "bg-violet-50 text-violet-700"}`}>{selectedEmail.group}</span>
                 </div>
+                {/* COMMS-TEMPLATE-HUB-ACTIVE-SLOTS 2026-05-23: assign this
+                    template to one automation slot so the recovery engine
+                    uses it. Eligible slots are filtered to the template's
+                    Group (Sequence templates → Sequence slots; Lead
+                    Recovery templates → Lead Recovery slots). Picking
+                    a slot upserts comms_settings.seq_template_<slot> so
+                    lead-followup-sequence reads the new id immediately
+                    on its next run. "Prepared" slots also write the
+                    pointer, but automation does not consult them yet —
+                    flagged in the dropdown so admins can opt in safely. */}
+                <SlotAssignmentRow
+                  templateId={selectedEmail.id}
+                  templateGroup={selectedEmail.group}
+                  slotPointers={slotPointers}
+                  saving={slotSaving}
+                  status={slotStatus}
+                  onChange={setSlotActiveTemplate}
+                />
+                {/* COMMS-TEMPLATE-HUB-MERGE-TAGS (2026-05-23): collapsible
+                    legend documenting every placeholder the email pipeline
+                    substitutes. Default collapsed so the editor stays
+                    uncluttered; expanded once = sticky reference while
+                    composing. Click any tag to copy it to the clipboard. */}
+                <MergeTagLegend previewName={previewName} />
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Template Label</label>
                   <input type="text" value={selectedEmail.label} onChange={(e) => updateEmailField("label", e.target.value)}
@@ -1408,9 +1904,19 @@ export default function CommunicationsTemplatesPanel() {
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Group</label>
+                  {/* COMMS-TEMPLATE-HUB-CREATE-GROUPS 2026-05-24: full
+                      option set so an admin can move a template between
+                      automation-eligible groups (Sequence / Lead
+                      Recovery) and the non-automation groups
+                      (Transactional / Marketing / Broadcast) after the
+                      fact. */}
                   <select value={selectedEmail.group} onChange={(e) => updateEmailField("group", e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
-                    <option>Transactional</option><option>Marketing</option><option>Broadcast</option>
+                    <option>Sequence</option>
+                    <option>Lead Recovery</option>
+                    <option>Transactional</option>
+                    <option>Marketing</option>
+                    <option>Broadcast</option>
                   </select>
                 </div>
                 <div>
@@ -1425,16 +1931,48 @@ export default function CommunicationsTemplatesPanel() {
                   <textarea value={selectedEmail.body} onChange={(e) => updateEmailField("body", e.target.value)}
                     rows={10} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white font-mono resize-y" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                {/* COMMS-TEMPLATE-HUB-UI 2026-05-23: CTA grid responds to
+                    width — single column under 640px (no longer cramped on
+                    narrow admin viewports / tablets), two columns above. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA Button Label</label>
                     <input type="text" value={selectedEmail.ctaLabel} onChange={(e) => updateEmailField("ctaLabel", e.target.value)}
+                      placeholder="e.g. Track My Order"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA URL</label>
                     <input type="text" value={selectedEmail.ctaUrl} onChange={(e) => updateEmailField("ctaUrl", e.target.value)}
+                      placeholder="https://pawtenant.com/…"
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white" />
+                  </div>
+                </div>
+                {/* Live CTA button preview — COMMS-TEMPLATE-HUB-UI 2026-05-23.
+                    Mirrors the inline-button HTML buildEmailHtml() emits so
+                    admins see the chip without flipping to Preview Mode.
+                    Empty label or URL collapses to a muted hint instead of
+                    showing a broken button. The full email preview still
+                    lives on the Preview Mode iframe and is the source of
+                    truth for send-time rendering. */}
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTA Button Preview</label>
+                  <div className="border border-dashed border-gray-200 rounded-lg p-4 bg-gray-50/60 flex items-center justify-center min-h-[60px]">
+                    {selectedEmail.ctaLabel.trim() && selectedEmail.ctaUrl.trim() ? (
+                      <a
+                        href={selectedEmail.ctaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-7 py-3 rounded-[10px] bg-[#3b6ea5] text-white text-[15px] font-bold hover:bg-[#2d5a8e] transition-colors no-underline"
+                        title={`Opens ${selectedEmail.ctaUrl} in a new tab. Admins only — not the customer email link.`}
+                      >
+                        {selectedEmail.ctaLabel}
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-gray-400 italic">
+                        Add a label and URL above to render the email button.
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="pt-2 border-t border-gray-100">
@@ -1541,29 +2079,40 @@ export default function CommunicationsTemplatesPanel() {
                     {grp}
                   </p>
                   <div className="space-y-1">
-                    {smsTemplates.filter((t) => t.group === grp).map((t) => (
+                    {smsTemplates.filter((t) => t.group === grp).map((t) => {
+                      const badge = badgeForTemplate(t.id, "sms");
+                      const isSelected = selectedSmsId === t.id;
+                      return (
                       <div key={t.id} className="flex items-center gap-1">
                         <button type="button" onClick={() => setSelectedSmsId(t.id)}
-                          className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${selectedSmsId === t.id ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-                          <span className="flex items-center justify-between gap-1.5">
-                            <span className="truncate">{t.label}</span>
-                            {DB_MANAGED_SMS_SLUGS.has(t.id) && (
-                              <span title="Wired to an Edge Function — edits go live"
-                                className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${selectedSmsId === t.id ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700"}`}>
-                                <span className={`w-1 h-1 rounded-full ${selectedSmsId === t.id ? "bg-white" : "bg-emerald-600"}`}></span>
-                                DB
+                          title={t.label}
+                          className={`flex-1 min-w-0 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${isSelected ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-100"}`}>
+                          <span className="flex items-center justify-between gap-1.5 min-w-0">
+                            <span className="truncate min-w-0">{t.label}</span>
+                            {badge && (
+                              <span title={badge.tooltip}
+                                className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${isSelected ? "bg-white/20 text-white" : badge.chip}`}>
+                                <span className={`w-1 h-1 rounded-full ${isSelected ? "bg-white" : badge.dot}`}></span>
+                                {badge.label}
                               </span>
                             )}
                           </span>
                         </button>
                         {editMode && (
-                          <button type="button" onClick={() => deleteSmsTemplate(t.id)} title="Delete"
-                            className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0">
-                            <i className="ri-delete-bin-line text-xs"></i>
-                          </button>
+                          <>
+                            <button type="button" onClick={() => duplicateSmsTemplate(t.id)} title="Duplicate / Clone"
+                              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-[#3b6ea5] hover:bg-[#e8f0f9] transition-colors cursor-pointer flex-shrink-0">
+                              <i className="ri-file-copy-2-line text-xs"></i>
+                            </button>
+                            <button type="button" onClick={() => deleteSmsTemplate(t.id)} title="Delete"
+                              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0">
+                              <i className="ri-delete-bin-line text-xs"></i>
+                            </button>
+                          </>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
