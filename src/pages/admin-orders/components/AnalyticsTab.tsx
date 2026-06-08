@@ -1,19 +1,32 @@
 // AnalyticsTab — Traffic source & order analytics for admin portal
+//
+// LIVE parity rebuild (PAWTENANT-LIVE-MAKE-ANALYTICS-MATCH-TEST-FINAL):
+// The visible Analytics surface now follows the SAME vertical, numbered IA as
+// the approved TEST dashboard (commit 86c12e9):
+//   Overview → 01 Conversion Analytics → 02 Recovery Performance →
+//   03 Page Performance → 04 Insights (+ Top States + Period Summary) →
+//   05 Funnel → 06 Tools / Debug.
+// LIVE-specific data logic is preserved verbatim:
+//   • canonical acquisitionClassifier channel labels (orderChannelLabel/Config)
+//   • attribution_json.channel enrichment (orderChannelById → attribution_channel)
+//   • Delivery-Speed / Payment-Method CSV export columns
+//   • Phase2 funnel mounted with ownerChannel={null} (LIVE channelFilter holds
+//     AcquisitionLabel values, not OwnerChannel buckets)
+//   • Google Ads Sync / Meta CAPI / Conversion Backfill / Ad Spend panels
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import AdSpendPanel from "./AdSpendPanel";
 import GoogleAdsSyncPanel from "./GoogleAdsSyncPanel";
 import MetaCAPIPanel from "./MetaCAPIPanel";
 import UnifiedBackfillPanel from "./UnifiedBackfillPanel";
-import OwnerKpiStrip from "./OwnerKpiStrip";
 import Phase2AnalyticsPanel from "./Phase2AnalyticsPanel";
+import SyncHealthCards from "./SyncHealthCards";
+import OwnerKpiStrip from "./OwnerKpiStrip";
 import RecoveryPerformancePanel from "./RecoveryPerformancePanel";
 import SmartInsightsPanel from "./SmartInsightsPanel";
 import SourceLandingPaidRatePanel from "./SourceLandingPaidRatePanel";
-import { analyticsScopeLabel } from "./analyticsScope";
 import {
   classifyOrder,
-  classifyAcquisition,
   canonicalChannelToLabel,
   ACQUISITION_VISUAL,
   type AcquisitionLabel,
@@ -64,47 +77,16 @@ interface ChannelConfig {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// Phase 2.d Commit B (2026-05-17) — legacy classifier RETIRED
+// Canonical-classifier adapter helpers (LIVE — superset of TEST)
 // ────────────────────────────────────────────────────────────────────────
-// CHANNEL_MAP, resolveChannel(), and getChannelConfig() were removed in
-// this commit. They have been replaced site-by-site with the canonical
-// adapter helpers below (orderChannelLabel / orderChannelConfig), which
-// read attribution via the shared acquisitionClassifier so labels match
-// Orders pills, Live Visitors chips, AdminDashboard breakdown, and the
-// new Visitor Source Rankings panel.
-//
-// Removed lines preserved in git history; recover via `git show <sha>:…`
-// if anyone needs to compare against the old heuristic.
+// Drop-in replacements for the legacy resolveChannel/getChannelConfig backed
+// by the shared acquisitionClassifier + ACQUISITION_VISUAL, so labels match
+// Orders pills, Live Visitors chips, AdminDashboard breakdown and the canonical
+// attribution everywhere else in LIVE. DO NOT replace with TEST's owner-bucket
+// helpers — LIVE's classifier is intentionally a superset.
 
-// ────────────────────────────────────────────────────────────────────────
-// Phase 2.d Commit A — canonical-classifier adapter helpers
-// ────────────────────────────────────────────────────────────────────────
-// Drop-in replacements for resolveChannel() + getChannelConfig() backed by
-// the shared acquisitionClassifier + ACQUISITION_VISUAL. Defined here but
-// NOT YET used by any call site — Commit B swaps the existing
-// resolveChannel/getChannelConfig usages over in a single pass and retires
-// CHANNEL_MAP + the legacy heuristics.
-//
-// Adapter contract:
-//   orderChannelLabel(o)  → AcquisitionLabel string (e.g. "Google Ads",
-//                           "Facebook Paid", "Direct / Unknown")
-//   orderChannelConfig(s) → ChannelConfig shape identical to the existing
-//                           ChannelConfig interface, so downstream call
-//                           sites in channelStats / Channel Mix / Period
-//                           Summary / Revenue Trend stack don't need
-//                           structural changes when we flip in Commit B.
-//
-// Decision log:
-//   • Option B for chart colors — module-local LABEL_CHART_COLOR map.
-//     Keeps the shared acquisitionClassifier.ts file untouched.
-//   • YouTube label NOT added to the shared classifier yet — rare
-//     YouTube-tagged orders will fall back to "Direct / Unknown" once
-//     Commit B lands. Acceptable per audit decision.
-
-/** Hex chart color per canonical classifier label. Used by Revenue Trend
- *  stacked-channel chart + Channel Mix donut after Commit B. Values
- *  chosen to track the Tailwind color in ACQUISITION_VISUAL.color so
- *  swatch + label stay visually consistent. */
+/** Hex chart color per canonical classifier label. Tracks the Tailwind color
+ *  in ACQUISITION_VISUAL.color so swatch + label stay visually consistent. */
 const LABEL_CHART_COLOR: Record<AcquisitionLabel, string> = {
   "Google Ads":       "#f97316", // orange-500 — matches text-orange-600 visual
   "Google Organic":   "#10b981", // emerald-500
@@ -123,33 +105,21 @@ const LABEL_CHART_COLOR: Record<AcquisitionLabel, string> = {
   "Direct / Unknown": "#9ca3af", // gray-400
 };
 
-/** Classifier-driven channel label for an order. Reads utm/click-id/
- *  referred_by + (when present) first_touch/last_touch snapshots. Always
- *  returns one of the 15 ACQUISITION_LABELS. */
+/** Classifier-driven channel label for an order. Prefers the canonical
+ *  server-built channel (orders.attribution_json.channel, enriched in-tab);
+ *  falls back to the raw-signal classifier for legacy orders. Always returns
+ *  one of the canonical ACQUISITION_LABELS. */
 function orderChannelLabel(o: Order): string {
-  // LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR (2026-05-31):
-  // Prefer the canonical server-built channel (orders.attribution_json.channel,
-  // enriched onto each order in-tab). It is populated on every paid order, so
-  // order-side attribution now agrees with the visitor-side canonical channel
-  // and all 161 paid orders are attributed — instead of collapsing into
-  // "Direct / Unknown" because the analytics order feed carries no gclid/fbclid.
-  //
-  // Falls back to the raw-signal classifier only for legacy orders with no
-  // canonical channel. classifyOrder's input fields are all optional, so the
-  // narrower local Order shape satisfies it structurally.
   const canon = canonicalChannelToLabel(o.attribution_channel);
   if (canon) return canon;
   return classifyOrder(o as Parameters<typeof classifyOrder>[0]).label;
 }
 
-/** Same ChannelConfig shape as the legacy getChannelConfig(), so future
- *  call-site swaps in Commit B don't need to restructure channelStats /
- *  donut / Period Summary / Revenue Trend consumers. */
+/** Same ChannelConfig shape as the legacy getChannelConfig(), so channelStats /
+ *  Period Summary / order list consumers don't need to restructure. */
 function orderChannelConfig(label: string): ChannelConfig {
   const vis = ACQUISITION_VISUAL[label as AcquisitionLabel];
   if (!vis) {
-    // Defensive fallback — should never fire because classifyOrder always
-    // returns one of the 15 canonical labels. Kept for type completeness.
     return {
       label,
       icon:        "ri-share-circle-line",
@@ -160,9 +130,8 @@ function orderChannelConfig(label: string): ChannelConfig {
     };
   }
   // ACQUISITION_VISUAL.color is a combined Tailwind class string
-  // ("text-orange-600 bg-orange-50 border-orange-200"). Existing
-  // ChannelConfig keeps them split. Split by whitespace and bucket each
-  // token by prefix so the shape matches the legacy config.
+  // ("text-orange-600 bg-orange-50 border-orange-200"). Split + bucket so the
+  // shape matches the legacy split-class config.
   const tokens = vis.color.split(/\s+/);
   const color       = tokens.find((t) => t.startsWith("text-"))   ?? "text-gray-500";
   const bgColor     = tokens.find((t) => t.startsWith("bg-"))     ?? "bg-gray-50";
@@ -195,31 +164,6 @@ function normalizeCanonicalChannel(raw: unknown): string {
   const v = raw.toLowerCase().trim();
   if (v === "google_ads" || v === "facebook_ads" || v === "organic_search" || v === "social_organic" || v === "direct") return v;
   return "other";
-}
-
-// ── Visitor row shape returned by get_visitor_source_data (tab-level agg) ──
-interface VisitorAggRow {
-  channel: string | null;
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  gclid: string | null;
-  fbclid: string | null;
-  ref: string | null;
-  referrer: string | null;
-  landing_url: string | null;
-  assessment_started_at: string | null;
-}
-
-/** Path-only form of a landing URL (drops querystring + origin). */
-function landingPath(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(/^https?:\/\//i.test(url) ? url : `https://example.com${url.startsWith("/") ? url : `/${url}`}`);
-    return u.pathname || "/";
-  } catch {
-    return url.split("?")[0] || null;
-  }
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -263,7 +207,8 @@ function getDateRange(preset: string): { from: Date; to: Date } {
       return { from, to: lastTo };
     }
     case "ytd": return { from: new Date(now.getFullYear(), 0, 1), to };
-    default: return { from: new Date(0), to };
+    // default → Current Month (the canonical shared default)
+    default: return { from: new Date(now.getFullYear(), now.getMonth(), 1), to };
   }
 }
 
@@ -280,56 +225,10 @@ function MiniBar({ value, max, color }: { value: number; max: number; color: str
   );
 }
 
-// ── Donut chart (SVG) ─────────────────────────────────────────────────────────
-function DonutChart({ segments }: { segments: { label: string; value: number; color: string }[] }) {
-  const total = segments.reduce((s, x) => s + x.value, 0);
-  if (total === 0) return (
-    <div className="w-32 h-32 rounded-full bg-gray-100 flex items-center justify-center">
-      <span className="text-xs text-gray-400">No data</span>
-    </div>
-  );
-
-  let cumulative = 0;
-  const radius = 40;
-  const circumference = 2 * Math.PI * radius;
-
-  const paths = segments.filter((s) => s.value > 0).map((seg) => {
-    const pct = seg.value / total;
-    const offset = circumference * (1 - cumulative);
-    const dash = circumference * pct;
-    cumulative += pct;
-    return { ...seg, dash, offset };
-  });
-
-  return (
-    <div className="relative w-32 h-32 flex-shrink-0">
-      <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-        {paths.map((p, i) => (
-          <circle
-            key={i}
-            cx={50}
-            cy={50}
-            r={radius}
-            fill="none"
-            stroke={p.color}
-            strokeWidth="18"
-            strokeDasharray={`${p.dash} ${circumference - p.dash}`}
-            strokeDashoffset={p.offset}
-          />
-        ))}
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-xl font-extrabold text-gray-900">{total}</span>
-        <span className="text-[10px] text-gray-400 font-semibold">total</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Revenue Trend Bar Chart ───────────────────────────────────────────────────
-
-
 // ── CSV Export ────────────────────────────────────────────────────────────────
+// LIVE column set — privacy-safe (no DOB / age / diagnosis / service type /
+// assessment answers). Keeps the LIVE-specific Delivery Speed + Payment Method
+// columns used by the ads/ops team.
 function exportToCSV(orders: Order[], filename: string) {
   const headers = [
     "Confirmation ID",
@@ -387,6 +286,9 @@ function exportToCSV(orders: Order[], filename: string) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps) {
+  // Default reporting window pinned to Current Month so Owner Dashboard,
+  // Business Snapshot, Conversion Analytics, Top States, Period Summary,
+  // Smart Insights and the Funnel all surface the same numbers.
   const [datePreset, setDatePreset] = useState("mtd");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -396,6 +298,10 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const [stateFilter, setStateFilter] = useState("all");
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [orderListPage, setOrderListPage] = useState(1);
+  // Section 06 → Detailed Data & Export is collapsed by default. The heavy
+  // legacy JSX (secondary filters + KPI cards + order list + sync-tool panels)
+  // only mounts when the operator clicks "Expand details".
+  const [expandDetailed, setExpandDetailed] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
   const [reviewLogs, setReviewLogs] = useState<{ object_id: string; action: string; created_at: string }[]>([]);
   const [analyticsView, setAnalyticsView] = useState<"overview" | "funnel" | "ad_roi" | "google_ads_sync" | "meta_capi" | "backfill">("overview");
@@ -431,7 +337,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     fetchReviewLogs();
   }, []);
 
-  // ── Fetch Attribution Funnel data on demand ──────────────────────────────
+  // ── Fetch Attribution Funnel data on demand (legacy chat-session funnel) ──
   useEffect(() => {
     if (analyticsView !== "funnel") return;
     let cancelled = false;
@@ -515,26 +421,6 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     [orders, orderChannelById],
   );
 
-  // ── Visitor sessions for the selected range (Period Summary + Channel Mix) ──
-  // Same admin-only RPC the visitor panels use (read-only). Powers tab-level
-  // visitor totals so Period Summary + Channel Mix reconcile with the Visitor
-  // Source Rankings panel and respect the selected date range.
-  const [visitorRows, setVisitorRows] = useState<VisitorAggRow[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    supabase
-      .rpc("get_visitor_source_data", {
-        p_from: rangeFrom.toISOString(),
-        p_to: rangeTo.toISOString(),
-        p_limit: 20000,
-      })
-      .then(
-        ({ data }) => { if (!cancelled) setVisitorRows((data as VisitorAggRow[]) ?? []); },
-        () => { if (!cancelled) setVisitorRows([]); },
-      );
-    return () => { cancelled = true; };
-  }, [rangeFrom, rangeTo]);
-
   // ── Filtered orders ───────────────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
     return ordersEnriched.filter((o) => {
@@ -576,8 +462,6 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       .sort((a, b) => b.total - a.total);
   }, [filteredOrders]);
 
-  const maxTotal = Math.max(...channelStats.map((c) => c.total), 1);
-
   // ── Summary KPIs ──────────────────────────────────────────────────────────
   // Canonical metric definitions shared with Owner Dashboard + Conversion
   // Analytics via lib/analyticsMetrics. Paid = payment happened (incl. later
@@ -601,90 +485,20 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
 
   // ── Review request stats ──────────────────────────────────────────────────
   const reviewStats = useMemo(() => {
-    // Build a set of order IDs in the current filtered period
     const filteredOrderIds = new Set(filteredOrders.map((o) => o.id));
-
-    // Filter review logs to only those for orders in the current period
     const periodLogs = reviewLogs.filter((log) => {
       const logDate = new Date(log.created_at);
       return logDate >= rangeFrom && logDate <= rangeTo && filteredOrderIds.has(log.object_id);
     });
-
-    // Unique orders that received any review request
     const uniqueOrdersRequested = new Set(periodLogs.map((l) => l.object_id));
     const emailsSent = periodLogs.filter((l) => l.action === "trustpilot_review_email_sent").length;
     const smsSent = periodLogs.filter((l) => l.action === "trustpilot_review_sms_sent").length;
     const totalSent = uniqueOrdersRequested.size;
-
-    // Per-order review sent lookup (for channel breakdown)
     const reviewSentByOrderId = new Set(periodLogs.map((l) => l.object_id));
-
-    // Review rate vs completed orders
     const completed = filteredOrders.filter((o) => o.doctor_status === "patient_notified").length;
     const reviewRate = completed > 0 ? Math.round((totalSent / completed) * 100) : 0;
-
     return { totalSent, emailsSent, smsSent, reviewRate, reviewSentByOrderId };
   }, [reviewLogs, filteredOrders, rangeFrom, rangeTo]);
-
-  // ── Per-channel review counts ─────────────────────────────────────────────
-  const channelReviewCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredOrders.forEach((o) => {
-      if (reviewStats.reviewSentByOrderId.has(o.id)) {
-        const ch = orderChannelLabel(o);
-        map[ch] = (map[ch] ?? 0) + 1;
-      }
-    });
-    return map;
-  }, [filteredOrders, reviewStats.reviewSentByOrderId]);
-
-  // ── Visitor aggregates by canonical channel (Period Summary + Channel Mix) ──
-  const visitorAgg = useMemo(() => {
-    const byLabel = new Map<string, { visitors: number; assessments: number }>();
-    const landingCounts = new Map<string, number>();
-    let totalVisitors = 0;
-    let totalAssessments = 0;
-    for (const v of visitorRows) {
-      const label =
-        canonicalChannelToLabel(v.channel) ??
-        classifyAcquisition({
-          utm_source: v.utm_source, utm_medium: v.utm_medium, utm_campaign: v.utm_campaign,
-          gclid: v.gclid, fbclid: v.fbclid, ref: v.ref, referrer: v.referrer, landing_url: v.landing_url,
-        }).label;
-      const b = byLabel.get(label) ?? { visitors: 0, assessments: 0 };
-      b.visitors += 1;
-      totalVisitors += 1;
-      if (v.assessment_started_at) { b.assessments += 1; totalAssessments += 1; }
-      byLabel.set(label, b);
-      const p = landingPath(v.landing_url);
-      if (p) landingCounts.set(p, (landingCounts.get(p) ?? 0) + 1);
-    }
-    const perChannel = [...byLabel.entries()]
-      .map(([label, s]) => ({ label, ...s }))
-      .sort((a, b) => b.visitors - a.visitors);
-    let topLanding: string | null = null;
-    let topLandingCount = 0;
-    for (const [p, c] of landingCounts.entries()) {
-      if (c > topLandingCount) { topLanding = p; topLandingCount = c; }
-    }
-    return { perChannel, totalVisitors, totalAssessments, topLanding, topLandingCount };
-  }, [visitorRows]);
-
-  // ── Donut segments — visitor traffic share by canonical source ───────────
-  // Channel Mix now shows TRAFFIC share (visitor sessions) by source, which is
-  // the useful "where do visitors come from" view and reconciles with the
-  // Visitor Source Rankings panel. (Previously it counted orders via the
-  // starved classifier and was dominated by "Direct / Unknown".)
-  const donutSegments = useMemo(() =>
-    visitorAgg.perChannel.map((c) => ({
-      label: orderChannelConfig(c.label).label,
-      value: c.visitors,
-      color: orderChannelConfig(c.label).chartColor,
-    })),
-    [visitorAgg]
-  );
-
-
 
   // ── Orders for selected channel ───────────────────────────────────────────
   const channelOrders = useMemo(() => {
@@ -713,7 +527,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
     return Array.from(s).sort();
   }, [orders]);
 
-  // ── All unique channels for filter ───────────────────────────────────────
+  // ── All unique channels for filter (canonical labels) ────────────────────
   const allChannels = useMemo(() => {
     const s = new Set(ordersEnriched.map((o) => orderChannelLabel(o)));
     return Array.from(s).sort();
@@ -745,7 +559,7 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   const dateFromStr = rangeFrom.toISOString().slice(0, 10);
   const dateToStr = rangeTo.toISOString().slice(0, 10);
 
-  // ── Funnel stats (date-range scoped) ──────────────────────────────────────
+  // ── Funnel stats (date-range scoped) — legacy chat-session funnel ─────────
   const funnelStats = useMemo(() => {
     const map: Record<string, { chats: number; leads: number; paid: number; revenue: number }> = {};
     FUNNEL_CHANNELS.forEach((c) => { map[c.key] = { chats: 0, leads: 0, paid: 0, revenue: 0 }; });
@@ -807,76 +621,463 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   }, [channelOrders, datePreset, selectedChannel]);
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-7xl mx-auto space-y-12">
 
-      {/* ── View switcher ── */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-        {[
-          { key: "overview",       label: "Analytics Overview", icon: "ri-bar-chart-2-line" },
-          { key: "funnel",         label: "Attribution Funnel", icon: "ri-filter-2-line" },
-          { key: "ad_roi",         label: "Ad Spend & ROI",     icon: "ri-advertisement-line" },
-          { key: "google_ads_sync",label: "Google Ads Sync",    icon: "ri-google-fill" },
-          { key: "meta_capi",      label: "Meta CAPI",          icon: "ri-facebook-fill" },
-          { key: "backfill",       label: "Conversion Backfill", icon: "ri-refresh-line" },
-        ].map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            onClick={() => setAnalyticsView(v.key as typeof analyticsView)}
-            className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${analyticsView === v.key ? "bg-white text-[#3b6ea5]" : "text-gray-500 hover:text-gray-700"}`}
-          >
-            <i className={v.icon}></i>
-            {v.label}
-          </button>
-        ))}
+      {/* ════════════════════ 0. ANALYTICS CONTROL BAR ══════════════════════ */}
+      {/* Compact top-of-page controls: reporting period + channel + CSV export. */}
+      {/* Single source of truth for the shared date range. The detailed         */}
+      {/* order/letter/state filters live inside Section 06 (collapsed).         */}
+      <section>
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+          <div className="flex items-center gap-2 flex-wrap">
+
+            {/* Date preset */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+              {[
+                { value: "today",      label: "Today" },
+                { value: "yesterday",  label: "Yesterday" },
+                { value: "7d",         label: "Last 7 Days" },
+                { value: "30d",        label: "Last 30 Days" },
+                { value: "mtd",        label: "Current Month" },
+                { value: "lastmonth",  label: "Previous Month" },
+                { value: "custom",     label: "Custom" },
+              ].map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setDatePreset(p.value)}
+                  className={`whitespace-nowrap px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${datePreset === p.value ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom range inputs */}
+            {datePreset === "custom" && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="px-2 py-1 border border-gray-200 rounded-lg text-[11px] focus:outline-none focus:border-[#3b6ea5]"
+                />
+                <span className="text-[11px] text-gray-400">to</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="px-2 py-1 border border-gray-200 rounded-lg text-[11px] focus:outline-none focus:border-[#3b6ea5]"
+                />
+              </div>
+            )}
+
+            <div className="h-5 w-px bg-gray-200 hidden sm:block"></div>
+
+            {/* Channel (canonical acquisition labels) */}
+            <div className="relative">
+              <select
+                value={channelFilter}
+                onChange={(e) => setChannelFilter(e.target.value)}
+                className="appearance-none pl-2.5 pr-7 py-1 border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer"
+              >
+                <option value="all">All Channels</option>
+                {allChannels.map((c) => (
+                  <option key={c} value={c}>{orderChannelConfig(c).label}</option>
+                ))}
+              </select>
+              <i className="ri-arrow-down-s-line absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
+            </div>
+
+            <span className="text-[11px] text-gray-400">
+              Reporting period: <strong className="text-gray-700">{reportingLabel}</strong>
+              <span className="hidden sm:inline"> · <strong className="text-gray-700">{filteredOrders.length}</strong> orders</span>
+            </span>
+
+            {/* Export — pinned right */}
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              disabled={channelOrders.length === 0 || csvExporting}
+              className={`ml-auto whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer disabled:opacity-50 ${
+                csvExporting
+                  ? "bg-[#e8f0f9] text-[#3b6ea5] border-[#b8cce4]"
+                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+              }`}
+            >
+              {csvExporting ? (
+                <><i className="ri-checkbox-circle-fill text-[#3b6ea5]"></i>Exported!</>
+              ) : (
+                <><i className="ri-download-2-line"></i>Export CSV ({channelOrders.length})</>
+              )}
+            </button>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/*               GROUP · OVERVIEW                                        */}
+      {/*  Owner Dashboard + Business Snapshot — the executive read.            */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 pt-2">
+        <h2 className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-gray-700">Overview</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-gray-300 to-transparent"></div>
       </div>
 
-      {/* ── Attribution Funnel view ── */}
+      {/* ── Owner Dashboard ── */}
+      <section>
+        <div className="mb-5">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-orange-50 text-orange-500">
+              <i className="ri-dashboard-3-line text-base"></i>
+            </span>
+            <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">Owner Dashboard</h2>
+          </div>
+          <p className="text-xs text-gray-500 mt-1 ml-9">How is the business doing right now?</p>
+        </div>
+        <OwnerKpiStrip
+          dateFromIso={rangeFrom.toISOString()}
+          dateToIso={rangeTo.toISOString()}
+          rangeLabel={reportingLabel}
+        />
+      </section>
+
+      {/* ── Business Snapshot (compact secondary) ── */}
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-gray-100 text-gray-500">
+            <i className="ri-bar-chart-box-line text-[11px]"></i>
+          </span>
+          <h3 className="text-[13px] font-bold text-gray-700 tracking-tight">Business Snapshot</h3>
+          <span className="text-[10px] text-gray-400">· {reportingLabel}</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          {[
+            { label: "Total Orders",      value: kpis.total.toLocaleString()                       },
+            { label: "Paid Orders",       value: kpis.paid.toLocaleString()                        },
+            { label: "Unpaid Leads",      value: kpis.leads.toLocaleString()                       },
+            { label: "Completed",         value: kpis.completed.toLocaleString()                   },
+            { label: "Paid Rate",         value: `${kpis.paidRate}%`                               },
+            { label: "Revenue (gross)",   value: `$${kpis.revenue.toLocaleString()}`               },
+            { label: "Reviews Requested", value: (reviewStats?.totalSent ?? 0).toLocaleString()    },
+          ].map((kpi) => (
+            <div key={kpi.label} className="bg-white rounded-lg border border-gray-100 px-3 py-2">
+              <p className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold leading-tight">{kpi.label}</p>
+              <p className="text-sm font-bold text-gray-700 tabular-nums mt-0.5">{kpi.value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/*               GROUP 01 · CONVERSION ANALYTICS                        */}
+      {/*  Consolidated conversion dashboard (Executive Overview · Acquisition · */}
+      {/*  Landing · Source×Landing Matrix · Paid Ads ROI · Keyword · Data      */}
+      {/*  Quality). The marketing-decision view.                              */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-amber-600 to-amber-500 text-white text-[12px] font-extrabold tabular-nums shadow-sm">01</span>
+        <h2 className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-amber-700">Conversion Analytics</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-amber-200 to-transparent"></div>
+      </div>
+
+      <section>
+        <SourceLandingPaidRatePanel
+          globalFrom={rangeFrom}
+          globalTo={rangeTo}
+          globalLabel={reportingLabel}
+        />
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/*               GROUP 02 · RECOVERY PERFORMANCE                        */}
+      {/*  Recovery clicks, conversions, stage breakdown.                      */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-teal-600 to-teal-500 text-white text-[12px] font-extrabold tabular-nums shadow-sm">02</span>
+        <h2 className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-teal-700">Recovery Performance</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-teal-200 to-transparent"></div>
+      </div>
+
+      <section>
+        <details open className="group rounded-2xl border border-gray-100 bg-white">
+          <summary className="cursor-pointer list-none px-5 py-4 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 bg-teal-50 text-teal-600">
+                <i className="ri-mail-send-line text-base"></i>
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Recovery Performance</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Which follow-up wins back the most customers?</p>
+              </div>
+            </div>
+            <i className="ri-arrow-down-s-line text-xl text-gray-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <div className="px-5 pb-5 pt-2 border-t border-gray-100">
+            <RecoveryPerformancePanel />
+          </div>
+        </details>
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/*               GROUP 03 · PAGE PERFORMANCE                            */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-sky-600 to-sky-500 text-white text-[12px] font-extrabold tabular-nums shadow-sm">03</span>
+        <h2 className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-sky-700">Page Performance</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-sky-200 to-transparent"></div>
+      </div>
+
+      <section>
+        <details open className="group rounded-2xl border border-gray-100 bg-white">
+          <summary className="cursor-pointer list-none px-5 py-4 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 bg-sky-50 text-sky-600">
+                <i className="ri-window-line text-base"></i>
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Page Performance</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Which page sells, and which page needs work? <span className="text-gray-400">· Aggregated analytics window — independent of the reporting period above.</span></p>
+              </div>
+            </div>
+            <i className="ri-arrow-down-s-line text-xl text-gray-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <div className="px-5 pb-5 pt-2 border-t border-gray-100">
+            <Phase2AnalyticsPanel mode="pages-geo" />
+          </div>
+        </details>
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/*               GROUP 04 · INSIGHTS                                    */}
+      {/*  Smart Insights + Top States + Period Summary.                       */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-orange-400 text-white text-[12px] font-extrabold tabular-nums shadow-sm">04</span>
+        <h2 className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-orange-700">Insights</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-orange-200 to-transparent"></div>
+      </div>
+
+      <section>
+        <div className="mb-3">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-orange-50 text-orange-500">
+              <i className="ri-lightbulb-flash-line text-base"></i>
+            </span>
+            <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">Smart Insights</h2>
+          </div>
+          <p className="text-xs text-gray-500 mt-1 ml-9">What to do next — based on this period's data.</p>
+        </div>
+        <SmartInsightsPanel
+          dateFromIso={rangeFrom.toISOString()}
+          dateToIso={rangeTo.toISOString()}
+        />
+      </section>
+
+      {/* ── Period Summary + Top States ── */}
+      <section>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Top States — spans 2/3 */}
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-sky-50 to-sky-100 text-sky-600">
+                <i className="ri-map-pin-line text-base"></i>
+              </span>
+              <div>
+                <h3 className="text-sm font-extrabold text-gray-900">Top States</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Orders by state in the selected period</p>
+              </div>
+            </div>
+            {stateStats.length === 0 ? (
+              <div className="py-8 text-center text-xs text-gray-400">No state data available</div>
+            ) : (
+              <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {stateStats.map(([state, count]) => (
+                  <div key={state} className="flex items-center gap-3 bg-gradient-to-br from-gray-50 to-white rounded-xl px-3 py-2.5 border border-gray-100">
+                    <div className="w-9 h-9 flex items-center justify-center bg-gradient-to-br from-[#e8f0f9] to-[#dde7f3] rounded-lg flex-shrink-0">
+                      <span className="text-[11px] font-extrabold text-[#3b6ea5]">{state}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-gray-800">{count}</span>
+                        <span className="text-[10px] text-gray-400">
+                          {filteredOrders.length > 0 ? Math.round((count / filteredOrders.length) * 100) : 0}%
+                        </span>
+                      </div>
+                      <MiniBar value={count} max={maxStateCount} color="#3b6ea5" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Period Summary — spans 1/3 */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 text-gray-700">
+                <i className="ri-pulse-line text-base"></i>
+              </span>
+              <h3 className="text-sm font-extrabold text-gray-900">Period Summary</h3>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Avg. Revenue / Paid Order</span>
+                <span className="text-xs font-bold text-gray-900">
+                  {kpis.paid > 0 ? `$${Math.round(kpis.revenue / kpis.paid)}` : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Best Channel (Revenue)</span>
+                <span className="text-xs font-bold text-gray-900 truncate max-w-[120px]">
+                  {channelStats.slice().sort((a, b) => b.revenue - a.revenue)[0]?.cfg.label ?? "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Best Paid Rate (by channel)</span>
+                <span className="text-xs font-bold text-emerald-600">
+                  {channelStats.filter((c) => c.total >= 3).slice().sort((a, b) => b.conversionRate - a.conversionRate)[0]
+                    ? `${channelStats.filter((c) => c.total >= 3).slice().sort((a, b) => b.conversionRate - a.conversionRate)[0].conversionRate}%`
+                    : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Trend Period</span>
+                <span className="text-xs font-bold text-gray-900">
+                  {`${fmtShort(rangeFrom.toISOString())} – ${fmtShort(rangeTo.toISOString())}`}
+                </span>
+              </div>
+              <div className="border-t border-gray-100 pt-3 mt-1">
+                <p className="text-[10px] font-bold text-[#00b67a] uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <span>★</span> Review Requests
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Emails Sent</span>
+                    <span className="text-xs font-bold text-gray-900">{reviewStats.emailsSent}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">SMS Sent</span>
+                    <span className="text-xs font-bold text-gray-900">{reviewStats.smsSent}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Unique Orders Reached</span>
+                    <span className="text-xs font-bold text-[#00b67a]">{reviewStats.totalSent}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">% of Completed Orders</span>
+                    <span className={`text-xs font-bold ${reviewStats.reviewRate >= 50 ? "text-[#00b67a]" : reviewStats.reviewRate >= 25 ? "text-amber-600" : "text-gray-400"}`}>
+                      {reviewStats.reviewRate}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/*               GROUP 05 · FUNNEL                                      */}
+      {/*  Sessions → Assessment → Payment → Completed.                        */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-violet-500 text-white text-[12px] font-extrabold tabular-nums shadow-sm">05</span>
+        <h2 className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-violet-700">Funnel</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-violet-200 to-transparent"></div>
+      </div>
+
+      <section>
+        <details open className="group rounded-2xl border border-gray-100 bg-white">
+          <summary className="cursor-pointer list-none px-5 py-4 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 bg-violet-50 text-violet-500">
+                <i className="ri-filter-2-line text-base"></i>
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Funnel Health</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Where am I losing customers?</p>
+              </div>
+            </div>
+            <i className="ri-arrow-down-s-line text-xl text-gray-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <div className="px-5 pb-5 pt-2 border-t border-gray-100">
+            {/* ownerChannel={null} — LIVE channelFilter holds AcquisitionLabel
+                values, not Phase2's OwnerChannel enum buckets. Funnel shows all
+                channels combined, matching the unfiltered KPI strip. */}
+            <Phase2AnalyticsPanel
+              mode="funnel"
+              dateFromIso={rangeFrom.toISOString()}
+              dateToIso={rangeTo.toISOString()}
+              ownerChannel={null}
+            />
+          </div>
+        </details>
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/*               GROUP 06 · TOOLS / DEBUG                               */}
+      {/*  Detailed Data & Export + Tracking & Sync Health.                    */}
+      {/*  Both stay collapsed by default — heavy / power-user surface.         */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-rose-600 to-rose-500 text-white text-[12px] font-extrabold tabular-nums shadow-sm">06</span>
+        <h2 className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-rose-700">Tools / Debug</h2>
+        <div className="flex-1 h-px bg-gradient-to-r from-rose-200 to-transparent"></div>
+      </div>
+
+      {/* ── Detailed Data & Export (collapsed) ── */}
+      <section className="space-y-5">
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 bg-gray-100 text-gray-600">
+                <i className="ri-table-2 text-base"></i>
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Detailed Data &amp; Export</h2>
+                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">Raw orders, filters, and CSV export for team review.</p>
+                <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+                  Most business decisions should be made from the sections above. Use detailed data only when reviewing with ads / SEO team.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setExpandDetailed((v) => !v);
+                if (expandDetailed && analyticsView !== "overview") setAnalyticsView("overview");
+              }}
+              className={`inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg cursor-pointer whitespace-nowrap ${
+                expandDetailed
+                  ? "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  : "bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700"
+              }`}
+            >
+              <i className={expandDetailed ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}></i>
+              {expandDetailed ? "Hide details" : "Expand details"}
+            </button>
+          </div>
+        </div>
+
+      {expandDetailed && (
+      <>
+
+      {/* ── Legacy chat-session Attribution Funnel view ── */}
       {analyticsView === "funnel" && (
         <div className="space-y-5">
 
-          {/* Date preset bar (scoped to funnel) */}
-          <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                {[
-                  { value: "7d", label: "7 Days" },
-                  { value: "30d", label: "30 Days" },
-                  { value: "90d", label: "90 Days" },
-                  { value: "ytd", label: "Year to Date" },
-                  { value: "all", label: "All Time" },
-                  { value: "custom", label: "Custom" },
-                ].map((p) => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setDatePreset(p.value)}
-                    className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${datePreset === p.value ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              {datePreset === "custom" && (
-                <div className="flex items-center gap-2">
-                  <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
-                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
-                  <span className="text-xs text-gray-400">to</span>
-                  <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
-                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
-                </div>
-              )}
-              <span className="text-xs text-gray-400 ml-auto">
-                {funnelLoading ? (
-                  <span className="flex items-center gap-1.5"><i className="ri-loader-4-line animate-spin"></i>Loading…</span>
-                ) : (
-                  <>
-                    <strong className="text-gray-700">{funnelChats.length}</strong> chats ·{" "}
-                    <strong className="text-gray-700">{funnelOrders.length}</strong> orders in window
-                  </>
-                )}
-              </span>
-            </div>
+          <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 text-xs text-gray-400">
+            Reporting period is set in the top Analytics Control Bar.{" "}
+            {funnelLoading ? (
+              <span className="inline-flex items-center gap-1.5"><i className="ri-loader-4-line animate-spin"></i>Loading…</span>
+            ) : (
+              <>
+                <strong className="text-gray-700">{funnelChats.length}</strong> chats ·{" "}
+                <strong className="text-gray-700">{funnelOrders.length}</strong> orders in window
+              </>
+            )}
           </div>
 
           {funnelError && (
@@ -1013,109 +1214,16 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
         />
       )}
 
-      {/* ── Overview view ── */}
+      {/* ── Overview view — secondary filters + KPI cards + raw order list ── */}
       {analyticsView === "overview" && <>
 
-      {/* ── Conversion Analytics (mirrored from TEST 86c12e9) ──
-           Self-contained consolidated dashboard: Executive Overview · Acquisition ·
-           Landing Page (customer-facing) · Source × Landing Matrix · Paid Ads ROI
-           (Google / Meta / Combined) · Keyword / Search Term · Data Quality.
-           Lazy (fetches on expand); brings its OWN Current-Month-default reporting
-           range + presets + CSV exports, independent of LIVE's filter bar. Reuses
-           lib/analyticsMetrics + lib/analyticsNormalize + the existing
-           attributionResolver. Isolated additive mount — no other section changed. */}
-      <section className="mb-4">
-        <SourceLandingPaidRatePanel
-          globalFrom={rangeFrom}
-          globalTo={rangeTo}
-          globalLabel={reportingLabel}
-        />
-      </section>
-
-      {/* ── Owner Dashboard (Phase 2.b) ──
-           Owner-friendly 4-KPI strip at the top of the Overview view.
-           Pure visual addition above the existing Filter bar. Reads from
-           orders + visitor_sessions + analytics_roi_summary (already on
-           LIVE via Phase 2.a). Gracefully renders placeholder dashes
-           when ROI/spend data is empty. */}
-      <section className="mb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-orange-50 text-orange-500">
-            <i className="ri-dashboard-3-line text-base"></i>
-          </span>
-          <h2 className="text-xl font-extrabold text-gray-900 tracking-tight">Owner Dashboard</h2>
-          <span className="text-[11px] text-gray-400 ml-1">· {reportingLabel}</span>
-        </div>
-        <OwnerKpiStrip
-          dateFromIso={rangeFrom.toISOString()}
-          dateToIso={rangeTo.toISOString()}
-          rangeLabel={reportingLabel}
-        />
-      </section>
-
-      {/* ── Smart Insights (Phase 2.d) ──
-           Executive-level plain-English insight cards. Reads orders +
-           funnel_summary + analytics_roi_summary + landing_page_performance
-           + communications. ALREADY defensively designed end-to-end:
-             * Promise.all wrapped in .catch — empty arrays on any RPC fail
-             * Every builder returns a "Need more data" fallbackCard()
-               when its input is empty
-             * Every builder wrapped in tryBuild() that catches throws
-           No white-screen path possible. Mounts directly under Owner
-           Dashboard so the executive flow reads:
-             KPIs (now) → Insights (what to do) → Filters → Detail. */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-amber-50 text-amber-500">
-            <i className="ri-lightbulb-flash-line text-base"></i>
-          </span>
-          <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Smart Insights</h2>
-          <span className="text-[11px] text-gray-400 ml-1">· Auto-generated from your data</span>
-        </div>
-        <SmartInsightsPanel
-          dateFromIso={rangeFrom.toISOString()}
-          dateToIso={rangeTo.toISOString()}
-        />
-      </section>
-
-      {/* ── Filter bar ── */}
+      {/* ── Secondary filter bar ── */}
+      {/* Date preset, custom range, channel filter and CSV export live in the   */}
+      {/* top Analytics Control Bar (Section 0) — single source of truth.        */}
+      {/* Only the Detailed-Data-specific filters remain here: order type,       */}
+      {/* letter type, and state.                                                */}
       <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Date presets */}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            {[
-              { value: "today", label: "Today" },
-              { value: "yesterday", label: "Yesterday" },
-              { value: "7d", label: "Last 7 Days" },
-              { value: "30d", label: "Last 30 Days" },
-              { value: "mtd", label: "Current Month" },
-              { value: "lastmonth", label: "Previous Month" },
-              { value: "custom", label: "Custom" },
-            ].map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setDatePreset(p.value)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${datePreset === p.value ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Custom date range */}
-          {datePreset === "custom" && (
-            <div className="flex items-center gap-2">
-              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
-              <span className="text-xs text-gray-400">to</span>
-              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5]" />
-            </div>
-          )}
-
-          <div className="h-5 w-px bg-gray-200 hidden sm:block"></div>
-
           {/* Order type */}
           <div className="flex items-center gap-1">
             {[
@@ -1154,19 +1262,9 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
           </div>
 
-          {/* Channel filter */}
-          <div className="relative">
-            <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
-              <option value="all">All Channels</option>
-              {allChannels.map((c) => <option key={c} value={c}>{orderChannelConfig(c).label}</option>)}
-            </select>
-            <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
-          </div>
-
           <span className="text-xs text-gray-400 ml-auto">
-            Reporting period: <strong className="text-gray-700">{reportingLabel}</strong>
-            <span className="hidden sm:inline"> · <strong className="text-gray-700">{filteredOrders.length}</strong> orders</span>
+            Date &amp; channel filters and CSV export live in the top control bar.
+            <strong className="text-gray-700 ml-2">{filteredOrders.length}</strong> orders in range
           </span>
         </div>
       </div>
@@ -1204,198 +1302,6 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
             )}
           </div>
         ))}
-      </div>
-
-      {/* ── Funnel Performance (Phase 2.d, Commit 2) ──
-           Phase2AnalyticsPanel mode="funnel" — events-driven funnel
-           breakdown (Sessions → Assessment Start → Mid → Final →
-           Payment Attempted → Orders Completed). Reads public.events
-           via loadEventsFunnel() (COUNT DISTINCT session_id per
-           event_name) inside the parent date range; falls back to
-           the legacy funnel_summary view if either bound is missing.
-
-           Empty data renders zero values + "Need more data" insight
-           cards — no white-screen path.
-
-           ownerChannel={null} for now: channelFilter is now driven by
-           the canonical AcquisitionLabel vocabulary (post-Commit-B),
-           but Phase2's OwnerChannel enum buckets ("google_ads" /
-           "facebook_meta" / "seo_referral" / "direct_unknown") still
-           don't 1:1 map to AcquisitionLabel without an additional
-           translation table. Wiring deferred to a follow-up. Today
-           the funnel shows all-channels combined, matching the
-           unfiltered KPI strip above. */}
-      <section>
-        <Phase2AnalyticsPanel
-          mode="funnel"
-          dateFromIso={rangeFrom.toISOString()}
-          dateToIso={rangeTo.toISOString()}
-          ownerChannel={null}
-        />
-      </section>
-
-
-      {/* ── Recovery Performance (Phase 2.c) ──
-           Reads from public.communications (slug = seq_30min / seq_24h /
-           seq_48h / seq_3day / seq_5day + SMS variants) + orders
-           coupon usage. New columns from
-           20260502150000_recovery_sequence_control.sql and
-           20260502160000_recovery_sms_sequence.sql back the stage
-           counts (seq_48h_sent_at / seq_5day_sent_at / sms_seq_*).
-           Panel handles empty data gracefully — shows zero counts
-           per stage until the recovery sequence engine starts sending. */}
-      <section>
-        <RecoveryPerformancePanel />
-      </section>
-
-
-      {/* ── Channel Mix + Period Summary ──
-           Legacy "Traffic Source Breakdown" table was retired by the
-           visitor-rankings sprint (2026-05-15) and physically deleted by
-           the classifier-consolidation cleanup pass (Commit C, 2026-05-17).
-           Channel Mix donut + Period Summary remain — they're complementary
-           aggregates, not duplicative of the Visitor Source Rankings panel
-           mounted above. The selectedChannel state still drives the Order
-           list channel filter further down the page. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Channel Mix donut — visitor traffic share by source */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-sm font-extrabold text-gray-900">Channel Mix</h3>
-            <p className="text-xs text-gray-400 mb-4">Traffic share by source · {visitorAgg.totalVisitors.toLocaleString()} visitors in range</p>
-            <div className="flex items-center gap-4">
-              <DonutChart segments={donutSegments} />
-              <div className="flex-1 space-y-2 min-w-0">
-                {visitorAgg.perChannel.slice(0, 6).map((ch) => {
-                  const cfg = orderChannelConfig(ch.label);
-                  const pct = visitorAgg.totalVisitors > 0 ? Math.round((ch.visitors / visitorAgg.totalVisitors) * 100) : 0;
-                  return (
-                    <div key={ch.label} className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.chartColor }}></div>
-                      <span className="text-xs text-gray-600 truncate flex-1">{cfg.label}</span>
-                      <span className="text-xs font-bold text-gray-900 flex-shrink-0">{ch.visitors.toLocaleString()}</span>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0 w-8 text-right">{pct}%</span>
-                    </div>
-                  );
-                })}
-                {visitorAgg.perChannel.length === 0 && (
-                  <p className="text-xs text-gray-400">No visitor data in this range.</p>
-                )}
-                {visitorAgg.perChannel.length > 6 && (
-                  <p className="text-xs text-gray-400">+{visitorAgg.perChannel.length - 6} more sources</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Quick stats */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-sm font-extrabold text-gray-900 mb-4">Period Summary</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Total Visitors</span>
-                <span className="text-xs font-bold text-gray-900">{visitorAgg.totalVisitors.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Assessments Started</span>
-                <span className="text-xs font-bold text-gray-900">{visitorAgg.totalAssessments.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Paid Orders</span>
-                <span className="text-xs font-bold text-gray-900">{kpis.paid.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Revenue</span>
-                <span className="text-xs font-bold text-emerald-700">${kpis.revenue.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500" title="Paid orders ÷ total visitors (directional — orders are order-attributed, visitors session-attributed)">Visitor → Paid Conversion</span>
-                <span className="text-xs font-bold text-emerald-600">
-                  {visitorAgg.totalVisitors > 0
-                    ? `${Math.min(100, (kpis.paid / visitorAgg.totalVisitors) * 100).toFixed(1)}%`
-                    : "—"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Top Source (Paid Orders)</span>
-                <span className="text-xs font-bold text-gray-900 truncate max-w-[140px]">
-                  {(() => {
-                    const t = [...channelStats].filter((c) => c.paid > 0).sort((a, b) => b.paid - a.paid)[0];
-                    return t ? `${t.cfg.label} · ${t.paid}` : "—";
-                  })()}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Top Source (Revenue)</span>
-                <span className="text-xs font-bold text-gray-900 truncate max-w-[140px]">
-                  {(() => {
-                    const t = [...channelStats].filter((c) => c.revenue > 0).sort((a, b) => b.revenue - a.revenue)[0];
-                    return t ? `${t.cfg.label} · $${t.revenue.toLocaleString()}` : "—";
-                  })()}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Top Landing Page</span>
-                <span className="text-xs font-bold text-gray-900 font-mono truncate max-w-[140px]" title={visitorAgg.topLanding ?? undefined}>
-                  {visitorAgg.topLanding ?? "—"}
-                </span>
-              </div>
-              <div className="border-t border-gray-100 pt-3 mt-1">
-                <p className="text-[10px] font-bold text-[#00b67a] uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <span>★</span> Review Requests
-                </p>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Emails Sent</span>
-                    <span className="text-xs font-bold text-gray-900">{reviewStats.emailsSent}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">SMS Sent</span>
-                    <span className="text-xs font-bold text-gray-900">{reviewStats.smsSent}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">Unique Orders Reached</span>
-                    <span className="text-xs font-bold text-[#00b67a]">{reviewStats.totalSent}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">% of Completed Orders</span>
-                    <span className={`text-xs font-bold ${reviewStats.reviewRate >= 50 ? "text-[#00b67a]" : reviewStats.reviewRate >= 25 ? "text-amber-600" : "text-gray-400"}`}>
-                      {reviewStats.reviewRate}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      {/* ── State breakdown ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-extrabold text-gray-900">Top States</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Orders by state in the selected period</p>
-        </div>
-        {stateStats.length === 0 ? (
-          <div className="py-8 text-center text-xs text-gray-400">No state data available</div>
-        ) : (
-          <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {stateStats.map(([state, count]) => (
-              <div key={state} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
-                <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-                  <span className="text-xs font-extrabold text-[#3b6ea5]">{state}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-gray-700">{count}</span>
-                    <span className="text-[10px] text-gray-400">
-                      {filteredOrders.length > 0 ? Math.round((count / filteredOrders.length) * 100) : 0}%
-                    </span>
-                  </div>
-                  <MiniBar value={count} max={maxStateCount} color="#3b6ea5" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Order list (filtered by channel if selected) ── */}
@@ -1543,6 +1449,102 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
       </div>
 
       </>}
+
+      </>
+      )}
+      {/* End {expandDetailed && (...)} gate */}
+
+      </section>
+      {/* End Detailed Data & Export */}
+
+      {/* ── Tracking & Sync Health (collapsed) ── */}
+      <section>
+        <details className="group rounded-2xl border border-gray-100 bg-white">
+          <summary className="cursor-pointer list-none px-5 py-4 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 bg-rose-50 text-rose-600">
+                <i className="ri-pulse-line text-base"></i>
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-extrabold text-gray-900 tracking-tight">Tracking &amp; Sync Health</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">Google Ads Sync, Meta CAPI, and Conversion Backfill. Keeps marketing platforms in sync with paid orders.</p>
+              </div>
+            </div>
+            <i className="ri-arrow-down-s-line text-xl text-gray-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+
+          <div className="px-5 pb-5 pt-2 space-y-4 border-t border-gray-100">
+
+            <SyncHealthCards />
+
+            {/* Advanced sync tools — full panels behind a collapsible. */}
+            <details className="mt-4 group rounded-2xl border border-gray-100 bg-white">
+              <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-extrabold text-gray-900">Advanced sync tools</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Full Google Ads sync, Meta CAPI, Conversion Backfill, and live Ad Spend panels.</p>
+                </div>
+                <i className="ri-arrow-down-s-line text-xl text-gray-400 group-open:rotate-180 transition-transform"></i>
+              </summary>
+              <div className="px-5 pb-5 pt-2 space-y-6 border-t border-gray-100">
+                <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
+                  {[
+                    { key: "google_ads_sync", label: "Google Ads Sync",     icon: "ri-google-fill" },
+                    { key: "meta_capi",       label: "Meta CAPI",           icon: "ri-facebook-fill" },
+                    { key: "backfill",        label: "Conversion Backfill", icon: "ri-refresh-line" },
+                    { key: "ad_roi",          label: "Ad Spend (live API)", icon: "ri-advertisement-line" },
+                  ].map((v) => (
+                    <button
+                      key={v.key}
+                      type="button"
+                      onClick={() => { setExpandDetailed(true); setAnalyticsView(v.key as typeof analyticsView); }}
+                      className={`whitespace-nowrap flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${analyticsView === v.key ? "bg-white text-[#3b6ea5]" : "text-gray-500 hover:text-gray-700"}`}
+                    >
+                      <i className={v.icon}></i>
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  Click a tab above to load the underlying sync tool (it opens inside Detailed Data &amp; Export). Use "Back to dashboard" below to restore the default view.
+                </p>
+                {analyticsView !== "overview" && (
+                  <button
+                    type="button"
+                    onClick={() => setAnalyticsView("overview")}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg cursor-pointer"
+                  >
+                    <i className="ri-arrow-go-back-line"></i> Back to dashboard
+                  </button>
+                )}
+              </div>
+            </details>
+
+            {/* Legacy attribution-funnel chat-session table — kept for parity. */}
+            <details className="mt-3 group rounded-2xl border border-dashed border-gray-200 bg-white">
+              <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-extrabold text-gray-900">Advanced legacy tools</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Chat-session attribution funnel + revenue per channel. Kept for parity verification.</p>
+                </div>
+                <i className="ri-arrow-down-s-line text-xl text-gray-400 group-open:rotate-180 transition-transform"></i>
+              </summary>
+              <div className="px-5 pb-5 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => { setExpandDetailed(true); setAnalyticsView(analyticsView === "funnel" ? "overview" : "funnel"); }}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-bold rounded-lg cursor-pointer"
+                >
+                  <i className="ri-filter-2-line"></i>
+                  {analyticsView === "funnel" ? "Hide legacy attribution funnel" : "Show legacy attribution funnel"}
+                </button>
+              </div>
+            </details>
+
+          </div>
+        </details>
+      </section>
+      {/* End Tracking & Sync Health */}
     </div>
   );
 }
