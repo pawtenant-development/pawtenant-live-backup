@@ -12,6 +12,7 @@ import OwnerKpiStrip from "./OwnerKpiStrip";
 import Phase2AnalyticsPanel from "./Phase2AnalyticsPanel";
 import RecoveryPerformancePanel from "./RecoveryPerformancePanel";
 import SmartInsightsPanel from "./SmartInsightsPanel";
+import SourceLandingPaidRatePanel from "./SourceLandingPaidRatePanel";
 import { analyticsScopeLabel } from "./analyticsScope";
 import {
   classifyOrder,
@@ -1256,6 +1257,18 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
 
       {/* ── Overview view ── */}
       {analyticsView === "overview" && <>
+
+      {/* ── Conversion Analytics (mirrored from TEST 86c12e9) ──
+           Self-contained consolidated dashboard: Executive Overview · Acquisition ·
+           Landing Page (customer-facing) · Source × Landing Matrix · Paid Ads ROI
+           (Google / Meta / Combined) · Keyword / Search Term · Data Quality.
+           Lazy (fetches on expand); brings its OWN Current-Month-default reporting
+           range + presets + CSV exports, independent of LIVE's filter bar. Reuses
+           lib/analyticsMetrics + lib/analyticsNormalize + the existing
+           attributionResolver. Isolated additive mount — no other section changed. */}
+      <section className="mb-4">
+        <SourceLandingPaidRatePanel />
+      </section>
 
       {/* ── Owner Dashboard (Phase 2.b) ──
            Owner-friendly 4-KPI strip at the top of the Overview view.
