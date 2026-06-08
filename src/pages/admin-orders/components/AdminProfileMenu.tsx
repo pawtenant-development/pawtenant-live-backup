@@ -2,15 +2,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   fetchTeamPresence,
-  setMyPresence,
   getMyTeamMemberId,
-  AWAY_OPTIONS,
   PRESENCE_DOT,
   AWAY_LABEL,
   type PresenceRow,
-  type AwayStatus,
 } from "../../../lib/presence";
-import { clockInCurrentUser, clockOutCurrentUser } from "../../../lib/attendance";
 import { fetchCurrentTeamMember } from "../../../lib/teamMembers";
 import {
   getSoundPrefs,
@@ -27,11 +23,14 @@ import {
 } from "../../../lib/notificationSounds";
 
 // Compact top-right profile / status menu (Facebook/LinkedIn style).
-// Owns: clock in/out, away status, light admin shortcuts (Runbook /
-// Providers), sound settings, change password, sign out.
-// Broadcast now lives in Communications and Approvals in the Team tab —
-// both are role-gated and no longer surfaced here.
-// Clock + presence use the existing attendance / presence RPCs only.
+// Owns: light admin shortcuts (Runbook / Providers), sound settings,
+// change password, sign out. Shows a PASSIVE presence dot + status label
+// only (read-only).
+// Clock in/out and shift/away controls were intentionally removed from the
+// admin portal — employees clock in/out and set break/away from the
+// /company employee portal. The underlying attendance/presence RPCs are
+// unchanged; this menu only reads presence for the status dot.
+// Broadcast lives in Communications and Approvals in the Team tab.
 
 interface AdminProfileMenuProps {
   name: string;
@@ -111,8 +110,6 @@ export default function AdminProfileMenu({
   const [myId, setMyId] = useState<string | null>(null);
   const [me, setMe] = useState<PresenceRow | null>(null);
   const [resolved, setResolved] = useState(false); // finished first lookup
-  const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [prefs, setPrefs] = useState<SoundPrefs>(getSoundPrefs());
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -157,59 +154,11 @@ export default function AdminProfileMenu({
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  const showToast = (ok: boolean, msg: string) => {
-    setToast({ ok, msg });
-    setTimeout(() => setToast(null), 5000);
-  };
-
-  // Notify the Team presence bar (and any listener) so dots refresh instantly.
-  const broadcastPresence = () => {
-    try { window.dispatchEvent(new CustomEvent("pw:presence-changed")); } catch { /* ignore */ }
-  };
-
+  // Passive presence reads only (for the status dot + label). No clock/away
+  // actions — those live on the /company employee portal.
   const isClockedIn = !!me?.is_clocked_in;
   const presenceColor = me?.presence ?? "red";
   const awayStatus = me?.away_status ?? "available";
-
-  const handleClockIn = async () => {
-    setBusy(true);
-    try {
-      const id = await clockInCurrentUser();
-      if (!id) throw new Error("Clock-in failed. You may not have an assigned shift — ask an admin.");
-      await setMyPresence("available");
-      await loadMine();
-      broadcastPresence();
-      showToast(true, "Clocked in — you're now online.");
-    } catch (e) {
-      showToast(false, e instanceof Error ? e.message : "Clock-in failed.");
-    }
-    setBusy(false);
-  };
-
-  const handleClockOut = async () => {
-    setBusy(true);
-    try {
-      await clockOutCurrentUser();
-      await loadMine();
-      broadcastPresence();
-      showToast(true, "Clocked out.");
-    } catch (e) {
-      showToast(false, e instanceof Error ? e.message : "Clock-out failed.");
-    }
-    setBusy(false);
-  };
-
-  const handleAway = async (status: AwayStatus) => {
-    setBusy(true);
-    const ok = await setMyPresence(status);
-    if (ok) {
-      await loadMine();
-      broadcastPresence();
-    } else {
-      showToast(false, "Could not update status.");
-    }
-    setBusy(false);
-  };
 
   const roleCfg = ROLE_BADGE[role ?? ""] ?? ROLE_BADGE.admin_manager;
 
@@ -256,61 +205,7 @@ export default function AdminProfileMenu({
             </div>
           </div>
 
-          {/* Toast */}
-          {toast && (
-            <div className={`mx-3 mt-3 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${toast.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
-              <i className={toast.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{toast.msg}
-            </div>
-          )}
-
           <div className="max-h-[70vh] overflow-y-auto">
-            {/* Work status */}
-            <div className="px-3 py-3 border-b border-gray-100">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Work status</p>
-              {!resolved ? (
-                <p className="text-xs text-gray-400 px-1 py-1">Loading status…</p>
-              ) : !myId ? (
-                <p className="text-xs text-amber-600 px-1 py-1 flex items-start gap-1">
-                  <i className="ri-information-line mt-0.5"></i>
-                  Your login isn't linked to a team-member profile, so clock-in is unavailable. Ask an owner/admin to add you under Team.
-                </p>
-              ) : (
-                <>
-                  {!isClockedIn ? (
-                    <button type="button" onClick={handleClockIn} disabled={busy}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-colors">
-                      {busy ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-login-circle-line"></i>}
-                      Clock In
-                    </button>
-                  ) : (
-                    <>
-                      <button type="button" onClick={handleClockOut} disabled={busy}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 text-sm font-bold rounded-xl hover:bg-red-100 disabled:opacity-50 cursor-pointer transition-colors">
-                        {busy ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-logout-circle-line"></i>}
-                        Clock Out
-                      </button>
-                      <div className="grid grid-cols-3 gap-1.5 mt-2">
-                        {AWAY_OPTIONS.map((opt) => {
-                          const active = awayStatus === opt.value;
-                          return (
-                            <button key={opt.value} type="button" disabled={busy}
-                              onClick={() => handleAway(opt.value)}
-                              title={opt.label}
-                              className={`flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg text-[10px] font-semibold border transition-colors cursor-pointer disabled:opacity-50 ${
-                                active ? "bg-[#3b6ea5] text-white border-[#3b6ea5]" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-                              }`}>
-                              <i className={`${opt.icon} text-sm`}></i>
-                              <span className="leading-none">{opt.value === "available" ? "Back" : opt.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-
             {/* Admin shortcuts */}
             <div className="px-3 py-3 border-b border-gray-100">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Shortcuts</p>
