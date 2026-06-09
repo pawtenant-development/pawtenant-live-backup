@@ -140,6 +140,32 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
         <QuestionView def={def} data={data} onUpdate={update} hasError={errorVisible} />
       </div>
 
+      {/* Optional trained-task free-text note — shown only on the final
+          question. Not required, not part of the manifest/progress count, no
+          PSD upsell. Neutral wording; stored in assessment_answers JSON. */}
+      {isLast && (
+        <div className="mt-5 bg-white rounded-xl border border-gray-100 p-5 sm:p-6">
+          <label htmlFor="trainedTaskDescription" className="block text-sm font-bold text-gray-900 mb-1.5">
+            Does your animal perform any specific trained task?
+            <span className="text-gray-400 font-normal lowercase text-[11px] ml-1">(optional)</span>
+          </label>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            If yes, briefly describe what your animal is trained to do. If not, you can write
+            &ldquo;No&rdquo; or leave this blank. This helps the licensed provider understand your
+            documentation path. PawTenant does not train, register, or certify service animals.
+          </p>
+          <textarea
+            id="trainedTaskDescription"
+            value={data.trainedTaskDescription ?? ""}
+            onChange={(e) => update({ trainedTaskDescription: e.target.value })}
+            placeholder="Example: My animal alerts me before panic episodes / No specific trained task"
+            rows={3}
+            maxLength={500}
+            className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#F97316] transition-colors resize-none"
+          />
+        </div>
+      )}
+
       {/* Navigation */}
       <div className="mt-6 sm:mt-8 flex flex-col-reverse sm:flex-row sm:justify-between gap-3">
         <button

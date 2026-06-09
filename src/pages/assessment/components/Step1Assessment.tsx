@@ -19,6 +19,10 @@ export interface Step1Data {
   treatmentDetails: string;         // NEW — optional text: describe treatment
   symptomDescription: string;
   housingType: string;
+  // Optional free-text trained-task note (2026 HUD routing context). Stored in
+  // the existing assessment_answers JSON via {...step1}. Never required, never
+  // blocks the flow, no PSD upsell. Replaces the old Step2 button field.
+  trainedTaskDescription?: string;
   // Legacy fields kept for backward compat with old orders (no longer collected)
   hasESA?: string;
   petSupport?: string[];
@@ -436,6 +440,29 @@ export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = f
             ]}
           />
         </QuestionCard>
+
+        {/* Optional trained-task free-text note — not a required question, no
+            PSD upsell. Neutral wording; stored in assessment_answers JSON. */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 sm:p-6">
+          <label htmlFor="trainedTaskDescription" className="block text-sm font-bold text-gray-900 mb-1.5">
+            Does your animal perform any specific trained task?
+            <span className="text-gray-400 font-normal lowercase text-[11px] ml-1">(optional)</span>
+          </label>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            If yes, briefly describe what your animal is trained to do. If not, you can write
+            &ldquo;No&rdquo; or leave this blank. This helps the licensed provider understand your
+            documentation path. PawTenant does not train, register, or certify service animals.
+          </p>
+          <textarea
+            id="trainedTaskDescription"
+            value={data.trainedTaskDescription ?? ""}
+            onChange={(e) => update("trainedTaskDescription", e.target.value)}
+            placeholder="Example: My animal alerts me before panic episodes / No specific trained task"
+            rows={3}
+            maxLength={500}
+            className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#F97316] transition-colors resize-none"
+          />
+        </div>
 
       </div>
 

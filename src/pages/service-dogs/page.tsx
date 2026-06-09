@@ -1,6 +1,7 @@
 ﻿import { useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
+import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 
 const dogBreeds = [
@@ -322,6 +323,8 @@ export default function ServiceDogsPage() {
           </div>
         </div>
       </section>
+
+      <Hud2026UpdateBanner audience="psd" className="border-t border-gray-100 bg-white" />
 
       <SharedFooter />
     </main>

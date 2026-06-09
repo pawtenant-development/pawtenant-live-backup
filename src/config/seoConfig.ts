@@ -115,6 +115,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Is PawTenant legit? PawTenant connects you with licensed providers for ESA letters, with transparent pricing, verifiable letters, and a refund if you don't qualify.",
   },
+  "/are-esa-letters-still-valid-after-hud-change": {
+    title: "Are ESA Letters Still Valid After the 2026 HUD Change? | PawTenant",
+    description:
+      "What the 2026 HUD enforcement change means for emotional support animals in housing — what changed, what didn't, ESA vs trained PSD, and how a licensed, state-aware evaluation can help. Approval is not guaranteed.",
+  },
   "/all-about-service-dogs": {
     title: "Psychiatric Service Dog Letter Online 2026 — PSD Letter vs ESA Letter | PawTenant",
     description:

@@ -548,6 +548,21 @@ export default function AssessmentPage() {
           treatmentDetails: (answers.treatmentDetails as string) ?? "",
           symptomDescription: (answers.symptomDescription as string) ?? "",
           housingType: (answers.housingType as string) ?? "",
+          // 2026 HUD trained-task free-text note (Step 1). Backward-compat: an
+          // older order may only have the legacy Step 2 button value
+          // (`trainedTask` = "yes"/"no"/"unsure") — surface it as readable text
+          // so nothing is lost; otherwise load the new free-text field.
+          trainedTaskDescription:
+            (answers.trainedTaskDescription as string) ??
+            (typeof answers.trainedTask === "string" && answers.trainedTask
+              ? answers.trainedTask === "yes"
+                ? "Yes"
+                : answers.trainedTask === "no"
+                  ? "No"
+                  : answers.trainedTask === "unsure"
+                    ? "Not sure"
+                    : (answers.trainedTask as string)
+              : ""),
         });
 
         const loadedStep2: Step2Data = {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { US_STATES } from "../../../lib/usStates";
 import StateComplianceBanner from "./StateComplianceBanner";
+import Hud2026UpdateBanner from "../../../components/feature/Hud2026UpdateBanner";
 
 export interface PetInfo {
   name: string;
@@ -290,6 +291,12 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
       {/* State law compliance notice — ESA only, triggers on AR/CA/IA/LA/MT */}
       {!isPSD && (
         <StateComplianceBanner state={data.state} className="mb-5" />
+      )}
+
+      {/* 2026 HUD support-animal housing update — ESA only, shows once a state
+          is selected. State-aware, concise. Reuses shared Hud2026UpdateBanner. */}
+      {!isPSD && data.state && (
+        <Hud2026UpdateBanner state={data.state} variant="compact" className="mb-5" />
       )}
 
       {/* Pet Info */}

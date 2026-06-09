@@ -55,6 +55,9 @@ const LetterPreviewSection = lazy(
 const LandlordSupportSection = lazy(
   () => import("./components/LandlordSupportSection"),
 );
+// 2026 HUD update — calm, brand-styled, below-the-fold (lazy) so it adds no
+// above-the-fold PageSpeed cost. Content section (task: HUD UX/brand polish).
+const HudUpdateSection = lazy(() => import("./components/HudUpdateSection"));
 const AffordabilityStrip = lazy(() => import("./components/AffordabilityStrip"));
 const PricingSection = lazy(() => import("./components/PricingSection"));
 const WhyChooseSection = lazy(() => import("./components/WhyChooseSection"));
@@ -312,6 +315,12 @@ export default function Home() {
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
         <LandlordSupportSection />
+      </Suspense>
+
+      {/* Calm 2026 HUD update section — housing-context neighbour. Below-fold,
+          lazy; brand-styled, not a scary legal block. */}
+      <Suspense fallback={<SectionFallback />}>
+        <HudUpdateSection />
       </Suspense>
 
       {/* Connector: Benefits → Trust */}

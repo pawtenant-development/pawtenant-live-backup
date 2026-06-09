@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
+import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 import { VeteransSupportSection } from "../../components/feature/SeoKit";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
@@ -69,7 +70,7 @@ const whyChoose = [
   },
   {
     title: "100% Money Back Guarantee",
-    desc: "We stand behind the effectiveness of our ESA letters and your satisfaction. With our unique Money Back Guarantee, you're covered if your legitimate ESA letter doesn't work for any reason. We ensure a 100% refund if you don't qualify after consultation or if your landlord denies the letter despite a HUD-compliant.",
+    desc: "We stand behind the quality of our service. With our Money-Back Guarantee, you're covered if you don't qualify after your consultation. Approval by a housing provider is never guaranteed and can depend on your state, housing type, and individual facts — see our refund policy for full details.",
     icon: "ri-refund-2-line",
   },
   {
@@ -349,7 +350,30 @@ export default function ESALetterCostPage() {
         </div>
       </section>
 
-      {/* FAQ — comfortable padding inside accordion on mobile. */}
+      {/* Veterans support — emotional-first, savings secondary (SeoKit) */}
+      <VeteransSupportSection
+        className="bg-[#f7f6f3] border-t border-gray-100"
+        image="/assets/veterans/man-on-porch-with-dog.jpg"
+        alt="A veteran on his porch with his dog on a calm afternoon"
+      />
+
+      {/* CTA — mobile: full-width button + clearer hierarchy. */}
+      <section className="py-12 sm:py-16 bg-white">
+        <div className="max-w-2xl mx-auto px-5 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 sm:mb-4 leading-tight">Schedule Your ESA Letter Consultation Today</h2>
+          <p className="text-gray-500 text-[14px] sm:text-base mb-7 sm:mb-8">Get peace of mind with a service you can trust</p>
+          <Link
+            to="/assessment"
+            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[15px] sm:text-base shadow-[0_4px_12px_rgba(249,115,22,0.30)]"
+          >
+            <i className="ri-calendar-line"></i>
+            Schedule Your Appointment Today
+          </Link>
+        </div>
+      </section>
+
+      {/* FAQ — moved near the bottom so it sits below the closing CTA and
+          ahead of Related Resources + the HUD update section. */}
       <section className="py-12 sm:py-16 bg-[#fdf6ee]">
         <div className="max-w-4xl mx-auto px-5 sm:px-6">
           <div className="text-center mb-8 sm:mb-10">
@@ -380,31 +404,8 @@ export default function ESALetterCostPage() {
         </div>
       </section>
 
-      {/* Veterans support — emotional-first, savings secondary (SeoKit) */}
-      <VeteransSupportSection
-        className="bg-[#f7f6f3] border-t border-gray-100"
-        image="/assets/veterans/man-on-porch-with-dog.jpg"
-        alt="A veteran on his porch with his dog on a calm afternoon"
-      />
-
-      {/* CTA — mobile: full-width button + clearer hierarchy. */}
-      <section className="py-12 sm:py-16 bg-white">
-        <div className="max-w-2xl mx-auto px-5 sm:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 sm:mb-4 leading-tight">Schedule Your ESA Letter Consultation Today</h2>
-          <p className="text-gray-500 text-[14px] sm:text-base mb-7 sm:mb-8">Get peace of mind with a service you can trust</p>
-          <Link
-            to="/assessment"
-            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 bg-orange-500 text-white font-bold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[15px] sm:text-base shadow-[0_4px_12px_rgba(249,115,22,0.30)]"
-          >
-            <i className="ri-calendar-line"></i>
-            Schedule Your Appointment Today
-          </Link>
-        </div>
-      </section>
-
-      {/* Related Resources — internal links to help readers continue their
-          ESA research. Bottom-of-page placement keeps the pricing message
-          focused above. */}
+      {/* Related Resources — 6 even cards (3×2 on desktop, 2-up on tablet) so
+          the grid is symmetric with no lonely card; equal-height via flex. */}
       <section className="py-12 sm:py-16 bg-slate-50 border-t border-slate-200">
         <div className="max-w-6xl mx-auto px-5 sm:px-6">
           <div className="text-center max-w-xl mx-auto mb-8 sm:mb-10">
@@ -415,66 +416,60 @@ export default function ESALetterCostPage() {
               Helpful guides for the rest of your ESA letter process.
             </p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            <Link
-              to="/how-to-get-esa-letter"
-              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
-            >
-              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
-                How to Get an ESA Letter
-              </div>
-              <p className="text-[12.5px] text-slate-600 leading-relaxed">
-                A step-by-step guide to getting a clinically reviewed ESA letter from a licensed mental health professional.
-              </p>
-              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
-                Read more <i className="ri-arrow-right-line" />
-              </span>
-            </Link>
-            <Link
-              to="/housing-rights-esa"
-              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
-            >
-              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
-                Fair Housing Act Rights
-              </div>
-              <p className="text-[12.5px] text-slate-600 leading-relaxed">
-                How federal Fair Housing law supports reasonable accommodation requests for tenants with a qualifying ESA.
-              </p>
-              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
-                Read more <i className="ri-arrow-right-line" />
-              </span>
-            </Link>
-            <Link
-              to="/esa-letter-verification"
-              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
-            >
-              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
-                Landlord Verification
-              </div>
-              <p className="text-[12.5px] text-slate-600 leading-relaxed">
-                How landlords confirm an ESA letter&rsquo;s authenticity using its unique verification ID.
-              </p>
-              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
-                Read more <i className="ri-arrow-right-line" />
-              </span>
-            </Link>
-            <Link
-              to="/faqs"
-              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
-            >
-              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
-                ESA Letter FAQs
-              </div>
-              <p className="text-[12.5px] text-slate-600 leading-relaxed">
-                Common questions about ESA letters, housing rights, eligibility, and the clinical review process.
-              </p>
-              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
-                Read more <i className="ri-arrow-right-line" />
-              </span>
-            </Link>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 items-stretch">
+            {[
+              {
+                to: "/how-to-get-esa-letter",
+                title: "How to Get an ESA Letter",
+                desc: "A step-by-step guide to getting a clinically reviewed ESA letter from a licensed mental health professional.",
+              },
+              {
+                to: "/esa-laws",
+                title: "ESA Laws Explained",
+                desc: "What a valid ESA letter requires and what the Fair Housing Act can and cannot do for housing.",
+              },
+              {
+                to: "/housing-rights-esa",
+                title: "Fair Housing Act Rights",
+                desc: "How federal Fair Housing law supports reasonable accommodation requests for tenants with a qualifying ESA.",
+              },
+              {
+                to: "/landlord-denied-esa-letter",
+                title: "Landlord Denial Help",
+                desc: "Calm, practical next steps and state-by-state guidance if your landlord challenged or denied your ESA.",
+              },
+              {
+                to: "/are-esa-letters-still-valid-after-hud-change",
+                title: "2026 HUD Update",
+                desc: "What the 2026 HUD enforcement change means for ESAs — what changed, what didn't, and your options.",
+              },
+              {
+                to: "/faqs",
+                title: "ESA Letter FAQs",
+                desc: "Common questions about ESA letters, housing rights, eligibility, and the clinical review process.",
+              },
+            ].map((r) => (
+              <Link
+                key={r.to}
+                to={r.to}
+                className="group flex flex-col h-full bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+              >
+                <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                  {r.title}
+                </div>
+                <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                  {r.desc}
+                </p>
+                <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                  Read more <i className="ri-arrow-right-line" />
+                </span>
+              </Link>
+            ))}
           </div>
         </div>
       </section>
+
+      <Hud2026UpdateBanner className="border-t border-gray-100 bg-white" />
 
       <SharedFooter />
 
