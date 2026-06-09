@@ -154,6 +154,199 @@ async function writeRoute(template, routePath, meta, canonicalOverride) {
   return target;
 }
 
+// ── App-CSS-non-blocking helper (PageSpeed mirror from TEST) ──────────────
+// Make the render-blocking app stylesheet non-blocking for this route only.
+// media=print → browser does not block paint; onload swaps it back to all.
+// <noscript> keeps no-JS visitors fully styled. Returns the html unchanged if
+// the expected tag isn't found (safe fallback — page still works, just not
+// optimized), and logs a warning so a future Vite output change is noticed.
+function makeAppCssNonBlocking(html) {
+  const re = /<link rel="stylesheet" crossorigin href="(\/assets\/index-[^"]+\.css)">/;
+  if (!re.test(html)) {
+    console.warn(
+      "[prerender-seo] WARN: app stylesheet <link> not matched for /meta-esa-letter — left render-blocking."
+    );
+    return html;
+  }
+  return html.replace(
+    re,
+    (_m, href) =>
+      `<link rel="stylesheet" crossorigin href="${href}" media="print" onload="this.media='all'" />` +
+      `<noscript><link rel="stylesheet" crossorigin href="${href}" /></noscript>`
+  );
+}
+
+// ── Homepage (/) static hero skeleton — PageSpeed Phase 9 (2026-06-08) ──────
+// Same proven technique as /meta-esa-letter above: inject a self-styled static
+// above-the-fold hero into #root and make the app stylesheet non-render-
+// blocking so the homepage LCP (the hero H1 over the background WebP) paints on
+// HTML parse instead of after the ~145 KB-gzip React bundle downloads and
+// executes on throttled mobile. This is why /meta-esa-letter scores 90+ mobile
+// while the CSR-only homepage was stuck ~78-81 with the SAME bundle.
+//
+// Safety / no-flash / no-CLS rationale (identical to the meta LP):
+//   • main.tsx uses createRoot(), which clears #root and re-renders the React
+//     hero on mount. The background image is the same preloaded WebP (served
+//     from cache → no second request, no flash).
+//   • The skeleton reserves the same full-viewport (100svh) hero box, so CLS
+//     stays ~0 when React takes over.
+//   • SharedNavbar is `fixed top-0` and overlays the hero, so mounting it does
+//     not shift the skeleton's H1 (the LCP element).
+//   • Homepage stays INDEXABLE — robots is NOT forced to noindex here (unlike
+//     the paid meta LP). view-source shows the real hero H1/subtitle copy.
+//
+// Inline critical CSS is fully self-contained (pt-h-* classes, NOT Tailwind)
+// so the hero renders correctly WITHOUT the now-async app stylesheet. Mirrors
+// src/pages/home/components/HeroSection.tsx — keep visually in sync if that
+// hero's wording/layout changes.
+const HOME_CRITICAL_CSS = `<style id="pt-home-critical">
+/* Reset the default 8px body margin immediately. Tailwind's preflight sets
+   body{margin:0}, but it ships in the ASYNC app stylesheet — so until that
+   loads the body keeps its UA 8px margin and then snaps to 0 when the CSS
+   applies, a small whole-page shift on top of the navbar one. Inlining it
+   here removes that residual shift without waiting for the app CSS. */
+html,body{margin:0;padding:0}
+.pt-h-hero{position:relative;min-height:100svh;display:flex;align-items:center;overflow:hidden;background:#0b1220;font-family:'Nunito',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+.pt-h-bg{position:absolute;inset:0}
+.pt-h-bg picture{display:block;width:100%;height:100%}
+.pt-h-bg img{width:100%;height:100%;object-fit:cover;object-position:center;opacity:.8}
+.pt-h-ov{position:absolute;inset:0;background:linear-gradient(to right,rgba(17,24,39,.85),rgba(17,24,39,.65),rgba(17,24,39,.25))}
+.pt-h-wrap{position:relative;z-index:10;width:100%;max-width:80rem;margin:0 auto;padding:5rem 1.25rem;box-sizing:border-box}
+.pt-h-inner{max-width:42rem}
+.pt-h-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(249,115,22,.2);border:1px solid rgba(251,146,60,.4);color:#fdba74;font-size:.75rem;font-weight:600;padding:.375rem .75rem;border-radius:9999px;margin-bottom:1.25rem}
+.pt-h-h1{font-size:1.875rem;line-height:1.15;font-weight:800;color:#fff;margin:0 0 1.25rem}
+.pt-h-h1 span{color:#fb923c}
+.pt-h-br{display:none}
+.pt-h-sub{color:#e5e7eb;font-size:1rem;line-height:1.6;margin:0 0 1.75rem;max-width:36rem}
+.pt-h-pill{display:inline-flex;align-items:center;gap:.625rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:.625rem 1rem;border-radius:9999px;margin-bottom:1.75rem}
+.pt-h-pill span{color:#fff;font-size:.75rem;font-weight:600;white-space:nowrap}
+.pt-h-cta{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;width:100%;box-sizing:border-box;background:#fb923c;color:#fff;font-weight:700;font-size:1rem;padding:1rem 2rem;border-radius:.375rem;text-decoration:none;box-shadow:0 10px 15px -3px rgba(251,146,60,.25)}
+@media(min-width:640px){.pt-h-wrap{padding:7rem 1.25rem}.pt-h-h1{font-size:2.25rem}.pt-h-br{display:block}.pt-h-sub{font-size:1.125rem}.pt-h-cta{width:auto;font-size:.875rem;padding:.875rem 2rem}}
+@media(min-width:768px){.pt-h-wrap{padding:8rem 1.25rem}}
+@media(min-width:1024px){.pt-h-h1{font-size:3rem}}
+</style>`;
+
+// Static, self-styled above-the-fold hero (uses the pt-h-* inline CSS above,
+// NOT Tailwind). The <img> is the same preloaded WebP the React hero uses and
+// the <h1> is the LCP text element. Below-the-fold is rendered by React after
+// mount. Copy mirrors HeroSection.tsx exactly so the React re-render is a
+// no-op visually.
+const HOME_HERO_SKELETON = `<section class="pt-h-hero" id="get-started">
+  <div class="pt-h-bg">
+    <picture>
+      <source media="(max-width: 768px)" srcset="/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp" type="image/webp" />
+      <source media="(min-width: 769px)" srcset="/assets/blog/fp-woman-sitting-floor-desktop.webp" type="image/webp" />
+      <img src="/assets/blog/fp-woman-sitting-floor.jpg" alt="Pet owner with dog at home applying for an ESA letter online" fetchpriority="high" decoding="async" width="1920" height="1280" />
+    </picture>
+    <div class="pt-h-ov"></div>
+  </div>
+  <div class="pt-h-wrap">
+    <div class="pt-h-inner">
+      <div class="pt-h-badge">HIPAA Compliant</div>
+      <h1 class="pt-h-h1">Get an <span>ESA Letter</span> Online<br class="pt-h-br" /> Fast, Simple &amp; Stress Free</h1>
+      <p class="pt-h-sub">Get your ESA letter online from licensed mental health professionals &mdash; accepted for housing nationwide under the Fair Housing Act. No waiting rooms, no hassle.</p>
+      <div class="pt-h-pill"><span>Serving all 50 US states</span></div>
+      <a class="pt-h-cta" href="/assessment">Get Your ESA Letter Now</a>
+    </div>
+  </div>
+</section>`;
+
+// Writes out/index.html (the homepage) with the static hero skeleton injected
+// and the app stylesheet made non-render-blocking. Mirrors writeMetaLandingRoute
+// but keeps the homepage indexable (no forced noindex) and uses the homepage
+// SEO meta. Returns the written target path.
+// Build <link rel="modulepreload"> tags for the Home route chunk + its static
+// import chunks, resolved from the Vite manifest. This lets the homepage's JS
+// load IN PARALLEL with the main entry bundle instead of strictly after it —
+// the post-index.js load of the Home chunk was forcing a Suspense/PageLoader
+// gap (orange spinner) before React could render the hero, inflating the
+// homepage LCP (huge LCP render-delay). Lazy below-fold sections are listed
+// under `dynamicImports` (NOT `imports`), so they are intentionally excluded.
+// Returns "" (safe no-op) if the manifest or the home entry is missing.
+async function buildHomeModulePreloads() {
+  const manifestPath = join(OUT_DIR, ".vite", "manifest.json");
+  let manifest;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch {
+    console.warn(
+      "[prerender-seo] WARN: out/.vite/manifest.json not found — homepage modulepreload skipped."
+    );
+    return "";
+  }
+  const homeEntry = manifest["src/pages/home/page.tsx"];
+  if (!homeEntry || !homeEntry.file) {
+    console.warn(
+      "[prerender-seo] WARN: home entry missing in manifest — homepage modulepreload skipped."
+    );
+    return "";
+  }
+  const files = new Set([homeEntry.file]);
+  const visit = (key) => {
+    const node = manifest[key];
+    if (!node) return;
+    if (node.file) files.add(node.file);
+    (node.imports || []).forEach(visit);
+  };
+  (homeEntry.imports || []).forEach(visit);
+  // Exclude the main entry chunk — it is already loaded via the <script
+  // type="module" src> tag, so a modulepreload for it is redundant noise.
+  const entryNode = Object.values(manifest).find((n) => n.isEntry);
+  if (entryNode && entryNode.file) files.delete(entryNode.file);
+  return Array.from(files)
+    .map((f) => `<link rel="modulepreload" crossorigin href="/${f}" />`)
+    .join("\n    ");
+}
+
+async function writeHomeRoute(template) {
+  const homeMeta = CORE_PAGE_META["/"];
+  let html = rewriteHead(template, {
+    title: homeMeta.title,
+    description: homeMeta.description,
+    canonical: buildCanonical("/"),
+  });
+  // Inject the inline critical CSS for the static hero.
+  html = html.replace(/<\/head>/i, `    ${HOME_CRITICAL_CSS}\n  </head>`);
+  // Make the app stylesheet non-render-blocking so the static hero paints now.
+  html = makeAppCssNonBlocking(html);
+  // PageSpeed Phase 2 (2026-06-08): ALSO preload the app stylesheet at HIGH
+  // priority so it is fetched + ready BEFORE the React bundle executes and
+  // re-renders the hero. The media=print swap above loads the CSS at LOW
+  // priority, so on throttled mobile React can re-render the Tailwind-classed
+  // hero before the app CSS arrives — the hero briefly collapses (min-h-[100svh]
+  // is inert without the CSS) then re-expands when the CSS lands, producing the
+  // ~0.31 whole-page layout shift PSI flagged. `rel=preload as=style` fetches
+  // high-priority WITHOUT render-blocking the inline-CSS skeleton, so FCP stays
+  // fast (skeleton paints immediately) while CLS drops. Homepage-scoped only.
+  const cssHref = (html.match(/href="(\/assets\/index-[^"]+\.css)"/) || [])[1];
+  if (cssHref) {
+    html = html.replace(
+      /<\/head>/i,
+      `    <link rel="preload" as="style" crossorigin href="${cssHref}" />\n  </head>`
+    );
+  } else {
+    console.warn(
+      "[prerender-seo] WARN: app stylesheet href not found for / — CSS preload skipped."
+    );
+  }
+  // Preload the Home route chunk (+ its static imports) so the homepage JS loads
+  // in parallel with the main bundle — closing the Suspense/PageLoader gap that
+  // delayed the hero render / LCP.
+  const homePreloads = await buildHomeModulePreloads();
+  if (homePreloads) {
+    html = html.replace(/<\/head>/i, `    ${homePreloads}\n  </head>`);
+  }
+  // Inject the static hero (the LCP element) into #root.
+  html = html.replace(
+    '<div id="root"></div>',
+    `<div id="root">${HOME_HERO_SKELETON}</div>`
+  );
+
+  await writeFile(TEMPLATE_PATH, html, "utf8");
+  return TEMPLATE_PATH;
+}
+
+
 // ── Main ────────────────────────────────────────────────────────────────────
 async function main() {
   if (!(await pathExists(TEMPLATE_PATH))) {
@@ -224,7 +417,7 @@ async function main() {
   // 5) Homepage LAST — rewrite out/index.html so view-source on / has the
   //    correct, normalized homepage <head>.
   try {
-    const target = await writeRoute(template, "/", CORE_PAGE_META["/"]);
+    const target = await writeHomeRoute(template);
     written.push(target);
   } catch (err) {
     errors.push({ route: "/", error: String(err) });

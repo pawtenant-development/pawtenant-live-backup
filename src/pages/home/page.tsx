@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import HeroSection from "./components/HeroSection";
 import ReassuranceStrip from "./components/ReassuranceStrip";
@@ -209,6 +209,33 @@ function scheduleSeoWork(fn: () => void): () => void {
 }
 
 export default function Home() {
+  // PageSpeed Phase 2 (2026-06-08): defer the ENTIRE below-the-fold tree until
+  // AFTER the first paint so the first React commit mounts ONLY the navbar +
+  // hero. PSI diagnostics on the stuck-at-73 mobile homepage showed the score
+  // was capped by TBT ~1.68s (main-thread Style & Layout ~3.9s) and CLS ~0.31 —
+  // both driven by mounting the whole large homepage DOM (all sections) in the
+  // first React commit. Gating below-fold shrinks that commit (far less
+  // style/layout work → lower TBT/long-tasks) and removes the big late
+  // restyle/reflow of the full page (→ lower CLS). The hero (skeleton LCP
+  // element) is unaffected. Mirrors the proven /meta-esa-letter showBelow
+  // pattern (commit 4d8d584). rAF×2 fires right after the hero paints; the
+  // 250ms setTimeout is a fallback if rAF is throttled. No content is removed —
+  // every section still renders, just a beat later, below the fold.
+  const [showBelow, setShowBelow] = useState(false);
+  useEffect(() => {
+    let raf1 = 0;
+    let raf2 = 0;
+    const timer = window.setTimeout(() => setShowBelow(true), 250);
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setShowBelow(true));
+    });
+    return () => {
+      window.clearTimeout(timer);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
+
   useEffect(() => {
     // SEO surface mutations: title / description / keywords / canonical /
     // org schema. All deferred past LCP. Identical content to the
@@ -243,11 +270,27 @@ export default function Home() {
 
   return (
     <main>
-      {/* ── Above the fold — eager ──────────────────────────────────── */}
-      {/* 1. Hero — interest. */}
-      <SharedNavbar />
+      {/* ── Above the fold — eager. ONLY the hero. ──────────────────────
+          PSI/trace diagnostics (2026-06-08) proved the homepage CLS (~0.31–0.52)
+          was SharedNavbar: before the async app CSS applies, the navbar renders
+          `position:static` and ~344px tall (in normal flow), pushing the hero
+          ~255px down; when the CSS lands the navbar becomes `fixed` and the hero
+          snaps to the top — a whole-viewport shift. Keeping ONLY <HeroSection>
+          in the first React commit makes it match the prerendered skeleton hero
+          exactly (no navbar in flow), so there is nothing to shift. The navbar
+          mounts a beat later in the showBelow block, by which time the CSS is
+          applied and it renders `fixed` (out of flow) → no layout shift. */}
       <HeroSection />
 
+      {/* ── Below the fold + navbar — deferred to a post-paint commit (see
+          showBelow). The spacer holds layout until the tree mounts a beat after
+          first paint (no CLS since this is below the 100svh hero). ─────────── */}
+      {!showBelow && <div aria-hidden className="min-h-[60vh]" />}
+      {showBelow && (
+        <>
+      {/* 1. Site navbar — fixed/transparent over the hero. Deferred to the
+          post-paint commit so it can never render in-flow before the CSS. */}
+      <SharedNavbar />
       {/* 2. Quick reassurance + trust badges under the hero. */}
       <ReassuranceStrip />
       <MediaTrustBar />
@@ -344,6 +387,8 @@ export default function Home() {
           hero (default 500px). Keeps the first viewport calm so the hero
           CTA is the only orange surface above the fold. */}
       <MobileStickyApplyCTA showAfterPx={500} />
+        </>
+      )}
     </main>
   );
 }

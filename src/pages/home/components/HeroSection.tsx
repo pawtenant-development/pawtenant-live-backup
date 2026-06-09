@@ -7,6 +7,14 @@ export default function HeroSection() {
     <section
       id="get-started"
       className="relative min-h-[100svh] flex items-center overflow-hidden"
+      // PageSpeed Phase 2 (2026-06-08): inline min-height so the hero reserves a
+      // full-viewport box even before the (async) app stylesheet applies its
+      // Tailwind classes. The app CSS lands AFTER the React bundle executes on
+      // throttled mobile, so without this the React hero rendered with an inert
+      // min-h-[100svh] (collapsed) for a beat, then re-expanded when the CSS
+      // arrived — shifting the whole page down (the ~0.31 mobile CLS PSI
+      // flagged). Inline styles apply immediately, independent of the CSS race.
+      style={{ minHeight: "100svh", display: "flex", alignItems: "center" }}
     >
       {/* Background Image — Phase 1D responsive WebP delivery (2026-05-18).
           Phase 7 PageSpeed (2026-05-26): mobile variant downsized from
@@ -16,7 +24,12 @@ export default function HeroSection() {
           viewport media query; legacy browsers fall back to the JPG <img>.
           The two <source> tags are mime-typed image/webp so a future swap
           of either variant only touches the URL string. */}
-      <div className="absolute inset-0">
+      {/* Inline absolute + overflow:hidden so this background layer takes NO
+          flow height and the oversized hero <img> can't cause horizontal
+          scroll during the brief pre-CSS window (see the section style note).
+          This keeps the hero a deterministic 100svh box regardless of when the
+          app stylesheet applies — eliminating the whole-page CLS. */}
+      <div className="absolute inset-0" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
         <picture>
           <source
             media="(max-width: 768px)"

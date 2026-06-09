@@ -10,14 +10,11 @@ import ScrollTopButton from "./components/feature/ScrollTopButton";
 import MobileChatButton from "./components/feature/MobileChatButton";
 import ErrorBoundary from "./components/feature/ErrorBoundary";
 import SEOManager from "./components/feature/SEOManager";
-import { supabase } from "./lib/supabaseClient";
 import { useGeoBlock } from "./hooks/useGeoBlock";
 import GeoBlockScreen from "./components/feature/GeoBlockScreen";
 import { isGeoRestrictedRoute } from "./lib/geoRestrictedRoutes";
 import { firePageView } from "@/lib/metaPixel";
 import { captureFromUrl } from "@/lib/attributionStore";
-import { ensureVisitorSession, pulseVisitorSession, isInternalAdminPath } from "@/lib/visitorSession";
-import { trackPageView } from "@/lib/trackEvent";
 
 // ── PageSpeed Phase 2 lazy imports ─────────────────────────────────────────
 // AdminChrome holds AdminChatProvider + 4 floating admin components
@@ -41,6 +38,16 @@ const PawChatLauncher = lazy(
 // 800 ms after mount before rendering. Lazy-load to keep the module
 // itself out of the LCP-window JS parse.
 const CookieBanner = lazy(() => import("./components/feature/CookieBanner"));
+
+// PageSpeed (mirror of TEST f729ee6): Supabase-backed, non-conversion-critical
+// services (visitor session + heartbeat, structured page_view, auth recovery
+// subscription) live in this lazy chunk so the Supabase client (~35 KB gzip)
+// is code-split OUT of the homepage entry bundle. Conversion-critical work
+// (attribution capture, Meta/Google queues, conversion-route load, Meta Pixel
+// PageView) stays synchronous below. Mounted a beat after first paint.
+const DeferredServices = lazy(
+  () => import("./components/feature/DeferredServices"),
+);
 
 /**
  * AdminChatGate — only loads the admin operational chrome on /admin*
@@ -180,77 +187,15 @@ function UTMCapture() {
         if (typeof w.__ptLoadMarketing === "function") w.__ptLoadMarketing();
       }
     } catch { /* swallow — analytics must never break navigation */ }
-    // Record the visitor session once per browser session (fire-and-forget).
-    ensureVisitorSession();
-    // Visitor heartbeat — bump last_seen_at + current_page immediately on
-    // route change so the live list reflects the new path right away. The
-    // 30s interval below handles idle dwell on the same page.
-    try { pulseVisitorSession(pathname); } catch { /* swallow */ }
-    // Structured page_view event for the admin Attribution/Journey tab. The
-    // existing `firePageView()` in MetaPageView only sends to Meta Pixel —
-    // it does NOT write to public.events. Without this row, the order's
-    // Page Journey list stays at 0 events even when the visitor traversed
-    // multiple landing pages before checkout. Skipped for admin / portal
-    // routes via isInternalAdminPath so admin navigation never pollutes
-    // the public funnel table. captureFromUrl above runs first and is
-    // synchronous, so getSessionId() inside trackPageView resolves.
-    try {
-      if (!isInternalAdminPath(pathname)) {
-        trackPageView({ pathname });
-      }
-    } catch { /* swallow */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // PageSpeed (mirror of TEST f729ee6): the Supabase-backed visitor session +
+    // per-route pulse + 30s heartbeat + structured page_view (record_event)
+    // moved to <DeferredServices> (lazy) so the Supabase client is code-split
+    // out of the homepage entry bundle. They still fire on every route change —
+    // just from the deferred chunk, a beat after first paint. Attribution
+    // capture (captureFromUrl), the conversion-route marketing-script load
+    // above, the gtag/fbq queue stubs (index.html), and Meta Pixel PageView
+    // (MetaPageView) all remain synchronous and conversion-critical.
   }, [pathname, search]);
-
-  // ── 30s visitor heartbeat. Visible-only. Single timer per browser tab. ──
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const HEARTBEAT_MS = 30_000;
-    let timerId: number | null = null;
-
-    const tick = () => {
-      try {
-        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-        pulseVisitorSession(window.location.pathname);
-      } catch { /* swallow */ }
-    };
-
-    const start = () => {
-      if (timerId !== null) return;
-      timerId = window.setInterval(tick, HEARTBEAT_MS);
-    };
-    const stop = () => {
-      if (timerId !== null) {
-        window.clearInterval(timerId);
-        timerId = null;
-      }
-    };
-
-    const onVis = () => {
-      if (typeof document === "undefined") return;
-      if (document.visibilityState === "visible") {
-        // Immediate pulse on return so the row resurrects in the live list
-        // before the next 30s tick.
-        try { pulseVisitorSession(window.location.pathname); } catch { /* swallow */ }
-        start();
-      } else {
-        stop();
-      }
-    };
-
-    if (typeof document !== "undefined" && document.visibilityState === "visible") {
-      start();
-    }
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", onVis);
-    }
-    return () => {
-      stop();
-      if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", onVis);
-      }
-    };
-  }, []);
 
   return null;
 }
@@ -293,18 +238,42 @@ function AuthHandler() {
       }
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        if (!window.location.pathname.includes("/reset-password")) {
-          navigate("/reset-password" + window.location.hash, { replace: true });
-        }
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    // The async onAuthStateChange(PASSWORD_RECOVERY) subscription moved to
+    // <DeferredServices> (lazy) — it needs the Supabase client, which is now
+    // code-split out of the entry bundle. The synchronous recovery-hash / ?code
+    // redirect above stays here so a recovery landing redirects immediately.
   }, [navigate]);
 
   return null;
+}
+
+/**
+ * DeferredServicesGate — mounts <DeferredServices> a beat AFTER the first paint
+ * (rAF×2, 200ms setTimeout fallback) so the Supabase chunk it pulls downloads
+ * after the hero/LCP window rather than competing with it. Must live inside the
+ * Router (DeferredServices uses useLocation/useNavigate).
+ */
+function DeferredServicesGate() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let raf1 = 0;
+    let raf2 = 0;
+    const t = window.setTimeout(() => setReady(true), 200);
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setReady(true));
+    });
+    return () => {
+      window.clearTimeout(t);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
+  if (!ready) return null;
+  return (
+    <Suspense fallback={null}>
+      <DeferredServices />
+    </Suspense>
+  );
 }
 
 /**
@@ -371,6 +340,7 @@ function AdminApp() {
               <ScrollToTop />
               <UTMCapture />
               <AuthHandler />
+              <DeferredServicesGate />
               <AdminSubdomainRoutes />
               <ScrollTopButton />
             </AdminChrome>
@@ -398,6 +368,7 @@ function App() {
             <ScrollToTop />
             <UTMCapture />
             <AuthHandler />
+            <DeferredServicesGate />
             {/* GeoGate is now INSIDE the router and route-aware. Public
                 marketing / SEO / informational pages render globally; the
                 gate only enforces on service-availability routes

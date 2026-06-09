@@ -70,6 +70,14 @@ export default defineConfig({
   build: {
     sourcemap: true,
     outDir: "out",
+    // Emit out/.vite/manifest.json so the post-build prerender (scripts/
+    // prerender-seo.mjs) can reliably resolve the hashed Home route chunk and
+    // inject a <link rel="modulepreload"> for it on the homepage. This lets the
+    // Home chunk load in parallel with the main bundle instead of after it,
+    // eliminating the Suspense/PageLoader gap that was delaying the homepage
+    // LCP (the hero re-render). Manifest emission is metadata-only — it does
+    // not change any chunk output or app behavior.
+    manifest: true,
   },
   resolve: {
     alias: {

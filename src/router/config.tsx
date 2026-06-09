@@ -92,12 +92,14 @@ function PageLoader() {
   );
 }
 
-function P({ C }: { C: React.ComponentType }) {
-  return (
-    <Suspense fallback={<PageLoader />}>
-      <C />
-    </Suspense>
-  );
+function P({
+  C,
+  fallback = <PageLoader />,
+}: {
+  C: React.ComponentType;
+  fallback?: React.ReactNode;
+}) {
+  return <Suspense fallback={fallback}>{<C />}</Suspense>;
 }
 
 function ESAStateRedirect() {
@@ -106,7 +108,13 @@ function ESAStateRedirect() {
 }
 
 const routes: RouteObject[] = [
-  { path: "/", element: <P C={Home} /> },
+  // Homepage: fallback={null} (not the orange PageLoader). The prerendered hero
+  // skeleton already paints the above-the-fold instantly, and the Home chunk is
+  // modulepreloaded (see scripts/prerender-seo.mjs) so it's ready by the time
+  // React mounts — showing the spinner here would briefly REPLACE the painted
+  // hero and inflate LCP/Speed Index. Null keeps whatever is painted until the
+  // hero re-renders. Other routes keep the default PageLoader.
+  { path: "/", element: <P C={Home} fallback={null} /> },
   { path: "/apply-page", element: <Navigate to="/assessment" replace /> },
   // Recovery click bridge — fires recovery_click then redirects to /assessment.
   { path: "/r/:stage", element: <P C={RecoveryClickBridge} /> },

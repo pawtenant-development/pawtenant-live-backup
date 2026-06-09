@@ -186,16 +186,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <noscript><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" /></noscript>
 
-    <!-- Icons — non-render-blocking + dropped the high-priority preload.
-         The remixicon.css bundle is ~19 KiB of unused-by-LCP rules (PSI
-         was flagging this); preload was pulling it into the critical-
-         path priority queue and competing with the hero asset. Without
-         the preload it still loads via the print → all swap below, just
-         after higher-priority above-the-fold assets. Icons that need
-         to render before the font arrives use the inline SVG fallback
-         already present across the codebase. -->
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" media="print" onload="this.media='all'" />
-    <noscript><link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet" /></noscript>
+    <!-- Icons — SELF-HOSTED SUBSET (PageSpeed Phase 5, 2026-06-09).
+         Replaces the jsdelivr CDN remixicon@4.5.0 (170 KB woff2 + 147 KB CSS,
+         ~3000 glyphs) with a same-origin SUBSET containing ONLY the ~415 ri-*
+         glyphs actually used anywhere in src: remixicon-subset.woff2 is ~27 KB
+         (was 170 KB, -85%) and remixicon-subset.css ~19 KB. Generated build-
+         side via fonttools from the same v4.5.0 font, so every icon that
+         currently renders is byte-identical — no visual change, no icons
+         dropped (classes absent from v4.5.0, e.g. ri-bird-line, already
+         rendered nothing on the CDN font too). Removes an external origin
+         (DNS/TLS to jsdelivr) and ~140 KB of payload on every page. Still
+         non-render-blocking via the print → all swap (loads after the
+         above-the-fold hero, same as before). To regenerate after adding new
+         ri-* icons: re-run the subset against remixicon@4.5.0. -->
+    <link href="/assets/remixicon-subset.css" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="/assets/remixicon-subset.css" rel="stylesheet" /></noscript>
 
     <!-- UTM + GCLID + FBCLID Capture — runs inline (tiny, no network) -->
     <script>
