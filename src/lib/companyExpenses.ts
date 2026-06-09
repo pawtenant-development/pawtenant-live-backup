@@ -340,6 +340,54 @@ export async function fetchEffectiveExpenses(from: string, to: string): Promise<
   return projectRecurringExpenses(all, from, to);
 }
 
+// ── Auto-synced marketing (ad) spend ───────────────────────────────────────
+// Google Ads + Meta Ads spend (USD) for a range, read from the SAME admin-gated
+// RPC the Marketing Spend & ROI panel uses (get_marketing_spend_summary). These
+// totals are surfaced as VIRTUAL, non-editable expense rows in the Accounts
+// ledger — they are NEVER written into company_expenses, so changing the date
+// range never inserts/duplicates manual rows. Meta returns 0 until a Meta
+// ads_read token (secret META_ADS_ACCESS_TOKEN) is configured; the UI then shows
+// it as "Not connected" without breaking any calculation.
+export interface MarketingSpendSyncInfo {
+  last_synced_at: string | null;
+  status: string | null;
+  error: string | null;
+  rows: number | null;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface MarketingSpendSummary {
+  date_from: string;
+  date_to: string;
+  currency: string;
+  google_spend_usd: number;
+  meta_spend_usd: number;
+  total_spend_usd: number;
+  paid_orders_total: number;
+  paid_orders_google: number;
+  paid_orders_meta: number;
+  cost_per_paid_order: number | null;
+  google_cost_per_paid_order: number | null;
+  meta_cost_per_paid_order: number | null;
+  last_sync: Record<string, MarketingSpendSyncInfo>;
+}
+
+// Returns null on error/non-admin so callers degrade gracefully (no spend rows,
+// no broken P&L) instead of throwing.
+export async function fetchMarketingSpendSummary(from: string, to: string): Promise<MarketingSpendSummary | null> {
+  if (!from || !to) return null;
+  const { data, error } = await supabase.rpc("get_marketing_spend_summary", { p_from: from, p_to: to });
+  if (error) { console.warn("[companyExpenses] marketing spend rpc error", error); return null; }
+  return (data ?? null) as MarketingSpendSummary | null;
+}
+
+// True only when Meta has at least one successful sync. Until then Meta spend is
+// reported as 0 and the ledger row is labeled "Not connected".
+export function isMetaConnected(summary: MarketingSpendSummary | null): boolean {
+  return summary?.last_sync?.meta_ads?.status === "success";
+}
+
 export async function addExpense(input: ExpenseInput): Promise<{ ok: boolean; error?: string; row?: CompanyExpense }> {
   const { data: sess } = await supabase.auth.getSession();
   const uid = sess?.session?.user?.id ?? null;

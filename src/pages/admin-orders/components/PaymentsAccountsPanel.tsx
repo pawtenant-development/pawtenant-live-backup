@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   fetchEffectiveExpenses, addExpense, deleteExpense, cancelExpense, fetchSalaryExpense, fetchSalaryDetail,
   resolveRange, resolutionToClassification,
+  fetchMarketingSpendSummary, isMetaConnected,
   EXPENSE_CATEGORIES, CATEGORY_LABEL, MARKETING_CATEGORIES,
   type ExpenseCategory, type SalaryExpenseSummaryRow, type SalaryDetailRow,
-  type EffectiveExpense, type ChargePayoutResolution,
+  type EffectiveExpense, type ChargePayoutResolution, type MarketingSpendSummary,
 } from "../../../lib/companyExpenses";
 import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAccounts";
 import { fetchAccountingPeriods, type AccountingPeriod } from "../../../lib/accountsBooks";
@@ -60,6 +61,7 @@ export default function PaymentsAccountsPanel({
   );
 
   const [expenses, setExpenses] = useState<EffectiveExpense[]>([]);
+  const [marketing, setMarketing] = useState<MarketingSpendSummary | null>(null);
   const [salaryRows, setSalaryRows] = useState<SalaryExpenseSummaryRow[]>([]);
   const [salaryDetail, setSalaryDetail] = useState<SalaryDetailRow[]>([]);
   const [showSalaryDetail, setShowSalaryDetail] = useState(false);
@@ -88,13 +90,15 @@ export default function PaymentsAccountsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
-    const [exp, sal, salDetail, periods] = await Promise.all([
+    const [exp, sal, salDetail, periods, mkt] = await Promise.all([
       fetchEffectiveExpenses(range.from, range.to),
       fetchSalaryExpense(range.from, range.to),
       fetchSalaryDetail(range.from, range.to),
       fetchAccountingPeriods(range.from, range.to),
+      fetchMarketingSpendSummary(range.from, range.to),
     ]);
     setExpenses(exp);
+    setMarketing(mkt);
     setSalaryRows(sal);
     setSalaryDetail(salDetail);
     // Exact-match closed period for the viewed range → lock editing.
@@ -168,7 +172,27 @@ export default function PaymentsAccountsPanel({
   const salaryCount = useMemo(() => salaryRows.reduce((s, r) => s + r.employee_count, 0), [salaryRows]);
   const ownerExcludedCount = useMemo(() => salaryDetail.filter((r) => r.exclude_reason === "owner_compensation_excluded").length, [salaryDetail]);
 
-  const totalExpenses = manualTotal + salaryUsd;
+  // ── Auto-synced ad spend (Google + Meta) ─────────────────────────────────
+  // Virtual, system-generated expense rows from get_marketing_spend_summary for
+  // the SAME range — never written to company_expenses (so switching range never
+  // duplicates manual rows). Meta is 0/"Not connected" until its token is set.
+  const googleAdsSpend = marketing?.google_spend_usd ?? 0;
+  const metaAdsSpend = marketing?.meta_spend_usd ?? 0;
+  const metaConnected = isMetaConnected(marketing);
+  const autoMarketingTotal = googleAdsSpend + metaAdsSpend;
+
+  // Double-count guard: a manual AD-PLATFORM expense (Google/Meta/"marketing")
+  // alongside auto-synced ad spend likely re-counts the same money. SEO is excluded
+  // (it is not Google/Meta ad spend). We warn — never silently drop either side.
+  const manualAdPlatform = useMemo(
+    () => activeExpenses
+      .filter((e) => e.category === "google_ads" || e.category === "facebook_meta" || e.category === "marketing")
+      .reduce((s, e) => s + expenseToUsd(e), 0),
+    [activeExpenses, expenseToUsd],
+  );
+  const duplicateMarketingRisk = manualAdPlatform > 0 && autoMarketingTotal > 0;
+
+  const totalExpenses = manualTotal + salaryUsd + autoMarketingTotal;
   const operatingNet = contributionMargin - totalExpenses;
 
   // ── Add expense ──────────────────────────────────────────────────────────
@@ -235,10 +259,12 @@ export default function PaymentsAccountsPanel({
         { label: "Contribution Margin", amount: contributionMargin, note: "After Stripe, refunds & confirmed provider payouts" },
         { label: "Pending Provider Payouts (advisory)", amount: -providerPending, note: "Not yet completed — NOT deducted from margin/net" },
         { label: "Salary Expenses (est.)", amount: -salaryUsd, note: salaryPkr > 0 ? `Incl. PKR ${Math.round(salaryPkr).toLocaleString()} @ ${fxRate}/USD` : "" },
-        { label: "Marketing Expenses", amount: -manualMarketing },
+        { label: "Marketing Expenses (manual)", amount: -manualMarketing },
+        { label: "Google Ads Spend (auto-synced)", amount: -googleAdsSpend, note: "From Google Ads API for selected range" },
+        { label: "Meta / Facebook Ads Spend (auto-synced)", amount: -metaAdsSpend, note: metaConnected ? "From Meta Ads API for selected range" : "Meta not connected — add META_ADS_ACCESS_TOKEN" },
         { label: "Other Manual Expenses", amount: -manualOther },
-        { label: "Total Expenses", amount: -totalExpenses },
-        { label: "Operating Net / Estimated Profit", amount: operatingNet, note: "Contribution margin − company expenses" },
+        { label: "Total Expenses", amount: -totalExpenses, note: "Manual + salary + auto ad spend" },
+        { label: "Operating Net / Estimated Profit", amount: operatingNet, note: "Contribution margin − company expenses (incl. ad spend)" },
       ],
       expenses,
       profitability,
@@ -450,6 +476,30 @@ export default function PaymentsAccountsPanel({
             </div>
           )}
 
+          {/* Auto-synced ad spend — system-generated, non-editable. Follows the
+              selected range; never stored as a manual expense. */}
+          {!loading && (googleAdsSpend > 0 || metaAdsSpend > 0 || marketing) && (categoryFilter === "all" || MARKETING_CATEGORIES.includes(categoryFilter)) && (
+            <div className="border-b border-gray-100 bg-[#fbfaff]">
+              {duplicateMarketingRisk && (
+                <div className="px-5 pt-3">
+                  <p className="text-[11px] leading-snug text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+                    <i className="ri-error-warning-line mt-0.5"></i>
+                    <span>You have manual marketing expenses <strong>and</strong> auto-synced ad spend in this range. Don’t enter Google/Meta spend manually — it’s already included below. Remove duplicate manual rows to avoid double-counting.</span>
+                  </p>
+                </div>
+              )}
+              <AutoSpendRow
+                label="Google Ads Spend" icon="ri-google-fill" iconColor="text-[#4285F4]"
+                amount={googleAdsSpend} connected note="Auto-synced from Google Ads for the selected date range." />
+              <AutoSpendRow
+                label="Meta / Facebook Ads Spend" icon="ri-meta-fill" iconColor="text-[#0866FF]"
+                amount={metaAdsSpend} connected={metaConnected}
+                note={metaConnected
+                  ? "Auto-synced from Meta Ads for the selected date range."
+                  : "Meta spend sync not connected. Add the Meta token secret (META_ADS_ACCESS_TOKEN) to enable."} />
+            </div>
+          )}
+
           {loading ? (
             <div className="p-10 text-center text-sm text-gray-400"><i className="ri-loader-4-line animate-spin text-2xl block mb-2"></i>Loading expenses…</div>
           ) : filteredExpenses.length === 0 ? (
@@ -507,7 +557,9 @@ export default function PaymentsAccountsPanel({
           <dl className="space-y-2.5 text-sm">
             <Row label="Contribution Margin" value={fmtUSD2(contributionMargin)} strong />
             <Row label="Salary Expenses (est.)" value={`−${fmtUSD2(salaryUsd)}`} tone="rose" />
-            <Row label="Marketing Expenses" value={`−${fmtUSD2(manualMarketing)}`} tone="rose" />
+            {manualMarketing > 0 && <Row label="Marketing (manual)" value={`−${fmtUSD2(manualMarketing)}`} tone="rose" />}
+            <Row label="Google Ads Spend (auto)" value={`−${fmtUSD2(googleAdsSpend)}`} tone="rose" />
+            <Row label={metaConnected ? "Meta Ads Spend (auto)" : "Meta Ads Spend (not connected)"} value={`−${fmtUSD2(metaAdsSpend)}`} tone="rose" />
             <Row label="Other Expenses" value={`−${fmtUSD2(manualOther)}`} tone="rose" />
             <div className="border-t border-gray-100 pt-2.5">
               <Row label="Total Expenses" value={`−${fmtUSD2(totalExpenses)}`} tone="rose" strong />
@@ -531,7 +583,7 @@ export default function PaymentsAccountsPanel({
             </p>
           )}
           <p className="mt-3 text-[11px] leading-snug text-gray-400">
-            Provider payouts deduct only after the provider completes the order (letter delivered). Marketing/ad spend is manual entry; automated Google/Meta import is future work.
+            Provider payouts deduct only after the provider completes the order (letter delivered). Google &amp; Meta ad spend is auto-synced from the ad platforms for the selected range and included in Operating Net — no manual entry needed.{!metaConnected ? " Meta spend stays $0 until its token is connected." : ""}
           </p>
           <p className="mt-3 text-[11px] leading-snug text-gray-400">
             Recurring subscriptions persist into each new month, so a fresh month opens with its fixed costs already applied. Monthly close/lock is a future feature.
@@ -550,6 +602,36 @@ function Row({ label, value, tone, strong }: { label: string; value: string; ton
     <div className="flex items-center justify-between">
       <dt className={`text-xs ${strong ? "font-bold text-gray-700" : "text-gray-500"}`}>{label}</dt>
       <dd className={`${strong ? "text-sm font-extrabold" : "text-sm font-semibold"} ${tone === "rose" ? "text-rose-500" : "text-gray-800"}`}>{value}</dd>
+    </div>
+  );
+}
+
+// System-generated, non-editable ad-spend row for the Company Expenses ledger.
+// No edit/delete controls — it is a virtual row driven by the synced spend totals
+// for the selected range, not a manual company_expenses record.
+function AutoSpendRow({ label, icon, iconColor, amount, connected, note }: {
+  label: string; icon: string; iconColor: string; amount: number; connected: boolean; note: string;
+}) {
+  return (
+    <div className="px-5 py-3 flex items-center justify-between gap-3 border-t border-gray-100 first:border-t-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <i className={`${icon} ${iconColor} text-base`}></i>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="text-sm font-semibold text-gray-800">{label}</p>
+            <span className="text-[10px] font-bold text-[#6d5bd0] bg-[#efeafc] border border-[#ddd3f7] px-1.5 py-0.5 rounded">Auto-synced</span>
+            <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Marketing</span>
+            {!connected && (
+              <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Not connected</span>
+            )}
+          </div>
+          <p className="text-xs text-gray-400">{note}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <p className="text-sm font-extrabold text-rose-500">−{fmtUSD2(amount)}</p>
+        <i className="ri-lock-2-line text-gray-300" title="System-generated — not editable"></i>
+      </div>
     </div>
   );
 }
