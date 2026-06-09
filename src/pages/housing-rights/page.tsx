@@ -66,7 +66,7 @@ export default function HousingRightsPage() {
       <meta property="og:image" content="https://pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="ESA Housing Rights 2026: Fair Housing Act Protections | PawTenant" />
-      <meta name="twitter:description" content="Your ESA housing rights under the Fair Housing Act explained. Landlords cannot charge pet fees or deny a valid ESA letter. Get your ESA letter with PawTenant." />
+      <meta name="twitter:description" content="Your ESA housing rights under the Fair Housing Act explained. A valid ESA letter supports a reasonable-accommodation request — reviewed individually, with rules that can depend on your state and housing type. Get your ESA letter with PawTenant." />
       <meta name="twitter:image" content="https://pawtenant.com/assets/backgrounds/telehealth-woman-doctor-videocall.jpg" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",
@@ -90,7 +90,7 @@ export default function HousingRightsPage() {
           {
             "@type": "ImageObject",
             "name": "ESA Housing Protection Support — Fair Housing Act",
-            "description": "ESA housing protection and Fair Housing Act tenant rights for emotional support animal owners — no pet fees, no breed restrictions.",
+            "description": "ESA housing protection and Fair Housing Act tenant rights for emotional support animal owners — reasonable-accommodation requests reviewed individually under applicable law.",
             "url": "https://pawtenant.com/assets/housing/home-together.jpg",
             "contentUrl": "https://pawtenant.com/assets/housing/home-together.jpg"
           }
@@ -308,7 +308,7 @@ export default function HousingRightsPage() {
                 Emotional support animals (ESAs) provide comfort and assistance to individuals with mental health conditions. As a result, they need to be allowed where their owners live as part of the Fair Housing Act (FHA), which provides a way for people with disabilities to have equal access to housing.
               </p>
               <p className="text-gray-600 text-sm leading-relaxed">
-                To comply with the FHA, landlords must allow ESAs as a necessary accommodation for an individual with a disability. Landlords can ask for documentation such as an ESA letter from a licensed mental health professional. However, they cannot ask for detailed medical records, require a specific letter format, or charge extra fees for an ESA.
+                Under the FHA, housing providers are generally expected to consider ESAs as a reasonable accommodation for an individual with a disability, and cannot apply a blanket no-pets denial without an individualized review. Landlords can ask for documentation such as an ESA letter from a licensed mental health professional. They generally cannot demand detailed medical records, require a specific letter format, or charge pet fees that apply only to ordinary pets. Each request is decided individually, and state law and housing type may still matter.
               </p>
             </div>
             <div className="bg-white rounded-2xl p-7 border border-gray-100">

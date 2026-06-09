@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
+import Hud2026UpdateBanner from "@/components/feature/Hud2026UpdateBanner";
 
 const LP_TITLE = "Get an ESA Letter for Housing — Reviewed by Licensed Providers | PawTenant";
 const LP_DESC = "Verified with a unique ID your landlord can confirm in seconds. Reviewed by licensed mental health providers. Refund if you don't qualify.";
@@ -1225,6 +1226,8 @@ export default function LpEsaHousingPage() {
           </div>
         </div>
       </section>
+
+      <Hud2026UpdateBanner className="border-t border-gray-100" />
 
       {/* Site-wide footer (matches main site) */}
       <SharedFooter />

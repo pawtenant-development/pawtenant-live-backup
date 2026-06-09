@@ -34,7 +34,7 @@ const TIMELINE = [
     icon: "ri-home-heart-line",
     title: "Present to Housing & Live Freely",
     subtitle: "Same day you receive it",
-    desc: "Hand your letter to any landlord or housing provider. Under the Fair Housing Act, they must allow your emotional support animal — no pet deposits, no extra fees.",
+    desc: "Share your letter with your landlord or housing provider to support a reasonable-accommodation request under the Fair Housing Act. Each request is reviewed individually — approval is not guaranteed, and rules can depend on your state and housing type.",
     color: "text-[#1A5C4F]",
     bgColor: "bg-[#E8F1EE]",
     accent: "border-[#CFE2DC]",

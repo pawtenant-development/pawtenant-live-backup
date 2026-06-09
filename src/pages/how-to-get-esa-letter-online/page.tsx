@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
+import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
@@ -410,6 +411,8 @@ export default function HowToGetESALetterOnlinePage() {
           <EducationalDisclaimer />
         </div>
       </section>
+
+      <Hud2026UpdateBanner className="border-t border-gray-100" />
 
       <SharedFooter />
       <MobileStickyApplyCTA label="Start ESA Assessment" icon="ri-file-text-line" />

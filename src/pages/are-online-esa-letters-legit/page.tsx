@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
+import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import VerificationPillarsSection from "../../components/feature/VerificationPillarsSection";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
@@ -321,6 +322,8 @@ export default function AreOnlineESALettersLegitPage() {
           </div>
         </div>
       </section>
+
+      <Hud2026UpdateBanner className="border-t border-gray-100" />
 
       <SharedFooter />
       <MobileStickyApplyCTA label="Start ESA Assessment" />

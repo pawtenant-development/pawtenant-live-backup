@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
+import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
 import { VeteransSupportSection } from "../../components/feature/SeoKit";
@@ -675,6 +676,8 @@ export default function LandlordDeniedESALetterPage() {
           </div>
         </div>
       </section>
+
+      <Hud2026UpdateBanner state={selected?.stateName} className="border-t border-gray-100" />
 
       <SharedFooter />
     </main>
