@@ -346,6 +346,32 @@ async function writeHomeRoute(template) {
   return TEMPLATE_PATH;
 }
 
+// ── Neutral SPA fallback shell (out/app.html) — refresh-flash fix (2026-06-10) ─
+// The Vercel catch-all rewrite (vercel.json: "/(.*)" → "/app") serves this
+// file for every route WITHOUT a prerendered file — i.e. internal/protected
+// routes (/company, /admin-orders, provider/admin) and dynamic routes. Before
+// this, that rewrite pointed at "/" (out/index.html), which carries the homepage
+// HERO SKELETON in #root — so refreshing /company or /admin-orders painted the
+// public homepage for a beat before React mounted the real route. This shell is
+// byte-identical to the built template (same scripts, assets, tracking — so
+// conversion/checkout routes behave the same) EXCEPT #root holds a neutral
+// loading spinner instead of the homepage hero. React's createRoot() clears it
+// on mount. The homepage itself is UNAFFECTED: "/" is served directly from
+// out/index.html (filesystem wins over rewrites) and keeps its hero skeleton.
+// Self-contained inline styles (no Tailwind/app-CSS dependency); keyframes live
+// inside #root so the markup is one drop-in replacement.
+const APP_BOOT_SHELL = `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fafaf9;font-family:'Nunito',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"><style>@keyframes pt-boot-spin{to{transform:rotate(360deg)}}</style><div style="display:flex;flex-direction:column;align-items:center;gap:14px"><div style="width:34px;height:34px;border:3px solid #fed7aa;border-top-color:#f97316;border-radius:9999px;animation:pt-boot-spin .7s linear infinite"></div><div style="font-size:13px;font-weight:600;color:#78716c">Loading…</div></div></div>`;
+
+async function writeAppShell(template) {
+  const html = template.replace(
+    '<div id="root"></div>',
+    `<div id="root">${APP_BOOT_SHELL}</div>`
+  );
+  const target = join(OUT_DIR, "app.html");
+  await writeFile(target, html, "utf8");
+  return target;
+}
+
 
 // ── Main ────────────────────────────────────────────────────────────────────
 async function main() {
@@ -421,6 +447,18 @@ async function main() {
     written.push(target);
   } catch (err) {
     errors.push({ route: "/", error: String(err) });
+  }
+
+  // 6) Neutral SPA fallback shell (out/app.html) — served by the Vercel
+  //    catch-all rewrite for fileless routes so refreshing a protected/internal
+  //    route shows a neutral loader, not the homepage hero. Uses the CLEAN
+  //    template (writeHomeRoute only mutated out/index.html on disk, not the
+  //    in-memory `template`).
+  try {
+    const target = await writeAppShell(template);
+    written.push(target);
+  } catch (err) {
+    errors.push({ route: "/app.html", error: String(err) });
   }
 
   console.log(
