@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import { resolveStaffRole } from "../../lib/staffAuth";
 import { canAccessApprovals } from "../../lib/adminPermissions";
 // Phase K3 — shared normalized classifier so the Orders filter, the
 // AdminDashboard aggregation, and the OrderCard pill all use the same
@@ -1440,6 +1441,10 @@ export default function AdminOrdersPage() {
           return;
         }
         if (!adminCheck.ok || !adminCheck.is_admin) {
+          // Authenticated but not an admin — providers are routed to
+          // their own portal; anyone else to the unified sign-in (denied).
+          const role = await resolveStaffRole(session.user.id);
+          if (role === "provider") { navigate("/provider-portal"); return; }
           navigate("/admin-login?reason=unauthorized");
           return;
         }
@@ -1687,6 +1692,25 @@ export default function AdminOrdersPage() {
       raw_custom_tab_access: adminProfile.custom_tab_access,
       effective_top_level_tabs: visibleTabsForRender,
     });
+  }
+
+  // ── Protected-route auth gate (no admin-UI flash) ───────────────────────────
+  // adminProfile is set ONLY after the auth effect confirms an authorized admin
+  // (the effect bounces no-session → /admin-login?reason=session_expired,
+  // providers → /provider-portal, and non-admins → ?reason=unauthorized). Until
+  // then we render a NEUTRAL shell only — never the admin navbar/sidebar/orders
+  // UI — so opening /admin-orders logged-out (or as a provider/customer) shows a
+  // plain "Checking workspace access…" screen and redirects, with no flash of
+  // protected admin content on direct load, refresh, or browser back.
+  if (!adminProfile) {
+    return (
+      <div className="min-h-screen bg-[#f0f4f8] flex items-center justify-center px-4">
+        <div className="flex flex-col items-center gap-3">
+          <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5]"></i>
+          <p className="text-sm font-semibold text-slate-500">Checking workspace access…</p>
+        </div>
+      </div>
+    );
   }
 
   return (

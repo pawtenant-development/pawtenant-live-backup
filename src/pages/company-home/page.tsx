@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import { resolveStaffRole } from "../../lib/staffAuth";
 import {
   fetchCurrentTeamMember,
   fetchMyAdminContext,
@@ -73,6 +74,14 @@ export default function CompanyHomePage() {
         setMember(row);
         setState("ready");
       } else {
+        // No employee (team_members) profile. If this is a PROVIDER account,
+        // send them to their own portal instead of the staff-only dead-end.
+        const role = await resolveStaffRole(session.user.id);
+        if (cancelled) return;
+        if (role === "provider") {
+          navigate("/provider-portal", { replace: true });
+          return;
+        }
         setState("no-profile");
       }
     }

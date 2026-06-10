@@ -1,22 +1,25 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
+import PawTenantLoginShell, { type LoginBullet } from "../../components/auth/PawTenantLoginShell";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
-type Tab = "signin" | "signup";
+// Left brand-panel feature cards for the customer dashboard login.
+const CUSTOMER_BULLETS: LoginBullet[] = [
+  { icon: "ri-lock-2-line", title: "Secure document access", subtitle: "Your data is protected & private" },
+  { icon: "ri-file-list-3-line", title: "Order and letter status", subtitle: "Track every step in one place" },
+  { icon: "ri-shield-user-line", title: "Private customer dashboard", subtitle: "Built just for you, always secure" },
+];
 
 export default function CustomerLoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [showReset, setShowReset] = useState(false);
@@ -46,62 +49,6 @@ export default function CustomerLoginPage() {
         navigate("/admin-orders");
         return;
       }
-    }
-    navigate("/my-orders");
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    setLoading(true);
-
-    // Use our edge function instead of supabase.auth.signUp() so NO
-    // confirmation email is sent — eliminates bounce risk entirely.
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-customer-account`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-      },
-      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-    });
-
-    const json = await res.json() as { ok: boolean; error?: string };
-
-    if (!json.ok) {
-      if (json.error === "already_exists") {
-        // Account exists — try to sign them in directly
-        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-        if (signInErr) {
-          setError("An account with this email already exists. Please sign in with your password, or use 'Forgot password?' to reset it.");
-          setLoading(false);
-          setTab("signin");
-          return;
-        }
-        navigate("/my-orders");
-        return;
-      }
-      setError(json.error ?? "Failed to create account. Please try again.");
-      setLoading(false);
-      return;
-    }
-
-    // Account created and confirmed — sign in directly, no email confirmation needed
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (signInErr) {
-      setError("Account created! Please sign in with your new password.");
-      setTab("signin");
-      return;
     }
     navigate("/my-orders");
   };
@@ -137,218 +84,149 @@ export default function CustomerLoginPage() {
     }
   };
 
+  // ── Presentational helpers (light split-card theme) ──────────────────────
+  const inputCls = "w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-colors";
+  const labelCls = "block text-xs font-bold text-stone-600 mb-1.5";
+  const primaryBtn = "whitespace-nowrap w-full py-3.5 bg-orange-500 text-white font-extrabold text-sm rounded-xl hover:bg-orange-600 transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2";
+
+  const heading = showReset ? "Reset your password" : "Welcome back";
+  const subheading = showReset
+    ? "Enter your email and we'll send a password reset link."
+    : "Sign in to access your PawTenant customer dashboard.";
+
+  const supportFooter = (
+    <p className="text-center text-xs text-stone-400">
+      Need help?{" "}
+      <a href="mailto:hello@pawtenant.com" className="text-orange-500 font-semibold hover:underline">
+        hello@pawtenant.com
+      </a>
+    </p>
+  );
+
   return (
-    <div className="min-h-screen bg-orange-50 flex flex-col">
-      {/* Navbar */}
-      <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
-        <Link to="/" className="flex items-center gap-2 cursor-pointer">
-          <img
-            src="/assets/brand/pawtenant-logo-black-02.png"
-            alt="PawTenant"
-            className="h-10 w-auto object-contain"
-          />
-        </Link>
-        <div className="flex items-center gap-4">
-          <Link to="/assessment" className="whitespace-nowrap text-sm font-semibold text-orange-500 hover:text-orange-600 transition-colors cursor-pointer">
-            Get ESA Letter
-          </Link>
+    <PawTenantLoginShell
+      brandTitle="Your ESA Letter Dashboard"
+      brandSubtitle="Access your assessment, order details, and documents securely — all in one private place."
+      brandTagline="ESA Letter Platform"
+      bullets={CUSTOMER_BULLETS}
+      bottomBadge={{ icon: "ri-lock-2-line", text: "Private & secure dashboard" }}
+      topRight={{ to: "/assessment", label: "Get ESA Letter", icon: "ri-arrow-right-line" }}
+      badge="Secure Sign In"
+      heading={heading}
+      subheading={subheading}
+      roleHint={showReset ? undefined : "Need a new ESA letter? Start your assessment from the main PawTenant website."}
+      footer={supportFooter}
+    >
+      {passwordResetSuccess && !showReset && (
+        <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-start gap-2.5 text-xs text-emerald-700">
+          <i className="ri-checkbox-circle-fill mt-0.5"></i>
+          <span>Password updated successfully! Sign in with your new password.</span>
         </div>
-      </nav>
+      )}
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2.5 text-xs text-red-700">
+          <i className="ri-error-warning-fill mt-0.5"></i>
+          <span>{error}</span>
+        </div>
+      )}
 
-      <div className="flex-1 flex items-center justify-center px-4 py-16">
-        <div className="w-full max-w-md">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 flex items-center justify-center bg-orange-100 rounded-full mx-auto mb-4">
-              <i className="ri-user-heart-line text-orange-500 text-3xl"></i>
+      {/* ── PASSWORD RESET ── */}
+      {showReset ? (
+        resetSent ? (
+          <div className="text-center py-4">
+            <div className="w-12 h-12 flex items-center justify-center bg-emerald-100 rounded-full mx-auto mb-3">
+              <i className="ri-mail-check-line text-emerald-500 text-2xl"></i>
             </div>
-            <h1 className="text-2xl font-extrabold text-gray-900 mb-1">Customer Portal</h1>
-            <p className="text-sm text-gray-500">View your orders and re-download your ESA letter</p>
+            <p className="text-sm font-bold text-stone-800 mb-1">Reset email sent!</p>
+            <p className="text-xs text-stone-500 mb-4">Check your inbox for the password reset link.</p>
+            <button
+              type="button"
+              onClick={() => { setShowReset(false); setResetSent(false); }}
+              className="whitespace-nowrap text-sm text-orange-500 font-semibold hover:underline cursor-pointer"
+            >
+              Back to Sign In
+            </button>
           </div>
-
-          {/* Card */}
-          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            {/* Tabs */}
-            <div className="flex border-b border-gray-100">
+        ) : (
+          <form onSubmit={handlePasswordReset} className="space-y-4">
+            <div>
+              <label htmlFor="reset-email" className={labelCls}>Email Address</label>
+              <input
+                id="reset-email"
+                type="email"
+                required
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                placeholder="your@email.com"
+                autoFocus
+                className={inputCls}
+              />
+            </div>
+            <button type="submit" disabled={loading} className={primaryBtn}>
+              {loading ? <><i className="ri-loader-4-line animate-spin"></i>Sending…</> : <><i className="ri-mail-send-line"></i>Send Reset Link</>}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowReset(false); setError(""); }}
+              className="whitespace-nowrap w-full text-sm text-stone-400 hover:text-stone-600 cursor-pointer transition-colors"
+            >
+              Cancel
+            </button>
+          </form>
+        )
+      ) : (
+        /* ── SIGN IN ── */
+        <form onSubmit={handleSignIn} className="space-y-4">
+          <div>
+            <label htmlFor="email" className={labelCls}>Email Address</label>
+            <input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              autoComplete="email"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label htmlFor="password" className={labelCls}>Password</label>
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                className={`${inputCls} pr-11`}
+              />
               <button
                 type="button"
-                onClick={() => { setTab("signin"); setError(""); setSuccessMsg(""); }}
-                className={`whitespace-nowrap flex-1 py-3.5 text-sm font-bold transition-colors cursor-pointer ${tab === "signin" ? "text-orange-500 border-b-2 border-orange-500" : "text-gray-400 hover:text-gray-600"}`}
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="whitespace-nowrap absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-stone-400 hover:text-stone-600 cursor-pointer"
               >
-                Sign In
+                <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
               </button>
+            </div>
+            <div className="text-right mt-1.5">
               <button
                 type="button"
-                onClick={() => { setTab("signup"); setError(""); setSuccessMsg(""); }}
-                className={`whitespace-nowrap flex-1 py-3.5 text-sm font-bold transition-colors cursor-pointer ${tab === "signup" ? "text-orange-500 border-b-2 border-orange-500" : "text-gray-400 hover:text-gray-600"}`}
+                onClick={() => { setShowReset(true); setResetEmail(email); setError(""); }}
+                className="whitespace-nowrap text-xs font-semibold text-orange-500 hover:text-orange-600 cursor-pointer transition-colors"
               >
-                Create Account
+                Forgot password?
               </button>
             </div>
-
-            <div className="p-6">
-              {passwordResetSuccess && (
-                <div className="mb-4 bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-start gap-2 text-sm text-green-700">
-                  <i className="ri-checkbox-circle-line flex-shrink-0 mt-0.5"></i>
-                  Password updated successfully! Sign in with your new password.
-                </div>
-              )}
-              {successMsg && (
-                <div className="mb-4 bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-start gap-2 text-sm text-green-700">
-                  <i className="ri-checkbox-circle-line flex-shrink-0 mt-0.5"></i>
-                  {successMsg}
-                </div>
-              )}
-              {error && (
-                <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-start gap-2 text-sm text-red-700">
-                  <i className="ri-error-warning-line flex-shrink-0 mt-0.5"></i>
-                  {error}
-                </div>
-              )}
-
-              {/* Password Reset Form */}
-              {showReset ? (
-                resetSent ? (
-                  <div className="text-center py-4">
-                    <div className="w-12 h-12 flex items-center justify-center bg-green-100 rounded-full mx-auto mb-3">
-                      <i className="ri-mail-check-line text-green-500 text-2xl"></i>
-                    </div>
-                    <p className="text-sm font-bold text-gray-800 mb-1">Reset email sent!</p>
-                    <p className="text-xs text-gray-500 mb-4">Check your inbox for the password reset link.</p>
-                    <button type="button" onClick={() => { setShowReset(false); setResetSent(false); }} className="whitespace-nowrap text-sm text-orange-500 font-semibold hover:underline cursor-pointer">
-                      Back to Sign In
-                    </button>
-                  </div>
-                ) : (
-                  <form onSubmit={handlePasswordReset} className="space-y-4">
-                    <p className="text-sm text-gray-600 mb-4">Enter your email and we&apos;ll send a password reset link.</p>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
-                      <input
-                        type="email"
-                        required
-                        value={resetEmail}
-                        onChange={(e) => setResetEmail(e.target.value)}
-                        placeholder="your@email.com"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
-                      />
-                    </div>
-                    <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer disabled:opacity-60">
-                      {loading ? "Sending..." : "Send Reset Link"}
-                    </button>
-                    <button type="button" onClick={() => setShowReset(false)} className="whitespace-nowrap w-full text-sm text-gray-400 hover:text-gray-600 cursor-pointer">
-                      Cancel
-                    </button>
-                  </form>
-                )
-              ) : tab === "signin" ? (
-                /* Sign In Form */
-                <form onSubmit={handleSignIn} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="your@email.com"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:border-orange-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="whitespace-nowrap absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
-                      >
-                        <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
-                      </button>
-                    </div>
-                    <div className="text-right mt-1">
-                      <button type="button" onClick={() => setShowReset(true)} className="whitespace-nowrap text-xs text-orange-500 hover:underline cursor-pointer">
-                        Forgot password?
-                      </button>
-                    </div>
-                  </div>
-                  <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3.5 bg-orange-500 text-white font-extrabold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
-                    {loading ? <><i className="ri-loader-4-line animate-spin" />Signing in...</> : "Sign In to My Orders"}
-                  </button>
-                </form>
-              ) : (
-                /* Sign Up Form */
-                <form onSubmit={handleSignUp} className="space-y-4">
-                  <div className="bg-[#FFF7ED] border border-orange-200 rounded-lg px-4 py-3 text-xs text-orange-700">
-                    <i className="ri-information-line mr-1.5"></i>
-                    Use the <strong>same email</strong> you used when purchasing to automatically link your orders.
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="your@email.com"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Min. 6 characters"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:border-orange-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="whitespace-nowrap absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
-                      >
-                        <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Confirm Password</label>
-                    <input
-                      type="password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Re-enter your password"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
-                    />
-                  </div>
-                  <button type="submit" disabled={loading} className="whitespace-nowrap w-full py-3.5 bg-orange-500 text-white font-extrabold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2">
-                    {loading ? <><i className="ri-loader-4-line animate-spin" />Creating account...</> : "Create Account"}
-                  </button>
-                </form>
-              )}
-            </div>
           </div>
-
-          <p className="text-center text-xs text-gray-400 mt-6">
-            Need help?{" "}
-            <a href="mailto:hello@pawtenant.com" className="text-orange-500 font-semibold hover:underline">
-              hello@pawtenant.com
-            </a>
-          </p>
-        </div>
-      </div>
-    </div>
+          <button type="submit" disabled={loading} className={primaryBtn}>
+            {loading ? <><i className="ri-loader-4-line animate-spin"></i>Signing in…</> : <><i className="ri-login-box-line"></i>Sign In</>}
+          </button>
+        </form>
+      )}
+    </PawTenantLoginShell>
   );
 }
