@@ -84,6 +84,12 @@ export interface SalaryExpenseSummaryRow {
   prorated_total: number;
   employee_count: number;
   range_days: number;
+  // Half-day late deduction fields (30-min late grace policy). Older closed
+  // snapshots may lack these, so treat as optional.
+  working_days?: number;
+  half_day_late_count?: number;
+  late_deduction_total?: number;
+  payable_total?: number;
 }
 
 export interface ProviderPayoutRow {
@@ -455,6 +461,10 @@ export interface SalaryDetailRow {
   prorated_amount: number;
   included: boolean;
   exclude_reason: string | null;
+  working_days?: number;
+  half_day_late_days?: number;
+  late_deduction_amount?: number;
+  payable_amount?: number;
 }
 
 // Admin-only per-employee salary breakdown (diagnostic). Gated server-side.
@@ -462,6 +472,33 @@ export async function fetchSalaryDetail(from: string, to: string): Promise<Salar
   const { data, error } = await supabase.rpc("get_salary_expense_detail", { p_from: from, p_to: to });
   if (error) { console.warn("[companyExpenses] salary detail rpc error", error); return []; }
   return (data ?? []) as SalaryDetailRow[];
+}
+
+// 30-minute late grace / half-day deduction policy effective date. The
+// authoritative gate is server-side (late_deduction_policy_start_date() in
+// Postgres, enforced inside get_half_day_late_attendance); this mirror is for
+// UI copy only. Attendance before this date never generates deductions.
+export const LATE_DEDUCTION_POLICY_START_DATE = "2026-06-08";
+
+// One half-day-late attendance day (first clock-in ≥30 min after shift start).
+// Derived server-side from raw attendance + shift data — max one row per
+// employee per work_date, so deductions can never double-count.
+export interface HalfDayLateRow {
+  team_member_id: string;
+  display_name: string | null;
+  employee_code: string | null;
+  work_date: string;
+  shift_name: string | null;
+  shift_start: string;
+  clock_in_at: string;
+  minutes_late: number;
+}
+
+// Admin-only per-day half-day-late breakdown (why each deduction happened).
+export async function fetchHalfDayLateDetail(from: string, to: string): Promise<HalfDayLateRow[]> {
+  const { data, error } = await supabase.rpc("get_half_day_late_attendance", { p_from: from, p_to: to });
+  if (error) { console.warn("[companyExpenses] half-day late rpc error", error); return []; }
+  return (data ?? []) as HalfDayLateRow[];
 }
 
 // ── Provider payouts (doctor_earnings) keyed by confirmation_id ───────────

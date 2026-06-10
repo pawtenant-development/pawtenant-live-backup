@@ -98,8 +98,9 @@ export default function MonthlyBooksSummary({
       //   • gross/fees/refunds/payouts/businessNet via fetchBooksMonthAgg (same
       //     stripe-payment-history SUMMARY → refunds by refund date, not charge
       //     month — this is the fix for the refund mismatch), and
-      //   • salary via fetchSalaryExpense prorated_total (PKR→USD at fxRate, owners
-      //     excluded server-side).
+      //   • salary via fetchSalaryExpense payable_total — prorated minus automatic
+      //     half-day late deductions (PKR→USD at fxRate, owners excluded
+      //     server-side). Same basis as the Accounts panel salary row.
       // Each month is queried for its own range so the row matches the panel when
       // the panel views that month. Done in parallel.
       const aggByKey: Record<string, PanelMonthAgg> = {};
@@ -111,7 +112,10 @@ export default function MonthlyBooksSummary({
         ]);
         aggByKey[m.key] = agg;
         salByKey[m.key] = sal.reduce(
-          (s, r) => s + (r.currency === "PKR" ? (fxRate > 0 ? r.prorated_total / fxRate : 0) : r.prorated_total),
+          (s, r) => {
+            const amt = r.payable_total ?? r.prorated_total;
+            return s + (r.currency === "PKR" ? (fxRate > 0 ? amt / fxRate : 0) : amt);
+          },
           0,
         );
       }));

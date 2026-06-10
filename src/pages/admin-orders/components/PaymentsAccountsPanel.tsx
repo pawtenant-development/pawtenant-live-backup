@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   fetchEffectiveExpenses, addExpense, deleteExpense, cancelExpense, fetchSalaryExpense, fetchSalaryDetail,
-  resolveRange, resolutionToClassification,
+  fetchHalfDayLateDetail, resolveRange, resolutionToClassification,
   fetchMarketingSpendSummary, isMetaConnected,
   EXPENSE_CATEGORIES, CATEGORY_LABEL, MARKETING_CATEGORIES,
-  type ExpenseCategory, type SalaryExpenseSummaryRow, type SalaryDetailRow,
+  type ExpenseCategory, type SalaryExpenseSummaryRow, type SalaryDetailRow, type HalfDayLateRow,
   type EffectiveExpense, type ChargePayoutResolution, type MarketingSpendSummary,
 } from "../../../lib/companyExpenses";
 import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAccounts";
@@ -64,6 +64,7 @@ export default function PaymentsAccountsPanel({
   const [marketing, setMarketing] = useState<MarketingSpendSummary | null>(null);
   const [salaryRows, setSalaryRows] = useState<SalaryExpenseSummaryRow[]>([]);
   const [salaryDetail, setSalaryDetail] = useState<SalaryDetailRow[]>([]);
+  const [lateRows, setLateRows] = useState<HalfDayLateRow[]>([]);
   const [showSalaryDetail, setShowSalaryDetail] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -90,10 +91,11 @@ export default function PaymentsAccountsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
-    const [exp, sal, salDetail, periods, mkt] = await Promise.all([
+    const [exp, sal, salDetail, late, periods, mkt] = await Promise.all([
       fetchEffectiveExpenses(range.from, range.to),
       fetchSalaryExpense(range.from, range.to),
       fetchSalaryDetail(range.from, range.to),
+      fetchHalfDayLateDetail(range.from, range.to),
       fetchAccountingPeriods(range.from, range.to),
       fetchMarketingSpendSummary(range.from, range.to),
     ]);
@@ -101,6 +103,7 @@ export default function PaymentsAccountsPanel({
     setMarketing(mkt);
     setSalaryRows(sal);
     setSalaryDetail(salDetail);
+    setLateRows(late);
     // Exact-match closed period for the viewed range → lock editing.
     setClosedPeriod(periods.find((p) => p.period_start === range.from && p.period_end === range.to && p.status === "closed") ?? null);
     setLoading(false);
@@ -166,11 +169,18 @@ export default function PaymentsAccountsPanel({
   const manualTotal = manualMarketing + manualOther;
 
   // Estimated salary expense — prorated, grouped by currency; PKR converted at fxRate.
-  const salaryPkr = useMemo(() => salaryRows.filter((r) => r.currency === "PKR").reduce((s, r) => s + r.prorated_total, 0), [salaryRows]);
-  const salaryUsdNative = useMemo(() => salaryRows.filter((r) => r.currency === "USD").reduce((s, r) => s + r.prorated_total, 0), [salaryRows]);
+  // Uses payable_total (prorated − automatic half-day late deductions); falls back
+  // to prorated_total for older RPC payloads without the deduction fields.
+  const salaryPkr = useMemo(() => salaryRows.filter((r) => r.currency === "PKR").reduce((s, r) => s + (r.payable_total ?? r.prorated_total), 0), [salaryRows]);
+  const salaryUsdNative = useMemo(() => salaryRows.filter((r) => r.currency === "USD").reduce((s, r) => s + (r.payable_total ?? r.prorated_total), 0), [salaryRows]);
   const salaryUsd = salaryUsdNative + (fxRate > 0 ? salaryPkr / fxRate : 0);
   const salaryCount = useMemo(() => salaryRows.reduce((s, r) => s + r.employee_count, 0), [salaryRows]);
   const ownerExcludedCount = useMemo(() => salaryDetail.filter((r) => r.exclude_reason === "owner_compensation_excluded").length, [salaryDetail]);
+  // Half-day late deductions (30-min grace policy, enforced server-side from 2026-06-08).
+  const lateCount = useMemo(() => salaryRows.reduce((s, r) => s + (r.half_day_late_count ?? 0), 0), [salaryRows]);
+  const lateDeductionPkr = useMemo(() => salaryRows.filter((r) => r.currency === "PKR").reduce((s, r) => s + (r.late_deduction_total ?? 0), 0), [salaryRows]);
+  const lateDeductionUsdNative = useMemo(() => salaryRows.filter((r) => r.currency === "USD").reduce((s, r) => s + (r.late_deduction_total ?? 0), 0), [salaryRows]);
+  const lateDeductionUsd = lateDeductionUsdNative + (fxRate > 0 ? lateDeductionPkr / fxRate : 0);
 
   // ── Auto-synced ad spend (Google + Meta) ─────────────────────────────────
   // Virtual, system-generated expense rows from get_marketing_spend_summary for
@@ -443,6 +453,12 @@ export default function PaymentsAccountsPanel({
                       {salaryPkr > 0 ? ` PKR ${Math.round(salaryPkr).toLocaleString()} @ ${fxRate}/USD.` : ""}
                       {ownerExcludedCount > 0 ? " Owner compensation excluded." : ""}
                     </p>
+                    {lateCount > 0 && (
+                      <p className="text-xs font-semibold text-rose-500">
+                        Includes {lateCount} half-day late deduction{lateCount === 1 ? "" : "s"} −{fmtUSD2(lateDeductionUsd)}
+                        {lateDeductionPkr > 0 ? ` (PKR ${Math.round(lateDeductionPkr).toLocaleString()})` : ""} · clock-in 30+ min after shift start
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
@@ -456,21 +472,50 @@ export default function PaymentsAccountsPanel({
               {showSalaryDetail && (
                 <div className="px-5 pb-3">
                   <div className="rounded-lg border border-gray-200 overflow-hidden">
-                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                      <span>Employee</span><span className="text-right">Salary</span><span>Status</span><span className="text-right">Prorated</span>
+                    <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                      <span>Employee</span><span className="text-right">Salary</span><span>Status</span><span className="text-right">Prorated</span><span className="text-right">Late ded.</span><span className="text-right">Payable</span>
                     </div>
                     {salaryDetail.length === 0 ? (
                       <p className="px-3 py-2 text-xs text-gray-400">No salary records.</p>
                     ) : salaryDetail.map((r) => (
-                      <div key={r.team_member_id} className={`grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 text-xs border-t border-gray-100 ${r.included ? "" : "opacity-50"}`}>
+                      <div key={r.team_member_id} className={`grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 text-xs border-t border-gray-100 ${r.included ? "" : "opacity-50"}`}>
                         <span className="truncate text-gray-700">{r.display_name ?? r.employee_code ?? "—"}</span>
                         <span className="text-right text-gray-700">{Math.round(r.base_salary).toLocaleString()} {r.salary_currency}</span>
                         <span className="text-gray-500">{r.included ? r.employment_status : (r.exclude_reason ?? "excluded")}</span>
                         <span className="text-right font-semibold text-gray-700">{r.included ? `${Math.round(r.prorated_amount).toLocaleString()} ${r.salary_currency}` : "—"}</span>
+                        <span className={`text-right font-semibold ${(r.late_deduction_amount ?? 0) > 0 ? "text-rose-500" : "text-gray-300"}`}>
+                          {r.included && (r.late_deduction_amount ?? 0) > 0
+                            ? `−${Math.round(r.late_deduction_amount ?? 0).toLocaleString()} (${r.half_day_late_days ?? 0}×½)`
+                            : "—"}
+                        </span>
+                        <span className="text-right font-bold text-gray-800">
+                          {r.included ? `${Math.round(r.payable_amount ?? r.prorated_amount).toLocaleString()} ${r.salary_currency}` : "—"}
+                        </span>
                       </div>
                     ))}
                   </div>
-                  <p className="mt-1.5 text-[10px] text-gray-400">Admin-only diagnostic. Salaries never shown in the employee portal.</p>
+                  {lateRows.length > 0 && (
+                    <div className="mt-2 rounded-lg border border-rose-100 bg-rose-50/50 overflow-hidden">
+                      <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 bg-rose-50 text-[10px] font-bold text-rose-500 uppercase tracking-wider">
+                        <span>Half-day late</span><span>Date</span><span className="text-right">Shift start</span><span className="text-right">Clock-in</span><span className="text-right">Late by</span>
+                      </div>
+                      {lateRows.map((l) => (
+                        <div key={`${l.team_member_id}-${l.work_date}`} className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 text-xs border-t border-rose-100/60">
+                          <span className="truncate text-gray-700">{l.display_name ?? l.employee_code ?? "—"}</span>
+                          <span className="text-gray-600">{l.work_date}</span>
+                          <span className="text-right text-gray-600">{l.shift_start.slice(0, 5)}</span>
+                          <span className="text-right text-gray-600">
+                            {new Date(l.clock_in_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi" })} PKT
+                          </span>
+                          <span className="text-right font-semibold text-rose-500">{l.minutes_late} min</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1.5 text-[10px] text-gray-400">
+                    Admin-only diagnostic. Salaries never shown in the employee portal. Half-day deduction = base salary ÷ Mon–Fri working
+                    days in range ÷ 2, applied once per day where the first clock-in is 30+ minutes after shift start. Policy active from 2026-06-08; earlier attendance is never deducted.
+                  </p>
                 </div>
               )}
             </div>

@@ -385,8 +385,8 @@ function DesktopRow({ entry }: { entry: AttendanceEntry }) {
       </td>
       <td className="px-4 py-3 align-top">
         {entry.was_late ? (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-semibold">
-            +{entry.late_minutes ?? 0}m
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-semibold" title="Half-day late — half-day salary deduction applies (30-min grace)">
+            +{entry.late_minutes ?? 0}m · ½ day
           </span>
         ) : entry.was_late === false ? (
           <span className="text-slate-400 text-xs">On time</span>
@@ -454,7 +454,7 @@ function MobileCard({ entry }: { entry: AttendanceEntry }) {
         <div>
           <span className="text-slate-500">Late:</span>{" "}
           {entry.was_late ? (
-            <span className="text-rose-700 font-semibold">+{entry.late_minutes ?? 0}m</span>
+            <span className="text-rose-700 font-semibold">+{entry.late_minutes ?? 0}m · ½ day</span>
           ) : entry.was_late === false ? (
             <span className="text-slate-700">On time</span>
           ) : (

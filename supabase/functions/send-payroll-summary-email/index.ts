@@ -85,8 +85,10 @@ interface PayrollRow {
   code: string | null;
   title: string | null;
   baseSalaryPkr: number;   // base monthly salary
-  includedPkr: number;     // amount included for the month (prorated)
+  includedPkr: number;     // amount payable for the month (prorated − late deductions)
   prorated: boolean;
+  lateDays: number;        // half-day-late instances in the period (30-min grace policy)
+  deductionPkr: number;    // automatic half-day late deduction total
 }
 
 function buildPayrollEmail(opts: {
@@ -110,6 +112,7 @@ function buildPayrollEmail(opts: {
           ${r.title ? `<div style="font-size:11px;color:#6B7280;font-weight:400;">${escapeHtml(r.title)}</div>` : ""}
         </td>
         <td style="padding:11px 16px;border-bottom:1px solid #E5E7EB;font-size:13px;text-align:right;color:#374151;">${fmtPkr(r.baseSalaryPkr)}</td>
+        <td style="padding:11px 16px;border-bottom:1px solid #E5E7EB;font-size:13px;text-align:right;color:${r.deductionPkr > 0 ? "#BE123C" : "#9CA3AF"};">${r.deductionPkr > 0 ? `−${fmtPkr(r.deductionPkr)}<div style="font-size:10px;color:#BE123C;font-weight:600;">${r.lateDays} half-day late</div>` : "—"}</td>
         <td style="padding:11px 16px;border-bottom:1px solid #E5E7EB;font-size:13px;text-align:right;color:#111827;font-weight:700;">${fmtPkr(r.includedPkr)}${r.prorated ? `<div style="font-size:10px;color:#92400E;font-weight:600;">prorated</div>` : ""}</td>
         <td style="padding:11px 16px;border-bottom:1px solid #E5E7EB;font-size:13px;text-align:right;color:#1a5c4f;">${fmtUsd(fxRate > 0 ? r.includedPkr / fxRate : 0)}</td>
       </tr>`).join("");
@@ -156,6 +159,7 @@ function buildPayrollEmail(opts: {
       <tr style="background:#F9FAFB;">
         <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #E5E7EB;">Employee</th>
         <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #E5E7EB;">Base / mo (PKR)</th>
+        <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #E5E7EB;">Late Ded. (PKR)</th>
         <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #E5E7EB;">This Month (PKR)</th>
         <th style="padding:10px 16px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #E5E7EB;">USD est.</th>
       </tr>
@@ -163,7 +167,7 @@ function buildPayrollEmail(opts: {
     <tbody>${employeeRows}</tbody>
     <tfoot>
       <tr style="background:#F9FAFB;">
-        <td colspan="2" style="padding:12px 16px;font-size:14px;font-weight:700;color:#111827;border-top:2px solid #E5E7EB;">Total Payroll</td>
+        <td colspan="3" style="padding:12px 16px;font-size:14px;font-weight:700;color:#111827;border-top:2px solid #E5E7EB;">Total Payroll</td>
         <td style="padding:12px 16px;text-align:right;font-size:15px;font-weight:900;color:#065F46;border-top:2px solid #E5E7EB;">${fmtPkr(totalPkr)}</td>
         <td style="padding:12px 16px;text-align:right;font-size:14px;font-weight:900;color:#1a5c4f;border-top:2px solid #E5E7EB;">${fmtUsd(totalUsd)}</td>
       </tr>
@@ -177,6 +181,8 @@ function buildPayrollEmail(opts: {
     <p style="margin:0;font-size:12px;color:#92400E;line-height:1.5;">
       Owner/co-owner compensation is excluded. This is an internal payroll summary notification, not a payment confirmation.
       USD figures are estimates at ${fxRate} PKR/USD. No payment has been processed.
+      Late deductions: half a day's salary (base ÷ Mon–Fri working days ÷ 2) per day where the first clock-in was 30+ minutes
+      after shift start. Policy active from 2026-06-08 — earlier attendance is never deducted.
     </p>
   </div>
 </td>
@@ -246,6 +252,9 @@ Deno.serve(async (req: Request) => {
     team_member_id: string; display_name: string | null; employee_code: string | null;
     base_salary: number; salary_currency: string; prorated_amount: number;
     included: boolean; exclude_reason: string | null;
+    // Half-day late deduction fields (30-min grace policy from 2026-06-08).
+    working_days?: number; half_day_late_days?: number;
+    late_deduction_amount?: number; payable_amount?: number;
   }
   const included = ((detail ?? []) as DetailRow[]).filter((r) => r.included === true);
 
@@ -261,15 +270,20 @@ Deno.serve(async (req: Request) => {
   // PKR is the salary storage currency (Accounts converts PKR→USD at fxRate).
   const rows: PayrollRow[] = included.map((r) => {
     const base = Number(r.base_salary) || 0;
-    const incl = Number(r.prorated_amount) || 0;
+    const prorated = Number(r.prorated_amount) || 0;
+    const deduction = Number(r.late_deduction_amount) || 0;
+    // Payable = prorated − automatic half-day late deductions (RPC-computed).
+    const incl = Number(r.payable_amount ?? (prorated - deduction)) || 0;
     return {
       name: r.display_name ?? "Unknown",
       code: r.employee_code ?? null,
       title: titleById[r.team_member_id] ?? null,
       baseSalaryPkr: base,
       includedPkr: incl,
-      // Prorated when the included amount differs from a flat month's base by >0.5 PKR.
-      prorated: Math.abs(incl - base) > 0.5,
+      // Prorated when the prorated amount differs from a flat month's base by >0.5 PKR.
+      prorated: Math.abs(prorated - base) > 0.5,
+      lateDays: Number(r.half_day_late_days) || 0,
+      deductionPkr: deduction,
     };
   });
 
@@ -297,6 +311,7 @@ Deno.serve(async (req: Request) => {
       baseSalaryPkr: r.baseSalaryPkr, includedPkr: r.includedPkr,
       usd: Number((fxRate > 0 ? r.includedPkr / fxRate : 0).toFixed(2)),
       prorated: r.prorated,
+      halfDayLateDays: r.lateDays, lateDeductionPkr: r.deductionPkr,
     })),
   };
 

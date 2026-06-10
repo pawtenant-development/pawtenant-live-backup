@@ -95,7 +95,7 @@ export default function TodayAttendanceCard({ teamMemberId, reloadToken }: Today
             {entry.was_late ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-medium text-amber-800">
                 <i className="ri-time-line"></i>
-                Late{entry.late_minutes ? ` by ${entry.late_minutes} min` : ""}
+                Late{entry.late_minutes ? ` by ${entry.late_minutes} min` : ""} · half-day
               </span>
             ) : entry.was_late === false ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-800">
