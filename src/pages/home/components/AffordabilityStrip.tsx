@@ -11,13 +11,13 @@
  * Three calm pillars:
  *   1. Five-minute assessment — sets the time expectation low
  *   2. 100% online            — removes friction (no clinic, no scheduling)
- *   3. Pay over time          — Klarna chip surfaced subtly, no overclaim
+ *   3. Simple checkout        — Klarna mentioned neutrally, no financing promo
  *
  * Compliance + premium-feel guardrails:
  *   - No "guaranteed approval" or "guaranteed letter" copy.
  *   - No countdown / urgency / "only today" / fake scarcity.
- *   - Klarna chip text matches the existing /esa-letter-housing pattern
- *     ("Where eligible at checkout · approval not guaranteed").
+ *   - Klarna text is neutral only ("available at checkout · subject to
+ *     eligibility and Klarna payment terms") — no pay-in-4 / interest-free.
  *   - No CTA inside the strip — the page already has CTAs in TrustFeatures,
  *     PricingSection, and CTASection. This keeps the lower-page rhythm
  *     spacious and avoids button overload.
@@ -36,8 +36,8 @@ const PILLARS = [
   },
   {
     icon: "ri-wallet-3-line",
-    title: "Pay over time",
-    body: "Flexible options at checkout, including pay-in-4 with Klarna where eligible.",
+    title: "Simple checkout",
+    body: "Pay by card, or choose Klarna at checkout — subject to eligibility.",
   },
 ];
 
@@ -94,11 +94,18 @@ export default function AffordabilityStrip() {
             </span>
             <div className="text-left leading-tight">
               <div className="text-[11.5px] font-semibold text-slate-900">
-                Pay in 4 interest-free with{" "}
-                <span className="text-[#7A3F5F]">Klarna</span>
+                <span className="text-[#7A3F5F]">Klarna</span> available at checkout
               </div>
               <div className="text-[10px] text-slate-500">
-                Where eligible at checkout &middot; approval not guaranteed
+                Subject to eligibility and{" "}
+                <a
+                  href="https://www.klarna.com/us/terms-of-use/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-slate-700"
+                >
+                  Klarna payment terms
+                </a>
               </div>
             </div>
           </div>

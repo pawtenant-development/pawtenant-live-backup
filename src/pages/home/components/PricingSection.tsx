@@ -115,7 +115,7 @@ export default function PricingSection() {
                     plain + highlighted cards. */}
                 <div className="inline-flex items-center gap-2 mb-3 sm:mb-4 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
                   <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                  <span className="text-[10px] text-slate-700">Pay later — where eligible</span>
+                  <span className="text-[10px] text-slate-700">Available at checkout</span>
                 </div>
                 <ul className="space-y-2 sm:space-y-2.5">
                   {plan.features.map((f) => (
@@ -164,10 +164,19 @@ export default function PricingSection() {
           </span>
           <div className="min-w-0">
             <div className="text-[13.5px] sm:text-[14px] font-semibold text-slate-900 leading-snug mb-1">
-              Pay later with <span className="text-[#B8527F]">Klarna</span> &mdash; interest-free at checkout.
+              Pay with <span className="text-[#B8527F]">Klarna</span> at checkout.
             </div>
             <div className="text-[12px] sm:text-[12.5px] text-slate-600 leading-relaxed">
-              Split your payment into installments where eligible. Eligibility is shown at checkout and determined by Klarna &mdash; approval is not guaranteed.
+              Subject to eligibility and{" "}
+              <a
+                href="https://www.klarna.com/us/terms-of-use/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-slate-800"
+              >
+                Klarna payment terms
+              </a>
+              . Eligibility is determined by Klarna &mdash; approval is not guaranteed.
             </div>
           </div>
         </div>

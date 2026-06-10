@@ -55,7 +55,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How much does an ESA letter cost?",
-    a: "PawTenant's housing ESA letter is $110 for one pet, valid for one year, with additional pets at $25 each (up to three per document). The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Flexible payment options including Klarna may be available at checkout where eligible.",
+    a: "PawTenant's housing ESA letter is $110 for one pet, valid for one year, with additional pets at $25 each (up to three per document). The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
   },
   {
     q: "How do I know if an online ESA letter provider is legitimate?",
@@ -236,8 +236,8 @@ export default function LpEsaHousingPage() {
               <span aria-hidden>→</span>
             </Link>
 
-            {/* Klarna 'Pay in 4' badge — sits directly under the CTA so the
-                affordability signal occupies the highest-hierarchy slot.
+            {/* Klarna availability badge — sits directly under the CTA so the
+                payment-method signal occupies the highest-hierarchy slot.
                 Trust bullets row follows beneath, then the refund line.
                 Matches the Meta LP hero order: CTA → Klarna → trust → refund.
                 Uses `flex w-fit` (block-level, content-width) instead of
@@ -253,11 +253,10 @@ export default function LpEsaHousingPage() {
               </span>
               <div className="text-left leading-tight">
                 <div className="text-[11.5px] font-semibold text-slate-900">
-                  Pay in 4 interest-free with{" "}
-                  <span className="text-[#7A3F5F]">Klarna</span>
+                  <span className="text-[#7A3F5F]">Klarna</span> available at checkout
                 </div>
                 <div className="text-[10px] text-slate-500">
-                  Where eligible at checkout · approval not guaranteed
+                  Subject to eligibility and Klarna payment terms
                 </div>
               </div>
             </div>
@@ -767,7 +766,7 @@ export default function LpEsaHousingPage() {
               {/* Klarna chip — Klarna brand pink */}
               <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
                 <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                <span className="text-[10px] text-slate-700">Pay later — where eligible</span>
+                <span className="text-[10px] text-slate-700">Available at checkout</span>
               </div>
 
               <ul className="grid gap-3 mb-7 border-t border-slate-100 pt-5">
@@ -778,7 +777,7 @@ export default function LpEsaHousingPage() {
                 <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
                 <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
                 <PriceFeat>Additional pets at +$25 each (up to 3)</PriceFeat>
-                <PriceFeat>Flexible payment options including Klarna where eligible</PriceFeat>
+                <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
               </ul>
 
               <Link
@@ -810,7 +809,7 @@ export default function LpEsaHousingPage() {
               {/* Klarna chip — Klarna brand pink */}
               <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
                 <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                <span className="text-[10px] text-slate-700">Pay later — where eligible</span>
+                <span className="text-[10px] text-slate-700">Available at checkout</span>
               </div>
 
               <ul className="grid gap-3 mb-7 border-t border-slate-100 pt-5">
@@ -821,7 +820,7 @@ export default function LpEsaHousingPage() {
                 <PriceFeat>Provider's credentials, license #, and NPI printed on the document</PriceFeat>
                 <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
                 <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
-                <PriceFeat>Flexible payment options including Klarna where eligible</PriceFeat>
+                <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
               </ul>
 
               <Link
@@ -846,10 +845,19 @@ export default function LpEsaHousingPage() {
             </span>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold text-slate-900 leading-snug mb-1">
-                Pay later with <span className="text-[#B8527F]">Klarna</span> — interest-free at checkout.
+                Pay with <span className="text-[#B8527F]">Klarna</span> at checkout.
               </div>
               <div className="text-[12.5px] text-slate-600 leading-relaxed">
-                Split your payment into installments where eligible. Eligibility is shown at checkout and is determined by Klarna — approval is not guaranteed.
+                Subject to eligibility and{" "}
+                <a
+                  href="https://www.klarna.com/us/terms-of-use/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-slate-800"
+                >
+                  Klarna payment terms
+                </a>
+                . Eligibility is determined by Klarna — approval is not guaranteed.
               </div>
             </div>
           </div>

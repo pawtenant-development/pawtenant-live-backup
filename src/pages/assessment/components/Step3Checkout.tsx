@@ -572,7 +572,7 @@ function SecurePaymentCard({
             <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-[#ffb3c7] text-[9px] font-bold text-[#17120e]">
               K
             </span>
-            Klarna — Pay Later
+            Klarna
           </button>
         )}
       </div>
@@ -1398,17 +1398,24 @@ export default function Step3Checkout({
               </div>
             </div>
 
-            {/* Klarna 4-pay reassurance — visible higher on mobile */}
+            {/* Klarna availability note — neutral payment-method mention */}
             {selectedPlan === "one-time" && (
               <div className="mt-3 sm:mt-3 flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
                 <span className="inline-flex items-center justify-center w-6 h-6 rounded bg-[#ffb3c7] text-[10px] font-bold text-[#17120e] flex-shrink-0">
                   K
                 </span>
                 <p className="text-[12px] sm:text-xs text-slate-700 leading-snug min-w-0">
-                  <span className="font-semibold text-slate-900">Or pay in 4</span>
-                  <span className="text-slate-500"> · 4 interest-free payments of </span>
-                  <span className="font-semibold text-slate-900">${(basePrice / 4).toFixed(2)}</span>
-                  <span className="text-slate-500"> with Klarna</span>
+                  <span className="font-semibold text-slate-900">Klarna available at checkout.</span>
+                  <span className="text-slate-500"> Subject to eligibility and </span>
+                  <a
+                    href="https://www.klarna.com/us/terms-of-use/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-slate-500 underline hover:text-slate-700"
+                  >
+                    Klarna payment terms
+                  </a>
+                  <span className="text-slate-500">.</span>
                 </p>
               </div>
             )}

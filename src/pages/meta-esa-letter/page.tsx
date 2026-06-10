@@ -639,7 +639,7 @@ export default function MetaEsaLetterPage() {
               {/* Klarna — established payment option, display-only */}
               <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60 self-start">
                 <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                <span className="text-[10px] text-slate-700">Pay in 4 — interest-free where eligible</span>
+                <span className="text-[10px] text-slate-700">Available at checkout</span>
               </div>
 
               <ul className="grid gap-2.5 mb-7 border-t border-slate-100 pt-5">
@@ -694,7 +694,7 @@ export default function MetaEsaLetterPage() {
               {/* Klarna — established payment option, display-only */}
               <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60 self-start">
                 <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                <span className="text-[10px] text-slate-700">Pay later — where eligible</span>
+                <span className="text-[10px] text-slate-700">Available at checkout</span>
               </div>
 
               <ul className="grid gap-2.5 mb-7 border-t border-slate-100 pt-5">
@@ -726,6 +726,18 @@ export default function MetaEsaLetterPage() {
 
           <p className="text-center text-[12px] text-slate-500 mt-7 max-w-xl mx-auto leading-relaxed">
             Final price may vary by delivery speed and selected plan. If you don't qualify after review, your payment is refunded.
+          </p>
+          <p className="text-center text-[11.5px] text-slate-400 mt-2 max-w-xl mx-auto leading-relaxed">
+            Klarna available at checkout. Subject to eligibility and{" "}
+            <a
+              href="https://www.klarna.com/us/terms-of-use/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-slate-600"
+            >
+              Klarna payment terms
+            </a>
+            .
           </p>
         </div>
       </section>

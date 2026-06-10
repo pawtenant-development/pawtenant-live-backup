@@ -71,7 +71,7 @@ const faqs = [
   },
   {
     q: "How much does an ESA letter cost?",
-    a: "PawTenant's housing ESA letter is $110 for one pet (valid one year), with additional pets at $25 each. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not result in a letter. Flexible payment options including Klarna may be available at checkout where eligible.",
+    a: "PawTenant's housing ESA letter is $110 for one pet (valid one year), with additional pets at $25 each. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not result in a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
   },
 ];
 

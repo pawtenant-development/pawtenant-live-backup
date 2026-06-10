@@ -176,7 +176,7 @@ export default function ESALetterCostPage() {
               </Link>
               <div className="flex items-center gap-2 text-white/85 text-[13px] sm:text-sm">
                 <i className="ri-refresh-line text-orange-400"></i>
-                Klarna pay-later available
+                Klarna available at checkout
               </div>
             </div>
           </div>
@@ -214,10 +214,10 @@ export default function ESALetterCostPage() {
                 <p className="text-4xl sm:text-5xl font-black text-gray-900 mb-1 leading-none">{plan.price}</p>
                 <p className="text-gray-400 text-[11px] sm:text-xs mb-4">{plan.period}</p>
 
-                {/* Klarna pay-later chip — mobile-aware affordability signal */}
+                {/* Klarna chip — neutral payment-method mention only */}
                 <div className="inline-flex self-center items-center gap-1.5 mb-1 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
                   <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                  <span className="text-[10px] text-slate-700">Pay later · where eligible</span>
+                  <span className="text-[10px] text-slate-700">Available at checkout</span>
                 </div>
 
                 <div className="h-px bg-gray-200 my-5 sm:my-6"></div>
@@ -248,6 +248,18 @@ export default function ESALetterCostPage() {
             <i className="ri-refresh-line text-orange-500"></i>
             100% refund if your letter doesn't work
           </div>
+          <p className="text-center text-[12px] text-gray-400 mt-3 max-w-md mx-auto leading-relaxed">
+            Klarna available at checkout. Subject to eligibility and{" "}
+            <a
+              href="https://www.klarna.com/us/terms-of-use/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-600"
+            >
+              Klarna payment terms
+            </a>
+            .
+          </p>
         </div>
       </section>
 

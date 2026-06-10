@@ -51,7 +51,7 @@ const EVENT_LABELS: Record<string, string> = {
 
 const METHOD_LABELS: Record<string, string> = {
   card: "Credit / Debit Card",
-  klarna: "Klarna (Pay in 4)",
+  klarna: "Klarna",
   qr: "QR Code / Mobile Pay",
   subscription: "Subscription (Annual)",
 };

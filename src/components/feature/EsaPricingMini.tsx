@@ -15,9 +15,10 @@ interface Props {
  * Pricing values come from src/config/pricing.ts — single source of truth.
  * No hard-coded numbers. CTA routes to /assessment with attribution preserved.
  *
- * Each card now carries its own feature list and a Klarna pay-later chip
- * INSIDE the card (not just a tiny bullet below). Legally-safe wording only:
- *   - "where eligible" / "at checkout" for Klarna (never guaranteed)
+ * Each card now carries its own feature list and a neutral Klarna chip
+ * INSIDE the card (not just a tiny bullet below). Compliance-safe wording only:
+ *   - "Klarna available at checkout" — no pay-in-4 / interest-free / financing
+ *     promotion. Eligibility + terms link live in the header note.
  *   - "Money-back if not approved" (no approval guarantee)
  *
  * A short PSD note sits below — surfaces PSD support without rewriting the
@@ -28,7 +29,7 @@ function KlarnaChip() {
   return (
     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#FFB3C7]/25 border border-[#FFB3C7]/70">
       <span className="text-[11px] font-extrabold tracking-tight text-[#8A2D4D]">Klarna.</span>
-      <span className="text-[10.5px] text-slate-600 leading-none">Pay later · where eligible</span>
+      <span className="text-[10.5px] text-slate-600 leading-none">Available at checkout</span>
     </div>
   );
 }
@@ -53,8 +54,16 @@ export default function EsaPricingMini({ className }: Props) {
             Clear, upfront pricing — <span className="text-orange-500">from {ESA_PRICE_LABELS.startingFrom}</span>
           </h2>
           <p className="text-gray-500 text-sm mt-2.5 max-w-xl mx-auto leading-snug">
-            Pay in full or split it with Klarna where available at checkout. A licensed provider
-            reviews your assessment — approval is not guaranteed.
+            Pay by card, or choose Klarna at checkout — subject to eligibility and{" "}
+            <a
+              href="https://www.klarna.com/us/terms-of-use/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-700"
+            >
+              Klarna payment terms
+            </a>
+            . A licensed provider reviews your assessment — approval is not guaranteed.
           </p>
         </div>
 
