@@ -6,12 +6,12 @@ import TeamDirectory from "./TeamDirectory";
 import MyDocumentsPanel from "./MyDocumentsPanel";
 import MyLeavePanel from "./MyLeavePanel";
 import AttendanceCorrectionPanel from "./AttendanceCorrectionPanel";
+import FormsHelpPanel from "./FormsHelpPanel";
 import BreakHistoryCard from "./BreakHistoryCard";
 import NetWorkedSummary from "./NetWorkedSummary";
 import SalarySnapshotWidget from "./SalarySnapshotWidget";
 import BenefitsWidget from "./BenefitsWidget";
 import PoliciesWidget from "./PoliciesWidget";
-import MyFormsWidget from "./MyFormsWidget";
 import EmployeeResources from "./EmployeeResources";
 import WorkTimeBreakdown from "./WorkTimeBreakdown";
 import TodayAttendanceCard from "./TodayAttendanceCard";
@@ -111,20 +111,20 @@ export default function CompanySectionContent({ section, member, reloadToken, is
 
   if (section === "forms") {
     return (
-      <SectionShell title="HR / Forms" subtitle="Self-service requests & employee resources">
-        <div className="space-y-4 max-w-3xl">
-          <div className="max-w-md">
+      <SectionShell title="HR / Forms" subtitle="Self-service requests, history & employee resources">
+        {/* Two-column dashboard: requests + history on the left, help/policy on the
+            right. Stacks to a single column on mobile. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start">
+          <div className="space-y-4 lg:col-span-2">
             <MyLeavePanel teamMemberId={member.id} />
-          </div>
-          <div className="max-w-md">
             <AttendanceCorrectionPanel teamMemberId={member.id} />
           </div>
-          <div className="max-w-md">
+          <div className="space-y-4 lg:col-span-1">
+            <FormsHelpPanel />
             <MyDocumentsPanel teamMemberId={member.id} />
           </div>
-          <div className="max-w-md">
-            <MyFormsWidget />
-          </div>
+        </div>
+        <div className="mt-4">
           <EmployeeResources member={member} />
         </div>
       </SectionShell>

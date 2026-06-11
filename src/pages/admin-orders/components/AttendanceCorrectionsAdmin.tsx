@@ -123,6 +123,9 @@ export default function AttendanceCorrectionsAdmin() {
           <p className="text-[11px] text-slate-500">
             {pendingCount > 0 ? <span className="font-semibold text-amber-600">{pendingCount} pending</span> : "No pending"} · approve, then apply to the timesheet (auditable; raw records unchanged).
           </p>
+          <p className="mt-0.5 text-[11px] text-emerald-700">
+            <i className="ri-information-line" /> Approving a clock-in correction updates the half-day late salary deduction automatically — no manual adjustment needed.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search employee…"

@@ -23,6 +23,25 @@ import { DOMAIN_ROLE_LABEL, type TeamMember } from "../../../lib/teamMembers";
 const STATUS_FILTERS = ["all", "pending", "approved", "rejected", "cancelled"] as const;
 type StatusFilter = typeof STATUS_FILTERS[number];
 
+const PERIOD_FILTERS = ["all", "this_month", "last_month"] as const;
+type PeriodFilter = typeof PERIOD_FILTERS[number];
+const PERIOD_LABEL: Record<PeriodFilter, string> = {
+  all: "All time",
+  this_month: "This month",
+  last_month: "Last month",
+};
+
+// Inclusive [start, end] ISO-date bounds for a period; null = no date bound.
+function periodBounds(p: PeriodFilter): { start: string; end: string } | null {
+  if (p === "all") return null;
+  const now = new Date();
+  const ref = p === "last_month" ? new Date(now.getFullYear(), now.getMonth() - 1, 1) : new Date(now.getFullYear(), now.getMonth(), 1);
+  const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { start: iso(start), end: iso(end) };
+}
+
 function initials(name: string | null): string {
   if (!name) return "?";
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
@@ -47,6 +66,7 @@ export default function LeaveRequestsAdmin() {
   const [adjustments, setAdjustments] = useState<LeaveAdjustment[]>([]);
   const [pendingCorrLeaveIds, setPendingCorrLeaveIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
   const [search, setSearch] = useState("");
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -69,12 +89,25 @@ export default function LeaveRequestsAdmin() {
     return m;
   }, [employees]);
 
+  // Reviewer lookup by auth user_id (reviewed_by → reviewer display name).
+  const empByUserId = useMemo(() => {
+    const m = new Map<string, TeamMember>();
+    employees.forEach((e) => { if (e.user_id) m.set(e.user_id, e); });
+    return m;
+  }, [employees]);
+
   const appliedMap = useMemo(() => appliedByLeave(adjustments), [adjustments]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const bounds = periodBounds(periodFilter);
     return (rows ?? [])
       .filter((r) => statusFilter === "all" || r.status === statusFilter)
+      .filter((r) => {
+        if (!bounds) return true;
+        // A request is "in" a month if its leave range overlaps that month.
+        return r.start_date <= bounds.end && r.end_date >= bounds.start;
+      })
       .filter((r) => {
         if (!q) return true;
         const e = empById.get(r.team_member_id);
@@ -85,7 +118,7 @@ export default function LeaveRequestsAdmin() {
         );
       })
       .sort(sortRows);
-  }, [rows, statusFilter, search, empById]);
+  }, [rows, statusFilter, periodFilter, search, empById]);
 
   const pendingCount = (rows ?? []).filter((r) => r.status === "pending").length;
 
@@ -129,6 +162,12 @@ export default function LeaveRequestsAdmin() {
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#3b6ea5]/20">
             {STATUS_FILTERS.map((s) => (
               <option key={s} value={s}>{s === "all" ? "All statuses" : LEAVE_STATUS_LABEL[s]}</option>
+            ))}
+          </select>
+          <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#3b6ea5]/20">
+            {PERIOD_FILTERS.map((p) => (
+              <option key={p} value={p}>{PERIOD_LABEL[p]}</option>
             ))}
           </select>
         </div>
@@ -205,6 +244,9 @@ export default function LeaveRequestsAdmin() {
                       <p className="mt-1 text-[11px] text-gray-400">
                         Submitted {new Date(r.created_at).toLocaleDateString()}
                         {r.reviewed_at ? ` · reviewed ${new Date(r.reviewed_at).toLocaleDateString()}` : ""}
+                        {r.reviewed_at && r.reviewed_by && empByUserId.get(r.reviewed_by)?.display_name
+                          ? ` by ${empByUserId.get(r.reviewed_by)?.display_name}`
+                          : ""}
                         {r.cancelled_at ? ` · cancelled ${new Date(r.cancelled_at).toLocaleDateString()}` : ""}
                       </p>
                     </div>
