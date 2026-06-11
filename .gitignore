@@ -60,3 +60,9 @@ graphify-out/cache/
 .claude/scratch/
 graphify-out/graph.html
 .claude/scratch/build_playbook.py
+
+# ---- Claude harness local-only files (never commit) ----
+.claude/settings.local.json
+.claude/tmp/
+.claude/launch.json
+.claude/scheduled_tasks.lock
