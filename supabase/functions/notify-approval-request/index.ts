@@ -90,6 +90,15 @@ Deno.serve(async (req: Request) => {
     requestId,
   } = body;
 
+  // Compensation decisions are internal payroll matters. They must never
+  // produce emails (neither to the target employee nor to the requester) —
+  // approvers and requesters are informed via the in-app bell / Approvals
+  // Inbox only. Hard server-side guard so no caller can re-enable this.
+  if (actionType === "compensation_adjustment") {
+    console.log("[notify-approval-request] Skipping email for compensation_adjustment (bell-only policy)");
+    return json({ ok: true, emailSent: false, skipped: "compensation_no_email" });
+  }
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
