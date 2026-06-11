@@ -298,16 +298,6 @@ function fmtGhlSync(ts: string): string {
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function fmtSyncAge(ts: Date | null): string {
-  if (!ts) return "—";
-  const secs = Math.floor((Date.now() - ts.getTime()) / 1000);
-  if (secs < 10) return "just now";
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  return `${Math.floor(mins / 60)}h ago`;
-}
-
 // ── Last-contacted badge helper ───────────────────────────────────────────
 function fmtLastContacted(ts: string | null): { label: string; color: string } | null {
   if (!ts) return null;
@@ -394,6 +384,85 @@ export default function AdminOrdersPage() {
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  // ── Orders KPI card counts (server-side, full DB) ─────────────────────────
+  // Lead (Unpaid) + Completed default to the current PKT business month and
+  // follow the custom date range when one is set. Paid (Unassigned), Under
+  // Review and Payment Failed are actionable backlog → always all-time. HEAD
+  // count queries only; the order list below is unaffected and still shows
+  // every order it already loads (scrolling/search unchanged).
+  const [kpiCounts, setKpiCounts] = useState<{
+    leadUnpaid: number | null;
+    paidUnassigned: number | null;
+    underReview: number | null;
+    completed: number | null;
+    paymentFailed: number | null;
+  }>({ leadUnpaid: null, paidUnassigned: null, underReview: null, completed: null, paymentFailed: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    // Debounced so realtime order bursts collapse into one refresh.
+    const t = window.setTimeout(async () => {
+      const PKT_MS = 5 * 3600_000; // PKT is UTC+5, no DST
+      let fromIso: string;
+      let toIso: string | null = null;
+      if (dateFrom || dateTo) {
+        fromIso = dateFrom ? new Date(`${dateFrom}T00:00:00+05:00`).toISOString() : new Date(0).toISOString();
+        toIso = dateTo ? new Date(`${dateTo}T23:59:59.999+05:00`).toISOString() : null;
+      } else {
+        const pkt = new Date(Date.now() + PKT_MS);
+        fromIso = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth(), 1) - PKT_MS).toISOString();
+      }
+      const head = { count: "exact" as const, head: true };
+
+      let leadQ = supabase.from("orders").select("id", head)
+        .neq("status", "cancelled")
+        .or("payment_intent_id.is.null,status.eq.lead")
+        .or("historical_import.is.null,historical_import.eq.false")
+        .or("source_system.is.null,source_system.neq.wordpress_legacy")
+        .gte("created_at", fromIso);
+      if (toIso) leadQ = leadQ.lte("created_at", toIso);
+
+      // Completed = patient notified inside the window; rows without a
+      // notification timestamp fall back to created_at.
+      const cTo = toIso ?? new Date(Date.now() + 86_400_000).toISOString();
+      const completedQ = supabase.from("orders").select("id", head)
+        .eq("doctor_status", "patient_notified")
+        .or(`and(patient_notification_sent_at.gte.${fromIso},patient_notification_sent_at.lte.${cTo}),and(patient_notification_sent_at.is.null,created_at.gte.${fromIso},created_at.lte.${cTo})`);
+
+      const paidUnassignedQ = supabase.from("orders").select("id", head)
+        .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
+        .is("refunded_at", null)
+        .not("payment_intent_id", "is", null)
+        .is("doctor_email", null).is("doctor_user_id", null)
+        .or("doctor_status.is.null,doctor_status.neq.patient_notified");
+
+      const underReviewQ = supabase.from("orders").select("id", head)
+        .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
+        .is("refunded_at", null)
+        .not("payment_intent_id", "is", null)
+        .or("doctor_email.not.is.null,doctor_user_id.not.is.null")
+        .or("doctor_status.is.null,doctor_status.neq.patient_notified");
+
+      const paymentFailedQ = supabase.from("orders").select("id", head)
+        .not("payment_failure_reason", "is", null)
+        .or("status.eq.lead,payment_intent_id.is.null");
+
+      const [lead, paid, review, comp, failed] = await Promise.all([
+        leadQ, paidUnassignedQ, underReviewQ, completedQ, paymentFailedQ,
+      ]);
+      if (cancelled) return;
+      setKpiCounts({
+        leadUnpaid: lead.error ? null : (lead.count ?? null),
+        paidUnassigned: paid.error ? null : (paid.count ?? null),
+        underReview: review.error ? null : (review.count ?? null),
+        completed: comp.error ? null : (comp.count ?? null),
+        paymentFailed: failed.error ? null : (failed.count ?? null),
+      });
+    }, 800);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [dateFrom, dateTo, orders]);
+
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [showNonGhlOnly, setShowNonGhlOnly] = useState(false);
@@ -454,8 +523,10 @@ export default function AdminOrdersPage() {
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
   const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
+  // Timestamp of the last successful data load / realtime push. Retained for
+  // the 30s background-refresh cadence; the top-bar "Synced X ago" chip that
+  // used to render it has been removed.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
-  const [syncTick, setSyncTick] = useState(0);
   const [unreadCommsCount, setUnreadCommsCount] = useState(0);
   const [unreadContactsCount, setUnreadContactsCount] = useState(0);
 
@@ -718,12 +789,11 @@ export default function AdminOrdersPage() {
     }
   }, []);
 
-  // ── Auto-refresh every 30s: display tick + background data re-fetch ───────
+  // ── Auto-refresh every 30s: silent background data re-fetch ───────────────
   // Realtime handles instant pushes; this is the safety-net full re-fetch.
   // Skips if a modal is open so nothing is pulled out from under the user.
   useEffect(() => {
     const interval = setInterval(() => {
-      setSyncTick((t) => t + 1);          // refresh "Synced X ago" display
       if (!anyModalOpenRef.current) {
         loadOrderData();                  // silent background re-fetch
       }
@@ -1737,21 +1807,11 @@ export default function AdminOrdersPage() {
           <EmployeePresenceBar />
         </div>
 
-        {/* Right cluster: sync indicator · notifications · refresh · profile.
-            Name/role live in the profile dropdown header; Manager Approvals
-            moved to Team tab → Manager Tools. */}
+        {/* Right cluster: notifications · refresh · profile. The blue "Synced
+            X ago" chip was removed — the 30s background refresh + realtime
+            subscriptions still run silently. Name/role live in the profile
+            dropdown header; Manager Approvals moved to Team tab → Manager Tools. */}
         <div className="flex items-center gap-1.5 sm:gap-3">
-          {/* Sync indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-[#e8f0f9] border border-[#b8cce4] rounded-lg" title={lastSyncedAt ? `Last synced: ${lastSyncedAt.toLocaleTimeString()}` : "Connecting…"}>
-            <span className="relative flex h-2 w-2 flex-shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3b6ea5] opacity-50"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3b6ea5]"></span>
-            </span>
-            <span className="text-xs font-semibold text-[#3b6ea5] whitespace-nowrap">
-              {syncTick >= 0 && lastSyncedAt ? `Synced ${fmtSyncAge(lastSyncedAt)}` : "Live"}
-            </span>
-          </div>
-
           <NotificationsBell
             onViewOrder={(confirmationId) => {
               const order = orders.find((o) => o.confirmation_id === confirmationId);
@@ -1937,35 +1997,40 @@ export default function AdminOrdersPage() {
                 {[
                   {
                     label: "Lead (Unpaid)",
-                    value: orders.filter((o) => o.status !== "cancelled" && !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead")).length,
+                    value: kpiCounts.leadUnpaid ?? orders.filter((o) => o.status !== "cancelled" && !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead")).length,
+                    sub: dateFrom || dateTo ? "Selected range" : "This month",
                     icon: "ri-user-follow-line",
                     color: "text-amber-600",
                     filter: "lead_unpaid",
                   },
                   {
                     label: "Paid (Unassigned)",
-                    value: orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && o.status !== "lead" && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length,
+                    value: kpiCounts.paidUnassigned ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && o.status !== "lead" && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length,
+                    sub: "Open backlog",
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
                     filter: "paid_unassigned",
                   },
                   {
                     label: "Under Review",
-                    value: orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && o.status !== "lead" && (o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified").length,
+                    value: kpiCounts.underReview ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && o.status !== "lead" && (o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified").length,
+                    sub: "Open backlog",
                     icon: "ri-time-line",
                     color: "text-violet-600",
                     filter: "under_review",
                   },
                   {
                     label: "Completed",
-                    value: orders.filter((o) => o.doctor_status === "patient_notified").length,
+                    value: kpiCounts.completed ?? orders.filter((o) => o.doctor_status === "patient_notified").length,
+                    sub: dateFrom || dateTo ? "Selected range" : "This month",
                     icon: "ri-checkbox-circle-line",
                     color: "text-emerald-600",
                     filter: "completed",
                   },
                   {
                     label: "Payment Failed",
-                    value: orders.filter((o) => !!(o.payment_failure_reason) && (o.status === "lead" || !o.payment_intent_id)).length,
+                    value: kpiCounts.paymentFailed ?? orders.filter((o) => !!(o.payment_failure_reason) && (o.status === "lead" || !o.payment_intent_id)).length,
+                    sub: "All-time",
                     icon: "ri-bank-card-line",
                     color: "text-red-500",
                     filter: "payment_failed",
@@ -1981,7 +2046,9 @@ export default function AdminOrdersPage() {
                       <i className={`${s.icon} ${s.color} text-sm`}></i>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] text-gray-500 font-medium leading-none truncate">{s.label}</p>
+                      <p className="text-[10px] text-gray-500 font-medium leading-none truncate">
+                        {s.label}{s.sub ? <span className="text-gray-400 font-normal"> · {s.sub}</span> : null}
+                      </p>
                       <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value}</p>
                     </div>
                   </button>
