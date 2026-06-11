@@ -18,6 +18,13 @@ interface MySalarySnapshot {
   working_days: number;
   half_day_late_days: number;
   late_deduction_amount: number;
+  // Approved compensation adjustments for the month (Company OS). Optional so
+  // the widget tolerates the pre-additions RPC shape.
+  bonus_amount?: number;
+  commission_amount?: number;
+  other_additions?: number;
+  other_deductions?: number;
+  additions_total?: number;
   payable_amount: number;
   included: boolean;
   exclude_reason: string | null;
@@ -97,30 +104,49 @@ export default function SalarySnapshotWidget() {
                   {fmtMoney(snap.base_salary, snap.salary_currency)}
                 </dd>
               </div>
-              <div className="flex items-center justify-between py-2">
-                <dt className="text-xs text-stone-600">Additions</dt>
-                <dd className="text-sm font-semibold text-emerald-600">
-                  {fmtMoney(0, snap.salary_currency)}
-                </dd>
+              <div className="py-2">
+                <div className="flex items-center justify-between">
+                  <dt className="text-xs text-stone-600">Additions</dt>
+                  <dd className={`text-sm font-semibold ${((snap.bonus_amount ?? 0) + (snap.commission_amount ?? 0) + (snap.other_additions ?? 0)) > 0 ? "text-emerald-600" : "text-stone-800"}`}>
+                    {((snap.bonus_amount ?? 0) + (snap.commission_amount ?? 0) + (snap.other_additions ?? 0)) > 0 ? "+" : ""}
+                    {fmtMoney((snap.bonus_amount ?? 0) + (snap.commission_amount ?? 0) + (snap.other_additions ?? 0), snap.salary_currency)}
+                  </dd>
+                </div>
+                {((snap.bonus_amount ?? 0) > 0 || (snap.commission_amount ?? 0) > 0 || (snap.other_additions ?? 0) > 0) && (
+                  <p className="mt-0.5 text-[10px] text-stone-400">
+                    {[
+                      (snap.bonus_amount ?? 0) > 0 ? `Bonus ${fmtMoney(snap.bonus_amount ?? 0, snap.salary_currency)}` : null,
+                      (snap.commission_amount ?? 0) > 0 ? `Commission ${fmtMoney(snap.commission_amount ?? 0, snap.salary_currency)}` : null,
+                      (snap.other_additions ?? 0) > 0 ? `Other ${fmtMoney(snap.other_additions ?? 0, snap.salary_currency)}` : null,
+                    ].filter(Boolean).join(" · ")}
+                  </p>
+                )}
               </div>
-              <div className="flex items-center justify-between py-2">
-                <dt className="text-xs text-stone-600">
-                  Deductions
-                  {snap.half_day_late_days > 0 ? (
-                    <span className="ml-1 text-[10px] text-rose-500 font-semibold">
-                      ({snap.half_day_late_days} half-day late)
-                    </span>
-                  ) : null}
-                </dt>
-                <dd
-                  className={`text-sm font-semibold ${
-                    snap.late_deduction_amount > 0 ? "text-rose-600" : "text-stone-800"
-                  }`}
-                >
-                  {snap.late_deduction_amount > 0
-                    ? `−${fmtMoney(snap.late_deduction_amount, snap.salary_currency)}`
-                    : fmtMoney(0, snap.salary_currency)}
-                </dd>
+              <div className="py-2">
+                <div className="flex items-center justify-between">
+                  <dt className="text-xs text-stone-600">
+                    Deductions
+                    {snap.half_day_late_days > 0 ? (
+                      <span className="ml-1 text-[10px] text-rose-500 font-semibold">
+                        ({snap.half_day_late_days} half-day late)
+                      </span>
+                    ) : null}
+                  </dt>
+                  <dd
+                    className={`text-sm font-semibold ${
+                      snap.late_deduction_amount + (snap.other_deductions ?? 0) > 0 ? "text-rose-600" : "text-stone-800"
+                    }`}
+                  >
+                    {snap.late_deduction_amount + (snap.other_deductions ?? 0) > 0
+                      ? `−${fmtMoney(snap.late_deduction_amount + (snap.other_deductions ?? 0), snap.salary_currency)}`
+                      : fmtMoney(0, snap.salary_currency)}
+                  </dd>
+                </div>
+                {(snap.other_deductions ?? 0) > 0 && snap.late_deduction_amount > 0 && (
+                  <p className="mt-0.5 text-[10px] text-stone-400">
+                    Late {fmtMoney(snap.late_deduction_amount, snap.salary_currency)} · Other {fmtMoney(snap.other_deductions ?? 0, snap.salary_currency)}
+                  </p>
+                )}
               </div>
               <div className="flex items-center justify-between pt-2.5">
                 <dt className="text-xs font-semibold text-stone-700">Net Payable</dt>

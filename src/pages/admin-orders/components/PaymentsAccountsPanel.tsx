@@ -11,6 +11,7 @@ import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAcc
 import { formatTimeOfDay12, pktTime12String } from "../../../lib/timezones";
 import { fetchAccountingPeriods, type AccountingPeriod } from "../../../lib/accountsBooks";
 import MonthlyBooksSummary from "./MonthlyBooksSummary";
+import CompensationAdjustmentsCard from "./CompensationAdjustmentsCard";
 
 // Minimal shapes mirrored from PaymentsTab (avoids cross-file type coupling).
 interface MiniSummary {
@@ -521,6 +522,15 @@ export default function PaymentsAccountsPanel({
               )}
             </div>
           )}
+
+          {/* Compensation adjustments — bonuses / commissions / monthly adjustments
+              (Company OS). Approved rows already flow into the salary figures above. */}
+          <CompensationAdjustmentsCard
+            from={range.from}
+            to={range.to}
+            canManage={canManageBooks}
+            onChanged={refreshAll}
+          />
 
           {/* Auto-synced ad spend — system-generated, non-editable. Follows the
               selected range; never stored as a manual expense. */}

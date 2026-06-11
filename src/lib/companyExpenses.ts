@@ -90,6 +90,13 @@ export interface SalaryExpenseSummaryRow {
   half_day_late_count?: number;
   late_deduction_total?: number;
   payable_total?: number;
+  // Approved compensation adjustments (Company OS). Older closed snapshots may
+  // lack these — treat as optional. payable_total already includes additions.
+  bonus_total?: number;
+  commission_total?: number;
+  other_additions_total?: number;
+  other_deductions_total?: number;
+  additions_total?: number;
 }
 
 export interface ProviderPayoutRow {
@@ -465,6 +472,12 @@ export interface SalaryDetailRow {
   half_day_late_days?: number;
   late_deduction_amount?: number;
   payable_amount?: number;
+  // Approved compensation adjustments (Company OS) — included in payable_amount.
+  bonus_amount?: number;
+  commission_amount?: number;
+  other_additions?: number;
+  other_deductions?: number;
+  additions_total?: number;
 }
 
 // Admin-only per-employee salary breakdown (diagnostic). Gated server-side.
