@@ -20,6 +20,8 @@ export interface AttendanceTeamMemberLite {
   display_name: string | null;
   employee_code: string | null;
   is_active: boolean;
+  /** Company OS role label — 'owner' rows are excluded from salary deductions. */
+  domain_role?: string | null;
 }
 
 export interface AttendanceShiftTemplateLite {
@@ -68,7 +70,7 @@ interface RawAssignmentLink {
 export async function fetchActiveTeamMembersList(): Promise<AttendanceTeamMemberLite[]> {
   const { data, error } = await supabase
     .from("team_members")
-    .select("id, display_name, employee_code, is_active")
+    .select("id, display_name, employee_code, is_active, domain_role")
     .eq("is_active", true)
     .order("employee_code", { ascending: true });
 
@@ -132,7 +134,7 @@ export async function fetchAttendanceEntries(params: {
   const memberPromise = memberIds.length
     ? supabase
         .from("team_members")
-        .select("id, display_name, employee_code, is_active")
+        .select("id, display_name, employee_code, is_active, domain_role")
         .in("id", memberIds)
     : Promise.resolve({ data: [] as AttendanceTeamMemberLite[], error: null });
 

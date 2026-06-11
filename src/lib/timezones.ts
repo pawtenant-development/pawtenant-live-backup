@@ -61,6 +61,56 @@ export function pktTimeString(value: Date | string | number): string {
 }
 
 /**
+ * Returns the PKT clock time for the given timestamp in the canonical
+ * user-facing 12-hour format, e.g. '10:03 PM'. Pass `withSuffix` to get
+ * '10:03 PM PKT' where the surrounding UI doesn't already say PKT.
+ */
+export function pktTime12String(
+  value: Date | string | number,
+  withSuffix = false,
+): string {
+  const d = toDate(value);
+  if (!d) return "";
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: PKT_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+  return withSuffix ? `${formatted} PKT` : formatted;
+}
+
+/**
+ * Formats a wall-clock time-of-day string ('HH:MM' or 'HH:MM:SS', e.g. a
+ * shift_templates start/end time) as 12-hour AM/PM, e.g. '19:00' → '7:00 PM'.
+ * Pure string math — the value is already a PKT wall-clock time.
+ */
+export function formatTimeOfDay12(value: string | null | undefined): string {
+  if (!value) return "—";
+  const [hh, mm] = value.split(":");
+  const h = Number(hh);
+  const m = Number(mm ?? "0");
+  if (Number.isNaN(h) || Number.isNaN(m)) return value;
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/**
+ * Formats a shift wall-clock range as '7:00 PM–4:00 AM PKT'.
+ * Pass `withSuffix=false` where the surrounding UI already says PKT.
+ */
+export function formatShiftRange12(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  withSuffix = true,
+): string {
+  if (!start || !end) return "—";
+  const range = `${formatTimeOfDay12(start)}–${formatTimeOfDay12(end)}`;
+  return withSuffix ? `${range} PKT` : range;
+}
+
+/**
  * Returns a short, human-readable PKT date+time string, e.g.
  * 'Apr 27, 8:00 PM PKT'. Used in admin tables / activity logs.
  */

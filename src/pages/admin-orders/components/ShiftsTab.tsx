@@ -19,7 +19,11 @@ import {
   fetchActiveTeamMembersList,
   type AttendanceTeamMemberLite,
 } from "../../../lib/attendanceAdmin";
-import { pktDateString } from "../../../lib/timezones";
+import {
+  formatShiftRange12,
+  formatTimeOfDay12,
+  pktDateString,
+} from "../../../lib/timezones";
 
 /**
  * ShiftsTab — Admin shift-assignment view (COS-051).
@@ -35,17 +39,9 @@ import { pktDateString } from "../../../lib/timezones";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
-function fmtShiftClock(value: string | null | undefined): string {
-  if (!value) return "—";
-  const [hh, mm] = value.split(":");
-  const h = Number(hh);
-  const m = Number(mm ?? "0");
-  if (Number.isNaN(h) || Number.isNaN(m)) return value;
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  const mPad = String(m).padStart(2, "0");
-  return `${h12}:${mPad} ${period}`;
-}
+// Shared PKT 12-hour formatter (lib/timezones.ts) keeps shift wall-clock
+// display consistent with Attendance / salary breakdown / Company portal.
+const fmtShiftClock = formatTimeOfDay12;
 
 function memberLabel(m: AttendanceTeamMemberLite | null): string {
   if (!m) return "Unknown";
@@ -781,7 +777,7 @@ function DesktopRow({
   const shiftName = row.shift?.name ?? "—";
   const startEnd =
     row.shift && row.shift.start_time && row.shift.end_time
-      ? `${fmtShiftClock(row.shift.start_time)} – ${fmtShiftClock(row.shift.end_time)}`
+      ? formatShiftRange12(row.shift.start_time, row.shift.end_time)
       : "";
   const effective = `${row.effective_from} → ${row.effective_to ?? "open"}`;
   const offDays = formatOffDays(row.weekly_off_days);
@@ -837,7 +833,7 @@ function MobileCard({
   const shiftName = row.shift?.name ?? "—";
   const startEnd =
     row.shift && row.shift.start_time && row.shift.end_time
-      ? `${fmtShiftClock(row.shift.start_time)} – ${fmtShiftClock(row.shift.end_time)}`
+      ? formatShiftRange12(row.shift.start_time, row.shift.end_time)
       : "";
   const isEnded = !!row.effective_to && row.effective_to <= today;
 

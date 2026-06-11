@@ -8,6 +8,7 @@ import {
   type EffectiveExpense, type ChargePayoutResolution, type MarketingSpendSummary,
 } from "../../../lib/companyExpenses";
 import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAccounts";
+import { formatTimeOfDay12, pktTime12String } from "../../../lib/timezones";
 import { fetchAccountingPeriods, type AccountingPeriod } from "../../../lib/accountsBooks";
 import MonthlyBooksSummary from "./MonthlyBooksSummary";
 
@@ -503,9 +504,9 @@ export default function PaymentsAccountsPanel({
                         <div key={`${l.team_member_id}-${l.work_date}`} className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr] gap-2 px-3 py-1.5 text-xs border-t border-rose-100/60">
                           <span className="truncate text-gray-700">{l.display_name ?? l.employee_code ?? "—"}</span>
                           <span className="text-gray-600">{l.work_date}</span>
-                          <span className="text-right text-gray-600">{l.shift_start.slice(0, 5)}</span>
+                          <span className="text-right text-gray-600">{formatTimeOfDay12(l.shift_start)} PKT</span>
                           <span className="text-right text-gray-600">
-                            {new Date(l.clock_in_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi" })} PKT
+                            {pktTime12String(l.clock_in_at, true)}
                           </span>
                           <span className="text-right font-semibold text-rose-500">{l.minutes_late} min</span>
                         </div>

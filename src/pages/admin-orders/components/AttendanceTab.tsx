@@ -7,7 +7,11 @@ import {
   type AttendanceEntry,
   type AttendanceTeamMemberLite,
 } from "../../../lib/attendanceAdmin";
-import { pktDateString, pktTimeString } from "../../../lib/timezones";
+import { pktDateString, pktTime12String } from "../../../lib/timezones";
+import {
+  fetchHalfDayLateDetail,
+  type HalfDayLateRow,
+} from "../../../lib/companyExpenses";
 import AttendanceSummaryPanel from "./AttendanceSummaryPanel";
 import AttendanceNetSummaryPanel from "./AttendanceNetSummaryPanel";
 import AdjustedTimesheetReport from "./AdjustedTimesheetReport";
@@ -70,6 +74,7 @@ export default function AttendanceTab() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [entries, setEntries] = useState<AttendanceEntry[]>([]);
   const [members, setMembers] = useState<AttendanceTeamMemberLite[]>([]);
+  const [lateRows, setLateRows] = useState<HalfDayLateRow[]>([]);
 
   const initial = defaultRange();
   const [from, setFrom] = useState<string>(initial.from);
@@ -81,16 +86,22 @@ export default function AttendanceTab() {
       setState("loading");
       setErrorMessage(null);
       try {
-        const [list, rows] = await Promise.all([
+        const [list, rows, late] = await Promise.all([
           fetchActiveTeamMembersList(),
           fetchAttendanceEntries({
             fromWorkDatePkt: range.from,
             toWorkDatePkt: range.to,
             teamMemberId: memberId || undefined,
           }),
+          // Single source of truth for half-day-late days (30-min grace,
+          // policy start date enforced server-side). Stored was_late /
+          // late_minutes on old rows predate the 30-min policy — never
+          // trust them for the ½-day badge.
+          fetchHalfDayLateDetail(range.from, range.to),
         ]);
         setMembers(list);
         setEntries(rows);
+        setLateRows(late);
         setState("ready");
       } catch (err) {
         console.warn("[AttendanceTab] reload error", err);
@@ -139,6 +150,15 @@ export default function AttendanceTab() {
     );
     return ordered;
   }, [entries]);
+
+  // Half-day-late lookup keyed by employee + work_date. The RPC returns the
+  // day's FIRST clock-in, so an entry only earns the badge when its own
+  // clock_in_at matches (later sessions the same day never re-badge).
+  const lateByDay = useMemo(() => {
+    const map = new Map<string, HalfDayLateRow>();
+    for (const l of lateRows) map.set(`${l.team_member_id}|${l.work_date}`, l);
+    return map;
+  }, [lateRows]);
 
   const summary = useMemo(() => {
     const employees = new Set(entries.map((e) => e.team_member_id)).size;
@@ -323,7 +343,7 @@ export default function AttendanceTab() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {dayEntries.map((entry) => (
-                      <DesktopRow key={entry.id} entry={entry} />
+                      <DesktopRow key={entry.id} entry={entry} lateInfo={lateInfoFor(entry, lateByDay)} />
                     ))}
                   </tbody>
                 </table>
@@ -332,7 +352,7 @@ export default function AttendanceTab() {
               {/* Mobile cards */}
               <div className="lg:hidden divide-y divide-slate-100">
                 {dayEntries.map((entry) => (
-                  <MobileCard key={entry.id} entry={entry} />
+                  <MobileCard key={entry.id} entry={entry} lateInfo={lateInfoFor(entry, lateByDay)} />
                 ))}
               </div>
             </div>
@@ -343,7 +363,50 @@ export default function AttendanceTab() {
   );
 }
 
-function DesktopRow({ entry }: { entry: AttendanceEntry }) {
+/**
+ * Resolves the half-day-late row for an entry — only when this entry IS the
+ * day's first clock-in (the RPC's clock_in_at matches). 0–29 min after shift
+ * start is within the 30-minute grace and shows as on time.
+ */
+function lateInfoFor(
+  entry: AttendanceEntry,
+  lateByDay: Map<string, HalfDayLateRow>,
+): HalfDayLateRow | null {
+  const l = lateByDay.get(`${entry.team_member_id}|${entry.work_date}`);
+  if (!l) return null;
+  return new Date(l.clock_in_at).getTime() === new Date(entry.clock_in_at).getTime() ? l : null;
+}
+
+function LateBadge({
+  entry,
+  lateInfo,
+}: {
+  entry: AttendanceEntry;
+  lateInfo: HalfDayLateRow | null;
+}) {
+  if (lateInfo) {
+    // Owner compensation is excluded from salary, so never claim a ½-day
+    // deduction for owner rows — show the late minutes only.
+    if (entry.member?.domain_role === "owner") {
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-semibold" title="Late — owner compensation is excluded from salary deductions">
+          +{lateInfo.minutes_late}m
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-semibold" title="Half-day late — half-day salary deduction applies (clock-in 30+ min after shift start)">
+        +{lateInfo.minutes_late}m · ½ day
+      </span>
+    );
+  }
+  if (entry.was_late === null || entry.was_late === undefined) {
+    return <span className="text-slate-400 text-xs">—</span>;
+  }
+  return <span className="text-slate-400 text-xs">On time</span>;
+}
+
+function DesktopRow({ entry, lateInfo }: { entry: AttendanceEntry; lateInfo: HalfDayLateRow | null }) {
   const isOpen = !entry.clock_out_at;
   const memberName = entry.member?.display_name?.trim() || "Unknown";
   const code = entry.member?.employee_code ?? null;
@@ -368,11 +431,11 @@ function DesktopRow({ entry }: { entry: AttendanceEntry }) {
         {entry.shift?.name ?? <span className="text-slate-400">—</span>}
       </td>
       <td className="px-4 py-3 align-top text-slate-700 font-mono text-xs">
-        {pktTimeString(entry.clock_in_at)}
+        {pktTime12String(entry.clock_in_at)}
       </td>
       <td className="px-4 py-3 align-top text-slate-700 font-mono text-xs">
         {entry.clock_out_at ? (
-          pktTimeString(entry.clock_out_at)
+          pktTime12String(entry.clock_out_at)
         ) : (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-semibold">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
@@ -384,15 +447,7 @@ function DesktopRow({ entry }: { entry: AttendanceEntry }) {
         {worked ?? <span className="text-emerald-700 font-semibold">In progress</span>}
       </td>
       <td className="px-4 py-3 align-top">
-        {entry.was_late ? (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-semibold" title="Half-day late — half-day salary deduction applies (30-min grace)">
-            +{entry.late_minutes ?? 0}m · ½ day
-          </span>
-        ) : entry.was_late === false ? (
-          <span className="text-slate-400 text-xs">On time</span>
-        ) : (
-          <span className="text-slate-400 text-xs">—</span>
-        )}
+        <LateBadge entry={entry} lateInfo={lateInfo} />
       </td>
       <td className="px-4 py-3 align-top">
         <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold">
@@ -403,7 +458,7 @@ function DesktopRow({ entry }: { entry: AttendanceEntry }) {
   );
 }
 
-function MobileCard({ entry }: { entry: AttendanceEntry }) {
+function MobileCard({ entry, lateInfo }: { entry: AttendanceEntry; lateInfo: HalfDayLateRow | null }) {
   const isOpen = !entry.clock_out_at;
   const memberName = entry.member?.display_name?.trim() || "Unknown";
   const code = entry.member?.employee_code ?? null;
@@ -435,12 +490,12 @@ function MobileCard({ entry }: { entry: AttendanceEntry }) {
       <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
         <div>
           <span className="text-slate-500">In:</span>{" "}
-          <span className="font-mono text-slate-800">{pktTimeString(entry.clock_in_at)}</span>
+          <span className="font-mono text-slate-800">{pktTime12String(entry.clock_in_at, true)}</span>
         </div>
         <div>
           <span className="text-slate-500">Out:</span>{" "}
           {entry.clock_out_at ? (
-            <span className="font-mono text-slate-800">{pktTimeString(entry.clock_out_at)}</span>
+            <span className="font-mono text-slate-800">{pktTime12String(entry.clock_out_at, true)}</span>
           ) : (
             <span className="text-slate-400">—</span>
           )}
@@ -453,13 +508,7 @@ function MobileCard({ entry }: { entry: AttendanceEntry }) {
         </div>
         <div>
           <span className="text-slate-500">Late:</span>{" "}
-          {entry.was_late ? (
-            <span className="text-rose-700 font-semibold">+{entry.late_minutes ?? 0}m · ½ day</span>
-          ) : entry.was_late === false ? (
-            <span className="text-slate-700">On time</span>
-          ) : (
-            <span className="text-slate-400">—</span>
-          )}
+          <LateBadge entry={entry} lateInfo={lateInfo} />
         </div>
       </div>
     </div>

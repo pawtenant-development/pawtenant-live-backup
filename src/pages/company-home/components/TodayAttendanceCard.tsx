@@ -3,7 +3,7 @@ import {
   fetchMyTodayAttendance,
   type TodayAttendanceEntry,
 } from "../../../lib/attendance";
-import { pktTimeString } from "../../../lib/timezones";
+import { pktTime12String } from "../../../lib/timezones";
 
 interface TodayAttendanceCardProps {
   teamMemberId: string;
@@ -71,10 +71,10 @@ export default function TodayAttendanceCard({ teamMemberId, reloadToken }: Today
       ) : (
         <>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <Stat label="Clock In" value={`${pktTimeString(entry.clock_in_at)}`} />
+            <Stat label="Clock In" value={pktTime12String(entry.clock_in_at)} />
             <Stat
               label="Clock Out"
-              value={entry.clock_out_at ? pktTimeString(entry.clock_out_at) : "—"}
+              value={entry.clock_out_at ? pktTime12String(entry.clock_out_at) : "—"}
             />
             <Stat label="Worked" value={duration} />
           </div>
@@ -92,12 +92,15 @@ export default function TodayAttendanceCard({ teamMemberId, reloadToken }: Today
               </span>
             )}
 
-            {entry.was_late ? (
+            {/* ½-day applies only at 30+ min after shift start (policy floor).
+                Rows written under the old 15-min grace can carry a stale
+                was_late flag, so re-check the minutes before claiming ½-day. */}
+            {entry.was_late && (entry.late_minutes ?? 0) >= 30 ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-medium text-amber-800">
                 <i className="ri-time-line"></i>
-                Late{entry.late_minutes ? ` by ${entry.late_minutes} min` : ""} · half-day
+                Late by {entry.late_minutes} min · half-day
               </span>
-            ) : entry.was_late === false ? (
+            ) : entry.was_late !== null && entry.was_late !== undefined ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-800">
                 <i className="ri-checkbox-circle-line"></i>
                 On time
