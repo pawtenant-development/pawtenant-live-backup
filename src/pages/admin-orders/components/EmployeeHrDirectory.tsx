@@ -17,6 +17,10 @@ import {
   type HrPrivatePatch,
 } from "../../../lib/employeeHr";
 import EmployeeDocumentsAdmin from "./EmployeeDocumentsAdmin";
+import EmployeeDepartmentAccess from "./EmployeeDepartmentAccess";
+import DepartmentsManagerCard from "./DepartmentsManagerCard";
+import { fetchDepartments, type CompanyDepartment } from "../../../lib/companyOs";
+import { listBundleKeys } from "../../../lib/permissions";
 
 /**
  * Employee Master / HR Profile directory — admin Workstation (Team tab sub-view).
@@ -54,14 +58,20 @@ export default function EmployeeHrDirectory() {
   const [deptFilter, setDeptFilter] = useState<string>("all");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [allDepartments, setAllDepartments] = useState<CompanyDepartment[]>([]);
 
   async function loadList() {
     const rows = await fetchAllEmployees();
     setEmployees(rows);
   }
 
+  async function loadDepartments() {
+    setAllDepartments(await fetchDepartments(true));
+  }
+
   useEffect(() => {
     loadList();
+    loadDepartments();
   }, []);
 
   const departments = useMemo(() => {
@@ -113,6 +123,8 @@ export default function EmployeeHrDirectory() {
         domain_role: emp.domain_role,
         manager_id: emp.manager_id,
         address: emp.address,
+        primary_department_id: emp.primary_department_id,
+        permission_bundle: emp.permission_bundle,
       },
       hr: {},
     });
@@ -153,7 +165,9 @@ export default function EmployeeHrDirectory() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
+    <div>
+      <DepartmentsManagerCard departments={allDepartments} onChanged={loadDepartments} />
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
       {/* List */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="p-3 border-b border-gray-100 space-y-2">
@@ -243,11 +257,40 @@ export default function EmployeeHrDirectory() {
             </Section>
 
             <Section title="Employment">
-              <Field label="Domain"><Text value={form.master.department} onChange={(v) => setMaster("department", v)} /></Field>
+              <Field label="Primary department">
+                <Select
+                  value={form.master.primary_department_id ?? ""}
+                  onChange={(v) => {
+                    // Keep the legacy free-text department in sync with the
+                    // selected master department (display/back-compat only —
+                    // real access lives in Departments & Access below).
+                    const dept = allDepartments.find((d) => d.id === v) ?? null;
+                    setForm((p) => ({
+                      ...p,
+                      master: {
+                        ...p.master,
+                        primary_department_id: v || null,
+                        department: dept ? dept.name : p.master.department,
+                      },
+                    }));
+                  }}
+                >
+                  <option value="">—</option>
+                  {allDepartments.filter((d) => d.is_active).map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Company OS Role">
                 <Select value={form.master.domain_role ?? ""} onChange={(v) => setMaster("domain_role", v || null)}>
                   <option value="">—</option>
                   {DOMAIN_ROLES.map((r) => <option key={r} value={r}>{DOMAIN_ROLE_LABEL[r]}</option>)}
+                </Select>
+              </Field>
+              <Field label="Permission bundle">
+                <Select value={form.master.permission_bundle ?? ""} onChange={(v) => setMaster("permission_bundle", v || null)}>
+                  <option value="">—</option>
+                  {listBundleKeys().map((b) => <option key={b} value={b}>{b.replace(/_/g, " ")}</option>)}
                 </Select>
               </Field>
               <Field label="Authority level (legacy)"><Text value={form.master.authority_level} onChange={(v) => setMaster("authority_level", v)} /></Field>
@@ -300,6 +343,8 @@ export default function EmployeeHrDirectory() {
               )}
             </Section>
 
+            <EmployeeDepartmentAccess teamMemberId={selected.id} departments={allDepartments} />
+
             <EmployeeDocumentsAdmin teamMemberId={selected.id} />
 
             {toast && (
@@ -317,6 +362,7 @@ export default function EmployeeHrDirectory() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

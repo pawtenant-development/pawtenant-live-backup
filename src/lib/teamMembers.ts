@@ -35,6 +35,11 @@ export interface TeamMember {
   company_id: string | null;
   /** Company OS role hierarchy level (labeling only; does not grant access). */
   domain_role: string | null;
+  /** Primary/default department (company_departments.id). Display + default;
+   *  real access comes from team_member_department_roles assignments. */
+  primary_department_id: string | null;
+  /** Capability bundle key (lib/permissions.ts). */
+  permission_bundle: string | null;
 }
 
 /** Company OS role hierarchy (labeling). owner = Boss/Owner/Super Admin. */

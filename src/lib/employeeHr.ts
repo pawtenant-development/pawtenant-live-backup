@@ -35,6 +35,8 @@ export type EmployeeMasterPatch = Partial<
     | "domain_role"
     | "manager_id"
     | "address"
+    | "primary_department_id"
+    | "permission_bundle"
   >
 >;
 

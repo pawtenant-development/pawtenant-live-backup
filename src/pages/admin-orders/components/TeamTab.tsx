@@ -804,7 +804,7 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
       </button>
       <button type="button" onClick={() => { setHrView(true); setLeaveView(false); setBreaksView(false); }}
         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${hrView ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-50"}`}>
-        <i className="ri-id-card-line mr-1" />Employee HR Profiles
+        <i className="ri-id-card-line mr-1" />Employees &amp; Departments
       </button>
       <button type="button" onClick={() => { setLeaveView(true); setHrView(false); setBreaksView(false); }}
         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${leaveView ? "bg-[#3b6ea5] text-white" : "text-gray-600 hover:bg-gray-50"}`}>
@@ -848,6 +848,28 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
   return (
     <div>
       {hrToggle}
+
+      {/* Company OS discoverability — where the org/department/compensation tools live. */}
+      {canManage && (
+        <div className="mb-5 rounded-xl border border-[#b8cce4] bg-[#e8f0f9] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <i className="ri-building-2-line text-[#3b6ea5] text-lg mt-0.5"></i>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-[#2d5a8e]">Company OS — Departments, Roles &amp; Compensation</p>
+              <p className="text-xs text-[#3b6ea5]">
+                Manage departments, assign people to multiple domains with per-department roles, set permission
+                bundles, and add bonuses/commissions under <strong>Employees &amp; Departments</strong>. Company-wide
+                payroll &amp; compensation approvals live in <strong>Accounts → Accounts</strong>.
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={() => { setHrView(true); setLeaveView(false); setBreaksView(false); }}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg bg-[#3b6ea5] hover:bg-[#2d5a8e] px-3.5 py-2 text-xs font-bold text-white cursor-pointer">
+            <i className="ri-arrow-right-line"></i>Open Employees &amp; Departments
+          </button>
+        </div>
+      )}
+
       {/* Stats */}
       {!loading && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
