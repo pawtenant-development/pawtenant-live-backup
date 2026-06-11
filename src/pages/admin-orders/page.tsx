@@ -37,12 +37,11 @@ import CommunicationsPanel from "./components/CommunicationsPanel";
 import SystemHealthTab from "./components/SystemHealthTab";
 import OrderCard from "./components/OrderCard";
 import AdminSidebar from "./components/AdminSidebar";
-import NotificationsBell from "./components/NotificationsBell";
+import CompanyNotificationsBell from "./components/CompanyNotificationsBell";
 import ApprovalRequestModal from "./components/ApprovalRequestModal";
 import ApprovalsInbox from "./components/ApprovalsInbox";
 import ApprovalNotificationBell from "./components/ApprovalNotificationBell";
 import AdminProfileMenu from "./components/AdminProfileMenu";
-import HrRequestsBell from "./components/HrRequestsBell";
 import EmployeePresenceBar from "./components/EmployeePresenceBar";
 import FinanceOrdersGate from "./components/FinanceOrdersGate";
 import CommunicationsHub from "./components/CommunicationsHub";
@@ -1812,17 +1811,13 @@ export default function AdminOrdersPage() {
             subscriptions still run silently. Name/role live in the profile
             dropdown header; Manager Approvals moved to Team tab → Manager Tools. */}
         <div className="flex items-center gap-1.5 sm:gap-3">
-          <NotificationsBell
-            onViewOrder={(confirmationId) => {
-              const order = orders.find((o) => o.confirmation_id === confirmationId);
-              if (order) { openOrderDetail(order); setActiveTab("orders"); }
-            }}
+          {/* Grouped notification bell — communications / orders / bookings /
+              approvals (incl. HR requests). Supersedes the old flat
+              NotificationsBell + HrRequestsBell pair. */}
+          <CompanyNotificationsBell
+            onNavigate={(tab) => setActiveTab(tab as TabKey)}
+            onOrdersFilter={(filter) => { setStatusFilter(filter); setActiveTab("orders"); }}
           />
-
-          {/* HR requests bell — actionable Company OS requests, managers only */}
-          {adminProfile && (adminProfile.role === "owner" || adminProfile.role === "admin_manager") && (
-            <HrRequestsBell onNavigate={(tab) => setActiveTab(tab as TabKey)} />
-          )}
 
           {/* Approval notification bell — only for restricted roles */}
           {adminProfile && (
