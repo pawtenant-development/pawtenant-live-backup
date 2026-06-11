@@ -33,6 +33,7 @@ const ACTION_ICONS: Record<string, string> = {
   bulk_sms: "ri-message-3-line",
   broadcast: "ri-broadcast-line",
   refund: "ri-refund-2-line",
+  compensation_adjustment: "ri-hand-coin-line",
 };
 
 const ACTION_COLORS: Record<string, { bg: string; icon: string; badge: string; badgePending: string }> = {
@@ -41,6 +42,7 @@ const ACTION_COLORS: Record<string, { bg: string; icon: string; badge: string; b
   bulk_sms: { bg: "bg-sky-50", icon: "text-sky-600", badge: "bg-sky-100 text-sky-700", badgePending: "bg-sky-50 text-sky-600 border border-sky-200" },
   broadcast: { bg: "bg-violet-50", icon: "text-violet-600", badge: "bg-violet-100 text-violet-700", badgePending: "bg-violet-50 text-violet-600 border border-violet-200" },
   refund: { bg: "bg-orange-50", icon: "text-orange-600", badge: "bg-orange-100 text-orange-700", badgePending: "bg-orange-50 text-orange-600 border border-orange-200" },
+  compensation_adjustment: { bg: "bg-emerald-50", icon: "text-emerald-600", badge: "bg-emerald-100 text-emerald-700", badgePending: "bg-emerald-50 text-emerald-600 border border-emerald-200" },
 };
 
 function fmt(ts: string) {
@@ -67,6 +69,7 @@ export default function ApprovalsInbox({
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [showRejectNote, setShowRejectNote] = useState<string | null>(null);
   const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
@@ -150,6 +153,26 @@ export default function ApprovalsInbox({
 
   const handleApprove = async (request: ApprovalRequest) => {
     setProcessingId(request.id);
+    setActionError(null);
+
+    // Compensation adjustments are decided by a server-side RPC that enforces
+    // reviewer authorization + the self-review fence and updates the adjustment
+    // row, this approval_requests mirror, and the audit log atomically. If the
+    // backend refuses, surface the error and leave the request pending.
+    if (request.action_type === "compensation_adjustment") {
+      const adjId = request.action_payload?.adjustment_id as string | undefined;
+      const { error } = await supabase.rpc("review_compensation_adjustment", {
+        p_adjustment_id: adjId ?? null,
+        p_decision: "approved",
+        p_note: null,
+      });
+      if (error) {
+        setActionError(error.message);
+        setProcessingId(null);
+        return;
+      }
+    }
+
     try {
       await supabase.from("approval_requests").update({
         status: "approved",
@@ -212,7 +235,24 @@ export default function ApprovalsInbox({
 
   const handleReject = async (request: ApprovalRequest) => {
     setProcessingId(request.id);
+    setActionError(null);
     const note = rejectNotes[request.id] ?? "";
+
+    // See handleApprove — compensation decisions go through the RPC.
+    if (request.action_type === "compensation_adjustment") {
+      const adjId = request.action_payload?.adjustment_id as string | undefined;
+      const { error } = await supabase.rpc("review_compensation_adjustment", {
+        p_adjustment_id: adjId ?? null,
+        p_decision: "rejected",
+        p_note: note.trim() || null,
+      });
+      if (error) {
+        setActionError(error.message);
+        setProcessingId(null);
+        return;
+      }
+    }
+
     try {
       await supabase.from("approval_requests").update({
         status: "rejected",
@@ -307,6 +347,17 @@ export default function ApprovalsInbox({
             </button>
           ))}
         </div>
+
+        {/* Action error (e.g. backend refused a compensation decision) */}
+        {actionError && (
+          <div className="px-6 py-2 border-b border-rose-100 bg-rose-50 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-rose-700">
+              <i className="ri-error-warning-line mr-1"></i>{actionError}
+            </p>
+            <button type="button" onClick={() => setActionError(null)}
+              className="text-rose-400 hover:text-rose-600 cursor-pointer"><i className="ri-close-line"></i></button>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
@@ -415,6 +466,22 @@ export default function ApprovalsInbox({
 
                         {/* Payload details */}
                         <div className="mt-2 bg-gray-50 rounded-lg border border-gray-100 px-3 py-2 space-y-1">
+                          {payload.employeeName !== undefined && (
+                            <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                              <i className="ri-user-line text-gray-400 flex-shrink-0"></i>
+                              For <span className="font-semibold">{(payload.employeeName as string) ?? "employee"}</span>
+                              {payload.periodMonth !== undefined && (
+                                <span> · {new Date(`${(payload.periodMonth as string).slice(0, 7)}-15T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })}</span>
+                              )}
+                            </p>
+                          )}
+                          {payload.amountPkr !== undefined && (
+                            <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                              <i className="ri-money-dollar-circle-line text-gray-400 flex-shrink-0"></i>
+                              {payload.compType ? <span className="capitalize font-semibold">{payload.compType as string}</span> : "Amount"}:&nbsp;
+                              <span className="font-semibold">PKR {Math.round(Number(payload.amountPkr) || 0).toLocaleString("en-US")}</span>
+                            </p>
+                          )}
                           {payload.orderCount !== undefined && (
                             <p className="text-xs text-gray-600 flex items-center gap-1.5">
                               <i className="ri-file-list-3-line text-gray-400 flex-shrink-0"></i>

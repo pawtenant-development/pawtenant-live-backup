@@ -18,6 +18,7 @@ import {
 } from "../../../lib/employeeHr";
 import EmployeeDocumentsAdmin from "./EmployeeDocumentsAdmin";
 import EmployeeDepartmentAccess from "./EmployeeDepartmentAccess";
+import EmployeeCompensationAdmin from "./EmployeeCompensationAdmin";
 import DepartmentsManagerCard from "./DepartmentsManagerCard";
 import { fetchDepartments, type CompanyDepartment } from "../../../lib/companyOs";
 import { listBundleKeys } from "../../../lib/permissions";
@@ -344,6 +345,8 @@ export default function EmployeeHrDirectory() {
             </Section>
 
             <EmployeeDepartmentAccess teamMemberId={selected.id} departments={allDepartments} />
+
+            <EmployeeCompensationAdmin teamMemberId={selected.id} displayName={selected.display_name} />
 
             <EmployeeDocumentsAdmin teamMemberId={selected.id} />
 

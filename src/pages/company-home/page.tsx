@@ -16,6 +16,8 @@ import TeamWidget from "./components/TeamWidget";
 import TodaySummaryWidget from "./components/TodaySummaryWidget";
 import MyRequestsWidget from "./components/MyRequestsWidget";
 import SalarySnapshotWidget from "./components/SalarySnapshotWidget";
+import MyCompensationWidget from "./components/MyCompensationWidget";
+import TeamBonusRequestWidget from "./components/TeamBonusRequestWidget";
 import QuickLinks from "./components/QuickLinks";
 import EnterWorkstationButton from "./components/EnterWorkstationButton";
 
@@ -164,6 +166,8 @@ export default function CompanyHomePage() {
                     <TodaySummaryWidget teamMemberId={member.id} reloadToken={reloadToken} />
                     <MyRequestsWidget teamMemberId={member.id} reloadToken={reloadToken} onNavigate={goSection} />
                     <SalarySnapshotWidget />
+                    <MyCompensationWidget />
+                    <TeamBonusRequestWidget selfTeamMemberId={member.id} />
                     <QuickLinks onNavigate={goSection} />
                   </div>
                 </div>
