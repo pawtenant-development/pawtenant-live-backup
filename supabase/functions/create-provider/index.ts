@@ -106,6 +106,26 @@ function buildProviderInviteHtml(providerName: string, toEmail: string, setupLin
               </tr>
             </table>
 
+            <!-- How to use your provider portal (case workflow) -->
+            <p style="margin:28px 0 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">How To Use Your Provider Portal</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;">
+              <tr>
+                <td style="padding:18px 22px;">
+                  <p style="margin:0 0 10px;font-size:13px;color:#374151;line-height:1.6;">The quick workflow for completing assigned cases:</p>
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">1.</strong> Log in to your Provider Portal.</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">2.</strong> Open your assigned cases.</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">3.</strong> Review the customer's assessment answers and order details.</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">4.</strong> Prepare the required documentation when appropriate.</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">5.</strong> Upload the completed letter/document.</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">6.</strong> Click Submit so the case can move forward.</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;"><strong style="color:${ACCENT};">7.</strong> If a correction is requested, update the document and resubmit it.</td></tr>
+                  </table>
+                  <p style="margin:10px 0 0;font-size:12px;color:#6b7280;line-height:1.6;">A step-by-step guide also appears inside the portal on your first login.</p>
+                </td>
+              </tr>
+            </table>
+
             <!-- Profile completion checklist -->
             <p style="margin:28px 0 10px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Complete Your Provider Profile</p>
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbf2;border:1px solid #fde68a;border-radius:12px;">

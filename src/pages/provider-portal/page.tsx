@@ -7,6 +7,7 @@ import ProviderOrderDetail from "./components/ProviderOrderDetail";
 import ProviderEarnings from "./components/ProviderEarnings";
 import ProviderLicensePanel from "./components/ProviderLicensePanel";
 import ProviderProfilePanel from "./components/ProviderProfilePanel";
+import ProviderOnboardingGuide from "./components/ProviderOnboardingGuide";
 
 interface DoctorProfile {
   user_id: string;
@@ -16,6 +17,8 @@ interface DoctorProfile {
   licensed_states: string[] | null;
   photo_url: string | null;
   is_active: boolean;
+  is_admin: boolean | null;
+  provider_onboarding_seen_at: string | null;
 }
 
 interface Order {
@@ -108,6 +111,7 @@ export default function ProviderPortalPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [profileDropdown, setProfileDropdown] = useState(false);
+  const [showOnboardingGuide, setShowOnboardingGuide] = useState(false);
 
   // New-case toast — auto-dismissed after 6s
   const [newCaseToast, setNewCaseToast] = useState<{ title: string; message: string; type?: "success" | "error" | "warning" } | null>(null);
@@ -136,7 +140,7 @@ export default function ProviderPortalPage() {
       }
       const { data: prof } = await supabase
         .from("doctor_profiles")
-        .select("user_id, full_name, email, title, licensed_states, photo_url, is_active")
+        .select("user_id, full_name, email, title, licensed_states, photo_url, is_active, is_admin, provider_onboarding_seen_at")
         .eq("user_id", session.user.id)
         .maybeSingle();
       if (!prof) {
@@ -147,6 +151,18 @@ export default function ProviderPortalPage() {
       if (prof.is_active === false) { await supabase.auth.signOut(); navigate("/provider-login"); return; }
       setProfile(prof as DoctorProfile);
       setLoading(false);
+
+      // PROVIDER-FIRST-LOGIN-GUIDE: show the onboarding walkthrough once to
+      // active providers (never admin/staff). DB marker is the source of
+      // truth; localStorage covers the window where a past RPC write failed.
+      const typedProf = prof as DoctorProfile;
+      if (
+        typedProf.is_admin !== true &&
+        !typedProf.provider_onboarding_seen_at &&
+        (typeof window === "undefined" || !window.localStorage.getItem(`pt_provider_guide_seen_${session.user.id}`))
+      ) {
+        setShowOnboardingGuide(true);
+      }
 
       // PROVIDER-ASSIGNMENT-READINESS: mark that this provider has accessed the
       // portal. Sets portal_first_accessed_at / account_setup_completed_at the
@@ -376,6 +392,24 @@ export default function ProviderPortalPage() {
     navigate("/provider-login");
   };
 
+  // Dismissing the guide (any path: buttons, X, backdrop) marks it seen so it
+  // never auto-reopens. RPC is idempotent (coalesce keeps the first timestamp);
+  // localStorage is the fallback if the write fails.
+  const dismissOnboardingGuide = useCallback(async () => {
+    setShowOnboardingGuide(false);
+    if (profile) {
+      try { window.localStorage.setItem(`pt_provider_guide_seen_${profile.user_id}`, "1"); } catch { /* ignore */ }
+      setProfile((prev) => prev && !prev.provider_onboarding_seen_at
+        ? { ...prev, provider_onboarding_seen_at: new Date().toISOString() }
+        : prev);
+      try {
+        await supabase.rpc("mark_provider_onboarding_seen");
+      } catch (e) {
+        console.warn("[provider-portal] mark_provider_onboarding_seen failed:", e);
+      }
+    }
+  }, [profile]);
+
   const handleOrderUpdated = (updated: Partial<Order> & { id: string }) => {
     setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
     if (selectedOrder?.id === updated.id) setSelectedOrder((prev) => prev ? { ...prev, ...updated } : null);
@@ -421,7 +455,7 @@ export default function ProviderPortalPage() {
     );
   }
 
-  const firstName = profile?.full_name?.split(" ")[0] ?? "Doctor";
+  const firstName = profile?.full_name?.split(" ")[0] ?? "Provider";
   const initials = profile?.full_name?.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) ?? "DR";
 
   return (
@@ -532,6 +566,11 @@ export default function ProviderPortalPage() {
                       </div>
                     );
                   })()}
+                  <button type="button"
+                    onClick={() => { setShowOnboardingGuide(true); setProfileDropdown(false); }}
+                    className="whitespace-nowrap w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors font-semibold">
+                    <i className="ri-questionnaire-line text-[#2c5282]"></i>View Portal Guide
+                  </button>
                   <button type="button" onClick={handleSignOut}
                     className="whitespace-nowrap w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 cursor-pointer transition-colors font-semibold">
                     <i className="ri-logout-box-line"></i>Sign Out
@@ -782,6 +821,14 @@ export default function ProviderPortalPage() {
           <ProviderProfilePanel userId={profile.user_id} providerName={profile.full_name} />
         )}
       </div>
+
+      {/* First-login onboarding guide */}
+      {showOnboardingGuide && profile && (
+        <ProviderOnboardingGuide
+          providerFirstName={firstName}
+          onDismiss={dismissOnboardingGuide}
+        />
+      )}
 
       {/* Order detail modal */}
       {selectedOrder && profile && (
