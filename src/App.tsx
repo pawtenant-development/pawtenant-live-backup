@@ -322,6 +322,28 @@ function GeoGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * AdminDensity — toggles the `pt-admin-dense` class on <html> while the user is
+ * on an admin PORTAL route (admin-orders / admin-doctors / admin-live /
+ * admin-guide). That class (see index.css) scales the root font on lg+ screens
+ * so the rem-based admin UI reads denser at 100% browser zoom. Excludes
+ * /admin-login, the public site, and /company, which keep the default 16px
+ * root. Pure presentation — no business logic, no auth, no data.
+ */
+const ADMIN_DENSE_PREFIXES = ["/admin-orders", "/admin-doctors", "/admin-live", "/admin-guide"];
+function AdminDensity() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const isDense = ADMIN_DENSE_PREFIXES.some(
+      (p) => pathname === p || pathname.startsWith(p + "/"),
+    );
+    const el = document.documentElement;
+    el.classList.toggle("pt-admin-dense", isDense);
+    return () => { el.classList.remove("pt-admin-dense"); };
+  }, [pathname]);
+  return null;
+}
+
+/**
  * AdminApp — rendered only on admin.pawtenant.com (when feature flag is on).
  * Strips public-site chrome (Tawk, FloatingCTA, GeoBlock, banners, etc.).
  *
@@ -338,6 +360,7 @@ function AdminApp() {
           <Suspense fallback={null}>
             <AdminChrome>
               <ScrollToTop />
+              <AdminDensity />
               <UTMCapture />
               <AuthHandler />
               <DeferredServicesGate />
@@ -366,6 +389,7 @@ function App() {
             <MetaPageView />
             <SEOManager />
             <ScrollToTop />
+            <AdminDensity />
             <UTMCapture />
             <AuthHandler />
             <DeferredServicesGate />

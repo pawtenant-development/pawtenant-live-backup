@@ -84,7 +84,7 @@ export default function EmployeePresenceBar() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl z-[130] overflow-hidden">
+        <div className="absolute left-0 mt-2 w-72 max-w-[calc(100vw-24px)] bg-white border border-gray-200 rounded-2xl shadow-xl z-[130] overflow-hidden">
           {/* Header + search */}
           <div className="px-3 pt-3 pb-2 border-b border-gray-100">
             <div className="flex items-center justify-between mb-2">

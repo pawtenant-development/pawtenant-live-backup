@@ -264,12 +264,17 @@ export default function NotificationsBell({ onViewOrder }: NotificationsBellProp
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="whitespace-nowrap relative w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:text-[#1a5c4f] hover:bg-[#f0faf7] transition-colors cursor-pointer"
         title="Notifications"
+        aria-label={unreadCount > 0 ? `Notifications — ${unreadCount} unread` : "Notifications"}
+        className={`whitespace-nowrap relative w-10 h-10 flex items-center justify-center rounded-lg border transition-colors cursor-pointer ${
+          unreadCount > 0
+            ? "border-orange-300 bg-orange-50 text-orange-600 hover:bg-orange-100 ring-2 ring-orange-100"
+            : "border-slate-200 bg-white text-slate-500 hover:text-[#1a5c4f] hover:border-[#3b6ea5]"
+        }`}
       >
-        <i className="ri-notification-3-line text-lg"></i>
+        <i className={`text-xl ${unreadCount > 0 ? "ri-notification-3-fill" : "ri-notification-3-line"}`}></i>
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center leading-none">
+          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-orange-500 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center leading-none ring-2 ring-white">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -280,14 +285,14 @@ export default function NotificationsBell({ onViewOrder }: NotificationsBellProp
         <div className="absolute right-0 top-full mt-2 w-[380px] bg-white rounded-2xl border border-gray-200 z-[200] overflow-hidden"
           style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-[#f0faf7] to-white">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 flex items-center justify-center bg-[#f0faf7] rounded-lg flex-shrink-0">
-                <i className="ri-notification-3-line text-[#1a5c4f] text-sm"></i>
+              <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
+                <i className="ri-notification-3-fill text-white text-sm"></i>
               </div>
               <p className="text-sm font-extrabold text-gray-900">Notifications</p>
               {unreadCount > 0 && (
-                <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-extrabold rounded-full">
+                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-extrabold rounded-full">
                   {unreadCount} new
                 </span>
               )}

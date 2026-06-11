@@ -134,9 +134,9 @@ export default function AdminSidebar({
             : "text-white/50 hover:bg-white/10 hover:text-white font-medium"
         }`}
         style={{
-          padding: collapsed ? "7px 0" : isChild ? "6px 12px 6px 30px" : "7px 12px",
+          padding: collapsed ? "5px 0" : isChild ? "4px 11px 4px 26px" : "5px 11px",
           justifyContent: collapsed ? "center" : "flex-start",
-          gap: collapsed ? 0 : 12,
+          gap: collapsed ? 0 : 11,
         }}
       >
         <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -180,7 +180,7 @@ export default function AdminSidebar({
           className={`whitespace-nowrap w-full flex items-center rounded-lg transition-colors cursor-pointer ${
             childActive ? "text-white font-semibold" : "text-white/50 hover:bg-white/10 hover:text-white font-medium"
           }`}
-          style={{ padding: "7px 12px", gap: 12 }}
+          style={{ padding: "5px 11px", gap: 11 }}
         >
           <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
             <i className={`${g.icon} text-base`}></i>
@@ -198,11 +198,11 @@ export default function AdminSidebar({
       {/* ── DESKTOP SIDEBAR ─────────────────────────────────────────────── */}
       <aside
         className="hidden lg:flex flex-col fixed left-0 top-14 bottom-0 bg-[#1e3a5f] z-40 overflow-hidden"
-        style={{ width: collapsed ? 56 : 208, transition: "width 200ms ease" }}
+        style={{ width: collapsed ? 52 : 188, transition: "width 200ms ease" }}
       >
         {/* Header row: label + toggle button */}
         <div
-          className={`flex items-center border-b border-white/10 h-11 flex-shrink-0 ${
+          className={`flex items-center border-b border-white/10 h-10 flex-shrink-0 ${
             collapsed ? "justify-center" : "justify-between px-4"
           }`}
         >
@@ -228,7 +228,7 @@ export default function AdminSidebar({
         {/* Nav items */}
         <nav
           className="flex-1 overflow-y-auto overflow-x-hidden py-2 space-y-0.5"
-          style={{ padding: collapsed ? "8px 6px" : "8px 10px" }}
+          style={{ padding: collapsed ? "7px 5px" : "7px 9px" }}
         >
           {DESKTOP_ORDER.map((entry) => {
             if (entry === "group:hr") return renderGroup(GROUPS[0]);
@@ -244,8 +244,8 @@ export default function AdminSidebar({
         <div
           className="border-t border-white/10 flex items-center flex-shrink-0"
           style={{
-            height: 44,
-            padding: collapsed ? "0 0" : "0 16px",
+            height: 34,
+            padding: collapsed ? "0 0" : "0 14px",
             justifyContent: collapsed ? "center" : "flex-start",
             overflow: "hidden",
           }}

@@ -1726,13 +1726,21 @@ export default function AdminOrdersPage() {
 
       {/* Navbar */}
       <nav className="bg-white border-b border-slate-200 px-3 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-50">
-        <Link to="/" className="cursor-pointer flex-shrink-0">
-          <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
-            alt="PawTenant" className="h-8 sm:h-10 w-auto object-contain" />
-        </Link>
-        <div className="flex items-center gap-1.5 sm:gap-3">
-          {/* Runbook + Providers now live in the profile dropdown (Shortcuts). */}
+        {/* Left cluster: logo + team presence. Presence is left-aligned by
+            request, kept beside the logo and away from the right-hand action
+            controls (notifications / refresh / profile). */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link to="/" className="cursor-pointer flex-shrink-0">
+            <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png"
+              alt="PawTenant" className="h-8 sm:h-10 w-auto object-contain" />
+          </Link>
+          <EmployeePresenceBar />
+        </div>
 
+        {/* Right cluster: sync indicator · notifications · refresh · profile.
+            Name/role live in the profile dropdown header; Manager Approvals
+            moved to Team tab → Manager Tools. */}
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {/* Sync indicator */}
           <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-[#e8f0f9] border border-[#b8cce4] rounded-lg" title={lastSyncedAt ? `Last synced: ${lastSyncedAt.toLocaleTimeString()}` : "Connecting…"}>
             <span className="relative flex h-2 w-2 flex-shrink-0">
@@ -1743,11 +1751,6 @@ export default function AdminOrdersPage() {
               {syncTick >= 0 && lastSyncedAt ? `Synced ${fmtSyncAge(lastSyncedAt)}` : "Live"}
             </span>
           </div>
-
-          {/* Name/role now shown in the profile dropdown header.
-              Manager Approvals inbox moved to Team tab → Manager Tools. */}
-
-          <EmployeePresenceBar />
 
           <NotificationsBell
             onViewOrder={(confirmationId) => {
@@ -1811,7 +1814,7 @@ export default function AdminOrdersPage() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleSidebarToggle}
       />
-      <div className={`${sidebarCollapsed ? "lg:ml-14" : "lg:ml-[220px]"} px-3 sm:px-4 md:px-6 py-5 sm:py-8 pb-24 lg:pb-8 transition-[margin] duration-200`}>
+      <div className={`${sidebarCollapsed ? "lg:ml-[52px]" : "lg:ml-[188px]"} px-3 sm:px-4 md:px-6 py-5 sm:py-8 pb-24 lg:pb-8 transition-[margin] duration-200`}>
         {/* Header */}
         <div className="mb-5">
           <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest mb-1">Admin Portal</p>
@@ -2651,7 +2654,7 @@ export default function AdminOrdersPage() {
       {/* ── BULK ASSIGN BAR ── */}
       {selectedOrders.size > 0 && activeTab === "orders" && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#3b6ea5] border-t border-[#17504a] px-3 sm:px-6 py-3 sm:py-4 pb-[calc(0.75rem+56px)] lg:pb-4">
-          <div className={`${sidebarCollapsed ? "lg:ml-14" : "lg:ml-[220px]"} space-y-2 transition-[margin] duration-200`}>
+          <div className={`${sidebarCollapsed ? "lg:ml-[52px]" : "lg:ml-[188px]"} space-y-2 transition-[margin] duration-200`}>
             {/* Lead warning strip */}
             {(() => {
               const nonAssignableCount = orders.filter((o) =>
