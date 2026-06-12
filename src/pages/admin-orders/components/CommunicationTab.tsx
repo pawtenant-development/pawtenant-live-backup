@@ -154,6 +154,8 @@ function getChatConfig(entry: UnifiedLogEntry): {
     provider_assigned_provider: "Provider Assignment Notice",
     thirty_day_reminder: "30-Day Reissue Reminder",
     internal_notification: "Internal Notification",
+    portal_reset: "Portal Password Reset",
+    portal_welcome: "Portal Access",
   };
 
   return {

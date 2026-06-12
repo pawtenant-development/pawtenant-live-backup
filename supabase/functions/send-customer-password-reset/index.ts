@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,7 +57,7 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json() as { email?: string; first_name?: string; action?: string };
+    const body = await req.json() as { email?: string; first_name?: string; action?: string; order_id?: string; confirmation_id?: string };
     const targetEmail = (body.email ?? "").trim().toLowerCase();
     const firstName = (body.first_name ?? "").trim() || "there";
     // action: "reset" (default) | "welcome" (resend original welcome/portal access email)
@@ -66,6 +67,23 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: false, error: "Email address is required." }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Comms-timeline anchor: prefer the order the caller passed; fall back to
+    // the customer's most recent order so sends from the Customers tab (which
+    // has no order context) still land in a Comms timeline.
+    let commOrderId = (body.order_id ?? "").trim() || null;
+    let commConfirmationId = (body.confirmation_id ?? "").trim() || null;
+    if (!commOrderId && !commConfirmationId) {
+      const { data: latestOrder } = await adminClient
+        .from("orders")
+        .select("id, confirmation_id")
+        .ilike("email", targetEmail)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      commOrderId = (latestOrder as { id?: string } | null)?.id ?? null;
+      commConfirmationId = (latestOrder as { confirmation_id?: string } | null)?.confirmation_id ?? null;
     }
 
     // Check if this customer has a Supabase Auth account
@@ -140,6 +158,10 @@ serve(async (req) => {
 
     // Send branded customer email via Resend
     let emailSent = false;
+    let commRowId: string | null = null;
+    let resendId: string | null = null;
+    let resendFailReason: string | null = null;
+    const commSlug = isWelcomeEmail ? "portal_welcome" : "portal_reset";
     if (resendApiKey) {
       const subject = isWelcomeEmail
         ? "Access your PawTenant Customer Portal"
@@ -204,6 +226,26 @@ serve(async (req) => {
 </body>
 </html>`;
 
+      // Log into the unified Comms timeline (communications table) so admins
+      // can see this send inside the order modal. The dedupe key is unique per
+      // invocation on purpose: portal reset/access emails are legitimately
+      // re-sendable, so the key must never block a send — it only guarantees
+      // exactly one comms row per actual send. NEVER store the action link.
+      const commAnchor = commConfirmationId ?? commOrderId;
+      const reserve = await reserveEmailSend({
+        supabase: adminClient,
+        orderId: commOrderId,
+        confirmationId: commConfirmationId,
+        to: targetEmail,
+        from: "PawTenant <hello@pawtenant.com>",
+        subject,
+        slug: commSlug,
+        dedupeKey: commAnchor ? `${commAnchor}:${commSlug}:${crypto.randomUUID()}` : null,
+        templateSource: "hardcoded",
+        sentBy: callerUser.email ? `admin:${callerUser.email}` : "admin",
+      });
+      commRowId = reserve.rowId ?? null;
+
       try {
         const resendRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -217,13 +259,27 @@ serve(async (req) => {
         });
         if (resendRes.ok) {
           emailSent = true;
+          try {
+            resendId = ((await resendRes.json()) as { id?: string })?.id ?? null;
+          } catch { /* response body is informational only */ }
         } else {
           const resendErr = await resendRes.text();
+          resendFailReason = resendErr;
           console.error("Resend send failed:", resendErr);
         }
       } catch (resendEx) {
+        resendFailReason = String(resendEx);
         console.error("Resend exception:", resendEx);
       }
+
+      // Safe metadata only — short snippet, recipient, status, Resend id.
+      // The raw reset/access link is intentionally never stored.
+      await finalizeEmailSend(adminClient, commRowId, {
+        success: emailSent,
+        body: `${isWelcomeEmail ? "Portal access" : "Portal password reset"} email sent to customer.`,
+        resendId,
+        errorMessage: emailSent ? null : (resendFailReason ?? "Resend send failed"),
+      });
     }
 
     const actionLabel = isWelcomeEmail ? "Portal welcome" : "Password reset";
@@ -236,6 +292,7 @@ serve(async (req) => {
       account_created: accountCreated,
       email_sent: emailSent,
       is_welcome: isWelcomeEmail,
+      comm_logged: commRowId !== null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {

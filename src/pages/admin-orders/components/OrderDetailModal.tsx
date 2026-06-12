@@ -1502,13 +1502,18 @@ export default function OrderDetailModal({
           email: order.email,
           first_name: order.first_name ?? "",
           action: "reset",
+          // Anchor the send to THIS order so it shows up in the Comms timeline.
+          order_id: order.id,
+          confirmation_id: order.confirmation_id,
         }),
       });
-      const result = await res.json() as { ok?: boolean; message?: string; error?: string; email_sent?: boolean };
+      const result = await res.json() as { ok?: boolean; message?: string; error?: string; email_sent?: boolean; comm_logged?: boolean };
       if (result.ok) {
         setPortalResetMsg(
           result.email_sent
-            ? `Portal reset email sent to ${order.email}`
+            ? (result.comm_logged === false
+                ? `Portal reset email sent to ${order.email} — but Comms logging failed`
+                : `Portal reset email sent to ${order.email} — logged in Comms`)
             : (result.message ?? `Reset link generated — email delivery may have failed`),
         );
       } else {
