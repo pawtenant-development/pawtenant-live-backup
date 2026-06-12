@@ -94,7 +94,7 @@ function PostCard({ post, position }: { post: BlogPost; position: number }) {
           src={resolveBlogImage(post.image, position)}
           alt={post.title}
           title={post.title}
-          className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
           decoding="async"
           onError={handleImgFallback}
@@ -358,7 +358,7 @@ export default function BlogPage() {
                           src={resolveBlogImage(post.image, 0)}
                           alt={post.title}
                           title={post.title}
-                          className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                           loading="eager"
                           fetchPriority="high"
                           decoding="async"
@@ -461,7 +461,7 @@ export default function BlogPage() {
         <div className="max-w-2xl mx-auto px-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-3">Protect Your Housing Rights Today</h2>
           <p className="text-gray-500 text-sm mb-7 leading-relaxed">
-            Get a legitimate ESA letter from a licensed mental health professional. Fast, affordable, and backed by our 100% money-back guarantee.
+            Get an ESA letter from a licensed mental health professional. Fast, affordable, and backed by our 100% money-back guarantee.
           </p>
           <Link
             to="/assessment"

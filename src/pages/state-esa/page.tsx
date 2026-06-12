@@ -1141,7 +1141,7 @@ export default function StateESAPage() {
                         height={144}
                         loading="lazy"
                         decoding="async"
-                        className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
                       />
                     </div>
                     <div className="p-4 flex flex-col flex-1">

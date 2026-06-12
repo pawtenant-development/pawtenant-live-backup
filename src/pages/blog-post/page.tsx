@@ -375,7 +375,7 @@ export default function BlogPostPage() {
 
               {/* Hero Image */}
               <div className="w-full h-64 mb-8 rounded-xl overflow-hidden">
-                <img src={post.image} alt={post.title} title={post.title} className="w-full h-full object-cover object-top" loading="eager" fetchPriority="high" decoding="async" />
+                <img src={post.image} alt={post.title} title={post.title} className="w-full h-full object-cover object-center" loading="eager" fetchPriority="high" decoding="async" />
               </div>
 
               {/* Excerpt */}
@@ -510,7 +510,7 @@ export default function BlogPostPage() {
                   <p className={`text-xs ${isPSD ? "text-gray-300" : "text-orange-100"} mb-4 leading-relaxed`}>
                     {isPSD
                       ? "ADA-compliant PSD letters from licensed professionals. Same-day delivery, 100% money-back guarantee."
-                      : "Fast, legitimate ESA letters from licensed professionals. 100% money-back guarantee."}
+                      : "Fast ESA evaluations from licensed professionals. 100% money-back guarantee."}
                   </p>
                   <Link
                     to={isPSD ? "/psd-assessment" : "/assessment"}
@@ -542,7 +542,7 @@ export default function BlogPostPage() {
                           className="group flex gap-3 items-start cursor-pointer"
                         >
                           <div className="w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden">
-                            <img src={rp.image} alt={rp.title} title={rp.title} className="w-full h-full object-cover object-top" loading="lazy" decoding="async" />
+                            <img src={rp.image} alt={rp.title} title={rp.title} className="w-full h-full object-cover object-center" loading="lazy" decoding="async" />
                           </div>
                           <div>
                             <p className="text-xs font-semibold text-gray-800 group-hover:text-orange-600 transition-colors leading-snug line-clamp-2">{rp.title}</p>
@@ -661,7 +661,7 @@ export default function BlogPostPage() {
                           className="group flex gap-3 items-start cursor-pointer"
                         >
                           <div className="w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden">
-                            <img src={rp.image} alt={rp.title} title={rp.title} className="w-full h-full object-cover object-top" loading="lazy" decoding="async" />
+                            <img src={rp.image} alt={rp.title} title={rp.title} className="w-full h-full object-cover object-center" loading="lazy" decoding="async" />
                           </div>
                           <div>
                             <p className="text-xs font-semibold text-gray-800 group-hover:text-orange-600 transition-colors leading-snug line-clamp-2">{rp.title}</p>

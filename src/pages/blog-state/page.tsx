@@ -25,7 +25,7 @@ function PostCard({ post }: { post: BlogPost }) {
           src={post.image}
           alt={post.title}
           title={post.title}
-          className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
           decoding="async"
         />
@@ -402,7 +402,7 @@ export default function BlogStatePage() {
             Protect Your {entry.stateName} Housing Rights Today
           </h2>
           <p className="text-gray-500 text-sm mb-7 leading-relaxed">
-            Get a legitimate ESA letter from a {entry.stateName}-licensed mental health professional. Fast, affordable, and backed by our 100% money-back guarantee.
+            Get an ESA letter from a {entry.stateName}-licensed mental health professional. Fast, affordable, and backed by our 100% money-back guarantee.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
