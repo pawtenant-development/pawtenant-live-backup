@@ -2,6 +2,30 @@
 // No imports — standalone data file
 
 export const blogPostsVerification = [
+  // Listing card for the standalone rich article at /blog/2026-hud-esa-guidelines.
+  // The static route in router/config.tsx outranks /blog/:slug, so clicking this
+  // card renders the dedicated page — the sections below are summary fallbacks only.
+  {
+    slug: "2026-hud-esa-guidelines",
+    title: "The New 2026 HUD ESA Guidelines: Is Your Emotional Support Animal Letter Still Valid?",
+    metaTitle: "2026 HUD ESA Guidelines: Is Your ESA Letter Still Valid?",
+    metaDesc: "HUD's 2026 ESA enforcement memo may change how untrained emotional support animals are handled in federal housing complaints. Learn what changed, what rights may remain, and how PSD documentation differs.",
+    category: "Legal & Rights",
+    date: "June 12, 2026",
+    readTime: "10 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/person-paperwork-with-dog.jpg",
+    excerpt: "HUD's May 22, 2026 memorandum rescinded the 2020 assistance-animal guidance and refocused federal enforcement on individually trained animals. Here is what changed, which rights may remain, and how psychiatric service dog documentation differs — explained carefully, without hype.",
+    sections: [
+      {
+        heading: "What changed on May 22, 2026",
+        content: "HUD's Office of Fair Housing and Equal Opportunity rescinded Notice FHEO-2020-01 and refocused federal enforcement on animals individually trained to perform disability-related tasks. Untrained emotional support animals are no longer a federal enforcement priority — but the Fair Housing Act itself is unchanged, private legal action remains available, and state or local protections may still apply.",
+      },
+    ],
+    tags: ["HUD ESA Guidelines", "Fair Housing", "ESA Letter", "Psychiatric Service Dog"],
+    relatedSlugs: [],
+  },
   {
     slug: "how-esa-letter-verification-works-pawtenant",
     title: "How ESA Letter Verification Works: PawTenant's Unique Landlord-Verifiable Letters",

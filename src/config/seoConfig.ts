@@ -165,6 +165,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Explore expert guides on ESA letters, emotional support animal laws, and tenant rights. Stay informed with PawTenant's blog, your trusted ESA resource.",
   },
+  "/blog/2026-hud-esa-guidelines": {
+    title: "2026 HUD ESA Guidelines: Is Your ESA Letter Still Valid?",
+    description:
+      "HUD's 2026 ESA enforcement memo may change how untrained emotional support animals are handled in federal housing complaints. Learn what changed, what rights may remain, and how PSD documentation differs.",
+  },
   "/contact-us": {
     title: "Contact PawTenant | ESA Letter Support — Email & Phone Help",
     description:

@@ -72,6 +72,7 @@
 
 - [Resource center](https://pawtenant.com/resource-center): complete ESA/PSD guide hub
 - [Blog](https://pawtenant.com/blog): guides on ESA letters, laws, and tenant rights
+- [2026 HUD ESA guidelines explained](https://pawtenant.com/blog/2026-hud-esa-guidelines): what HUD's May 2026 enforcement memo changes for untrained ESAs, which rights may remain, and how trained PSD documentation differs
 - [FAQs](https://pawtenant.com/faqs): common ESA questions answered
 - [College / dorm ESA policy](https://pawtenant.com/college-pet-policy): ESA letters for university housing
 

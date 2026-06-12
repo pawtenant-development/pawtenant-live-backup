@@ -81,6 +81,8 @@ const ESALetterForLandlordPage = lazy(() => import("../pages/esa-letter-for-land
 const IsPawTenantLegitPage = lazy(() => import("../pages/is-pawtenant-legit/page"));
 // HUD 2026 ESA enforcement-change educational page (indexable, in sitemap).
 const AreEsaLettersStillValidAfterHudChangePage = lazy(() => import("../pages/are-esa-letters-still-valid-after-hud-change/page"));
+// 2026 HUD ESA guidelines blog article (indexable, in sitemap).
+const Blog2026HudEsaGuidelinesPage = lazy(() => import("../pages/blog-2026-hud-esa-guidelines/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -161,6 +163,8 @@ const routes: RouteObject[] = [
   { path: "/service-animal-vs-esa", element: <P C={ServiceAnimalVsESAPage} /> },
   { path: "/blog", element: <P C={BlogPage} /> },
   { path: "/blog/state/:state", element: <P C={BlogStatePage} /> },
+  // Standalone rich article — static segment outranks /blog/:slug in route matching.
+  { path: "/blog/2026-hud-esa-guidelines", element: <P C={Blog2026HudEsaGuidelinesPage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },
