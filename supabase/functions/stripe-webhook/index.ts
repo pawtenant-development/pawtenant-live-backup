@@ -428,6 +428,65 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // 4) Customer portal access — auto set-password link.
+    //    Reuses the SAME mechanism as the admin "Send Portal Reset" button
+    //    (send-customer-password-reset, action="welcome"): it creates the
+    //    customer's auth user if one doesn't exist, back-links their orders,
+    //    and emails a secure "Access your PawTenant Customer Portal" link.
+    //    This is why customers previously needed a manual admin reset to get
+    //    into the portal after paying — now it happens automatically.
+    //    Reserved on `{confirmationId}:portal_welcome` so it fires at most once
+    //    per order across concurrent webhook events. The raw set-password link
+    //    is NEVER stored in Comms — only safe metadata. (The reset function
+    //    skips its own Comms logging for internal calls, so this is the single
+    //    owner of the portal_welcome row.)
+    {
+      const reserve = await reserveEmailSend({
+        supabase,
+        orderId,
+        confirmationId,
+        to: email,
+        from: FROM_ADDRESS,
+        subject: "Access your PawTenant Customer Portal",
+        slug: "portal_welcome",
+        templateSource: "hardcoded",
+        sentBy: "stripe_webhook",
+      });
+      if (!reserve.proceed) {
+        console.info(`[stripe-webhook] portal_welcome DEDUPED for ${confirmationId} (key=${reserve.dedupeKey})`);
+      } else {
+        try {
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          const portalRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-customer-password-reset`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+              "x-internal-secret": serviceKey,
+            },
+            body: JSON.stringify({
+              email,
+              first_name: (order.first_name as string) ?? "",
+              action: "welcome",
+            }),
+          });
+          const portalData = await portalRes.json().catch(() => ({})) as { ok?: boolean; email_sent?: boolean; account_created?: boolean; error?: string };
+          const portalSent = portalRes.ok && portalData.ok === true && portalData.email_sent === true;
+          await finalizeEmailSend(supabase, reserve.rowId, {
+            success: portalSent,
+            body: `Portal access email (secure set-password link) sent to ${email}. account_created=${portalData.account_created ?? false}. Link intentionally not stored.`,
+            errorMessage: portalSent ? null : (portalData.error ?? `portal access send failed (http ${portalRes.status})`),
+          });
+          newLogEntries.push({ type: "portal_welcome", sentAt: now, to: email, success: portalSent, ...(!portalSent && portalData.error ? { error: portalData.error } : {}) });
+          if (portalSent) { console.info(`[stripe-webhook] ✓ Portal access email sent to ${email} for ${confirmationId}`); }
+          else { console.warn(`[stripe-webhook] Portal access email failed for ${confirmationId}: ${portalData.error ?? portalRes.status}`); }
+        } catch (err) {
+          console.error("[stripe-webhook] Portal access email error:", err);
+          await finalizeEmailSend(supabase, reserve.rowId, { success: false, errorMessage: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    }
+
     if (newLogEntries.length > 0) await appendEmailLog(confirmationId, newLogEntries);
   }
 

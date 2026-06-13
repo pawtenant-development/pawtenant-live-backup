@@ -4,8 +4,14 @@ import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
+
+// Where the recovery (set-password) link lands the customer. Per-repo default
+// is the environment differentiator: LIVE → pawtenant.com, TEST → test domain.
+// Can be overridden by the PORTAL_RESET_REDIRECT env var if ever needed.
+const RESET_REDIRECT =
+  Deno.env.get("PORTAL_RESET_REDIRECT") ?? "https://pawtenant.com/reset-password";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -18,43 +24,58 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
-    if (!callerToken) {
-      return new Response(JSON.stringify({ ok: false, error: "No auth token provided" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Verify caller token
-    const { data: { user: callerUser }, error: callerErr } = await adminClient.auth.getUser(callerToken);
-    if (callerErr || !callerUser) {
-      return new Response(JSON.stringify({ ok: false, error: "Unauthorized: Invalid token — please refresh and try again" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Internal service-to-service call (e.g. stripe-webhook sending portal
+    // access automatically after a paid order). Authenticated by the
+    // service-role key passed in a private header — this header is only ever
+    // set server-side and is never exposed to the browser. When present and
+    // valid, we skip the admin-user check below. The admin UI path is
+    // unchanged: no header → full token + admin verification still required.
+    const internalSecret = req.headers.get("x-internal-secret") ?? "";
+    const isInternalCall = internalSecret.length > 0 && internalSecret === serviceRoleKey;
 
-    // Check admin status — same logic as check-admin-status function
-    const { data: callerProfile } = await adminClient
-      .from("doctor_profiles")
-      .select("role, is_admin, is_active")
-      .eq("user_id", callerUser.id)
-      .maybeSingle();
+    // callerUser is only resolved on the admin path; null for internal calls.
+    let callerUser: { id: string; email?: string } | null = null;
 
-    // Accept: is_admin=true (any active admin), OR owner/admin_manager/support roles
-    // Also accept if profile is null but user exists — could be owner account without profile
-    const isAdmin = callerProfile
-      ? (callerProfile.is_admin === true || ["owner", "admin_manager", "support"].includes(callerProfile.role ?? ""))
-      : false;
+    if (!isInternalCall) {
+      if (!callerToken) {
+        return new Response(JSON.stringify({ ok: false, error: "No auth token provided" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-    // Fallback: check if user email matches known admin patterns (owner accounts)
-    // This handles edge cases where the admin profile record is missing
-    const isOwnerEmail = callerUser.email?.endsWith("@pawtenant.com") ?? false;
+      // Verify caller token
+      const { data: { user: verifiedUser }, error: callerErr } = await adminClient.auth.getUser(callerToken);
+      if (callerErr || !verifiedUser) {
+        return new Response(JSON.stringify({ ok: false, error: "Unauthorized: Invalid token — please refresh and try again" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      callerUser = verifiedUser;
 
-    if (!isAdmin && !isOwnerEmail) {
-      return new Response(JSON.stringify({ ok: false, error: "Insufficient permissions." }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      // Check admin status — same logic as check-admin-status function
+      const { data: callerProfile } = await adminClient
+        .from("doctor_profiles")
+        .select("role, is_admin, is_active")
+        .eq("user_id", callerUser.id)
+        .maybeSingle();
+
+      // Accept: is_admin=true (any active admin), OR owner/admin_manager/support roles
+      // Also accept if profile is null but user exists — could be owner account without profile
+      const isAdmin = callerProfile
+        ? (callerProfile.is_admin === true || ["owner", "admin_manager", "support"].includes(callerProfile.role ?? ""))
+        : false;
+
+      // Fallback: check if user email matches known admin patterns (owner accounts)
+      // This handles edge cases where the admin profile record is missing
+      const isOwnerEmail = callerUser.email?.endsWith("@pawtenant.com") ?? false;
+
+      if (!isAdmin && !isOwnerEmail) {
+        return new Response(JSON.stringify({ ok: false, error: "Insufficient permissions." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const body = await req.json() as { email?: string; first_name?: string; action?: string; order_id?: string; confirmation_id?: string };
@@ -116,7 +137,7 @@ serve(async (req) => {
       const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
         type: "recovery",
         email: targetEmail,
-        options: { redirectTo: "https://pawtenant.com/reset-password" },
+        options: { redirectTo: RESET_REDIRECT },
       });
 
       if (linkErr || !linkData) {
@@ -131,7 +152,7 @@ serve(async (req) => {
       const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
         type: "recovery",
         email: targetEmail,
-        options: { redirectTo: "https://pawtenant.com/reset-password" },
+        options: { redirectTo: RESET_REDIRECT },
       });
 
       if (linkErr || !linkData) {
@@ -231,20 +252,26 @@ serve(async (req) => {
       // invocation on purpose: portal reset/access emails are legitimately
       // re-sendable, so the key must never block a send — it only guarantees
       // exactly one comms row per actual send. NEVER store the action link.
+      //
+      // For INTERNAL (stripe-webhook) calls we deliberately skip this logging:
+      // the webhook reserves/owns the single deduped portal_welcome row itself,
+      // so logging here too would create a duplicate Comms row per order.
       const commAnchor = commConfirmationId ?? commOrderId;
-      const reserve = await reserveEmailSend({
-        supabase: adminClient,
-        orderId: commOrderId,
-        confirmationId: commConfirmationId,
-        to: targetEmail,
-        from: "PawTenant <hello@pawtenant.com>",
-        subject,
-        slug: commSlug,
-        dedupeKey: commAnchor ? `${commAnchor}:${commSlug}:${crypto.randomUUID()}` : null,
-        templateSource: "hardcoded",
-        sentBy: callerUser.email ? `admin:${callerUser.email}` : "admin",
-      });
-      commRowId = reserve.rowId ?? null;
+      if (!isInternalCall) {
+        const reserve = await reserveEmailSend({
+          supabase: adminClient,
+          orderId: commOrderId,
+          confirmationId: commConfirmationId,
+          to: targetEmail,
+          from: "PawTenant <hello@pawtenant.com>",
+          subject,
+          slug: commSlug,
+          dedupeKey: commAnchor ? `${commAnchor}:${commSlug}:${crypto.randomUUID()}` : null,
+          templateSource: "hardcoded",
+          sentBy: callerUser?.email ? `admin:${callerUser.email}` : "admin",
+        });
+        commRowId = reserve.rowId ?? null;
+      }
 
       try {
         const resendRes = await fetch("https://api.resend.com/emails", {
@@ -274,12 +301,15 @@ serve(async (req) => {
 
       // Safe metadata only — short snippet, recipient, status, Resend id.
       // The raw reset/access link is intentionally never stored.
-      await finalizeEmailSend(adminClient, commRowId, {
-        success: emailSent,
-        body: `${isWelcomeEmail ? "Portal access" : "Portal password reset"} email sent to customer.`,
-        resendId,
-        errorMessage: emailSent ? null : (resendFailReason ?? "Resend send failed"),
-      });
+      // Skipped for internal calls (the webhook owns/finalizes the row).
+      if (!isInternalCall) {
+        await finalizeEmailSend(adminClient, commRowId, {
+          success: emailSent,
+          body: `${isWelcomeEmail ? "Portal access" : "Portal password reset"} email sent to customer.`,
+          resendId,
+          errorMessage: emailSent ? null : (resendFailReason ?? "Resend send failed"),
+        });
+      }
     }
 
     const actionLabel = isWelcomeEmail ? "Portal welcome" : "Password reset";
