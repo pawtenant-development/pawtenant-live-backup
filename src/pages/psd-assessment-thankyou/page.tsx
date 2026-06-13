@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
+import { fireMicrosoftPurchase } from "@/lib/microsoftUet";
 import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
 import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 import { setEnhancedConversionUserData } from "@/lib/googleEnhancedConversions";
@@ -266,6 +267,11 @@ export default function PSDAssessmentThankYouPage() {
 
           if (!directSuccess) {
             fireMetaPurchase({ value: order.price ?? 0, confirmationId: order.confirmationId ?? '', email: order.email, contentName: 'PSD Letter' });
+            // Microsoft Ads (Bing/Yahoo/AOL) purchase — redirect path. Guarded + deduped (no-op off prod host).
+            {
+              const msStep2 = ((order as PendingOrder)._step2 ?? {}) as Record<string, unknown>;
+              fireMicrosoftPurchase({ value: order.price ?? 0, confirmationId: order.confirmationId ?? '', email: order.email, phone: typeof msStep2.phone === "string" ? msStep2.phone : null });
+            }
             // Phase-1: dedup-safe Lead via shared event_id `lead_<sessionId>`.
             {
               let sid: string | null = null;
@@ -366,6 +372,11 @@ export default function PSDAssessmentThankYouPage() {
     console.log("[PSD Thank-You] Conversion params:", { rawAmount, rawOrderId, conversionValue, transactionId });
 
     fireMetaPurchase({ value: conversionValue, confirmationId: transactionId, email: resolvedState.email, contentName: 'PSD Letter' });
+    // Microsoft Ads (Bing/Yahoo/AOL) purchase — inline-card path. Guarded + deduped (no-op off prod host).
+    {
+      const msStep2 = ((resolvedState as PendingOrder)._step2 ?? {}) as Record<string, unknown>;
+      fireMicrosoftPurchase({ value: conversionValue, confirmationId: transactionId, email: resolvedState.email, phone: typeof msStep2.phone === "string" ? msStep2.phone : null });
+    }
 
     // Phase 1 analytics: stitch session → order on inline-card arrival.
     try {

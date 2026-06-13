@@ -96,6 +96,12 @@ const LABEL_CHART_COLOR: Record<AcquisitionLabel, string> = {
   "Reddit":           "#c2410c", // orange-700 — distinct from Google Ads
   "TikTok":           "#111827", // gray-900 — matches text-gray-900 visual
   "Microsoft Ads":    "#0284c7", // sky-600
+  "Bing Ads":         "#0369a1", // sky-700 — Microsoft search network
+  "Yahoo Ads":        "#7e22ce", // purple-700
+  "AOL Ads":          "#1d4ed8", // blue-700
+  "Bing Organic":     "#0e7490", // cyan-700
+  "Yahoo Organic":    "#9333ea", // purple-600
+  "AOL Organic":      "#2563eb", // blue-600
   "ChatGPT":          "#047857", // emerald-700 — distinct from Google Organic
   "Claude":           "#b45309", // amber-700
   "Gemini":           "#4338ca", // indigo-700

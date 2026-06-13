@@ -206,7 +206,7 @@
     <script>
       (function() {
         var params = new URLSearchParams(window.location.search);
-        var fields = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','fbclid'];
+        var fields = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','fbclid','msclkid'];
         fields.forEach(function(k) {
           var v = params.get(k);
           if (v) sessionStorage.setItem(k, v);
@@ -287,7 +287,21 @@
         }
         window.fbq('init', '2970753196590228');
 
+        // ── Microsoft UET queue stub (Bing/Yahoo/AOL search ads) ──────────
+        //     Synchronous array stub so attribution code + fireMicrosoftPurchase
+        //     never NPE before bat.js attaches. bat.js itself only loads inside
+        //     loadAll() below, and ONLY when %VITE_MICROSOFT_UET_ENABLED% is
+        //     "true" (LIVE) — so a non-prod build never sends pageLoad/conversions.
+        window.uetq = window.uetq || [];
+
         var DIAG_DISABLE_MARKETING_TAGS = '%VITE_DIAG_DISABLE_MARKETING_TAGS%' === 'true';
+
+        // Microsoft UET config (substituted by Vite at build time). When the
+        // env vars are unset the literal "%VITE_...%" tokens remain, so
+        // UET_ENABLED stays false and bat.js never loads.
+        var UET_ENABLED = '%VITE_MICROSOFT_UET_ENABLED%' === 'true';
+        var UET_ID = '%VITE_MICROSOFT_UET_ID%';
+        if (!UET_ID || UET_ID.indexOf('%') === 0) UET_ID = '187256974';
 
         // ── Single idempotent loader for both gtag.js and fbevents.js ─
         var loaded = false;
@@ -306,6 +320,36 @@
           f.src = 'https://connect.facebook.net/en_US/fbevents.js';
           var first = document.getElementsByTagName('script')[0];
           first.parentNode.insertBefore(f, first);
+          // ── Microsoft UET bat.js (Bing/Yahoo/AOL) ─────────────────────────
+          //     Only when explicitly enabled (LIVE). Skipped on admin /
+          //     provider / company / customer-portal paths — those pages have
+          //     no Microsoft conversion or remarketing reason. The base tag
+          //     uses enableAutoSpaTracking so SPA pageLoad fires on every
+          //     route change once attached (Destination URL goal counts it).
+          var uetPath = (window.location && window.location.pathname) || '';
+          var UET_BLOCKED_PREFIXES = ['/admin', '/provider', '/company', '/account', '/customer', '/doctor', '/reset-password'];
+          var uetBlocked = false;
+          for (var b = 0; b < UET_BLOCKED_PREFIXES.length; b++) {
+            if (uetPath.indexOf(UET_BLOCKED_PREFIXES[b]) === 0) { uetBlocked = true; break; }
+          }
+          if (UET_ENABLED && !uetBlocked) {
+            var u = document.createElement('script');
+            u.async = true;
+            u.src = 'https://bat.bing.net/bat.js?ti=' + UET_ID;
+            u.onload = u.onreadystatechange = function () {
+              var s = this.readyState;
+              if (s && s !== 'loaded' && s !== 'complete') return;
+              try {
+                var o = { ti: UET_ID, enableAutoSpaTracking: true };
+                o.ts = (new Date()).getTime();
+                o.q = window.uetq;
+                window.uetq = new window.UET(o);
+                window.uetq.push('pageLoad');
+              } catch (e) { /* ignore */ }
+              u.onload = u.onreadystatechange = null;
+            };
+            first.parentNode.insertBefore(u, first);
+          }
         }
         // Expose for SPA-driven force-load: App.tsx calls this on
         // route changes into conversion-critical routes so the heavy

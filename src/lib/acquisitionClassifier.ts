@@ -48,6 +48,12 @@ export type AcquisitionLabel =
   | "Reddit"
   | "TikTok"
   | "Microsoft Ads"
+  | "Bing Ads"
+  | "Yahoo Ads"
+  | "AOL Ads"
+  | "Bing Organic"
+  | "Yahoo Organic"
+  | "AOL Organic"
   | "ChatGPT"
   | "Claude"
   | "Gemini"
@@ -106,7 +112,13 @@ export const ACQUISITION_VISUAL: Record<AcquisitionLabel, AcquisitionVisual> = {
   "Instagram":         { label: "Instagram",         shortLabel: "Instagram",    icon: "ri-instagram-line",       color: "text-pink-600 bg-pink-50 border-pink-200" },
   "Reddit":            { label: "Reddit",            shortLabel: "Reddit",       icon: "ri-reddit-line",          color: "text-orange-700 bg-orange-50 border-orange-200" },
   "TikTok":            { label: "TikTok",            shortLabel: "TikTok",       icon: "ri-tiktok-line",          color: "text-gray-900 bg-gray-100 border-gray-300" },
-  "Microsoft Ads":     { label: "Microsoft Ads",     shortLabel: "Bing Ads",     icon: "ri-microsoft-line",       color: "text-sky-700 bg-sky-50 border-sky-200" },
+  "Microsoft Ads":     { label: "Microsoft Ads",     shortLabel: "Microsoft",    icon: "ri-microsoft-line",       color: "text-sky-700 bg-sky-50 border-sky-200" },
+  "Bing Ads":          { label: "Bing Ads",          shortLabel: "Bing Ads",     icon: "ri-microsoft-line",       color: "text-sky-700 bg-sky-50 border-sky-200" },
+  "Yahoo Ads":         { label: "Yahoo Ads",         shortLabel: "Yahoo Ads",    icon: "ri-search-eye-line",      color: "text-purple-700 bg-purple-50 border-purple-200" },
+  "AOL Ads":           { label: "AOL Ads",           shortLabel: "AOL Ads",      icon: "ri-search-eye-line",      color: "text-blue-700 bg-blue-50 border-blue-200" },
+  "Bing Organic":      { label: "Bing Organic",      shortLabel: "Bing",         icon: "ri-search-2-line",        color: "text-cyan-700 bg-cyan-50 border-cyan-200" },
+  "Yahoo Organic":     { label: "Yahoo Organic",     shortLabel: "Yahoo",        icon: "ri-search-2-line",        color: "text-purple-600 bg-purple-50 border-purple-200" },
+  "AOL Organic":       { label: "AOL Organic",       shortLabel: "AOL",          icon: "ri-search-2-line",        color: "text-blue-600 bg-blue-50 border-blue-200" },
   "ChatGPT":           { label: "ChatGPT",           shortLabel: "ChatGPT",      icon: "ri-openai-line",          color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
   "Claude":            { label: "Claude",            shortLabel: "Claude",       icon: "ri-sparkling-2-line",     color: "text-amber-700 bg-amber-50 border-amber-200" },
   "Gemini":            { label: "Gemini",            shortLabel: "Gemini",       icon: "ri-gemini-line",          color: "text-indigo-700 bg-indigo-50 border-indigo-200" },
@@ -129,7 +141,22 @@ const ORGANIC_MEDIUM_TOKENS = new Set([
 const META_UTM_TOKENS = new Set(["facebook", "fb", "meta"]);
 const IG_UTM_TOKENS   = new Set(["instagram", "ig"]);
 
-const SEARCH_REFERRER_HOSTS = ["google.", "bing.", "duckduckgo.", "yahoo.", "yandex.", "ecosia.", "brave."];
+// Generic search engines that collapse to "Google Organic" (the existing
+// catch-all organic-search bucket). bing / yahoo / aol are intentionally
+// REMOVED here — they now have dedicated Bing/Yahoo/AOL Organic handling
+// below so a Bing/Yahoo/AOL search referral is no longer mislabeled "Google
+// Organic".
+const SEARCH_REFERRER_HOSTS = ["google.", "duckduckgo.", "yandex.", "ecosia.", "brave."];
+
+// Microsoft Advertising serves Bing, Yahoo, and AOL search. utm_source tokens
+// and referrer hosts used to split paid (Ads) vs organic search referrals.
+const MS_UTM_TOKENS    = new Set(["microsoft", "msn", "bing-ads", "microsoft-ads", "microsoftads"]);
+const BING_UTM_TOKENS  = new Set(["bing"]);
+const YAHOO_UTM_TOKENS = new Set(["yahoo"]);
+const AOL_UTM_TOKENS   = new Set(["aol"]);
+const BING_REFERRER_HOSTS  = ["bing.com", "cn.bing.com"];
+const YAHOO_REFERRER_HOSTS = ["yahoo.com", "search.yahoo.com"];
+const AOL_REFERRER_HOSTS   = ["aol.com", "search.aol.com"];
 const META_REFERRER_HOSTS   = ["facebook.com", "fb.com", "fb.me", "m.facebook.com", "l.facebook.com"];
 const IG_REFERRER_HOSTS     = ["instagram.com", "l.instagram.com"];
 const REDDIT_REFERRER_HOSTS = ["reddit.com", "old.reddit.com", "redd.it"];
@@ -225,8 +252,25 @@ export function classifyAcquisition(inputs: AcquisitionInputs): AcquisitionClass
     return result("Facebook Paid", "high", `Detected utm_source=${utmSource} with paid medium (${utmMedium}).`);
   }
 
-  // 3. Microsoft Ads.
+  // 3. Microsoft Advertising network (Bing / Yahoo / AOL + generic Microsoft).
+  //    A specific Bing/Yahoo/AOL paid utm_source wins over the generic
+  //    msclkid → Microsoft Ads mapping (per attribution spec: "if msclkid
+  //    exists, classify as Microsoft Ads unless a more specific UTM source
+  //    identifies Bing/Yahoo/AOL"). msclkid alone, or utm_source=microsoft/msn
+  //    with a paid medium, → Microsoft Ads.
+  if (BING_UTM_TOKENS.has(utmSource) && PAID_MEDIUM_TOKENS.has(utmMedium)) {
+    return result("Bing Ads", "high", `Detected utm_source=bing with paid medium (${utmMedium}).`);
+  }
+  if (YAHOO_UTM_TOKENS.has(utmSource) && PAID_MEDIUM_TOKENS.has(utmMedium)) {
+    return result("Yahoo Ads", "high", `Detected utm_source=yahoo with paid medium (${utmMedium}).`);
+  }
+  if (AOL_UTM_TOKENS.has(utmSource) && PAID_MEDIUM_TOKENS.has(utmMedium)) {
+    return result("AOL Ads", "high", `Detected utm_source=aol with paid medium (${utmMedium}).`);
+  }
   if (msclkid) return result("Microsoft Ads", "high", "Detected msclkid (Microsoft Ads click ID).");
+  if (MS_UTM_TOKENS.has(utmSource) && PAID_MEDIUM_TOKENS.has(utmMedium)) {
+    return result("Microsoft Ads", "high", `Detected utm_source=${utmSource} with paid medium (${utmMedium}).`);
+  }
 
   // 4. TikTok Ads / TikTok organic.
   if (ttclid) return result("TikTok", "high", "Detected ttclid (TikTok Ads click ID).");
@@ -268,6 +312,29 @@ export function classifyAcquisition(inputs: AcquisitionInputs): AcquisitionClass
   }
   if (hostMatchesAny(referrerHost, META_REFERRER_HOSTS)) {
     return result("Facebook Organic", "medium", `Referrer host ${referrerHost} matches Facebook.`);
+  }
+
+  // 9b. Bing / Yahoo / AOL organic search — no paid click id, no paid medium.
+  //     Checked BEFORE the generic search-engine catch so these are no longer
+  //     mislabeled "Google Organic". (msclkid + bing/yahoo/aol-paid utm were
+  //     already handled above in step 3.)
+  if (BING_UTM_TOKENS.has(utmSource) && (ORGANIC_MEDIUM_TOKENS.has(utmMedium) || !utmMedium)) {
+    return result("Bing Organic", "medium", "Detected utm_source=bing with organic / unset medium.");
+  }
+  if (hostMatchesAny(referrerHost, BING_REFERRER_HOSTS)) {
+    return result("Bing Organic", "medium", `Referrer host ${referrerHost} matches Bing.`);
+  }
+  if (YAHOO_UTM_TOKENS.has(utmSource) && (ORGANIC_MEDIUM_TOKENS.has(utmMedium) || !utmMedium)) {
+    return result("Yahoo Organic", "medium", "Detected utm_source=yahoo with organic / unset medium.");
+  }
+  if (hostMatchesAny(referrerHost, YAHOO_REFERRER_HOSTS)) {
+    return result("Yahoo Organic", "medium", `Referrer host ${referrerHost} matches Yahoo.`);
+  }
+  if (AOL_UTM_TOKENS.has(utmSource) && (ORGANIC_MEDIUM_TOKENS.has(utmMedium) || !utmMedium)) {
+    return result("AOL Organic", "medium", "Detected utm_source=aol with organic / unset medium.");
+  }
+  if (hostMatchesAny(referrerHost, AOL_REFERRER_HOSTS)) {
+    return result("AOL Organic", "medium", `Referrer host ${referrerHost} matches AOL.`);
   }
 
   // 10. Google Organic.
@@ -480,6 +547,12 @@ export const ACQUISITION_LABELS: AcquisitionLabel[] = [
   "Reddit",
   "TikTok",
   "Microsoft Ads",
+  "Bing Ads",
+  "Yahoo Ads",
+  "AOL Ads",
+  "Bing Organic",
+  "Yahoo Organic",
+  "AOL Organic",
   "ChatGPT",
   "Claude",
   "Gemini",

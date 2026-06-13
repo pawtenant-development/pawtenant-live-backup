@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useLocation, useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
+import { fireMicrosoftPurchase } from "@/lib/microsoftUet";
 import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
 import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 import { setEnhancedConversionUserData } from "@/lib/googleEnhancedConversions";
@@ -500,6 +501,17 @@ export default function AssessmentThankYouPage() {
                 transaction_id: txId,
               });
             }
+            // Microsoft Ads (Bing/Yahoo/AOL) purchase conversion — redirect path.
+            // Guarded + deduped inside fireMicrosoftPurchase (no-op off prod host).
+            {
+              const msStep2 = (order._step2 ?? {}) as Record<string, unknown>;
+              fireMicrosoftPurchase({
+                value: urlAmount ? parseFloat(urlAmount) : (order.price ?? 0),
+                confirmationId: urlOrderId ?? order.confirmationId ?? "",
+                email: order.email,
+                phone: typeof msStep2.phone === "string" ? msStep2.phone : null,
+              });
+            }
             // Phase 1 analytics: stitch session → order on paid arrival.
             try {
               if (order.confirmationId) {
@@ -623,6 +635,18 @@ export default function AssessmentThankYouPage() {
       confirmationId: transactionId,
       email,
     });
+
+    // Microsoft Ads (Bing/Yahoo/AOL) purchase conversion — inline-card path.
+    // Guarded + deduped inside fireMicrosoftPurchase (no-op off prod host).
+    {
+      const msStep2 = ((resolvedState as PendingOrder)._step2 ?? {}) as Record<string, unknown>;
+      fireMicrosoftPurchase({
+        value: conversionValue,
+        confirmationId: transactionId,
+        email,
+        phone: typeof msStep2.phone === "string" ? msStep2.phone : null,
+      });
+    }
 
     // Phase 1 analytics: stitch session → order on inline-card arrival.
     try {

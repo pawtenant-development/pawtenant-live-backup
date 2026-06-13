@@ -78,6 +78,16 @@ const CASES = [
     order:          {},
     expectedLabel:  "Direct / Unknown",
   },
+  {
+    name:           "utm_source=bing + utm_medium=cpc → Bing Ads",
+    order:          { utm_source: "bing", utm_medium: "cpc" },
+    expectedLabel:  "Bing Ads",
+  },
+  {
+    name:           "utm_source=bing + utm_medium=organic → Bing Organic",
+    order:          { utm_source: "bing", utm_medium: "organic" },
+    expectedLabel:  "Bing Organic",
+  },
 ];
 
 function buildAcquisitionInputsLike(order) {
