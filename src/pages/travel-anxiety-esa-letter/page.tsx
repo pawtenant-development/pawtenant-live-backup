@@ -122,6 +122,10 @@ const faqs: FaqItem[] = [
     a: "An ESA letter is documentation from a licensed mental health professional supporting a reasonable-accommodation request in covered housing. It supports — but does not guarantee — a housing provider's approval. It is not a registration, certificate, ID card, or vest, and no such item is legally required. There is no official government ESA registry.",
   },
   {
+    q: "Can PawTenant help with ESA or PSD support during stressful travel seasons?",
+    a: "PawTenant can help people explore ESA and PSD-related support options through licensed provider evaluations. ESA letters are generally tied to housing accommodation needs, while psychiatric service dog considerations are different and may involve a psychiatric disability and task-trained support. Either way, ESA or PSD documentation does not guarantee access to stadiums, airlines, hotels, short-term rentals, or other public venues, and approval is never guaranteed.",
+  },
+  {
     q: "How do I start with PawTenant?",
     a: "Complete a short, private assessment. A provider licensed in your state reviews it and applies clinical judgment. If an emotional support animal is clinically appropriate, you receive a letter — usually digitally. You're only charged if you qualify, and approval is never guaranteed.",
   },
@@ -248,9 +252,10 @@ export default function TravelAnxietyESALetterPage() {
           <p className="text-gray-600 text-sm sm:text-[15px] leading-relaxed mb-4">
             Major travel seasons and large sporting events bring more people through airports,
             stations, and city centers, and push many travelers into unfamiliar, short-term housing.
-            The <strong>2026 World Cup travel season</strong> is one example of when crowds, long
-            queues, and disrupted routines are more common — official guidance encourages travelers
-            to plan ahead and prepare for busier-than-usual conditions.
+            With major events like the <strong>2026 World Cup</strong> drawing visitors to host
+            cities across the country, crowds, long queues, and disrupted routines become more common
+            during the 2026 World Cup travel season — official guidance encourages travelers to plan
+            ahead and prepare for busier-than-usual conditions.
           </p>
           <p className="text-gray-600 text-sm sm:text-[15px] leading-relaxed">
             For someone managing anxiety, the combination of being away from home, navigating
@@ -337,6 +342,47 @@ export default function TravelAnxietyESALetterPage() {
                   </li>
                 ))}
               </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ESA vs PSD SUPPORT — two different paths */}
+      <section className="py-12 sm:py-14 bg-[#f7f6f3] border-y border-gray-100">
+        <div className="max-w-3xl mx-auto px-5 sm:px-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 sm:p-7">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <i className="ri-route-line text-orange-500"></i>
+              ESA and PSD support: two different paths
+            </h2>
+            <p className="text-gray-600 text-sm sm:text-[15px] leading-relaxed mb-3">
+              PawTenant helps people explore ESA and PSD-related support options through licensed
+              provider evaluations — useful to understand before an extended stay or temporary
+              relocation. The two are not the same. An <strong>emotional support animal</strong>{" "}
+              letter is generally tied to <strong>housing accommodation</strong> needs, where comfort
+              comes from the animal&apos;s presence. A <strong>psychiatric service dog (PSD)</strong>{" "}
+              is different: it relates to a psychiatric disability and to a dog individually trained
+              to perform disability-related tasks. PSD considerations are handled carefully and are
+              not a shortcut to event, stadium, airline, or public-venue access.
+            </p>
+            <p className="text-gray-600 text-sm sm:text-[15px] leading-relaxed mb-4">
+              A licensed mental health professional can help you understand which path may fit your
+              situation. Eligibility is decided by the provider after a real evaluation — no outcome
+              is guaranteed.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link
+                to={withAttribution("/assessment")}
+                className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-6 py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors text-sm"
+              >
+                <i className="ri-clipboard-line"></i> Explore ESA or PSD support options
+              </Link>
+              <Link
+                to="/how-to-get-psd-letter"
+                className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:border-orange-300 hover:text-orange-600 transition-colors text-sm"
+              >
+                <i className="ri-shield-star-line"></i> PSD vs ESA explained
+              </Link>
             </div>
           </div>
         </div>

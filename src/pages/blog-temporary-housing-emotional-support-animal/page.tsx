@@ -190,10 +190,10 @@ export default function BlogTemporaryHousingESAPage() {
           <SectionHeading id="why-now">More people are in temporary housing right now</SectionHeading>
           <Para>
             Busy travel seasons and large sporting events push a lot of people into short-term and
-            extended-stay housing all at once — the 2026 World Cup travel season is one example of
-            when demand for furnished rentals, corporate stays, and sublets rises in popular
-            destinations. If you rely on an emotional support animal, a natural question follows: do
-            the same housing protections apply when the stay is temporary?
+            extended-stay housing all at once — the 2026 World Cup travel season is one example, when
+            demand for furnished rentals, corporate stays, and sublets rises across World Cup host
+            cities and other popular destinations. If you rely on an emotional support animal, a
+            natural question follows: do the same housing protections apply when the stay is temporary?
           </Para>
           <Para>
             The short version: it depends far less on how <em>long</em> you&apos;re staying and far
@@ -290,6 +290,15 @@ export default function BlogTemporaryHousingESAPage() {
             and{" "}
             <Link to="/esa-letter-for-landlord" className={inlineLink}>how to share an ESA letter with your landlord</Link>
             .
+          </Para>
+          <Para>
+            A quick note on terminology: an ESA letter is housing-focused, while a{" "}
+            <Link to="/how-to-get-psd-letter" className={inlineLink}>psychiatric service dog (PSD)</Link>{" "}
+            is a separate matter tied to a psychiatric disability and a dog individually trained to
+            perform disability-related tasks — not a route to short-term-rental or public-venue
+            access. PawTenant can help you explore ESA and PSD-related support options through a
+            licensed provider evaluation; which path fits is a clinical decision, and no outcome is
+            guaranteed.
           </Para>
           <Para>
             One honest caveat: nothing here guarantees approval. Every reasonable-accommodation

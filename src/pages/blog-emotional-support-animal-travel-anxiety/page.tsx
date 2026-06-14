@@ -304,6 +304,19 @@ export default function BlogESATravelAnxietyPage() {
             covers how that works.
           </Para>
 
+          <SectionHeading id="esa-vs-psd">ESA or PSD: knowing the difference before you travel</SectionHeading>
+          <Para>
+            Emotional support animals and psychiatric service dogs are not the same, and it helps to
+            know the difference before a busy trip. An ESA offers comfort through its presence, and
+            an ESA letter is generally tied to <strong>housing accommodation</strong>. A{" "}
+            <Link to="/how-to-get-psd-letter" className={inlineLink}>psychiatric service dog (PSD)</Link>{" "}
+            is different: it relates to a psychiatric disability and to a dog individually trained to
+            perform disability-related tasks — and it is never an automatic pass to flights, events,
+            or public venues. PawTenant can help you explore ESA and PSD-related support options
+            through a licensed provider evaluation and understand which path may fit your situation.
+            No outcome is guaranteed.
+          </Para>
+
           {/* Sources */}
           <div className="mt-10 rounded-xl bg-[#fafafa] border border-gray-100 p-5">
             <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2.5">Sources & further reading</p>

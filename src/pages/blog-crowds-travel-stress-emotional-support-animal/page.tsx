@@ -196,11 +196,10 @@ export default function BlogCrowdsTravelStressESAPage() {
             overwhelm.
           </Para>
           <Para>
-            Major travel seasons and large sporting events make these moments more frequent. The 2026
-            World Cup travel season is one example of when airports, stations, and city centers run
-            busier than usual — official guidance encourages travelers to expect crowds and plan
-            ahead. None of this is about any single event; it&apos;s about the conditions that come
-            with peak travel.
+            Major sporting events like the 2026 World Cup make these moments more frequent. During
+            the 2026 World Cup travel season, airports, stations, and city centers run busier than
+            usual — official guidance encourages travelers to expect crowds and plan ahead. None of
+            this is about any single event; it&apos;s about the conditions that come with peak travel.
           </Para>
 
           <SectionHeading id="where-it-shows">Where travel stress shows up most</SectionHeading>
@@ -273,6 +272,16 @@ export default function BlogCrowdsTravelStressESAPage() {
               </li>
             ))}
           </ul>
+          <Para>
+            A careful word on psychiatric service dogs, too: a{" "}
+            <Link to="/how-to-get-psd-letter" className={inlineLink}>psychiatric service dog (PSD)</Link>{" "}
+            is different from an emotional support animal — it relates to a psychiatric disability and
+            a dog individually trained to perform disability-related tasks. A PSD should never be
+            treated as an automatic claim to event, stadium, or public-venue access during a busy
+            season; any access depends on the law and the specific venue&apos;s rules. PawTenant can
+            help you explore ESA and PSD-related support options through a licensed provider
+            evaluation, with no outcome guaranteed.
+          </Para>
           <Para>
             What an ESA letter <em>does</em> do is support a reasonable-accommodation request in
             covered housing. If you want the difference spelled out, see{" "}
