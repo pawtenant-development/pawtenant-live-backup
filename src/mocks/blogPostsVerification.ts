@@ -26,6 +26,73 @@ export const blogPostsVerification = [
     tags: ["HUD ESA Guidelines", "Fair Housing", "ESA Letter", "Psychiatric Service Dog"],
     relatedSlugs: [],
   },
+  // ── Travel-anxiety / major-event ESA content cluster ───────────────────────
+  // Listing cards for standalone rich articles. The static routes in
+  // router/config.tsx outrank /blog/:slug, so clicking these cards renders the
+  // dedicated pages — the single section below is a summary fallback only.
+  {
+    slug: "emotional-support-animal-travel-anxiety",
+    title: "Can an Emotional Support Animal Help With Travel Anxiety?",
+    metaTitle: "Can an Emotional Support Animal Help With Travel Anxiety? | PawTenant",
+    metaDesc: "How an emotional support animal may ease travel anxiety on flights, road trips, and in crowds — plus the legal limits: ESAs center on housing, not airline or stadium access.",
+    category: "Travel & ESA",
+    date: "June 15, 2026",
+    readTime: "8 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/travel/dog-walk-street.jpg",
+    excerpt: "For many people, a familiar animal brings comfort and a steadier routine during stressful travel. But an ESA is not a cure for anxiety, and an ESA letter is about housing — not airline rights or stadium access. Here is what helps, and what an ESA letter can and cannot do.",
+    sections: [
+      {
+        heading: "How an ESA may help with travel anxiety",
+        content: "A familiar companion can be a small anchor when travel, crowds, and unfamiliar places make life feel unpredictable — offering comfort, routine, and a calming focus. An emotional support animal is a source of comfort, not a medical treatment, and whether an ESA is appropriate is a clinical decision made by a licensed mental health professional. An ESA letter supports a housing accommodation request; it does not grant airline or stadium access or guarantee approval.",
+      },
+    ],
+    tags: ["travel anxiety", "emotional support animal", "ESA flights", "travel stress"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "temporary-housing-emotional-support-animal",
+    title: "Can You Have an Emotional Support Animal in Temporary Housing or Extended Stays?",
+    metaTitle: "ESA in Temporary Housing & Extended Stays: What to Know | PawTenant",
+    metaDesc: "Can you have an emotional support animal in temporary housing, extended stays, or short-term rentals? What the Fair Housing Act covers, how landlord policies differ, and the documentation basics.",
+    category: "Housing Rights",
+    date: "June 15, 2026",
+    readTime: "9 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
+    excerpt: "Often yes — where the property counts as covered housing. The Fair Housing Act applies to most rentals regardless of lease length, so many extended-stay and short-term rentals are covered. Pure hotel stays may not be, and no letter forces acceptance. Here is how it works.",
+    sections: [
+      {
+        heading: "Does the Fair Housing Act cover temporary rentals?",
+        content: "The Fair Housing Act covers most rental housing and generally doesn't turn on lease length, so many extended-stay and short-term rentals are subject to reasonable-accommodation rules. Pure hotel stays and some vacation rentals may not be covered the same way, and an ESA letter never forces acceptance — always confirm the property's policy directly. Documentation comes from a provider licensed in your state, and a few states require a 30-day relationship first. Approval is decided individually and is never guaranteed.",
+      },
+    ],
+    tags: ["temporary housing", "extended stay", "short-term rental", "Fair Housing Act"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "crowds-travel-stress-emotional-support-animal",
+    title: "Crowds, Travel Stress, and Emotional Support Animals: What to Know",
+    metaTitle: "Crowds, Travel Stress & Emotional Support Animals | PawTenant",
+    metaDesc: "Crowded airports, packed public transport, and sensory overload can overwhelm anyone. How an emotional support animal may help you stay grounded — and why an ESA is not public-venue access.",
+    category: "Travel & ESA",
+    date: "June 15, 2026",
+    readTime: "8 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/travel/walk-with-puppy-city.jpg",
+    excerpt: "Crowded airports and packed transit can overwhelm anyone, and a familiar animal can be a grounding focus in those moments. But an ESA is not a treatment, and an ESA letter is about housing — it does not grant access to stadiums, events, or any public venue.",
+    sections: [
+      {
+        heading: "Grounding in crowds — and the line on public access",
+        content: "For many people, an animal offers grounding in chaotic, high-stimulation spaces like packed airports and busy public transportation — something familiar to focus on. It is a source of comfort, not a medical treatment, and works best alongside coping strategies and professional care. Crucially, an emotional support animal does not have public-access rights: an ESA letter does not allow entry to stadiums, arenas, events, or other public venues. Only a trained service dog under the ADA has public-access rights, subject to venue rules.",
+      },
+    ],
+    tags: ["crowds", "travel stress", "sensory overload", "emotional support animal"],
+    relatedSlugs: [],
+  },
   {
     slug: "how-esa-letter-verification-works-pawtenant",
     title: "How ESA Letter Verification Works: PawTenant's Unique Landlord-Verifiable Letters",

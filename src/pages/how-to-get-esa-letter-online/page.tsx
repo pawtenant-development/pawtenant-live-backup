@@ -274,43 +274,50 @@ export default function HowToGetESALetterOnlinePage() {
         ]}
       />
 
-      {/* WHAT LANDLORDS LOOK FOR */}
+      {/* WHAT LANDLORDS LOOK FOR — sample letter (left) + two stacked boxes (right) */}
       <section className="py-14 sm:py-16 bg-white">
         <div className="max-w-5xl mx-auto px-5 sm:px-6">
-          <div className="max-w-[220px] mx-auto mb-9">
-            <SampleLetterCard size="compact" />
-            <p className="text-center text-[11px] text-gray-400 mt-3 leading-relaxed">
-              What a valid, verifiable ESA letter looks like — sample.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-[#fafafa] rounded-2xl p-7 border border-gray-100">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <i className="ri-checkbox-circle-fill text-orange-500"></i>
-                What landlords usually look for
-              </h2>
-              <ul className="space-y-3">
-                {landlordsLookFor.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <i className="ri-check-line text-orange-500 font-bold mt-0.5"></i>
-                    <p className="text-gray-700 text-sm leading-relaxed">{item}</p>
-                  </li>
-                ))}
-              </ul>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 items-start">
+            {/* Left — larger sample letter */}
+            <div className="order-1">
+              <div className="max-w-[420px] mx-auto lg:sticky lg:top-24">
+                <SampleLetterCard size="default" />
+                <p className="text-center text-[11px] text-gray-400 mt-3 leading-relaxed">
+                  What a valid, verifiable ESA letter looks like — sample.
+                </p>
+              </div>
             </div>
-            <div className="bg-[#fafafa] rounded-2xl p-7 border border-gray-100">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <i className="ri-error-warning-fill text-slate-400"></i>
-                What makes a letter invalid or risky
-              </h2>
-              <ul className="space-y-3">
-                {invalidSigns.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <i className="ri-close-line text-slate-400 font-bold mt-0.5"></i>
-                    <p className="text-gray-600 text-sm leading-relaxed">{item}</p>
-                  </li>
-                ))}
-              </ul>
+
+            {/* Right — two boxes stacked */}
+            <div className="order-2 space-y-6">
+              <div className="bg-[#fafafa] rounded-2xl p-7 border border-gray-100">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <i className="ri-checkbox-circle-fill text-orange-500"></i>
+                  What landlords usually look for
+                </h2>
+                <ul className="space-y-3">
+                  {landlordsLookFor.map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <i className="ri-check-line text-orange-500 font-bold mt-0.5"></i>
+                      <p className="text-gray-700 text-sm leading-relaxed">{item}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="bg-[#fafafa] rounded-2xl p-7 border border-gray-100">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <i className="ri-error-warning-fill text-slate-400"></i>
+                  What makes a letter invalid or risky
+                </h2>
+                <ul className="space-y-3">
+                  {invalidSigns.map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <i className="ri-close-line text-slate-400 font-bold mt-0.5"></i>
+                      <p className="text-gray-600 text-sm leading-relaxed">{item}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         </div>

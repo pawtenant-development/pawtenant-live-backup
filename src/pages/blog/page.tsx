@@ -74,6 +74,9 @@ const categories = ["All", "College & ESA", "Legal & Rights", "Housing Rights", 
 
 const trendingTopics = [
   { label: "2026 HUD ESA Guidelines — Is Your Letter Still Valid?", slug: "2026-hud-esa-guidelines" },
+  { label: "Can an ESA Help With Travel Anxiety?", slug: "emotional-support-animal-travel-anxiety" },
+  { label: "ESAs in Temporary Housing & Extended Stays", slug: "temporary-housing-emotional-support-animal" },
+  { label: "Crowds, Travel Stress & Emotional Support Animals", slug: "crowds-travel-stress-emotional-support-animal" },
   { label: "ESA Complete Guide 2026 — What\u2019s Updated", slug: "esa-complete-guide-2026-whats-updated" },
   { label: "ESA New Jersey 2026 — Newark, Jersey City & Hoboken", slug: "esa-new-jersey-newark-jersey-city-2026-guide" },
   { label: "ESA NYC Co-ops & Rent-Stabilized 2026", slug: "esa-nyc-apartments-coop-rent-stabilized-2026-guide" },

@@ -170,6 +170,27 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "HUD's 2026 ESA enforcement memo may change how untrained emotional support animals are handled in federal housing complaints. Learn what changed, what rights may remain, and how PSD documentation differs.",
   },
+  // ── Travel-anxiety / major-event ESA content cluster ───────────────────────
+  "/travel-anxiety-esa-letter": {
+    title: "ESA Letters for Travel Anxiety & Temporary Housing | PawTenant",
+    description:
+      "Travel anxiety, crowded airports, and temporary housing during busy travel seasons can be hard. Learn how an emotional support animal may help emotionally — and what an ESA letter can and cannot do.",
+  },
+  "/blog/emotional-support-animal-travel-anxiety": {
+    title: "Can an Emotional Support Animal Help With Travel Anxiety? | PawTenant",
+    description:
+      "How an emotional support animal may ease travel anxiety on flights, road trips, and in crowds — plus the legal limits: ESAs center on housing, not airline or stadium access.",
+  },
+  "/blog/temporary-housing-emotional-support-animal": {
+    title: "ESA in Temporary Housing & Extended Stays: What to Know | PawTenant",
+    description:
+      "Can you have an emotional support animal in temporary housing, extended stays, or short-term rentals? What the Fair Housing Act covers, how landlord policies differ, and the documentation basics.",
+  },
+  "/blog/crowds-travel-stress-emotional-support-animal": {
+    title: "Crowds, Travel Stress & Emotional Support Animals | PawTenant",
+    description:
+      "Crowded airports, packed public transport, and sensory overload can overwhelm anyone. How an emotional support animal may help you stay grounded — and why an ESA is not public-venue access.",
+  },
   "/contact-us": {
     title: "Contact PawTenant | ESA Letter Support — Email & Phone Help",
     description:

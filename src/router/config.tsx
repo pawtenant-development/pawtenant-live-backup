@@ -83,6 +83,11 @@ const IsPawTenantLegitPage = lazy(() => import("../pages/is-pawtenant-legit/page
 const AreEsaLettersStillValidAfterHudChangePage = lazy(() => import("../pages/are-esa-letters-still-valid-after-hud-change/page"));
 // 2026 HUD ESA guidelines blog article (indexable, in sitemap).
 const Blog2026HudEsaGuidelinesPage = lazy(() => import("../pages/blog-2026-hud-esa-guidelines/page"));
+// Travel-anxiety / major-event ESA content cluster (indexable, in sitemap).
+const TravelAnxietyESALetterPage = lazy(() => import("../pages/travel-anxiety-esa-letter/page"));
+const BlogESATravelAnxietyPage = lazy(() => import("../pages/blog-emotional-support-animal-travel-anxiety/page"));
+const BlogTemporaryHousingESAPage = lazy(() => import("../pages/blog-temporary-housing-emotional-support-animal/page"));
+const BlogCrowdsTravelStressESAPage = lazy(() => import("../pages/blog-crowds-travel-stress-emotional-support-animal/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -145,6 +150,8 @@ const routes: RouteObject[] = [
   { path: "/how-to-get-esa-letter-online", element: <P C={HowToGetESALetterOnlinePage} /> },
   { path: "/esa-letter-for-landlord", element: <P C={ESALetterForLandlordPage} /> },
   { path: "/is-pawtenant-legit", element: <P C={IsPawTenantLegitPage} /> },
+  // Travel-anxiety / major-event ESA hub (informational, indexable).
+  { path: "/travel-anxiety-esa-letter", element: <P C={TravelAnxietyESALetterPage} /> },
   // HUD 2026 ESA enforcement-change educational page (informational, indexable).
   { path: "/are-esa-letters-still-valid-after-hud-change", element: <P C={AreEsaLettersStillValidAfterHudChangePage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
@@ -163,8 +170,11 @@ const routes: RouteObject[] = [
   { path: "/service-animal-vs-esa", element: <P C={ServiceAnimalVsESAPage} /> },
   { path: "/blog", element: <P C={BlogPage} /> },
   { path: "/blog/state/:state", element: <P C={BlogStatePage} /> },
-  // Standalone rich article — static segment outranks /blog/:slug in route matching.
+  // Standalone rich articles — static segments outrank /blog/:slug in route matching.
   { path: "/blog/2026-hud-esa-guidelines", element: <P C={Blog2026HudEsaGuidelinesPage} /> },
+  { path: "/blog/emotional-support-animal-travel-anxiety", element: <P C={BlogESATravelAnxietyPage} /> },
+  { path: "/blog/temporary-housing-emotional-support-animal", element: <P C={BlogTemporaryHousingESAPage} /> },
+  { path: "/blog/crowds-travel-stress-emotional-support-animal", element: <P C={BlogCrowdsTravelStressESAPage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },
