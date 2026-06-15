@@ -78,6 +78,7 @@ const LandlordDeniedESALetterPage = lazy(() => import("../pages/landlord-denied-
 const BestOnlineESALetterServicePage = lazy(() => import("../pages/best-online-esa-letter-service/page"));
 const HowToGetESALetterOnlinePage = lazy(() => import("../pages/how-to-get-esa-letter-online/page"));
 const ESALetterForLandlordPage = lazy(() => import("../pages/esa-letter-for-landlord/page"));
+const ESAPetRentDepositPage = lazy(() => import("../pages/esa-pet-rent-deposit/page"));
 const IsPawTenantLegitPage = lazy(() => import("../pages/is-pawtenant-legit/page"));
 // HUD 2026 ESA enforcement-change educational page (indexable, in sitemap).
 const AreEsaLettersStillValidAfterHudChangePage = lazy(() => import("../pages/are-esa-letters-still-valid-after-hud-change/page"));
@@ -149,6 +150,7 @@ const routes: RouteObject[] = [
   { path: "/best-online-esa-letter-service", element: <P C={BestOnlineESALetterServicePage} /> },
   { path: "/how-to-get-esa-letter-online", element: <P C={HowToGetESALetterOnlinePage} /> },
   { path: "/esa-letter-for-landlord", element: <P C={ESALetterForLandlordPage} /> },
+  { path: "/esa-pet-rent-deposit", element: <P C={ESAPetRentDepositPage} /> },
   { path: "/is-pawtenant-legit", element: <P C={IsPawTenantLegitPage} /> },
   // Travel-anxiety / major-event ESA hub (informational, indexable).
   { path: "/travel-anxiety-esa-letter", element: <P C={TravelAnxietyESALetterPage} /> },

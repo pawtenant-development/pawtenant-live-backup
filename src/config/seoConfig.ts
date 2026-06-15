@@ -110,6 +110,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Use an ESA letter with your landlord: housing-focused documentation from a licensed provider, what to send, and how landlords can verify it.",
   },
+  "/esa-pet-rent-deposit": {
+    title: "ESA Pet Rent & Deposit Guide: What Landlords Can Charge",
+    description:
+      "Learn when ESA pet rent, deposits, and fees may be removed, what landlords can still ask, and how PawTenant supports housing ESA documentation.",
+  },
   "/is-pawtenant-legit": {
     title: "Is PawTenant Legit? How the ESA Letter Service Works",
     description:
