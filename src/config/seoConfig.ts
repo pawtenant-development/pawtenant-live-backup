@@ -32,9 +32,9 @@ export interface SEOEntry {
 // ── Core static pages ────────────────────────────────────────────────────────
 export const CORE_PAGE_META: Record<string, SEOEntry> = {
   "/": {
-    title: "Legitimate ESA Letter Online | Licensed Professionals",
+    title: "ESA Letter Online | Licensed Provider Evaluation | PawTenant",
     description:
-      "Get a legitimate ESA letter from licensed mental health professionals. Valid in all US states. HIPAA-secure, same-day delivery, 100% money-back guarantee.",
+      "Get a real, housing-focused ESA letter through a licensed provider evaluation — verifiable letter, transparent pricing, and a refund if you don't qualify.",
   },
   "/assessment": {
     title: "Apply for Your ESA Letter | Start Your Evaluation | PawTenant",
@@ -42,9 +42,9 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Begin your ESA letter application in minutes. Answer a short questionnaire, connect with a licensed LMHP, and receive your ESA letter fast.",
   },
   "/how-to-get-esa-letter": {
-    title: "How to Get an ESA Letter | Step-by-Step Guide | PawTenant",
+    title: "How to Get an ESA Letter | Step-by-Step Licensed Evaluation",
     description:
-      "Learn how to get a legitimate ESA letter from a licensed professional. Follow our simple step-by-step process and receive your letter within 24 hours.",
+      "How to get an ESA letter step by step: a licensed provider evaluation, a verifiable housing-focused letter, and a refund if you don't qualify.",
       keywords: 
       "How to get ESA letter,Get esa letter,Get ESA letter online ,How to get ESA letter online",
   },
@@ -54,9 +54,9 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Understand your housing rights with an emotional support animal. Learn how the Fair Housing Act protects ESA owners and keeps you and your pet together.",
   },
   "/esa-letter-cost": {
-    title: "Affordable ESA Letter | Legitimate & Fast | PawTenant",
+    title: "ESA Letter Cost: Online Evaluation Pricing & What's Included",
     description:
-      "Get an affordable ESA letter without sacrificing legitimacy. Licensed professionals issue your letter within 24 hours. Protect your housing rights at a fair price.",
+      "ESA letter cost explained: transparent pricing for a licensed provider evaluation, what's included, and a refund if you don't qualify.",
   },
   "/explore-esa-letters-all-states": {
     title: "ESA Letter by State | All 50 US States | PawTenant",
@@ -70,9 +70,9 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Understand ESA laws and what a valid ESA letter requires. Learn how the Fair Housing Act protects emotional support animal owners — and what an ESA letter can and cannot do.",
   },
   "/are-online-esa-letters-legit": {
-    title: "Are Online ESA Letters Legit? How to Tell | PawTenant",
+    title: "Real ESA Letters: How to Verify an Online Provider | PawTenant",
     description:
-      "Online ESA letters can be legitimate when a licensed provider does a real evaluation. Learn the green flags, the warning signs, and how to avoid fake ESA registrations.",
+      "How to tell if an online ESA letter is real: a licensed provider evaluation, a named provider, and a verifiable letter — and how to avoid fake registrations.",
   },
   "/california-esa-letter-30-day-rule": {
     title: "California ESA Letter & the 30-Day Rule (AB 468) | PawTenant",
@@ -90,25 +90,25 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Florida Statute 760.27 sets the rules for ESA documentation in housing — who can write it and what a landlord can ask. Learn how to stay compliant in Florida.",
   },
   "/landlord-denied-esa-letter": {
-    title: "Landlord Denied Your ESA? Housing Rights by State | PawTenant",
+    title: "Landlord Denied Your ESA? Next Steps & Denial Support | PawTenant",
     description:
-      "If your landlord denied your emotional support animal request, learn your Fair Housing Act rights, state-by-state guidance, and calm, practical next steps.",
+      "Landlord denied your ESA? Calm next steps, your options, and how a licensed provider letter with landlord-ready support can help. Refund if you don't qualify.",
   },
   // ── AI-SEO answer-library pages (high-intent ESA queries) ──────────────────
   "/best-online-esa-letter-service": {
-    title: "Best Online ESA Letter Service: How to Choose | PawTenant",
+    title: "Best Online ESA Letter Services: How to Choose a Real Provider",
     description:
-      "How to choose the best online ESA letter service: licensed provider review, transparent pricing, state compliance, housing focus, and verifiable letters — explained honestly.",
+      "How to choose a real online ESA letter service: licensed provider evaluation, transparent pricing, verifiable letters, and housing-focused support.",
   },
   "/how-to-get-esa-letter-online": {
-    title: "How to Get an ESA Letter Online (Step-by-Step) | PawTenant",
+    title: "How to Get an ESA Letter Online | Licensed Provider Evaluation",
     description:
-      "How to get an ESA letter online in 4 steps: complete a short assessment, get reviewed by a licensed provider, receive your letter if appropriate, and use it for housing.",
+      "Get an ESA letter online via a licensed provider evaluation: a fast telehealth assessment, a verifiable letter for housing, and a refund if you don't qualify.",
   },
   "/esa-letter-for-landlord": {
-    title: "ESA Letter for Your Landlord: Housing Guide | PawTenant",
+    title: "ESA Letter for Landlords: Housing Request Guide | PawTenant",
     description:
-      "How to use an ESA letter with your landlord: how housing accommodation works, what to send, what not to say, and common landlord questions answered.",
+      "Use an ESA letter with your landlord: housing-focused documentation from a licensed provider, what to send, and how landlords can verify it.",
   },
   "/is-pawtenant-legit": {
     title: "Is PawTenant Legit? How the ESA Letter Service Works",
@@ -126,9 +126,9 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Get a psychiatric service dog letter (PSD letter) online from licensed mental health professionals. Learn the difference between a PSD letter and an ESA letter, and find out if you qualify. Fast, legal, HIPAA compliant.",
   },
   "/how-to-get-psd-letter": {
-    title: "How to Get a Psychiatric Service Dog Letter | PawTenant",
+    title: "PSD Letter Guide: Psychiatric Service Dog Evaluation | PawTenant",
     description:
-      "Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed LMHP. Speak 1-on-1 with a qualified professional and receive your PSD letter in 24 hours.",
+      "How to get a PSD letter (psychiatric service dog) through a licensed provider evaluation. Learn how a PSD differs from an ESA and whether you may qualify.",
   },
   "/about-us": {
     title: "About PawTenant | Our Network of Licensed Professionals",

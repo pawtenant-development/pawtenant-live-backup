@@ -119,10 +119,10 @@ export default function AreOnlineESALettersLegitPage() {
             <div className="lg:col-span-7">
               <span className="inline-flex items-center gap-2 bg-white border border-orange-100 text-orange-600 text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-5">
                 <i className="ri-verified-badge-line"></i>
-                Legitimacy Guide
+                Verification Guide
               </span>
               <h1 className="text-[28px] sm:text-4xl md:text-5xl font-bold text-gray-900 mb-5 leading-[1.12]">
-                Are Online ESA Letters Legit?
+                Are Online ESA Letters Real? How to Verify One
               </h1>
 
               {/* Mobile-only hero visual — right after the H1 so the sample

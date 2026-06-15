@@ -247,13 +247,13 @@ export default function Home() {
     // org schema. All deferred past LCP. Identical content to the
     // pre-Phase-1 version — no SEO regression.
     const cancel = scheduleSeoWork(() => {
-      document.title = "Legitimate ESA Letter Online | Licensed Professionals";
+      document.title = "ESA Letter Online | Licensed Provider Evaluation | PawTenant";
       let metaDesc = document.querySelector('meta[name="description"]');
       if (!metaDesc) { metaDesc = document.createElement("meta"); (metaDesc as HTMLMetaElement).name = "description"; document.head.appendChild(metaDesc); }
-      (metaDesc as HTMLMetaElement).content = "Get a legitimate ESA letter from licensed mental health professionals. Valid in all US states. HIPAA-secure, same-day delivery, 100% money-back guarantee.";
+      (metaDesc as HTMLMetaElement).content = "Get a real, housing-focused ESA letter through a licensed provider evaluation — verifiable letter, transparent pricing, and a refund if you don't qualify.";
       let metaKw = document.querySelector('meta[name="keywords"]');
       if (!metaKw) { metaKw = document.createElement("meta"); (metaKw as HTMLMetaElement).name = "keywords"; document.head.appendChild(metaKw); }
-      (metaKw as HTMLMetaElement).content = "legitimate ESA letter, legit ESA letter, ESA letter online, ESA letter for housing, emotional support animal letter USA, licensed LMHP";
+      (metaKw as HTMLMetaElement).content = "ESA letter online, real ESA letter, ESA letter for housing, ESA letter cost, emotional support animal letter, licensed provider ESA letter, verifiable ESA letter";
       let canonical = document.querySelector('link[rel="canonical"]');
       if (!canonical) { canonical = document.createElement("link"); (canonical as HTMLLinkElement).rel = "canonical"; document.head.appendChild(canonical); }
       (canonical as HTMLLinkElement).href = "https://pawtenant.com/";
