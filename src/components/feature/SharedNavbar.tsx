@@ -25,8 +25,7 @@ const navGroups: NavGroup[] = [
         title: "ESA Resources",
         items: [
           { label: "What Is an ESA?", href: "/", desc: "Learn about emotional support animals" },
-          { label: "How to Get an ESA Letter", href: "/how-to-get-esa-letter", desc: "Step-by-step guide" },
-          { label: "How to Get an ESA Letter Online", href: "/how-to-get-esa-letter-online", desc: "The online process, step by step" },
+          { label: "How to Get an ESA Letter", href: "/how-to-get-esa-letter", desc: "Step-by-step guide, online or in person" },
           { label: "Housing Rights & Your ESA", href: "/housing-rights-esa", desc: "Fair Housing Act coverage" },
           { label: "ESA Letter Cost", href: "/esa-letter-cost", desc: "Transparent pricing info" },
           { label: "No Risk Guarantee", href: "/no-risk-guarantee", desc: "100% money-back policy" },
