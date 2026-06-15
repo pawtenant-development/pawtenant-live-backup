@@ -1297,6 +1297,20 @@ export default function StateESAPage() {
                 Read more <i className="ri-arrow-right-line" />
               </span>
             </Link>
+            <Link
+              to="/travel-anxiety-esa-letter"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                ESA Travel &amp; Housing Support
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Travel anxiety, crowds, and temporary or extended stays — how an ESA may help, and what a letter can and cannot do.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
           </div>
         </div>
       </section>

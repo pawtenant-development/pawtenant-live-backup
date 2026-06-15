@@ -15,6 +15,17 @@ const footerCols = [
     ],
   },
   {
+    title: "Helpful Guides",
+    links: [
+      { label: "How to Get an ESA Letter Online", href: "/how-to-get-esa-letter-online" },
+      { label: "ESA Letter for Landlords", href: "/esa-letter-for-landlord" },
+      { label: "Landlord Denied Your ESA?", href: "/landlord-denied-esa-letter" },
+      { label: "Best Online ESA Letter Services", href: "/best-online-esa-letter-service" },
+      { label: "ESA Travel & Housing Support", href: "/travel-anxiety-esa-letter" },
+      { label: "2026 HUD ESA Guidelines", href: "/blog/2026-hud-esa-guidelines" },
+    ],
+  },
+  {
     title: "Discover",
     links: [
       { label: "ESA & PSD Resource Center", href: "/resource-center" },
@@ -83,7 +94,7 @@ export default function SharedFooter() {
         </div>
 
         {/* Desktop Grid */}
-        <div className="hidden lg:grid grid-cols-4 gap-10">
+        <div className="hidden lg:grid grid-cols-5 gap-8">
           {/* Brand Col */}
           <div>
             {/* Phase 7 PageSpeed (2026-05-26): WebP variants replace 115 KB PNG. */}

@@ -394,6 +394,7 @@ export default function HowToGetESALetterOnlinePage() {
         <div className="px-5 sm:px-6">
           <RelatedResources
             links={[
+              { to: "/how-to-get-esa-letter", title: "How to get an ESA letter (overview)", desc: "The full clinical process — what qualifies and how the letter is issued." },
               { to: "/esa-letter-for-landlord", title: "ESA letter for your landlord", desc: "How housing accommodation works and what to send." },
               { to: "/are-online-esa-letters-legit", title: "Are online ESA letters legit?", desc: "How to tell a real letter from a worthless one." },
               { to: "/esa-letter-cost", title: "ESA letter cost", desc: "Transparent pricing and what your fee includes." },

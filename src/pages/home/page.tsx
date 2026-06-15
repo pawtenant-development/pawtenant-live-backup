@@ -72,6 +72,9 @@ const TestimonialsSection = lazy(
 const MediaGallery = lazy(() => import("./components/MediaGallery"));
 const FAQSection = lazy(() => import("./components/FAQSection"));
 const CTASection = lazy(() => import("./components/CTASection"));
+// Compact SEO internal-linking block — improves crawl discovery of key ESA/PSD
+// guides. Below the fold, lazy; keeps the primary conversion CTA dominant.
+const ResourceLinksSection = lazy(() => import("./components/ResourceLinksSection"));
 const ContactSection = lazy(() => import("./components/ContactSection"));
 const SharedFooter = lazy(
   () => import("../../components/feature/SharedFooter"),
@@ -379,6 +382,11 @@ export default function Home() {
       </Suspense>
       <Suspense fallback={<SectionFallback />}>
         <FAQSection />
+      </Suspense>
+
+      {/* Compact resource link block — SEO crawl discovery, conversion-safe. */}
+      <Suspense fallback={<SectionFallback />}>
+        <ResourceLinksSection />
       </Suspense>
 
       {/* 10. Final CTA + contact + footer. */}

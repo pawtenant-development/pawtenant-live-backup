@@ -26,10 +26,21 @@ const navGroups: NavGroup[] = [
         items: [
           { label: "What Is an ESA?", href: "/", desc: "Learn about emotional support animals" },
           { label: "How to Get an ESA Letter", href: "/how-to-get-esa-letter", desc: "Step-by-step guide" },
+          { label: "How to Get an ESA Letter Online", href: "/how-to-get-esa-letter-online", desc: "The online process, step by step" },
           { label: "Housing Rights & Your ESA", href: "/housing-rights-esa", desc: "Fair Housing Act coverage" },
           { label: "ESA Letter Cost", href: "/esa-letter-cost", desc: "Transparent pricing info" },
           { label: "No Risk Guarantee", href: "/no-risk-guarantee", desc: "100% money-back policy" },
           { label: "Renew ESA Letter", href: "/renew-esa-letter", desc: "Renew an expiring or expired letter" },
+        ],
+      },
+      {
+        title: "Guides & Help",
+        items: [
+          { label: "ESA Letter for Landlords", href: "/esa-letter-for-landlord", desc: "Share your letter the right way" },
+          { label: "Landlord Denied Your ESA?", href: "/landlord-denied-esa-letter", desc: "Your rights and next steps" },
+          { label: "Best Online ESA Letter Services", href: "/best-online-esa-letter-service", desc: "How to choose a trusted provider" },
+          { label: "ESA Travel & Housing Support", href: "/travel-anxiety-esa-letter", desc: "Travel anxiety & temporary stays" },
+          { label: "2026 HUD ESA Guidelines", href: "/blog/2026-hud-esa-guidelines", desc: "What the 2026 update changed" },
         ],
       },
       {
@@ -203,11 +214,15 @@ export default function SharedNavbar() {
                 {/* Mega Menu */}
                 {group.megaMenu && activeDropdown === group.label && (
                   <div
-                    className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 p-6 min-w-[600px]"
+                    className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 p-6"
+                    style={{ minWidth: (group.columns?.length ?? 2) >= 3 ? 780 : 600 }}
                     onMouseEnter={() => handleMouseEnter(group.label)}
                     onMouseLeave={handleMouseLeave}
                   >
-                    <div className="grid grid-cols-2 gap-8">
+                    <div
+                      className="grid gap-8"
+                      style={{ gridTemplateColumns: `repeat(${group.columns?.length ?? 2}, minmax(0, 1fr))` }}
+                    >
                       {group.columns?.map((col) => (
                         <div key={col.title}>
                           <p className="text-xs font-bold uppercase tracking-widest text-orange-500 mb-3">{col.title}</p>

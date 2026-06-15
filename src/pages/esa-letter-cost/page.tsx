@@ -3,7 +3,7 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
-import { VeteransSupportSection } from "../../components/feature/SeoKit";
+import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
 
 const pricingPlans = [
@@ -478,6 +478,23 @@ export default function ESALetterCostPage() {
               </Link>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* RELATED RESOURCES — crawlable internal links to key ESA guides */}
+      <section className="py-14 bg-[#fafafa] border-t border-gray-100">
+        <div className="px-5 sm:px-6">
+          <RelatedResources
+            heading="Before you decide"
+            links={[
+              { to: "/best-online-esa-letter-service", title: "How to choose a real online ESA provider", desc: "What to check before you pay: licensed provider review, transparent pricing, and verifiable letters." },
+              { to: "/how-to-get-esa-letter-online", title: "How the online ESA letter process works", desc: "The 4 steps from a short assessment to a provider-issued letter." },
+              { to: "/esa-letter-for-landlord", title: "ESA letter for your landlord", desc: "How housing accommodation works and what to send." },
+              { to: "/landlord-denied-esa-letter", title: "Landlord denied your ESA?", desc: "Your housing rights and calm, practical next steps." },
+              { to: "/housing-rights-esa", title: "ESA housing rights (FHA)", desc: "How the Fair Housing Act protects ESA owners." },
+              { to: "/renew-esa-letter", title: "Renew your ESA letter", desc: "ESA letters are typically valid for 12 months." },
+            ]}
+          />
         </div>
       </section>
 

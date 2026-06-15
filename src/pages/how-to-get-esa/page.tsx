@@ -862,6 +862,48 @@ export default function HowToGetESAPage() {
                 Read more <i className="ri-arrow-right-line" />
               </span>
             </Link>
+            <Link
+              to="/how-to-get-esa-letter-online"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                Get an ESA Letter Online
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Prefer to do it online? Here&rsquo;s the step-by-step online ESA letter process with a licensed provider.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/esa-letter-for-landlord"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                ESA Letter for Your Landlord
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Using your ESA letter for housing: how to share it and frame a reasonable-accommodation request.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
+            <Link
+              to="/landlord-denied-esa-letter"
+              className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+            >
+              <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                Landlord Denied Your ESA Request?
+              </div>
+              <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                Your Fair Housing Act rights and calm, practical next steps if a request is refused.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                Read more <i className="ri-arrow-right-line" />
+              </span>
+            </Link>
           </div>
         </div>
       </section>

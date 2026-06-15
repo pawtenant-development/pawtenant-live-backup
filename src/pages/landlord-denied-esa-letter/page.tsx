@@ -5,7 +5,7 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
-import { VeteransSupportSection } from "../../components/feature/SeoKit";
+import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   ESA_LANDLORD_DENIAL_LAWS,
@@ -674,6 +674,23 @@ export default function LandlordDeniedESALetterPage() {
               landlord's approval.
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* RELATED RESOURCES — crawlable internal links to key ESA guides */}
+      <section className="py-14 bg-white border-t border-gray-100">
+        <div className="px-5 sm:px-6">
+          <RelatedResources
+            heading="Helpful next steps"
+            links={[
+              { to: "/esa-letter-for-landlord", title: "ESA letter for your landlord", desc: "How to share your letter and frame a reasonable-accommodation request." },
+              { to: "/housing-rights-esa", title: "ESA housing rights (FHA)", desc: "How the Fair Housing Act protects ESA owners in covered housing." },
+              { to: "/how-to-get-esa-letter-online", title: "How to get an ESA letter online", desc: "The 4-step process, from assessment to a provider-issued letter." },
+              { to: "/blog/2026-hud-esa-guidelines", title: "2026 HUD ESA guidelines", desc: "What HUD's 2026 enforcement update changed — and what didn't." },
+              { to: "/esa-letter-verification", title: "Verify an ESA letter", desc: "How a landlord can confirm a letter is authentic, privacy-safely." },
+              { to: "/esa-letter-cost", title: "ESA letter cost", desc: "Transparent pricing and what your fee includes." },
+            ]}
+          />
         </div>
       </section>
 
