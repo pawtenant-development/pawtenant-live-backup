@@ -115,6 +115,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Learn when ESA pet rent, deposits, and fees may be removed, what landlords can still ask, and how PawTenant supports housing ESA documentation.",
   },
+  "/how-to-verify-esa-letter": {
+    title: "How to Verify an ESA Letter Online | Real ESA Letter Guide",
+    description:
+      "Learn how to verify an ESA letter, check licensed provider details, avoid fake ESA registrations, and use PawTenant's housing documentation support.",
+  },
   "/is-pawtenant-legit": {
     title: "Is PawTenant Legit? How the ESA Letter Service Works",
     description:

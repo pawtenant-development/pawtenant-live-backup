@@ -517,7 +517,7 @@ export default function ESAPetRentDepositPage() {
               { to: "/esa-letter-for-landlord", title: "ESA letter for your landlord", desc: "How housing accommodation works and what to send." },
               { to: "/landlord-denied-esa-letter", title: "Landlord denied your ESA?", desc: "Your housing rights and calm next steps, by state." },
               { to: "/how-to-get-esa-letter-online", title: "How to get an ESA letter online", desc: "The step-by-step process from assessment to letter." },
-              { to: "/are-online-esa-letters-legit", title: "Are online ESA letters real?", desc: "Green flags, red flags, and how to verify a letter." },
+              { to: "/how-to-verify-esa-letter", title: "How to verify an ESA letter", desc: "Check provider details, spot red flags, and avoid fake registrations." },
               { to: "/esa-letter-cost", title: "ESA letter cost", desc: "Transparent pricing and what your fee includes." },
               { to: "/explore-esa-letters-all-states", title: "ESA letter by state", desc: "State-specific ESA housing rules." },
             ]}
