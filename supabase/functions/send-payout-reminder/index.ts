@@ -239,12 +239,34 @@ Deno.serve(async (req: Request) => {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  // ── Auth check — supports service key AND OTP-based admin logins ──────────
+  // Environment label for logs/responses (LIVE vs TEST) — derived from project ref.
+  const ENV_LABEL = Deno.env.get("ENVIRONMENT")
+    ?? (supabaseUrl.includes("cvwbozlbbmrjxznknouq") ? "LIVE"
+      : supabaseUrl.includes("opudhofjbydrljgleofq") ? "TEST"
+      : "UNKNOWN");
+
+  // ── Auth check — supports cron secret, service key AND OTP-based admin logins ──
   let isAuthorized = false;
+
+  // Cron auth path (rotation-proof): pg_cron sends a shared secret via the
+  // x-cron-secret header. This survives Supabase API-key rotation, which broke
+  // the old "service-role key from Vault" match and caused every scheduled run
+  // to return 401 (so no LIVE payout reminder was ever delivered). Mirrors the
+  // lead-followup-sequence scheduler. Falls back to the existing shared secret
+  // when a dedicated PAYOUT_CRON_SECRET has not been provisioned.
+  const cronSecret = Deno.env.get("PAYOUT_CRON_SECRET")
+    ?? Deno.env.get("LEAD_FOLLOWUP_CRON_SECRET") ?? "";
+  const providedCronSecret = req.headers.get("x-cron-secret") ?? "";
+  if (cronSecret && providedCronSecret === cronSecret) {
+    isAuthorized = true;
+  }
+
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace("Bearer ", "").trim();
 
-  if (token === serviceKey) {
+  if (isAuthorized) {
+    // already authorized via cron secret
+  } else if (token === serviceKey) {
     isAuthorized = true;
   } else if (token) {
     // Try Supabase Auth session (works for both Supabase Auth and OTP logins
@@ -353,34 +375,50 @@ Deno.serve(async (req: Request) => {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
-  // ── Determine recipient emails ───────────────────────────────────────────
-  const { data: prefsRows } = await supabase
+  // ── Determine recipient emails (matches get-admin-notif-recipients resolver) ──
+  // The admin Settings → Communications UI saves per-notification recipients into
+  // `per_notif_emails` and deliberately clears `email_override`. The old code only
+  // read `group_emails` + `email_override`, so the configured recipients were never
+  // seen and the reminder silently fell back to a hardcoded inbox. Read
+  // `per_notif_emails` FIRST (then group, then override), honor the enabled toggle,
+  // and DO NOT send if nothing is configured.
+  const { data: prefRow } = await supabase
     .from("admin_notification_prefs")
-    .select("user_id, enabled, email_override, group_emails")
-    .eq("notification_key", "payout_reminder");
+    .select("enabled, email_override, group_emails, per_notif_emails")
+    .eq("notification_key", "payout_reminder")
+    .maybeSingle();
 
-  const recipientEmails: Set<string> = new Set();
-  const fallbackEmail = Deno.env.get("ADMIN_EMAIL") ?? SUPPORT_EMAIL;
-
-  if (prefsRows && prefsRows.length > 0) {
-    for (const pref of prefsRows) {
-      if (!pref.enabled) continue;
-      if (pref.group_emails && Array.isArray(pref.group_emails)) {
-        for (const em of pref.group_emails) {
-          if (em && typeof em === "string") recipientEmails.add(em.trim());
-        }
-      }
-      if (pref.email_override) {
-        recipientEmails.add(pref.email_override.trim());
-      }
-    }
+  // Honor the on/off toggle from Settings → Communications.
+  if (prefRow && prefRow.enabled === false) {
+    return json({
+      ok: true,
+      skipped: true,
+      environment: ENV_LABEL,
+      message: "Provider Payout Reminder is disabled in admin settings — not sending.",
+    });
   }
 
+  const recipientEmails: Set<string> = new Set();
+  const addEmail = (e: unknown) => {
+    if (e && typeof e === "string" && e.includes("@")) recipientEmails.add(e.toLowerCase().trim());
+  };
+  if (Array.isArray(prefRow?.per_notif_emails)) prefRow!.per_notif_emails.forEach(addEmail);
+  if (recipientEmails.size === 0 && Array.isArray(prefRow?.group_emails)) prefRow!.group_emails.forEach(addEmail);
+  if (recipientEmails.size === 0) addEmail(prefRow?.email_override);
+
+  // No recipients configured → do not send (no silent fallback to a hardcoded inbox).
   if (recipientEmails.size === 0) {
-    recipientEmails.add(fallbackEmail);
+    return json({
+      ok: true,
+      skipped: true,
+      environment: ENV_LABEL,
+      message: "No payout reminder recipients configured in admin settings — not sending.",
+    });
   }
 
   const toList = Array.from(recipientEmails);
+
+  console.log(`[send-payout-reminder] env=${ENV_LABEL} day=${dayOfMonth} force=${force} dryRun=${dryRun} recipients=${toList.length} providers=${summaries.length} orders=${earnings.length} total=${formatCurrency(grandTotal)}`);
 
   // ── Build email + CSV ────────────────────────────────────────────────────
   const htmlEmail = buildPayoutReminderEmail(summaries, grandTotal, triggerDate);
@@ -393,6 +431,7 @@ Deno.serve(async (req: Request) => {
     return json({
       ok: true,
       dryRun: true,
+      environment: ENV_LABEL,
       message: `DRY RUN — would notify ${toList.length} recipient${toList.length !== 1 ? "s" : ""} about ${summaries.length} provider${summaries.length !== 1 ? "s" : ""} (${formatCurrency(grandTotal)}). No email or webhook sent.`,
       totalUnpaid: grandTotal,
       providersCount: summaries.length,
@@ -438,6 +477,7 @@ Deno.serve(async (req: Request) => {
 
   return json({
     ok: true,
+    environment: ENV_LABEL,
     message: `Payout reminder sent to ${toList.length} recipient${toList.length !== 1 ? "s" : ""} for ${summaries.length} provider${summaries.length !== 1 ? "s" : ""}`,
     totalUnpaid: grandTotal,
     providersCount: summaries.length,
