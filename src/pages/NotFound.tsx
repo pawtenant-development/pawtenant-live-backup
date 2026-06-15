@@ -16,6 +16,11 @@ export default function NotFound() {
 
   return (
     <main className="min-h-screen flex flex-col bg-[#fdf8f3]">
+      {/* Soft-404 guard: this SPA fallback renders at HTTP 200, so explicitly
+          tell crawlers not to index it (known WordPress junk patterns are 404'd
+          at the edge via vercel.json; this covers any other unknown path). */}
+      <meta name="robots" content="noindex, follow" />
+      <title>Page Not Found | PawTenant</title>
       <SharedNavbar />
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-24 text-center">

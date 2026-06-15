@@ -196,5 +196,7 @@
       "permanent": true
     }
   ],
-  "rewrites": [{ "source": "/(.*)", "destination": "/app" }]
+  "rewrites": [
+    { "source": "/((?!category|tag|product|cartflows_step|cartflows_flow|author|feed|comments|wp-admin|wp-content|wp-includes|wp-json|wp-login|xmlrpc|2019|2020|2021|2022|2023|2024).*)", "destination": "/app" }
+  ]
 }

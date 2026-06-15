@@ -39,6 +39,16 @@ const PawChatLauncher = lazy(
 // itself out of the LCP-window JS parse.
 const CookieBanner = lazy(() => import("./components/feature/CookieBanner"));
 
+// FacebookDiscountPopup — warm $30-off welcome popup shown ONLY to
+// Facebook/Instagram visitors on PUBLIC content pages (route-excludes
+// assessment / checkout / thank-you / auth / admin / provider / portal /
+// company-OS). Lazy-loaded so it stays out of the entry bundle. Pure
+// presentation + localStorage flags — no checkout/Stripe/attribution
+// logic. Mounted in the public shell only (never in AdminApp).
+const FacebookDiscountPopup = lazy(
+  () => import("./components/feature/FacebookDiscountPopup"),
+);
+
 // PageSpeed (mirror of TEST f729ee6): Supabase-backed, non-conversion-critical
 // services (visitor session + heartbeat, structured page_view, auth recovery
 // subscription) live in this lazy chunk so the Supabase client (~35 KB gzip)
@@ -404,6 +414,11 @@ function App() {
             <ScrollTopButton />
             <Suspense fallback={null}>
               <CookieBanner />
+            </Suspense>
+            {/* Facebook/Instagram visitor $30-off popup — public content
+                pages only; route-excludes sensitive flows internally. */}
+            <Suspense fallback={null}>
+              <FacebookDiscountPopup />
             </Suspense>
             {/* Phase 1 mobile-first cleanup (2026-05-19):
                 - Removed USResidentsBanner (intrusive bottom black "USA only" banner).
