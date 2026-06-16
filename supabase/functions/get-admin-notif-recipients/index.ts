@@ -92,7 +92,10 @@ Deno.serve(async (req: Request) => {
 
   const group = NOTIF_GROUP_MAP[notificationKey];
   const defaultEnabled = NOTIF_DEFAULT_ENABLED[notificationKey] ?? true;
-  const envFallback = Deno.env.get("ADMIN_EMAIL") ?? "eservices.dm@gmail.com";
+  // NO hardcoded staff-email fallback. The only fallback is the explicitly
+  // configured ADMIN_EMAIL env var (if set). When unset, envFallback is "" and
+  // resolves to zero recipients so callers can choose to skip the send.
+  const envFallback = (Deno.env.get("ADMIN_EMAIL") ?? "").trim();
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -105,10 +108,13 @@ Deno.serve(async (req: Request) => {
     .order("updated_at", { ascending: false });
 
   if (error || !allPrefs || allPrefs.length === 0) {
-    console.warn("[get-admin-notif-recipients] No prefs found, using env fallback:", envFallback);
+    console.warn(
+      "[get-admin-notif-recipients] No prefs found; env fallback:",
+      envFallback || "(none configured)"
+    );
     return json({
       enabled: defaultEnabled,
-      recipients: [envFallback],
+      recipients: dedupeEmails(envFallback ? [envFallback] : []),
       fallbackEmail: envFallback,
       source: "env_fallback",
       notificationKey,

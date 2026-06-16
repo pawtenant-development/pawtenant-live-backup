@@ -4,7 +4,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const INTERNAL_NOTIFICATION_EMAIL = "eservices.dm@gmail.com";
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 
@@ -98,6 +97,46 @@ async function fireGHLServerSide(opts: {
     } catch {
       // best-effort only
     }
+  }
+}
+
+/**
+ * Resolve who should receive the "Unpaid Lead / Abandoned Checkout" admin alert.
+ * Single source of truth = the admin_notification_prefs settings (resolved by the
+ * get-admin-notif-recipients edge function, key "unpaid_lead").
+ *
+ * NO hardcoded staff-email fallback. If the resolver is disabled, returns no
+ * recipients, or errors, we send to NOBODY. Empty recipients => skip the send.
+ */
+async function resolveUnpaidLeadRecipients(): Promise<{ enabled: boolean; recipients: string[] }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ notificationKey: "unpaid_lead" }),
+    });
+    if (!res.ok) {
+      console.warn(
+        `[get-resume-order] recipient resolver returned HTTP ${res.status} — suppressing unpaid-lead alert (no fallback)`
+      );
+      return { enabled: false, recipients: [] };
+    }
+    const data = (await res.json()) as { enabled?: boolean; recipients?: unknown };
+    const recipients = Array.isArray(data?.recipients)
+      ? (data.recipients as unknown[]).filter(
+          (e): e is string => typeof e === "string" && e.includes("@")
+        )
+      : [];
+    return { enabled: data?.enabled !== false, recipients };
+  } catch (err) {
+    console.warn(
+      "[get-resume-order] recipient resolver error — suppressing unpaid-lead alert (no fallback):",
+      err
+    );
+    return { enabled: false, recipients: [] };
   }
 }
 
@@ -557,51 +596,72 @@ serve(async (req) => {
 
       if (shouldNotify) {
         try {
-          const emailData = body.email || "";
-          const firstNameData = body.firstName || "";
-          const lastNameData = body.lastName || "";
-          const phoneData = normalizedPhone || body.phone || "";
-          const stateData = body.state || "";
-          const letterTypeData = body.letterType || "esa";
-          const deliveryData = body.deliverySpeed || "2-3days";
-          const timestamp =
-            new Date().toLocaleString("en-US", {
-              timeZone: "America/New_York",
-              dateStyle: "medium",
-              timeStyle: "short",
-            }) + " ET";
+          // ── RECIPIENT FIX (2026-06-16, LIVE) ─────────────────────────────
+          // Previously this sent to a hardcoded INTERNAL_NOTIFICATION_EMAIL
+          // ("eservices.dm@gmail.com"), ignoring the Admin > Settings >
+          // Notifications "Unpaid Lead / Abandoned Checkout" recipient list.
+          // Now we resolve recipients from admin_notification_prefs. If the
+          // notification is disabled OR has no configured recipient, we send
+          // to NOBODY (no fallback). Customer-facing emails are unaffected.
+          const { enabled, recipients } = await resolveUnpaidLeadRecipients();
 
-          const html = buildUnpaidLeadHtml({
-            confirmationId: effectiveConfirmationId,
-            firstName: firstNameData,
-            lastName: lastNameData,
-            email: emailData,
-            phone: phoneData,
-            state: stateData,
-            letterType: letterTypeData,
-            deliverySpeed: deliveryData,
-            timestamp,
-          });
-
-          const res = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${RESEND_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from: FROM_EMAIL,
-              to: [INTERNAL_NOTIFICATION_EMAIL],
-              subject: `[PawTenant] New Unpaid Lead — ${effectiveConfirmationId} (${letterTypeData.toUpperCase()})`,
-              html,
-            }),
-          });
-
-          if (res.ok) {
-            console.info(`[get-resume-order] Unpaid lead notification sent for ${effectiveConfirmationId}`);
+          if (!enabled) {
+            console.info(
+              `[get-resume-order] unpaid_lead notification is DISABLED in settings — no admin alert sent for ${effectiveConfirmationId}`
+            );
+          } else if (recipients.length === 0) {
+            console.info(
+              `[get-resume-order] no recipient configured for unpaid_lead — no admin alert sent for ${effectiveConfirmationId}`
+            );
           } else {
-            const errText = await res.text();
-            console.warn(`[get-resume-order] Lead notification failed: ${errText}`);
+            const emailData = body.email || "";
+            const firstNameData = body.firstName || "";
+            const lastNameData = body.lastName || "";
+            const phoneData = normalizedPhone || body.phone || "";
+            const stateData = body.state || "";
+            const letterTypeData = body.letterType || "esa";
+            const deliveryData = body.deliverySpeed || "2-3days";
+            const timestamp =
+              new Date().toLocaleString("en-US", {
+                timeZone: "America/New_York",
+                dateStyle: "medium",
+                timeStyle: "short",
+              }) + " ET";
+
+            const html = buildUnpaidLeadHtml({
+              confirmationId: effectiveConfirmationId,
+              firstName: firstNameData,
+              lastName: lastNameData,
+              email: emailData,
+              phone: phoneData,
+              state: stateData,
+              letterType: letterTypeData,
+              deliverySpeed: deliveryData,
+              timestamp,
+            });
+
+            const res = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${RESEND_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: FROM_EMAIL,
+                to: recipients,
+                subject: `[PawTenant] New Unpaid Lead — ${effectiveConfirmationId} (${letterTypeData.toUpperCase()})`,
+                html,
+              }),
+            });
+
+            if (res.ok) {
+              console.info(
+                `[get-resume-order] Unpaid lead notification sent for ${effectiveConfirmationId} to ${recipients.join(", ")}`
+              );
+            } else {
+              const errText = await res.text();
+              console.warn(`[get-resume-order] Lead notification failed: ${errText}`);
+            }
           }
         } catch (notifyErr) {
           console.warn("[get-resume-order] Lead notification error:", notifyErr);
