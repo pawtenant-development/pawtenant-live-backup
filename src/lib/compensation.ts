@@ -91,6 +91,43 @@ export async function requestCompensationAdjustment(input: {
   return { id: data as string };
 }
 
+/**
+ * Edit an existing adjustment (type / amount / month / reason). Employee is not
+ * editable. Approved rows stay approved and immediately update salary/accounts;
+ * pending rows stay pending and re-sync their Manager-Approvals mirror. Same
+ * server-side authz as review (admin / finance / dept can_approve_bonus).
+ */
+export async function updateCompensationAdjustment(input: {
+  adjustmentId: string;
+  type: CompType | string;
+  amountPkr: number;
+  periodMonth: string; // any date in the target month (YYYY-MM-DD)
+  reason?: string | null;
+}): Promise<{ status?: string; error?: string }> {
+  const { data, error } = await supabase.rpc("update_compensation_adjustment", {
+    p_adjustment_id: input.adjustmentId,
+    p_type: input.type,
+    p_amount_pkr: input.amountPkr,
+    p_period_month: input.periodMonth,
+    p_reason: input.reason ?? null,
+  });
+  if (error) return { error: error.message };
+  return { status: data as string };
+}
+
+/** Soft-delete an adjustment (audit-logged). Stops it counting immediately. */
+export async function deleteCompensationAdjustment(
+  adjustmentId: string,
+  reason?: string | null,
+): Promise<{ ok?: boolean; error?: string }> {
+  const { error } = await supabase.rpc("delete_compensation_adjustment", {
+    p_adjustment_id: adjustmentId,
+    p_reason: reason ?? null,
+  });
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
 /** Approve / reject a pending adjustment. Returns resulting status or error. */
 export async function reviewCompensationAdjustment(
   adjustmentId: string,
