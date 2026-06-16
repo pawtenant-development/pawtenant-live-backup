@@ -234,6 +234,70 @@ Deno.serve(async (req) => {
     return json(200, { ok: true, requests: rows, reconciled: changed });
   }
 
+  // ── RESUME (owning customer OR admin) ─────────────────────────────────────
+  // Returns a usable Stripe Checkout URL for the EXISTING pending request so a
+  // customer can finish an abandoned payment — WITHOUT creating a duplicate
+  // request row and WITHOUT sending another email. Reuses the existing session
+  // while it is still open; refreshes it on the same row once expired; or, if
+  // the session is actually already paid, reconciles instead.
+  if (action === "resume") {
+    if (!stripeKey) return json(500, { ok: false, error: "Stripe not configured" });
+    const { data: pending } = await admin
+      .from("order_additional_documentation_requests")
+      .select("*")
+      .eq("order_id", orderRow.id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!pending) return json(409, { ok: false, error: "No pending request to resume" });
+    const pr = pending as { id: string; stripe_checkout_session_id: string | null; amount_cents: number };
+    // @ts-ignore — Stripe types under Deno
+    const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
+    if (pr.stripe_checkout_session_id) {
+      try {
+        const s = await stripe.checkout.sessions.retrieve(pr.stripe_checkout_session_id);
+        const paid = s.payment_status === "paid" || s.status === "complete";
+        if (paid) {
+          const piId = typeof s.payment_intent === "string"
+            ? s.payment_intent
+            : (s.payment_intent as { id?: string } | null)?.id ?? null;
+          await completeAdditionalDocPayment(admin, {
+            requestId: pr.id, parentOrderId: orderRow.id, sessionId: pr.stripe_checkout_session_id,
+            piId, amountCents: s.amount_total ?? pr.amount_cents, source: "reconcile",
+          });
+          return json(200, { ok: true, alreadyPaid: true, request: pending });
+        }
+        if (s.status === "open" && s.url) {
+          return json(200, { ok: true, checkoutUrl: s.url, request: pending });
+        }
+      } catch (e) {
+        console.warn("[create-addon] resume retrieve failed", e instanceof Error ? e.message : String(e));
+      }
+    }
+    // Expired / no session → create a fresh one bound to the SAME request row.
+    const rSite = (body.siteUrl && /^https?:\/\//.test(body.siteUrl)) ? body.siteUrl.replace(/\/$/, "") : DEFAULT_SITE;
+    const rMeta = {
+      type: "additional_documentation", request_id: pr.id, parent_order_id: orderRow.id,
+      parent_confirmation_id: orderRow.confirmation_id ?? "", customer_email: orderEmail,
+    };
+    let rSession;
+    try {
+      rSession = await stripe.checkout.sessions.create({
+        mode: "payment", payment_method_types: ["card"], customer_email: orderEmail,
+        line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: ADDON_AMOUNT_CENTS, product_data: { name: "Additional Documentation — Provider Form Completion", description: `Add-on for order ${orderRow.confirmation_id ?? ""}`.trim() } } }],
+        submit_type: "pay",
+        success_url: `${rSite}/my-orders?addon=success&order=${encodeURIComponent(orderRow.confirmation_id ?? "")}`,
+        cancel_url: `${rSite}/my-orders?addon=cancelled&order=${encodeURIComponent(orderRow.confirmation_id ?? "")}`,
+        metadata: rMeta, payment_intent_data: { metadata: rMeta },
+      });
+    } catch (err) {
+      return json(502, { ok: false, error: `Stripe session failed: ${err instanceof Error ? err.message : String(err)}` });
+    }
+    await admin.from("order_additional_documentation_requests").update({ stripe_checkout_session_id: rSession.id }).eq("id", pr.id);
+    return json(200, { ok: true, checkoutUrl: rSession.url, request: { ...pending, stripe_checkout_session_id: rSession.id } });
+  }
+
   // ── CANCEL (admin only) ──────────────────────────────────────────────────
   if (action === "cancel") {
     if (!isAdmin) return json(403, { ok: false, error: "Admin only" });

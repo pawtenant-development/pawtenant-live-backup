@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import ContactSupportWidget from "./components/ContactSupportWidget";
+import AdditionalDocRequest, { canRequestAdditionalDoc } from "./components/AdditionalDocRequest";
 
 interface OrderDocument {
   id: string;
@@ -331,7 +332,7 @@ function DocumentsSection({ order }: { order: Order }) {
   );
 }
 
-function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userEmail: string; onContactSupport: () => void }) {
+function OrderCard({ order, userEmail, onContactSupport, addonSuccessOrder }: { order: Order; userEmail: string; onContactSupport: () => void; addonSuccessOrder?: string | null }) {
   const displayStatus = getDisplayStatus(order);
   const deliveryLabel = order.delivery_speed === "24hours" || order.delivery_speed === "24h"
     ? "Within 24 hours"
@@ -533,6 +534,17 @@ function OrderCard({ order, userEmail, onContactSupport }: { order: Order; userE
           <ReturningCustomerActions orderId={order.id} />
         )}
 
+        {/* Additional Documentation add-on — paid, non-refunded/cancelled orders */}
+        {canRequestAdditionalDoc(order) && (
+          <AdditionalDocRequest
+            order={order}
+            highlightSuccess={
+              !!addonSuccessOrder &&
+              addonSuccessOrder.toUpperCase() === (order.confirmation_id ?? "").toUpperCase()
+            }
+          />
+        )}
+
         {/* Landlord Verification Badge — shown when letter is delivered */}
         {order.doctor_status === "patient_notified" && (
           <div className="mt-4 bg-[#FFF7ED] border border-orange-200 rounded-xl px-4 py-3 flex items-start gap-3">
@@ -699,6 +711,11 @@ export default function MyOrdersPage() {
   const [userName, setUserName] = useState("");
   const [supportOpen, setSupportOpen] = useState(false);
   const [searchParams] = useSearchParams();
+  // Add-on (Additional Documentation) checkout return: ?addon=success|cancelled&order=CID
+  const addonParam = searchParams.get("addon");
+  const addonSuccessOrder = addonParam === "success" ? searchParams.get("order") : null;
+  const addonCancelledOrder = addonParam === "cancelled" ? searchParams.get("order") : null;
+  const [addonBannerDismissed, setAddonBannerDismissed] = useState(false);
   const [isAdminPreview, setIsAdminPreview] = useState(false);
   const [searchEmail, setSearchEmail] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -1241,9 +1258,30 @@ export default function MyOrdersPage() {
           </div>
         ) : (
           <>
+            {/* Additional Documentation checkout return banner */}
+            {addonSuccessOrder && !addonBannerDismissed && (
+              <div className="mb-5 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                <i className="ri-checkbox-circle-fill text-emerald-600 mt-0.5"></i>
+                <div className="text-xs text-emerald-800 leading-relaxed flex-1">
+                  <p className="font-bold mb-0.5">Payment received — thank you!</p>
+                  <p>We're confirming your additional documentation payment{addonSuccessOrder ? ` for order ${addonSuccessOrder}` : ""} and reopening your case for provider review. Please reply to our confirmation email with the form you need completed.</p>
+                </div>
+                <button type="button" onClick={() => setAddonBannerDismissed(true)} className="text-emerald-500 hover:text-emerald-700"><i className="ri-close-line"></i></button>
+              </div>
+            )}
+            {addonCancelledOrder && !addonBannerDismissed && (
+              <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                <i className="ri-information-line text-amber-600 mt-0.5"></i>
+                <div className="text-xs text-amber-800 leading-relaxed flex-1">
+                  <p className="font-bold mb-0.5">Payment not completed.</p>
+                  <p>Your additional documentation payment was cancelled. You can start it again from your order below whenever you're ready.</p>
+                </div>
+                <button type="button" onClick={() => setAddonBannerDismissed(true)} className="text-amber-500 hover:text-amber-700"><i className="ri-close-line"></i></button>
+              </div>
+            )}
             <div className="space-y-5">
               {filteredOrders.map((order) => (
-                <OrderCard key={order.id} order={order} userEmail={userEmail} onContactSupport={() => setSupportOpen(true)} />
+                <OrderCard key={order.id} order={order} userEmail={userEmail} onContactSupport={() => setSupportOpen(true)} addonSuccessOrder={addonSuccessOrder} />
               ))}
             </div>
 
