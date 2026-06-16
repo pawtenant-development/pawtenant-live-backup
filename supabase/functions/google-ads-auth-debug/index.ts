@@ -10,7 +10,7 @@ const corsHeaders = {
 // ── Hardcoded IDs (no dashes) ─────────────────────────────────────────────────
 const ADVERTISER_ID = "2480853323";
 const MCC_ID        = "7629508384";
-const API_VERSION   = "v20";
+const API_VERSION   = Deno.env.get("GOOGLE_ADS_API_VERSION") || "v21";
 
 // ── Redact helper — never log actual secret values ────────────────────────────
 function redact(val: string | undefined | null): string {
