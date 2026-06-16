@@ -149,6 +149,10 @@ export interface DoctorProfile {
   photo_url?: string;
   lifecycle_status?: string | null;
   is_published?: boolean | null;
+  // Link back to the originating provider_applications row. Used by the
+  // ProviderDrawer "Documents" tab to surface onboarding uploads
+  // (documents_urls / headshot_url) after the application is approved.
+  application_id?: string | null;
   // Provider account-readiness (portal access) — see migration
   // 20260605120000_provider_assignment_readiness.sql
   portal_first_accessed_at?: string | null;

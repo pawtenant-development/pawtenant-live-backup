@@ -32,6 +32,52 @@ interface ProviderNote {
   id: string; note_body: string; admin_name: string | null; admin_user_id: string | null; created_at: string;
 }
 
+// ── Provider onboarding documents (read from the linked provider_applications
+// row via doctor_profiles.application_id). Files live in the PUBLIC
+// `provider-uploads` storage bucket and the absolute public URL is stored
+// directly on the application — so this view is frontend-only (no signed URL
+// needed). Admin-gated by virtue of living inside the admin ProviderDrawer.
+interface ProviderApplicationDocs {
+  documents_urls: string[] | null;
+  headshot_url: string | null;
+  status: string | null;
+  created_at: string | null;
+  license_state: string | null;
+  additional_states: string | null;
+  license_number: string | null;
+  license_types: string | null;
+  npi: string | null;
+}
+
+// Pull a readable filename out of a stored storage URL.
+// e.g. ".../documents/1775042860663-Eve_Resume_February_2026.pdf"
+//   -> "Eve_Resume_February_2026.pdf"
+function filenameFromUrl(url: string): string {
+  try {
+    const path = url.split("?")[0];
+    let last = path.substring(path.lastIndexOf("/") + 1);
+    try { last = decodeURIComponent(last); } catch { /* keep raw */ }
+    // Strip the leading "<unix-ts>-" upload prefix if present.
+    last = last.replace(/^\d{10,}-/, "");
+    return last || "document";
+  } catch {
+    return "document";
+  }
+}
+
+// Infer a human document type from the filename. Used for a label badge only —
+// NEVER treated as proof of verification (APIT/PSYPACT must be confirmed from
+// the file/source itself, not its name).
+function inferDocType(name: string): { label: string; cls: string } {
+  const n = name.toLowerCase();
+  if (/(apit|psypact)/.test(n)) return { label: "APIT / PSYPACT", cls: "bg-violet-50 text-violet-700 border-violet-200" };
+  if (/(insurance|liability|malpractice)/.test(n)) return { label: "Insurance", cls: "bg-sky-50 text-sky-700 border-sky-200" };
+  if (/(resume|cv)/.test(n)) return { label: "Resume / CV", cls: "bg-gray-100 text-gray-600 border-gray-200" };
+  if (/(license|licence|certificate|cert|credential|lp_|_lp)/.test(n)) return { label: "License / Certificate", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  if (/(headshot|photo|portrait)/.test(n)) return { label: "Headshot", cls: "bg-amber-50 text-amber-700 border-amber-200" };
+  return { label: "Document", cls: "bg-gray-100 text-gray-600 border-gray-200" };
+}
+
 const US_STATES_ABBR: { name: string; abbr: string }[] = [
   { name: "Alabama", abbr: "AL" }, { name: "Alaska", abbr: "AK" }, { name: "Arizona", abbr: "AZ" },
   { name: "Arkansas", abbr: "AR" }, { name: "California", abbr: "CA" }, { name: "Colorado", abbr: "CO" },
@@ -71,7 +117,7 @@ interface ProviderDrawerProps {
 export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefresh, onOpenStates, onDelete, canDeleteProviders = true }: ProviderDrawerProps) {
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
-  const [activeTab, setActiveTab] = useState<"overview" | "notes" | "portal">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "documents" | "notes" | "portal">("overview");
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     full_name: "", phone: "", title: "", license_number: "", npi_number: "",
@@ -114,6 +160,12 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const [submittingNote, setSubmittingNote] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
 
+  // Documents tab — onboarding uploads from the linked provider_applications row
+  const [appDocs, setAppDocs] = useState<ProviderApplicationDocs | null>(null);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [copiedDocUrl, setCopiedDocUrl] = useState<string | null>(null);
+
   // Helper: convert state_license_numbers object to array for display
   const objToStateLicenses = (obj: Record<string, string> | null): StateLicense[] => {
     if (!obj) return [];
@@ -148,12 +200,45 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
       setNoteInput("");
       setCreatingPortal(false);
       setCreatePortalMsg(null);
+      setAppDocs(null);
+      setDocsError(null);
+      setCopiedDocUrl(null);
     }
   }, [doc?.email]);
 
   useEffect(() => {
     if (activeTab === "notes" && doc) loadNotes();
+    if (activeTab === "documents" && doc) loadDocs();
   }, [activeTab, doc?.email]);
+
+  // Load onboarding documents for the linked application (approved providers).
+  // doctor_profiles.application_id -> provider_applications.{documents_urls,
+  // headshot_url, ...}. Contact-only providers have no application link.
+  const loadDocs = async () => {
+    if (!doc) return;
+    const applicationId = doc.profile?.application_id ?? null;
+    if (!applicationId) { setAppDocs(null); setDocsError(null); return; }
+    setLoadingDocs(true);
+    setDocsError(null);
+    const { data, error } = await supabase
+      .from("provider_applications")
+      .select("documents_urls, headshot_url, status, created_at, license_state, additional_states, license_number, license_types, npi")
+      .eq("id", applicationId)
+      .maybeSingle();
+    setLoadingDocs(false);
+    if (error) { setDocsError(error.message); setAppDocs(null); return; }
+    setAppDocs((data as ProviderApplicationDocs) ?? null);
+  };
+
+  const handleCopyDocLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedDocUrl(url);
+      setTimeout(() => setCopiedDocUrl((c) => (c === url ? null : c)), 2500);
+    } catch {
+      showToast("Could not copy link to clipboard.");
+    }
+  };
 
   const loadNotes = async () => {
     if (!doc) return;
@@ -503,15 +588,15 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
 
             {/* Tabs */}
             <div className="flex border-b border-gray-100 flex-shrink-0 px-6">
-              {(["overview", "notes", "portal"] as const).map((tab) => (
+              {(["overview", "documents", "notes", "portal"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
                   className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer capitalize ${activeTab === tab ? "border-[#3b6ea5] text-[#3b6ea5]" : "border-transparent text-gray-400 hover:text-gray-600"}`}
                 >
-                  <i className={tab === "overview" ? "ri-user-line" : tab === "notes" ? "ri-sticky-note-line" : "ri-eye-line"}></i>
-                  {tab === "overview" ? "Overview" : tab === "notes" ? "Admin Notes" : "View Portal"}
+                  <i className={tab === "overview" ? "ri-user-line" : tab === "documents" ? "ri-folder-line" : tab === "notes" ? "ri-sticky-note-line" : "ri-eye-line"}></i>
+                  {tab === "overview" ? "Overview" : tab === "documents" ? "Documents" : tab === "notes" ? "Admin Notes" : "View Portal"}
                   {tab === "notes" && providerNotes.length > 0 && (
                     <span className="px-1.5 py-0.5 bg-[#e8f5f1] text-[#3b6ea5] text-xs font-extrabold rounded-full">{providerNotes.length}</span>
                   )}
@@ -989,6 +1074,188 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                 </div>
               </div>
             )}
+
+            {/* ══════════ DOCUMENTS TAB ══════════ */}
+            {activeTab === "documents" && (() => {
+              const docUrls = (appDocs?.documents_urls ?? []).filter(Boolean);
+              const headshotUrl = appDocs?.headshot_url ?? null;
+              const hasAnything = docUrls.length > 0 || !!headshotUrl;
+              const allNames = [
+                ...docUrls.map((u) => filenameFromUrl(u).toLowerCase()),
+                headshotUrl ? filenameFromUrl(headshotUrl).toLowerCase() : "",
+              ].join(" ");
+              const hasApit = /(apit|psypact)/.test(allNames);
+              const hasInsurance = /(insurance|liability|malpractice)/.test(allNames);
+              const appStatus = appDocs?.status ?? null;
+              const submittedAt = appDocs?.created_at
+                ? new Date(appDocs.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                : null;
+
+              return (
+                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+                  {/* Intro / scope */}
+                  <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-2">
+                    <i className="ri-lock-2-line text-[#3b6ea5] text-sm flex-shrink-0 mt-0.5"></i>
+                    <p className="text-xs text-[#3b6ea5]/80 leading-relaxed">
+                      Onboarding documents submitted with this provider&apos;s application.
+                      Admin-only — never shown on public provider pages.
+                    </p>
+                  </div>
+
+                  {loadingDocs ? (
+                    <div className="flex items-center justify-center py-16">
+                      <i className="ri-loader-4-line animate-spin text-[#3b6ea5] text-2xl"></i>
+                    </div>
+                  ) : docsError ? (
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700 font-semibold flex items-start gap-2">
+                      <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+                      Could not load documents: {docsError}
+                    </div>
+                  ) : !doc.profile?.application_id ? (
+                    <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl">
+                      <i className="ri-folder-unknow-line text-2xl text-gray-300 block mb-2"></i>
+                      <p className="text-sm font-semibold text-gray-500">No linked application</p>
+                      <p className="text-xs text-gray-400 mt-1 max-w-[260px] mx-auto">
+                        This provider was added manually and has no onboarding application on file.
+                      </p>
+                    </div>
+                  ) : !hasAnything ? (
+                    <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl">
+                      <i className="ri-folder-open-line text-2xl text-gray-300 block mb-2"></i>
+                      <p className="text-sm font-semibold text-gray-500">No uploaded documents found for this provider.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Headshot preview */}
+                      {headshotUrl && (
+                        <div>
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Headshot</p>
+                          <div className="flex items-center gap-3">
+                            <div className="w-20 h-20 rounded-xl overflow-hidden border border-gray-200 flex-shrink-0 bg-gray-50">
+                              <img src={headshotUrl} alt="Provider headshot" className="w-full h-full object-cover object-top" />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <a href={headshotUrl} target="_blank" rel="noopener noreferrer"
+                                className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#e8f0f9] border border-[#b8cce4] text-[#3b6ea5] text-xs font-bold rounded-lg hover:bg-[#e0f2ec] cursor-pointer transition-colors">
+                                <i className="ri-external-link-line"></i>Open
+                              </a>
+                              <button type="button" onClick={() => handleCopyDocLink(headshotUrl)}
+                                className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                <i className={copiedDocUrl === headshotUrl ? "ri-check-line text-emerald-600" : "ri-clipboard-line"}></i>
+                                {copiedDocUrl === headshotUrl ? "Copied" : "Copy link"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Documents list */}
+                      <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">
+                          Uploaded Documents <span className="text-[#3b6ea5] font-extrabold ml-1">{docUrls.length}</span>
+                        </p>
+                        {docUrls.length === 0 ? (
+                          <p className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">No files beyond the headshot.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {docUrls.map((url, i) => {
+                              const name = filenameFromUrl(url);
+                              const type = inferDocType(name);
+                              return (
+                                <div key={`${url}-${i}`} className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-3 py-2.5">
+                                  <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg flex-shrink-0">
+                                    <i className="ri-file-text-line text-gray-500 text-sm"></i>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-gray-800 truncate" title={name}>{name}</p>
+                                    <span className={`mt-1 inline-block px-1.5 py-0.5 text-[10px] font-bold rounded border ${type.cls}`}>{type.label}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <a href={url} target="_blank" rel="noopener noreferrer"
+                                      title="Open / view"
+                                      className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#e8f0f9] border border-[#b8cce4] text-[#3b6ea5] text-xs font-bold rounded-lg hover:bg-[#e0f2ec] cursor-pointer transition-colors">
+                                      <i className="ri-external-link-line"></i><span className="hidden sm:inline">Open</span>
+                                    </a>
+                                    <button type="button" onClick={() => handleCopyDocLink(url)}
+                                      title="Copy link"
+                                      className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                      <i className={copiedDocUrl === url ? "ri-check-line text-emerald-600" : "ri-clipboard-line"}></i>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Verification notes — read-only summary */}
+                  {doc.profile?.application_id && !loadingDocs && !docsError && (
+                    <div className="border-t border-gray-100 pt-4">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Verification Notes</p>
+                      <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 space-y-2">
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="text-xs text-gray-400 flex-shrink-0 w-28">Licensed States</span>
+                          <span className="text-xs font-semibold text-gray-700 text-right">
+                            {displayStates.length > 0 ? displayStates.map((s) => s.code).join(", ") : "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="text-xs text-gray-400 flex-shrink-0 w-28">License #</span>
+                          <span className="text-xs font-semibold text-gray-700 text-right font-mono">
+                            {existingStateLicenses.length > 0
+                              ? existingStateLicenses.map((r) => `${r.code}:${r.conflict ? r.licenseNumbers.join("/") : r.licenseNumber}`).join(", ")
+                              : (doc.profile?.license_number ?? appDocs?.license_number ?? "—")}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="text-xs text-gray-400 flex-shrink-0 w-28">NPI #</span>
+                          <span className="text-xs font-semibold text-gray-700 text-right font-mono">
+                            {doc.profile?.npi_number ?? appDocs?.npi ?? "—"}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-4">
+                          <span className="text-xs text-gray-400 flex-shrink-0 w-28">Application</span>
+                          <span className="text-xs font-semibold text-right">
+                            {appStatus ? (
+                              <span className={`px-2 py-0.5 rounded-full border text-xs font-bold ${appStatus === "approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : appStatus === "pending" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
+                                {appStatus}
+                              </span>
+                            ) : <span className="text-gray-700">—</span>}
+                          </span>
+                        </div>
+                        {submittedAt && (
+                          <div className="flex items-start justify-between gap-4">
+                            <span className="text-xs text-gray-400 flex-shrink-0 w-28">Submitted</span>
+                            <span className="text-xs font-semibold text-gray-700 text-right">{submittedAt}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Missing-document indicators — only meaningful when docs exist */}
+                      {hasAnything && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border ${hasApit ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                            <i className={hasApit ? "ri-checkbox-circle-line" : "ri-error-warning-line"}></i>
+                            APIT / PSYPACT {hasApit ? "file present" : "not found"}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border ${hasInsurance ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                            <i className={hasInsurance ? "ri-checkbox-circle-line" : "ri-error-warning-line"}></i>
+                            Insurance {hasInsurance ? "file present" : "not found"}
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                        Document-type labels are inferred from filenames for convenience only — they are not proof of verification.
+                        Confirm APIT/PSYPACT and license validity from the document itself before adding states.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ══════════ NOTES TAB ══════════ */}
             {activeTab === "notes" && (
