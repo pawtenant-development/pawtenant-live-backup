@@ -125,6 +125,22 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Is PawTenant legit? PawTenant connects you with licensed providers for ESA letters, with transparent pricing, verifiable letters, and a refund if you don't qualify.",
   },
+  // ── ESA housing SEO batch (apartments / accommodation request / landlord checklist) ──
+  "/esa-letter-for-apartments": {
+    title: "ESA Letter for Apartments | Housing Accommodation Guide",
+    description:
+      "How an ESA letter works for apartment renters: a licensed provider evaluation, what to send your property manager, pet fees, verification, and denial support.",
+  },
+  "/esa-accommodation-request-letter": {
+    title: "ESA Accommodation Request Letter | What to Send Your Landlord",
+    description:
+      "Write a clear ESA reasonable-accommodation request letter for housing: what to include, a simple template, and how it pairs with your licensed provider's ESA letter.",
+  },
+  "/landlord-esa-documentation-checklist": {
+    title: "Landlord ESA Documentation Checklist | What to Review",
+    description:
+      "A clear checklist for landlords reviewing ESA documentation: what you can reasonably request, what you can't ask, and how to verify a letter without seeing medical details.",
+  },
   "/are-esa-letters-still-valid-after-hud-change": {
     title: "Are ESA Letters Still Valid After the 2026 HUD Change? | PawTenant",
     description:
