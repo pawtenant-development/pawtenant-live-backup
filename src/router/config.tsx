@@ -85,6 +85,11 @@ const IsPawTenantLegitPage = lazy(() => import("../pages/is-pawtenant-legit/page
 const ESALetterForApartmentsPage = lazy(() => import("../pages/esa-letter-for-apartments/page"));
 const ESAAccommodationRequestLetterPage = lazy(() => import("../pages/esa-accommodation-request-letter/page"));
 const LandlordESADocumentationChecklistPage = lazy(() => import("../pages/landlord-esa-documentation-checklist/page"));
+// State apartment ESA SEO batch (informational, indexable, in sitemap).
+const CaliforniaESALetterForApartmentsPage = lazy(() => import("../pages/california-esa-letter-for-apartments/page"));
+const TexasESALetterForApartmentsPage = lazy(() => import("../pages/texas-esa-letter-for-apartments/page"));
+const FloridaESALetterForApartmentsPage = lazy(() => import("../pages/florida-esa-letter-for-apartments/page"));
+const NewYorkESALetterForApartmentsPage = lazy(() => import("../pages/new-york-esa-letter-for-apartments/page"));
 // HUD 2026 ESA enforcement-change educational page (indexable, in sitemap).
 const AreEsaLettersStillValidAfterHudChangePage = lazy(() => import("../pages/are-esa-letters-still-valid-after-hud-change/page"));
 // 2026 HUD ESA guidelines blog article (indexable, in sitemap).
@@ -162,6 +167,11 @@ const routes: RouteObject[] = [
   { path: "/esa-letter-for-apartments", element: <P C={ESALetterForApartmentsPage} /> },
   { path: "/esa-accommodation-request-letter", element: <P C={ESAAccommodationRequestLetterPage} /> },
   { path: "/landlord-esa-documentation-checklist", element: <P C={LandlordESADocumentationChecklistPage} /> },
+  // State apartment ESA SEO batch (informational, indexable).
+  { path: "/california-esa-letter-for-apartments", element: <P C={CaliforniaESALetterForApartmentsPage} /> },
+  { path: "/texas-esa-letter-for-apartments", element: <P C={TexasESALetterForApartmentsPage} /> },
+  { path: "/florida-esa-letter-for-apartments", element: <P C={FloridaESALetterForApartmentsPage} /> },
+  { path: "/new-york-esa-letter-for-apartments", element: <P C={NewYorkESALetterForApartmentsPage} /> },
   // Travel-anxiety / major-event ESA hub (informational, indexable).
   { path: "/travel-anxiety-esa-letter", element: <P C={TravelAnxietyESALetterPage} /> },
   // HUD 2026 ESA enforcement-change educational page (informational, indexable).

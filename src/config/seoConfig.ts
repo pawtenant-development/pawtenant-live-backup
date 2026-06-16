@@ -141,6 +141,27 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "A clear checklist for landlords reviewing ESA documentation: what you can reasonably request, what you can't ask, and how to verify a letter without seeing medical details.",
   },
+  // ── State apartment ESA SEO batch (apartment-renter housing intent by state) ──
+  "/california-esa-letter-for-apartments": {
+    title: "California ESA Letter for Apartments | Renter Housing Guide",
+    description:
+      "ESA letters for California apartments: how AB 468's 30-day rule, a licensed provider evaluation, and a verifiable letter support your housing accommodation request.",
+  },
+  "/texas-esa-letter-for-apartments": {
+    title: "Texas ESA Letter for Apartments | Renter Housing Guide",
+    description:
+      "ESA letters for Texas apartments: how a licensed provider evaluation and a verifiable letter support a reasonable-accommodation request with large property managers.",
+  },
+  "/florida-esa-letter-for-apartments": {
+    title: "Florida ESA Letter for Apartments | Renter Housing Guide",
+    description:
+      "ESA letters for Florida apartments and condos: how Statute 760.27, a licensed provider evaluation, and a verifiable letter support your housing accommodation request.",
+  },
+  "/new-york-esa-letter-for-apartments": {
+    title: "New York ESA Letter for Apartments | Renter Housing Guide",
+    description:
+      "ESA letters for New York apartments, co-ops, and condos: how a licensed provider evaluation and a verifiable letter support your reasonable-accommodation request.",
+  },
   "/are-esa-letters-still-valid-after-hud-change": {
     title: "Are ESA Letters Still Valid After the 2026 HUD Change? | PawTenant",
     description:

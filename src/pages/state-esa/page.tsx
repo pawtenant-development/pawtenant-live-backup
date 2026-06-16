@@ -18,6 +18,14 @@ const FALLBACK_BLOG_SLUGS = [
   "mental-health-conditions-qualify-esa-2026",
 ];
 
+// ── State apartment ESA pages (only these slugs have a dedicated page) ────────
+const APARTMENT_STATE_PAGES: Record<string, string> = {
+  california: "/california-esa-letter-for-apartments",
+  texas: "/texas-esa-letter-for-apartments",
+  florida: "/florida-esa-letter-for-apartments",
+  "new-york": "/new-york-esa-letter-for-apartments",
+};
+
 // ── Nearby states map (by slug) ───────────────────────────────────────────────
 const NEARBY_STATES: Record<string, string[]> = {
   alabama: ["georgia", "florida", "tennessee", "mississippi"],
@@ -1311,6 +1319,22 @@ export default function StateESAPage() {
                 Read more <i className="ri-arrow-right-line" />
               </span>
             </Link>
+            {APARTMENT_STATE_PAGES[stateData.slug] && (
+              <Link
+                to={APARTMENT_STATE_PAGES[stateData.slug]}
+                className="group bg-white rounded-xl border border-slate-200 p-5 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+              >
+                <div className="text-[14.5px] font-semibold text-slate-900 mb-1.5 leading-snug">
+                  {stateData.name} ESA Letter for Apartments
+                </div>
+                <p className="text-[12.5px] text-slate-600 leading-relaxed">
+                  Apartment-renter housing requests in {stateData.name} — no-pet policies, pet fees, and what to send your leasing office or board.
+                </p>
+                <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
+                  Read more <i className="ri-arrow-right-line" />
+                </span>
+              </Link>
+            )}
           </div>
         </div>
       </section>

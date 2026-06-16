@@ -423,6 +423,44 @@ export default function ESALetterForApartmentsPage() {
         </div>
       </section>
 
+      {/* BY STATE */}
+      <section className="py-14 sm:py-16 bg-[#fafafa] border-y border-gray-100">
+        <div className="max-w-4xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-8">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-orange-500 mb-2">
+              Apartment ESAs by state
+            </p>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
+              State-specific apartment ESA guides
+            </h2>
+            <p className="text-gray-500 text-sm mt-3 max-w-xl mx-auto">
+              Some states add their own rules on top of the Fair Housing Act. If you rent in one of
+              these, start with the state guide.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { to: "/california-esa-letter-for-apartments", label: "California apartment ESA letters", note: "AB 468 30-day rule" },
+              { to: "/texas-esa-letter-for-apartments", label: "Texas apartment ESA letters", note: "Large property managers" },
+              { to: "/florida-esa-letter-for-apartments", label: "Florida apartment ESA letters", note: "Statute 760.27 & condos" },
+              { to: "/new-york-esa-letter-for-apartments", label: "New York apartment ESA letters", note: "Co-ops & board review" },
+            ].map((s) => (
+              <Link
+                key={s.to}
+                to={s.to}
+                className="group flex items-center justify-between gap-3 bg-white rounded-xl border border-gray-200 px-5 py-4 hover:border-orange-200 hover:shadow-sm transition cursor-pointer"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-gray-900 leading-snug">{s.label}</span>
+                  <span className="block text-[12px] text-gray-500">{s.note}</span>
+                </span>
+                <i className="ri-arrow-right-line text-orange-500 flex-shrink-0 group-hover:translate-x-0.5 transition-transform"></i>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* LIFESTYLE */}
       <LifestyleImageSection
         reverse
