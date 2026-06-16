@@ -10,6 +10,10 @@ import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
 import PSDAssessmentView from "./PSDAssessmentView";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
 import PaymentHistoryTab from "./PaymentHistoryTab";
+// ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): isolated mount — admin sends a
+// tracked $40 "Additional Documentation" invoice tied to this order. Approved
+// edit type: additive component mount + one header-menu item.
+import AdditionalDocInvoiceModal from "./AdditionalDocInvoiceModal";
 import { canDelete } from "../../../lib/adminPermissions";
 // ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
 // reads the same canonical classifier the order list pill (OrderCard) and
@@ -977,6 +981,9 @@ export default function OrderDetailModal({
   // OPS-ORDER-MODAL-V2-LAYOUT: header "More" actions dropdown (Send Reset /
   // Upgrade / New Order / Provider View). Closes on outside click + escape.
   const [showHeaderMore, setShowHeaderMore] = useState(false);
+  // ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): controls the Additional
+  // Documentation Invoice modal.
+  const [showAddonInvoice, setShowAddonInvoice] = useState(false);
   const headerMoreRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!showHeaderMore) return;
@@ -3171,6 +3178,20 @@ export default function OrderDetailModal({
                             {!hasProviderDocs && order.doctor_status !== "patient_notified" && (
                               <span className="text-[10px] text-gray-400 font-normal normal-case">letter needed</span>
                             )}
+                          </button>
+                        )}
+                        {/* ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): send a
+                            tracked $40 additional-documentation invoice. */}
+                        {order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
+                          <button
+                            type="button"
+                            onClick={() => { setShowHeaderMore(false); setShowAddonInvoice(true); }}
+                            role="menuitem"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors"
+                          >
+                            <i className="ri-file-add-line"></i>
+                            <span className="flex-1 text-left">Send Additional Documentation Invoice</span>
+                            <span className="text-[10px] text-gray-400 font-normal normal-case">$40</span>
                           </button>
                         )}
                       </>
@@ -6116,6 +6137,18 @@ export default function OrderDetailModal({
             </div>
           </div>
         </div>
+      )}
+      {/* ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): isolated mount. */}
+      {showAddonInvoice && (
+        <AdditionalDocInvoiceModal
+          order={{
+            id: order.id,
+            confirmation_id: order.confirmation_id,
+            email: order.email,
+            first_name: order.first_name,
+          }}
+          onClose={() => setShowAddonInvoice(false)}
+        />
       )}
     </div>
   );

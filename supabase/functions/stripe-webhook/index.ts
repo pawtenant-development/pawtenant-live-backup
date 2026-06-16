@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
+import { completeAdditionalDocPayment } from "../_shared/completeAdditionalDocPayment.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -276,6 +277,23 @@ Deno.serve(async (req: Request) => {
     } catch { /* non-critical */ }
   }
 
+  // ── Additional Documentation add-on payment handler ───────────────────────
+  // Routed here EARLY (before normal order processing) whenever a payment carries
+  // metadata.type === "additional_documentation". Delegates to the shared
+  // completion module (same path used by the reconcile self-heal). Never touches
+  // the parent order's price/coupon/normal-paid emails. Idempotent.
+  async function handleAdditionalDocPayment(opts: {
+    requestId?: string | null;
+    parentOrderId?: string | null;
+    sessionId?: string | null;
+    piId?: string | null;
+    amountCents?: number | null;
+    eventId?: string | null;
+  }): Promise<Response> {
+    const result = await completeAdditionalDocPayment(supabase, { ...opts, source: "webhook" });
+    return json(result);
+  }
+
   async function appendEmailLog(confirmationId: string, entries: EmailLogEntry[]) {
     try {
       const { data } = await supabase.from("orders").select("email_log").eq("confirmation_id", confirmationId).maybeSingle();
@@ -495,6 +513,18 @@ Deno.serve(async (req: Request) => {
   // ── payment_intent.succeeded ──────────────────────────────────────────────
   if (t === "payment_intent.succeeded") {
     const pi = event.data.object;
+
+    // Additional Documentation add-on — route EARLY, never touch parent order flow.
+    if (pi.metadata?.type === "additional_documentation") {
+      return await handleAdditionalDocPayment({
+        requestId: pi.metadata.request_id,
+        parentOrderId: pi.metadata.parent_order_id,
+        piId: pi.id,
+        amountCents: pi.amount_received ?? pi.amount ?? null,
+        eventId: event.id,
+      });
+    }
+
     const cidFromMeta = pi.metadata?.confirmation_id;
     const emailFromMeta = pi.metadata?.email ?? pi.receipt_email;
     const sessionIdFromMeta = pi.metadata?.checkout_session_id;
@@ -666,6 +696,20 @@ Deno.serve(async (req: Request) => {
   // ── checkout.session.completed ────────────────────────────────────────────
   if (t === "checkout.session.completed") {
     const session = event.data.object;
+
+    // Additional Documentation add-on — route EARLY, never touch parent order flow.
+    if (session.metadata?.type === "additional_documentation") {
+      if (session.payment_status !== "paid") return json({ ok: true, addon: true, deferred: true });
+      return await handleAdditionalDocPayment({
+        requestId: session.metadata.request_id,
+        parentOrderId: session.metadata.parent_order_id,
+        sessionId: session.id,
+        piId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        amountCents: session.amount_total ?? null,
+        eventId: event.id,
+      });
+    }
+
     const cid = session.metadata?.confirmation_id;
     const emailFromMeta = session.metadata?.email ?? session.customer_email;
     if (session.payment_status !== "paid") return json({ ok: true, deferred: true, confirmationId: cid });
@@ -713,6 +757,19 @@ Deno.serve(async (req: Request) => {
   // ── checkout.session.async_payment_succeeded ─────────────────────────────
   if (t === "checkout.session.async_payment_succeeded") {
     const session = event.data.object;
+
+    // Additional Documentation add-on — route EARLY (covers any async method).
+    if (session.metadata?.type === "additional_documentation") {
+      return await handleAdditionalDocPayment({
+        requestId: session.metadata.request_id,
+        parentOrderId: session.metadata.parent_order_id,
+        sessionId: session.id,
+        piId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        amountCents: session.amount_total ?? null,
+        eventId: event.id,
+      });
+    }
+
     const cid = session.metadata?.confirmation_id;
     const emailFromMeta = session.metadata?.email ?? session.customer_email;
     const isSubscription = session.subscription != null;
