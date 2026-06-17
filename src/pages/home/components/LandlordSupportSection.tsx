@@ -14,32 +14,32 @@ const OBJECTIONS = [
     question: "\"I don't accept ESA letters.\"",
     answer: "Under the Fair Housing Act, landlords must consider reasonable accommodation requests — even in no-pet buildings.",
     proof: "Federal protection",
-    color: "border-orange-200 bg-orange-50",
-    iconColor: "bg-orange-100 text-orange-600",
+    color: "border-slate-200 bg-white",
+    iconColor: "bg-[#4A8472]/10 text-[#4A8472]",
   },
   {
     icon: "ri-search-eye-line",
     question: "\"How do I know this letter is real?\"",
     answer: "Every letter carries a unique Verification ID landlords can confirm at pawtenant.com/verify.",
     proof: "Instant verify",
-    color: "border-teal-200 bg-teal-50",
-    iconColor: "bg-teal-100 text-teal-600",
+    color: "border-slate-200 bg-white",
+    iconColor: "bg-[#4A8472]/10 text-[#4A8472]",
   },
   {
     icon: "ri-user-heart-line",
     question: "\"Is the provider actually licensed?\"",
     answer: "Yes — a Licensed Mental Health Professional credentialed in your state. License # and NPI printed on the letter.",
     proof: "NPI verifiable",
-    color: "border-amber-200 bg-amber-50",
-    iconColor: "bg-amber-100 text-amber-700",
+    color: "border-slate-200 bg-white",
+    iconColor: "bg-[#4A8472]/10 text-[#4A8472]",
   },
   {
     icon: "ri-file-damage-line",
     question: "\"This letter looks like it came from the internet.\"",
     answer: "Formatted to clinical standards used by private therapists — provider credentials, license #, NPI, and dates.",
     proof: "Clinical format",
-    color: "border-violet-200 bg-violet-50",
-    iconColor: "bg-violet-100 text-violet-600",
+    color: "border-slate-200 bg-white",
+    iconColor: "bg-[#4A8472]/10 text-[#4A8472]",
   },
 ];
 
@@ -51,7 +51,7 @@ const STEPS = [
 
 export default function LandlordSupportSection() {
   return (
-    <section className="py-20 md:py-24 bg-gray-50">
+    <section className="py-20 md:py-24 bg-[#f8f7f4]">
       <div className="max-w-7xl mx-auto px-5 md:px-6">
 
         {/* Header */}
