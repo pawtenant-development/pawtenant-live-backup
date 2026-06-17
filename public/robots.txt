@@ -20,8 +20,11 @@ Disallow: /reset-password
 Disallow: /go-live
 Disallow: /company
 Disallow: /account/
-Disallow: /assets/
-Disallow: /assets/*
+
+# NOTE: /assets/ is intentionally NOT blocked. It holds the hashed Vite
+# JS/CSS chunks Googlebot must fetch to render React pages. Blocking it
+# breaks rendering. JS crawl volume is controlled via immutable caching
+# (Cache-Control: immutable on /assets/ in vercel.json), not robots blocking.
 
 # AI assistants & answer engines are welcome to read public content.
 # A curated map for LLMs is published at /llms.txt.
