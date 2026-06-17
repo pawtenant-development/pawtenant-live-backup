@@ -20,6 +20,8 @@ Disallow: /reset-password
 Disallow: /go-live
 Disallow: /company
 Disallow: /account/
+Disallow: /assets/
+Disallow: /assets/*
 
 # AI assistants & answer engines are welcome to read public content.
 # A curated map for LLMs is published at /llms.txt.
