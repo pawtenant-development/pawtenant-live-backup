@@ -16,6 +16,30 @@ const petTypes = [
   { name: "Reptiles", icon: "ri-shield-cross-line" },
 ];
 
+// Warm, premium home-lifestyle companion-animal photography (dogs/cats in
+// comfortable apartment settings) — supports the housing-focused ESA message.
+// Below the fold → lazy, with explicit width/height to avoid CLS.
+const petPhotos = [
+  {
+    src: "/assets/lifestyle/esa-golden-retriever-home.jpg",
+    alt: "Emotional support dog resting comfortably on the couch at home",
+    width: 1000,
+    height: 750,
+  },
+  {
+    src: "/assets/lifestyle/esa-cat-apartment-window.jpg",
+    alt: "Cat relaxing peacefully by an apartment window in the sun",
+    width: 1000,
+    height: 750,
+  },
+  {
+    src: "/assets/lifestyle/esa-owner-hugging-dog-home.jpg",
+    alt: "Owner sharing a calm, comforting moment with her dog at home",
+    width: 1000,
+    height: 750,
+  },
+];
+
 export default function WhatIsESA() {
   return (
     <section className="py-12 sm:py-20 bg-white">
@@ -23,24 +47,23 @@ export default function WhatIsESA() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12 items-stretch">
           {/* Image — mobile-first: aspect-ratio container prevents CLS and
               keeps the image from feeling oversized on narrow phones.
-              Phase 7 PageSpeed (2026-05-26): swapped 78 KB / 1300×866 JPG
-              for a 22 KB / 900×600 WebP via <picture>. JPG retained as a
-              fallback for browsers without WebP support. Still lazy-loaded
-              (below the fold). */}
-          <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-80">
+              Warm, premium home-lifestyle photo (owner + calm dog in a sunlit
+              apartment) reinforces the housing-focused ESA message. WebP via
+              <picture> with a JPG fallback; lazy-loaded (below the fold). */}
+          <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-80 shadow-sm ring-1 ring-slate-200/60">
             <picture>
               <source
                 type="image/webp"
-                srcSet="/assets/breeds/cat-with-owner.webp"
+                srcSet="/assets/lifestyle/esa-owner-dog-apartment.webp"
               />
               <img
-                src="/assets/breeds/cat-with-owner.jpg"
-                alt="What is an emotional support animal ESA — licensed LMHP letter for mental health housing rights"
+                src="/assets/lifestyle/esa-owner-dog-apartment.jpg"
+                alt="Woman relaxing at home with her emotional support dog in a sunlit apartment"
                 width={1200}
-                height={900}
+                height={800}
                 loading="lazy"
                 decoding="async"
-                className="w-full h-full object-cover object-top"
+                className="w-full h-full object-cover object-center"
               />
             </picture>
           </div>
@@ -97,6 +120,35 @@ export default function WhatIsESA() {
               </span>
             ))}
           </div>
+
+          {/* Warm pet visual strip — keeps the section grounded with real
+              companion-animal imagery instead of text-and-chips only.
+              Compact 3-up grid so the section stays short on every breakpoint. */}
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-2xl mx-auto mt-6 sm:mt-8">
+            {petPhotos.map((p) => (
+              <div
+                key={p.src}
+                className="rounded-xl overflow-hidden border border-slate-200 aspect-[4/3] bg-slate-100"
+              >
+                <picture>
+                  <source
+                    type="image/webp"
+                    srcSet={p.src.replace(/\.jpg$/, ".webp")}
+                  />
+                  <img
+                    src={p.src}
+                    alt={p.alt}
+                    width={p.width}
+                    height={p.height}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover object-center"
+                  />
+                </picture>
+              </div>
+            ))}
+          </div>
+
           <p className="text-center text-xs text-gray-400 mt-5">
             <i className="ri-information-line mr-1"></i>
             ESA letters cover dogs, cats, rabbits, birds, hamsters, and other domesticated animals
