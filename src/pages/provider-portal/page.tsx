@@ -97,6 +97,25 @@ function statusMatchesFilter(doctorStatus: string | null, filter: StatusFilter, 
   return true;
 }
 
+// ─── Default ordering: keep active work on top ───────────────────────────────
+// Active cases (especially 30-day-reissue orders reopened for the official
+// letter) sort above completed history, so a reopened order stays visible even
+// if the provider missed the email. Within the same bucket, newest-assigned
+// first. Cancelled/refunded history sinks to the bottom. Filters/search are
+// applied first, so this only sets the order within the current view.
+const PROVIDER_STATUS_PRIORITY: Record<string, number> = {
+  thirty_day_reissue: 0, // official-letter reopen — most time-sensitive, keep it visible
+  pending_review: 1,
+  in_review: 2,
+  approved: 3,
+  patient_notified: 5,
+  letter_sent: 5,
+};
+function providerOrderRank(order: Order): number {
+  if (isOrderInactive(order)) return 9; // refunded/cancelled -> bottom
+  return PROVIDER_STATUS_PRIORITY[order.doctor_status ?? "pending_review"] ?? 4;
+}
+
 export default function ProviderPortalPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -438,6 +457,11 @@ export default function ProviderPortalPage() {
       );
     }
     return true;
+  }).sort((a, b) => {
+    const ra = providerOrderRank(a);
+    const rb = providerOrderRank(b);
+    if (ra !== rb) return ra - rb;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;

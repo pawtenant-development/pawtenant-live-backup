@@ -3164,6 +3164,30 @@ export default function OrderDetailModal({
                             <span className="flex-1 text-left">{order.status === "under-review" ? "Already Under Review" : "Mark Under Review"}</span>
                           </button>
                         )}
+                        {/* 30-DAY-OFFICIAL-LETTER (2026-06-18, LIVE mirror of TEST
+                            3ced905): "Mark as Completed" for a paid order that is
+                            currently Under Review. Strictly gated — the surrounding
+                            block already requires a paid order (payment_intent_id),
+                            and this item only appears when the status is exactly
+                            'under-review', so it never shows for unpaid, pending,
+                            processing, cancelled, refunded, archived or
+                            already-completed orders. Completing a CA / 30-day-state
+                            order is tracked by the DB trigger handle_official_letter_
+                            completion(); the official-letter reopen is handled by the
+                            scheduled reopen_due_official_letter_orders() job. */}
+                        {order.status === "under-review" && !order.refunded_at && (
+                          <button
+                            type="button"
+                            onClick={() => { setShowHeaderMore(false); handleSetStatus("completed"); }}
+                            disabled={statusUpdating}
+                            role="menuitem"
+                            title="Mark this under-review order as completed"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i className="ri-check-double-line"></i>
+                            <span className="flex-1 text-left">Mark as Completed</span>
+                          </button>
+                        )}
                         {order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
                           <button
                             type="button"
