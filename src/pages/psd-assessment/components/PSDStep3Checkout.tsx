@@ -576,6 +576,12 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
   const [resolvedBasePriceCents, setResolvedBasePriceCents] = useState<number | null>(null);
   const [initError, setInitError] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
+  // ── 2026-06-18 PSD-COUPON-PARITY ──────────────────────────────────────────
+  // Track the applied coupon CODE (not just the discount amount) at the parent
+  // level so we can (a) send it to create-payment-intent — so Stripe actually
+  // charges the discounted amount, exactly like ESA — and (b) persist it on the
+  // order so the admin Order Detail shows the discount code for PSD too.
+  const [couponCode, setCouponCode] = useState("");
   // ── 2026-05-21 PSD-STEP3-ESA-1TO1 ─────────────────────────────────────────
   // Mobile-only slide-up summary sheet state — same pattern as ESA Step 3.
   const [showMobileSummary, setShowMobileSummary] = useState(false);
@@ -629,6 +635,10 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
             letterType: "psd",
             email: step2.email,
             customerName: `${step2.firstName} ${step2.lastName}`,
+            // ── PSD-COUPON-PARITY: send the coupon so Stripe charges the
+            // discounted amount and stamps coupon_code into the PI metadata
+            // (the stripe-webhook reads it and persists it on the order). ──
+            couponCode,
             cancelSubscriptionId: prevSubscriptionId,
             metadata: {
               confirmationId,
@@ -663,7 +673,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
     const timer = setTimeout(() => { init(); }, 350);
     return () => { cancelled = true; clearTimeout(timer); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPlan, confirmationId]);
+  }, [selectedPlan, confirmationId, couponCode]);
 
   useEffect(() => {
     return () => {
@@ -778,6 +788,10 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
         letter_type: "psd",
         status: "processing",
         paid_at: paidAt,
+        // ── PSD-COUPON-PARITY: persist the discount code on the order so the
+        // admin Order Detail shows it for PSD, same as ESA. Only written when a
+        // coupon was actually applied so no-coupon orders stay blank. ──
+        ...(couponCode && couponDiscount > 0 ? { coupon_code: couponCode, coupon_discount: couponDiscount } : {}),
         assessment_answers: { ...step1, pets: step2.pets, dob: step2.dob, letterType: "psd" },
         // ── Attribution columns — written at payment time ──
         gclid:           gclidVal,
@@ -792,8 +806,13 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
       }, { onConflict: "confirmation_id", ignoreDuplicates: false });
     } catch { /* silent */ }
 
+    // ── 2026-06-18 PSD-ORDER-ID-FIX ───────────────────────────────────────
+    // Pass the internal confirmation_id (PT-…) as order_id — NOT the Stripe
+    // payment_intent id. The thank-you page looks up the canonical order by
+    // this value (via check-payment-status) and renders it as the Order ID,
+    // so passing the pi_… id showed a wrong, un-lookup-able ID. Matches ESA.
     sessionStorage.setItem("esa_payment_success", "true");
-    navigate(`/psd-assessment/thank-you?amount=${displayPrice}&order_id=${paymentIntentId}`);
+    navigate(`/psd-assessment/thank-you?amount=${displayPrice}&order_id=${confirmationId}`);
   };
 
   return (
@@ -1160,7 +1179,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
               state={step2.state}
               confirmationId={confirmationId}
               priceBeforeDiscount={priceBeforeDiscount}
-              onDiscountChange={(discount) => setCouponDiscount(discount)}
+              onDiscountChange={(discount, code) => { setCouponDiscount(discount); setCouponCode(discount > 0 ? code : ""); }}
             />
 
             {/* Compact post-payment timeline — calm reassurance below Pay */}

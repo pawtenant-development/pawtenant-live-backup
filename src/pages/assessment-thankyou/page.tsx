@@ -25,6 +25,26 @@ interface PendingOrder extends ThankYouState {
   _step3Plan?: string;
 }
 
+// ── 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH ─────────────────────────────────────
+// Safe public order shape returned by the check-payment-status edge function.
+// This is the canonical record (actual amount charged, real plan, real assigned
+// provider) — preferred over stale URL params or sessionStorage for display.
+interface PublicOrder {
+  confirmation_id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  price?: number | null;
+  plan_type?: string | null;
+  delivery_speed?: string | null;
+  letter_type?: string | null;
+  coupon_code?: string | null;
+  coupon_discount?: number | null;
+  doctor_name?: string | null;
+  status?: string | null;
+  paid_at?: string | null;
+}
+
 declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
@@ -34,7 +54,14 @@ declare global {
 
 // fireMetaPurchase and fireLead are imported from @/lib/metaPixel
 
-const GOOGLE_REVIEW_URL = "https://g.page/r/YOUR_GOOGLE_PLACE_ID/review";
+const GOOGLE_REVIEW_URL = "https://www.google.com/search?sca_esv=0b1c7d926c8058f9&si=AL3DRZEsmMGCryMMFSHJ3StBhOdZ2-6yYkXd_doETEE1OR-qOcgBj58jmxujTZ7byPAw8npggXTcPRI82lkEhuTmamSruv_EA9uwdfELsrB4RPReQ-OPCTj609pZy3sSjc4oz_EHV8no&q=PawTenant+Reviews&sa=X&ved=2ahUKEwjV1eTEsI-VAxWmBtsEHda6N_IQ0bkNegQIIxAF&biw=1536&bih=730&dpr=1.25";
+
+// Format a dollar amount for display. Whole dollars render without decimals
+// ($90), fractional amounts keep two places ($89.50).
+function formatUSD(n: number): string {
+  const v = Number(n) || 0;
+  return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
+}
 
 const GUARANTEE_POINTS = [
   { icon: "ri-shield-check-line", label: "HIPAA Compliant" },
@@ -409,6 +436,10 @@ export default function AssessmentThankYouPage() {
   const webhookFired = useRef(false);
   const reconcilerFired = useRef(false);
 
+  // Canonical order record fetched from the server (source of truth for the
+  // displayed amount, plan, customer, and assigned provider).
+  const [dbOrder, setDbOrder] = useState<PublicOrder | null>(null);
+
   // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL (thank-you arrival) ──────
   // Fire-and-forget call to check-payment-status so the orders row is
   // updated as soon as the customer lands on the thank-you page from
@@ -420,11 +451,12 @@ export default function AssessmentThankYouPage() {
   // nothing). Never blocks the render.
   useEffect(() => {
     if (reconcilerFired.current) return;
-    if (!stripeSessionId && !urlOrderId) return;
+    const cid = urlOrderId || resolvedState.confirmationId || "";
+    if (!stripeSessionId && !cid) return;
     reconcilerFired.current = true;
     const payload: { sessionId?: string; confirmationId?: string } = {};
     if (stripeSessionId) payload.sessionId = stripeSessionId;
-    if (urlOrderId) payload.confirmationId = urlOrderId;
+    if (cid) payload.confirmationId = cid;
     fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
       method: "POST",
       headers: {
@@ -433,7 +465,13 @@ export default function AssessmentThankYouPage() {
         Authorization: `Bearer ${SUPABASE_KEY}`,
       },
       body: JSON.stringify(payload),
-    }).catch(() => { /* fire-and-forget */ });
+    })
+      .then((r) => r.json())
+      .then((j: { order?: PublicOrder | null }) => {
+        // Use the canonical order record as the display source of truth.
+        if (j && j.order) setDbOrder(j.order);
+      })
+      .catch(() => { /* fire-and-forget — page still renders from URL/session */ });
   }, [stripeSessionId, urlOrderId]);
 
   useEffect(() => {
@@ -547,13 +585,26 @@ export default function AssessmentThankYouPage() {
   // Fall back to session storage price if URL param is absent
   const urlAmountParsed = urlAmount ? parseFloat(urlAmount) : null;
 
-  const {
-    firstName = "there",
-    email = "",
-    selectedProvider = "your assigned provider",
-    planType = "One-Time Purchase",
-    deliverySpeed = "2-3days",
-  } = resolvedState;
+  // ── Canonical display values ──────────────────────────────────────────────
+  // Source-of-truth priority: live order record from check-payment-status
+  // (dbOrder) → sessionStorage / navigate state (resolvedState) → safe default.
+  // The DB record reflects the actual amount charged and the real plan, so it
+  // never shows a stale pre-discount URL amount.
+  const firstName = dbOrder?.first_name || resolvedState.firstName || "there";
+  const lastName = dbOrder?.last_name || resolvedState.lastName || "";
+  const fullName = [firstName === "there" ? "" : firstName, lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const email = dbOrder?.email || resolvedState.email || "";
+  const planType = dbOrder?.plan_type || resolvedState.planType || "One-Time Purchase";
+  const deliverySpeed = dbOrder?.delivery_speed || resolvedState.deliverySpeed || "2-3days";
+
+  // Provider is shown ONLY when a real provider has been assigned to the order
+  // (doctor_name is set after a provider picks it up). Customers do not choose a
+  // provider at checkout, so we never show a "your assigned provider" placeholder.
+  const assignedProvider = (dbOrder?.doctor_name || "").trim();
+  const hasProvider = assignedProvider.length > 0;
 
   // ── 2026-05-20 KLARNA-PHANTOM-ORDER-ID-FIX ───────────────────────────────
   // Authoritative confirmation_id resolution order:
@@ -566,18 +617,24 @@ export default function AssessmentThankYouPage() {
   //      state. NEVER fabricate a phantom `PT-${Date.now()}` id; the
   //      previous fabricated default produced display IDs that did
   //      not exist in the database and confused customers.
-  const confirmationId = urlOrderId || resolvedState.confirmationId || "";
+  const confirmationId = urlOrderId || dbOrder?.confirmation_id || resolvedState.confirmationId || "";
   const hasConfirmationId = confirmationId.length > 0;
 
-  // Authoritative price: URL param wins over session storage
-  const price = urlAmountParsed ?? resolvedState.price ?? 90;
+  // Authoritative amount paid: DB order price → URL ?amount= → session → base.
+  const price = dbOrder?.price ?? urlAmountParsed ?? resolvedState.price ?? 90;
+  const priceStr = formatUSD(price);
 
-  // Rebuild pricingPlan label from actual price + delivery speed so it's always accurate
-  const speedLabel = deliverySpeed === "24hours" ? "Priority" : "Standard";
-  const pricingPlan = resolvedState.pricingPlan ?? `${speedLabel} ($${price})`;
+  // Derive labels from the canonical delivery_speed / plan_type. Handle every
+  // stored variant ("24hours", "24h", "priority", "2-3days", "standard").
+  const isPriority = /^24/.test(deliverySpeed) || deliverySpeed === "priority";
+  const isSubscription = planType.toLowerCase().includes("subscription");
+  const speedLabel = isPriority ? "Priority" : "Standard";
+  const pricingPlan = isSubscription
+    ? `Annual Subscription (${priceStr})`
+    : `${speedLabel} (${priceStr})`;
 
-  const deliveryLabel = deliverySpeed === "24hours" ? "Within 24 Hours" : "Within 2–3 Business Days";
-  const deliveryShort = deliverySpeed === "24hours" ? "24 hours" : "2–3 business days";
+  const deliveryLabel = isPriority ? "Within 24 Hours" : "Within 2–3 Business Days";
+  const deliveryShort = isPriority ? "24 hours" : "2–3 business days";
 
   const shareUrl = "https://pawtenant.com/assessment";
   const shareText = "I just got my ESA letter through PawTenant — fast, easy, and totally legit. If you have an emotional support animal, check them out!";
@@ -747,14 +804,14 @@ export default function AssessmentThankYouPage() {
       step: "01",
       icon: "ri-checkbox-circle-line",
       title: "Payment Confirmed",
-      desc: `Your payment of $${price} was processed successfully. You'll receive a receipt at ${email || "your email"}.`,
+      desc: `Your payment of ${priceStr} was processed successfully. You'll receive a receipt at ${email || "your email"}.`,
       done: true,
     },
     {
       step: "02",
       icon: "ri-stethoscope-line",
       title: "Evaluation In Progress",
-      desc: `${selectedProvider} will review your assessment and complete your licensed evaluation.`,
+      desc: `${hasProvider ? assignedProvider : "A licensed provider"} will review your assessment and complete your licensed evaluation.`,
       done: false,
     },
     {
@@ -829,31 +886,33 @@ export default function AssessmentThankYouPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {fullName && (
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
+                  <i className="ri-user-3-line text-orange-500 text-base"></i>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-400 font-medium mb-0.5">Name</p>
+                  <p className="text-sm font-semibold text-gray-800 break-words">{fullName}</p>
+                </div>
+              </div>
+            )}
             {email && (
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
                   <i className="ri-mail-line text-orange-500 text-base"></i>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-400 font-medium mb-0.5">Letter Delivered To</p>
-                  <p className="text-sm font-semibold text-gray-800">{email}</p>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-400 font-medium mb-0.5">Email</p>
+                  <p className="text-sm font-semibold text-gray-800 break-words">{email}</p>
                 </div>
               </div>
             )}
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-                <i className="ri-user-heart-line text-orange-500 text-base"></i>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 font-medium mb-0.5">Assigned Provider</p>
-                <p className="text-sm font-semibold text-gray-800">{selectedProvider}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
                 <i className="ri-price-tag-3-line text-orange-500 text-base"></i>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-400 font-medium mb-0.5">Plan Purchased</p>
                 <p className="text-sm font-semibold text-gray-800">{pricingPlan}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{planType}</p>
@@ -861,13 +920,33 @@ export default function AssessmentThankYouPage() {
             </div>
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
+                <i className="ri-bank-card-line text-orange-500 text-base"></i>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400 font-medium mb-0.5">Amount Paid</p>
+                <p className="text-sm font-semibold text-gray-800">{priceStr}</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
                 <i className="ri-timer-flash-line text-orange-500 text-base"></i>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-400 font-medium mb-0.5">Estimated Delivery</p>
                 <p className="text-sm font-semibold text-gray-800">{deliveryLabel}</p>
               </div>
             </div>
+            {hasProvider && (
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
+                  <i className="ri-user-heart-line text-orange-500 text-base"></i>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-400 font-medium mb-0.5">Assigned Provider</p>
+                  <p className="text-sm font-semibold text-gray-800">{assignedProvider}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

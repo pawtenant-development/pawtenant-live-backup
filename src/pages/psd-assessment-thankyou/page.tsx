@@ -25,6 +25,26 @@ interface PendingOrder extends ThankYouState {
   _step3Plan?: string;
 }
 
+// ── 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH ─────────────────────────────────────
+// Safe public order shape returned by the check-payment-status edge function —
+// the canonical record (actual amount charged, real plan, real assigned
+// provider). Preferred over stale URL params / empty sessionStorage for display.
+interface PublicOrder {
+  confirmation_id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  price?: number | null;
+  plan_type?: string | null;
+  delivery_speed?: string | null;
+  letter_type?: string | null;
+  coupon_code?: string | null;
+  coupon_discount?: number | null;
+  doctor_name?: string | null;
+  status?: string | null;
+  paid_at?: string | null;
+}
+
 declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
@@ -32,7 +52,14 @@ declare global {
   }
 }
 
-const GOOGLE_REVIEW_URL = "https://g.page/r/YOUR_GOOGLE_PLACE_ID/review";
+const GOOGLE_REVIEW_URL = "https://www.google.com/search?sca_esv=0b1c7d926c8058f9&si=AL3DRZEsmMGCryMMFSHJ3StBhOdZ2-6yYkXd_doETEE1OR-qOcgBj58jmxujTZ7byPAw8npggXTcPRI82lkEhuTmamSruv_EA9uwdfELsrB4RPReQ-OPCTj609pZy3sSjc4oz_EHV8no&q=PawTenant+Reviews&sa=X&ved=2ahUKEwjV1eTEsI-VAxWmBtsEHda6N_IQ0bkNegQIIxAF&biw=1536&bih=730&dpr=1.25";
+
+// Format a dollar amount for display. Whole dollars render without decimals
+// ($120), fractional amounts keep two places ($89.50).
+function formatUSD(n: number): string {
+  const v = Number(n) || 0;
+  return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
+}
 
 const GUARANTEE_POINTS = [
   { icon: "ri-shield-check-line", label: "HIPAA Compliant" },
@@ -230,16 +257,22 @@ export default function PSDAssessmentThankYouPage() {
   const webhookFired = useRef(false);
   const reconcilerFired = useRef(false);
 
+  // Canonical order record fetched from the server (source of truth for the
+  // displayed amount, plan, customer, and assigned provider).
+  const [dbOrder, setDbOrder] = useState<PublicOrder | null>(null);
+
   // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL (PSD thank-you arrival) ──
-  // Same fire-and-forget reconciliation as the ESA thank-you page.
-  // Idempotent on the server — no-op when the order is already paid.
+  // Same reconciliation as the ESA thank-you page. Idempotent on the server —
+  // no-op when the order is already paid. We also consume the returned canonical
+  // order so PSD shows the real amount/plan/customer instead of $120 defaults.
   useEffect(() => {
     if (reconcilerFired.current) return;
-    if (!stripeSessionId && !urlOrderId) return;
+    const cid = urlOrderId || resolvedState.confirmationId || "";
+    if (!stripeSessionId && !cid) return;
     reconcilerFired.current = true;
     const payload: { sessionId?: string; confirmationId?: string } = {};
     if (stripeSessionId) payload.sessionId = stripeSessionId;
-    if (urlOrderId) payload.confirmationId = urlOrderId;
+    if (cid) payload.confirmationId = cid;
     fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
       method: "POST",
       headers: {
@@ -248,7 +281,12 @@ export default function PSDAssessmentThankYouPage() {
         Authorization: `Bearer ${SUPABASE_KEY}`,
       },
       body: JSON.stringify(payload),
-    }).catch(() => { /* fire-and-forget */ });
+    })
+      .then((r) => r.json())
+      .then((j: { order?: PublicOrder | null }) => {
+        if (j && j.order) setDbOrder(j.order);
+      })
+      .catch(() => { /* fire-and-forget — page still renders from URL/session */ });
   }, [stripeSessionId, urlOrderId]);
 
   useEffect(() => {
@@ -302,14 +340,43 @@ export default function PSDAssessmentThankYouPage() {
     }
   }, [stripeSessionId, paymentIntentParam]);
 
-  const {
-    firstName = "there",
-    email = "",
-    selectedProvider = "your assigned provider",
-    pricingPlan = "Priority ($120)",
-    planType = "One-Time Purchase",
-    price = 120,
-  } = resolvedState;
+  // ── Canonical display values ──────────────────────────────────────────────
+  // Source-of-truth priority: live order record from check-payment-status
+  // (dbOrder) → navigate state (resolvedState) → safe default. PSD checkout does
+  // not populate sessionStorage, so without the DB record every field would fall
+  // back to a $120 / Priority default — which was the wrong-amount/plan bug.
+  const firstName = dbOrder?.first_name || resolvedState.firstName || "there";
+  const lastName = dbOrder?.last_name || resolvedState.lastName || "";
+  const fullName = [firstName === "there" ? "" : firstName, lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const email = dbOrder?.email || resolvedState.email || "";
+  const planType = dbOrder?.plan_type || resolvedState.planType || "One-Time Purchase";
+  const deliverySpeed = dbOrder?.delivery_speed || resolvedState.deliverySpeed || "24h";
+
+  // Amount paid: DB order price → URL ?amount= → session → base default.
+  const price = dbOrder?.price ?? (urlAmount ? parseFloat(urlAmount) : (resolvedState.price ?? 120));
+  const priceStr = formatUSD(price);
+
+  // Provider shown ONLY when actually assigned (doctor_name set after pickup).
+  const assignedProvider = (dbOrder?.doctor_name || "").trim();
+  const hasProvider = assignedProvider.length > 0;
+
+  // Labels derived from the canonical delivery_speed / plan_type. Handles every
+  // stored variant ("24h", "24hours", "priority", "2-3days", "standard").
+  const isPriority = /^24/.test(deliverySpeed) || deliverySpeed === "priority";
+  const isSubscription = planType.toLowerCase().includes("subscription");
+  const speedLabel = isPriority ? "Priority" : "Standard";
+  const pricingPlan = isSubscription
+    ? `Annual Subscription (${priceStr})`
+    : `${speedLabel} (${priceStr})`;
+  const deliveryLabel = isSubscription
+    ? "Annual Subscription"
+    : isPriority
+      ? "Within 24 Hours"
+      : "Within 2–3 Business Days";
+  const deliveryShort = isPriority ? "24 hours" : "2–3 business days";
 
   // ── 2026-05-20 KLARNA-PHANTOM-ORDER-ID-FIX (PSD parity with ESA) ─────────
   // Same fix as src/pages/assessment-thankyou/page.tsx: prefer URL
@@ -318,7 +385,7 @@ export default function PSDAssessmentThankYouPage() {
   // `PT-PSD${Date.now()}` default produced phantom IDs that did not exist
   // in the database after a cross-tab Klarna redirect where sessionStorage
   // is empty. Empty string here renders a calm "Processing" state.
-  const confirmationId = urlOrderId || resolvedState.confirmationId || "";
+  const confirmationId = urlOrderId || dbOrder?.confirmation_id || resolvedState.confirmationId || "";
   const hasConfirmationId = confirmationId.length > 0;
 
   const shareUrl = "https://pawtenant.com/psd-assessment";
@@ -466,21 +533,21 @@ export default function PSDAssessmentThankYouPage() {
       step: "01",
       icon: "ri-checkbox-circle-line",
       title: "Payment Confirmed",
-      desc: `Your payment of $${price} was processed successfully. You&apos;ll receive a receipt at ${email || "your email"}.`,
+      desc: `Your payment of ${priceStr} was processed successfully. You'll receive a receipt at ${email || "your email"}.`,
       done: true,
     },
     {
       step: "02",
       icon: "ri-stethoscope-line",
-      title: "ADA Evaluation In Progress",
-      desc: `${selectedProvider} will review your assessment, verify your dog&apos;s trained tasks, and complete your licensed PSD evaluation.`,
+      title: "Evaluation In Progress",
+      desc: `${hasProvider ? assignedProvider : "A licensed provider"} will review your assessment, consider your dog's trained tasks, and complete your PSD evaluation.`,
       done: false,
     },
     {
       step: "03",
       icon: "ri-service-line",
-      title: "PSD Letter Delivered — Priority (Within 24 Hours)",
-      desc: `Your official, HIPAA-compliant Psychiatric Service Dog letter will be emailed to ${email || "you"} and complies with the Americans with Disabilities Act (ADA).`,
+      title: `PSD Letter Delivered — ${deliveryLabel}`,
+      desc: `Your PSD documentation will be emailed to ${email || "you"} once your licensed provider completes the evaluation.`,
       done: false,
     },
   ];
@@ -534,8 +601,8 @@ export default function PSDAssessmentThankYouPage() {
             You&apos;re All Set, {firstName}!
           </h1>
           <p className="text-gray-500 text-sm sm:text-base max-w-md mx-auto leading-relaxed">
-            Payment received. Your PSD evaluation is now underway. Your official letter will be delivered within{" "}
-            <strong className="text-gray-700">24 hours</strong>.
+            Payment received. Your PSD evaluation is now underway. Your documentation will be delivered{" "}
+            <strong className="text-gray-700">{deliveryShort}</strong>.
           </p>
         </div>
 
@@ -545,9 +612,9 @@ export default function PSDAssessmentThankYouPage() {
             <i className="ri-information-line text-white text-base"></i>
           </div>
           <div>
-            <p className="text-sm font-extrabold mb-0.5">ADA Compliance — What This Means For You</p>
+            <p className="text-sm font-extrabold mb-0.5">About Your PSD Documentation</p>
             <p className="text-xs text-amber-100 leading-relaxed">
-              Your PSD letter is issued under the <strong>Americans with Disabilities Act (ADA)</strong>. This grants public access rights for your service dog — restaurants, stores, hotels, and transportation. It operates separately from housing (Fair Housing Act / ESA).
+              Your letter documents your licensed provider&apos;s evaluation in connection with the <strong>Americans with Disabilities Act (ADA)</strong>. Under the ADA, a service dog&apos;s access depends on the dog being individually trained to perform tasks for a disability — not on any letter, ID, or registration. This is separate from housing (Fair Housing Act / ESA).
             </p>
           </div>
         </div>
@@ -570,31 +637,33 @@ export default function PSDAssessmentThankYouPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {fullName && (
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
+                  <i className="ri-user-3-line text-amber-500 text-base"></i>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-400 font-medium mb-0.5">Name</p>
+                  <p className="text-sm font-semibold text-gray-800 break-words">{fullName}</p>
+                </div>
+              </div>
+            )}
             {email && (
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
                   <i className="ri-mail-line text-amber-500 text-base"></i>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-400 font-medium mb-0.5">Letter Delivered To</p>
-                  <p className="text-sm font-semibold text-gray-800">{email}</p>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-400 font-medium mb-0.5">Email</p>
+                  <p className="text-sm font-semibold text-gray-800 break-words">{email}</p>
                 </div>
               </div>
             )}
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
-                <i className="ri-user-heart-line text-amber-500 text-base"></i>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 font-medium mb-0.5">Assigned Provider</p>
-                <p className="text-sm font-semibold text-gray-800">{selectedProvider}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
                 <i className="ri-price-tag-3-line text-amber-500 text-base"></i>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-gray-400 font-medium mb-0.5">Plan Purchased</p>
                 <p className="text-sm font-semibold text-gray-800">{pricingPlan}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{planType}</p>
@@ -602,13 +671,33 @@ export default function PSDAssessmentThankYouPage() {
             </div>
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
-                <i className="ri-timer-flash-line text-amber-500 text-base"></i>
+                <i className="ri-bank-card-line text-amber-500 text-base"></i>
               </div>
-              <div>
-                <p className="text-xs text-gray-400 font-medium mb-0.5">Estimated Delivery</p>
-                <p className="text-sm font-semibold text-gray-800">Within 24 Hours</p>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400 font-medium mb-0.5">Amount Paid</p>
+                <p className="text-sm font-semibold text-gray-800">{priceStr}</p>
               </div>
             </div>
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
+                <i className="ri-timer-flash-line text-amber-500 text-base"></i>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400 font-medium mb-0.5">Estimated Delivery</p>
+                <p className="text-sm font-semibold text-gray-800">{deliveryLabel}</p>
+              </div>
+            </div>
+            {hasProvider && (
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 flex items-center justify-center bg-amber-50 rounded-lg flex-shrink-0">
+                  <i className="ri-user-heart-line text-amber-500 text-base"></i>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-400 font-medium mb-0.5">Assigned Provider</p>
+                  <p className="text-sm font-semibold text-gray-800">{assignedProvider}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -644,18 +733,18 @@ export default function PSDAssessmentThankYouPage() {
           </div>
         </div>
 
-        {/* ── PSD Rights Summary ── */}
+        {/* ── Service Dog Access — informational, compliance-safe ── */}
         <div className="bg-white rounded-2xl border border-amber-100 p-6 sm:p-8 mb-8">
           <h3 className="text-base font-extrabold text-gray-900 mb-4 flex items-center gap-2">
             <div className="w-6 h-6 flex items-center justify-center"><i className="ri-shield-star-line text-amber-500"></i></div>
-            Your PSD Rights Under the ADA
+            Service Dog Access — What the ADA Covers
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
-              { icon: "ri-store-2-line", title: "Public Access", desc: "Your dog can accompany you to stores, restaurants, and public spaces" },
-              { icon: "ri-flight-takeoff-line", title: "Air Travel", desc: "Airlines must allow your service dog in the cabin with documentation" },
-              { icon: "ri-hotel-line", title: "Hotels & Lodging", desc: "Hotels cannot refuse entry or charge fees for your service dog" },
-              { icon: "ri-building-line", title: "Workplace", desc: "Employers must provide reasonable accommodation for your service dog" },
+              { icon: "ri-store-2-line", title: "Public Places", desc: "Trained service dogs are generally permitted in stores, restaurants, and other public spaces." },
+              { icon: "ri-flight-takeoff-line", title: "Air Travel", desc: "Air travel is governed by the DOT, not the ADA. Airlines have their own service-dog forms — check with your airline before you fly." },
+              { icon: "ri-hotel-line", title: "Hotels & Lodging", desc: "Hotels and other public accommodations generally may not deny access to a trained service dog." },
+              { icon: "ri-building-line", title: "Workplace", desc: "Employers are required to consider reasonable accommodation requests; workplace rules differ from public-access rules." },
             ].map((r) => (
               <div key={r.title} className="flex items-start gap-3 bg-amber-50/60 rounded-xl px-4 py-3">
                 <div className="w-8 h-8 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
@@ -668,6 +757,9 @@ export default function PSDAssessmentThankYouPage() {
               </div>
             ))}
           </div>
+          <p className="text-[11px] text-gray-400 leading-relaxed mt-4">
+            The ADA does not require service dogs to be certified, registered, or to wear ID, and staff may ask only whether the dog is a service animal and what task it performs. Your letter documents your provider&apos;s evaluation — it does not by itself guarantee access, which depends on your dog being individually trained to perform tasks for a disability.
+          </p>
         </div>
 
         {/* ── Google Review Prompt ── */}

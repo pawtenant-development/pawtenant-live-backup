@@ -65,6 +65,40 @@ interface OrderRow {
   payment_intent_id: string | null;
   paid_at: string | null;
   status: string | null;
+  // ── 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH ──────────────────────────────────
+  // Safe, non-medical display fields so the ESA/PSD thank-you pages can read
+  // the canonical order record instead of trusting stale URL params or empty
+  // sessionStorage. No assessment_answers / health data is ever returned.
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  price: number | null;
+  plan_type: string | null;
+  delivery_speed: string | null;
+  letter_type: string | null;
+  coupon_code: string | null;
+  coupon_discount: number | null;
+  doctor_name: string | null;
+}
+
+// Map a raw order row to the safe public shape returned to the thank-you page.
+function toPublicOrder(o: OrderRow | null) {
+  if (!o) return null;
+  return {
+    confirmation_id: o.confirmation_id,
+    first_name: o.first_name ?? null,
+    last_name: o.last_name ?? null,
+    email: o.email ?? null,
+    price: o.price ?? null,
+    plan_type: o.plan_type ?? null,
+    delivery_speed: o.delivery_speed ?? null,
+    letter_type: o.letter_type ?? null,
+    coupon_code: o.coupon_code ?? null,
+    coupon_discount: o.coupon_discount ?? null,
+    doctor_name: o.doctor_name ?? null,
+    status: o.status ?? null,
+    paid_at: o.paid_at ?? null,
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -95,7 +129,7 @@ Deno.serve(async (req: Request) => {
       supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const { data, error } = await supabase
         .from("orders")
-        .select("id, confirmation_id, checkout_session_id, payment_intent_id, paid_at, status")
+        .select("id, confirmation_id, checkout_session_id, payment_intent_id, paid_at, status, first_name, last_name, email, price, plan_type, delivery_speed, letter_type, coupon_code, coupon_discount, doctor_name")
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
       if (error) {
@@ -110,6 +144,7 @@ Deno.serve(async (req: Request) => {
           paymentStatus: "paid",
           reconciled: false,
           source: "db_already_paid",
+          order: toPublicOrder(order),
         });
       }
     }
@@ -124,6 +159,7 @@ Deno.serve(async (req: Request) => {
         paymentStatus: order?.paid_at ? "paid" : "unpaid",
         reconciled: false,
         source: "no_session_id",
+        order: toPublicOrder(order),
       });
     }
 
@@ -195,6 +231,7 @@ Deno.serve(async (req: Request) => {
       reconciled,
       confirmationId: order?.confirmation_id ?? confirmationId,
       sessionId: sessionIdToProbe,
+      order: toPublicOrder(order),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
