@@ -57,10 +57,26 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Service Dogs",
-    items: [
-      { label: "All About Service Dogs", href: "/all-about-service-dogs", desc: "Service dogs vs ESAs" },
-      { label: "How to Get a PSD Letter", href: "/how-to-get-psd-letter", desc: "Psychiatric service dog letter guide" },
-      { label: "Service Animal vs ESA", href: "/service-animal-vs-esa", desc: "Know the difference" },
+    megaMenu: true,
+    columns: [
+      {
+        title: "PSD Resources",
+        items: [
+          { label: "All About Service Dogs", href: "/all-about-service-dogs", desc: "Service dogs vs ESAs" },
+          { label: "How to Get a PSD Letter", href: "/how-to-get-psd-letter", desc: "Psychiatric service dog letter guide" },
+          { label: "Service Animal vs ESA", href: "/service-animal-vs-esa", desc: "Know the difference" },
+        ],
+      },
+      {
+        title: "PSD Letters by State",
+        items: [
+          { label: "California PSD Letter", href: "/psd-letter/california" },
+          { label: "Texas PSD Letter", href: "/psd-letter/texas" },
+          { label: "Florida PSD Letter", href: "/psd-letter/florida" },
+          { label: "New York PSD Letter", href: "/psd-letter/new-york" },
+          { label: "North Carolina PSD Letter", href: "/psd-letter/north-carolina" },
+        ],
+      },
     ],
   },
   {
@@ -328,7 +344,7 @@ export default function SharedNavbar() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-800 group-hover:text-amber-700">PSD Letter</p>
-                      <p className="text-xs text-gray-400 leading-tight">Psychiatric Service Dog — full ADA access</p>
+                      <p className="text-xs text-gray-400 leading-tight">Psychiatric Service Dog — different from an ESA</p>
                     </div>
                   </Link>
                 </div>

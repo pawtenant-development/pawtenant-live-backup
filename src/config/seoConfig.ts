@@ -606,12 +606,70 @@ const STATE_DISPLAY_NAMES: Record<string, string> = {
   wyoming: "Wyoming",
 };
 
+// Differentiated prerender meta for the feature PSD states. Each carries a
+// state-specific hook so the static <head> is unique per page. Compliance: no
+// "guaranteed", "instant", "certified/registered", "same-day", or "100%
+// money-back" language — a PSD letter documents a licensed provider evaluation.
+const PSD_STATE_META_OVERRIDES: Record<string, SEOEntry> = {
+  california: {
+    title: "PSD Letter in California | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in California via a licensed provider evaluation. How a PSD differs from an ESA, Unruh Act & FEHA context, refund if you don't qualify.",
+  },
+  texas: {
+    title: "PSD Letter in Texas | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in Texas via a licensed provider evaluation. How a PSD differs from an ESA, why TX penalizes fake service animals, refund if you don't qualify.",
+  },
+  florida: {
+    title: "PSD Letter in Florida | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in Florida via a licensed provider evaluation. PSD vs ESA, Statute 413.08 & 760.27 context, refund if you don't qualify.",
+  },
+  "new-york": {
+    title: "PSD Letter in New York | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in New York via a licensed provider evaluation. PSD vs ESA, NYS & NYC Human Rights Law context, refund if you don't qualify.",
+  },
+  "north-carolina": {
+    title: "PSD Letter in North Carolina | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in North Carolina via a licensed provider evaluation. PSD vs ESA, NC service-animal law context, refund if you don't qualify.",
+  },
+  pennsylvania: {
+    title: "PSD Letter in Pennsylvania | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in Pennsylvania via a licensed provider evaluation. PSD vs ESA, PA Human Relations Act context, refund if you don't qualify.",
+  },
+  ohio: {
+    title: "PSD Letter in Ohio | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in Ohio via a licensed provider evaluation. PSD vs ESA, Ohio Civil Rights Act context, refund if you don't qualify.",
+  },
+  georgia: {
+    title: "PSD Letter in Georgia | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in Georgia via a licensed provider evaluation. How a PSD differs from an ESA and what the letter can and can't do. Refund if you don't qualify.",
+  },
+  illinois: {
+    title: "PSD Letter in Illinois | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in Illinois via a licensed provider evaluation. PSD vs ESA, Illinois Human Rights Act context, refund if you don't qualify.",
+  },
+  arizona: {
+    title: "PSD Letter in Arizona | Psychiatric Service Dog Evaluation | PawTenant",
+    description:
+      "Psychiatric Service Dog (PSD) documentation in Arizona via a licensed provider evaluation. PSD vs ESA, why AZ penalizes fake service animals, refund if you don't qualify.",
+  },
+};
+
 function buildPSDEntry(slug: string): SEOEntry | null {
+  if (PSD_STATE_META_OVERRIDES[slug]) return PSD_STATE_META_OVERRIDES[slug];
   const name = STATE_DISPLAY_NAMES[slug];
   if (!name) return null;
   return {
-    title: `PSD Letter ${name} 2026 — Psychiatric Service Dog Letter | PawTenant`,
-    description: `Need a PSD letter in ${name}? PawTenant connects you with ${name}-licensed mental health professionals for Psychiatric Service Dog documentation. ADA compliant, same-day delivery, 100% money-back guarantee. ${name} PSD rights explained.`,
+    title: `PSD Letter in ${name} | Psychiatric Service Dog Evaluation | PawTenant`,
+    description: `Psychiatric Service Dog (PSD) documentation in ${name} through a licensed provider evaluation. Learn how a PSD differs from an ESA and what the letter can and can't do. Refund if you don't qualify.`,
   };
 }
 

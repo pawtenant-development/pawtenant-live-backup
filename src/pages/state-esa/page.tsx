@@ -574,7 +574,10 @@ export default function StateESAPage() {
     (stateData ? pickFallbackHero(stateData.slug) : "/assets/lifestyle/woman-with-dog-new-apartment.jpg");
   const petSceneSrc = "/assets/testimonials/couple-with-dog-home.jpg";
   const catSceneSrc = "/assets/testimonials/home-together-with-pet.jpg";
-  const labradorSrc = "/assets/breeds/labrador-retriever.jpg";
+  // Why-PawTenant image: a landscape (4:3) home lifestyle photo so it fills
+  // the 4:3 panel with no cropping. The old breed photo was portrait (3:4),
+  // which cropped the dog's head in the wider panel.
+  const whyImageSrc = "/assets/lifestyle/esa-golden-retriever-home.jpg";
 
   useEffect(() => {
     if (!stateData) return;
@@ -973,15 +976,20 @@ export default function StateESAPage() {
                 </Link>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-80">
+            {/* Image panel uses the SAME 4:3 ratio as the photo, and is
+                self-centered (not stretched to the full text-column height).
+                Because the box ratio matches the image ratio, object-cover
+                shows the whole photo with no cropping — and it stays balanced
+                beside the content instead of awkwardly tall. */}
+            <div className="rounded-2xl overflow-hidden lg:self-center aspect-[4/3] lg:max-h-[480px] shadow-[0_14px_44px_-22px_rgba(15,23,42,0.35)]">
               <img
-                src={labradorSrc}
-                alt="Cute Labrador Retriever dog — ESA companion"
-                width={1200}
-                height={900}
+                src={whyImageSrc}
+                alt={`Happy dog relaxing at home — ESA companion in ${stateData.name}`}
+                width={1000}
+                height={750}
                 loading="lazy"
                 decoding="async"
-                className="w-full h-full object-cover object-top"
+                className="w-full h-full object-cover object-center"
               />
             </div>
           </div>
@@ -992,7 +1000,7 @@ export default function StateESAPage() {
           cleanup pass. Surfaces clear pricing and a short PSD-vs-ESA
           comparison before the FAQ so visitors can make a faster
           decision without reading every section first. */}
-      <EsaPricingMini className="bg-white border-t border-slate-100" />
+      <EsaPricingMini premium className="bg-white border-t border-slate-100" />
       <EsaVsPsdCard className="bg-[#fafbfb]" />
 
       {/* FAQ — per-state items first (most state-relevant on top), then

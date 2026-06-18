@@ -35,6 +35,20 @@
 - [Start a PSD assessment](https://pawtenant.com/psd-assessment): short questionnaire reviewed by a licensed provider
 - [Service animal vs ESA vs therapy dog](https://pawtenant.com/service-animal-vs-esa): legal differences explained
 
+## State PSD (Psychiatric Service Dog) pages
+
+- Note: A Psychiatric Service Dog (PSD) is NOT the same as an Emotional Support Animal (ESA). A PSD is individually trained to perform tasks for a psychiatric disability and may have ADA public-access potential if trained and well-behaved; an ESA provides comfort and is generally a housing-only accommodation. A PSD letter documents a licensed provider's evaluation — it does not train, certify, or register a dog, and it cannot guarantee acceptance by any landlord, airline, or business.
+- [PSD letter California](https://pawtenant.com/psd-letter/california): licensed provider evaluation; Unruh Act & FEHA context
+- [PSD letter Texas](https://pawtenant.com/psd-letter/texas): licensed provider evaluation; Texas penalizes service-animal misrepresentation
+- [PSD letter Florida](https://pawtenant.com/psd-letter/florida): licensed provider evaluation; Florida Statutes 413.08 & 760.27 context
+- [PSD letter New York](https://pawtenant.com/psd-letter/new-york): licensed provider evaluation; NYS & NYC Human Rights Law context
+- [PSD letter North Carolina](https://pawtenant.com/psd-letter/north-carolina): licensed provider evaluation; NC service-animal law context
+- [PSD letter Pennsylvania](https://pawtenant.com/psd-letter/pennsylvania): licensed provider evaluation; PA Human Relations Act context
+- [PSD letter Ohio](https://pawtenant.com/psd-letter/ohio): licensed provider evaluation; Ohio Civil Rights Act context
+- [PSD letter Georgia](https://pawtenant.com/psd-letter/georgia): licensed provider evaluation; PSD vs ESA explained
+- [PSD letter Illinois](https://pawtenant.com/psd-letter/illinois): licensed provider evaluation; Illinois Human Rights Act context
+- [PSD letter Arizona](https://pawtenant.com/psd-letter/arizona): licensed provider evaluation; Arizona penalizes service-animal misrepresentation
+
 ## ESA housing pages
 
 - [ESA letter for your landlord](https://pawtenant.com/esa-letter-for-landlord): how housing accommodation works and what to send

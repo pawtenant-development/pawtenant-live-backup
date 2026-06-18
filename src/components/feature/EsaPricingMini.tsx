@@ -5,6 +5,17 @@ import { ESA_PRICE_LABELS } from "@/config/pricing";
 interface Props {
   /** Optional section bg override. Default: white. */
   className?: string;
+  /**
+   * When true, render the taller, homepage-style premium cards (richer
+   * proof-point list, header band on the highlight card, price-in-CTA,
+   * money-back microcopy). Used by the ESA state-page template so the
+   * cards don't feel short next to the rest of the page.
+   *
+   * Default (false) keeps the original compact cards byte-for-byte, so
+   * every other consumer (/how-to-get-esa-letter, /housing-rights-esa,
+   * AI SEO pages) is unchanged.
+   */
+  premium?: boolean;
 }
 
 /**
@@ -34,14 +45,144 @@ function KlarnaChip() {
   );
 }
 
-export default function EsaPricingMini({ className }: Props) {
+// Compact feature list — original cards (non-premium consumers).
+const COMPACT_FEATURES = [
+  { icon: "ri-stethoscope-line", text: "Licensed provider review" },
+  { icon: "ri-shield-check-line", text: "Money-back if not approved" },
+  { icon: "ri-qr-code-line", text: "Verifiable, housing-ready letter" },
+];
+
+// Richer proof-point list for the premium (state-page) variant — mirrors
+// the homepage pricing card feature set. Compliance-safe wording only.
+const PREMIUM_FEATURES = [
+  { icon: "ri-stethoscope-line", text: "Official ESA letter from a licensed LMHP" },
+  { icon: "ri-home-heart-line", text: "Fair Housing Act (FHA) compliant" },
+  { icon: "ri-user-star-line", text: "Provider signature, license number & NPI" },
+  { icon: "ri-mail-send-line", text: "Secure PDF delivered by email" },
+  { icon: "ri-calendar-check-line", text: "Valid for 1 year" },
+  { icon: "ri-qr-code-line", text: "Landlord verification support" },
+];
+
+export default function EsaPricingMini({ className, premium = false }: Props) {
   const { withAttribution } = useAttributionParams();
 
-  const features = [
-    { icon: "ri-stethoscope-line", text: "Licensed provider review" },
-    { icon: "ri-shield-check-line", text: "Money-back if not approved" },
-    { icon: "ri-qr-code-line", text: "Verifiable, housing-ready letter" },
-  ];
+  // ── Premium variant — taller, homepage-aligned cards ──────────────────────
+  if (premium) {
+    const renderCard = (kind: "oneTime" | "annual") => {
+      const highlight = kind === "annual";
+      const price = highlight ? ESA_PRICE_LABELS.subscription : ESA_PRICE_LABELS.oneTime;
+      const suffix = highlight ? ESA_PRICE_LABELS.subscriptionSuffix : ESA_PRICE_LABELS.oneTimeSuffix;
+
+      return (
+        <div
+          className={`relative bg-white rounded-3xl flex flex-col overflow-hidden ${
+            highlight
+              ? "border-2 border-orange-500 shadow-[0_18px_44px_-18px_rgba(249,115,22,0.40)]"
+              : "border border-gray-200 shadow-[0_10px_34px_-20px_rgba(15,23,42,0.20)]"
+          }`}
+        >
+          {highlight && (
+            <span className="absolute top-4 right-4 z-10 bg-white/95 text-orange-600 text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap shadow-sm">
+              Best value
+            </span>
+          )}
+
+          {/* Header band — orange on the highlight card for stronger hierarchy */}
+          <div className={`px-7 sm:px-8 pt-7 sm:pt-8 pb-5 sm:pb-6 ${highlight ? "bg-gradient-to-br from-orange-500 to-orange-600" : "bg-white"}`}>
+            <p className={`text-[11px] font-bold tracking-widest uppercase mb-2.5 ${highlight ? "text-orange-100" : "text-gray-500"}`}>
+              {highlight ? "Annual" : "One-time"}
+            </p>
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-5xl sm:text-[56px] font-black leading-none ${highlight ? "text-white" : "text-gray-900"}`}>
+                {price}
+              </span>
+              <span className={`text-sm ${highlight ? "text-orange-100" : "text-gray-400"}`}>{suffix}</span>
+            </div>
+            <p className={`text-[13px] leading-snug mt-2.5 ${highlight ? "text-orange-50" : "text-gray-500"}`}>
+              {highlight
+                ? "Renews automatically. Save $11 vs. one-time every year."
+                : "Valid for 1 year. Pay once — no auto-renewal."}
+            </p>
+          </div>
+
+          {/* Body — Klarna chip + richer feature list (drives the taller card) */}
+          <div className="px-7 sm:px-8 pt-5 sm:pt-6 flex-1 flex flex-col">
+            <div className="mb-5">
+              <KlarnaChip />
+            </div>
+            <ul className="space-y-3 sm:space-y-3.5">
+              {PREMIUM_FEATURES.map((f) => (
+                <li key={f.text} className="flex items-start gap-2.5 text-[13.5px] sm:text-sm text-gray-700 leading-snug">
+                  <i className={`${f.icon} text-orange-500 text-base mt-0.5 flex-shrink-0`}></i>
+                  <span>{f.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* CTA — price-in-button + money-back microcopy (homepage pattern) */}
+          <div className="px-7 sm:px-8 pt-6 pb-7 sm:pb-8">
+            <Link
+              to={withAttribution("/assessment")}
+              className={`whitespace-nowrap w-full py-3.5 text-sm font-bold rounded-xl text-center block transition-colors cursor-pointer ${
+                highlight
+                  ? "bg-orange-500 text-white hover:bg-orange-600 shadow-[0_4px_12px_rgba(249,115,22,0.30)]"
+                  : "border-2 border-orange-500 text-orange-600 hover:bg-orange-50"
+              }`}
+            >
+              Get Started — {price}{highlight ? suffix : ""}
+            </Link>
+            <p className="text-center text-[11px] text-gray-400 mt-2.5 flex items-center justify-center gap-1">
+              <i className="ri-shield-check-line text-orange-400"></i>
+              Money-back if not approved
+            </p>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <section className={`py-14 sm:py-20 ${className || "bg-white"}`}>
+        <div className="max-w-4xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-9 sm:mb-12">
+            <p className="text-orange-500 text-xs sm:text-sm font-semibold tracking-widest uppercase mb-2">
+              ESA Letter Pricing
+            </p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-tight">
+              Clear, upfront pricing — <span className="text-orange-500">from {ESA_PRICE_LABELS.startingFrom}</span>
+            </h2>
+            <p className="text-gray-500 text-sm mt-2.5 max-w-xl mx-auto leading-snug">
+              Pay by card, or choose Klarna at checkout — subject to eligibility and{" "}
+              <a
+                href="https://www.klarna.com/us/terms-of-use/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-gray-700"
+              >
+                Klarna payment terms
+              </a>
+              . A licensed provider reviews your assessment — approval is not guaranteed.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-7 max-w-3xl mx-auto items-stretch">
+            {renderCard("oneTime")}
+            {renderCard("annual")}
+          </div>
+
+          <p className="text-center text-[11px] text-gray-400 mt-7 max-w-md mx-auto leading-relaxed">
+            PawTenant also supports{" "}
+            <strong className="text-gray-600">PSD (Psychiatric Service Dog)</strong>{" "}
+            evaluations for qualifying individuals where clinically appropriate. PSD documentation
+            requires disability-related task training and is different from ESA documentation.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  // ── Default compact variant — unchanged for all other consumers ───────────
+  const features = COMPACT_FEATURES;
 
   return (
     <section className={`py-14 sm:py-20 ${className || "bg-white"}`}>
