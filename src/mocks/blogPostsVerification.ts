@@ -2,6 +2,74 @@
 // No imports — standalone data file
 
 export const blogPostsVerification = [
+  // ── Core ESA-letter blog cluster ───────────────────────────────────────────
+  // Listing cards for the standalone rich articles at /blog/how-to-get-an-esa-letter-online,
+  // /blog/what-is-an-esa-letter, and /blog/esa-letter-requirements. The static
+  // routes in router/config.tsx outrank /blog/:slug, so clicking a card renders
+  // the dedicated page — the single section below is a summary fallback only.
+  {
+    slug: "how-to-get-an-esa-letter-online",
+    title: "How to Get an ESA Letter Online in 2026: Step-by-Step Guide",
+    metaTitle: "How to Get an ESA Letter Online in 2026: Step-by-Step Guide",
+    metaDesc: "A step-by-step guide to getting a legitimate ESA letter online in 2026 — who qualifies, the licensed-provider evaluation, cost, timing, your housing rights, and how to avoid scam registries.",
+    category: "ESA Letters",
+    date: "June 18, 2026",
+    readTime: "9 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/woman-telehealth-with-dog.jpg",
+    excerpt: "An ESA letter is the document that supports your housing request when a building has a no-pets policy. This guide walks through every step of getting a legitimate ESA letter online in 2026 — who qualifies, the licensed-provider evaluation, cost, timing, and the scam registries to avoid.",
+    sections: [
+      {
+        heading: "The 5 steps to an ESA letter online",
+        content: "Choose a provider that uses state-licensed clinicians, complete a short intake, meet a licensed mental health professional for a real evaluation, receive your letter (often within 24–72 hours), and submit it to your landlord as a written reasonable-accommodation request under the Fair Housing Act. Avoid sites that promise instant letters or sell ESA registrations — those carry no legal weight, and approval is never guaranteed.",
+      },
+    ],
+    tags: ["ESA letter online", "how to get an ESA letter", "licensed provider", "Fair Housing Act"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "what-is-an-esa-letter",
+    title: "What Is an ESA Letter? 2026 Legal Requirements & Guide",
+    metaTitle: "What Is an ESA Letter? 2026 Legal Requirements & Guide",
+    metaDesc: "What an ESA letter is in 2026, what a valid letter must contain, who can write one, and what protections it still gives you after HUD's 2026 enforcement change and under state laws.",
+    category: "ESA Letters",
+    date: "June 18, 2026",
+    readTime: "10 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
+    excerpt: "An ESA letter is a signed reasonable-accommodation letter from a state-licensed mental health professional — not a registration, certificate, or ID card. After HUD's May 2026 enforcement change, getting the right document matters more than ever. Here is what it is, what it must contain, and what protections it still gives you.",
+    sections: [
+      {
+        heading: "What an ESA letter is — and the 2026 change",
+        content: "An ESA letter confirms you have a qualifying condition and that your animal provides therapeutic benefit related to it. HUD's May 2026 enforcement change refocused federal enforcement on individually trained animals, but the Fair Housing Act statute is unchanged, private litigation rights are preserved, and state fair housing laws — often stronger — still protect untrained ESAs. A valid letter from a licensed clinician documents your case for those protections.",
+      },
+    ],
+    tags: ["what is an ESA letter", "ESA letter 2026", "Fair Housing Act", "state laws"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "esa-letter-requirements",
+    title: "ESA Letter Requirements: What Must Be Included to Be Valid in 2026",
+    metaTitle: "ESA Letter Requirements: What Must Be Included to Be Valid in 2026",
+    metaDesc: "The 10 elements a valid ESA letter must contain to be accepted by landlords — plus what makes a letter invalid, state-specific rules, and what changed after HUD's 2025–2026 policy shifts.",
+    category: "ESA Letters",
+    date: "June 18, 2026",
+    readTime: "11 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/person-paperwork-with-dog.jpg",
+    excerpt: "Letters are often rejected not because the person didn't qualify, but because the document was missing a specific element a landlord can require — a license number, a vague nexus statement, plain paper instead of letterhead. Here are the 10 required elements, what makes a letter invalid, and the state-specific rules to know.",
+    sections: [
+      {
+        heading: "The 10 required elements",
+        content: "A defensible ESA letter generally includes professional letterhead; the clinician's full name, license type and number, and state of licensure; practice contact information; the provider relationship/evaluation date; your full name; a statement of a qualifying disability; a disability-animal nexus statement; and the clinician's signature with issue date. Missing the license number or a specific nexus statement are the two most common causes of rejection since HUD withdrew its guidance in September 2025.",
+      },
+    ],
+    tags: ["ESA letter requirements", "valid ESA letter", "ESA letter elements", "ESA letter 2026"],
+    relatedSlugs: [],
+  },
   // Listing card for the standalone rich article at /blog/2026-hud-esa-guidelines.
   // The static route in router/config.tsx outranks /blog/:slug, so clicking this
   // card renders the dedicated page — the sections below are summary fallbacks only.

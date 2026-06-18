@@ -99,6 +99,10 @@ const TravelAnxietyESALetterPage = lazy(() => import("../pages/travel-anxiety-es
 const BlogESATravelAnxietyPage = lazy(() => import("../pages/blog-emotional-support-animal-travel-anxiety/page"));
 const BlogTemporaryHousingESAPage = lazy(() => import("../pages/blog-temporary-housing-emotional-support-animal/page"));
 const BlogCrowdsTravelStressESAPage = lazy(() => import("../pages/blog-crowds-travel-stress-emotional-support-animal/page"));
+// Core ESA-letter blog cluster (indexable, in sitemap): how-to / what-is / requirements.
+const BlogHowToGetEsaLetterOnlinePage = lazy(() => import("../pages/blog-how-to-get-an-esa-letter-online/page"));
+const BlogWhatIsAnEsaLetterPage = lazy(() => import("../pages/blog-what-is-an-esa-letter/page"));
+const BlogEsaLetterRequirementsPage = lazy(() => import("../pages/blog-esa-letter-requirements/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -197,6 +201,9 @@ const routes: RouteObject[] = [
   { path: "/blog/emotional-support-animal-travel-anxiety", element: <P C={BlogESATravelAnxietyPage} /> },
   { path: "/blog/temporary-housing-emotional-support-animal", element: <P C={BlogTemporaryHousingESAPage} /> },
   { path: "/blog/crowds-travel-stress-emotional-support-animal", element: <P C={BlogCrowdsTravelStressESAPage} /> },
+  { path: "/blog/how-to-get-an-esa-letter-online", element: <P C={BlogHowToGetEsaLetterOnlinePage} /> },
+  { path: "/blog/what-is-an-esa-letter", element: <P C={BlogWhatIsAnEsaLetterPage} /> },
+  { path: "/blog/esa-letter-requirements", element: <P C={BlogEsaLetterRequirementsPage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },

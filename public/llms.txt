@@ -105,6 +105,9 @@
 - [Resource center](https://pawtenant.com/resource-center): complete ESA/PSD guide hub
 - [Blog](https://pawtenant.com/blog): guides on ESA letters, laws, and tenant rights
 - [2026 HUD ESA guidelines explained](https://pawtenant.com/blog/2026-hud-esa-guidelines): what HUD's May 2026 enforcement memo changes for untrained ESAs, which rights may remain, and how trained PSD documentation differs
+- [How to get an ESA letter online in 2026](https://pawtenant.com/blog/how-to-get-an-esa-letter-online): step-by-step guide — who qualifies, the licensed-provider evaluation, cost, timing, housing rights, and how to avoid scam registries
+- [What is an ESA letter? 2026 legal requirements](https://pawtenant.com/blog/what-is-an-esa-letter): what an ESA letter is, what a valid letter must contain, who can write one, and what protections it still gives after HUD's 2026 enforcement change
+- [ESA letter requirements: what must be included to be valid in 2026](https://pawtenant.com/blog/esa-letter-requirements): the 10 required elements, what makes a letter invalid, state-specific rules, and the 2025–2026 HUD policy shifts
 - [FAQs](https://pawtenant.com/faqs): common ESA questions answered
 - [College / dorm ESA policy](https://pawtenant.com/college-pet-policy): ESA letters for university housing
 

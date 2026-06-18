@@ -109,6 +109,9 @@ const siteStructure = [
     color: "amber",
     links: [
       { label: "All Blog Articles", href: "/blog" },
+      { label: "How to Get an ESA Letter Online (2026)", href: "/blog/how-to-get-an-esa-letter-online" },
+      { label: "What Is an ESA Letter? 2026 Guide", href: "/blog/what-is-an-esa-letter" },
+      { label: "ESA Letter Requirements (2026)", href: "/blog/esa-letter-requirements" },
       { label: "How ESA Letter Verification Works", href: "/blog/how-esa-letter-verification-works-pawtenant" },
       { label: "Why PawTenant Is the #1 Verifiable ESA Service", href: "/blog/why-pawtenant-best-verifiable-esa-letter-service" },
       { label: "Landlord Verification Guide 2026", href: "/blog/landlord-verification-esa-letter-guide-2026" },

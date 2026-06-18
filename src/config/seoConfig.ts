@@ -217,6 +217,22 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "HUD's 2026 ESA enforcement memo may change how untrained emotional support animals are handled in federal housing complaints. Learn what changed, what rights may remain, and how PSD documentation differs.",
   },
+  // ── Core ESA-letter blog cluster (how-to / what-is / requirements) ──────────
+  "/blog/how-to-get-an-esa-letter-online": {
+    title: "How to Get an ESA Letter Online in 2026: Step-by-Step Guide",
+    description:
+      "A step-by-step guide to getting a legitimate ESA letter online in 2026 — who qualifies, the licensed-provider evaluation, cost, timing, your housing rights, and how to avoid scam registries.",
+  },
+  "/blog/what-is-an-esa-letter": {
+    title: "What Is an ESA Letter? 2026 Legal Requirements & Guide",
+    description:
+      "What an ESA letter is in 2026, what a valid letter must contain, who can write one, and what protections it still gives you after HUD's 2026 enforcement change and under state laws.",
+  },
+  "/blog/esa-letter-requirements": {
+    title: "ESA Letter Requirements: What Must Be Included to Be Valid in 2026",
+    description:
+      "The 10 elements a valid ESA letter must contain to be accepted by landlords — plus what makes a letter invalid, state-specific rules, and what changed after HUD's 2025–2026 policy shifts.",
+  },
   // ── Travel-anxiety / major-event ESA content cluster ───────────────────────
   "/travel-anxiety-esa-letter": {
     title: "ESA Letters for Travel Anxiety & Temporary Housing | PawTenant",
