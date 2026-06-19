@@ -7,12 +7,15 @@ import {
   EMPLOYMENT_STATUS_LABEL,
   DOMAIN_ROLES,
   DOMAIN_ROLE_LABEL,
+  isOffboarded,
 } from "../../../lib/teamMembers";
 import {
   fetchAllEmployees,
   fetchHrPrivate,
   saveEmployeeMaster,
   saveHrPrivate,
+  offboardEmployee,
+  reactivateEmployee,
   type EmployeeMasterPatch,
   type HrPrivatePatch,
 } from "../../../lib/employeeHr";
@@ -42,7 +45,15 @@ const STATUS_TONE: Record<string, string> = {
   inactive: "bg-gray-100 text-gray-600 border-gray-200",
   terminated: "bg-rose-50 text-rose-700 border-rose-200",
   on_leave: "bg-amber-50 text-amber-700 border-amber-200",
+  offboarded: "bg-slate-100 text-slate-600 border-slate-300",
 };
+
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  // NB: this module defines a local <Date> input component that shadows the
+  // global Date, so reference it explicitly via globalThis.
+  return new globalThis.Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
 
 interface FormState {
   master: EmployeeMasterPatch;
@@ -60,6 +71,14 @@ export default function EmployeeHrDirectory() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [allDepartments, setAllDepartments] = useState<CompanyDepartment[]>([]);
+  // Active vs Archived (offboarded) roster.
+  const [view, setView] = useState<"active" | "archived">("active");
+  // Offboard / reactivate flow.
+  const [offboardTarget, setOffboardTarget] = useState<TeamMember | null>(null);
+  const [offboardReason, setOffboardReason] = useState("");
+  const [offboardBusy, setOffboardBusy] = useState(false);
+  const [offboardErr, setOffboardErr] = useState("");
+  const [reactivateBusy, setReactivateBusy] = useState(false);
 
   async function loadList() {
     const rows = await fetchAllEmployees();
@@ -81,9 +100,22 @@ export default function EmployeeHrDirectory() {
     return Array.from(set).sort();
   }, [employees]);
 
+  const archivedCount = useMemo(
+    () => (employees ?? []).filter((e) => isOffboarded(e)).length,
+    [employees],
+  );
+  const activeCount = useMemo(
+    () => (employees ?? []).filter((e) => !isOffboarded(e)).length,
+    [employees],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (employees ?? []).filter((e) => {
+      // Active roster hides offboarded/archived; Archived roster shows only them.
+      const archived = isOffboarded(e);
+      if (view === "active" && archived) return false;
+      if (view === "archived" && !archived) return false;
       if (statusFilter !== "all" && (e.employment_status ?? "active") !== statusFilter) return false;
       if (deptFilter !== "all" && (e.department ?? "") !== deptFilter) return false;
       if (!q) return true;
@@ -95,7 +127,7 @@ export default function EmployeeHrDirectory() {
         (e.phone ?? "").toLowerCase().includes(q)
       );
     });
-  }, [employees, search, statusFilter, deptFilter]);
+  }, [employees, search, statusFilter, deptFilter, view]);
 
   const selected = useMemo(
     () => (employees ?? []).find((e) => e.id === selectedId) ?? null,
@@ -165,6 +197,35 @@ export default function EmployeeHrDirectory() {
     setSaving(false);
   }
 
+  // Owner accounts can never be offboarded (UI guard; the RPC also blocks it).
+  const selectedIsOwner = (selected?.domain_role ?? "") === "owner";
+  const selectedArchived = selected ? isOffboarded(selected) : false;
+
+  async function confirmOffboard() {
+    if (!offboardTarget || offboardBusy) return;
+    if (!offboardReason.trim()) { setOffboardErr("A reason is required."); return; }
+    setOffboardBusy(true);
+    setOffboardErr("");
+    const err = await offboardEmployee(offboardTarget.id, offboardReason.trim());
+    setOffboardBusy(false);
+    if (err) { setOffboardErr(err); return; }
+    setOffboardTarget(null);
+    setOffboardReason("");
+    setToast({ ok: true, msg: "Employee offboarded. Login locked, removed from active payroll; history preserved." });
+    await loadList();
+  }
+
+  async function handleReactivate() {
+    if (!selected || reactivateBusy) return;
+    if (!window.confirm(`Reactivate ${selected.display_name || "this employee"}? This restores active status and re-enables login.`)) return;
+    setReactivateBusy(true);
+    const err = await reactivateEmployee(selected.id);
+    setReactivateBusy(false);
+    if (err) { setToast({ ok: false, msg: err }); return; }
+    setToast({ ok: true, msg: "Employee reactivated." });
+    await loadList();
+  }
+
   return (
     <div>
       <DepartmentsManagerCard departments={allDepartments} onChanged={loadDepartments} />
@@ -172,6 +233,17 @@ export default function EmployeeHrDirectory() {
       {/* List */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="p-3 border-b border-gray-100 space-y-2">
+          {/* Active vs Archived roster */}
+          <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+            <button type="button" onClick={() => { setView("active"); setSelectedId(null); }}
+              className={`flex-1 rounded-md px-2 py-1.5 text-xs font-bold transition-colors ${view === "active" ? "bg-white text-[#3b6ea5] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              Active {employees ? `(${activeCount})` : ""}
+            </button>
+            <button type="button" onClick={() => { setView("archived"); setSelectedId(null); }}
+              className={`flex-1 rounded-md px-2 py-1.5 text-xs font-bold transition-colors ${view === "archived" ? "bg-white text-slate-700 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              <i className="ri-archive-line mr-1" />Archived {employees ? `(${archivedCount})` : ""}
+            </button>
+          </div>
           <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 h-9">
             <i className="ri-search-line text-gray-400 text-sm" />
             <input
@@ -197,7 +269,7 @@ export default function EmployeeHrDirectory() {
           {employees === null ? (
             <p className="px-3 py-6 text-center text-xs text-gray-400">Loading employees…</p>
           ) : filtered.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-gray-400">No employees match.</p>
+            <p className="px-3 py-6 text-center text-xs text-gray-400">{view === "archived" ? "No archived employees." : "No employees match."}</p>
           ) : (
             filtered.map((e) => {
               const st = e.employment_status ?? "active";
@@ -242,11 +314,44 @@ export default function EmployeeHrDirectory() {
               <span className="h-12 w-12 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center text-base font-bold text-gray-500">
                 {selected.display_picture_url ? <img src={selected.display_picture_url} alt="" className="h-full w-full object-cover" /> : initials(selected.display_name)}
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-extrabold text-gray-900 truncate">{selected.display_name || "Unnamed"}</h3>
                 <p className="text-[11px] text-gray-400">Employee ID {selected.employee_code ?? "—"} · system-managed</p>
               </div>
+              {/* Offboard (active, non-owner) / Reactivate (archived) */}
+              {!selectedArchived && !selectedIsOwner && (
+                <button type="button" onClick={() => { setOffboardTarget(selected); setOffboardReason(""); setOffboardErr(""); }}
+                  className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100">
+                  <i className="ri-logout-box-r-line" /> Archive / Offboard
+                </button>
+              )}
+              {selectedArchived && (
+                <button type="button" onClick={handleReactivate} disabled={reactivateBusy}
+                  className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60">
+                  {reactivateBusy ? <i className="ri-loader-4-line animate-spin" /> : <i className="ri-user-follow-line" />} Reactivate
+                </button>
+              )}
             </div>
+
+            {selectedArchived && (
+              <div className="mb-4 rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <i className="ri-archive-line text-slate-500" />
+                  <span className="text-xs font-extrabold text-slate-700">Archived employee — login locked, excluded from active payroll. History preserved.</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-600">
+                  <div><span className="font-semibold text-slate-500">Offboarded:</span> {fmtDateTime(selected.offboarded_at)}</div>
+                  <div><span className="font-semibold text-slate-500">Login locked:</span> {fmtDateTime(selected.login_locked_at)}</div>
+                  <div className="sm:col-span-3"><span className="font-semibold text-slate-500">Reason:</span> {selected.offboarding_reason || "—"}</div>
+                </div>
+              </div>
+            )}
+
+            {selectedIsOwner && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[11px] font-semibold text-amber-700">
+                <i className="ri-shield-star-line mr-1" /> Owner account — cannot be offboarded or archived.
+              </div>
+            )}
 
             <Section title="Identity & Contact">
               <Field label="Full name"><Text value={form.master.display_name} onChange={(v) => setMaster("display_name", v)} /></Field>
@@ -302,9 +407,15 @@ export default function EmployeeHrDirectory() {
                 </Select>
               </Field>
               <Field label="Status">
-                <Select value={form.master.employment_status ?? "active"} onChange={(v) => setMaster("employment_status", v)}>
-                  {EMPLOYMENT_STATUSES.map((s) => <option key={s} value={s}>{EMPLOYMENT_STATUS_LABEL[s]}</option>)}
-                </Select>
+                {selectedArchived ? (
+                  <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 h-9 flex items-center text-sm font-semibold text-slate-600">
+                    Offboarded (archived) — use Reactivate to restore
+                  </div>
+                ) : (
+                  <Select value={form.master.employment_status ?? "active"} onChange={(v) => setMaster("employment_status", v)}>
+                    {EMPLOYMENT_STATUSES.map((s) => <option key={s} value={s}>{EMPLOYMENT_STATUS_LABEL[s]}</option>)}
+                  </Select>
+                )}
               </Field>
               <Field label="Reporting manager">
                 <Select value={form.master.manager_id ?? ""} onChange={(v) => setMaster("manager_id", v || null)}>
@@ -367,6 +478,53 @@ export default function EmployeeHrDirectory() {
         )}
       </div>
       </div>
+
+      {/* Offboard / Archive confirmation — reason required, owner blocked */}
+      {offboardTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!offboardBusy) setOffboardTarget(null); }}>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-9 h-9 rounded-full bg-rose-100 flex items-center justify-center">
+                <i className="ri-logout-box-r-line text-rose-600" />
+              </div>
+              <h4 className="text-sm font-extrabold text-gray-900">Offboard / Archive Employee</h4>
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed mb-3">
+              Archive <strong>{offboardTarget.display_name || "this employee"}</strong>
+              {offboardTarget.employee_code ? <span className="text-gray-400"> · #{offboardTarget.employee_code}</span> : null}?
+            </p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 mb-3 text-[11px] text-gray-600 leading-relaxed">
+              <p className="font-bold text-gray-700 mb-1">This will:</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>Lock their login (staff portal &amp; Company Home)</li>
+                <li>Remove them from active Employees &amp; Departments</li>
+                <li>Exclude them from future payroll</li>
+              </ul>
+              <p className="mt-1.5 text-emerald-700 font-semibold">History (salary, attendance, payroll, compensation) is preserved and stays viewable under Archived. This is reversible (Reactivate).</p>
+            </div>
+            <label className="block mb-3">
+              <span className="block text-[11px] font-semibold text-gray-500 mb-1">Reason / note <span className="text-rose-500">*</span></span>
+              <textarea value={offboardReason} onChange={(e) => { setOffboardReason(e.target.value); if (offboardErr) setOffboardErr(""); }}
+                rows={2} placeholder="e.g. Resigned, last working day 2026-06-20"
+                className="w-full rounded-lg border border-gray-200 px-2.5 py-2 text-sm resize-y" />
+            </label>
+            {offboardErr && (
+              <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                <i className="ri-error-warning-line mr-1" />{offboardErr}
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" disabled={offboardBusy} onClick={() => setOffboardTarget(null)}
+                className="px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={offboardBusy || !offboardReason.trim()} onClick={confirmOffboard}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-60 inline-flex items-center gap-1.5">
+                {offboardBusy ? (<><i className="ri-loader-4-line animate-spin" /> Offboarding…</>) : (<><i className="ri-logout-box-r-line" /> Offboard Employee</>)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

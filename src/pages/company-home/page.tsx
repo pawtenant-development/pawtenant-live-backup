@@ -5,6 +5,7 @@ import { resolveStaffRole } from "../../lib/staffAuth";
 import {
   fetchCurrentTeamMember,
   fetchMyAdminContext,
+  isOffboarded,
   type TeamMember,
 } from "../../lib/teamMembers";
 import CompanyTopBar from "./components/CompanyTopBar";
@@ -21,7 +22,7 @@ import TeamBonusRequestWidget from "./components/TeamBonusRequestWidget";
 import QuickLinks from "./components/QuickLinks";
 import EnterWorkstationButton from "./components/EnterWorkstationButton";
 
-type LoadState = "loading" | "no-auth" | "no-profile" | "ready";
+type LoadState = "loading" | "no-auth" | "no-profile" | "locked" | "ready";
 
 const SECTIONS = ["home", "myprofile", "team", "performance", "forms", "policies", "help"];
 
@@ -73,6 +74,13 @@ export default function CompanyHomePage() {
       const row = await fetchCurrentTeamMember();
       if (cancelled) return;
       if (row) {
+        // App-side login lock: an offboarded/inactive employee keeps their row
+        // (RLS self-read) but must not reach the portal. Sign out + show locked.
+        if (!row.is_active || isOffboarded(row)) {
+          await supabase.auth.signOut();
+          if (!cancelled) setState("locked");
+          return;
+        }
         setMember(row);
         setState("ready");
       } else {
@@ -118,6 +126,29 @@ export default function CompanyHomePage() {
             className="mt-4 inline-flex items-center justify-center rounded-lg bg-[#0f1e1a] hover:bg-[#1a2e29] px-4 py-2 text-sm font-semibold text-white"
           >
             Go to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "locked") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-stone-100 px-4">
+        <div className="max-w-md w-full rounded-2xl border border-stone-200 bg-white shadow-sm p-6 text-center">
+          <div className="mx-auto h-11 w-11 rounded-full bg-rose-50 flex items-center justify-center">
+            <i className="ri-lock-2-line text-xl text-rose-600"></i>
+          </div>
+          <h1 className="mt-3 text-lg font-semibold text-stone-900">Account access disabled</h1>
+          <p className="mt-1.5 text-sm text-stone-600">
+            This account has been deactivated and can no longer access the Company portal.
+            If you believe this is a mistake, please contact your administrator.
+          </p>
+          <button
+            onClick={() => navigate("/admin-login")}
+            className="mt-4 inline-flex items-center justify-center rounded-lg bg-[#0f1e1a] hover:bg-[#1a2e29] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Back to sign in
           </button>
         </div>
       </div>

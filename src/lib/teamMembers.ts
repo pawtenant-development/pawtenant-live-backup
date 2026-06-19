@@ -40,6 +40,22 @@ export interface TeamMember {
   primary_department_id: string | null;
   /** Capability bundle key (lib/permissions.ts). */
   permission_bundle: string | null;
+  // ── Offboarding / archive metadata (soft; row is never deleted) ───────────
+  // Set by offboard_employee() / cleared by reactivate_employee(). When
+  // employment_status = "offboarded" the member is archived: login is locked and
+  // they are excluded from active lists + future payroll, but all history stays.
+  offboarded_at: string | null;
+  offboarded_by: string | null;
+  offboarding_reason: string | null;
+  login_locked_at: string | null;
+  login_locked_by: string | null;
+  archived_at: string | null;
+  archived_by: string | null;
+}
+
+/** True when an employee has been offboarded/archived (terminal, login-locked). */
+export function isOffboarded(m: Pick<TeamMember, "employment_status" | "archived_at">): boolean {
+  return (m.employment_status ?? "active") === "offboarded" || !!m.archived_at;
 }
 
 /** Company OS role hierarchy (labeling). owner = Boss/Owner/Super Admin. */
@@ -86,6 +102,9 @@ export const EMPLOYMENT_STATUS_LABEL: Record<string, string> = {
   inactive: "Inactive",
   terminated: "Terminated",
   on_leave: "On Leave",
+  // Terminal archive state — set only via the Offboard flow, never the manual
+  // status dropdown (so it always carries audit + login-lock + metadata).
+  offboarded: "Offboarded",
 };
 
 /**

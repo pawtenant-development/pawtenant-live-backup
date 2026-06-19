@@ -11,6 +11,7 @@ import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAcc
 import { formatTimeOfDay12, pktTime12String } from "../../../lib/timezones";
 import { fetchAccountingPeriods, type AccountingPeriod } from "../../../lib/accountsBooks";
 import MonthlyBooksSummary from "./MonthlyBooksSummary";
+import PayrollArchivePanel from "./PayrollArchivePanel";
 import CompensationAdjustmentsCard from "./CompensationAdjustmentsCard";
 
 // Minimal shapes mirrored from PaymentsTab (avoids cross-file type coupling).
@@ -649,6 +650,9 @@ export default function PaymentsAccountsPanel({
 
       {/* Previous months' books (collapsible) */}
       <MonthlyBooksSummary fxRate={fxRate} canManage={canManageBooks} onOpenMonth={onOpenMonth} onBooksChanged={load} reloadSignal={booksReloadSignal} />
+
+      {/* Per-employee payroll archive — frozen monthly snapshots (survive offboarding) */}
+      <PayrollArchivePanel canManage={canManageBooks} />
     </div>
   );
 }

@@ -266,3 +266,62 @@ export async function fetchPayrollSendLog(from: string, to: string): Promise<Rec
   }
   return map;
 }
+
+// ── Monthly payroll snapshots (per-employee, frozen history) ────────────────
+// Archive of what each employee was actually payable per month. Survives an
+// employee being offboarded, so past-month payroll stays correct even though the
+// live RPC now excludes them. RLS-gated to accounts admins (owner/admin_manager/
+// finance) — returns [] for anyone else.
+export interface PayrollSnapshotRow {
+  id: string;
+  team_member_id: string | null;
+  employee_code: string;
+  employee_name: string | null;
+  title: string | null;
+  department: string | null;
+  period_start: string;
+  period_end: string;
+  report_label: string | null;
+  base_salary: number | null;
+  salary_currency: string | null;
+  half_day_late_days: number | null;
+  attendance_deduction_amount: number | null;
+  approved_additions: number | null;
+  approved_deductions: number | null;
+  gross_payable: number | null;
+  net_payable: number | null;
+  net_payable_usd: number | null;
+  fx_rate: number | null;
+  employment_status_at_period_end: string | null;
+  created_at: string;
+}
+
+/** Per-employee payroll snapshots whose period_start falls in [from..to]. */
+export async function fetchPayrollSnapshots(from: string, to: string): Promise<PayrollSnapshotRow[]> {
+  const { data, error } = await supabase
+    .from("employee_monthly_payroll_snapshots")
+    .select(
+      "id, team_member_id, employee_code, employee_name, title, department, period_start, period_end, report_label, base_salary, salary_currency, half_day_late_days, attendance_deduction_amount, approved_additions, approved_deductions, gross_payable, net_payable, net_payable_usd, fx_rate, employment_status_at_period_end, created_at",
+    )
+    .gte("period_start", from)
+    .lte("period_start", to)
+    .order("period_start", { ascending: false })
+    .order("net_payable", { ascending: false });
+  if (error) { console.warn("[accountsBooks] payroll snapshots error", error); return []; }
+  return (data ?? []) as PayrollSnapshotRow[];
+}
+
+/**
+ * Generate / refresh the payroll snapshot for one month (does NOT send email).
+ * Idempotent on the server (upsert). Returns the number of employee rows written
+ * or an error message. Admin/finance only (RLS + RPC gate).
+ */
+export async function generatePayrollSnapshot(
+  periodStart: string, periodEnd: string, periodLabel: string,
+): Promise<{ count?: number; error?: string }> {
+  const { data, error } = await supabase.rpc("snapshot_monthly_payroll", {
+    p_from: periodStart, p_to: periodEnd, p_label: periodLabel,
+  });
+  if (error) return { error: error.message };
+  return { count: (data as number) ?? 0 };
+}

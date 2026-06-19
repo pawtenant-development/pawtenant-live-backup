@@ -91,3 +91,30 @@ export async function saveHrPrivate(
     .upsert({ team_member_id: teamMemberId, ...patch }, { onConflict: "team_member_id" });
   return error ? error.message : null;
 }
+
+/**
+ * Offboard / archive an employee via the SECURITY DEFINER RPC. The server:
+ *   • blocks the owner account and double-offboarding,
+ *   • sets employment_status='offboarded' + is_active=false (+ archive metadata),
+ *   • locks app-side login (team_members + any linked doctor_profiles),
+ *   • writes an audit_logs entry.
+ * No row is deleted; history is preserved. Returns error message or null.
+ */
+export async function offboardEmployee(
+  teamMemberId: string,
+  reason: string,
+): Promise<string | null> {
+  const { error } = await supabase.rpc("offboard_employee", {
+    p_team_member_id: teamMemberId,
+    p_reason: reason,
+  });
+  return error ? error.message : null;
+}
+
+/** Reactivate / re-hire an offboarded employee (reverses offboard_employee). */
+export async function reactivateEmployee(teamMemberId: string): Promise<string | null> {
+  const { error } = await supabase.rpc("reactivate_employee", {
+    p_team_member_id: teamMemberId,
+  });
+  return error ? error.message : null;
+}

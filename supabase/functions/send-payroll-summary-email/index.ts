@@ -348,6 +348,18 @@ Deno.serve(async (req: Request) => {
 
   if (!sendRes.ok) return json({ ok: false, error: sendRes.error ?? "Email send failed", ...summaryPayload }, 502);
 
+  // Freeze a per-employee payroll snapshot for this month so the figures survive
+  // an employee being offboarded later (the live RPC recomputes with CURRENT
+  // status). Idempotent upsert; non-fatal — never blocks the send result.
+  try {
+    const { error: snapErr } = await userClient.rpc("snapshot_monthly_payroll", {
+      p_from: periodStart, p_to: periodEnd, p_label: periodLabel,
+    });
+    if (snapErr) console.warn("[send-payroll-summary-email] snapshot failed:", snapErr.message);
+  } catch (e) {
+    console.warn("[send-payroll-summary-email] snapshot exception:", e);
+  }
+
   return json({
     ok: true,
     message: `Payroll summary for ${periodLabel} sent to ${PAYROLL_RECIPIENTS.length} recipients.`,
