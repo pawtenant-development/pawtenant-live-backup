@@ -58,6 +58,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "ESA letter cost explained: transparent pricing for a licensed provider evaluation, what's included, and a refund if you don't qualify.",
   },
+  "/pet-rent-savings-calculator": {
+    title: "Pet Rent Savings Calculator | Estimate ESA Housing Savings",
+    description:
+      "Estimate how monthly pet rent and one-time pet fees can add up over 1, 2, and 5 years. See potential savings if your ESA housing accommodation request is approved.",
+  },
   "/explore-esa-letters-all-states": {
     title: "ESA Letter by State | All 50 US States | PawTenant",
     description:

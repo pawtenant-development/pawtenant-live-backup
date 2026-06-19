@@ -11,6 +11,7 @@ const siteStructure = [
       { label: "Home", href: "/" },
       { label: "How to Get an ESA Letter", href: "/how-to-get-esa-letter" },
       { label: "ESA Letter Cost & Pricing", href: "/esa-letter-cost" },
+      { label: "Pet Rent Savings Calculator", href: "/pet-rent-savings-calculator" },
       { label: "Housing Rights & Your ESA", href: "/housing-rights-esa" },
       { label: "No Risk Guarantee", href: "/no-risk-guarantee" },
       { label: "Renew ESA Letter", href: "/renew-esa-letter" },

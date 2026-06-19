@@ -5,6 +5,7 @@ import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   AIAnswerBox,
@@ -422,6 +423,13 @@ export default function ESALetterForApartmentsPage() {
           </div>
         </div>
       </section>
+
+      {/* Pet rent savings teaser → links to the full /pet-rent-savings-calculator */}
+      <PetRentSavingsMini
+        className="bg-white"
+        heading="How much could apartment pet rent cost over time?"
+        copy="Apartment pet rent can quietly add up year over year. Estimate the one-year total, then open the full calculator for 1, 2, and 5-year potential savings."
+      />
 
       {/* BY STATE */}
       <section className="py-14 sm:py-16 bg-[#fafafa] border-y border-gray-100">

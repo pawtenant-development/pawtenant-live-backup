@@ -4,6 +4,7 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   AIAnswerBox,
@@ -321,6 +322,13 @@ export default function ESAPetRentDepositPage() {
           </AIAnswerBox>
         </div>
       </section>
+
+      {/* Pet rent savings teaser → links to the full /pet-rent-savings-calculator */}
+      <PetRentSavingsMini
+        className="bg-white"
+        heading="Estimate your pet-rent costs"
+        copy="Monthly pet rent and one-time pet fees can add up. Use the full calculator to estimate 1, 2, and 5-year potential savings if your housing accommodation request is approved."
+      />
 
       {/* FEE BREAKDOWN TABLE */}
       <section className="py-14 sm:py-16 bg-[#fafafa] border-y border-gray-100">

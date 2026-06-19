@@ -4,6 +4,7 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
+import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
 
 const pricingPlans = [
@@ -367,6 +368,13 @@ export default function ESALetterCostPage() {
         className="bg-[#f7f6f3] border-t border-gray-100"
         image="/assets/veterans/man-on-porch-with-dog.jpg"
         alt="A veteran on his porch with his dog on a calm afternoon"
+      />
+
+      {/* Pet rent savings teaser → links to the full /pet-rent-savings-calculator */}
+      <PetRentSavingsMini
+        className="bg-[#fafafa] border-t border-gray-100"
+        heading="See how monthly pet rent adds up"
+        copy="Enter a typical monthly pet-rent amount and estimate what it could cost over one year — before any approved housing accommodation."
       />
 
       {/* CTA — mobile: full-width button + clearer hierarchy. */}

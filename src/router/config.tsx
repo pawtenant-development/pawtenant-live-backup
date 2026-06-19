@@ -92,6 +92,8 @@ const FloridaESALetterForApartmentsPage = lazy(() => import("../pages/florida-es
 const NewYorkESALetterForApartmentsPage = lazy(() => import("../pages/new-york-esa-letter-for-apartments/page"));
 // HUD 2026 ESA enforcement-change educational page (indexable, in sitemap).
 const AreEsaLettersStillValidAfterHudChangePage = lazy(() => import("../pages/are-esa-letters-still-valid-after-hud-change/page"));
+// Pet rent savings calculator (interactive tool, indexable, in sitemap).
+const PetRentSavingsCalculatorPage = lazy(() => import("../pages/pet-rent-savings-calculator/page"));
 // 2026 HUD ESA guidelines blog article (indexable, in sitemap).
 const Blog2026HudEsaGuidelinesPage = lazy(() => import("../pages/blog-2026-hud-esa-guidelines/page"));
 // Travel-anxiety / major-event ESA content cluster (indexable, in sitemap).
@@ -180,6 +182,8 @@ const routes: RouteObject[] = [
   { path: "/travel-anxiety-esa-letter", element: <P C={TravelAnxietyESALetterPage} /> },
   // HUD 2026 ESA enforcement-change educational page (informational, indexable).
   { path: "/are-esa-letters-still-valid-after-hud-change", element: <P C={AreEsaLettersStillValidAfterHudChangePage} /> },
+  // Pet rent savings calculator (interactive tool, indexable).
+  { path: "/pet-rent-savings-calculator", element: <P C={PetRentSavingsCalculatorPage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
   // PRIMARY route — /esa-letter/[state] format
   { path: "/esa-letter/:state", element: <P C={StateESAPage} /> },

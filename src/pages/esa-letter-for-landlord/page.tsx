@@ -5,6 +5,7 @@ import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   AIAnswerBox,
@@ -331,6 +332,14 @@ export default function ESALetterForLandlordPage() {
           </p>
         </div>
       </section>
+
+      {/* Pet rent savings teaser → links to the full /pet-rent-savings-calculator (compact, no assessment CTA) */}
+      <PetRentSavingsMini
+        className="bg-white border-t border-gray-100"
+        heading="Paying monthly pet rent?"
+        copy="See how monthly pet rent can add up over a year, and estimate your possible pet-rent costs over time with the full calculator."
+        showAssessmentCta={false}
+      />
 
       {/* PRICING / KLARNA — reusable cost section */}
       <EsaPricingMini className="bg-white border-t border-gray-100" />
