@@ -44,6 +44,13 @@ const META_CAPI_ACCESS_TOKEN = Deno.env.get("META_CAPI_ACCESS_TOKEN");
 const CAPI_SENDING_DISABLED = false;
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Meta CAPI 7-day event-time window guard ──────────────────────────────────
+// Meta's Conversions API rejects Purchase events whose event_time is older than
+// 7 days ("Invalid parameter"). We skip BEFORE calling Meta when the resolved
+// event_time exceeds a safe 6d23h buffer (avoids boundary failures) and mark the
+// order meta_capi_status = 'skipped_too_old' (terminal — never retried).
+const META_CAPI_MAX_EVENT_AGE_SECONDS = 6 * 24 * 60 * 60 + 23 * 60 * 60; // 6d23h = 601200s
+
 // Meta CAPI endpoint
 const META_CAPI_URL = (pixelId: string) =>
   `https://graph.facebook.com/v19.0/${pixelId}/events`;
@@ -407,6 +414,8 @@ async function processOrder(
   fbcGenerated?: boolean;
   fbcTimestampSource?: "stored" | "fallback";
   userDataKeys?: string[];
+  tooOld?: boolean;
+  eventAgeDays?: number;
 }> {
   const confirmationId = order.confirmation_id;
   const eventId = `purchase_${confirmationId}`;
@@ -474,6 +483,55 @@ async function processOrder(
       }).eq("id", order.id);
     }
     return { confirmationId, success: false, skipped: false, eventId, error: errMsg };
+  }
+
+  // ── GUARD: Meta CAPI 7-day window — skip events older than the buffer ──────
+  // Meta rejects event_time older than 7 days with a 400 "Invalid parameter".
+  // event_time is already resolved above, so detect it here and skip BEFORE any
+  // Meta call. Marked terminal as 'skipped_too_old' so it is never retried.
+  const eventAgeSeconds = Math.floor(Date.now() / 1000) - tsResult.unixTimestamp;
+  if (eventAgeSeconds > META_CAPI_MAX_EVENT_AGE_SECONDS) {
+    const tooOldError = "Meta CAPI event_time older than 7-day window";
+    const eventAgeDays = Number((eventAgeSeconds / 86400).toFixed(2));
+    console.warn(`[meta-capi][${confirmationId}] SKIPPED too_old: event age ${eventAgeDays}d (> 6d23h buffer, source: ${tsResult.source}) — not sending to Meta`);
+    if (!dryRun) {
+      await supabase.from("orders").update({
+        meta_capi_status: "skipped_too_old",
+        meta_capi_error: tooOldError,
+        meta_capi_event_id: eventId,
+      }).eq("id", order.id);
+      try {
+        await supabase.from("audit_logs").insert({
+          action: "meta_capi_purchase_skipped_too_old",
+          object_type: "order",
+          object_id: confirmationId,
+          actor_name: "system",
+          actor_role: "automation",
+          description: `CAPI skip (too old): ${confirmationId} — event age ${eventAgeDays}d > 7-day window`,
+          metadata: {
+            confirmation_id: confirmationId,
+            event_id: eventId,
+            event_time: tsResult.unixTimestamp,
+            timestamp_source: tsResult.source,
+            event_age_seconds: eventAgeSeconds,
+            event_age_days: eventAgeDays,
+            max_age_seconds: META_CAPI_MAX_EVENT_AGE_SECONDS,
+            skipped_at: new Date().toISOString(),
+          },
+          new_values: null,
+        });
+      } catch { /* non-critical */ }
+    }
+    return {
+      confirmationId,
+      success: false,
+      skipped: false,
+      tooOld: true,
+      eventId,
+      error: tooOldError,
+      timestampSource: tsResult.source,
+      eventAgeDays,
+    };
   }
 
   const price = order.price ?? 0;
@@ -727,6 +785,13 @@ Deno.serve(async (req: Request) => {
       const hasPhone = !!normalizePhone(order.phone);
       const hasFbclid = !!order.fbclid;
 
+      // 7-day window guard preview (no Meta call)
+      const eventAgeSeconds = tsResult.unixTimestamp
+        ? Math.floor(Date.now() / 1000) - tsResult.unixTimestamp
+        : null;
+      const eventAgeDays = eventAgeSeconds !== null ? Number((eventAgeSeconds / 86400).toFixed(2)) : null;
+      const wouldBeSkippedTooOld = eventAgeSeconds !== null && eventAgeSeconds > META_CAPI_MAX_EVENT_AGE_SECONDS;
+
       // Show what fbc would look like
       let sampleFbc: string | null = null;
       let fbcTsSource: "stored" | "fallback" | null = null;
@@ -763,6 +828,9 @@ Deno.serve(async (req: Request) => {
         sampleFbc,
         fbcTimestampSource: fbcTsSource,
         wouldBeSkipped: !hasEmail && !hasPhone,
+        eventAgeDays,
+        maxEventAgeDays: Number((META_CAPI_MAX_EVENT_AGE_SECONDS / 86400).toFixed(2)),
+        wouldBeSkippedTooOld,
         currentMetaCapiStatus: order.meta_capi_status,
         note: "CAPI sending is LIVE. Use mode=single with dryRun=true to simulate, or add testEventCode to send to Meta Test Events.",
       });
@@ -808,9 +876,10 @@ Deno.serve(async (req: Request) => {
         results.push(result);
       }
 
-      const succeeded = results.filter((r) => r.success && !r.skipped).length;
-      const failed = results.filter((r) => !r.success && !r.skipped).length;
+      const succeeded = results.filter((r) => r.success && !r.skipped && !r.tooOld).length;
+      const failed = results.filter((r) => !r.success && !r.skipped && !r.tooOld).length;
       const skipped = results.filter((r) => r.skipped).length;
+      const skippedTooOld = results.filter((r) => r.tooOld).length;
 
       return json({
         ok: true,
@@ -821,6 +890,7 @@ Deno.serve(async (req: Request) => {
         succeeded,
         failed,
         skipped,
+        skippedTooOld,
         results,
       });
     }
@@ -838,7 +908,9 @@ Deno.serve(async (req: Request) => {
       // OR any status other than the permanent skip. A plain .neq(...) drops NULLs
       // (Postgres: NULL <> 'x' is not TRUE), which silently excluded every
       // never-attempted order from the Meta backfill — the coverage gap we must fix.
-      .or("meta_capi_status.is.null,meta_capi_status.neq.skipped_missing_user_data");
+      // Also exclude 'skipped_too_old' (terminal — event_time outside Meta's
+      // 7-day window) so age-guarded orders are never re-swept. Still null-safe.
+      .or("meta_capi_status.is.null,and(meta_capi_status.neq.skipped_missing_user_data,meta_capi_status.neq.skipped_too_old)");
     // Optional date window for a scoped (e.g. 7-day) pilot. Filters on paid_at;
     // already-sent orders stay excluded via the meta_capi_sent_at IS NULL guard above.
     if (bfDateFrom) pendingQuery = pendingQuery.gte("paid_at", bfDateFrom);
@@ -858,12 +930,13 @@ Deno.serve(async (req: Request) => {
       results.push(result);
     }
 
-    const sent = results.filter((r) => r.success && !r.skipped).length;
-    const failed = results.filter((r) => !r.success && !r.skipped).length;
+    const sent = results.filter((r) => r.success && !r.skipped && !r.tooOld).length;
+    const failed = results.filter((r) => !r.success && !r.skipped && !r.tooOld).length;
     const skipped = results.filter((r) => r.skipped).length;
-    const firstError = results.find((r) => !r.success && !r.skipped)?.error;
+    const skippedTooOld = results.filter((r) => r.tooOld).length;
+    const firstError = results.find((r) => !r.success && !r.skipped && !r.tooOld)?.error;
 
-    console.info(`[meta-capi] Backfill complete: ${sent} sent, ${failed} failed, ${skipped} skipped (no user data)`);
+    console.info(`[meta-capi] Backfill complete: ${sent} sent, ${failed} failed, ${skipped} skipped (no user data), ${skippedTooOld} skipped_too_old`);
 
     return json({
       ok: true,
@@ -875,6 +948,7 @@ Deno.serve(async (req: Request) => {
       sent,
       failed,
       skipped,
+      skippedTooOld,
       firstError,
       results,
     });
