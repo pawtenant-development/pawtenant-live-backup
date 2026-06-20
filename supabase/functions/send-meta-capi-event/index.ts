@@ -681,6 +681,9 @@ Deno.serve(async (req: Request) => {
       confirmationId?: string;
       dryRun?: boolean;
       testEventCode?: string;
+      // Optional lower bound on paid_at for mode:backfill (e.g. "2026-06-13").
+      // Mirrors the Google Ads backfill so a scoped (e.g. 7-day) pilot is possible.
+      dateFrom?: string | null;
     };
 
     const mode = body.mode ?? "backfill";
@@ -823,7 +826,8 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Backfill mode (default) ───────────────────────────────────────────────
-    const { data: pendingOrders } = await supabase
+    const bfDateFrom = body.dateFrom ?? null;
+    let pendingQuery = supabase
       .from("orders")
       .select("id, confirmation_id, email, phone, first_name, last_name, letter_type, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
       .not("payment_intent_id", "is", null)
@@ -834,9 +838,13 @@ Deno.serve(async (req: Request) => {
       // OR any status other than the permanent skip. A plain .neq(...) drops NULLs
       // (Postgres: NULL <> 'x' is not TRUE), which silently excluded every
       // never-attempted order from the Meta backfill — the coverage gap we must fix.
-      .or("meta_capi_status.is.null,meta_capi_status.neq.skipped_missing_user_data")
-      .order("paid_at", { ascending: false })
-      .limit(100);
+      .or("meta_capi_status.is.null,meta_capi_status.neq.skipped_missing_user_data");
+    // Optional date window for a scoped (e.g. 7-day) pilot. Filters on paid_at;
+    // already-sent orders stay excluded via the meta_capi_sent_at IS NULL guard above.
+    if (bfDateFrom) pendingQuery = pendingQuery.gte("paid_at", bfDateFrom);
+    pendingQuery = pendingQuery.order("paid_at", { ascending: false }).limit(100);
+
+    const { data: pendingOrders } = await pendingQuery;
 
     if (!pendingOrders || pendingOrders.length === 0) {
       return json({ ok: true, mode: "backfill", processed: 0, message: "All paid orders already processed" });
@@ -861,6 +869,7 @@ Deno.serve(async (req: Request) => {
       ok: true,
       mode: "backfill",
       dryRun,
+      dateFrom: bfDateFrom,
       capiSendingDisabled: CAPI_SENDING_DISABLED,
       processed: results.length,
       sent,
