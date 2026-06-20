@@ -17,6 +17,13 @@ const GOOGLE_ADS_OAUTH_CLIENT_SECRET = Deno.env.get("GOOGLE_ADS_OAUTH_CLIENT_SEC
 const GOOGLE_ADS_REFRESH_TOKEN = Deno.env.get("GOOGLE_ADS_REFRESH_TOKEN");
 const GOOGLE_ADS_LOGIN_CUSTOMER_ID = Deno.env.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID");
 
+// Enhanced Conversions for Leads gate.
+// Default true = existing behavior (attach hashed-email userIdentifiers).
+// Set GOOGLE_ADS_ECL_ENABLED="false" when the account does NOT have Enhanced
+// Conversions for Leads active: gclid orders then upload gclid-only (no hashed
+// email), and email-only orders are deferred (not uploaded) until ECL is enabled.
+const GOOGLE_ADS_ECL_ENABLED = Deno.env.get("GOOGLE_ADS_ECL_ENABLED") !== "false";
+
 const GOOGLE_ADS_API_VERSION = Deno.env.get("GOOGLE_ADS_API_VERSION") || "v21";
 
 // Types that support uploadClickConversions
@@ -146,10 +153,11 @@ async function uploadConversionToGoogleAds(payload: ConversionPayload, accessTok
     orderId: payload.confirmationId,
   };
 
+  // ECL gate: only attach hashed-email enhanced-conversion identifiers when ECL is enabled.
   if (payload.gclid) {
     clickConversion.gclid = payload.gclid;
-    if (payload.emailSha256) clickConversion.userIdentifiers = [{ hashedEmail: payload.emailSha256 }];
-  } else if (payload.emailSha256) {
+    if (payload.emailSha256 && GOOGLE_ADS_ECL_ENABLED) clickConversion.userIdentifiers = [{ hashedEmail: payload.emailSha256 }];
+  } else if (payload.emailSha256 && GOOGLE_ADS_ECL_ENABLED) {
     clickConversion.userIdentifiers = [{ hashedEmail: payload.emailSha256 }];
   }
 
@@ -160,6 +168,8 @@ async function uploadConversionToGoogleAds(payload: ConversionPayload, accessTok
     url, customerId, loginCustomerId: loginCustomerId || "NOT SET",
     conversionAction, conversionDateTime: payload.paidAt,
     hasGclid: !!payload.gclid, hasHashedEmail: !!payload.emailSha256,
+    eclEnabled: GOOGLE_ADS_ECL_ENABLED,
+    attachedHashedEmail: !!(payload.emailSha256 && GOOGLE_ADS_ECL_ENABLED),
     uploadMethod: payload.uploadMethod, validateOnly, apiVersion: GOOGLE_ADS_API_VERSION,
   };
 
@@ -388,6 +398,25 @@ async function processOrder(
     return { confirmationId: order.confirmation_id, method: uploadMethod, quality: matchQuality, success: false, skipped: true };
   }
 
+  // ── ECL gate: email-only enhanced conversions require Enhanced Conversions for Leads.
+  //    When ECL is disabled, defer these (no API call) so they aren't sent with an empty
+  //    payload; gclid orders still upload (gclid-only). uploaded_at stays null so they are
+  //    automatically retried once ECL is enabled. email hashing is preserved for later. ──
+  if (!GOOGLE_ADS_ECL_ENABLED && uploadMethod === "hashed_email_only") {
+    if (!dryRun) {
+      await supabase.from("orders").update({
+        google_ads_upload_status: "deferred_ecl_disabled",
+        google_ads_upload_method: uploadMethod,
+        google_ads_last_attempt_at: new Date().toISOString(),
+      }).eq("id", order.id);
+    }
+    return {
+      confirmationId: order.confirmation_id, method: uploadMethod, quality: matchQuality,
+      success: false, skipped: true,
+      skipReason: "ECL disabled — email-only conversion deferred until Enhanced Conversions for Leads is enabled",
+    };
+  }
+
   const tsResult = resolveSafeConversionTime(order.paid_at, order.created_at, order.confirmation_id);
   if (!tsResult.isoTimestamp) {
     const errMsg = tsResult.warning ?? "conversion_date_time would be in the future — upload blocked";
@@ -514,7 +543,8 @@ serve(async (req) => {
       if (!customerId) diagnosis.push("MISSING: GOOGLE_ADS_CUSTOMER_ID");
       if (!GOOGLE_ADS_CONVERSION_ACTION_ID) diagnosis.push("MISSING: GOOGLE_ADS_CONVERSION_ACTION_ID");
       if (!loginCustomerId) diagnosis.push("WARNING: GOOGLE_ADS_LOGIN_CUSTOMER_ID not set");
-      return json({ ok: !!tokenResult.token, hasToken: !!tokenResult.token, tokenError: tokenResult.error, customerId: customerId || null, loginCustomerId: loginCustomerId || null, hasDevToken: !!GOOGLE_ADS_DEVELOPER_TOKEN, hasConversionActionId: !!GOOGLE_ADS_CONVERSION_ACTION_ID, hasLoginCustomerId: !!loginCustomerId, apiVersion: GOOGLE_ADS_API_VERSION, endpointWouldBe: customerId ? `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}:uploadClickConversions` : "GOOGLE_ADS_CUSTOMER_ID not set", diagnosis, mccRequired: !loginCustomerId });
+      if (!GOOGLE_ADS_ECL_ENABLED) diagnosis.push("INFO: GOOGLE_ADS_ECL_ENABLED=false — gclid orders upload gclid-only; email-only orders deferred");
+      return json({ ok: !!tokenResult.token, hasToken: !!tokenResult.token, tokenError: tokenResult.error, customerId: customerId || null, loginCustomerId: loginCustomerId || null, hasDevToken: !!GOOGLE_ADS_DEVELOPER_TOKEN, hasConversionActionId: !!GOOGLE_ADS_CONVERSION_ACTION_ID, hasLoginCustomerId: !!loginCustomerId, eclEnabled: GOOGLE_ADS_ECL_ENABLED, apiVersion: GOOGLE_ADS_API_VERSION, endpointWouldBe: customerId ? `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}:uploadClickConversions` : "GOOGLE_ADS_CUSTOMER_ID not set", diagnosis, mccRequired: !loginCustomerId });
     }
 
     // ── Test upload ───────────────────────────────────────────────────────────
@@ -596,8 +626,11 @@ serve(async (req) => {
       .in("status", ["processing", "completed"])
       .is("google_ads_uploaded_at", null)
       .neq("status", "refunded")
-      .neq("google_ads_upload_status", "skip_historical")
-      .neq("google_ads_upload_status", "skipped_website_tag")
+      // Null-safe skip-status exclusion: include rows where google_ads_upload_status IS NULL
+      // (never-attempted orders) OR status is neither skip_historical nor skipped_website_tag.
+      // A plain .neq(...) excludes NULLs (Postgres: NULL <> 'x' is not TRUE), which silently
+      // dropped every never-attempted order from backfill — the exact coverage gap we must fix.
+      .or("google_ads_upload_status.is.null,and(google_ads_upload_status.neq.skip_historical,google_ads_upload_status.neq.skipped_website_tag)")
       .order("paid_at", { ascending: false })
       .limit(100);
 
@@ -623,12 +656,13 @@ serve(async (req) => {
     }
 
     return json({
-      ok: true, mode: "backfill", dryRun,
+      ok: true, mode: "backfill", dryRun, eclEnabled: GOOGLE_ADS_ECL_ENABLED,
       filters: { sourceSystem: bfSourceSystem, dateFrom: bfDateFrom, dateTo: bfDateTo, includeHistorical: bfIncludeHistorical },
       processed: results.length,
       uploaded: results.filter(r => r.success && !r.skipped).length,
       skipped: results.filter(r => r.skipped).length,
       skipped_website_tag: results.filter(r => r.skipped && r.skipReason?.includes("google_tag_fired")).length,
+      deferred_ecl: results.filter(r => r.skipped && r.skipReason?.includes("ECL disabled")).length,
       failed: results.filter(r => !r.success && !r.skipped).length,
       firstError: results.find(r => !r.success && !r.skipped)?.error,
       results,
