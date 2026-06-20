@@ -151,6 +151,11 @@ export default function ProviderOrderDetail({
   const [uploadedDocs, setUploadedDocs] = useState<OrderDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
+  // Additional Documentation ($40 add-on) requests for this order. The provider
+  // can read these via RLS (assigned-doctor SELECT policy). A paid request means
+  // the customer paid for extra documentation and the case needs provider action.
+  const [addonRequests, setAddonRequests] = useState<Array<{ id: string; status: string; amount_cents: number; created_at: string; paid_at: string | null }>>([]);
+
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
@@ -167,9 +172,19 @@ export default function ProviderOrderDetail({
     setLoadingDocs(false);
   }, [order.id]);
 
+  const loadAddonRequests = useCallback(async () => {
+    const { data } = await supabase
+      .from("order_additional_documentation_requests")
+      .select("id, status, amount_cents, created_at, paid_at")
+      .eq("order_id", order.id)
+      .order("created_at", { ascending: false });
+    setAddonRequests((data as Array<{ id: string; status: string; amount_cents: number; created_at: string; paid_at: string | null }>) ?? []);
+  }, [order.id]);
+
   useEffect(() => {
     loadDocs();
-  }, [loadDocs]);
+    loadAddonRequests();
+  }, [loadDocs, loadAddonRequests]);
 
   const handleMarkInReview = async () => {
     setMarkingInReview(true);
@@ -642,6 +657,74 @@ export default function ProviderOrderDetail({
                       <i className="ri-information-line"></i>
                       Please ensure all of the above are fulfilled before submitting.
                     </p>
+                  </div>
+                );
+              })()}
+
+              {/* ── Additional Documentation (paid $40 add-on) ── */}
+              {(() => {
+                const paid = addonRequests.find((r) => r.status === "paid");
+                const pending = addonRequests.find((r) => r.status === "pending");
+                const req = paid ?? pending;
+                if (!req) return null;
+                const customerUploads = uploadedDocs.filter((d) => d.doc_type === "customer_upload");
+                return (
+                  <div className="bg-sky-50 border-2 border-sky-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 flex items-center justify-center bg-sky-100 rounded-lg flex-shrink-0">
+                          <i className="ri-file-add-line text-sky-600 text-sm"></i>
+                        </div>
+                        <p className="text-xs font-extrabold text-sky-700 uppercase tracking-widest">Additional Documentation Request</p>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${paid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                        <i className={paid ? "ri-checkbox-circle-fill" : "ri-time-line"}></i>
+                        {paid ? "Paid · $40" : "Payment pending"}
+                      </span>
+                    </div>
+                    {paid ? (
+                      <>
+                        <p className="text-xs text-sky-800 leading-relaxed mb-2">
+                          The patient paid for additional documentation and this case has been reopened for your review.
+                          Please review the uploaded form below and complete the requested documentation.
+                        </p>
+                        <p className="text-xs text-emerald-700 leading-relaxed mb-3 flex items-start gap-1.5">
+                          <i className="ri-money-dollar-circle-line mt-0.5"></i>
+                          <span>You earn your standard per-order rate for this additional documentation — it has been added to your earnings.</span>
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-amber-700 leading-relaxed mb-3">
+                        The patient started an additional-documentation request but payment is not yet complete. No action needed until it shows as Paid.
+                      </p>
+                    )}
+                    {paid && (
+                      <div>
+                        <p className="text-xs font-bold text-sky-800 mb-1.5 flex items-center gap-1.5">
+                          <i className="ri-attachment-2"></i>Customer-uploaded form{customerUploads.length > 1 ? "s" : ""}
+                        </p>
+                        {customerUploads.length === 0 ? (
+                          <div className="flex items-start gap-2 bg-white border border-sky-100 rounded-lg px-3 py-2.5">
+                            <i className="ri-information-line text-sky-500 text-sm mt-0.5 flex-shrink-0"></i>
+                            <p className="text-xs text-gray-600">No file uploaded yet. The patient may email the form, or upload it from their portal — check back shortly.</p>
+                          </div>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {customerUploads.map((d) => (
+                              <li key={d.id} className="flex items-center justify-between gap-2 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                                <span className="flex items-center gap-1.5 min-w-0">
+                                  <i className="ri-file-text-line text-sky-500 flex-shrink-0"></i>
+                                  <span className="text-xs text-gray-700 truncate">{d.label}</span>
+                                </span>
+                                <a href={d.file_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-sky-600 hover:text-sky-800 whitespace-nowrap flex items-center gap-1">
+                                  <i className="ri-download-2-line"></i>Open
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })()}

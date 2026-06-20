@@ -29,7 +29,7 @@
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
-import { completeAdditionalDocPayment } from "../_shared/completeAdditionalDocPayment.ts";
+import { completeAdditionalDocPayment, ensureAddonEarning } from "../_shared/completeAdditionalDocPayment.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -230,6 +230,14 @@ Deno.serve(async (req) => {
         .eq("order_id", orderRow.id)
         .order("created_at", { ascending: false });
       rows = refreshed ?? rows;
+    }
+    // Self-heal provider payout: ensure every PAID add-on request has its
+    // provider earning recorded (covers the case where payment completed before
+    // a provider was assigned). Idempotent + best-effort — never blocks the list.
+    for (const r of rows as Array<Record<string, unknown>>) {
+      if ((r.status as string) === "paid") {
+        try { await ensureAddonEarning(admin, r.id as string); } catch { /* non-critical */ }
+      }
     }
     return json(200, { ok: true, requests: rows, reconciled: changed });
   }

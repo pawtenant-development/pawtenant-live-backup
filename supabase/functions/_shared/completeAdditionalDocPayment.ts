@@ -101,6 +101,9 @@ export async function completeAdditionalDocPayment(
 
   const reqId = reqRow.id as string;
   if ((reqRow.status as string) === "paid") {
+    // Already finalized — but still make sure the provider add-on earning exists
+    // (heals the case where the first run completed before a provider was assigned).
+    await ensureAddonEarning(supabase, reqId);
     return { ok: true, addon: true, status: "idempotent", requestId: reqId, confirmationId: (reqRow.confirmation_id as string) ?? undefined };
   }
 
@@ -187,6 +190,106 @@ export async function completeAdditionalDocPayment(
     }
   }
 
+  // Record the provider's add-on payout (per-order rate) in the doctor_earnings
+  // ledger. Idempotent + safe: no-op if no provider assigned or already recorded.
+  await ensureAddonEarning(supabase, reqId);
+
   console.info(`[completeAddonDoc:${source}] ✓ ${reqId} paid (${amountFormatted}) — ${confId} reopened=${reopened}`);
   return { ok: true, addon: true, status: "completed", requestId: reqId, confirmationId: confId, reopened };
+}
+
+// ensureAddonEarning — record ONE provider payout for a PAID add-on request.
+//
+// Business rule: each paid Additional Documentation request earns the assigned
+// provider an extra payout equal to their normal per-order rate
+// (doctor_profiles.per_order_rate) — a separate row in the doctor_earnings ledger.
+//
+// Idempotent on three levels:
+//   1. only acts on a PAID request,
+//   2. skips when an earning already exists for this request id,
+//   3. the partial UNIQUE index doctor_earnings_addon_request_uniq makes a racing
+//      double-insert fail at the DB (caught + treated as success).
+// No-op (logged) when the order has no assigned provider yet — a later run heals it.
+export async function ensureAddonEarning(
+  supabase: SupabaseClient,
+  requestId: string,
+): Promise<{ created: boolean; reason?: string }> {
+  try {
+    const { data: req } = await supabase
+      .from("order_additional_documentation_requests")
+      .select("id, order_id, confirmation_id, customer_email, amount_cents, status")
+      .eq("id", requestId)
+      .maybeSingle();
+    if (!req) return { created: false, reason: "no_request" };
+    if ((req.status as string) !== "paid") return { created: false, reason: "not_paid" };
+
+    const orderId = (req.order_id as string) ?? null;
+    if (!orderId) return { created: false, reason: "no_order_link" };
+
+    // Already recorded? (cheap pre-check before the unique-index backstop)
+    const { data: existing } = await supabase
+      .from("doctor_earnings")
+      .select("id")
+      .eq("additional_documentation_request_id", requestId)
+      .maybeSingle();
+    if (existing) return { created: false, reason: "already_exists" };
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, confirmation_id, doctor_user_id, doctor_name, doctor_email, state, first_name, last_name")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (!order) return { created: false, reason: "no_order" };
+
+    const doctorUserId = (order.doctor_user_id as string) ?? null;
+    if (!doctorUserId) {
+      // No provider assigned at payment time — a later assign + reconcile heals it.
+      console.info(`[completeAddonDoc] add-on earning deferred — no provider on order ${order.confirmation_id ?? orderId}`);
+      return { created: false, reason: "no_provider" };
+    }
+
+    // Provider's per-order rate AT THE TIME this earning is created.
+    const { data: profile } = await supabase
+      .from("doctor_profiles")
+      .select("per_order_rate, full_name, email")
+      .eq("user_id", doctorUserId)
+      .maybeSingle();
+    const rate = (profile?.per_order_rate as number | null) ?? null;
+
+    const patientName = [order.first_name, order.last_name]
+      .filter((p) => !!p && String(p).trim())
+      .join(" ")
+      .trim() || null;
+    const addonCharge = Math.round(((req.amount_cents as number | null) ?? 4000) / 100);
+
+    const { error: insertErr } = await supabase.from("doctor_earnings").insert({
+      doctor_user_id: doctorUserId,
+      doctor_name: (order.doctor_name as string) ?? profile?.full_name ?? null,
+      doctor_email: (order.doctor_email as string) ?? profile?.email ?? null,
+      order_id: orderId,
+      confirmation_id: (order.confirmation_id as string) ?? (req.confirmation_id as string) ?? null,
+      patient_name: patientName,
+      patient_state: (order.state as string) ?? null,
+      order_amount: addonCharge,
+      doctor_amount: rate,
+      status: "pending",
+      earning_type: "additional_documentation",
+      additional_documentation_request_id: requestId,
+      notes: rate == null
+        ? "Additional Documentation payout — rate not set; set the provider's per-order rate in the Providers tab"
+        : "Additional Documentation payout (provider per-order rate)",
+    });
+
+    if (insertErr) {
+      // 23505 = unique_violation on the partial index → another run won the race.
+      if ((insertErr as { code?: string }).code === "23505") return { created: false, reason: "race_dedup" };
+      console.warn(`[completeAddonDoc] add-on earning insert failed for ${requestId}:`, insertErr.message);
+      return { created: false, reason: "insert_error" };
+    }
+    console.info(`[completeAddonDoc] ✓ add-on earning recorded for ${order.confirmation_id ?? orderId} (rate=${rate})`);
+    return { created: true };
+  } catch (e) {
+    console.warn(`[completeAddonDoc] ensureAddonEarning threw for ${requestId}:`, e instanceof Error ? e.message : String(e));
+    return { created: false, reason: "exception" };
+  }
 }

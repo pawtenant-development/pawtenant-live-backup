@@ -21,6 +21,7 @@ interface Earning {
   notes: string | null;
   payment_reference: string | null;
   created_at: string;
+  earning_type?: string | null;
   orders?: OrderInfo | null;
 }
 
@@ -61,7 +62,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
   const fetchEarningById = useCallback(async (id: string): Promise<Earning | null> => {
     const { data } = await supabase
       .from("doctor_earnings")
-      .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, orders!order_id(status, doctor_status, refunded_at)")
+      .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, earning_type, orders!order_id(status, doctor_status, refunded_at)")
       .eq("id", id)
       .maybeSingle();
     return (data as unknown as Earning | null);
@@ -72,7 +73,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
       const [earningsRes, profileRes] = await Promise.all([
         supabase
           .from("doctor_earnings")
-          .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, orders!order_id(status, doctor_status, refunded_at)")
+          .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, earning_type, orders!order_id(status, doctor_status, refunded_at)")
           .eq("doctor_user_id", userId)
           .order("created_at", { ascending: false }),
         supabase
@@ -353,6 +354,11 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <p className="text-sm font-bold text-gray-900">{earning.patient_name ?? "—"}</p>
                           <span className="text-xs text-gray-400 font-mono">{earning.confirmation_id ?? "—"}</span>
+                          {earning.earning_type === "additional_documentation" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-100 border border-sky-200 rounded-full text-[10px] font-extrabold text-sky-700">
+                              <i className="ri-file-add-line"></i>Additional Documentation
+                            </span>
+                          )}
                           {wasRefunded && earning.status !== "paid" && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 border border-orange-300 rounded-full text-[10px] font-extrabold text-orange-700">
                               <i className="ri-refund-line"></i>Order Refunded — Payment Still Owed

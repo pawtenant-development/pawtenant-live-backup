@@ -13,7 +13,7 @@
 // After payment the order reopens to "under-review" (doctor_status in_review)
 // with the assigned provider preserved — all handled server-side and idempotent.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
@@ -25,6 +25,13 @@ interface AddonRequest {
   created_at: string;
   paid_at: string | null;
   refunded_at: string | null;
+}
+
+interface UploadedDoc {
+  id: string;
+  label: string;
+  file_url: string;
+  uploaded_at: string;
 }
 
 export interface AddonEligibleOrder {
@@ -85,6 +92,100 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Customer document upload (the form the provider needs to complete) ──────
+  const [uploads, setUploads] = useState<UploadedDoc[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const loadUploads = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/customer-upload-document`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "list", orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data?.documents)) setUploads(data.documents as UploadedDoc[]);
+    } catch { /* fail soft */ }
+  }, [order.id]);
+
+  useEffect(() => { loadUploads(); }, [loadUploads]);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setUploadError("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Your session has expired — please sign in again.");
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("order_id", order.id);
+      fd.append("label", file.name);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/customer-upload-document`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }, // no Content-Type — browser sets multipart boundary
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error ?? `Upload failed (HTTP ${res.status})`);
+      await loadUploads();
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  function UploadPanel() {
+    return (
+      <div className="mt-3 border-t border-sky-200 pt-3">
+        <p className="text-xs font-bold text-sky-800 mb-1.5 flex items-center gap-1.5">
+          <i className="ri-upload-2-line"></i>Upload your form for the provider
+        </p>
+        <p className="text-[11px] text-sky-700 leading-relaxed mb-2">
+          Attach the housing, landlord or association form your provider needs to complete (PDF, image or Word — max 25&nbsp;MB).
+        </p>
+        {uploads.length > 0 && (
+          <ul className="mb-2 space-y-1.5">
+            {uploads.map((u) => (
+              <li key={u.id} className="flex items-center justify-between gap-2 bg-white border border-sky-100 rounded-lg px-3 py-2">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <i className="ri-file-text-line text-sky-500 flex-shrink-0"></i>
+                  <span className="text-xs text-gray-700 truncate">{u.label}</span>
+                </span>
+                <a href={u.file_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-sky-600 hover:text-sky-800 whitespace-nowrap flex items-center gap-1">
+                  <i className="ri-external-link-line"></i>View
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 disabled:opacity-60 cursor-pointer transition-colors"
+        >
+          {uploading ? <><i className="ri-loader-4-line animate-spin"></i>Uploading…</> : <><i className="ri-upload-2-line"></i>{uploads.length > 0 ? "Upload another file" : "Upload a file"}</>}
+        </button>
+        {uploadError && <p className="text-xs text-red-600 mt-2 flex items-center gap-1"><i className="ri-error-warning-line"></i>{uploadError}</p>}
+      </div>
+    );
+  }
+
   // Active = most recent non-cancelled request. (cancelled rows are ignored.)
   const active = (requests ?? [])
     .filter((r) => r.status !== "cancelled")
@@ -132,16 +233,19 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
   // Paid / in-progress → received confirmation.
   if (active?.status === "paid") {
     return (
-      <div className="mt-4 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
-        <i className="ri-file-check-line text-sky-600 mt-0.5"></i>
-        <div className="text-xs text-sky-800 leading-relaxed">
-          <p className="font-bold mb-0.5">Additional documentation request received.</p>
-          <p>
-            Your $40 payment was received and your case has been reopened for provider review. Please reply to our
-            confirmation email with the specific form you need completed. Provider review is based on a clinical
-            assessment of your file.
-          </p>
+      <div className="mt-4 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+        <div className="flex items-start gap-2.5">
+          <i className="ri-file-check-line text-sky-600 mt-0.5"></i>
+          <div className="text-xs text-sky-800 leading-relaxed">
+            <p className="font-bold mb-0.5">Additional documentation request received.</p>
+            <p>
+              Your $40 payment was received and your case has been reopened for provider review. Upload the specific
+              form you need completed below so your provider can review it. Provider review is based on a clinical
+              assessment of your file.
+            </p>
+          </div>
         </div>
+        <UploadPanel />
       </div>
     );
   }

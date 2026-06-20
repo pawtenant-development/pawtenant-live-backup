@@ -19,6 +19,30 @@ interface PaymentAttempt {
   created_at: string;
 }
 
+// Additional Documentation ($40 add-on) payment — lives in its own table
+// (order_additional_documentation_requests), NOT in payment_attempts, so it
+// is fetched separately via the create-additional-doc-invoice edge function.
+interface AddonRequest {
+  id: string;
+  status: string; // pending | paid | refunded | cancelled
+  amount_cents: number;
+  created_at: string;
+  paid_at: string | null;
+  refunded_at: string | null;
+  stripe_payment_intent_id: string | null;
+  requested_by: string | null;
+}
+
+// Provider payout rows (doctor_earnings) for this order — base order payout plus
+// any Additional Documentation add-on payout. Read directly (admin RLS allows).
+interface ProviderEarningRow {
+  id: string;
+  earning_type: string | null;
+  doctor_amount: number | null;
+  status: string;
+  additional_documentation_request_id: string | null;
+}
+
 // Canonical Order — see ../types.ts
 import type { Order } from "../types";
 
@@ -206,6 +230,8 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
   const [attempts, setAttempts] = useState<PaymentAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addonRequests, setAddonRequests] = useState<AddonRequest[]>([]);
+  const [providerEarnings, setProviderEarnings] = useState<ProviderEarningRow[]>([]);
 
   const loadAttempts = useCallback(async () => {
     setLoading(true);
@@ -228,6 +254,40 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
   useEffect(() => {
     loadAttempts();
   }, [loadAttempts, order.refund_amount, order.refunded_at]);
+
+  // Additional Documentation ($40) payments live in a separate table; pull them
+  // via the edge function (admin session token) so the Payments tab shows the
+  // full financial picture, not just the base order payment. Fails soft.
+  const loadAddons = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return;
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-additional-doc-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey, Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "list", orderId: order.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data?.requests)) {
+        setAddonRequests(data.requests as AddonRequest[]);
+      }
+    } catch { /* fail soft — base payments still render */ }
+  }, [supabaseUrl, anonKey, order.id]);
+
+  useEffect(() => { loadAddons(); }, [loadAddons, order.refund_amount, order.refunded_at]);
+
+  // Provider payout ledger for this order (base + add-on). Admin RLS permits read.
+  const loadProviderEarnings = useCallback(async () => {
+    const { data } = await supabase
+      .from("doctor_earnings")
+      .select("id, earning_type, doctor_amount, status, additional_documentation_request_id")
+      .eq("order_id", order.id)
+      .order("created_at", { ascending: true });
+    setProviderEarnings((data as ProviderEarningRow[]) ?? []);
+  }, [order.id]);
+
+  useEffect(() => { loadProviderEarnings(); }, [loadProviderEarnings, order.refund_amount, order.refunded_at]);
 
   const successCount = attempts.filter((a) => a.status === "succeeded" || a.status === "async_succeeded").length;
   const failedCount = attempts.filter((a) => a.status === "failed" || a.status === "async_failed").length;
@@ -307,6 +367,109 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
           )}
         </div>
       </div>
+
+      {/* Additional Documentation ($40 add-on) payments */}
+      {addonRequests.length > 0 && (
+        <div className="bg-white rounded-xl border border-sky-200 overflow-hidden">
+          <div className="px-4 py-3 bg-sky-50 border-b border-sky-100 flex items-center gap-2">
+            <div className="w-7 h-7 flex items-center justify-center bg-sky-100 rounded-lg">
+              <i className="ri-file-add-line text-sky-600 text-sm"></i>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-sky-800">Additional Documentation</p>
+              <p className="text-xs text-sky-500">Add-on payments billed separately from the base order</p>
+            </div>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {addonRequests.map((r) => {
+              const amount = (r.amount_cents ?? 0) / 100;
+              const badge =
+                r.status === "paid" ? { label: "Paid", color: "text-emerald-700", bg: "bg-emerald-100", icon: "ri-checkbox-circle-fill" }
+                : r.status === "refunded" ? { label: "Refunded", color: "text-gray-600", bg: "bg-gray-100", icon: "ri-refund-2-line" }
+                : r.status === "cancelled" ? { label: "Cancelled", color: "text-gray-500", bg: "bg-gray-100", icon: "ri-close-circle-line" }
+                : { label: "Pending", color: "text-amber-600", bg: "bg-amber-100", icon: "ri-time-line" };
+              return (
+                <div key={r.id} className="flex items-start gap-3 px-4 py-3">
+                  <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 mt-0.5 ${badge.bg}`}>
+                    <i className={`${badge.icon} ${badge.color} text-sm`}></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="text-sm font-bold text-gray-900">Additional Documentation</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${badge.bg} ${badge.color}`}>
+                        <i className={badge.icon} style={{ fontSize: "9px" }}></i>{badge.label}
+                      </span>
+                      <span className="text-xs font-bold text-emerald-600">${amount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-gray-400">{fmt(r.paid_at ?? r.created_at)}</p>
+                      {r.requested_by && (
+                        <>
+                          <span className="text-gray-200">·</span>
+                          <span className="text-xs text-gray-500 font-medium">Requested by {r.requested_by}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {r.stripe_payment_intent_id && (
+                    <a
+                      href={`https://dashboard.stripe.com/payments/${r.stripe_payment_intent_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-200 cursor-pointer transition-colors flex-shrink-0"
+                    >
+                      <i className="ri-external-link-line"></i>Stripe
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Provider earnings for this order (base + add-on payout) */}
+      {providerEarnings.length > 0 && (() => {
+        const num = (v: number | null) => (typeof v === "number" ? v : 0);
+        const addonRows = providerEarnings.filter((e) => e.earning_type === "additional_documentation");
+        const baseRows = providerEarnings.filter((e) => e.earning_type !== "additional_documentation");
+        const baseTotal = baseRows.reduce((s, e) => s + num(e.doctor_amount), 0);
+        const addonTotal = addonRows.reduce((s, e) => s + num(e.doctor_amount), 0);
+        const anyUnsetBase = baseRows.some((e) => e.doctor_amount == null);
+        const anyUnsetAddon = addonRows.some((e) => e.doctor_amount == null);
+        return (
+          <div className="bg-white rounded-xl border border-violet-200 overflow-hidden">
+            <div className="px-4 py-3 bg-violet-50 border-b border-violet-100 flex items-center gap-2">
+              <div className="w-7 h-7 flex items-center justify-center bg-violet-100 rounded-lg">
+                <i className="ri-user-star-line text-violet-600 text-sm"></i>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-violet-800">Provider Earnings (this order)</p>
+                <p className="text-xs text-violet-500">What the assigned provider is paid for this case</p>
+              </div>
+            </div>
+            <div className="px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-600 flex items-center gap-1.5"><i className="ri-briefcase-line text-gray-400"></i>Base order payout</span>
+                <span className="text-sm font-bold text-gray-900">{baseRows.length === 0 ? "—" : anyUnsetBase && baseTotal === 0 ? "Rate not set" : `$${baseTotal}`}</span>
+              </div>
+              {addonRows.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600 flex items-center gap-1.5"><i className="ri-file-add-line text-sky-500"></i>Additional Documentation payout{addonRows.length > 1 ? ` ×${addonRows.length}` : ""}</span>
+                  <span className="text-sm font-bold text-sky-700">{anyUnsetAddon && addonTotal === 0 ? "Rate not set" : `+$${addonTotal}`}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                <span className="text-xs font-bold text-gray-700">Total provider earning</span>
+                <span className="text-base font-extrabold text-violet-700">${baseTotal + addonTotal}</span>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
+                Recorded in the provider earnings ledger (doctor_earnings). Manage / mark paid in the Providers earnings panel.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Actions for unpaid orders */}
       {!isPaid && (
