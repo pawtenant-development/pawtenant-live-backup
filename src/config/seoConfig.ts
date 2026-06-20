@@ -238,6 +238,53 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "The 10 elements a valid ESA letter must contain to be accepted by landlords — plus what makes a letter invalid, state-specific rules, and what changed after HUD's 2025–2026 policy shifts.",
   },
+  // ── Pet-rent blog cluster ─────────────────────────────────────────────────
+  "/blog/pet-rent-explained": {
+    title: "Pet Rent Explained: What Renters Should Know About Monthly Pet Fees",
+    description:
+      "What pet rent is, how it differs from a pet deposit and pet fee, how much it can add up to over time, and how housing-focused ESA documentation fits in.",
+  },
+  "/blog/apartment-pet-rent-and-esa-letters": {
+    title: "Apartment Pet Rent and ESA Letters: What Renters Should Know",
+    description:
+      "How apartment pet rent works, when an approved emotional support animal may not be charged pet fees, and how to make a housing accommodation request the right way.",
+  },
+  "/blog/pet-deposit-vs-pet-rent": {
+    title: "Pet Deposit vs. Pet Rent: What Is the Difference?",
+    description:
+      "Pet deposit, pet rent, and pet fee compared — what each one is, whether it is refundable, how they add up, and how approved ESA documentation changes the picture.",
+  },
+  // ── State pet-rent blog cluster ───────────────────────────────────────────
+  "/blog/california-pet-rent-and-esa-letters": {
+    title: "California Pet Rent and ESA Letters: What Renters Should Know",
+    description:
+      "How pet rent works in California's high-cost rental markets, the state's AB 468 ESA rule, and when an approved emotional support animal may not be charged pet fees.",
+  },
+  "/blog/new-york-pet-rent-and-esa-letters": {
+    title: "New York Pet Rent and ESA Letters: What Renters Should Know",
+    description:
+      "How pet rent works in New York's expensive rental market, co-op and condo board review, and when an approved emotional support animal may not be charged pet fees.",
+  },
+  "/blog/florida-pet-rent-and-esa-letters": {
+    title: "Florida Pet Rent and ESA Letters: What Renters Should Know",
+    description:
+      "How pet rent works in Florida apartments and condos, the state's Statute 760.27 ESA rule, and when an approved emotional support animal may not be charged pet fees.",
+  },
+  "/blog/texas-pet-rent-and-esa-letters": {
+    title: "Texas Pet Rent and ESA Letters: What Renters Should Know",
+    description:
+      "How pet rent works in Texas apartments and large corporate-managed buildings, and when an approved emotional support animal may not be charged pet fees.",
+  },
+  "/blog/washington-pet-rent-and-esa-letters": {
+    title: "Washington Pet Rent and ESA Letters: What Renters Should Know",
+    description:
+      "How pet rent works in Washington's high-cost Seattle-area rental market, the state's assistance-animal protections, and when an approved ESA may not be charged pet fees.",
+  },
+  "/blog/colorado-pet-rent-and-esa-letters": {
+    title: "Colorado Pet Rent and ESA Letters: What Renters Should Know",
+    description:
+      "How pet rent works in Colorado's Denver-area rental market, the state's assistance-animal protections, and when an approved ESA may not be charged pet fees.",
+  },
   // ── Travel-anxiety / major-event ESA content cluster ───────────────────────
   "/travel-anxiety-esa-letter": {
     title: "ESA Letters for Travel Anxiety & Temporary Housing | PawTenant",

@@ -105,6 +105,17 @@ const BlogCrowdsTravelStressESAPage = lazy(() => import("../pages/blog-crowds-tr
 const BlogHowToGetEsaLetterOnlinePage = lazy(() => import("../pages/blog-how-to-get-an-esa-letter-online/page"));
 const BlogWhatIsAnEsaLetterPage = lazy(() => import("../pages/blog-what-is-an-esa-letter/page"));
 const BlogEsaLetterRequirementsPage = lazy(() => import("../pages/blog-esa-letter-requirements/page"));
+// Pet-rent blog cluster (informational, indexable, in sitemap).
+const BlogPetRentExplainedPage = lazy(() => import("../pages/blog-pet-rent-explained/page"));
+const BlogApartmentPetRentEsaLettersPage = lazy(() => import("../pages/blog-apartment-pet-rent-and-esa-letters/page"));
+const BlogPetDepositVsPetRentPage = lazy(() => import("../pages/blog-pet-deposit-vs-pet-rent/page"));
+// State pet-rent blog cluster (informational, indexable, in sitemap).
+const BlogCaliforniaPetRentEsaLettersPage = lazy(() => import("../pages/blog-california-pet-rent-and-esa-letters/page"));
+const BlogNewYorkPetRentEsaLettersPage = lazy(() => import("../pages/blog-new-york-pet-rent-and-esa-letters/page"));
+const BlogFloridaPetRentEsaLettersPage = lazy(() => import("../pages/blog-florida-pet-rent-and-esa-letters/page"));
+const BlogTexasPetRentEsaLettersPage = lazy(() => import("../pages/blog-texas-pet-rent-and-esa-letters/page"));
+const BlogWashingtonPetRentEsaLettersPage = lazy(() => import("../pages/blog-washington-pet-rent-and-esa-letters/page"));
+const BlogColoradoPetRentEsaLettersPage = lazy(() => import("../pages/blog-colorado-pet-rent-and-esa-letters/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -208,6 +219,15 @@ const routes: RouteObject[] = [
   { path: "/blog/how-to-get-an-esa-letter-online", element: <P C={BlogHowToGetEsaLetterOnlinePage} /> },
   { path: "/blog/what-is-an-esa-letter", element: <P C={BlogWhatIsAnEsaLetterPage} /> },
   { path: "/blog/esa-letter-requirements", element: <P C={BlogEsaLetterRequirementsPage} /> },
+  { path: "/blog/pet-rent-explained", element: <P C={BlogPetRentExplainedPage} /> },
+  { path: "/blog/apartment-pet-rent-and-esa-letters", element: <P C={BlogApartmentPetRentEsaLettersPage} /> },
+  { path: "/blog/pet-deposit-vs-pet-rent", element: <P C={BlogPetDepositVsPetRentPage} /> },
+  { path: "/blog/california-pet-rent-and-esa-letters", element: <P C={BlogCaliforniaPetRentEsaLettersPage} /> },
+  { path: "/blog/new-york-pet-rent-and-esa-letters", element: <P C={BlogNewYorkPetRentEsaLettersPage} /> },
+  { path: "/blog/florida-pet-rent-and-esa-letters", element: <P C={BlogFloridaPetRentEsaLettersPage} /> },
+  { path: "/blog/texas-pet-rent-and-esa-letters", element: <P C={BlogTexasPetRentEsaLettersPage} /> },
+  { path: "/blog/washington-pet-rent-and-esa-letters", element: <P C={BlogWashingtonPetRentEsaLettersPage} /> },
+  { path: "/blog/colorado-pet-rent-and-esa-letters", element: <P C={BlogColoradoPetRentEsaLettersPage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },
