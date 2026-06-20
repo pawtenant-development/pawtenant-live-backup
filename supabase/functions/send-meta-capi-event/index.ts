@@ -133,6 +133,9 @@ interface CAPIPayload {
   confirmationId: string;
   email: string | null;
   phone: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  letterType: string | null;
   price: number;
   eventTime: number;
   fbclid: string | null;
@@ -196,6 +199,17 @@ async function sendCAPIEvent(
     userData.ph = [await sha256Hex(normalizedPhone)];
   }
 
+  // First / last name — hashed (lowercase-trimmed) per Meta advanced-matching spec.
+  // Improves Event Match Quality. Skipped silently when absent.
+  const fnRaw = payload.firstName?.trim();
+  if (fnRaw) {
+    userData.fn = [await sha256Hex(fnRaw)];
+  }
+  const lnRaw = payload.lastName?.trim();
+  if (lnRaw) {
+    userData.ln = [await sha256Hex(lnRaw)];
+  }
+
   // ── fbc generation ────────────────────────────────────────────────────────
   // Only include fbc if fbclid exists. NOT hashed — plain text per Meta spec.
   // Format: fb.1.<ms_timestamp>.<fbclid>
@@ -233,7 +247,8 @@ async function sendCAPIEvent(
     custom_data: {
       value: payload.price,
       currency: "USD",
-      content_name: "ESA Letter",
+      content_name: payload.letterType === "psd" ? "PSD Letter" : "ESA Letter",
+      content_category: payload.letterType === "psd" ? "PSD" : "ESA",
       content_type: "product",
       order_id: payload.confirmationId,
     },
@@ -357,6 +372,9 @@ interface OrderRow {
   confirmation_id: string;
   email: string | null;
   phone: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  letter_type: string | null;
   price: number | null;
   paid_at: string | null;
   created_at: string | null;
@@ -388,6 +406,7 @@ async function processOrder(
   httpStatus?: number;
   fbcGenerated?: boolean;
   fbcTimestampSource?: "stored" | "fallback";
+  userDataKeys?: string[];
 }> {
   const confirmationId = order.confirmation_id;
   const eventId = `purchase_${confirmationId}`;
@@ -491,12 +510,21 @@ async function processOrder(
     console.info(`[meta-capi][${confirmationId}] event_id: ${eventId}`);
     console.info(`[meta-capi][${confirmationId}] event_time: ${tsResult.unixTimestamp} (${tsResult.source})`);
     console.info(`[meta-capi][${confirmationId}] value: $${price} USD`);
+    const hasFirstName = !!order.first_name?.trim();
+    const hasLastName = !!order.last_name?.trim();
+    const wouldKeys = [
+      ...(hasEmail ? ["em"] : []),
+      ...(hasPhone ? ["ph"] : []),
+      ...(hasFirstName ? ["fn"] : []),
+      ...(hasLastName ? ["ln"] : []),
+      ...(hasFbclid ? ["fbc"] : []),
+    ];
     console.info(`[meta-capi][${confirmationId}] has_email: ${hasEmail}`);
     console.info(`[meta-capi][${confirmationId}] has_phone: ${hasPhone}`);
     console.info(`[meta-capi][${confirmationId}] has_fbclid: ${hasFbclid}`);
-    console.info(`[meta-capi][${confirmationId}] fbc_generated: ${hasFbclid}`);
+    console.info(`[meta-capi][${confirmationId}] user_data keys (would send): ${wouldKeys.join(", ")}`);
     if (dryRunFbc) {
-      console.info(`[meta-capi][${confirmationId}] fbc (dry-run): ${dryRunFbc} (ts_source: ${dryRunFbcTsSource})`);
+      console.info(`[meta-capi][${confirmationId}] fbc (dry-run, ts_source: ${dryRunFbcTsSource})`);
     }
     return {
       confirmationId,
@@ -507,6 +535,7 @@ async function processOrder(
       timestampWarning: tsResult.warning,
       fbcGenerated: hasFbclid,
       fbcTimestampSource: dryRunFbcTsSource ?? undefined,
+      userDataKeys: wouldKeys,
     };
   }
 
@@ -516,6 +545,9 @@ async function processOrder(
       confirmationId,
       email: order.email,
       phone: order.phone,
+      firstName: order.first_name,
+      lastName: order.last_name,
+      letterType: order.letter_type,
       price,
       eventTime: tsResult.unixTimestamp,
       fbclid: order.fbclid,
@@ -674,7 +706,7 @@ Deno.serve(async (req: Request) => {
     if (mode === "test") {
       const { data: testOrder } = await supabase
         .from("orders")
-        .select("id, confirmation_id, email, phone, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
+        .select("id, confirmation_id, email, phone, first_name, last_name, letter_type, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
         .not("payment_intent_id", "is", null)
         .in("status", ["processing", "completed"])
         .order("paid_at", { ascending: false })
@@ -709,7 +741,7 @@ Deno.serve(async (req: Request) => {
         ok: true,
         mode: "test",
         capiSendingDisabled: CAPI_SENDING_DISABLED,
-        pixelId: META_PIXEL_ID ?? "NOT SET",
+        pixelIdPresent: !!META_PIXEL_ID,
         hasAccessToken: !!META_CAPI_ACCESS_TOKEN,
         testOrderId: order.confirmation_id,
         eventId,
@@ -719,6 +751,10 @@ Deno.serve(async (req: Request) => {
         price: order.price,
         hasEmail,
         hasPhone,
+        hasFirstName: !!order.first_name,
+        hasLastName: !!order.last_name,
+        letterType: order.letter_type,
+        contentCategory: order.letter_type === "psd" ? "PSD" : "ESA",
         hasFbclid,
         fbcGenerated: hasFbclid,
         sampleFbc,
@@ -733,7 +769,7 @@ Deno.serve(async (req: Request) => {
     if (mode === "single" && body.confirmationId) {
       const { data: order } = await supabase
         .from("orders")
-        .select("id, confirmation_id, email, phone, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
+        .select("id, confirmation_id, email, phone, first_name, last_name, letter_type, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
         .eq("confirmation_id", body.confirmationId)
         .maybeSingle();
 
@@ -753,7 +789,7 @@ Deno.serve(async (req: Request) => {
     if (mode === "retry_failed") {
       const { data: failedOrders } = await supabase
         .from("orders")
-        .select("id, confirmation_id, email, phone, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
+        .select("id, confirmation_id, email, phone, first_name, last_name, letter_type, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
         .in("meta_capi_status", ["failed", "queued"])
         .not("payment_intent_id", "is", null)
         .in("status", ["processing", "completed"])
@@ -789,12 +825,16 @@ Deno.serve(async (req: Request) => {
     // ── Backfill mode (default) ───────────────────────────────────────────────
     const { data: pendingOrders } = await supabase
       .from("orders")
-      .select("id, confirmation_id, email, phone, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
+      .select("id, confirmation_id, email, phone, first_name, last_name, letter_type, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
       .not("payment_intent_id", "is", null)
       .in("status", ["processing", "completed"])
       .is("meta_capi_sent_at", null)
       .neq("status", "refunded")
-      .neq("meta_capi_status", "skipped_missing_user_data")
+      // Null-safe exclusion: include never-attempted orders (meta_capi_status IS NULL)
+      // OR any status other than the permanent skip. A plain .neq(...) drops NULLs
+      // (Postgres: NULL <> 'x' is not TRUE), which silently excluded every
+      // never-attempted order from the Meta backfill — the coverage gap we must fix.
+      .or("meta_capi_status.is.null,meta_capi_status.neq.skipped_missing_user_data")
       .order("paid_at", { ascending: false })
       .limit(100);
 
