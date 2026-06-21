@@ -224,7 +224,17 @@ function milestoneChips(v: LiveVisitor): { label: string; tone: string }[] {
   const out: { label: string; tone: string }[] = [];
   if (v.chat_opened_at)        out.push({ label: "Chat",       tone: "bg-blue-50 text-blue-700"       });
   if (v.assessment_started_at) out.push({ label: "Assessment", tone: "bg-amber-50 text-amber-700"     });
-  if (v.paid_at)               out.push({ label: "Paid",       tone: "bg-emerald-50 text-emerald-700" });
+  // PAID-BADGE-SOURCE-OF-TRUTH (fix): the green "Paid" milestone must reflect
+  // the REAL order payment state, never the optimistic session-level
+  // visitor_sessions.paid_at (RPC field `paid_at`). That session flag is
+  // stamped client-side by markPaid() on thank-you-page arrival, so it can
+  // fire even when the hosted-checkout payment later expires / is cancelled
+  // and the order stays a lead — producing a false green "Paid" on an unpaid
+  // visitor (e.g. PT-MQ1G5AQ9). Gate on the same canonical signal the order
+  // pill and the linked-order chip already use: order_paid_at / status=paid.
+  if (v.order_paid_at || v.order_status === "paid") {
+    out.push({ label: "Paid", tone: "bg-emerald-50 text-emerald-700" });
+  }
   return out;
 }
 
