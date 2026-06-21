@@ -130,6 +130,43 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Is PawTenant legit? PawTenant connects you with licensed providers for ESA letters, with transparent pricing, verifiable letters, and a refund if you don't qualify.",
   },
+  // ── Landlord ESA objection / documentation SEO batch (long-tail housing intent) ──
+  "/can-landlord-reject-esa-letter": {
+    title: "Can a Landlord Reject an ESA Letter? Your Housing Rights",
+    description:
+      "Can a landlord reject an ESA letter? When a housing provider may deny a reasonable-accommodation request, when they generally can't, and how to respond.",
+  },
+  "/what-documents-can-landlord-ask-for-esa": {
+    title: "What Documents Can a Landlord Ask For an ESA?",
+    description:
+      "What documents can a landlord ask for an ESA letter? What a housing provider can reasonably request, what they can't ask, and how to keep medical details private.",
+  },
+  "/esa-letter-vs-pet-policy": {
+    title: "ESA Letter vs Pet Policy: Does a No-Pet Rule Apply?",
+    description:
+      "ESA letter vs pet policy: does a no-pet policy apply to an emotional support animal, can apartments charge pet rent for an ESA, and how accommodation requests work.",
+  },
+  "/how-to-respond-to-esa-letter-denial": {
+    title: "How to Respond if Your Landlord Denies Your ESA Letter",
+    description:
+      "How to respond if a landlord denies your ESA letter or says it's fake: calm steps, what to send, verification, and landlord denial support. Refund if you don't qualify.",
+  },
+  // ── ESA letter validity / verification SEO batch (long-tail validity intent) ──
+  "/what-makes-esa-letter-valid": {
+    title: "What Makes an ESA Letter Valid for Housing?",
+    description:
+      "What makes an ESA letter valid for housing: a licensed provider evaluation, what must be included, whether online letters count, and how a landlord checks it.",
+  },
+  "/landlord-says-esa-letter-is-fake": {
+    title: "Landlord Says My ESA Letter Is Fake — What to Do",
+    description:
+      "Landlord says your ESA letter is fake? How to prove it's genuine, the warning signs of an actually-fake letter, and how to respond with verification and support.",
+  },
+  "/esa-letter-verification-id": {
+    title: "ESA Letter Verification ID: What It Is & Why It Helps",
+    description:
+      "What an ESA letter verification ID is, whether ESA letters need one, and how a landlord uses it to confirm a letter is genuine without seeing your medical details.",
+  },
   // ── ESA housing SEO batch (apartments / accommodation request / landlord checklist) ──
   "/esa-letter-for-apartments": {
     title: "ESA Letter for Apartments | Housing Accommodation Guide",

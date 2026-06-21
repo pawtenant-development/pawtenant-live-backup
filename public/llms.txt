@@ -67,6 +67,13 @@
 - [ESA pet rent & deposit guide](https://pawtenant.com/esa-pet-rent-deposit): when apartment pet rent, deposits, and fees may not apply to an approved assistance animal, and what a landlord can still ask
 - [How to verify an ESA letter](https://pawtenant.com/how-to-verify-esa-letter): how to confirm a letter is real — licensed provider details, a Verification ID, and the red flags of fake registrations
 - [Are ESA letters still valid after the 2026 HUD change?](https://pawtenant.com/are-esa-letters-still-valid-after-hud-change): what HUD's 2026 enforcement update means for emotional support animals in housing, what didn't change, and how a trained PSD differs
+- [Can a landlord reject an ESA letter?](https://pawtenant.com/can-landlord-reject-esa-letter): when a housing provider may deny a reasonable-accommodation request (direct threat / substantial damage / unsupported documentation) and when a no-pet policy, breed, or size is not a valid reason
+- [What documents can a landlord ask for an ESA?](https://pawtenant.com/what-documents-can-landlord-ask-for-esa): what a landlord can reasonably request, why they can't demand a diagnosis or medical records, and how verification works without exposing clinical detail
+- [ESA letter vs pet policy](https://pawtenant.com/esa-letter-vs-pet-policy): why a no-pet policy, pet rent, deposits, and breed/size limits generally don't apply to an approved assistance animal, and how an accommodation request changes that
+- [How to respond to an ESA letter denial](https://pawtenant.com/how-to-respond-to-esa-letter-denial): calm step-by-step response if a landlord denies an ESA or says the letter is fake — verify, re-send with an accommodation request, and use landlord denial support
+- [What makes an ESA letter valid for housing?](https://pawtenant.com/what-makes-esa-letter-valid): the elements a housing-valid ESA letter must include (licensed provider, license details, disability-related need, recent date, verifiability), why online letters from a licensed provider count, and how registrations/certificates don't
+- [Landlord says my ESA letter is fake — what to do](https://pawtenant.com/landlord-says-esa-letter-is-fake): how to prove a genuine letter (license number, NPI registry, Verification ID), the warning signs of an actually-fake letter, and why an online provider is not a valid reason to reject
+- [ESA letter verification ID](https://pawtenant.com/esa-letter-verification-id): what a Verification ID is, whether ESA letters need one, and how a landlord uses it to confirm authenticity without seeing diagnosis or medical records
 
 ## Travel, crowds & temporary housing
 

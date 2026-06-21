@@ -81,6 +81,15 @@ const ESALetterForLandlordPage = lazy(() => import("../pages/esa-letter-for-land
 const ESAPetRentDepositPage = lazy(() => import("../pages/esa-pet-rent-deposit/page"));
 const HowToVerifyESALetterPage = lazy(() => import("../pages/how-to-verify-esa-letter/page"));
 const IsPawTenantLegitPage = lazy(() => import("../pages/is-pawtenant-legit/page"));
+// Landlord ESA objection / documentation SEO batch (informational, indexable, in sitemap).
+const CanLandlordRejectESALetterPage = lazy(() => import("../pages/can-landlord-reject-esa-letter/page"));
+const WhatDocumentsCanLandlordAskForESAPage = lazy(() => import("../pages/what-documents-can-landlord-ask-for-esa/page"));
+const ESALetterVsPetPolicyPage = lazy(() => import("../pages/esa-letter-vs-pet-policy/page"));
+const HowToRespondToESALetterDenialPage = lazy(() => import("../pages/how-to-respond-to-esa-letter-denial/page"));
+// ESA letter validity / verification SEO batch (informational, indexable, in sitemap).
+const WhatMakesESALetterValidPage = lazy(() => import("../pages/what-makes-esa-letter-valid/page"));
+const LandlordSaysESALetterIsFakePage = lazy(() => import("../pages/landlord-says-esa-letter-is-fake/page"));
+const ESALetterVerificationIdPage = lazy(() => import("../pages/esa-letter-verification-id/page"));
 // ESA housing SEO batch (informational, indexable, in sitemap).
 const ESALetterForApartmentsPage = lazy(() => import("../pages/esa-letter-for-apartments/page"));
 const ESAAccommodationRequestLetterPage = lazy(() => import("../pages/esa-accommodation-request-letter/page"));
@@ -180,6 +189,15 @@ const routes: RouteObject[] = [
   { path: "/esa-pet-rent-deposit", element: <P C={ESAPetRentDepositPage} /> },
   { path: "/how-to-verify-esa-letter", element: <P C={HowToVerifyESALetterPage} /> },
   { path: "/is-pawtenant-legit", element: <P C={IsPawTenantLegitPage} /> },
+  // Landlord ESA objection / documentation SEO batch (informational, indexable).
+  { path: "/can-landlord-reject-esa-letter", element: <P C={CanLandlordRejectESALetterPage} /> },
+  { path: "/what-documents-can-landlord-ask-for-esa", element: <P C={WhatDocumentsCanLandlordAskForESAPage} /> },
+  { path: "/esa-letter-vs-pet-policy", element: <P C={ESALetterVsPetPolicyPage} /> },
+  { path: "/how-to-respond-to-esa-letter-denial", element: <P C={HowToRespondToESALetterDenialPage} /> },
+  // ESA letter validity / verification SEO batch (informational, indexable).
+  { path: "/what-makes-esa-letter-valid", element: <P C={WhatMakesESALetterValidPage} /> },
+  { path: "/landlord-says-esa-letter-is-fake", element: <P C={LandlordSaysESALetterIsFakePage} /> },
+  { path: "/esa-letter-verification-id", element: <P C={ESALetterVerificationIdPage} /> },
   // ESA housing SEO batch (informational, indexable).
   { path: "/esa-letter-for-apartments", element: <P C={ESALetterForApartmentsPage} /> },
   { path: "/esa-accommodation-request-letter", element: <P C={ESAAccommodationRequestLetterPage} /> },
