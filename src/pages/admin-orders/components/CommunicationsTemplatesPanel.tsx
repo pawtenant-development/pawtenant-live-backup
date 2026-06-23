@@ -20,6 +20,7 @@
  */
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
+import CommunicationsSendPathRegistry from "./CommunicationsSendPathRegistry";
 
 interface EmailTemplate {
   id: string;
@@ -1156,9 +1157,24 @@ const WIRED_EMAIL_SLUGS = new Set<string>([
   // now reads from email_templates.slug='letter_delivery' and falls back
   // to the hardcoded layout when missing. Admin edits go live.
   "letter_delivery",
+  // REFUND-EMAIL-MISSING (2026-06-23): the Refund + Cancel workflow in
+  // OrderDetailModal sends the customer notice via send-templated-email
+  // using slug 'order_cancelled_refund'. It is a live, button-driven send
+  // and must badge Active DB (it previously showed Saved-only because the
+  // slug was absent here, hiding that edits go live).
+  "order_cancelled_refund",
+  // resend-confirmation-email reads slug 'order_confirmation' (webhook +
+  // manual resend) and falls back to hardcoded — edits go live.
+  "order_confirmation",
+  // send-provider-recruitment-email reads slug 'provider_recruitment_outreach'.
+  "provider_recruitment_outreach",
 ]);
 const WIRED_SMS_SLUGS = new Set<string>([
   "review_request_sms",
+  // REFUND-EMAIL-MISSING (2026-06-23): OrderDetailModal renders this row
+  // client-side for the refund SMS (DB single source of truth, hardcoded
+  // fallback only if missing). Edits go live on the next refund SMS.
+  "sms_order_cancelled_refund",
 ]);
 
 // COMMS-TEMPLATE-HUB-ACTIVE-SLOTS 2026-05-23 — automation-slot registry.
@@ -1715,10 +1731,16 @@ export default function CommunicationsTemplatesPanel() {
           <p>
             Templates marked <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] align-middle"><span className="w-1 h-1 rounded-full bg-emerald-600"></span>Active DB</span> are wired to Edge Functions and edits go live immediately.
             Other rows are admin-editable presets and may not yet drive an automatic flow.
-            Order confirmation, payment receipt, status emails, and most provider notifications still use legacy hardcoded templates &mdash; see <span className="font-mono">AI/email-system-audit.md</span> for the full mapping.
+            Status emails and most provider/admin notifications still use legacy hardcoded templates &mdash; expand
+            <span className="font-semibold"> All notification send paths</span> below (or <span className="font-mono">AI/email-system-audit.md</span>) for the full mapping of every send and its status.
           </p>
         </div>
       </div>
+
+      {/* REFUND-EMAIL-MISSING (2026-06-23): full registry of every email/SMS
+          the platform can send, with category + real wiring status. Surfaces
+          legacy hardcoded + not-wired flows that have no editable row above. */}
+      <CommunicationsSendPathRegistry />
 
       {/* Add new template bar */}
       {addingNew && (
