@@ -85,20 +85,36 @@ Deno.serve(async (req) => {
     const createdFilter: Record<string, number> = { gte: since };
     if (until) createdFilter.lte = until;
 
+    // Paginate through ALL Stripe list pages for the window. Stripe caps a single
+    // list page at 100 rows; the old code took only the first 100 and silently
+    // dropped everything past it (gross / count / fees under-reported in any month
+    // with >100 charges or refunds). We follow has_more / starting_after until the
+    // window is exhausted (hard page cap = safety backstop, not a real limit).
+    async function listAll<T extends { id: string }>(
+      listFn: (params: Record<string, unknown>) => Promise<{ data: T[]; has_more: boolean }>,
+      params: Record<string, unknown>,
+    ): Promise<T[]> {
+      const out: T[] = [];
+      let startingAfter: string | undefined;
+      for (let page = 0; page < 200; page++) { // 200 pages × 100 = 20k row backstop
+        const res = await listFn({ ...params, limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) });
+        out.push(...res.data);
+        if (!res.has_more || res.data.length === 0) break;
+        startingAfter = res.data[res.data.length - 1].id;
+      }
+      return out;
+    }
+
     // Fetch charges (with balance_transaction expanded for REAL fees), refunds, balance.
-    const [chargesRes, refundsRes, balanceRes] = await Promise.all([
-      stripe.charges.list({
-        limit: 100,
-        created: createdFilter,
-        expand: ["data.balance_transaction"],
-      }),
-      stripe.refunds.list({ limit: 100, created: createdFilter }),
+    const [allCharges, allRefunds, balanceRes] = await Promise.all([
+      listAll((p) => stripe.charges.list(p), { created: createdFilter, expand: ["data.balance_transaction"] }),
+      listAll((p) => stripe.refunds.list(p), { created: createdFilter }),
       stripe.balance.retrieve(),
     ]);
 
     let anyEstimated = false;
 
-    const charges = chargesRes.data.map((c) => {
+    const charges = allCharges.map((c) => {
       const amount = c.amount / 100;
       // balance_transaction is an object when expanded & available.
       const bt = (typeof c.balance_transaction === "object" && c.balance_transaction)
@@ -144,7 +160,7 @@ Deno.serve(async (req) => {
       };
     });
 
-    const refunds = refundsRes.data.map((r) => ({
+    const refunds = allRefunds.map((r) => ({
       id: r.id,
       amount: r.amount / 100,
       currency: r.currency.toUpperCase(),
@@ -154,7 +170,13 @@ Deno.serve(async (req) => {
       created: r.created,
     }));
 
-    const successfulCharges = charges.filter((c) => c.status === "succeeded" && !c.refunded);
+    // Cash-basis gross: count EVERY succeeded charge in the window at its full
+    // amount, INCLUDING ones later refunded. The refund is netted out exactly once
+    // via the refunds list below (by refund date). The old `&& !c.refunded` filter
+    // dropped fully-refunded charges from gross while STILL subtracting their refund
+    // — double-penalizing every paid-then-refunded order by its full amount
+    // (≈$694 across 6 orders in Jun 2026). Gross + count now share one dataset.
+    const successfulCharges = charges.filter((c) => c.status === "succeeded");
     const totalRevenue = successfulCharges.reduce((s, c) => s + c.amount, 0);
     const totalRefunded = refunds.reduce((s, r) => s + r.amount, 0);
     // Fees across all succeeded charges (incl. ones later refunded — the fee was still paid).
