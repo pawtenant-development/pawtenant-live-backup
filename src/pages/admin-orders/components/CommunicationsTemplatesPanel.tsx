@@ -30,6 +30,12 @@ interface EmailTemplate {
   body: string;
   ctaLabel: string;
   ctaUrl: string;
+  // ACTIVE-DB-EDITABLE (2026-06-25): the email_templates.slug the edge
+  // functions look up by. May differ from `id` (e.g. letter_delivery is
+  // stored with a UUID id but slug='letter_delivery'). Badge + save logic
+  // key off slug so wired status is accurate regardless of id shape.
+  // Presets default slug to their id.
+  slug?: string;
 }
 
 interface SmsTemplate {
@@ -37,6 +43,8 @@ interface SmsTemplate {
   label: string;
   group: string;
   body: string;
+  // ACTIVE-DB-EDITABLE (2026-06-25): see EmailTemplate.slug.
+  slug?: string;
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
@@ -1357,17 +1365,38 @@ export default function CommunicationsTemplatesPanel() {
             id: r.id as string, label: r.label as string, group: r.group as string,
             subject: r.subject as string, body: r.body as string,
             ctaLabel: r.cta_label as string, ctaUrl: r.cta_url as string,
+            // ACTIVE-DB-EDITABLE: carry the real slug so badge/save stay accurate.
+            slug: (r.slug as string | null) ?? (r.id as string),
           }));
-          setEmailTemplates(mapped);
-          setSelectedEmailId(mapped[0].id);
+          // ACTIVE-DB-EDITABLE (2026-06-25): MERGE — keep hardcoded presets that
+          // have no DB row yet (requirement: not-wired presets remain visible,
+          // marked Not wired) while every DB-backed template (Active DB / Wired)
+          // always appears. DB rows win; a preset is dropped only when a DB row
+          // already represents it by id OR slug (prevents a letter_delivery
+          // preset duplicating the UUID-id DB row that carries slug=letter_delivery).
+          const present = new Set<string>();
+          mapped.forEach((t) => { present.add(t.id); if (t.slug) present.add(t.slug); });
+          const presetsNotInDb = DEFAULT_TEMPLATES
+            .filter((p) => !present.has(p.id) && !present.has(p.slug ?? p.id))
+            .map((p) => ({ ...p, slug: p.slug ?? p.id }));
+          const merged = [...mapped, ...presetsNotInDb];
+          setEmailTemplates(merged);
+          setSelectedEmailId(merged[0].id);
         }
         if (smsRows.length > 0) {
           const mapped: SmsTemplate[] = smsRows.map((r) => ({
             id: r.id as string, label: r.label as string, group: r.group as string,
             body: r.body as string,
+            slug: (r.slug as string | null) ?? (r.id as string),
           }));
-          setSmsTemplates(mapped);
-          setSelectedSmsId(mapped[0].id);
+          const present = new Set<string>();
+          mapped.forEach((t) => { present.add(t.id); if (t.slug) present.add(t.slug); });
+          const presetsNotInDb = DEFAULT_SMS_TEMPLATES
+            .filter((p) => !present.has(p.id) && !present.has(p.slug ?? p.id))
+            .map((p) => ({ ...p, slug: p.slug ?? p.id }));
+          const merged = [...mapped, ...presetsNotInDb];
+          setSmsTemplates(merged);
+          setSelectedSmsId(merged[0].id);
         }
       }
       setDbLoaded(true);
@@ -1425,7 +1454,7 @@ export default function CommunicationsTemplatesPanel() {
   // Resolve the badge a single template should render. Active wins over
   // Prepared wins over Wired. No badge = the template is Saved-only (the
   // implicit default for every loaded row).
-  type SlotBadgeKind = "active" | "prepared" | "wired";
+  type SlotBadgeKind = "active" | "prepared" | "wired" | "not_wired";
   interface SlotBadge {
     kind:    SlotBadgeKind;
     label:   string;
@@ -1433,8 +1462,13 @@ export default function CommunicationsTemplatesPanel() {
     chip:    string; // tailwind classes for the chip itself
     dot:     string; // tailwind classes for the leading dot
   }
-  const badgeForTemplate = (templateId: string, channel: "email" | "sms"): SlotBadge | null => {
-    // 1. Active / Prepared via slot pointer
+  // ACTIVE-DB-EDITABLE (2026-06-25): badge now resolves by BOTH id (slot
+  // pointers store the email_templates.id) AND slug (edge functions read by
+  // slug). Passing slug fixes wired templates whose id is a UUID (e.g.
+  // letter_delivery) that previously showed no badge. Returns a muted
+  // "Not wired" badge instead of null so every row is explicitly labelled.
+  const badgeForTemplate = (templateId: string, slug: string, channel: "email" | "sms"): SlotBadge => {
+    // 1. Active / Prepared via slot pointer (keyed on template id).
     const slot = AUTOMATION_SLOTS.find(
       (s) => s.channel === channel && slotPointers[s.pointerKey] === templateId
     );
@@ -1457,8 +1491,8 @@ export default function CommunicationsTemplatesPanel() {
       };
     }
     // 2. Wired (slug-based) — Edge Function reads the row by slug directly.
-    if ((channel === "email" && WIRED_EMAIL_SLUGS.has(templateId)) ||
-        (channel === "sms"   && WIRED_SMS_SLUGS.has(templateId))) {
+    if ((channel === "email" && WIRED_EMAIL_SLUGS.has(slug)) ||
+        (channel === "sms"   && WIRED_SMS_SLUGS.has(slug))) {
       return {
         kind:    "wired",
         label:   "Wired",
@@ -1467,27 +1501,35 @@ export default function CommunicationsTemplatesPanel() {
         dot:     "bg-amber-600",
       };
     }
-    return null;
+    // 3. Everything else — editable, but no automatic sender consumes it yet.
+    return {
+      kind:    "not_wired",
+      label:   "Not wired",
+      tooltip: "Editable preset. No automatic flow sends this template yet — saving/editing it changes nothing live until a sender is wired.",
+      chip:    "bg-slate-100 text-slate-500",
+      dot:     "bg-slate-400",
+    };
   };
 
   const saveAllToDb = async () => {
     setSaving(true);
     setSaveStatus("idle");
     try {
-      // COMMS-TEMPLATE-HUB-AUTO-SLUG 2026-05-23 — every row gets slug=id on
-      // save so that new admin-created custom templates show up in the
-      // OrderDetail → Communications tab picker (which loads templates
-      // where slug IS NOT NULL). For seeded rows id and slug already
-      // match, so this upsert is idempotent. No admin action is needed
-      // and no slug-aware Edge Function changes behaviour (the wired
-      // slugs are the ones admins do not edit by hand).
+      // COMMS-TEMPLATE-HUB-AUTO-SLUG 2026-05-23 — every row gets a slug so
+      // admin-created custom templates show up in the OrderDetail →
+      // Communications tab picker (which loads templates where slug IS NOT
+      // NULL). ACTIVE-DB-EDITABLE (2026-06-25): use the row's REAL slug
+      // (t.slug) and only fall back to id when missing. Previously this wrote
+      // slug=id unconditionally, which would clobber a wired template whose
+      // id is a UUID (e.g. letter_delivery, id=UUID slug='letter_delivery')
+      // and break notify-patient-letter's slug lookup on the next save.
       const emailRows = emailTemplates.map((t) => ({
-        id: t.id, slug: t.id, label: t.label, group: t.group, subject: t.subject,
+        id: t.id, slug: t.slug || t.id, label: t.label, group: t.group, subject: t.subject,
         body: t.body, cta_label: t.ctaLabel, cta_url: t.ctaUrl,
         channel: "email", updated_at: new Date().toISOString(),
       }));
       const smsRows = smsTemplates.map((t) => ({
-        id: t.id, slug: t.id, label: t.label, group: t.group, subject: "",
+        id: t.id, slug: t.slug || t.id, label: t.label, group: t.group, subject: "",
         body: t.body, cta_label: "", cta_url: "",
         channel: "sms", updated_at: new Date().toISOString(),
       }));
@@ -1802,7 +1844,7 @@ export default function CommunicationsTemplatesPanel() {
                   </p>
                   <div className="space-y-1">
                     {emailTemplates.filter((t) => t.group === grp).map((t) => {
-                      const badge = badgeForTemplate(t.id, "email");
+                      const badge = badgeForTemplate(t.id, t.slug ?? t.id, "email");
                       const isSelected = selectedEmailId === t.id;
                       return (
                       <div key={t.id} className="flex items-center gap-1">
@@ -2102,7 +2144,7 @@ export default function CommunicationsTemplatesPanel() {
                   </p>
                   <div className="space-y-1">
                     {smsTemplates.filter((t) => t.group === grp).map((t) => {
-                      const badge = badgeForTemplate(t.id, "sms");
+                      const badge = badgeForTemplate(t.id, t.slug ?? t.id, "sms");
                       const isSelected = selectedSmsId === t.id;
                       return (
                       <div key={t.id} className="flex items-center gap-1">
