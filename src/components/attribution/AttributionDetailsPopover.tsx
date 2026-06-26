@@ -195,6 +195,18 @@ export default function AttributionDetailsPopover({
   const referrerHost = hostOf(inputs.referrer);
   const clickIds = clickIdRows(inputs);
 
+  // AI sources (ChatGPT, Copilot, …) are frequently INFERRED from utm_source —
+  // the link is tagged "?utm_source=chatgpt.com" but the browser referrer is
+  // PawTenant itself (or empty), not the AI host. Surface that honestly so the
+  // popover never implies the visit literally referred from the AI tool.
+  const isAiSource =
+    /^(ChatGPT|Claude|Gemini|Perplexity|Copilot|Poe|You\.com|Phind)$/.test(classification.label) ||
+    /ai referral/i.test(channel);
+  const aiInferredFromUtm =
+    isAiSource &&
+    !!nonEmpty(inputs.utm_source) &&
+    (!referrerHost || !/(chatgpt|openai|claude\.ai|gemini|bard|perplexity|copilot|poe\.com|you\.com|phind)/.test(referrerHost));
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-start justify-center pt-16 sm:pt-24 px-4"
@@ -240,16 +252,14 @@ export default function AttributionDetailsPopover({
           {classification.reasoning}
         </p>
 
-        {/* ── Keyword / query — honest answer, never invented ──────────── */}
-        <div className={`rounded-md border px-3 py-2 mb-3 ${kwInsight.exact ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-0.5">
-            Keyword / query
+        {/* AI source inferred from utm_source (not a literal AI referrer). */}
+        {aiInferredFromUtm && (
+          <p className="text-[11px] text-gray-600 bg-indigo-50 border border-indigo-100 rounded-md px-3 py-1.5 mb-3">
+            <i className="ri-information-line mr-1" aria-hidden="true" />
+            {classification.label} inferred from the <span className="font-semibold">utm_source</span> signal — the
+            browser referrer was {referrerHost ? `“${referrerHost}”` : "not set"}, not {classification.label}.
           </p>
-          <p className={`text-sm font-semibold ${kwInsight.exact ? "text-emerald-800" : "text-amber-800"}`}>
-            {kwInsight.value}
-          </p>
-          <p className="text-[11px] text-gray-600 leading-relaxed mt-1">{kwInsight.note}</p>
-        </div>
+        )}
 
         {/* ── Captured signals (raw, as provided by the browser) ───────── */}
         <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">Captured signals</p>
@@ -277,6 +287,7 @@ export default function AttributionDetailsPopover({
             <dl className="text-xs text-gray-700 space-y-1.5">
               <Row label="Source (final)" value={nonEmpty(resolved.traffic_source_final) ?? "—"} />
               <Row label="Channel"        value={nonEmpty(resolved.traffic_channel_final) ?? "—"} />
+              <Row label="Keyword"        value={kwInsight.exact ? kwInsight.value : "Unavailable"} />
               <Row label="Search term"    value={nonEmpty(resolved.search_term) ?? "—"} />
               <Row label="Campaign"       value={nonEmpty(resolved.utm_campaign) ?? nonEmpty(resolved.campaign_id) ?? "—"} />
               <Row label="Ad set / Ad"    value={[nonEmpty(resolved.adset_id), nonEmpty(resolved.ad_id)].filter(Boolean).join(" / ") || "—"} />
@@ -291,12 +302,9 @@ export default function AttributionDetailsPopover({
         )}
 
         <p className="mt-3 text-[10px] text-gray-500 leading-relaxed border-t border-gray-100 pt-2">
-          <span className="font-semibold text-gray-600">Why some fields are blank:</span> Google Organic and AI
-          tools (ChatGPT, Perplexity, etc.) do not send the exact user query/prompt to PawTenant, and many referrers
-          strip their path/query. We capture the strongest available signal — UTMs, click IDs (gclid/fbclid/msclkid),
-          referrer and landing page — and never guess a keyword. Paid traffic (Google/Meta/Microsoft) carries the best
-          per-order detail; organic keywords can only be inferred from aggregate Search Console data, never tied to one
-          customer. Classification is computed client-side from the signals above — no data is fetched when this opens.
+          <span className="font-semibold text-gray-600">Why unavailable:</span> AI tools and organic search engines
+          usually do not pass the exact prompt/search query to PawTenant. Paid ads may show a keyword only when
+          captured from UTMs or click data.
         </p>
       </div>
     </div>
