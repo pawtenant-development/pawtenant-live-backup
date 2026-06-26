@@ -36,6 +36,10 @@ interface EmailTemplate {
   // key off slug so wired status is accurate regardless of id shape.
   // Presets default slug to their id.
   slug?: string;
+  // LEGACY-TEMPLATE-CLEANUP (2026-06-26): DB archived flag. Archived rows are
+  // KEPT in state (so saveAllToDb never treats them as orphans to delete) but
+  // hidden from the rendered sidebar/editor list. Presets default to false.
+  archived?: boolean;
 }
 
 interface SmsTemplate {
@@ -45,6 +49,8 @@ interface SmsTemplate {
   body: string;
   // ACTIVE-DB-EDITABLE (2026-06-25): see EmailTemplate.slug.
   slug?: string;
+  // LEGACY-TEMPLATE-CLEANUP (2026-06-26): see EmailTemplate.archived.
+  archived?: boolean;
 }
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
@@ -1387,6 +1393,9 @@ export default function CommunicationsTemplatesPanel() {
             ctaLabel: r.cta_label as string, ctaUrl: r.cta_url as string,
             // ACTIVE-DB-EDITABLE: carry the real slug so badge/save stay accurate.
             slug: (r.slug as string | null) ?? (r.id as string),
+            // LEGACY-TEMPLATE-CLEANUP: carry archived so it's preserved on save
+            // and can be hidden at render (not dropped from state).
+            archived: !!r.archived,
           }));
           // ACTIVE-DB-EDITABLE (2026-06-25): MERGE — keep hardcoded presets that
           // have no DB row yet (requirement: not-wired presets remain visible,
@@ -1405,25 +1414,28 @@ export default function CommunicationsTemplatesPanel() {
             (PRESET_SUPERSEDED_BY[id] ?? []).some((s) => present.has(s));
           const presetsNotInDb = DEFAULT_TEMPLATES
             .filter((p) => !present.has(p.id) && !present.has(p.slug ?? p.id) && !isSuperseded(p.id))
-            .map((p) => ({ ...p, slug: p.slug ?? p.id }));
+            .map((p) => ({ ...p, slug: p.slug ?? p.id, archived: false }));
           const merged = [...mapped, ...presetsNotInDb];
           setEmailTemplates(merged);
-          setSelectedEmailId(merged[0].id);
+          // LEGACY-TEMPLATE-CLEANUP: default selection to the first VISIBLE
+          // (non-archived) row so the editor never opens on a hidden template.
+          setSelectedEmailId((merged.find((t) => !t.archived) ?? merged[0]).id);
         }
         if (smsRows.length > 0) {
           const mapped: SmsTemplate[] = smsRows.map((r) => ({
             id: r.id as string, label: r.label as string, group: r.group as string,
             body: r.body as string,
             slug: (r.slug as string | null) ?? (r.id as string),
+            archived: !!r.archived,
           }));
           const present = new Set<string>();
           mapped.forEach((t) => { present.add(t.id); if (t.slug) present.add(t.slug); });
           const presetsNotInDb = DEFAULT_SMS_TEMPLATES
             .filter((p) => !present.has(p.id) && !present.has(p.slug ?? p.id))
-            .map((p) => ({ ...p, slug: p.slug ?? p.id }));
+            .map((p) => ({ ...p, slug: p.slug ?? p.id, archived: false }));
           const merged = [...mapped, ...presetsNotInDb];
           setSmsTemplates(merged);
-          setSelectedSmsId(merged[0].id);
+          setSelectedSmsId((merged.find((t) => !t.archived) ?? merged[0]).id);
         }
       }
       setDbLoaded(true);
@@ -1581,7 +1593,9 @@ export default function CommunicationsTemplatesPanel() {
   };
 
   const selectedEmail = emailTemplates.find((t) => t.id === selectedEmailId) ?? emailTemplates[0];
-  const emailGroups = [...new Set(emailTemplates.map((t) => t.group))];
+  // LEGACY-TEMPLATE-CLEANUP (2026-06-26): derive groups from VISIBLE rows only
+  // so archived-only groups don't render an empty header.
+  const emailGroups = [...new Set(emailTemplates.filter((t) => !t.archived).map((t) => t.group))];
   const updateEmailField = (field: keyof EmailTemplate, value: string) =>
     setEmailTemplates((prev) => prev.map((t) => t.id === selectedEmailId ? { ...t, [field]: value } : t));
   const deleteEmailTemplate = (id: string) => {
@@ -1591,7 +1605,8 @@ export default function CommunicationsTemplatesPanel() {
   };
 
   const selectedSms = smsTemplates.find((t) => t.id === selectedSmsId) ?? smsTemplates[0];
-  const smsGroups = [...new Set(smsTemplates.map((t) => t.group))];
+  // LEGACY-TEMPLATE-CLEANUP (2026-06-26): visible groups only (see emailGroups).
+  const smsGroups = [...new Set(smsTemplates.filter((t) => !t.archived).map((t) => t.group))];
   const updateSmsField = (field: keyof SmsTemplate, value: string) =>
     setSmsTemplates((prev) => prev.map((t) => t.id === selectedSmsId ? { ...t, [field]: value } : t));
   const deleteSmsTemplate = (id: string) => {
@@ -1870,7 +1885,7 @@ export default function CommunicationsTemplatesPanel() {
                     {grp}
                   </p>
                   <div className="space-y-1">
-                    {emailTemplates.filter((t) => t.group === grp).map((t) => {
+                    {emailTemplates.filter((t) => t.group === grp && !t.archived).map((t) => {
                       const badge = badgeForTemplate(t.id, t.slug ?? t.id, "email");
                       const isSelected = selectedEmailId === t.id;
                       return (
@@ -2170,7 +2185,7 @@ export default function CommunicationsTemplatesPanel() {
                     {grp}
                   </p>
                   <div className="space-y-1">
-                    {smsTemplates.filter((t) => t.group === grp).map((t) => {
+                    {smsTemplates.filter((t) => t.group === grp && !t.archived).map((t) => {
                       const badge = badgeForTemplate(t.id, t.slug ?? t.id, "sms");
                       const isSelected = selectedSmsId === t.id;
                       return (
