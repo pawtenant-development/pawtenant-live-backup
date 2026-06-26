@@ -20,9 +20,11 @@
 //   • Reuses resolveOrderAttribution() + analyticsNormalize helpers so SOURCE
 //     and CUSTOMER-FACING landing pages match Orders / CSV export. No invented
 //     attribution; blank / admin / internal landings → "Unknown / Not captured".
-//   • Paid Ads ROI reads existing spend rows (ad_spend_google / ad_spend_meta)
-//     for the range only; when none exist it shows "Spend not connected yet"
-//     instead of fake ROI. Never calls ad APIs / edge functions.
+//   • Paid Ads ROI reads the SAME canonical spend source as Accounts / Payments
+//     P&L — the get_marketing_spend_summary RPC (marketing_ad_spend_daily,
+//     PKR→USD at the shared FX rate) — for the selected range only; when no
+//     spend exists it shows "Spend not connected yet" instead of fake ROI.
+//     Never calls ad APIs / edge functions / runs a sync.
 //   • ISOLATED FAILURE: any error renders inside the panel; it can never break
 //     the Analytics tab or the admin shell.
 
@@ -42,6 +44,7 @@ import {
   UNKNOWN_SOURCE,
 } from "@/lib/analyticsNormalize";
 import { isPaidOrder, isRefundedOrder } from "@/lib/analyticsMetrics";
+import { fetchMarketingSpendSummary, type MarketingSpendSummary } from "@/lib/companyExpenses";
 
 // ── Row shapes ──────────────────────────────────────────────────────────────
 interface PaidRateOrder extends ResolvableOrder {
@@ -54,20 +57,11 @@ interface PaidRateOrder extends ResolvableOrder {
   refund_amount?: number | null;
   fbclid?: string | null;
 }
-interface SpendRow {
-  date?: string | null;
-  cost?: number | null;
-  clicks?: number | null;
-  impressions?: number | null;
-  campaign_name?: string | null;
-}
-
 const ORDER_COLUMNS =
   "id,created_at,paid_at,payment_intent_id,price,refunded_at,refund_amount," +
   "referred_by,landing_url,session_id," +
   "utm_source,utm_medium,utm_campaign,utm_term,utm_content,gclid,fbclid," +
   "first_touch_json,last_touch_json";
-const SPEND_COLUMNS = "date,cost,clicks,impressions,campaign_name";
 const FETCH_CAP = 20000;
 
 type Preset = "today" | "yesterday" | "7d" | "30d" | "this_month" | "last_month" | "custom";
@@ -172,8 +166,7 @@ export default function SourceLandingPaidRatePanel(
   const [customTo, setCustomTo] = useState("");
 
   const [rows, setRows] = useState<PaidRateOrder[] | null>(null);
-  const [spendGoogle, setSpendGoogle] = useState<SpendRow[]>([]);
-  const [spendMeta, setSpendMeta] = useState<SpendRow[]>([]);
+  const [spend, setSpend] = useState<MarketingSpendSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capped, setCapped] = useState(false);
@@ -194,7 +187,7 @@ export default function SourceLandingPaidRatePanel(
         : resolveRange(preset, customFrom, customTo);
       const fromYMD = toYMD(from);
       const toYMDs = toYMD(to);
-      const [ordersRes, gRes, mRes] = await Promise.all([
+      const [ordersRes, spendSummary] = await Promise.all([
         supabase
           .from("orders")
           .select(ORDER_COLUMNS)
@@ -202,20 +195,18 @@ export default function SourceLandingPaidRatePanel(
           .lte("created_at", to.toISOString())
           .order("created_at", { ascending: false })
           .limit(FETCH_CAP),
-        // Spend rows are optional — failure must not block the dashboard.
-        supabase.from("ad_spend_google").select(SPEND_COLUMNS).gte("date", fromYMD).lte("date", toYMDs).then(
-          (r) => r, () => ({ data: [], error: null }),
-        ),
-        supabase.from("ad_spend_meta").select(SPEND_COLUMNS).gte("date", fromYMD).lte("date", toYMDs).then(
-          (r) => r, () => ({ data: [], error: null }),
-        ),
+        // Marketing spend comes from the SAME canonical source as Accounts /
+        // Payments P&L: the get_marketing_spend_summary RPC (reads
+        // marketing_ad_spend_daily, converts PKR→USD at the shared FX rate).
+        // The helper returns null on error / non-accounts-admin so the
+        // dashboard degrades gracefully instead of breaking.
+        fetchMarketingSpendSummary(fromYMD, toYMDs),
       ]);
       if (ordersRes.error) throw ordersRes.error;
       const list = (ordersRes.data ?? []) as unknown as PaidRateOrder[];
       setRows(list);
       setCapped(list.length >= FETCH_CAP);
-      setSpendGoogle((gRes?.data ?? []) as unknown as SpendRow[]);
-      setSpendMeta((mRes?.data ?? []) as unknown as SpendRow[]);
+      setSpend(spendSummary);
       setLoadedRange({ from, to });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load analytics data.");
@@ -339,14 +330,11 @@ export default function SourceLandingPaidRatePanel(
       .sort((x, y) => y.paid - x.paid || y.leads - x.leads);
 
     // ── Spend / ROI ───────────────────────────────────────────────────────────
-    const sumSpend = (list: SpendRow[]) => list.reduce<{ cost: number; clicks: number; impr: number }>((acc, s) => {
-      acc.cost += typeof s.cost === "number" ? s.cost : 0;
-      acc.clicks += typeof s.clicks === "number" ? s.clicks : 0;
-      acc.impr += typeof s.impressions === "number" ? s.impressions : 0;
-      return acc;
-    }, { cost: 0, clicks: 0, impr: 0 });
-    const gSpend = sumSpend(spendGoogle);
-    const mSpend = sumSpend(spendMeta);
+    // Spend (USD, FX-normalised) comes from the canonical Accounts source — the
+    // get_marketing_spend_summary RPC. That source is daily-aggregated only, so
+    // per-channel clicks / impressions are not available here (shown as "—").
+    const gSpend = { cost: spend?.google_spend_usd ?? 0, clicks: 0, impr: 0 };
+    const mSpend = { cost: spend?.meta_spend_usd ?? 0, clicks: 0, impr: 0 };
     const gAgg = bySource.get("Google Ads") ?? emptyAgg();
     const mAgg = bySource.get("Meta Ads") ?? emptyAgg();
 
@@ -362,15 +350,15 @@ export default function SourceLandingPaidRatePanel(
       net: a.revenue - sp.cost,
     });
     const roi = {
-      google: roiFor("Google Ads", gSpend, gAgg, spendGoogle.length > 0),
-      meta: roiFor("Meta Ads", mSpend, mAgg, spendMeta.length > 0),
+      google: roiFor("Google Ads", gSpend, gAgg, gSpend.cost > 0),
+      meta: roiFor("Meta Ads", mSpend, mAgg, mSpend.cost > 0),
       combined: roiFor("Combined",
-        { cost: gSpend.cost + mSpend.cost, clicks: gSpend.clicks + mSpend.clicks, impr: gSpend.impr + mSpend.impr },
+        { cost: gSpend.cost + mSpend.cost, clicks: 0, impr: 0 },
         { ...emptyAgg(), revenue: gAgg.revenue + mAgg.revenue, paid: gAgg.paid + mAgg.paid },
-        spendGoogle.length + spendMeta.length > 0),
+        (gSpend.cost + mSpend.cost) > 0),
     };
-    const totalSpend = gSpend.cost + mSpend.cost;
-    const spendConnected = (spendGoogle.length + spendMeta.length) > 0 && totalSpend > 0;
+    const totalSpend = spend?.total_spend_usd ?? (gSpend.cost + mSpend.cost);
+    const spendConnected = totalSpend > 0;
 
     // ── Data quality / attribution gaps ───────────────────────────────────────
     const cnt = (f: (r: RRow) => boolean) => resolved.filter(f).length;
@@ -406,7 +394,7 @@ export default function SourceLandingPaidRatePanel(
       total, sourceRows, landingRows, matrixRows, keywordRows,
       topSource, topLanding, roi, totalSpend, spendConnected, dq, warnings, missLandPct,
     };
-  }, [rows, spendGoogle, spendMeta]);
+  }, [rows, spend]);
 
   // ── CSV exporters ────────────────────────────────────────────────────────────
   const exportSource = useCallback(() => {
@@ -566,7 +554,7 @@ export default function SourceLandingPaidRatePanel(
                 {!model.spendConnected ? (
                   <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-5 text-center">
                     <p className="text-sm font-bold text-gray-700">Spend not connected yet</p>
-                    <p className="text-xs text-gray-500 mt-1 max-w-lg mx-auto">No Google/Meta spend rows for this range (ad_spend_google / ad_spend_meta are empty). Revenue from attributed paid orders is still shown below; ROI/CPA/ROAS appear once spend is connected. Live on-demand spend is available in Tools → Ad Spend.</p>
+                    <p className="text-xs text-gray-500 mt-1 max-w-lg mx-auto">No Google/Meta spend recorded in the marketing ledger for this range (same source as the Accounts P&amp;L). Revenue from attributed paid orders is still shown below; ROI/CPA/ROAS appear once spend exists for the range. Live on-demand spend is available in Tools → Ad Spend.</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4 text-left">
                       <Card label="Google Ads — Paid Orders" value={String(model.roi.google.paidOrders)} small />
                       <Card label="Google Ads — Revenue" value={money(model.roi.google.revenue)} small />
