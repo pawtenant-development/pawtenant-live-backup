@@ -1,21 +1,23 @@
 /**
- * AttributionDetailsPopover — Phase K4.5
+ * AttributionDetailsPopover — Phase K4.5 (+ attribution-honesty pass)
  *
  * Reusable, lightweight popover that surfaces WHY a row was classified
- * a particular way. Triggered by clicking an attribution chip on an
- * OrderCard or a Live Visitors row.
+ * a particular way, WHAT raw signals were captured, and — honestly — what
+ * cannot be known (exact organic keyword, AI prompt, stripped referrer
+ * query). Triggered by clicking an attribution chip on an OrderCard or a
+ * Live Visitors row.
  *
  * Design contract:
  *   - Reuses the existing acquisitionClassifier output — no new
  *     classification logic, no second attribution system.
  *   - Uses only already-loaded data (the raw AcquisitionInputs + the
- *     classification result). No extra fetches, no polling, no realtime.
+ *     classification result + optional ResolvedAttribution). No extra
+ *     fetches, no polling, no realtime.
+ *   - Never invents a keyword. When the exact query/prompt is not
+ *     recoverable it says so and explains why, instead of a bare
+ *     "Unknown".
  *   - Renders as a fixed-position floating card near the top of the
- *     viewport with a soft backdrop. Click backdrop / Escape / X to
- *     close.
- *   - Stateless about positioning — keeps complexity low. If a future
- *     phase wants anchor-relative positioning, swap the wrapper out
- *     without touching consumers.
+ *     viewport with a soft backdrop. Click backdrop / Escape / X to close.
  */
 
 import { useEffect } from "react";
@@ -64,6 +66,16 @@ function shortenUrl(value: string | null | undefined, max = 64): string {
   return v.length <= max ? v : v.slice(0, max - 1) + "…";
 }
 
+function hostOf(value: string | null | undefined): string | null {
+  const v = nonEmpty(value);
+  if (!v) return null;
+  try {
+    return new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).hostname.toLowerCase();
+  } catch {
+    return v.toLowerCase().replace(/^https?:\/\//i, "").split("/")[0] || null;
+  }
+}
+
 function pathOnly(value: string | null | undefined, max = 64): string {
   const v = nonEmpty(value);
   if (!v) return "—";
@@ -77,24 +89,77 @@ function pathOnly(value: string | null | undefined, max = 64): string {
   }
 }
 
-function joinUtm(src: string | null | undefined, med: string | null | undefined): string {
-  const s = nonEmpty(src);
-  const m = nonEmpty(med);
-  if (s && m) return `${s} / ${m}`;
-  if (s)      return s;
-  if (m)      return `· / ${m}`;
-  return "—";
+// Each click-ID rendered with its actual value (truncated), not just a name,
+// so admin can copy/verify it. Returns [] when none are present.
+function clickIdRows(i: AcquisitionInputs): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  const add = (label: string, v: string | null | undefined) => {
+    const val = nonEmpty(v);
+    if (val) out.push({ label, value: val.length > 28 ? val.slice(0, 27) + "…" : val });
+  };
+  add("gclid", i.gclid);
+  add("gbraid", i.gbraid);
+  add("wbraid", i.wbraid);
+  add("fbclid", i.fbclid);
+  add("msclkid", i.msclkid);
+  add("ttclid", i.ttclid);
+  return out;
 }
 
-function presentClickIds(i: AcquisitionInputs): string {
-  const ids: string[] = [];
-  if (nonEmpty(i.gclid))   ids.push("gclid");
-  if (nonEmpty(i.gbraid))  ids.push("gbraid");
-  if (nonEmpty(i.wbraid))  ids.push("wbraid");
-  if (nonEmpty(i.fbclid))  ids.push("fbclid");
-  if (nonEmpty(i.msclkid)) ids.push("msclkid");
-  if (nonEmpty(i.ttclid))  ids.push("ttclid");
-  return ids.length ? ids.join(", ") : "none";
+// ── Keyword / query honesty ────────────────────────────────────────────
+// Single source of truth for the "why is the keyword Unknown?" answer. Never
+// invents a keyword — only echoes a captured one, otherwise explains the hard
+// limitation for that channel.
+function keywordInsight(
+  channel: string,
+  keyword: string | null,
+  searchTerm: string | null,
+): { value: string; note: string; exact: boolean } {
+  const kw = nonEmpty(keyword) ?? nonEmpty(searchTerm);
+  if (kw) {
+    return { value: kw, exact: true, note: "Exact term captured from the paid click (UTM term / ValueTrack {keyword})." };
+  }
+  const ch = (channel || "").toLowerCase();
+  if (ch.includes("paid")) {
+    return {
+      value: "Not passed on this click",
+      exact: false,
+      note: "This paid click did not carry a keyword/term param (UTM term or ValueTrack {keyword} was not set on the ad).",
+    };
+  }
+  if (ch.includes("organic search")) {
+    return {
+      value: "Unavailable (organic search)",
+      exact: false,
+      note: "Google, Bing & other search engines do NOT pass the exact organic query to the destination site. The order-level keyword is unknowable here — only Search Console shows aggregate queries by page/date.",
+    };
+  }
+  if (ch.includes("ai")) {
+    return {
+      value: "Unavailable (AI tool)",
+      exact: false,
+      note: "AI assistants (ChatGPT, Perplexity, Gemini, Copilot, etc.) do NOT pass the user's prompt/query to PawTenant. Only the referrer/UTM is available — the prompt itself cannot be recovered.",
+    };
+  }
+  if (ch.includes("referral") || ch.includes("internal")) {
+    return {
+      value: "Unavailable (referral)",
+      exact: false,
+      note: "Referring sites usually pass only their domain. Most strip the path/query via referrer policy, so any on-site search term is not provided.",
+    };
+  }
+  if (ch.includes("direct")) {
+    return {
+      value: "Unavailable (direct)",
+      exact: false,
+      note: "No referrer or campaign parameters were present (direct visit, or dark social where the app strips the referrer). There is no query to attribute.",
+    };
+  }
+  return {
+    value: "Unavailable",
+    exact: false,
+    note: "No keyword/query was passed by the referrer for this visit.",
+  };
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -122,6 +187,14 @@ export default function AttributionDetailsPopover({
   const vis    = visualForAcquisition(classification.label);
   const conf   = CONFIDENCE_VISUAL[classification.confidence];
 
+  // Channel drives the keyword-honesty copy. Prefer the resolved (marketing)
+  // channel; fall back to the classifier label for Live Visitors rows.
+  const channel = nonEmpty(resolved?.traffic_channel_final) ?? classification.label;
+  const kwInsight = keywordInsight(channel, resolved?.keyword ?? null, resolved?.search_term ?? null);
+
+  const referrerHost = hostOf(inputs.referrer);
+  const clickIds = clickIdRows(inputs);
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-start justify-center pt-16 sm:pt-24 px-4"
@@ -134,7 +207,7 @@ export default function AttributionDetailsPopover({
       <div
         role="dialog"
         aria-label="Attribution details"
-        className="relative bg-white rounded-xl shadow-2xl border border-gray-200 w-[22rem] max-w-[92vw] p-4"
+        className="relative bg-white rounded-xl shadow-2xl border border-gray-200 w-[24rem] max-w-[94vw] max-h-[80vh] overflow-y-auto p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -167,37 +240,63 @@ export default function AttributionDetailsPopover({
           {classification.reasoning}
         </p>
 
+        {/* ── Keyword / query — honest answer, never invented ──────────── */}
+        <div className={`rounded-md border px-3 py-2 mb-3 ${kwInsight.exact ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-0.5">
+            Keyword / query
+          </p>
+          <p className={`text-sm font-semibold ${kwInsight.exact ? "text-emerald-800" : "text-amber-800"}`}>
+            {kwInsight.value}
+          </p>
+          <p className="text-[11px] text-gray-600 leading-relaxed mt-1">{kwInsight.note}</p>
+        </div>
+
+        {/* ── Captured signals (raw, as provided by the browser) ───────── */}
+        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">Captured signals</p>
         <dl className="text-xs text-gray-700 space-y-1.5">
-          <Row label="Referrer"   value={shortenUrl(inputs.referrer)} />
-          <Row label="Landing"    value={pathOnly(inputs.landing_url)} />
-          <Row label="UTM"        value={joinUtm(inputs.utm_source, inputs.utm_medium)} />
-          <Row label="Campaign"   value={nonEmpty(inputs.utm_campaign) ?? "—"} />
-          <Row label="Click IDs"  value={presentClickIds(inputs)} />
-          <Row label="Ref param"  value={nonEmpty(inputs.ref) ?? "—"} />
+          <Row label="Raw referrer"  value={shortenUrl(inputs.referrer)} />
+          <Row label="Referrer host" value={referrerHost ?? "— (none / stripped)"} />
+          <Row label="Landing"       value={pathOnly(inputs.landing_url)} />
+          <Row label="UTM source"    value={nonEmpty(inputs.utm_source) ?? "—"} />
+          <Row label="UTM medium"    value={nonEmpty(inputs.utm_medium) ?? "—"} />
+          <Row label="UTM campaign"  value={nonEmpty(inputs.utm_campaign) ?? nonEmpty(resolved?.utm_campaign) ?? "—"} />
+          {resolved && <Row label="UTM term"    value={nonEmpty(resolved.utm_term) ?? "—"} />}
+          {resolved && <Row label="UTM content" value={nonEmpty(resolved.utm_content) ?? "—"} />}
+          {clickIds.length > 0
+            ? clickIds.map((c) => <Row key={c.label} label={c.label} value={c.value} />)
+            : <Row label="Click IDs" value="none" />}
+          <Row label="Ref param"   value={nonEmpty(inputs.ref) ?? "—"} />
           <Row label="referred_by" value={nonEmpty(inputs.referred_by) ?? "—"} />
         </dl>
 
         {resolved && (
           <>
             <p className="mt-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              Strict source &amp; keyword
+              Derived &amp; campaign
             </p>
             <dl className="text-xs text-gray-700 space-y-1.5">
               <Row label="Source (final)" value={nonEmpty(resolved.traffic_source_final) ?? "—"} />
               <Row label="Channel"        value={nonEmpty(resolved.traffic_channel_final) ?? "—"} />
-              <Row label="Keyword"        value={nonEmpty(resolved.keyword) ?? "Unknown"} />
               <Row label="Search term"    value={nonEmpty(resolved.search_term) ?? "—"} />
               <Row label="Campaign"       value={nonEmpty(resolved.utm_campaign) ?? nonEmpty(resolved.campaign_id) ?? "—"} />
               <Row label="Ad set / Ad"    value={[nonEmpty(resolved.adset_id), nonEmpty(resolved.ad_id)].filter(Boolean).join(" / ") || "—"} />
+              <Row label="Network / device" value={[nonEmpty(resolved.network), nonEmpty(resolved.device)].filter(Boolean).join(" / ") || "—"} />
               <Row label="First landing"  value={pathOnly(resolved.first_landing_page_url) + (nonEmpty(resolved.first_landing_page_type) ? ` (${resolved.first_landing_page_type})` : "")} />
+              <Row label="First referrer" value={shortenUrl(resolved.first_referrer)} />
+              <Row label="Session"        value={nonEmpty(resolved.session_id) ?? "—"} />
               <Row label="Raw source"     value={nonEmpty(resolved.traffic_source_raw) ?? "—"} />
               <Row label="Data coverage"  value={nonEmpty(resolved.attribution_data_completeness) ?? "—"} />
             </dl>
           </>
         )}
 
-        <p className="mt-3 text-[10px] text-gray-400 leading-relaxed">
-          Classification is computed client-side from the raw attribution signals above. No new data is fetched when this popover opens.
+        <p className="mt-3 text-[10px] text-gray-500 leading-relaxed border-t border-gray-100 pt-2">
+          <span className="font-semibold text-gray-600">Why some fields are blank:</span> Google Organic and AI
+          tools (ChatGPT, Perplexity, etc.) do not send the exact user query/prompt to PawTenant, and many referrers
+          strip their path/query. We capture the strongest available signal — UTMs, click IDs (gclid/fbclid/msclkid),
+          referrer and landing page — and never guess a keyword. Paid traffic (Google/Meta/Microsoft) carries the best
+          per-order detail; organic keywords can only be inferred from aggregate Search Console data, never tied to one
+          customer. Classification is computed client-side from the signals above — no data is fetched when this opens.
         </p>
       </div>
     </div>

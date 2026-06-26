@@ -58,6 +58,10 @@ export type AcquisitionLabel =
   | "Claude"
   | "Gemini"
   | "Perplexity"
+  | "Copilot"
+  | "Poe"
+  | "You.com"
+  | "Phind"
   | "Email Recovery"
   | "Referral"
   | "Direct / Unknown";
@@ -123,6 +127,10 @@ export const ACQUISITION_VISUAL: Record<AcquisitionLabel, AcquisitionVisual> = {
   "Claude":            { label: "Claude",            shortLabel: "Claude",       icon: "ri-sparkling-2-line",     color: "text-amber-700 bg-amber-50 border-amber-200" },
   "Gemini":            { label: "Gemini",            shortLabel: "Gemini",       icon: "ri-gemini-line",          color: "text-indigo-700 bg-indigo-50 border-indigo-200" },
   "Perplexity":        { label: "Perplexity",        shortLabel: "Perplexity",   icon: "ri-questionnaire-line",   color: "text-slate-700 bg-slate-100 border-slate-300" },
+  "Copilot":           { label: "Copilot",           shortLabel: "Copilot",      icon: "ri-microsoft-line",       color: "text-sky-700 bg-sky-50 border-sky-200" },
+  "Poe":               { label: "Poe",               shortLabel: "Poe",          icon: "ri-robot-2-line",         color: "text-purple-700 bg-purple-50 border-purple-200" },
+  "You.com":           { label: "You.com",           shortLabel: "You.com",      icon: "ri-robot-2-line",         color: "text-teal-700 bg-teal-50 border-teal-200" },
+  "Phind":             { label: "Phind",             shortLabel: "Phind",        icon: "ri-robot-2-line",         color: "text-indigo-700 bg-indigo-50 border-indigo-200" },
   "Email Recovery":    { label: "Email Recovery",    shortLabel: "Email",        icon: "ri-mail-send-line",       color: "text-violet-600 bg-violet-50 border-violet-200" },
   "Referral":          { label: "Referral",          shortLabel: "Referral",     icon: "ri-share-forward-line",   color: "text-teal-600 bg-teal-50 border-teal-200" },
   "Direct / Unknown":  { label: "Direct / Unknown",  shortLabel: "Direct",       icon: "ri-cursor-line",          color: "text-gray-600 bg-gray-50 border-gray-200" },
@@ -163,10 +171,14 @@ const REDDIT_REFERRER_HOSTS = ["reddit.com", "old.reddit.com", "redd.it"];
 const TIKTOK_REFERRER_HOSTS = ["tiktok.com", "vt.tiktok.com"];
 
 const AI_REFERRER_MAP: { hosts: string[]; label: AcquisitionLabel }[] = [
-  { hosts: ["chatgpt.com", "chat.openai.com", "chatgpt.co", "openai.com"], label: "ChatGPT" },
-  { hosts: ["claude.ai"],                                                   label: "Claude" },
-  { hosts: ["gemini.google.com", "bard.google.com"],                        label: "Gemini" },
-  { hosts: ["perplexity.ai", "www.perplexity.ai"],                          label: "Perplexity" },
+  { hosts: ["chatgpt.com", "chat.openai.com", "chatgpt.co", "openai.com"],   label: "ChatGPT" },
+  { hosts: ["claude.ai"],                                                     label: "Claude" },
+  { hosts: ["gemini.google.com", "bard.google.com"],                          label: "Gemini" },
+  { hosts: ["perplexity.ai", "www.perplexity.ai"],                            label: "Perplexity" },
+  { hosts: ["copilot.microsoft.com", "copilot.cloud.microsoft", "m365.cloud.microsoft"], label: "Copilot" },
+  { hosts: ["poe.com"],                                                       label: "Poe" },
+  { hosts: ["you.com"],                                                       label: "You.com" },
+  { hosts: ["phind.com", "www.phind.com"],                                    label: "Phind" },
 ];
 
 const AI_UTM_MAP: { tokens: string[]; label: AcquisitionLabel }[] = [
@@ -174,6 +186,9 @@ const AI_UTM_MAP: { tokens: string[]; label: AcquisitionLabel }[] = [
   { tokens: ["claude", "anthropic"],   label: "Claude" },
   { tokens: ["gemini", "bard"],        label: "Gemini" },
   { tokens: ["perplexity"],            label: "Perplexity" },
+  { tokens: ["copilot"],               label: "Copilot" },
+  { tokens: ["poe"],                   label: "Poe" },
+  { tokens: ["phind"],                 label: "Phind" },
 ];
 
 function normalize(v: string | null | undefined): string {
@@ -275,10 +290,22 @@ export function classifyAcquisition(inputs: AcquisitionInputs): AcquisitionClass
   // 4. TikTok Ads / TikTok organic.
   if (ttclid) return result("TikTok", "high", "Detected ttclid (TikTok Ads click ID).");
 
-  // 5. AI referrals — utm_source first, then referrer host.
+  // 5. AI referrals — utm_source token first, then host-style utm_source
+  //    (e.g. utm_source=chatgpt.com), then referrer host. The host-style
+  //    branch matters because AI tools often rewrite links as
+  //    "/?utm_source=chatgpt.com" with NO document.referrer — without it
+  //    such a visit fell through to a low-confidence "Referral".
   for (const ai of AI_UTM_MAP) {
     if (ai.tokens.includes(utmSource)) {
       return result(ai.label, "high", `Detected utm_source=${utmSource} (AI referral).`);
+    }
+  }
+  const utmSourceHost = extractHost(utmSource);
+  if (utmSourceHost && utmSourceHost.includes(".")) {
+    for (const ai of AI_REFERRER_MAP) {
+      if (hostMatchesAny(utmSourceHost, ai.hosts)) {
+        return result(ai.label, "high", `Detected utm_source=${utmSource} (AI referral host).`);
+      }
     }
   }
   for (const ai of AI_REFERRER_MAP) {
@@ -522,6 +549,10 @@ export function canonicalChannelToLabel(raw: string | null | undefined): Acquisi
   if (v.includes("claude")  || v.includes("anthropic"))              return "Claude";
   if (v.includes("gemini")  || v.includes("bard"))                   return "Gemini";
   if (v.includes("perplexity"))                                      return "Perplexity";
+  if (v.includes("copilot"))                                         return "Copilot";
+  if (v.includes("poe.com") || v === "poe")                          return "Poe";
+  if (v.includes("you.com"))                                         return "You.com";
+  if (v.includes("phind"))                                           return "Phind";
   if (v.includes("google"))                                          return "Google Ads";
   if (v.includes("facebook") || v.includes("meta") || v === "fb")    return "Facebook Paid";
   if (v.includes("instagram") || v === "ig")                         return "Instagram";
@@ -557,6 +588,10 @@ export const ACQUISITION_LABELS: AcquisitionLabel[] = [
   "Claude",
   "Gemini",
   "Perplexity",
+  "Copilot",
+  "Poe",
+  "You.com",
+  "Phind",
   "Email Recovery",
   "Referral",
   "Direct / Unknown",
