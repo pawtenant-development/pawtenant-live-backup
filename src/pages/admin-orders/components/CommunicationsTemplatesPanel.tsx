@@ -1185,6 +1185,26 @@ const WIRED_SMS_SLUGS = new Set<string>([
   "sms_order_cancelled_refund",
 ]);
 
+// ACTIVE-DB-EDITABLE-2 (2026-06-26): legacy DEFAULT_TEMPLATES presets that are
+// now fully represented by DB-backed, individually-editable rows. When ANY of
+// the listed DB slugs is present, the preset is HIDDEN from the editable
+// sidebar so the real DB rows are the single source of truth — no duplicate
+// "Abandoned Checkout Recovery / Order Confirmed / ESA Letter Ready" rows next
+// to the actual seq_*/order_confirmation/letter_delivery rows.
+//
+// Per-environment safe: where the DB rows do NOT exist (e.g. a fresh env), the
+// preset is NOT superseded and stays visible as the editable fallback. Presets
+// with no DB equivalent (renewal, psd_upsell, broadcast_promo) are never listed
+// here, so they always remain (shown "Not wired").
+const PRESET_SUPERSEDED_BY: Record<string, string[]> = {
+  // "Order Confirmed" preset -> DB order_confirmation (resend-confirmation-email)
+  order_confirmed: ["order_confirmation"],
+  // "ESA Letter Ready" preset -> DB letter_delivery (notify-patient-letter)
+  letter_ready:    ["letter_delivery"],
+  // "Abandoned Checkout Recovery" preset -> DB lead-recovery sequence rows
+  finish_esa:      ["seq_30min", "seq_24h", "seq_3day", "checkout_recovery", "checkout_recovery_discount"],
+};
+
 // COMMS-TEMPLATE-HUB-ACTIVE-SLOTS 2026-05-23 — automation-slot registry.
 // Each slot maps to a comms_settings key (`seq_template_<id>`) whose value
 // is the email_templates.id of the Active template for that slot.
@@ -1376,8 +1396,15 @@ export default function CommunicationsTemplatesPanel() {
           // preset duplicating the UUID-id DB row that carries slug=letter_delivery).
           const present = new Set<string>();
           mapped.forEach((t) => { present.add(t.id); if (t.slug) present.add(t.slug); });
+          // ACTIVE-DB-EDITABLE-2 (2026-06-26): also drop a preset when a DB row
+          // that SUPERSEDES it exists (different id/slug, same concept) — e.g.
+          // the "Abandoned Checkout Recovery" preset once seq_*/checkout_recovery
+          // DB rows are present. Prevents fake collapsed duplicates beside the
+          // real, individually-editable DB rows.
+          const isSuperseded = (id: string) =>
+            (PRESET_SUPERSEDED_BY[id] ?? []).some((s) => present.has(s));
           const presetsNotInDb = DEFAULT_TEMPLATES
-            .filter((p) => !present.has(p.id) && !present.has(p.slug ?? p.id))
+            .filter((p) => !present.has(p.id) && !present.has(p.slug ?? p.id) && !isSuperseded(p.id))
             .map((p) => ({ ...p, slug: p.slug ?? p.id }));
           const merged = [...mapped, ...presetsNotInDb];
           setEmailTemplates(merged);
