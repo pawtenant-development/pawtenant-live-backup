@@ -5,6 +5,7 @@ import SharedFooter from "@/components/feature/SharedFooter";
 import MobileStickyApplyCTA from "@/components/feature/MobileStickyApplyCTA";
 import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
+import { useSitePricing } from "@/hooks/useSitePricing";
 
 /*
  * Meta / Facebook Ads paid landing page — /meta-esa-letter
@@ -159,6 +160,8 @@ function scheduleSeoWork(fn: () => void): () => void {
 }
 
 export default function MetaEsaLetterPage() {
+  // Admin-managed display prices (hydrates at runtime; falls back to config).
+  const { price: getPrice } = useSitePricing();
   // Defer rendering the below-the-fold tree until AFTER the first paint so the
   // first React commit only mounts the hero (the LCP element) — keeping the
   // skeleton→React hero swap fast and LCP low on throttled mobile. Mirrors the
@@ -625,12 +628,12 @@ export default function MetaEsaLetterPage() {
               {/* Two plans: one-time + annual — stack on mobile to avoid overflow */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-3xl font-bold tracking-tight text-slate-900">{ESA_PRICE_LABELS.oneTime}</div>
+                  <div className="text-3xl font-bold tracking-tight text-slate-900">{getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)}</div>
                   <div className="text-[12px] font-semibold text-slate-700 mt-1">One-time</div>
                   <div className="text-[11px] text-slate-500 leading-snug mt-0.5">valid 1 year</div>
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="text-3xl font-bold tracking-tight text-slate-900">{ESA_PRICE_LABELS.subscription}<span className="text-base font-semibold text-slate-500">{ESA_PRICE_LABELS.subscriptionSuffix}</span></div>
+                  <div className="text-3xl font-bold tracking-tight text-slate-900">{getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)}<span className="text-base font-semibold text-slate-500">{ESA_PRICE_LABELS.subscriptionSuffix}</span></div>
                   <div className="text-[12px] font-semibold text-slate-700 mt-1">Annual</div>
                   <div className="text-[11px] text-slate-500 leading-snug mt-0.5">renews yearly</div>
                 </div>

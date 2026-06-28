@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { supabase, getAdminToken, getAdminUserToken } from "../../../lib/supabaseClient";
 import UTMLinkGenerator from "./UTMLinkGenerator";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
+import WebsitePricingPanel from "./WebsitePricingPanel";
 // Phase G hotfix — MasterEmailLayoutPanel and RecoverySequencePanel were
 // inadvertently moved alongside CommsTemplatesPanel during the Phase G
 // extraction (they lived in the same "Communications Templates Hub"
@@ -2348,6 +2349,24 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         <h2 className="text-base font-extrabold text-gray-900 mb-1">Settings &amp; Integrations</h2>
         <p className="text-xs text-gray-500">Organized by area. Click any section to expand it.</p>
       </div>
+
+      {/* ───────────── Category: Website Content ───────────── */}
+      <CategoryHeader
+        label="Website Content"
+        description="Prices and copy shown as text on the public website."
+        accent="#3b6ea5"
+      />
+
+      {/* ── Website Pricing — admin-managed display prices ── */}
+      <AccordionSection
+        title="Website Pricing"
+        subtitle="Edit ESA / PSD / add-on prices shown on public pages — display only, not Stripe"
+        icon="ri-price-tag-3-line"
+        iconBg="bg-[#e8f0f9]"
+        iconColor="text-[#3b6ea5]"
+      >
+        <WebsitePricingPanel />
+      </AccordionSection>
 
       {/* ───────────── Category A: CRM & Integrations ───────────── */}
       <CategoryHeader

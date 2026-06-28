@@ -6,12 +6,14 @@ import { Link } from "react-router-dom";
 import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
 import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
+import { useSitePricing } from "@/hooks/useSitePricing";
 
 const pricingPlans = [
   {
     label: "One-Time ESA Letter",
     sublabel: "Delivered Within 24 Hours",
     price: ESA_PRICE_LABELS.oneTime,
+    priceKey: "esa_single_pet",
     period: "one-time",
     highlight: false,
     cta: "Get Your Official ESA Letter",
@@ -28,6 +30,7 @@ const pricingPlans = [
     label: "Annual Subscription",
     sublabel: "Per Year — Auto-Renews",
     price: ESA_PRICE_LABELS.subscription,
+    priceKey: "esa_subscription_annual",
     period: "/year",
     highlight: true,
     cta: "Get Your Official ESA Letter",
@@ -101,6 +104,8 @@ const SAMPLE_IMG = "/images/checkout/esa-sample-letter.svg";
 export default function ESALetterCostPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  // Admin-managed display prices (hydrates at runtime; falls back to config).
+  const { price: getPrice } = useSitePricing();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -159,7 +164,7 @@ export default function ESALetterCostPage() {
                 the headline price inside the first viewport. */}
             <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-sm text-white text-[11.5px] sm:text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
               <i className="ri-price-tag-3-line text-orange-400"></i>
-              From {ESA_PRICE_LABELS.subscription}/year · {ESA_PRICE_LABELS.oneTime} one-time
+              From {getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)}/year · {getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)} one-time
             </div>
             <h1 className="text-[28px] sm:text-4xl md:text-5xl font-bold text-white mb-4 sm:mb-5 leading-[1.15]">
               Affordable ESA Letter with Money Back Guarantee
@@ -212,7 +217,7 @@ export default function ESALetterCostPage() {
                 )}
                 <p className="text-gray-600 text-[13px] sm:text-sm mb-1 mt-1">{plan.label}</p>
                 <p className="text-orange-500 text-[11px] sm:text-xs font-semibold mb-3">{plan.sublabel}</p>
-                <p className="text-4xl sm:text-5xl font-black text-gray-900 mb-1 leading-none">{plan.price}</p>
+                <p className="text-4xl sm:text-5xl font-black text-gray-900 mb-1 leading-none">{getPrice(plan.priceKey, plan.price)}</p>
                 <p className="text-gray-400 text-[11px] sm:text-xs mb-4">{plan.period}</p>
 
                 {/* Klarna chip — neutral payment-method mention only */}

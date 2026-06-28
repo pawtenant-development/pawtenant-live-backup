@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { getPSDStateBySlug } from "../../mocks/statesPSD";
+import { useSitePricing } from "../../hooks/useSitePricing";
 
 // ── COMPLIANCE (PSD) ────────────────────────────────────────────────────────
 // This template renders /psd-letter/<slug>. A Psychiatric Service Dog (PSD) is
@@ -56,6 +57,8 @@ const pricingPlans = [
     name: "Standard",
     speed: "2–3 Business Days",
     price: "$100",
+    priceKey: "psd_standard",
+    priceSuffix: "",
     popular: false,
     features: [
       "Licensed provider evaluation",
@@ -69,6 +72,8 @@ const pricingPlans = [
     name: "Priority",
     speed: "Faster Review",
     price: "$120",
+    priceKey: "psd_priority",
+    priceSuffix: "",
     popular: true,
     features: [
       "Licensed provider evaluation",
@@ -82,7 +87,9 @@ const pricingPlans = [
   {
     name: "Annual",
     speed: "Renews Annually",
-    price: "$99/yr",
+    price: "$99",
+    priceKey: "psd_annual",
+    priceSuffix: "/yr",
     popular: false,
     features: [
       "Licensed provider evaluation",
@@ -98,6 +105,9 @@ const pricingPlans = [
 export default function StatePSDPage() {
   const { state: stateSlug } = useParams<{ state: string }>();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  // Admin-managed display prices (hydrates at runtime; falls back to the inline
+  // plan price for prerender / offline safety). Display only — not checkout.
+  const { price: getPrice } = useSitePricing();
 
   const stateData = getPSDStateBySlug(stateSlug || "");
 
@@ -534,7 +544,7 @@ export default function StatePSDPage() {
                   <h3 className="text-gray-900 font-bold text-base mb-1">{plan.name}</h3>
                   <p className="text-gray-400 text-xs mb-4">{plan.speed}</p>
                   <div className="flex items-end gap-1">
-                    <p className="text-4xl font-extrabold text-gray-900">{plan.price}</p>
+                    <p className="text-4xl font-extrabold text-gray-900">{getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}</p>
                     <p className="text-sm text-gray-400 mb-1">/ 1 dog</p>
                   </div>
                 </div>

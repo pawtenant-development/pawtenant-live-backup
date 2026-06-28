@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
+import { useSitePricing } from "@/hooks/useSitePricing";
 
 /**
  * PsdPricingMini — compact, mobile-first PSD (Psychiatric Service Dog) letter
@@ -30,6 +31,7 @@ const PLANS = [
     name: "Standard",
     speed: "2–3 business days",
     price: "$100",
+    priceKey: "psd_standard",
     highlight: false,
     features: [
       "PSD letter from a licensed LMHP",
@@ -43,6 +45,7 @@ const PLANS = [
     name: "Priority",
     speed: "Within 24 hours",
     price: "$120",
+    priceKey: "psd_priority",
     highlight: true,
     features: [
       "PSD letter from a licensed LMHP",
@@ -57,6 +60,7 @@ const PLANS = [
     name: "Annual",
     speed: "Per year — renews automatically",
     price: "$99",
+    priceKey: "psd_annual",
     suffix: "/year",
     highlight: false,
     features: [
@@ -71,6 +75,9 @@ const PLANS = [
 
 export default function PsdPricingMini({ className }: Props) {
   const { withAttribution } = useAttributionParams();
+  // Admin-managed display prices (hydrates at runtime; falls back to the
+  // hardcoded plan price string for prerender / offline safety).
+  const { price: getPrice } = useSitePricing();
 
   return (
     <section className={`py-14 sm:py-20 ${className || "bg-white"}`}>
@@ -111,7 +118,7 @@ export default function PsdPricingMini({ className }: Props) {
               <p className="text-[12px] text-gray-400 mb-3">{plan.speed}</p>
               <div className="flex items-baseline gap-1.5 mb-5">
                 <span className="text-4xl sm:text-5xl font-black text-gray-900 leading-none">
-                  {plan.price}
+                  {getPrice(plan.priceKey, plan.price)}
                 </span>
                 <span className="text-sm text-gray-400">{plan.suffix ?? "/ 1 dog"}</span>
               </div>

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
+import { useSitePricing } from "@/hooks/useSitePricing";
 
 interface Props {
   /** Optional section bg override. Default: white. */
@@ -65,12 +66,17 @@ const PREMIUM_FEATURES = [
 
 export default function EsaPricingMini({ className, premium = false }: Props) {
   const { withAttribution } = useAttributionParams();
+  // Admin-managed display prices (hydrates at runtime; falls back to config).
+  const { price: getPrice } = useSitePricing();
+  const startingFrom = getPrice("esa_subscription_annual", ESA_PRICE_LABELS.startingFrom);
 
   // ── Premium variant — taller, homepage-aligned cards ──────────────────────
   if (premium) {
     const renderCard = (kind: "oneTime" | "annual") => {
       const highlight = kind === "annual";
-      const price = highlight ? ESA_PRICE_LABELS.subscription : ESA_PRICE_LABELS.oneTime;
+      const price = highlight
+        ? getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)
+        : getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime);
       const suffix = highlight ? ESA_PRICE_LABELS.subscriptionSuffix : ESA_PRICE_LABELS.oneTimeSuffix;
 
       return (
@@ -149,7 +155,7 @@ export default function EsaPricingMini({ className, premium = false }: Props) {
               ESA Letter Pricing
             </p>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-tight">
-              Clear, upfront pricing — <span className="text-orange-500">from {ESA_PRICE_LABELS.startingFrom}</span>
+              Clear, upfront pricing — <span className="text-orange-500">from {startingFrom}</span>
             </h2>
             <p className="text-gray-500 text-sm mt-2.5 max-w-xl mx-auto leading-snug">
               Pay by card, or choose Klarna at checkout — subject to eligibility and{" "}
@@ -192,7 +198,7 @@ export default function EsaPricingMini({ className, premium = false }: Props) {
             ESA Letter Pricing
           </p>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-tight">
-            Clear, upfront pricing — <span className="text-orange-500">from {ESA_PRICE_LABELS.startingFrom}</span>
+            Clear, upfront pricing — <span className="text-orange-500">from {startingFrom}</span>
           </h2>
           <p className="text-gray-500 text-sm mt-2.5 max-w-xl mx-auto leading-snug">
             Pay by card, or choose Klarna at checkout — subject to eligibility and{" "}
@@ -216,7 +222,7 @@ export default function EsaPricingMini({ className, premium = false }: Props) {
             </p>
             <div className="flex items-baseline gap-1.5 mb-1">
               <span className="text-4xl sm:text-5xl font-black text-gray-900 leading-none">
-                {ESA_PRICE_LABELS.oneTime}
+                {getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)}
               </span>
               <span className="text-sm text-gray-400">{ESA_PRICE_LABELS.oneTimeSuffix}</span>
             </div>
@@ -252,7 +258,7 @@ export default function EsaPricingMini({ className, premium = false }: Props) {
             </p>
             <div className="flex items-baseline gap-1.5 mb-1">
               <span className="text-4xl sm:text-5xl font-black text-gray-900 leading-none">
-                {ESA_PRICE_LABELS.subscription}
+                {getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)}
               </span>
               <span className="text-sm text-gray-400">{ESA_PRICE_LABELS.subscriptionSuffix}</span>
             </div>

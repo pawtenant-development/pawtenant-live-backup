@@ -1,47 +1,50 @@
 import { Link } from "react-router-dom";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
-
-const plans = [
-  {
-    name: "One-Time ESA Letter",
-    price: ESA_PRICE_LABELS.oneTime,
-    sub: "Delivered Within 24 Hours",
-    popular: false,
-    badge: null,
-    highlight: false,
-    isSubscription: false,
-    features: [
-      "Official ESA Letter from Licensed LMHP",
-      "Fair Housing Act (FHA) Compliant",
-      "Licensed Professional Signature & NPI",
-      "PDF Delivery via Email",
-      "Valid for 1 Year",
-      "Landlord Verification Support",
-    ],
-  },
-  {
-    name: "Annual Subscription",
-    price: ESA_PRICE_LABELS.subscription,
-    sub: "Per Year — Auto-Renews",
-    popular: true,
-    badge: "Best Value",
-    highlight: true,
-    isSubscription: true,
-    features: [
-      "Official ESA Letter from Licensed LMHP",
-      "Fair Housing Act (FHA) Compliant",
-      "Licensed Professional Signature & NPI",
-      "PDF Delivery via Email",
-      "Valid for 1 Year — Renews Automatically",
-      "Landlord Verification Support",
-      "Save $11 vs. one-time every year",
-    ],
-  },
-];
+import { useSitePricing } from "@/hooks/useSitePricing";
 
 export default function PricingSection() {
   const { withAttribution } = useAttributionParams();
+  // Admin-managed display prices (hydrates at runtime; falls back to config).
+  const { price: getPrice } = useSitePricing();
+
+  const plans = [
+    {
+      name: "One-Time ESA Letter",
+      price: getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime),
+      sub: "Delivered Within 24 Hours",
+      popular: false,
+      badge: null,
+      highlight: false,
+      isSubscription: false,
+      features: [
+        "Official ESA Letter from Licensed LMHP",
+        "Fair Housing Act (FHA) Compliant",
+        "Licensed Professional Signature & NPI",
+        "PDF Delivery via Email",
+        "Valid for 1 Year",
+        "Landlord Verification Support",
+      ],
+    },
+    {
+      name: "Annual Subscription",
+      price: getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription),
+      sub: "Per Year — Auto-Renews",
+      popular: true,
+      badge: "Best Value",
+      highlight: true,
+      isSubscription: true,
+      features: [
+        "Official ESA Letter from Licensed LMHP",
+        "Fair Housing Act (FHA) Compliant",
+        "Licensed Professional Signature & NPI",
+        "PDF Delivery via Email",
+        "Valid for 1 Year — Renews Automatically",
+        "Landlord Verification Support",
+        "Save $11 vs. one-time every year",
+      ],
+    },
+  ];
 
   return (
     <section id="pricing" className="py-12 sm:py-20 bg-orange-50">

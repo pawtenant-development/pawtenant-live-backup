@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
+import { useSitePricing } from "../../hooks/useSitePricing";
 
 const PAGE_PATH = "/how-to-get-psd-letter";
 const CANONICAL = `https://pawtenant.com${PAGE_PATH}`;
@@ -79,6 +80,8 @@ const pricingPlans = [
     name: "Standard",
     speed: "2–3 Business Days",
     price: "$100",
+    priceKey: "psd_standard",
+    priceSuffix: "",
     popular: false,
     features: [
       "Official PSD Letter from Licensed LMHP",
@@ -93,6 +96,8 @@ const pricingPlans = [
     name: "Priority",
     speed: "Within 24 Hours",
     price: "$120",
+    priceKey: "psd_priority",
+    priceSuffix: "",
     popular: true,
     features: [
       "Official PSD Letter from Licensed LMHP",
@@ -107,7 +112,9 @@ const pricingPlans = [
   {
     name: "Annual Subscription",
     speed: "Per Year — Auto-Renews",
-    price: "$99/yr",
+    price: "$99",
+    priceKey: "psd_annual",
+    priceSuffix: "/yr",
     popular: false,
     features: [
       "Official PSD Letter from Licensed LMHP",
@@ -166,6 +173,8 @@ const faqs = [
 
 export default function HowToGetPSDLetterPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  // Admin-managed display prices (hydrates at runtime; falls back to inline).
+  const { price: getPrice } = useSitePricing();
 
   return (
     <main>
@@ -530,7 +539,7 @@ export default function HowToGetPSDLetterPage() {
                   <h3 className="text-gray-900 font-bold text-base mb-1">{plan.name}</h3>
                   <p className="text-gray-400 text-xs mb-4">{plan.speed}</p>
                   <div className="flex items-end gap-1">
-                    <p className="text-4xl font-extrabold text-gray-900">{plan.price}</p>
+                    <p className="text-4xl font-extrabold text-gray-900">{getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}</p>
                     <p className="text-sm text-gray-400 mb-1">/ 1 dog</p>
                   </div>
                 </div>
