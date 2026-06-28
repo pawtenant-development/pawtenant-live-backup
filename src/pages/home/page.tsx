@@ -359,6 +359,21 @@ export default function Home() {
       <Suspense fallback={<SectionFallback />}>
         <LetterPreviewSection />
       </Suspense>
+
+      {/* AI assistant trust/validation card — placed directly below the
+          "A Professional, Landlord-Ready ESA Letter" section (LetterPreviewSection)
+          so it follows that proof block; never competes with the hero CTA. */}
+      <Suspense fallback={<SectionFallback />}>
+        <AIAssistantTrustCard
+          pageUrl="/"
+          topic="getting an ESA letter online for housing"
+          serviceType="general"
+          ctaHref={withAttribution("/assessment")}
+          ctaLabel="Start Evaluation"
+          className="bg-[#fafafa]"
+        />
+      </Suspense>
+
       <Suspense fallback={<SectionFallback />}>
         <TrustedLetters />
       </Suspense>
@@ -394,20 +409,6 @@ export default function Home() {
       {/* Compact resource link block — SEO crawl discovery, conversion-safe. */}
       <Suspense fallback={<SectionFallback />}>
         <ResourceLinksSection />
-      </Suspense>
-
-      {/* AI assistant trust/validation card — placed low on the page (after the
-          FAQ + resource-library cluster) and just before the final conversion
-          area, so it never competes with the hero or primary conversion CTA. */}
-      <Suspense fallback={<SectionFallback />}>
-        <AIAssistantTrustCard
-          pageUrl="/"
-          topic="getting an ESA letter online for housing"
-          serviceType="general"
-          ctaHref={withAttribution("/assessment")}
-          ctaLabel="Start Evaluation"
-          className="bg-[#fafafa]"
-        />
       </Suspense>
 
       {/* 10. Final CTA + contact + footer. */}
