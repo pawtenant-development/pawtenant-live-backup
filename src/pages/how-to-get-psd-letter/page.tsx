@@ -121,12 +121,12 @@ const pricingPlans = [
 ];
 
 const relatedLinks = [
-  { to: "/all-about-service-dogs", icon: "ri-service-line", title: "All About Service Dogs", desc: "Breeds, training, ADA rights, and certification explained." },
-  { to: "/how-to-get-esa-letter", icon: "ri-heart-line", title: "How to Get an ESA Letter", desc: "Step-by-step guide to qualifying for an ESA letter." },
-  { to: "/how-to-get-esa-letter-online", icon: "ri-computer-line", title: "Get an ESA Letter Online", desc: "The online ESA letter process with a licensed provider, step by step." },
-  { to: "/service-animal-vs-esa", icon: "ri-scales-line", title: "Service Animal vs. ESA", desc: "Full breakdown of legal differences and rights." },
-  { to: "/housing-rights-esa", icon: "ri-home-heart-line", title: "Housing Rights & ESA", desc: "What landlords can and cannot ask under the FHA." },
-  { to: "/travel-anxiety-esa-letter", icon: "ri-suitcase-line", title: "ESA Travel & Housing Support", desc: "Travel anxiety, crowds, and temporary stays — ESA vs PSD explained." },
+  { to: "/psychiatric-service-dog-letter-online", icon: "ri-computer-line", title: "PSD Letter Online", desc: "How the online psychiatric service dog evaluation and letter work." },
+  { to: "/psd-letter-requirements", icon: "ri-list-check-2", title: "PSD Letter Requirements", desc: "Qualifying disability, trained tasks, and licensed provider review." },
+  { to: "/psd-letter-for-apartments", icon: "ri-home-heart-line", title: "PSD Letter for Apartments", desc: "Using a PSD letter for a housing accommodation request." },
+  { to: "/esa-vs-psd-letter", icon: "ri-scales-3-line", title: "ESA vs PSD Letter", desc: "Which document fits your situation — a clear comparison." },
+  { to: "/can-a-landlord-deny-a-psd-letter", icon: "ri-scales-line", title: "Can a Landlord Deny a PSD Letter?", desc: "What a landlord can verify — and when they can't reject." },
+  { to: "/all-about-service-dogs", icon: "ri-service-line", title: "All About Service Dogs", desc: "Breeds, training, ADA rights, and how PSDs work." },
 ];
 
 const faqs = [

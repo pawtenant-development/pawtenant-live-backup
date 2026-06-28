@@ -204,6 +204,37 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "ESA letters for New York apartments, co-ops, and condos: how a licensed provider evaluation and a verifiable letter support your reasonable-accommodation request.",
   },
+  // ── PSD AEO content batch (PSD conversion + AI-answer pages) ──────────────────
+  "/psychiatric-service-dog-letter-online": {
+    title: "Psychiatric Service Dog Letter Online | Licensed Provider | PawTenant",
+    description:
+      "Get a psychiatric service dog (PSD) letter online through a licensed mental health provider evaluation. Learn who qualifies, how it differs from an ESA, and the secure online process.",
+  },
+  "/psd-letter-for-apartments": {
+    title: "PSD Letter for Apartments and Housing Requests | PawTenant",
+    description:
+      "How a psychiatric service dog (PSD) letter supports an apartment or housing request: what a landlord can ask, Fair Housing framing, and when an ESA letter fits better.",
+  },
+  "/psd-letter-requirements": {
+    title: "PSD Letter Requirements: What You Need to Know | PawTenant",
+    description:
+      "PSD letter requirements explained: a qualifying psychiatric disability, a task-trained dog, a licensed provider evaluation, and what documentation can and can't do.",
+  },
+  "/esa-vs-psd-letter": {
+    title: "ESA Letter vs PSD Letter: What's the Difference? | PawTenant",
+    description:
+      "ESA letter vs PSD letter compared: emotional support animal vs psychiatric service dog, what each covers for housing, the task-training rule, and how to choose.",
+  },
+  "/can-a-landlord-deny-a-psd-letter": {
+    title: "Can a Landlord Deny a PSD Letter? | PawTenant",
+    description:
+      "Can a landlord deny a psychiatric service dog letter? What a landlord can verify, the limited reasons a request can be denied, and the calm steps to take if it is.",
+  },
+  "/do-you-need-a-psd-letter-for-a-service-dog": {
+    title: "Do You Need a PSD Letter for a Psychiatric Service Dog? | PawTenant",
+    description:
+      "Do you need a PSD letter for a psychiatric service dog? Service dogs aren't certified by online registries, but documentation from a licensed provider can help in housing.",
+  },
   "/are-esa-letters-still-valid-after-hud-change": {
     title: "Are ESA Letters Still Valid After the 2026 HUD Change? | PawTenant",
     description:
@@ -321,6 +352,27 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     title: "Colorado Pet Rent and ESA Letters: What Renters Should Know",
     description:
       "How pet rent works in Colorado's Denver-area rental market, the state's assistance-animal protections, and when an approved ESA may not be charged pet fees.",
+  },
+  // ── PSD blog cluster ───────────────────────────────────────────────────────
+  "/blog/psychiatric-service-dog-letter-explained": {
+    title: "Psychiatric Service Dog Letters Explained: What They Are & When They Help",
+    description:
+      "A plain-English guide to psychiatric service dog (PSD) letters — what they are, who qualifies, how they differ from an ESA, and when the documentation actually helps.",
+  },
+  "/blog/psd-letter-vs-service-dog-certificate": {
+    title: "PSD Letter vs Service Dog Certificate: What's Actually Useful?",
+    description:
+      "PSD letter vs service dog certificate compared: why online certificates and registrations carry no legal weight, and what documentation from a licensed provider actually does.",
+  },
+  "/blog/psd-letter-for-anxiety": {
+    title: "Can You Get a PSD Letter for Anxiety?",
+    description:
+      "Can anxiety qualify for a psychiatric service dog letter? It can — but only if it rises to a disability level and your dog performs trained tasks. Here's how it works.",
+  },
+  "/blog/psychiatric-service-dog-housing-rights": {
+    title: "Psychiatric Service Dog Housing Rights: What Renters Should Know",
+    description:
+      "Psychiatric service dog housing rights explained for renters: Fair Housing Act protections, what a landlord can ask, no pet fees for assistance animals, and how to request.",
   },
   // ── Travel-anxiety / major-event ESA content cluster ───────────────────────
   "/travel-anxiety-esa-letter": {

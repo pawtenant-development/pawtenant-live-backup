@@ -105,6 +105,7 @@ export function BlogJsonLd({
   breadcrumbName,
   faqs,
   keywords,
+  articleSection = "Pet Rent & ESA Housing",
 }: {
   canonical: string;
   headline: string;
@@ -115,6 +116,9 @@ export function BlogJsonLd({
   breadcrumbName: string;
   faqs: BlogFaqItem[];
   keywords: string;
+  /** Schema articleSection. Defaults to the pet-rent cluster's value; PSD/other
+   *  clusters pass their own so BlogPosting.articleSection is accurate. */
+  articleSection?: string;
 }) {
   const graph: object[] = [
     {
@@ -129,7 +133,7 @@ export function BlogJsonLd({
       dateModified: dateModified ?? datePublished,
       author: { "@type": "Organization", name: "PawTenant", url: "https://pawtenant.com" },
       publisher: { "@type": "Organization", name: "PawTenant", url: "https://pawtenant.com" },
-      articleSection: "Pet Rent & ESA Housing",
+      articleSection,
       keywords,
     },
     {
@@ -302,6 +306,31 @@ export function BlogKeepReading({
               <span className="text-sm font-semibold text-gray-800">{r.label}</span>
             </Link>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── PSD legal disclaimer (for the psychiatric service dog blog cluster) ──── */
+export function PsdBlogLegalDisclaimer() {
+  return (
+    <section className="py-10 bg-white border-t border-gray-100">
+      <div className="max-w-3xl mx-auto px-5 sm:px-6">
+        <div className="flex items-start gap-3">
+          <i className="ri-information-line text-gray-400 text-lg mt-0.5"></i>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            <strong className="text-gray-600">Educational information, not legal or medical advice.</strong>{" "}
+            This article from the PawTenant Editorial Team explains how psychiatric service dog (PSD)
+            documentation works. A psychiatric service dog requires a qualifying psychiatric
+            disability and a dog individually trained to perform specific tasks for that disability —
+            whether that applies to you is decided by a licensed mental health provider after a real
+            evaluation. PawTenant connects you with licensed providers; it does not train, certify,
+            or register dogs, sell &ldquo;service dog registrations,&rdquo; claim any government
+            affiliation, or guarantee approval, landlord acceptance, airline access, or any specific
+            outcome. Laws and housing-provider rules vary by location — for your situation, consult a
+            qualified professional or your state agency.
+          </p>
         </div>
       </div>
     </section>

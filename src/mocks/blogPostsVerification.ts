@@ -534,5 +534,94 @@ export const blogPostsVerification = [
     relatedSlugs: ["how-esa-letter-verification-works-pawtenant", "why-pawtenant-best-verifiable-esa-letter-service", "landlord-verification-esa-letter-guide-2026"],
     ctaText: "Learn how PawTenant's unique verification system protects your housing rights with instant landlord-verifiable ESA letters.",
     ctaLink: "/esa-letter-verification"
+  },
+
+  // ── PSD blog cluster ───────────────────────────────────────────────────────
+  // Listing cards for the standalone PSD articles. The static routes in
+  // router/config.tsx outrank /blog/:slug, so clicking a card renders the
+  // dedicated page — the single section below is a summary fallback only.
+  {
+    slug: "psychiatric-service-dog-letter-explained",
+    title: "Psychiatric Service Dog Letters Explained: What They Are and When They Help",
+    metaTitle: "Psychiatric Service Dog Letters Explained: What They Are & When They Help",
+    metaDesc: "A plain-English guide to psychiatric service dog (PSD) letters — what they are, who qualifies, how they differ from an ESA, and when the documentation actually helps.",
+    category: "Psychiatric Service Dogs",
+    date: "June 28, 2026",
+    readTime: "9 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/psd/man-working-holding-dog.jpg",
+    excerpt: "A psychiatric service dog letter documents a licensed provider's finding that you have a qualifying disability and a task-trained dog. It does not train, certify, or register your dog. Here is what a PSD letter is, who qualifies, and when it actually helps.",
+    sections: [
+      {
+        heading: "What a PSD letter is — and isn't",
+        content: "A psychiatric service dog (PSD) letter is a signed letter from a licensed mental health professional confirming a qualifying psychiatric disability and a dog trained to perform specific tasks for it. It documents clinical need — it does not make a dog 'official,' and no government registry for service dogs exists. The deciding line between a PSD and an emotional support animal is task training: comfort points to an ESA, trained tasks point to a PSD. A PSD letter helps most with housing reasonable-accommodation requests, and approval is never guaranteed.",
+      },
+    ],
+    tags: ["psychiatric service dog letter", "PSD letter explained", "PSD vs ESA", "service dog documentation"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "psd-letter-vs-service-dog-certificate",
+    title: "PSD Letter vs Service Dog Certificate: What's Actually Useful?",
+    metaTitle: "PSD Letter vs Service Dog Certificate: What's Actually Useful?",
+    metaDesc: "PSD letter vs service dog certificate compared: why online certificates and registrations carry no legal weight, and what documentation from a licensed provider actually does.",
+    category: "Psychiatric Service Dogs",
+    date: "June 28, 2026",
+    readTime: "8 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/person-paperwork-with-dog.jpg",
+    excerpt: "Online service dog 'certificates' and 'registrations' carry no legal weight — there is no official service dog registry. A PSD letter from a licensed provider documents a real, verifiable disability-related need. Here is the difference and why landlords treat them differently.",
+    sections: [
+      {
+        heading: "Certificate vs licensed-provider letter",
+        content: "A service dog certificate or registration sold online involves no clinician, no evaluation, and grants no rights — and a landlord can reject documentation that can't be verified. A PSD letter is signed by a mental health professional licensed in your state after a real evaluation, names their license details, and is verifiable. What makes a dog a service dog is task training tied to a disability, not paperwork. Skip the certificate; invest in real task training and, if you qualify, a verifiable letter from a licensed provider.",
+      },
+    ],
+    tags: ["PSD letter vs service dog certificate", "service dog registration", "fake service dog certificate", "psychiatric service dog letter"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "psd-letter-for-anxiety",
+    title: "Can You Get a PSD Letter for Anxiety?",
+    metaTitle: "Can You Get a PSD Letter for Anxiety?",
+    metaDesc: "Can anxiety qualify for a psychiatric service dog letter? It can — but only if it rises to a disability level and your dog performs trained tasks. Here's how it works.",
+    category: "Psychiatric Service Dogs",
+    date: "June 28, 2026",
+    readTime: "8 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/owner-with-dog-laptop.jpg",
+    excerpt: "Anxiety can support a psychiatric service dog letter — but not automatically. Two things must be true: the anxiety must rise to a disability that substantially limits a major life activity, and the dog must be trained to perform specific tasks for it. A licensed provider decides.",
+    sections: [
+      {
+        heading: "When anxiety qualifies for a PSD",
+        content: "Having anxiety isn't enough on its own. For a psychiatric service dog, the anxiety must rise to the level of a disability that substantially limits a major life activity, and the dog must be trained to perform a specific task — like a trained calming response to a panic attack or deep-pressure grounding. Comfort by presence alone is an emotional support animal function, not a service-dog task. A licensed provider makes the determination; if a PSD doesn't fit, an ESA letter may, and you're refunded if you don't qualify for either.",
+      },
+    ],
+    tags: ["PSD letter for anxiety", "psychiatric service dog for anxiety", "service dog for anxiety", "anxiety service dog"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "psychiatric-service-dog-housing-rights",
+    title: "Psychiatric Service Dog Housing Rights: What Renters Should Know",
+    metaTitle: "Psychiatric Service Dog Housing Rights: What Renters Should Know",
+    metaDesc: "Psychiatric service dog housing rights explained for renters: Fair Housing Act protections, what a landlord can ask, no pet fees for assistance animals, and how to request.",
+    category: "Psychiatric Service Dogs",
+    date: "June 28, 2026",
+    readTime: "9 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
+    excerpt: "Under the Fair Housing Act, a psychiatric service dog can be requested as a reasonable accommodation, even in no-pet housing. A landlord must consider it, generally can't charge pet fees, and can't deny by breed or weight — but 'must consider' is not 'must accept.'",
+    sections: [
+      {
+        heading: "PSD housing rights under the Fair Housing Act",
+        content: "For housing, a psychiatric service dog is treated as an assistance animal under the Fair Housing Act. You can request it as a reasonable accommodation even where a no-pets policy, breed ban, or weight limit applies, and pet rent, deposits, and fees generally don't apply to an approved assistance animal. A landlord may ask whether the dog is needed for a disability and what task it performs, and may request documentation that reasonably supports a non-obvious disability — but not your diagnosis or medical records. They must consider a valid request, though denials are possible for limited, individualized reasons. A verifiable PSD letter from a licensed provider strengthens the request; no service can guarantee approval.",
+      },
+    ],
+    tags: ["psychiatric service dog housing rights", "PSD housing rights", "service dog Fair Housing Act", "psychiatric service dog apartment"],
+    relatedSlugs: [],
   }
 ];

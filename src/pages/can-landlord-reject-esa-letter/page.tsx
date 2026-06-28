@@ -441,6 +441,7 @@ export default function CanLandlordRejectESALetterPage() {
               { to: "/how-to-verify-esa-letter", title: "How to verify an ESA letter", desc: "Make sure your letter is real and verifiable." },
               { to: "/landlord-esa-documentation-checklist", title: "Landlord documentation checklist", desc: "What a landlord can and can't ask to review." },
               { to: "/landlord-denied-esa-letter", title: "Landlord denied your ESA?", desc: "Your rights and denial support, by state." },
+              { to: "/can-a-landlord-deny-a-psd-letter", title: "Can a landlord deny a PSD letter?", desc: "The same question for a psychiatric service dog." },
             ]}
           />
         </div>

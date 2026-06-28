@@ -33,6 +33,12 @@
 
 - [Psychiatric service dog letter overview](https://pawtenant.com/all-about-service-dogs): PSD letter vs ESA letter
 - [How to get a PSD letter](https://pawtenant.com/how-to-get-psd-letter): the PSD letter process
+- [Psychiatric service dog letter online](https://pawtenant.com/psychiatric-service-dog-letter-online): how an online PSD evaluation works, who qualifies (a qualifying psychiatric disability + a task-trained dog), and how a PSD differs from an ESA — a licensed provider decides eligibility; no registration/certificate
+- [PSD letter for apartments and housing](https://pawtenant.com/psd-letter-for-apartments): using a psychiatric service dog letter for a Fair Housing Act reasonable-accommodation request, what a landlord can ask, no pet fees for assistance animals, and when an ESA fits better
+- [PSD letter requirements](https://pawtenant.com/psd-letter-requirements): the requirements — a qualifying disability, a dog trained to perform specific tasks, and a licensed provider evaluation; what a PSD letter can and cannot do
+- [ESA vs PSD letter](https://pawtenant.com/esa-vs-psd-letter): emotional support animal vs psychiatric service dog compared — task training is the deciding line; choose ESA for comfort/housing, PSD for a task-trained service dog
+- [Can a landlord deny a PSD letter?](https://pawtenant.com/can-a-landlord-deny-a-psd-letter): a landlord must consider a valid request and can verify documentation, but can only deny for limited individualized reasons (direct threat, substantial damage, undue burden, unverifiable documentation) — not breed, weight, or a no-pets policy
+- [Do you need a PSD letter for a service dog?](https://pawtenant.com/do-you-need-a-psd-letter-for-a-service-dog): service dogs are not certified or registered by any official body, but documentation from a licensed provider helps in housing; what makes a dog a service dog is task training, not paperwork
 - [Start a PSD assessment](https://pawtenant.com/psd-assessment): short questionnaire reviewed by a licensed provider
 - [Service animal vs ESA vs therapy dog](https://pawtenant.com/service-animal-vs-esa): legal differences explained
 
@@ -125,6 +131,10 @@
 - [Texas pet rent and ESA letters](https://pawtenant.com/blog/texas-pet-rent-and-esa-letters): pet rent in Texas apartments and large corporate-managed buildings, and when an approved ESA may not be charged pet fees
 - [Washington pet rent and ESA letters](https://pawtenant.com/blog/washington-pet-rent-and-esa-letters): pet rent in the Seattle-area market, Washington's assistance-animal protections, and when an approved ESA may not be charged pet fees
 - [Colorado pet rent and ESA letters](https://pawtenant.com/blog/colorado-pet-rent-and-esa-letters): pet rent in Colorado's Denver-area market, the state's assistance-animal protections, and when an approved ESA may not be charged pet fees
+- [Psychiatric service dog letters explained](https://pawtenant.com/blog/psychiatric-service-dog-letter-explained): what a PSD letter is, who qualifies (a qualifying disability + a task-trained dog), how it differs from an ESA, and when it helps — it documents clinical need and does not register or certify a dog
+- [PSD letter vs service dog certificate](https://pawtenant.com/blog/psd-letter-vs-service-dog-certificate): why online service dog certificates and registrations carry no legal weight (there is no official registry), and what a verifiable letter from a licensed provider actually does
+- [Can you get a PSD letter for anxiety?](https://pawtenant.com/blog/psd-letter-for-anxiety): anxiety can qualify only if it rises to a disability that substantially limits a major life activity and the dog performs trained tasks; otherwise an ESA may fit — a licensed provider decides
+- [Psychiatric service dog housing rights](https://pawtenant.com/blog/psychiatric-service-dog-housing-rights): Fair Housing Act protections for renters, what a landlord can ask, no pet fees for assistance animals, and how to request — landlords must consider a valid request but are not required to accept
 - [FAQs](https://pawtenant.com/faqs): common ESA questions answered
 - [College / dorm ESA policy](https://pawtenant.com/college-pet-policy): ESA letters for university housing
 

@@ -125,6 +125,18 @@ const BlogFloridaPetRentEsaLettersPage = lazy(() => import("../pages/blog-florid
 const BlogTexasPetRentEsaLettersPage = lazy(() => import("../pages/blog-texas-pet-rent-and-esa-letters/page"));
 const BlogWashingtonPetRentEsaLettersPage = lazy(() => import("../pages/blog-washington-pet-rent-and-esa-letters/page"));
 const BlogColoradoPetRentEsaLettersPage = lazy(() => import("../pages/blog-colorado-pet-rent-and-esa-letters/page"));
+// PSD AEO content batch — PSD conversion + AI-answer pages (indexable, in sitemap).
+const PsychiatricServiceDogLetterOnlinePage = lazy(() => import("../pages/psychiatric-service-dog-letter-online/page"));
+const PsdLetterForApartmentsPage = lazy(() => import("../pages/psd-letter-for-apartments/page"));
+const PsdLetterRequirementsPage = lazy(() => import("../pages/psd-letter-requirements/page"));
+const EsaVsPsdLetterPage = lazy(() => import("../pages/esa-vs-psd-letter/page"));
+const CanALandlordDenyAPsdLetterPage = lazy(() => import("../pages/can-a-landlord-deny-a-psd-letter/page"));
+const DoYouNeedAPsdLetterForAServiceDogPage = lazy(() => import("../pages/do-you-need-a-psd-letter-for-a-service-dog/page"));
+// PSD blog cluster (indexable, in sitemap).
+const BlogPsychiatricServiceDogLetterExplainedPage = lazy(() => import("../pages/blog-psychiatric-service-dog-letter-explained/page"));
+const BlogPsdLetterVsServiceDogCertificatePage = lazy(() => import("../pages/blog-psd-letter-vs-service-dog-certificate/page"));
+const BlogPsdLetterForAnxietyPage = lazy(() => import("../pages/blog-psd-letter-for-anxiety/page"));
+const BlogPsychiatricServiceDogHousingRightsPage = lazy(() => import("../pages/blog-psychiatric-service-dog-housing-rights/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -198,6 +210,13 @@ const routes: RouteObject[] = [
   { path: "/what-makes-esa-letter-valid", element: <P C={WhatMakesESALetterValidPage} /> },
   { path: "/landlord-says-esa-letter-is-fake", element: <P C={LandlordSaysESALetterIsFakePage} /> },
   { path: "/esa-letter-verification-id", element: <P C={ESALetterVerificationIdPage} /> },
+  // PSD AEO content batch — PSD conversion + AI-answer pages (informational, indexable).
+  { path: "/psychiatric-service-dog-letter-online", element: <P C={PsychiatricServiceDogLetterOnlinePage} /> },
+  { path: "/psd-letter-for-apartments", element: <P C={PsdLetterForApartmentsPage} /> },
+  { path: "/psd-letter-requirements", element: <P C={PsdLetterRequirementsPage} /> },
+  { path: "/esa-vs-psd-letter", element: <P C={EsaVsPsdLetterPage} /> },
+  { path: "/can-a-landlord-deny-a-psd-letter", element: <P C={CanALandlordDenyAPsdLetterPage} /> },
+  { path: "/do-you-need-a-psd-letter-for-a-service-dog", element: <P C={DoYouNeedAPsdLetterForAServiceDogPage} /> },
   // ESA housing SEO batch (informational, indexable).
   { path: "/esa-letter-for-apartments", element: <P C={ESALetterForApartmentsPage} /> },
   { path: "/esa-accommodation-request-letter", element: <P C={ESAAccommodationRequestLetterPage} /> },
@@ -246,6 +265,10 @@ const routes: RouteObject[] = [
   { path: "/blog/texas-pet-rent-and-esa-letters", element: <P C={BlogTexasPetRentEsaLettersPage} /> },
   { path: "/blog/washington-pet-rent-and-esa-letters", element: <P C={BlogWashingtonPetRentEsaLettersPage} /> },
   { path: "/blog/colorado-pet-rent-and-esa-letters", element: <P C={BlogColoradoPetRentEsaLettersPage} /> },
+  { path: "/blog/psychiatric-service-dog-letter-explained", element: <P C={BlogPsychiatricServiceDogLetterExplainedPage} /> },
+  { path: "/blog/psd-letter-vs-service-dog-certificate", element: <P C={BlogPsdLetterVsServiceDogCertificatePage} /> },
+  { path: "/blog/psd-letter-for-anxiety", element: <P C={BlogPsdLetterForAnxietyPage} /> },
+  { path: "/blog/psychiatric-service-dog-housing-rights", element: <P C={BlogPsychiatricServiceDogHousingRightsPage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },

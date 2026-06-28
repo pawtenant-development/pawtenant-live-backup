@@ -470,10 +470,16 @@ export function PsdCrossLink() {
               <i className="ri-arrow-right-line"></i> Start PSD assessment
             </Link>
             <Link
-              to="/all-about-service-dogs"
+              to="/esa-vs-psd-letter"
               className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-gray-600 hover:text-[#4A8472]"
             >
-              PSD vs ESA explained
+              ESA vs PSD letter
+            </Link>
+            <Link
+              to="/psychiatric-service-dog-letter-online"
+              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-gray-600 hover:text-[#4A8472]"
+            >
+              PSD letter online
             </Link>
           </div>
         </div>
