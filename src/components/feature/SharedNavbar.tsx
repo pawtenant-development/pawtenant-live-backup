@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
+import { SeasonalLogoFlag, SeasonalApplyAccent, useSeasonalActive } from "./SeasonalPromoSkin";
 
 interface DropdownItem {
   label: string;
@@ -118,6 +119,7 @@ export default function SharedNavbar() {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
+  const seasonal = useSeasonalActive(); // Independence Day Apply-Now accent
   const applyRef = useRef<HTMLDivElement>(null);
   const applyCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -208,6 +210,11 @@ export default function SharedNavbar() {
                 className={`h-10 sm:h-14 w-auto object-contain transition-all ${!scrolled && isHome ? "brightness-0 invert" : ""}`}
               />
             </picture>
+            {/* Seasonal Independence Day flag accent — gated + date-bounded +
+                route-excluded inside the component; zero-width so it never
+                shifts the navbar layout. Remove with the rest of the skin
+                (see src/config/seasonalPromo.ts). */}
+            <SeasonalLogoFlag />
           </Link>
 
           {/* Desktop Nav */}
@@ -308,10 +315,14 @@ export default function SharedNavbar() {
             >
               <button
                 type="button"
-                className="whitespace-nowrap flex items-center gap-1.5 px-5 py-2 bg-orange-500 text-white text-sm font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
+                className={`whitespace-nowrap flex items-center gap-1.5 px-5 py-2 bg-orange-500 text-white text-sm font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer ${seasonal ? "relative overflow-hidden ring-1 ring-amber-300/50" : ""}`}
               >
-                Apply Now
-                <i className={`ri-arrow-down-s-line text-xs transition-transform duration-200 ${applyOpen ? "rotate-180" : ""}`}></i>
+                {seasonal && <SeasonalApplyAccent />}
+                <span className="relative z-10 inline-flex items-center gap-1.5">
+                  {seasonal && <i className="ri-star-fill text-[10px] text-amber-200" aria-hidden="true"></i>}
+                  Apply Now
+                  <i className={`ri-arrow-down-s-line text-xs transition-transform duration-200 ${applyOpen ? "rotate-180" : ""}`}></i>
+                </span>
               </button>
 
               {applyOpen && (
@@ -363,10 +374,13 @@ export default function SharedNavbar() {
           <div className="lg:hidden flex items-center gap-2">
             <Link
               to={withAttribution("/assessment")}
-              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition-colors cursor-pointer"
+              className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition-colors cursor-pointer ${seasonal ? "relative overflow-hidden ring-1 ring-amber-300/50" : ""}`}
             >
-              <i className="ri-heart-line text-xs"></i>
-              Apply Now
+              {seasonal && <SeasonalApplyAccent />}
+              <span className="relative z-10 inline-flex items-center gap-1.5">
+                <i className={`${seasonal ? "ri-star-fill text-amber-200" : "ri-heart-line"} text-xs`}></i>
+                Apply Now
+              </span>
             </Link>
             <button
               className="w-9 h-9 flex items-center justify-center rounded-lg cursor-pointer transition-colors hover:bg-black/5"

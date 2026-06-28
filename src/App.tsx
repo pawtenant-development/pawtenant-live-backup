@@ -49,6 +49,18 @@ const FacebookDiscountPopup = lazy(
   () => import("./components/feature/FacebookDiscountPopup"),
 );
 
+// Seasonal Independence Day skin: the homepage promo "event capsule" lives
+// INSIDE the homepage hero (HeroSection.tsx) and the tilted logo flag +
+// Apply-Now accent live in SharedNavbar. SeasonalPromoBar (below) shows the
+// same capsule under the navbar on OTHER public pages (it no-ops on the
+// homepage + excluded/internal routes). Disable everything via enabled:false
+// in src/config/seasonalPromo.ts.
+const SeasonalPromoBar = lazy(() =>
+  import("./components/feature/SeasonalPromoSkin").then((m) => ({
+    default: m.SeasonalPromoBar,
+  })),
+);
+
 // PageSpeed (mirror of TEST f729ee6): Supabase-backed, non-conversion-critical
 // services (visitor session + heartbeat, structured page_view, auth recovery
 // subscription) live in this lazy chunk so the Supabase client (~35 KB gzip)
@@ -419,6 +431,12 @@ function App() {
                 pages only; route-excludes sensitive flows internally. */}
             <Suspense fallback={null}>
               <FacebookDiscountPopup />
+            </Suspense>
+            {/* Seasonal Independence Day capsule on non-homepage public pages
+                (under the navbar, scrolls away). No-ops on the homepage and
+                excluded/internal routes. See src/config/seasonalPromo.ts. */}
+            <Suspense fallback={null}>
+              <SeasonalPromoBar />
             </Suspense>
             {/* Phase 1 mobile-first cleanup (2026-05-19):
                 - Removed USResidentsBanner (intrusive bottom black "USA only" banner).
