@@ -6,6 +6,7 @@ import MediaTrustBar from "./components/MediaTrustBar";
 import StepsSection from "./components/StepsSection";
 import JourneyConnector from "./components/JourneyConnector";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 /*
  * Section order (2026-05-24): decision-journey reorder.
@@ -76,6 +77,11 @@ const CTASection = lazy(() => import("./components/CTASection"));
 // guides. Below the fold, lazy; keeps the primary conversion CTA dominant.
 const ResourceLinksSection = lazy(() => import("./components/ResourceLinksSection"));
 const ContactSection = lazy(() => import("./components/ContactSection"));
+// AI assistant trust/validation card — lets visitors ask ChatGPT/Claude/
+// Perplexity to review this page. Below the fold, lazy; conversion-safe.
+const AIAssistantTrustCard = lazy(
+  () => import("../../components/feature/AIAssistantTrustCard"),
+);
 const SharedFooter = lazy(
   () => import("../../components/feature/SharedFooter"),
 );
@@ -227,6 +233,7 @@ export default function Home() {
   // pattern (commit 4d8d584). rAF×2 fires right after the hero paints; the
   // 250ms setTimeout is a fallback if rAF is throttled. No content is removed —
   // every section still renders, just a beat later, below the fold.
+  const { withAttribution } = useAttributionParams();
   const [showBelow, setShowBelow] = useState(false);
   useEffect(() => {
     let raf1 = 0;
@@ -387,6 +394,20 @@ export default function Home() {
       {/* Compact resource link block — SEO crawl discovery, conversion-safe. */}
       <Suspense fallback={<SectionFallback />}>
         <ResourceLinksSection />
+      </Suspense>
+
+      {/* AI assistant trust/validation card — placed low on the page (after the
+          FAQ + resource-library cluster) and just before the final conversion
+          area, so it never competes with the hero or primary conversion CTA. */}
+      <Suspense fallback={<SectionFallback />}>
+        <AIAssistantTrustCard
+          pageUrl="/"
+          topic="getting an ESA letter online for housing"
+          serviceType="general"
+          ctaHref={withAttribution("/assessment")}
+          ctaLabel="Start Evaluation"
+          className="bg-[#fafafa]"
+        />
       </Suspense>
 
       {/* 10. Final CTA + contact + footer. */}

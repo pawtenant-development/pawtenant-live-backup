@@ -4,6 +4,7 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import PsdPricingMini from "../../components/feature/PsdPricingMini";
 import EsaVsPsdCard from "../../components/feature/EsaVsPsdCard";
+import AIAssistantTrustCard from "../../components/feature/AIAssistantTrustCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   AIAnswerBox,
@@ -356,6 +357,16 @@ export default function PsychiatricServiceDogLetterOnlinePage() {
           />
         </div>
       </section>
+
+      {/* AI ASSISTANT TRUST CARD */}
+      <AIAssistantTrustCard
+        pageUrl="/psychiatric-service-dog-letter-online"
+        topic="psychiatric service dog letters"
+        serviceType="psd"
+        ctaHref={withAttribution("/psd-assessment")}
+        ctaLabel="Start PSD Evaluation"
+        className="bg-white border-t border-gray-100"
+      />
 
       {/* CTA */}
       <section className="py-14 sm:py-16 bg-white border-t border-gray-100">

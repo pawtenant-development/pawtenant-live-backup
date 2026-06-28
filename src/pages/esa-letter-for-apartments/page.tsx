@@ -6,6 +6,7 @@ import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA"
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
 import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
+import AIAssistantTrustCard from "../../components/feature/AIAssistantTrustCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   AIAnswerBox,
@@ -498,6 +499,16 @@ export default function ESALetterForApartmentsPage() {
           />
         </div>
       </section>
+
+      {/* AI ASSISTANT TRUST CARD */}
+      <AIAssistantTrustCard
+        pageUrl="/esa-letter-for-apartments"
+        topic="ESA letters for apartments"
+        serviceType="esa"
+        ctaHref={withAttribution("/assessment")}
+        ctaLabel="Start ESA Evaluation"
+        className="bg-white border-t border-gray-100"
+      />
 
       {/* CTA */}
       <section className="py-14 sm:py-16 bg-white border-t border-gray-100">

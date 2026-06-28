@@ -3,6 +3,7 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import PsdPricingMini from "../../components/feature/PsdPricingMini";
+import AIAssistantTrustCard from "../../components/feature/AIAssistantTrustCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   AIAnswerBox,
@@ -300,6 +301,16 @@ export default function PsdLetterForApartmentsPage() {
           />
         </div>
       </section>
+
+      {/* AI ASSISTANT TRUST CARD */}
+      <AIAssistantTrustCard
+        pageUrl="/psd-letter-for-apartments"
+        topic="PSD letters for apartments"
+        serviceType="psd"
+        ctaHref={withAttribution("/psd-assessment")}
+        ctaLabel="Start PSD Evaluation"
+        className="bg-white border-t border-gray-100"
+      />
 
       {/* CTA */}
       <section className="py-14 sm:py-16 bg-white border-t border-gray-100">

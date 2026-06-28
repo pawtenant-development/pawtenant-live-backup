@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
+import AIAssistantTrustCard from "../../components/feature/AIAssistantTrustCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
   AIAnswerBox,
@@ -321,6 +322,18 @@ export default function EsaVsPsdLetterPage() {
           />
         </div>
       </section>
+
+      {/* AI ASSISTANT TRUST CARD */}
+      <AIAssistantTrustCard
+        pageUrl="/esa-vs-psd-letter"
+        topic="the difference between an ESA letter and a PSD letter"
+        serviceType="comparison"
+        ctaHref={withAttribution("/assessment")}
+        ctaLabel="Start ESA Evaluation"
+        secondaryCtaHref={withAttribution("/psd-assessment")}
+        secondaryCtaLabel="Start PSD Evaluation"
+        className="bg-white border-t border-gray-100"
+      />
 
       {/* CTA */}
       <section className="py-14 sm:py-16 bg-white border-t border-gray-100">
