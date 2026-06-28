@@ -4,35 +4,43 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 
+// `pos` sets each image's object-position so the dog's face/body stays centered
+// inside the card box (portrait source photos otherwise crop awkwardly).
 const dogBreeds = [
   {
     name: "Labrador Retriever",
     image: "/assets/breeds/labrador-retriever.jpg",
+    pos: "center 18%",
     desc: "Labrador Retrievers are among the most popular service dogs due to their gentle nature and intelligence. Their friendly disposition makes them excellent guides for the blind, hearing aids, and emotional support roles.",
   },
   {
     name: "Golden Retriever",
     image: "/assets/breeds/golden-retriever.jpg",
+    pos: "center 28%",
     desc: "Golden Retrievers are known for their patience, trainability, and gentle temperament, making them ideal candidates for service work. Their calm nature and ability to comfort make them excellent emotional support companions.",
   },
   {
     name: "German Shepherd",
     image: "/assets/breeds/german-shepherd.jpg",
+    pos: "center 22%",
     desc: "German Shepherds combine a high level of intelligence, ability, and trainability. They are frequently used as service dogs for a wide range of disabilities. Their protective instincts can also comfort those with anxiety or PTSD.",
   },
   {
     name: "Poodle",
     image: "/assets/breeds/poodle.jpg",
+    pos: "center",
     desc: "Particularly Standard Poodles, are well-known for their sharp intelligence and ability to learn quickly. These qualities make them top-tier candidates for service dog roles, and their hypoallergenic quality also makes them accessible for those with allergies.",
   },
   {
     name: "Border Collie",
     image: "/assets/breeds/border-collie.jpg",
+    pos: "center 38%",
     desc: "Border Collies possess extraordinary intelligence, agility, and ability to focus. These qualities enable them to be excellent service dog candidates for those requiring high-precision assistance, such as mobility support and emotional grounding.",
   },
   {
     name: "Bernese Mountain Dog",
     image: "/assets/breeds/bernese-mountain-dog.jpg",
+    pos: "center",
     desc: "Bernese Mountain Dogs are very calm in nature and gentle, combined with their large size and strength, making them incredible service dogs. Their calm temperament is well-suited for emotional support and therapy work.",
   },
 ];
@@ -191,11 +199,16 @@ export default function ServiceDogsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {dogBreeds.map((breed) => (
               <div key={breed.name} className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-                <div className="h-48">
+                <div className="aspect-[4/3] overflow-hidden bg-gray-100">
                   <img
                     src={breed.image}
-                    alt={breed.name}
-                    className="w-full h-full object-cover object-top"
+                    alt={`${breed.name} service dog`}
+                    width={1200}
+                    height={896}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                    style={{ objectPosition: breed.pos }}
                   />
                 </div>
                 <div className="p-6">
