@@ -7,8 +7,13 @@
  * option — then nudges them into the right evaluation flow.
  *
  * Lightweight: pure React + Tailwind + small inline-SVG brand marks (no logo
- * packages, no external images, no new deps). Click tracking is fire-and-forget
- * via the existing trackCtaClick helper (never throws, never blocks).
+ * packages, no external images, no new deps).
+ *
+ * Analytics: each AI button fires a dedicated `ai_assistant_prompt_click` event
+ * via the existing trackEvent helper (fire-and-forget; never throws or blocks).
+ * Params: assistant, page_path, service_type, prompt_type (prefilled_link |
+ * copy_prompt), destination_host, cta_location, plus clipboard_status for
+ * Gemini. The Start Evaluation CTAs keep their existing cta_click event.
  *
  * Prompts always use the CLEAN canonical pawtenant.com URL (never UTM params)
  * so the assistant fetches the real public page.
@@ -32,10 +37,16 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { trackCtaClick } from "@/lib/trackEvent";
+import { trackCtaClick, trackEvent } from "@/lib/trackEvent";
 
 /** Canonical, non-www origin — matches seoConfig. Used inside AI prompts only. */
 const CANONICAL_ORIGIN = "https://pawtenant.com";
+
+/** Stable location label sent with every AI-assistant click event. */
+const CTA_LOCATION = "ai_assistant_trust_card";
+
+/** Dedicated analytics event for AI assistant button clicks. */
+const AI_CLICK_EVENT = "ai_assistant_prompt_click";
 
 export type AIAssistantServiceType = "esa" | "psd" | "comparison" | "general";
 
@@ -162,6 +173,8 @@ interface AIPlatform {
   chipBg: string;
   /** "link" = open a prefilled URL; "copy" = copy prompt then open a blank chat. */
   mode: AIMode;
+  /** Destination host, sent with analytics (e.g. "chatgpt.com"). */
+  host: string;
   /** For mode === "link": builds the prefilled-prompt URL. */
   build?: (q: string) => string;
   /** For mode === "copy": the plain destination opened in a new tab. */
@@ -181,6 +194,7 @@ const PLATFORMS: AIPlatform[] = [
     accent: "#0D8F6F",
     chipBg: "#E6F5F0",
     mode: "link",
+    host: "chatgpt.com",
     build: (q) => `https://chatgpt.com/?q=${q}`,
   },
   {
@@ -190,6 +204,7 @@ const PLATFORMS: AIPlatform[] = [
     accent: "#C8643F",
     chipBg: "#FBEDE6",
     mode: "link",
+    host: "claude.ai",
     build: (q) => `https://claude.ai/new?q=${q}`,
   },
   {
@@ -199,6 +214,7 @@ const PLATFORMS: AIPlatform[] = [
     accent: "#1F7A86",
     chipBg: "#E4F0F2",
     mode: "link",
+    host: "www.perplexity.ai",
     build: (q) => `https://www.perplexity.ai/?q=${q}`,
   },
   {
@@ -208,6 +224,7 @@ const PLATFORMS: AIPlatform[] = [
     accent: "#3B6CF6",
     chipBg: "#E8F0FE",
     mode: "copy",
+    host: "gemini.google.com",
     openUrl: "https://gemini.google.com/app",
   },
 ];
@@ -231,6 +248,47 @@ export default function AIAssistantTrustCard({
   // Transient "Prompt copied" hint shown after the Gemini button is used.
   const [copiedHint, setCopiedHint] = useState(false);
 
+  /** Best-effort current path for analytics; falls back to the canonical prop. */
+  function currentPath(): string {
+    try {
+      if (typeof window !== "undefined" && window.location && window.location.pathname) {
+        return window.location.pathname;
+      }
+    } catch {
+      /* fall through */
+    }
+    return pageUrl;
+  }
+
+  /**
+   * Dedicated per-assistant click event. One event name, queryable by
+   * `assistant` + `page_path` so we can count clicks by assistant and page.
+   * Fire-and-forget — never throws or blocks the button.
+   */
+  function trackAssistantClick(
+    assistant: string,
+    promptType: "prefilled_link" | "copy_prompt",
+    destinationHost: string,
+    clipboardStatus?: "copied" | "fallback" | "failed",
+  ) {
+    try {
+      trackEvent(AI_CLICK_EVENT, {
+        assistant,
+        page_path: currentPath(),
+        service_type: serviceType,
+        prompt_type: promptType,
+        destination_host: destinationHost,
+        cta_location: CTA_LOCATION,
+        topic,
+        canonical_url: canonicalUrl,
+        ...(clipboardStatus ? { clipboard_status: clipboardStatus } : {}),
+      });
+    } catch {
+      /* ignore — analytics must never break the button */
+    }
+  }
+
+  /** CTA (Start Evaluation) tracking — kept as the existing cta_click event. */
   function handleAiClick(key: string) {
     // Fire-and-forget; trackCtaClick never throws or blocks navigation.
     try {
@@ -273,24 +331,33 @@ export default function AIAssistantTrustCard({
    * Gemini chat. The window is opened synchronously (inside the click gesture)
    * so a popup blocker never fires; clipboard write is attempted alongside and
    * never blocks the open. If copy fails, we still open Gemini (no broken UX).
+   *
+   * The click event is fired as part of the same gesture (right after the open)
+   * and carries the resolved clipboard_status (copied | fallback | failed).
    */
-  function handleGeminiClick(openUrl: string) {
-    handleAiClick("gemini");
+  function handleGeminiClick(openUrl: string, host: string) {
     try {
       window.open(openUrl, "_blank", "noopener,noreferrer");
     } catch {
       /* ignore — opening must never throw to the user */
     }
+
+    const settle = (status: "copied" | "fallback" | "failed") => {
+      if (status !== "failed") flashCopied();
+      trackAssistantClick("gemini", "copy_prompt", host, status);
+    };
+
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(prompt).then(flashCopied).catch(() => {
-          if (legacyCopy(prompt)) flashCopied();
-        });
-      } else if (legacyCopy(prompt)) {
-        flashCopied();
+        navigator.clipboard
+          .writeText(prompt)
+          .then(() => settle("copied"))
+          .catch(() => settle(legacyCopy(prompt) ? "fallback" : "failed"));
+      } else {
+        settle(legacyCopy(prompt) ? "fallback" : "failed");
       }
     } catch {
-      /* clipboard unavailable — Gemini still opened above */
+      settle("failed");
     }
   }
 
@@ -345,7 +412,7 @@ export default function AIAssistantTrustCard({
                     <button
                       key={p.key}
                       type="button"
-                      onClick={() => handleGeminiClick(p.openUrl as string)}
+                      onClick={() => handleGeminiClick(p.openUrl as string, p.host)}
                       aria-label={`Copy this page's prompt and open Gemini in a new tab to review this PawTenant page about ${topic}`}
                       className={buttonClass}
                     >
@@ -361,7 +428,7 @@ export default function AIAssistantTrustCard({
                     href={(p.build as (q: string) => string)(q)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => handleAiClick(p.key)}
+                    onClick={() => trackAssistantClick(p.key, "prefilled_link", p.host)}
                     aria-label={`${p.label} to review this PawTenant page about ${topic} (opens in a new tab)`}
                     className={buttonClass}
                   >

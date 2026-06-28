@@ -24,6 +24,7 @@ import SyncHealthCards from "./SyncHealthCards";
 import OwnerKpiStrip from "./OwnerKpiStrip";
 import RecoveryPerformancePanel from "./RecoveryPerformancePanel";
 import SmartInsightsPanel from "./SmartInsightsPanel";
+import AIAssistantClicksPanel from "./AIAssistantClicksPanel";
 import SourceLandingPaidRatePanel from "./SourceLandingPaidRatePanel";
 import {
   classifyOrder,
@@ -876,6 +877,14 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
           <p className="text-xs text-gray-500 mt-1 ml-9">What to do next — based on this period's data.</p>
         </div>
         <SmartInsightsPanel
+          dateFromIso={rangeFrom.toISOString()}
+          dateToIso={rangeTo.toISOString()}
+        />
+      </section>
+
+      {/* ── AI Assistant Trust Card clicks (read-only, date-scoped) ── */}
+      <section>
+        <AIAssistantClicksPanel
           dateFromIso={rangeFrom.toISOString()}
           dateToIso={rangeTo.toISOString()}
         />
