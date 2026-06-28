@@ -194,7 +194,7 @@ function PromoPill({ phase, size }: { phase: SeasonalPhase; size: "lg" | "md" })
 
   const isDuring = phase === "during";
   const remaining = fmtCountdown(getCountdownTargetMs(phase) - (nowMs || Date.now()));
-  const datePhrase = isDuring ? "ends July 5" : "unlocks July 1";
+  const datePhrase = isDuring ? "ends July 5" : "";
 
   const lg = size === "lg";
   // Both placements now sit at the hero bottom (homepage hero + other pages'
@@ -279,8 +279,12 @@ function PromoPill({ phase, size }: { phase: SeasonalPhase; size: "lg" | "md" })
         {/* Desktop / tablet line */}
         <span className={`hidden items-center gap-2 truncate leading-none text-white/85 sm:flex ${textSize}`}>
           <span className="font-semibold text-white">{SEASONAL_PROMO.eventName} offer</span>
-          <span className="text-white/30">·</span>
-          <span className="whitespace-nowrap">{datePhrase}</span>
+          {datePhrase && (
+            <>
+              <span className="text-white/30">·</span>
+              <span className="whitespace-nowrap">{datePhrase}</span>
+            </>
+          )}
           <span className="text-white/30">·</span>
           <span className="whitespace-nowrap font-extrabold text-white">$40 off</span>
           <span>with</span>
