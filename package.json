@@ -41,6 +41,7 @@
     "build": "vite build && node scripts/prerender-seo.mjs && node scripts/check-attribution-parity.mjs --warn-only",
     "check:attribution": "node scripts/check-attribution-parity.mjs",
     "dev": "vite",
+    "indexnow": "node scripts/submit-indexnow.mjs",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "type-check": "tsc --noEmit --project tsconfig.app.json"
