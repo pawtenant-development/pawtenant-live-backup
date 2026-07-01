@@ -403,6 +403,7 @@ export default function PsychiatricServiceDogLetterOnlinePage() {
               { to: "/do-you-need-a-psd-letter-for-a-service-dog", title: "Do you need a PSD letter?", desc: "When documentation helps for a psychiatric service dog." },
               { to: "/can-a-landlord-deny-a-psd-letter", title: "Can a landlord deny a PSD letter?", desc: "What landlords can verify — and what they can't simply reject." },
               { to: "/how-to-get-psd-letter", title: "How to get a PSD letter", desc: "The full psychiatric service dog evaluation guide." },
+              { to: "/esa-psd-registry-vs-letter", title: "Registry vs letter", desc: "Why a PSD registry, certificate, or ID isn't provider-reviewed documentation." },
             ]}
           />
         </div>

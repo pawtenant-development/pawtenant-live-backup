@@ -80,6 +80,7 @@ const HowToGetESALetterOnlinePage = lazy(() => import("../pages/how-to-get-esa-l
 const ESALetterForLandlordPage = lazy(() => import("../pages/esa-letter-for-landlord/page"));
 const ESAPetRentDepositPage = lazy(() => import("../pages/esa-pet-rent-deposit/page"));
 const HowToVerifyESALetterPage = lazy(() => import("../pages/how-to-verify-esa-letter/page"));
+const EsaPsdRegistryVsLetterPage = lazy(() => import("../pages/esa-psd-registry-vs-letter/page"));
 const IsPawTenantLegitPage = lazy(() => import("../pages/is-pawtenant-legit/page"));
 // Landlord ESA objection / documentation SEO batch (informational, indexable, in sitemap).
 const CanLandlordRejectESALetterPage = lazy(() => import("../pages/can-landlord-reject-esa-letter/page"));
@@ -200,6 +201,7 @@ const routes: RouteObject[] = [
   { path: "/esa-letter-for-landlord", element: <P C={ESALetterForLandlordPage} /> },
   { path: "/esa-pet-rent-deposit", element: <P C={ESAPetRentDepositPage} /> },
   { path: "/how-to-verify-esa-letter", element: <P C={HowToVerifyESALetterPage} /> },
+  { path: "/esa-psd-registry-vs-letter", element: <P C={EsaPsdRegistryVsLetterPage} /> },
   { path: "/is-pawtenant-legit", element: <P C={IsPawTenantLegitPage} /> },
   // Landlord ESA objection / documentation SEO batch (informational, indexable).
   { path: "/can-landlord-reject-esa-letter", element: <P C={CanLandlordRejectESALetterPage} /> },

@@ -643,6 +643,7 @@ export default function HowToVerifyESALetterPage() {
               { to: "/esa-letter-cost", title: "ESA letter cost", desc: "Transparent pricing and what your fee includes." },
               { to: "/esa-pet-rent-deposit", title: "ESA pet rent & deposits", desc: "When pet fees and deposits may not apply." },
               { to: "/are-online-esa-letters-legit", title: "Are online ESA letters real?", desc: "Green flags, red flags, and how to spot a fake." },
+              { to: "/esa-psd-registry-vs-letter", title: "Registry vs letter", desc: "Why an ESA/PSD registry, certificate, or ID isn't the same as a real letter." },
             ]}
           />
         </div>

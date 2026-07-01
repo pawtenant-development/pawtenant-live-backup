@@ -403,6 +403,7 @@ export default function ESALetterForLandlordPage() {
               { to: "/explore-esa-letters-all-states", title: "ESA letter by state", desc: "State-specific ESA housing rules." },
               { to: "/esa-letter-cost", title: "ESA letter cost", desc: "Transparent pricing and what your fee includes." },
               { to: "/psd-letter-for-apartments", title: "PSD letter for apartments", desc: "Housing requests for a task-trained psychiatric service dog." },
+              { to: "/esa-psd-registry-vs-letter", title: "Registry vs letter", desc: "What landlords actually need — a provider letter, not a registry card." },
             ]}
           />
         </div>

@@ -377,6 +377,7 @@ export default function EsaVsPsdLetterPage() {
               { to: "/esa-letter-for-apartments", title: "ESA letter for apartments", desc: "The housing route for a comfort animal." },
               { to: "/do-you-need-a-psd-letter-for-a-service-dog", title: "Do you need a PSD letter?", desc: "When documentation helps for a service dog." },
               { to: "/how-to-get-psd-letter", title: "How to get a PSD letter", desc: "The full psychiatric service dog evaluation guide." },
+              { to: "/esa-psd-registry-vs-letter", title: "Registry vs letter", desc: "Why a registry, certificate, or ID isn't a provider-reviewed letter." },
             ]}
           />
         </div>

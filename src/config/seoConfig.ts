@@ -125,6 +125,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Learn how to verify an ESA letter, check licensed provider details, avoid fake ESA registrations, and use PawTenant's housing documentation support.",
   },
+  "/esa-psd-registry-vs-letter": {
+    title: "ESA & PSD Registry vs Letter: What Landlords Actually Need | PawTenant",
+    description:
+      "Learn the difference between ESA or PSD registries, certificates, ID cards, and provider-reviewed housing documentation. PawTenant helps with ESA and PSD letter support.",
+  },
   "/is-pawtenant-legit": {
     title: "Is PawTenant Legit? How the ESA Letter Service Works",
     description:
