@@ -26,6 +26,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminIdentity } from "../../../lib/adminIdentity";
+import { logAudit } from "../../../lib/auditLogger";
 import {
   useAdminChat,
   type ChatSession,
@@ -641,6 +642,77 @@ export default function ChatsTab() {
     [sessions, selectedId],
   );
 
+  // ── Bulk selection: resolve many chat sessions at once ──────────────────
+  // Resolve is the safest bulk action: status flip via the existing
+  // resolve_chat_session RPC — full message history is preserved (no delete).
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const bulkVisibleIds = useMemo(() => filteredSessions.map((s) => s.id), [filteredSessions]);
+  const bulkAllVisibleSelected =
+    bulkVisibleIds.length > 0 && bulkVisibleIds.every((id) => bulkSelected.has(id));
+  // Only open (incl. missed) sessions are resolvable.
+  const bulkResolvableCount = useMemo(
+    () => sessions.filter((s) => bulkSelected.has(s.id) && s.status === "open").length,
+    [sessions, bulkSelected],
+  );
+
+  function toggleBulkSelect(id: string) {
+    setBulkSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleBulkSelectAll() {
+    setBulkSelected((prev) => {
+      if (bulkAllVisibleSelected) {
+        const next = new Set(prev);
+        bulkVisibleIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...bulkVisibleIds]);
+    });
+  }
+
+  async function runBulkResolve() {
+    if (bulkBusy) return;
+    const ids = sessions
+      .filter((s) => bulkSelected.has(s.id) && s.status === "open")
+      .map((s) => s.id);
+    if (ids.length === 0) { setBulkConfirmOpen(false); return; }
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      const admin = await getAdminIdentity();
+      const results = await Promise.allSettled(
+        ids.map((id) => supabase.rpc("resolve_chat_session", { p_session_id: id, p_admin_id: admin.id })),
+      );
+      const failed = results.filter(
+        (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value.error),
+      ).length;
+      void logAudit({
+        actor_id: admin.id ?? null,
+        actor_name: admin.name ?? admin.email ?? "admin",
+        object_type: "chat",
+        action: "chat_sessions_bulk_resolved",
+        description: `Bulk resolved ${ids.length - failed} chat session${ids.length - failed === 1 ? "" : "s"}${failed > 0 ? ` (${failed} failed)` : ""}`,
+        metadata: { session_ids: ids, failed_count: failed },
+      });
+      if (failed > 0) setBulkError(`${failed} of ${ids.length} sessions could not be resolved.`);
+      setBulkSelected(new Set());
+      setBulkConfirmOpen(false);
+      ctx.refreshSessions();
+    } catch (e) {
+      setBulkError((e as Error)?.message ?? "Bulk resolve failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   const totals = useMemo(
     () => ({
       open: sessions.filter((s) => s.status === "open" && !isMissed(s)).length,
@@ -909,12 +981,47 @@ export default function ChatsTab() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[calc(100vh-280px)]">
-          <div className="px-4 py-2.5 bg-[#f8f7f4] border-b border-gray-100 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
-              {filteredSessions.length} {filteredSessions.length === 1 ? "Session" : "Sessions"}
-            </span>
+          <div className="px-4 py-2.5 bg-[#f8f7f4] border-b border-gray-100 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={bulkAllVisibleSelected}
+                onChange={toggleBulkSelectAll}
+                disabled={bulkVisibleIds.length === 0}
+                className="w-3.5 h-3.5 rounded border-gray-300 accent-[#3b6ea5] cursor-pointer"
+                title="Select all visible"
+              />
+              <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
+                {filteredSessions.length} {filteredSessions.length === 1 ? "Session" : "Sessions"}
+              </span>
+            </label>
             <span className="text-[11px] text-gray-400 font-medium">Newest first</span>
           </div>
+
+          {/* Bulk action bar — resolve only; history is never deleted. */}
+          {bulkSelected.size > 0 && (
+            <div className="px-4 py-2 bg-[#e8f0f9] border-b border-[#c9dcf0] flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-bold text-[#3b6ea5]">
+                {bulkSelected.size} selected · {bulkResolvableCount} open
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button type="button" disabled={bulkBusy || bulkResolvableCount === 0}
+                  onClick={() => setBulkConfirmOpen(true)}
+                  className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-emerald-200 text-emerald-700 text-[11px] font-bold rounded-lg hover:bg-emerald-50 cursor-pointer disabled:opacity-50">
+                  <i className="ri-check-double-line"></i>Resolve Selected
+                </button>
+                <button type="button" onClick={() => setBulkSelected(new Set())}
+                  className="whitespace-nowrap px-2 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-gray-600 cursor-pointer">
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+          {bulkError && (
+            <div className="px-4 py-2 bg-rose-50 border-b border-rose-100 text-xs font-semibold text-rose-700">
+              <i className="ri-error-warning-line mr-1"></i>{bulkError}
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
             {filteredSessions.length === 0 ? (
               <div className="p-10 text-center text-sm text-gray-400 font-medium">
@@ -947,11 +1054,13 @@ export default function ChatsTab() {
                 const device = getSessionDevice(s);
                 const locationLabel = getSessionLocation(s);
                 return (
-                  <button
+                  <div
                     key={s.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedId(s.id)}
-                    className={`w-full text-left px-4 py-3 cursor-pointer transition-colors ${
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedId(s.id); } }}
+                    className={`relative w-full text-left px-4 py-3 pl-9 cursor-pointer transition-colors ${
                       active
                         ? "bg-[#e8f0f9]"
                         : flashed
@@ -961,6 +1070,14 @@ export default function ChatsTab() {
                             : "hover:bg-gray-50"
                     }`}
                   >
+                    <input
+                      type="checkbox"
+                      checked={bulkSelected.has(s.id)}
+                      onChange={() => toggleBulkSelect(s.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute left-3 top-4 w-3.5 h-3.5 rounded border-gray-300 accent-[#3b6ea5] cursor-pointer"
+                      title="Select"
+                    />
                     <div className="flex items-start justify-between gap-3 mb-1">
                       <p
                         className={`text-sm truncate ${
@@ -1100,7 +1217,7 @@ export default function ChatsTab() {
                         </span>
                       )}
                     </div>
-                  </button>
+                  </div>
                 );
               })
             )}
@@ -1138,6 +1255,37 @@ export default function ChatsTab() {
           )}
         </div>
       </div>
+
+      {/* Bulk resolve confirmation — status flip only; messages are preserved. */}
+      {bulkConfirmOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!bulkBusy) setBulkConfirmOpen(false); }}>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center">
+                <i className="ri-check-double-line text-emerald-600" />
+              </div>
+              <h4 className="text-sm font-extrabold text-gray-900">
+                Resolve {bulkResolvableCount} chat session{bulkResolvableCount === 1 ? "" : "s"}?
+              </h4>
+            </div>
+            <p className="text-xs text-gray-500 leading-relaxed mb-4">
+              Selected open sessions move to Closed. Conversation history is preserved —
+              nothing is deleted, and any session can be reopened later.
+              {bulkSelected.size > bulkResolvableCount &&
+                ` ${bulkSelected.size - bulkResolvableCount} already-closed selection${bulkSelected.size - bulkResolvableCount === 1 ? " is" : "s are"} skipped.`}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirmOpen(false)}
+                className="px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 disabled:opacity-50 cursor-pointer">Cancel</button>
+              <button type="button" disabled={bulkBusy} onClick={() => void runBulkResolve()}
+                className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60 inline-flex items-center gap-1.5 cursor-pointer">
+                {bulkBusy ? (<><i className="ri-loader-4-line animate-spin" /> Resolving…</>) : (<>Resolve Sessions</>)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

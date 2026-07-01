@@ -532,6 +532,16 @@ export default function EarningsPanel() {
 
   return (
     <div>
+      {/* Scope header — Earnings vs Payments boundary. Earnings = provider
+          ledger (earned/pending/paid, admin-managed). Customer money lives
+          in Accounts → Payments. Labels only; no calculations changed. */}
+      <div className="mb-4">
+        <h2 className="text-base font-extrabold text-gray-900">Provider Earnings Ledger</h2>
+        <p className="text-xs text-gray-500 mt-0.5">
+          What each provider has earned and been paid, per completed case. Customer payments,
+          refunds and Stripe balances live under <span className="font-semibold text-gray-700">Accounts → Payments</span>.
+        </p>
+      </div>
       {/* Summary stats */}
       {!loading && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

@@ -745,6 +745,7 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
         onOpenStates={(doc) => { setStatesModalDoc(doc); }}
         onDelete={(doc) => setDeleteDoc(doc)}
         canDeleteProviders={canDeleteProviders}
+        adminRole={currentRole}
       />
     </div>
   );

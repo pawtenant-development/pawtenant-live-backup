@@ -25,6 +25,7 @@ import { playOpsAlert } from "../../../lib/notificationSounds";
 import { sendContactReply } from "../../../lib/contactSubmit";
 import { getAdminIdentity } from "../../../lib/adminIdentity";
 import { isAdminLevel, type AdminRole } from "../../../lib/adminPermissions";
+import { logAudit } from "../../../lib/auditLogger";
 import LinkedOrderCard from "./LinkedOrderCard";
 import { findOrdersForContacts, customerName, type LinkedOrder } from "../../../lib/orderLink";
 
@@ -55,7 +56,7 @@ interface ContactReplyRow {
   created_at: string;
 }
 
-type StatusFilter = "all" | "new" | "viewed" | "resolved";
+type StatusFilter = "all" | "new" | "viewed" | "resolved" | "archived";
 
 const POLL_INTERVAL_MS = 30_000;
 const STATUS_STYLES: Record<string, { label: string; color: string; icon: string }> = {
@@ -73,6 +74,11 @@ const STATUS_STYLES: Record<string, { label: string; color: string; icon: string
     label: "Resolved",
     color: "bg-emerald-50 text-emerald-700 border border-emerald-200",
     icon: "ri-check-double-line",
+  },
+  archived: {
+    label: "Archived",
+    color: "bg-slate-100 text-slate-600 border border-slate-300",
+    icon: "ri-archive-line",
   },
 };
 
@@ -183,23 +189,88 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
     let n = 0;
     let v = 0;
     let r = 0;
+    let a = 0;
     for (const i of items) {
       if (i.status === "new") n++;
       else if (i.status === "viewed") v++;
       else if (i.status === "resolved") r++;
+      else if (i.status === "archived") a++;
     }
-    return { all: items.length, new: n, viewed: v, resolved: r };
+    // "All" is the working inbox — archived rows only show under their own filter.
+    return { all: items.length - a, new: n, viewed: v, resolved: r, archived: a };
   }, [items]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((i) => {
+      if (statusFilter === "all" && i.status === "archived") return false;
       if (statusFilter !== "all" && i.status !== statusFilter) return false;
       if (!q) return true;
       const hay = `${i.name ?? ""} ${i.email ?? ""} ${i.phone ?? ""} ${i.subject ?? ""} ${i.message ?? ""} ${i.source_page ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
   }, [items, search, statusFilter]);
+
+  // ── Bulk selection (checkboxes) ──────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState<null | "resolved" | "archived">(null);
+
+  const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAllVisible() {
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        visibleIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...visibleIds]);
+    });
+  }
+
+  async function runBulk(next: "resolved" | "archived") {
+    if (bulkBusy || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const ids = [...selectedIds];
+      const admin = await getAdminIdentity().catch(() => ({ id: null, email: null, name: null }));
+      const nowIso = new Date().toISOString();
+      const patch: Record<string, unknown> = { status: next };
+      if (next === "resolved") patch.resolved_at = nowIso;
+      if (next === "archived") { patch.archived_at = nowIso; patch.archived_by = admin.id ?? null; }
+      const { error: uErr } = await supabase
+        .from("contact_submissions")
+        .update(patch)
+        .in("id", ids);
+      if (uErr) throw uErr;
+      setItems((prev) => prev.map((i) => (selectedIds.has(i.id) ? { ...i, status: next } : i)));
+      if (selectedId && selectedIds.has(selectedId)) setSelectedId(null);
+      void logAudit({
+        actor_id: admin.id ?? null,
+        actor_name: admin.name ?? admin.email ?? "admin",
+        object_type: "contact",
+        action: next === "archived" ? "contact_submissions_bulk_archived" : "contact_submissions_bulk_resolved",
+        description: `Bulk ${next === "archived" ? "archived" : "marked resolved"} ${ids.length} contact submission${ids.length === 1 ? "" : "s"}`,
+        metadata: { submission_ids: ids },
+      });
+      setSelectedIds(new Set());
+      setBulkConfirm(null);
+    } catch (e) {
+      setError((e as Error)?.message ?? "Bulk update failed");
+    } finally {
+      if (mountedRef.current) setBulkBusy(false);
+    }
+  }
 
   const selected = useMemo(
     () => items.find((i) => i.id === selectedId) ?? null,
@@ -217,18 +288,36 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
     return () => { cancelled = true; };
   }, [items]);
 
-  async function markStatus(id: string, next: "viewed" | "resolved") {
+  async function markStatus(id: string, next: "viewed" | "resolved" | "archived") {
     if (updating) return;
     setUpdating(true);
     try {
       const patch: {
         status: string;
         resolved_at?: string | null;
+        archived_at?: string | null;
+        archived_by?: string | null;
       } = { status: next };
       if (next === "resolved") {
         patch.resolved_at = new Date().toISOString();
       } else {
         patch.resolved_at = null;
+      }
+      if (next === "archived") {
+        const admin = await getAdminIdentity().catch(() => ({ id: null, email: null, name: null }));
+        patch.archived_at = new Date().toISOString();
+        patch.archived_by = admin.id ?? null;
+        void logAudit({
+          actor_id: admin.id ?? null,
+          actor_name: admin.name ?? admin.email ?? "admin",
+          object_type: "contact",
+          object_id: id,
+          action: "contact_submission_archived",
+          description: "Archived a contact submission (soft archive — history preserved)",
+        });
+      } else {
+        patch.archived_at = null;
+        patch.archived_by = null;
       }
       const { error: uErr } = await supabase
         .from("contact_submissions")
@@ -339,6 +428,7 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
               { key: "new",      label: "New",      count: counts.new },
               { key: "viewed",   label: "Viewed",   count: counts.viewed },
               { key: "resolved", label: "Resolved", count: counts.resolved },
+              { key: "archived", label: "Archived", count: counts.archived },
             ] as { key: StatusFilter; label: string; count: number }[]).map((p) => {
               const active = statusFilter === p.key;
               const alertTint = p.key === "new" && p.count > 0 && !active;
@@ -400,13 +490,44 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
 
       <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-4">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[calc(100vh-240px)]">
-          <div className="px-4 py-2.5 bg-[#f8f7f4] border-b border-gray-100 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
-              {filtered.length}{" "}
-              {filtered.length === 1 ? "Submission" : "Submissions"}
-            </span>
+          <div className="px-4 py-2.5 bg-[#f8f7f4] border-b border-gray-100 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleSelectAllVisible}
+                disabled={visibleIds.length === 0}
+                className="w-3.5 h-3.5 rounded border-gray-300 accent-[#3b6ea5] cursor-pointer"
+                title="Select all visible"
+              />
+              <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
+                {filtered.length}{" "}
+                {filtered.length === 1 ? "Submission" : "Submissions"}
+              </span>
+            </label>
             <span className="text-[11px] text-gray-400 font-medium">Newest first</span>
           </div>
+
+          {/* Bulk action bar */}
+          {selectedIds.size > 0 && (
+            <div className="px-4 py-2 bg-[#e8f0f9] border-b border-[#c9dcf0] flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-bold text-[#3b6ea5]">{selectedIds.size} selected</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm("resolved")}
+                  className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-emerald-200 text-emerald-700 text-[11px] font-bold rounded-lg hover:bg-emerald-50 cursor-pointer disabled:opacity-50">
+                  <i className="ri-check-double-line"></i>Mark Resolved
+                </button>
+                <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm("archived")}
+                  className="whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-300 text-slate-600 text-[11px] font-bold rounded-lg hover:bg-slate-50 cursor-pointer disabled:opacity-50">
+                  <i className="ri-archive-line"></i>Archive
+                </button>
+                <button type="button" onClick={() => setSelectedIds(new Set())}
+                  className="whitespace-nowrap px-2 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-gray-600 cursor-pointer">
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
             {filtered.length === 0 ? (
               <div className="p-10 text-center text-sm text-gray-400 font-medium">
@@ -418,11 +539,13 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
                 const style = STATUS_STYLES[row.status] ?? STATUS_STYLES.new;
                 const isNew = row.status === "new";
                 return (
-                  <button
+                  <div
                     key={row.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => void openDetail(row)}
-                    className={`w-full text-left px-4 py-3 cursor-pointer transition-colors ${
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openDetail(row); } }}
+                    className={`relative w-full text-left px-4 py-3 pl-9 cursor-pointer transition-colors ${
                       active
                         ? "bg-[#e8f0f9]"
                         : isNew
@@ -430,6 +553,14 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
                           : "hover:bg-gray-50"
                     }`}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(row.id)}
+                      onChange={() => toggleSelect(row.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute left-3 top-4 w-3.5 h-3.5 rounded border-gray-300 accent-[#3b6ea5] cursor-pointer"
+                      title="Select"
+                    />
                     <div className="flex items-start justify-between gap-3 mb-1">
                       <p
                         className={`text-sm truncate ${
@@ -476,7 +607,7 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
                         </span>
                       )}
                     </div>
-                  </button>
+                  </div>
                 );
               })
             )}
@@ -504,12 +635,43 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
               canSeeMetadata={isAdminLevel(adminRole)}
               onResolve={() => void markStatus(selected.id, "resolved")}
               onReopen={() => void markStatus(selected.id, "viewed")}
+              onArchive={() => void markStatus(selected.id, "archived")}
               onCopy={copy}
               onReplySent={handleReplySent}
             />
           )}
         </div>
       </div>
+
+      {/* Bulk confirmation — archive is a soft status flip; nothing is deleted. */}
+      {bulkConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!bulkBusy) setBulkConfirm(null); }}>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center ${bulkConfirm === "archived" ? "bg-slate-100" : "bg-emerald-50"}`}>
+                <i className={`${bulkConfirm === "archived" ? "ri-archive-line text-slate-600" : "ri-check-double-line text-emerald-600"}`} />
+              </div>
+              <h4 className="text-sm font-extrabold text-gray-900">
+                {bulkConfirm === "archived" ? "Archive" : "Mark resolved"} {selectedIds.size} submission{selectedIds.size === 1 ? "" : "s"}?
+              </h4>
+            </div>
+            <p className="text-xs text-gray-500 leading-relaxed mb-4">
+              {bulkConfirm === "archived"
+                ? "Archived submissions move out of the inbox into the Archived filter. Messages and reply history are preserved — nothing is deleted."
+                : "Resolved submissions stay visible under the Resolved filter."}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(null)}
+                className="px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 disabled:opacity-50 cursor-pointer">Cancel</button>
+              <button type="button" disabled={bulkBusy} onClick={() => void runBulk(bulkConfirm)}
+                className={`px-4 py-2 text-xs font-bold text-white rounded-lg disabled:opacity-60 inline-flex items-center gap-1.5 cursor-pointer ${bulkConfirm === "archived" ? "bg-slate-600 hover:bg-slate-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                {bulkBusy ? (<><i className="ri-loader-4-line animate-spin" /> Working…</>) : (<>Confirm</>)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -523,6 +685,7 @@ function SubmissionDetail({
   canSeeMetadata,
   onResolve,
   onReopen,
+  onArchive,
   onCopy,
   onReplySent,
 }: {
@@ -534,6 +697,7 @@ function SubmissionDetail({
   canSeeMetadata: boolean;
   onResolve: () => void;
   onReopen: () => void;
+  onArchive: () => void;
   onCopy: (text: string) => void;
   onReplySent: () => void;
 }) {
@@ -654,7 +818,7 @@ function SubmissionDetail({
             Call
           </a>
         )}
-        {row.status !== "resolved" ? (
+        {row.status !== "resolved" && row.status !== "archived" && (
           <button
             type="button"
             onClick={onResolve}
@@ -666,7 +830,8 @@ function SubmissionDetail({
             ></i>
             Mark Resolved
           </button>
-        ) : (
+        )}
+        {(row.status === "resolved" || row.status === "archived") && (
           <button
             type="button"
             onClick={onReopen}
@@ -676,7 +841,21 @@ function SubmissionDetail({
             <i
               className={`${updating ? "ri-loader-4-line animate-spin" : "ri-refresh-line"} text-xs`}
             ></i>
-            Reopen
+            {row.status === "archived" ? "Unarchive" : "Reopen"}
+          </button>
+        )}
+        {row.status !== "archived" && (
+          <button
+            type="button"
+            onClick={onArchive}
+            disabled={updating}
+            title="Move to Archived — message and reply history are preserved"
+            className="inline-flex items-center gap-1.5 bg-white border border-slate-300 text-slate-600 text-xs font-bold px-3 py-2 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+          >
+            <i
+              className={`${updating ? "ri-loader-4-line animate-spin" : "ri-archive-line"} text-xs`}
+            ></i>
+            Archive
           </button>
         )}
       </div>

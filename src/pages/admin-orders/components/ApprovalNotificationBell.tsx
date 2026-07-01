@@ -169,7 +169,12 @@ export default function ApprovalNotificationBell({ userId, userName }: ApprovalN
           title="My approval request updates"
           className="whitespace-nowrap relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/80 hover:text-white cursor-pointer transition-colors"
         >
-          <i className="ri-notification-3-line text-base"></i>
+          {/* Inline bell — icon-font independent so it never renders blank */}
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="none"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
           {unseenCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-extrabold rounded-full">
               {unseenCount > 9 ? "9+" : unseenCount}

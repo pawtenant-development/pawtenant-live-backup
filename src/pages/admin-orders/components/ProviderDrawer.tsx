@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import ImpersonateProviderView from "./ImpersonateProviderView";
+import ProviderInternalRecords from "./ProviderInternalRecords";
 import { normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay, US_STATE_CODE_TO_NAME } from "../../../lib/usStates";
 
 // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: helper used by every
@@ -112,12 +113,17 @@ interface ProviderDrawerProps {
   onOpenStates: (doc: DoctorRow) => void;
   onDelete: (doc: DoctorRow) => void;
   canDeleteProviders?: boolean;
+  /** Admin role of the viewer — gates the Internal (bank/records) tab. */
+  adminRole?: string | null;
 }
 
-export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefresh, onOpenStates, onDelete, canDeleteProviders = true }: ProviderDrawerProps) {
+export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefresh, onOpenStates, onDelete, canDeleteProviders = true, adminRole = null }: ProviderDrawerProps) {
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
-  const [activeTab, setActiveTab] = useState<"overview" | "documents" | "notes" | "portal">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "documents" | "internal" | "notes" | "portal">("overview");
+  // Internal records (bank details + admin-only documents): owner / admin /
+  // finance only. RLS enforces this server-side; the UI gate just hides the tab.
+  const canSeeInternal = ["owner", "admin_manager", "finance"].includes(adminRole ?? "");
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     full_name: "", phone: "", title: "", license_number: "", npi_number: "",
@@ -587,16 +593,18 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-gray-100 flex-shrink-0 px-6">
-              {(["overview", "documents", "notes", "portal"] as const).map((tab) => (
+            <div className="flex border-b border-gray-100 flex-shrink-0 px-6 overflow-x-auto">
+              {((canSeeInternal
+                ? ["overview", "documents", "internal", "notes", "portal"]
+                : ["overview", "documents", "notes", "portal"]) as ("overview" | "documents" | "internal" | "notes" | "portal")[]).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
                   className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-3 text-xs font-bold border-b-2 transition-colors cursor-pointer capitalize ${activeTab === tab ? "border-[#3b6ea5] text-[#3b6ea5]" : "border-transparent text-gray-400 hover:text-gray-600"}`}
                 >
-                  <i className={tab === "overview" ? "ri-user-line" : tab === "documents" ? "ri-folder-line" : tab === "notes" ? "ri-sticky-note-line" : "ri-eye-line"}></i>
-                  {tab === "overview" ? "Overview" : tab === "documents" ? "Documents" : tab === "notes" ? "Admin Notes" : "View Portal"}
+                  <i className={tab === "overview" ? "ri-user-line" : tab === "documents" ? "ri-folder-line" : tab === "internal" ? "ri-folder-lock-line" : tab === "notes" ? "ri-sticky-note-line" : "ri-eye-line"}></i>
+                  {tab === "overview" ? "Overview" : tab === "documents" ? "Documents" : tab === "internal" ? "Internal" : tab === "notes" ? "Admin Notes" : "View Portal"}
                   {tab === "notes" && providerNotes.length > 0 && (
                     <span className="px-1.5 py-0.5 bg-[#e8f5f1] text-[#3b6ea5] text-xs font-extrabold rounded-full">{providerNotes.length}</span>
                   )}
@@ -1256,6 +1264,14 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                 </div>
               );
             })()}
+
+            {/* ══════════ INTERNAL TAB (owner/admin/finance only) ══════════ */}
+            {activeTab === "internal" && canSeeInternal && doc && (
+              <ProviderInternalRecords
+                providerEmail={doc.email.toLowerCase()}
+                doctorProfileId={doc.profile?.id ?? null}
+              />
+            )}
 
             {/* ══════════ NOTES TAB ══════════ */}
             {activeTab === "notes" && (

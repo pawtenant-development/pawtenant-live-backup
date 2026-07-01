@@ -16,9 +16,12 @@ import {
   saveHrPrivate,
   offboardEmployee,
   reactivateEmployee,
+  createEmployee,
+  type CreateEmployeeInput,
   type EmployeeMasterPatch,
   type HrPrivatePatch,
 } from "../../../lib/employeeHr";
+import { logAudit } from "../../../lib/auditLogger";
 import EmployeeDocumentsAdmin from "./EmployeeDocumentsAdmin";
 import EmployeeDepartmentAccess from "./EmployeeDepartmentAccess";
 import EmployeeCompensationAdmin from "./EmployeeCompensationAdmin";
@@ -79,6 +82,12 @@ export default function EmployeeHrDirectory() {
   const [offboardBusy, setOffboardBusy] = useState(false);
   const [offboardErr, setOffboardErr] = useState("");
   const [reactivateBusy, setReactivateBusy] = useState(false);
+  // Add Employee flow.
+  const EMPTY_ADD: CreateEmployeeInput = { display_name: "", employment_status: "active" };
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addErr, setAddErr] = useState("");
+  const [addForm, setAddForm] = useState<CreateEmployeeInput>(EMPTY_ADD);
 
   async function loadList() {
     const rows = await fetchAllEmployees();
@@ -226,6 +235,56 @@ export default function EmployeeHrDirectory() {
     await loadList();
   }
 
+  function setAdd<K extends keyof CreateEmployeeInput>(key: K, value: CreateEmployeeInput[K]) {
+    setAddForm((p) => ({ ...p, [key]: value }));
+    if (addErr) setAddErr("");
+  }
+
+  async function handleAddEmployee() {
+    if (addBusy) return;
+    setAddBusy(true);
+    setAddErr("");
+    const result = await createEmployee(addForm);
+    setAddBusy(false);
+    if (!result.ok) {
+      // Existing profile for this email/staff account → open it instead of duplicating.
+      if (result.duplicateId) {
+        const rows = await fetchAllEmployees();
+        setEmployees(rows);
+        const dup = rows.find((r) => r.id === result.duplicateId);
+        setAddOpen(false);
+        setAddForm(EMPTY_ADD);
+        if (dup) {
+          setView(isOffboarded(dup) ? "archived" : "active");
+          await selectEmployee(dup);
+        }
+        setToast({ ok: false, msg: result.error + " Opened the existing profile." });
+        return;
+      }
+      setAddErr(result.error);
+      return;
+    }
+    // employee_created is written by the DB audit trigger; log the staff link
+    // separately when the new profile attached to an existing admin account.
+    if (result.linkedStaffEmail) {
+      void logAudit({
+        actor_name: "admin",
+        object_type: "staff",
+        object_id: result.id,
+        action: "employee_linked_to_staff",
+        description: `Employee profile linked to existing staff account ${result.linkedStaffEmail}`,
+      });
+    }
+    setAddOpen(false);
+    setAddForm(EMPTY_ADD);
+    const rows = await fetchAllEmployees();
+    setEmployees(rows);
+    setView("active");
+    const created = rows.find((r) => r.id === result.id);
+    if (created) await selectEmployee(created);
+    setToast({ ok: true, msg: `Employee created${result.linkedStaffEmail ? " and linked to their staff login" : ""}. Employee code assigned automatically.` });
+  }
+
   return (
     <div>
       <DepartmentsManagerCard departments={allDepartments} onChanged={loadDepartments} />
@@ -233,6 +292,10 @@ export default function EmployeeHrDirectory() {
       {/* List */}
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="p-3 border-b border-gray-100 space-y-2">
+          <button type="button" onClick={() => { setAddOpen(true); setAddErr(""); }}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#1a5c4f] hover:bg-[#14493f] px-3 py-2 text-xs font-bold text-white cursor-pointer">
+            <i className="ri-user-add-line" /> Add Employee
+          </button>
           {/* Active vs Archived roster */}
           <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
             <button type="button" onClick={() => { setView("active"); setSelectedId(null); }}
@@ -478,6 +541,94 @@ export default function EmployeeHrDirectory() {
         )}
       </div>
       </div>
+
+      {/* Add Employee modal — creates the HR master record; links to an existing
+          staff login by email; employee code auto-generates when left blank. */}
+      {addOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => { if (!addBusy) setAddOpen(false); }}>
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg max-h-[90vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-9 h-9 rounded-full bg-[#f0faf7] flex items-center justify-center">
+                <i className="ri-user-add-line text-[#1a5c4f]" />
+              </div>
+              <h4 className="text-sm font-extrabold text-gray-900">Add Employee</h4>
+            </div>
+            <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
+              Creates the HR employee profile. If this email already has an admin/staff login,
+              the profile links to it automatically. Admin portal access itself is granted
+              separately under Roles &amp; Access.
+            </p>
+
+            <Section title="Identity & Contact">
+              <Field label="Full name *"><Text value={addForm.display_name} onChange={(v) => setAdd("display_name", v)} /></Field>
+              <Field label="Job title"><Text value={addForm.title} onChange={(v) => setAdd("title", v)} /></Field>
+              <Field label="Work email"><Text value={addForm.workspace_email} onChange={(v) => setAdd("workspace_email", v)} /></Field>
+              <Field label="Personal email"><Text value={addForm.personal_email} onChange={(v) => setAdd("personal_email", v)} /></Field>
+              <Field label="Phone"><Text value={addForm.phone} onChange={(v) => setAdd("phone", v)} /></Field>
+              <Field label="Employee code (blank = auto)"><Text value={addForm.employee_code} onChange={(v) => setAdd("employee_code", v)} /></Field>
+            </Section>
+
+            <Section title="Employment">
+              <Field label="Department">
+                <Select
+                  value={addForm.primary_department_id ?? ""}
+                  onChange={(v) => {
+                    const dept = allDepartments.find((d) => d.id === v) ?? null;
+                    setAddForm((p) => ({ ...p, primary_department_id: v || null, department: dept ? dept.name : null }));
+                  }}
+                >
+                  <option value="">—</option>
+                  {allDepartments.filter((d) => d.is_active).map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Company OS Role">
+                <Select value={addForm.domain_role ?? ""} onChange={(v) => setAdd("domain_role", v || null)}>
+                  <option value="">—</option>
+                  {DOMAIN_ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{DOMAIN_ROLE_LABEL[r]}</option>)}
+                </Select>
+              </Field>
+              <Field label="Employment type">
+                <Select value={addForm.employment_type ?? ""} onChange={(v) => setAdd("employment_type", v || null)}>
+                  <option value="">—</option>
+                  {EMPLOYMENT_TYPES.map((t) => <option key={t} value={t}>{EMPLOYMENT_TYPE_LABEL[t]}</option>)}
+                </Select>
+              </Field>
+              <Field label="Status">
+                <Select value={addForm.employment_status ?? "active"} onChange={(v) => setAdd("employment_status", v)}>
+                  {EMPLOYMENT_STATUSES.filter((s) => s !== "offboarded").map((s) => <option key={s} value={s}>{EMPLOYMENT_STATUS_LABEL[s]}</option>)}
+                </Select>
+              </Field>
+              <Field label="Joining date"><Date value={addForm.joining_date} onChange={(v) => setAdd("joining_date", v)} /></Field>
+              <Field label="Base salary (HR record, PKR)">
+                <input
+                  type="number" min="0" step="0.01"
+                  value={addForm.base_salary ?? ""}
+                  onChange={(e) => setAdd("base_salary", e.target.value === "" ? null : Number(e.target.value))}
+                  className="w-full rounded-lg border border-gray-200 px-2.5 h-9 text-sm"
+                />
+              </Field>
+              <Field label="Internal HR notes (admin only)" full><Textarea value={addForm.hr_notes} onChange={(v) => setAdd("hr_notes", v)} /></Field>
+            </Section>
+
+            {addErr && (
+              <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                <i className="ri-error-warning-line mr-1" />{addErr}
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" disabled={addBusy} onClick={() => setAddOpen(false)}
+                className="px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 disabled:opacity-50 cursor-pointer">Cancel</button>
+              <button type="button" disabled={addBusy || !addForm.display_name.trim()} onClick={handleAddEmployee}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#1a5c4f] rounded-lg hover:bg-[#14493f] disabled:opacity-60 inline-flex items-center gap-1.5 cursor-pointer">
+                {addBusy ? (<><i className="ri-loader-4-line animate-spin" /> Creating…</>) : (<><i className="ri-user-add-line" /> Create Employee</>)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Offboard / Archive confirmation — reason required, owner blocked */}
       {offboardTarget && (

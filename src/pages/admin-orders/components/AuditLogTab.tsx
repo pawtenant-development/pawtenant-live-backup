@@ -54,6 +54,13 @@ const TYPE_STYLE: Record<string, { color: string; icon: string; label: string }>
   system:     { color: "bg-gray-100 text-gray-500",       icon: "ri-settings-3-line",        label: "System" },
   status:     { color: "bg-sky-50 text-sky-700",          icon: "ri-refresh-line",            label: "Status Change" },
   sequence:   { color: "bg-violet-100 text-violet-700",   icon: "ri-mail-send-line",          label: "Lead Sequence" },
+  provider:   { color: "bg-purple-100 text-purple-700",   icon: "ri-user-shared-line",        label: "Provider" },
+  chat:       { color: "bg-cyan-100 text-cyan-700",       icon: "ri-chat-3-line",             label: "Chat" },
+  contact:    { color: "bg-teal-100 text-teal-700",       icon: "ri-mail-open-line",          label: "Contact" },
+  template:   { color: "bg-fuchsia-100 text-fuchsia-700", icon: "ri-file-text-line",          label: "Template" },
+  approval:   { color: "bg-amber-100 text-amber-700",     icon: "ri-shield-check-line",       label: "Approval" },
+  leave:      { color: "bg-emerald-100 text-emerald-700", icon: "ri-calendar-event-line",     label: "Leave" },
+  attendance: { color: "bg-indigo-100 text-indigo-700",   icon: "ri-time-line",               label: "Attendance" },
 };
 
 const ACTION_FRIENDLY: Record<string, string> = {
@@ -74,7 +81,44 @@ const ACTION_FRIENDLY: Record<string, string> = {
   seq_unsubscribed:      "Lead unsubscribed from sequence",
   approval_granted:      "Approval request approved",
   approval_rejected:     "Approval request rejected",
+  // Company OS admin operations
+  staff_invited:                       "Team member invited",
+  employee_created:                    "Employee created",
+  employee_profile_changed:            "Employee profile updated",
+  employee_role_changed:               "Employee role changed",
+  employee_offboarded:                 "Employee offboarded / archived",
+  employee_reactivated:                "Employee reactivated",
+  employee_linked_to_staff:            "Employee linked to staff login",
+  employee_profile_auto_created:       "Employee profile auto-created (invite)",
+  salary_set:                          "Salary set",
+  salary_changed:                      "Salary changed",
+  department_role_assigned:            "Department role assigned",
+  department_role_changed:             "Department role changed",
+  department_role_removed:             "Department role removed",
+  leave_request_approved:              "Leave request approved",
+  leave_request_rejected:              "Leave request rejected",
+  leave_correction_approved:           "Leave correction approved",
+  leave_correction_rejected:           "Leave correction rejected",
+  attendance_correction_approved:      "Attendance correction approved",
+  attendance_correction_rejected:      "Attendance correction rejected",
+  chat_sessions_bulk_resolved:         "Chats bulk-resolved",
+  contact_submission_archived:         "Contact submission archived",
+  contact_submissions_bulk_archived:   "Contact submissions bulk-archived",
+  contact_submissions_bulk_resolved:   "Contact submissions bulk-resolved",
+  provider_internal_doc_uploaded:      "Internal provider document uploaded",
+  provider_internal_doc_downloaded:    "Internal provider document downloaded",
+  provider_internal_doc_archived:      "Internal provider document archived",
+  provider_bank_details_saved:         "Provider bank details saved",
+  provider_bank_details_revealed:      "Provider bank details viewed",
 };
+
+// Human-vs-system split: system events come from webhooks, cron, triggers and
+// the assessment flow client logger — real admin actions carry a person's name.
+const SYSTEM_ACTOR_NAMES = new Set(["system", "assessment_flow", "system (trigger)", "cron", "edge_function", "stripe_webhook", "auto-sequence", "qa"]);
+function isSystemEntry(e: UnifiedEntry): boolean {
+  const actor = (e.actor ?? "").trim().toLowerCase();
+  return actor === "" || SYSTEM_ACTOR_NAMES.has(actor) || actor.endsWith("_webhook") || actor.endsWith("_flow");
+}
 
 const ACTION_DECISION_STYLE: Record<string, { dot: string; label: string }> = {
   approval_granted:  { dot: "bg-emerald-500", label: "Approved" },
@@ -100,6 +144,8 @@ export default function AuditLogTab() {
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [sourceFilter, setSourceFilter] = useState<"all" | "human" | "system">("all");
+  const [actorFilter, setActorFilter] = useState("all");
 
   const fetchAuditLogs = useCallback(async (offsetVal: number, append: boolean) => {
     if (!append) setLoading(true); else setLoadingMore(true);
@@ -190,9 +236,14 @@ export default function AuditLogTab() {
   };
 
   const uniqueTypes = ["all", ...Array.from(new Set(entries.map((e) => e.object_type)))];
+  const humanActors = Array.from(new Set(entries.filter((e) => !isSystemEntry(e)).map((e) => e.actor))).sort();
 
   const filtered = entries.filter((e) => {
     const matchType = typeFilter === "all" || e.object_type === typeFilter;
+    const matchSource =
+      sourceFilter === "all" ||
+      (sourceFilter === "human" ? !isSystemEntry(e) : isSystemEntry(e));
+    const matchActor = actorFilter === "all" || e.actor === actorFilter;
     const matchDate = !dateFrom || new Date(e.timestamp) >= new Date(dateFrom);
     const q = search.toLowerCase();
     const matchSearch = !q ||
@@ -200,7 +251,7 @@ export default function AuditLogTab() {
       (e.description ?? "").toLowerCase().includes(q) ||
       (e.object_id ?? "").toLowerCase().includes(q) ||
       e.action.toLowerCase().includes(q);
-    return matchType && matchDate && matchSearch;
+    return matchType && matchSource && matchActor && matchDate && matchSearch;
   });
 
   const todayCount = entries.filter((e) => new Date(e.timestamp).toDateString() === new Date().toDateString()).length;
@@ -234,7 +285,31 @@ export default function AuditLogTab() {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 mb-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 mb-4 flex flex-col gap-3">
+        {/* Human vs system split — admin activity is the interesting signal;
+            webhook/cron noise stays reachable under System events. */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+            {([
+              { key: "all",    label: "All events" },
+              { key: "human",  label: "Admin actions" },
+              { key: "system", label: "System events" },
+            ] as { key: "all" | "human" | "system"; label: string }[]).map((s) => (
+              <button key={s.key} type="button" onClick={() => setSourceFilter(s.key)}
+                className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${sourceFilter === s.key ? "bg-white text-[#1a5c4f] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                {s.key === "human" && <i className="ri-user-line mr-1"></i>}
+                {s.key === "system" && <i className="ri-settings-3-line mr-1"></i>}
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <select value={actorFilter} onChange={(e) => setActorFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 focus:outline-none focus:border-[#3b6ea5] cursor-pointer bg-white">
+            <option value="all">All actors</option>
+            {humanActors.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
         <div className="flex items-center gap-2 flex-wrap flex-1">
           {uniqueTypes.slice(0, 8).map((t) => {
             const style = TYPE_STYLE[t];
@@ -255,6 +330,7 @@ export default function AuditLogTab() {
               placeholder="Search actor, action, ID..."
               className="pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] w-48" />
           </div>
+        </div>
         </div>
       </div>
 

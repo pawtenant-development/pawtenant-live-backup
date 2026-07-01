@@ -1817,6 +1817,7 @@ export default function AdminOrdersPage() {
           <CompanyNotificationsBell
             onNavigate={(tab) => setActiveTab(tab as TabKey)}
             onOrdersFilter={(filter) => { setStatusFilter(filter); setActiveTab("orders"); }}
+            onOpenApprovals={() => setShowApprovalsInbox(true)}
           />
 
           {/* Approval notification bell — only for restricted roles */}
@@ -3346,6 +3347,7 @@ export default function AdminOrdersPage() {
           reviewerId={adminProfile.user_id}
           onApproveAction={handleApproveAction}
           onClose={() => { setShowApprovalsInbox(false); setPendingApprovalCount(0); }}
+          onNavigate={(tab) => setActiveTab(tab as TabKey)}
         />
       )}
     </div>

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import { logAudit } from "../../../lib/auditLogger";
 import { canManageTeam, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
+import { ensureEmployeeForStaff } from "../../../lib/employeeHr";
 import EmployeeHrDirectory from "./EmployeeHrDirectory";
 import LeaveRequestsAdmin from "./LeaveRequestsAdmin";
 import LeaveCorrectionsAdmin from "./LeaveCorrectionsAdmin";
@@ -767,6 +768,28 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
           new_values: { full_name: form.full_name, email: form.email, role: form.role },
         });
       }
+
+      // Every staff account is also an employee: ensure a linked team_members
+      // HR profile exists (created blank if missing — HR completes it under
+      // Employees & Departments). Best-effort; never blocks the invite.
+      try {
+        const emp = await ensureEmployeeForStaff({
+          email: form.email.trim(),
+          full_name: form.full_name.trim(),
+          title: form.title.trim() || null,
+        });
+        if (emp?.created && currentUser) {
+          await logAudit({
+            actor_id: currentUser.id,
+            actor_name: currentUser.full_name,
+            actor_role: currentUser.role,
+            object_type: "staff",
+            object_id: emp.id,
+            action: "employee_profile_auto_created",
+            description: `Employee HR profile auto-created for invited staff ${form.full_name} (${form.email}) — complete HR details under Employees & Departments`,
+          });
+        }
+      } catch { /* non-blocking */ }
 
       const msg = result.invite_sent
         ? `Invite sent to ${form.email} — they'll set their own password.`

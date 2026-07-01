@@ -25,7 +25,37 @@ interface ApprovalsInboxProps {
   reviewerId: string;
   onApproveAction: (request: ApprovalRequest) => Promise<void>;
   onClose: () => void;
+  /** Optional deep-link into an admin tab (e.g. "team" | "attendance"). */
+  onNavigate?: (tab: string) => void;
 }
+
+// HR requests (leave / attendance / leave corrections) live in their own tables,
+// not approval_requests — the notification bell counts them under "Approvals
+// required", so the inbox must show them too. Sourced from the same manager-gated
+// RPC the bell uses; decisions go through the existing review_* RPCs.
+interface HrApprovalItem {
+  id: string;
+  source_type: string; // attendance_correction | leave_request | leave_correction
+  source_id: string;
+  employee_name: string;
+  title: string;
+  message: string;
+  status: string;
+  created_at: string;
+  target_tab: string;
+}
+
+const HR_SOURCE_CONFIG: Record<string, { icon: string; bg: string; iconColor: string; label: string; objectType: "leave" | "attendance" }> = {
+  leave_request:         { icon: "ri-calendar-event-line", bg: "bg-teal-50",  iconColor: "text-teal-600",  label: "Leave request",         objectType: "leave" },
+  leave_correction:      { icon: "ri-calendar-2-line",     bg: "bg-cyan-50",  iconColor: "text-cyan-600",  label: "Leave correction",      objectType: "leave" },
+  attendance_correction: { icon: "ri-time-line",           bg: "bg-indigo-50", iconColor: "text-indigo-600", label: "Attendance correction", objectType: "attendance" },
+};
+
+const HR_REVIEW_RPC: Record<string, { fn: string; decisionParam: "p_status" | "p_decision" }> = {
+  leave_request:         { fn: "review_employee_leave_request",        decisionParam: "p_status" },
+  leave_correction:      { fn: "review_leave_correction_request",      decisionParam: "p_decision" },
+  attendance_correction: { fn: "review_attendance_correction_request", decisionParam: "p_decision" },
+};
 
 const ACTION_ICONS: Record<string, string> = {
   bulk_delete: "ri-delete-bin-2-line",
@@ -62,6 +92,7 @@ export default function ApprovalsInbox({
   reviewerId,
   onApproveAction,
   onClose,
+  onNavigate,
 }: ApprovalsInboxProps) {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,19 +101,57 @@ export default function ApprovalsInbox({
   const [showRejectNote, setShowRejectNote] = useState<string | null>(null);
   const [filter, setFilter] = useState<"pending" | "all">("pending");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [hrItems, setHrItems] = useState<HrApprovalItem[]>([]);
+  const [hrRejectNote, setHrRejectNote] = useState<string | null>(null);
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("approval_requests")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const [{ data }, hrRes] = await Promise.all([
+      supabase
+        .from("approval_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50),
+      // Manager-gated RPC; support-role admins get an auth error → empty section.
+      supabase.rpc("get_admin_company_os_notifications"),
+    ]);
     setRequests((data as ApprovalRequest[]) ?? []);
+    setHrItems(hrRes.error ? [] : ((hrRes.data as HrApprovalItem[] | null) ?? []).filter((i) => i.status === "pending"));
     setLoading(false);
   }, []);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
+
+  const handleHrDecision = async (item: HrApprovalItem, decision: "approved" | "rejected", note?: string) => {
+    const rpc = HR_REVIEW_RPC[item.source_type];
+    if (!rpc) return;
+    setProcessingId(item.id);
+    setActionError(null);
+    const { error } = await supabase.rpc(rpc.fn, {
+      p_request_id: item.source_id,
+      [rpc.decisionParam]: decision,
+      p_manager_note: note?.trim() || null,
+    });
+    if (error) {
+      setActionError(error.message);
+      setProcessingId(null);
+      return;
+    }
+    const cfg = HR_SOURCE_CONFIG[item.source_type];
+    await logAudit({
+      actor_id: reviewerId,
+      actor_name: reviewerName,
+      actor_role: reviewerRole,
+      object_type: cfg?.objectType ?? "staff",
+      object_id: item.source_id,
+      action: `${item.source_type}_${decision}`,
+      description: `${decision === "approved" ? "Approved" : "Rejected"} ${cfg?.label.toLowerCase() ?? item.source_type} — ${item.employee_name}${note?.trim() ? ` · Note: ${note.trim()}` : ""}`,
+      new_values: { decision, source_type: item.source_type, employee_name: item.employee_name, message: item.message },
+    });
+    setHrItems((prev) => prev.filter((i) => i.id !== item.id));
+    setHrRejectNote(null);
+    setProcessingId(null);
+  };
 
   // Real-time subscription for new requests
   useEffect(() => {
@@ -310,7 +379,7 @@ export default function ApprovalsInbox({
   };
 
   const displayed = requests.filter((r) => filter === "pending" ? r.status === "pending" : true);
-  const pendingCount = requests.filter((r) => r.status === "pending").length;
+  const pendingCount = requests.filter((r) => r.status === "pending").length + hrItems.length;
 
   return (
     <div className="fixed inset-0 z-[250] flex items-center justify-center p-4">
@@ -361,11 +430,96 @@ export default function ApprovalsInbox({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
+          {/* HR requests (leave / attendance) — counted by the notification bell
+              under "Approvals required"; decisions run the same review RPCs as
+              the Team / Attendance tabs. */}
+          {!loading && hrItems.length > 0 && (
+            <div className="border-b border-gray-100">
+              <p className="px-6 pt-3 pb-1 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
+                HR Requests — Leave &amp; Attendance
+              </p>
+              <div className="divide-y divide-gray-50">
+                {hrItems.map((item) => {
+                  const cfg = HR_SOURCE_CONFIG[item.source_type] ?? HR_SOURCE_CONFIG.leave_request;
+                  const isProcessing = processingId === item.id;
+                  const showingNote = hrRejectNote === item.id;
+                  return (
+                    <div key={item.id} className="px-6 py-3.5">
+                      <div className="flex items-start gap-3">
+                        <div className={`w-9 h-9 flex items-center justify-center ${cfg.bg} rounded-xl flex-shrink-0 mt-0.5`}>
+                          <i className={`${cfg.icon} ${cfg.iconColor} text-base`}></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-gray-100 text-gray-700">{cfg.label}</span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold rounded-full">
+                              <i className="ri-time-line text-xs"></i>Pending
+                            </span>
+                            <span className="text-xs text-gray-400">{fmt(item.created_at)}</span>
+                          </div>
+                          <p className="text-xs text-gray-700 font-semibold mt-1">{item.employee_name}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{item.message}</p>
+                        </div>
+                        {onNavigate && (
+                          <button type="button"
+                            onClick={() => { onNavigate(item.target_tab); onClose(); }}
+                            title="Open in tab for full details"
+                            className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:text-[#3b6ea5] hover:bg-gray-50 rounded-lg cursor-pointer flex-shrink-0">
+                            <i className="ri-external-link-line"></i>Open
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-2.5 ml-12 space-y-2">
+                        {showingNote ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={rejectNotes[item.id] ?? ""}
+                              onChange={(e) => setRejectNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                              placeholder="Reason for rejection (optional)..."
+                              className="flex-1 px-3 py-2 border border-red-300 rounded-lg text-xs focus:outline-none focus:border-red-500"
+                              autoFocus
+                            />
+                            <button type="button" disabled={isProcessing}
+                              onClick={() => handleHrDecision(item, "rejected", rejectNotes[item.id])}
+                              className="whitespace-nowrap flex items-center gap-1 px-3 py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 cursor-pointer disabled:opacity-50">
+                              {isProcessing ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-close-line"></i>}
+                              Reject
+                            </button>
+                            <button type="button" onClick={() => setHrRejectNote(null)}
+                              className="whitespace-nowrap px-2 py-2 text-gray-400 hover:text-gray-600 cursor-pointer text-xs">
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button type="button" disabled={isProcessing}
+                              onClick={() => handleHrDecision(item, "approved")}
+                              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 bg-[#1a5c4f] text-white text-xs font-bold rounded-lg hover:bg-[#14493f] cursor-pointer disabled:opacity-50 transition-colors">
+                              {isProcessing
+                                ? <><i className="ri-loader-4-line animate-spin"></i>Processing...</>
+                                : <><i className="ri-checkbox-circle-line"></i>Approve</>
+                              }
+                            </button>
+                            <button type="button" disabled={isProcessing} onClick={() => setHrRejectNote(item.id)}
+                              className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-600 bg-red-50 text-xs font-bold rounded-lg hover:bg-red-100 cursor-pointer disabled:opacity-50 transition-colors">
+                              <i className="ri-close-circle-line"></i>Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
             </div>
-          ) : displayed.length === 0 ? (
+          ) : displayed.length === 0 && hrItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center px-6">
               <div className="w-14 h-14 flex items-center justify-center bg-[#e8f0f9] rounded-full mb-3">
                 <i className="ri-checkbox-circle-line text-[#3b6ea5] text-2xl"></i>

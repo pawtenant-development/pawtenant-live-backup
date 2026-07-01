@@ -559,8 +559,11 @@ export default function PaymentsTab() {
       {/* Header + controls */}
       <div className="flex items-start justify-between flex-wrap gap-4 mb-3">
         <div>
-          <h2 className="text-base font-extrabold text-gray-900">Payments &amp; Refunds</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Live data from Stripe. Net is after Stripe fees &amp; refunds. Issue refunds directly from this panel.</p>
+          <h2 className="text-base font-extrabold text-gray-900">Customer Payments &amp; Refunds</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Live data from Stripe. Net is after Stripe fees &amp; refunds. Issue refunds directly from this panel.
+            The Provider Payouts card is a read-only estimate — the payout ledger itself is managed under <span className="font-semibold text-gray-700">Accounts → Earnings</span>.
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {data && (
@@ -628,7 +631,7 @@ export default function PaymentsTab() {
             {[
               { label: "Gross Revenue", value: formatCurrency(data.summary.total_revenue), icon: "ri-money-dollar-circle-line", color: "text-emerald-600", sub: `${data.summary.charge_count} transactions` },
               { label: feesEstimated ? "Stripe Fees (est.)" : "Stripe Fees", value: formatCurrency2(totalFees), icon: "ri-bank-card-2-line", color: "text-rose-500", sub: feesEstimated ? "Some estimated" : "Actual (Stripe)" },
-              { label: "Provider Payouts", value: formatCurrency(providerPayoutTotal), icon: "ri-user-shared-line", color: "text-purple-500", sub: providerPendingTotal > 0 ? `${formatCurrency(providerPendingTotal)} pending (not deducted)` : "Confirmed completed only" },
+              { label: "Provider Payouts (view)", value: formatCurrency(providerPayoutTotal), icon: "ri-user-shared-line", color: "text-purple-500", sub: providerPendingTotal > 0 ? `${formatCurrency(providerPendingTotal)} pending (not deducted)` : "Managed in Earnings tab" },
               { label: "Net After Fees", value: formatCurrency(netAfterFees), icon: "ri-funds-line", color: "text-[#3b6ea5]", sub: "After fees & refunds" },
               { label: "Business Net", value: formatCurrency(businessNetTotal), icon: "ri-line-chart-line", color: "text-[#0f766e]", sub: "After Stripe, refunds & confirmed payouts" },
               { label: "Total Refunded", value: formatCurrency(data.summary.total_refunded), icon: "ri-refund-2-line", color: "text-orange-500", sub: `${data.summary.refund_count} refunds` },

@@ -8,7 +8,12 @@ export interface AuditEventParams {
   actor_id?: string | null;
   actor_name: string;
   actor_role?: string | null;
-  object_type: "order" | "payment" | "refund" | "doctor" | "staff" | "ghl_sync" | "customer" | "letter" | "system";
+  object_type:
+    | "order" | "payment" | "refund" | "doctor" | "staff" | "ghl_sync"
+    | "customer" | "letter" | "system"
+    // Company OS admin operations (chats/emails bulk actions, HR approvals,
+    // provider internal records). audit_logs.object_type is free text in DB.
+    | "chat" | "contact" | "provider" | "template" | "approval" | "leave" | "attendance";
   object_id?: string | null;
   action: string;
   description?: string | null;

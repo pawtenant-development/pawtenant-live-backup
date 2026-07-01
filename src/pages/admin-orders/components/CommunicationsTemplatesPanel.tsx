@@ -21,6 +21,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import CommunicationsSendPathRegistry from "./CommunicationsSendPathRegistry";
+import { getAdminIdentity } from "../../../lib/adminIdentity";
+import { logAudit } from "../../../lib/auditLogger";
 
 interface EmailTemplate {
   id: string;
@@ -1582,6 +1584,18 @@ export default function CommunicationsTemplatesPanel() {
       const smsIds = smsTemplates.map((t) => `"${t.id}"`).join(",");
       if (smsIds) await supabase.from("email_templates").delete().eq("channel", "sms").not("id", "in", `(${smsIds})`);
       if (error) throw error;
+      // Audit: template edits change live customer-facing sends.
+      try {
+        const admin = await getAdminIdentity();
+        void logAudit({
+          actor_id: admin.id ?? null,
+          actor_name: admin.name ?? admin.email ?? "admin",
+          object_type: "template",
+          action: "templates_saved",
+          description: `Saved communications templates (${emailRows.length} email, ${smsRows.length} SMS)`,
+          metadata: { email_count: emailRows.length, sms_count: smsRows.length },
+        });
+      } catch { /* non-blocking */ }
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 3000);
     } catch {

@@ -25,6 +25,20 @@ interface CompanyNotificationsBellProps {
   onNavigate: (tab: string) => void;
   /** Open the Orders tab with a status card filter applied. */
   onOrdersFilter: (filter: string) => void;
+  /** Open the Approvals Inbox modal — used by the "Approvals required" group. */
+  onOpenApprovals?: () => void;
+}
+
+/** Inline bell — icon-font independent so the trigger never renders as a blank box. */
+function BellIcon({ filled, className }: { filled: boolean; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} width="20" height="20"
+      fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={filled ? 0 : 1.8}
+      strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
 }
 
 const GROUP_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string; category: string }> = {
@@ -51,7 +65,7 @@ function fmtTime(ts: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter }: CompanyNotificationsBellProps) {
+export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, onOpenApprovals }: CompanyNotificationsBellProps) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<CompanyNotification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -94,8 +108,11 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter }:
     setOpen(false);
     if (groupKey === "order_paid") onOrdersFilter("paid_unassigned");
     else if (groupKey === "order_completed") onOrdersFilter("completed");
+    // Approvals live in the Approvals Inbox modal, not a tab — deep-link there
+    // so the dropdown count and the inbox always show the same items.
+    else if (groupKey === "approval" && onOpenApprovals) onOpenApprovals();
     else onNavigate(targetTab);
-  }, [markGroupRead, onNavigate, onOrdersFilter]);
+  }, [markGroupRead, onNavigate, onOrdersFilter, onOpenApprovals]);
 
   const unreadTotal = rows.filter((r) => r.is_unread).length;
 
@@ -133,7 +150,7 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter }:
             : "border-slate-200 bg-white text-slate-500 hover:text-[#1a5c4f] hover:border-[#3b6ea5]"
         }`}
       >
-        <i className={`text-xl ${unreadTotal > 0 ? "ri-notification-3-fill" : "ri-notification-3-line"}`}></i>
+        <BellIcon filled={unreadTotal > 0} />
         {unreadTotal > 0 && (
           <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-orange-500 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center leading-none ring-2 ring-white">
             {unreadTotal > 99 ? "99+" : unreadTotal}
@@ -142,13 +159,13 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter }:
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[min(380px,calc(100vw-24px))] bg-white rounded-2xl border border-gray-200 z-[200] overflow-hidden"
+        <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(380px,calc(100vw-24px))] bg-white rounded-2xl border border-gray-200 z-[200] overflow-hidden"
           style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}>
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-[#f0faf7] to-white">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0">
-                <i className="ri-notification-3-fill text-white text-sm"></i>
+              <div className="w-7 h-7 flex items-center justify-center bg-[#1a5c4f] rounded-lg flex-shrink-0 text-white">
+                <BellIcon filled className="w-3.5 h-3.5" />
               </div>
               <p className="text-sm font-extrabold text-gray-900">Notifications</p>
               {unreadTotal > 0 && (
