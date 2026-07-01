@@ -124,7 +124,12 @@ export default function CompanyTopBar({ member, onChange, onNavigate }: CompanyT
       : "—";
 
   async function handleClock() {
-    if (!allowAttendance || submitting) return;
+    if (submitting) return;
+    // Desktop-only gate (COS-049) applies to STARTING a shift only. An employee
+    // with an active open session must always be able to clock OUT, regardless of
+    // how their device is classified — otherwise a desktop misclassified as
+    // mobile (e.g. touchscreen / remote session) traps them clocked in.
+    if (!clockedIn && !allowAttendance) return;
     setErrorMessage(null);
     setSubmitting(true);
     if (clockedIn) {
@@ -211,7 +216,7 @@ export default function CompanyTopBar({ member, onChange, onNavigate }: CompanyT
           </span>
         </div>
 
-        {allowAttendance ? (
+        {clockedIn || allowAttendance ? (
           <button
             type="button"
             onClick={handleClock}
