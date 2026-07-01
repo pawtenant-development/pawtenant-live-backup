@@ -455,12 +455,18 @@ Deno.serve(async (req: Request) => {
   let earningsCreated = false;
 
   try {
-    const { data: existingEarning } = await supabase.from("doctor_earnings").select("id").eq("confirmation_id", confirmationId).maybeSingle();
-    if (!existingEarning && resolvedDoctorUserId) {
+    // Guard against duplicate BASE earnings: filter to the base earning only. A bare
+    // .maybeSingle() on confirmation_id errors (returns null) once a second row — e.g. an
+    // add-on earning — shares the confirmation_id, which previously re-inserted duplicate
+    // base rows on every re-send/re-completion.
+    const { data: existingBase } = await supabase.from("doctor_earnings").select("id").eq("confirmation_id", confirmationId).eq("earning_type", "base").neq("status", "cancelled").order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (!existingBase && resolvedDoctorUserId) {
       const { data: doctorProfile } = await supabase.from("doctor_profiles").select("full_name, email, per_order_rate").eq("user_id", resolvedDoctorUserId).maybeSingle();
       const perOrderRate = (doctorProfile as { per_order_rate?: number | null } | null)?.per_order_rate ?? null;
-      await supabase.from("doctor_earnings").insert({ doctor_user_id: resolvedDoctorUserId, doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "", doctor_email: doctorProfile?.email ?? order.doctor_email ?? "", order_id: order.id, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? "", order_amount: order.price ?? 0, doctor_amount: perOrderRate, status: "pending" });
-      earningsCreated = true;
+      const { error: earnErr } = await supabase.from("doctor_earnings").insert({ doctor_user_id: resolvedDoctorUserId, doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "", doctor_email: doctorProfile?.email ?? order.doctor_email ?? "", order_id: order.id, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? "", order_amount: order.price ?? 0, doctor_amount: perOrderRate, status: "pending", earning_type: "base" });
+      // 23505 = unique_violation on the base-earning partial index → a concurrent run already created it; treat as success.
+      if (!earnErr || (earnErr as { code?: string }).code === "23505") earningsCreated = !earnErr;
+      else console.warn("[notify-patient-letter] earnings insert error:", earnErr.message);
     }
   } catch (err) { console.warn("[notify-patient-letter] earnings insert error:", err); }
 

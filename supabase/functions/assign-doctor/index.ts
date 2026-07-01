@@ -177,7 +177,10 @@ Deno.serve(async (req: Request) => {
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || (order.email as string);
   const orderAmount = (order.price as number) ?? null;
 
-  const { data: existingEarning } = await supabase.from("doctor_earnings").select("id, status, doctor_amount").eq("confirmation_id", confirmationId).maybeSingle();
+  // Guard against duplicate BASE earnings: filter to the base earning only (an add-on row
+  // shares the same confirmation_id and would break a bare .maybeSingle() with a
+  // multiple-rows error, silently returning null and re-inserting a duplicate base row).
+  const { data: existingEarning } = await supabase.from("doctor_earnings").select("id, status, doctor_amount").eq("confirmation_id", confirmationId).eq("earning_type", "base").neq("status", "cancelled").order("created_at", { ascending: true }).limit(1).maybeSingle();
 
   if (existingEarning) {
     if (existingEarning.status === "pending") {
@@ -185,8 +188,9 @@ Deno.serve(async (req: Request) => {
       earningsAction = "updated";
     } else { earningsAction = "skipped_already_paid"; }
   } else {
-    await supabase.from("doctor_earnings").insert({ doctor_user_id: doctorUserId ?? null, doctor_name: doctorName, doctor_email: normalizedEmail, order_id: order.id as string, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? null, order_amount: orderAmount, doctor_amount: doctorRate, status: "pending", notes: doctorRate == null ? "Rate not set — please set payout amount in the Providers tab" : null });
-    earningsAction = "created";
+    const { error: earnErr } = await supabase.from("doctor_earnings").insert({ doctor_user_id: doctorUserId ?? null, doctor_name: doctorName, doctor_email: normalizedEmail, order_id: order.id as string, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? null, order_amount: orderAmount, doctor_amount: doctorRate, status: "pending", earning_type: "base", notes: doctorRate == null ? "Rate not set — please set payout amount in the Providers tab" : null });
+    // 23505 = unique_violation on the base-earning partial index → a concurrent path already created it; treat as benign.
+    earningsAction = !earnErr ? "created" : ((earnErr as { code?: string }).code === "23505" ? "skipped_duplicate" : "insert_error");
   }
 
   if (doctorUserId) {
