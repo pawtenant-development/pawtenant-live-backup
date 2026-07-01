@@ -126,9 +126,10 @@ export default function ServiceDogsPage() {
       <section className="relative pt-28 pb-20">
         <div className="absolute inset-0">
           <img
-            src="https://pawtenant.com/assets/blog/man-puppy-portrait.jpg"
+            src="/assets/blog/man-puppy-portrait.jpg"
             alt="Everything you need to know about psychiatric service dogs and ESA letters — PawTenant 2026 guide"
-            className="w-full h-full object-cover object-top"
+            loading="eager"
+            className="w-full h-full object-cover object-center"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/55 to-black/25"></div>
         </div>
@@ -282,10 +283,12 @@ export default function ServiceDogsPage() {
             </div>
             <div className="rounded-2xl overflow-hidden min-h-72">
               <img
-                src="https://pawtenant.com/assets/blog/cafe-retriever.jpg"
+                src="/assets/blog/cafe-retriever.jpg"
                 alt="How to get a psychiatric service dog PSD letter — training and licensed professional assessment"
                 title="How to Get a Psychiatric Service Dog Letter"
-                className="w-full h-full object-cover object-top"
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover object-center"
               />
             </div>
           </div>

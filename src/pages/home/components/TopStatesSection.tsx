@@ -1,5 +1,22 @@
 import { Link } from "react-router-dom";
 
+// PSD state guides — mirrors src/mocks/statesPSD.ts (the /psd-letter/:state
+// data source). Kept as a lightweight name/slug list instead of importing the
+// ~42 KB data module into the homepage chunk (PageSpeed). If a new PSD state
+// page is added to statesPSD.ts, add it here too.
+const psdStates = [
+  { name: "Arizona", slug: "arizona" },
+  { name: "California", slug: "california" },
+  { name: "Florida", slug: "florida" },
+  { name: "Georgia", slug: "georgia" },
+  { name: "Illinois", slug: "illinois" },
+  { name: "New York", slug: "new-york" },
+  { name: "North Carolina", slug: "north-carolina" },
+  { name: "Ohio", slug: "ohio" },
+  { name: "Pennsylvania", slug: "pennsylvania" },
+  { name: "Texas", slug: "texas" },
+];
+
 const STATE_IMAGE_FALLBACKS = [
   "/assets/lifestyle/owner-with-dog-laptop.jpg",
   "/assets/lifestyle/woman-with-dog-new-apartment.jpg",
@@ -141,7 +158,7 @@ export default function TopStatesSection() {
           {topStates.map((state, index) => (
             <Link
               key={state.slug}
-              to={`/esa-letter-${state.slug}`}
+              to={`/esa-letter/${state.slug}`}
               className={`group bg-gradient-to-b ${state.color} rounded-2xl border ${state.border} overflow-hidden transition-all duration-300 cursor-pointer flex flex-col shadow-sm hover:shadow-md hover:-translate-y-0.5`}
             >
               {/* Image */}
@@ -204,8 +221,50 @@ export default function TopStatesSection() {
             <div className="w-4 h-4 flex items-center justify-center">
               <i className="ri-map-2-line"></i>
             </div>
-            View All 50 States &amp; Washington DC
+            Explore ESA State Guides — All 50 States &amp; DC
           </Link>
+        </div>
+
+        {/* PSD state guides — compact pill subsection (owner request
+            2026-07-02). Only the states with a real /psd-letter/:state page
+            (usPSDStates) are linked, so nothing here can 404. Kept as pills,
+            not full cards, so the homepage doesn't get noticeably longer. */}
+        <div className="mt-12 pt-10 border-t border-gray-100">
+          <div className="text-center mb-6 max-w-2xl mx-auto">
+            <span className="inline-block px-4 py-1.5 bg-[#4A8472]/15 text-[#3F7061] text-xs font-semibold rounded-full uppercase tracking-widest mb-3">
+              PSD State Guides
+            </span>
+            <h3 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-tight">
+              Psychiatric Service Dog Letters by State
+            </h3>
+            <p className="text-gray-500 text-sm mt-2 max-w-xl mx-auto leading-relaxed">
+              Have a task-trained psychiatric service dog? State-specific PSD guides cover
+              housing documentation where you live.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2 mb-6">
+            {psdStates.map((state) => (
+              <Link
+                key={state.slug}
+                to={`/psd-letter/${state.slug}`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-gray-200 text-xs sm:text-sm font-semibold text-gray-700 hover:border-[#4A8472] hover:text-[#3F7061] transition-colors cursor-pointer"
+              >
+                <i className="ri-shield-star-line text-[#4A8472]"></i>
+                {state.name} PSD Letter
+              </Link>
+            ))}
+          </div>
+          <div className="text-center">
+            <Link
+              to="/how-to-get-psd-letter"
+              className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 border border-[#4A8472]/50 text-[#3F7061] font-semibold text-sm rounded-lg hover:bg-[#4A8472]/5 transition-colors cursor-pointer"
+            >
+              <div className="w-4 h-4 flex items-center justify-center">
+                <i className="ri-shield-star-line"></i>
+              </div>
+              Explore PSD State Guides &amp; How It Works
+            </Link>
+          </div>
         </div>
       </div>
     </section>

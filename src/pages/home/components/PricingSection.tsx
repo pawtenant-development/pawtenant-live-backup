@@ -76,6 +76,15 @@ export default function PricingSection() {
           ))}
         </div>
 
+        {/* ESA / PSD split label — the section now covers both letter types
+            (owner request 2026-07-02). Display-only; checkout prices unchanged. */}
+        <div className="flex items-center justify-center gap-2 mb-4 sm:mb-5">
+          <span className="inline-flex items-center gap-1.5 bg-orange-100 text-orange-700 text-[11px] sm:text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
+            <i className="ri-home-heart-line"></i>
+            ESA Letter
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 max-w-3xl mx-auto items-start">
           {plans.map((plan) => (
             <div
@@ -153,6 +162,65 @@ export default function PricingSection() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* PSD pricing — compact companion panel so the homepage covers both
+            letter types without doubling the section height (owner request
+            2026-07-02). Prices are admin-managed display values (same
+            psd_standard / psd_priority / psd_annual keys as PsdPricingMini);
+            checkout/Stripe untouched. Compliance: provider review, task
+            training required, no approval guarantee. */}
+        <div className="max-w-3xl mx-auto mt-6 sm:mt-8">
+          <div className="flex items-center justify-center gap-2 mb-4 sm:mb-5">
+            <span className="inline-flex items-center gap-1.5 bg-[#4A8472]/15 text-[#3F7061] text-[11px] sm:text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
+              <i className="ri-shield-star-line"></i>
+              PSD Letter
+            </span>
+          </div>
+          <div className="bg-white rounded-2xl border border-[#4A8472]/35 p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+              <div>
+                <h3 className="font-bold text-base text-gray-900 mb-1">
+                  Psychiatric Service Dog (PSD) Letter
+                </h3>
+                <p className="text-[12px] sm:text-xs text-gray-500 leading-relaxed max-w-md">
+                  For qualifying individuals with a task-trained psychiatric service
+                  dog. Reviewed by a licensed provider — approval is not guaranteed,
+                  and you&rsquo;re refunded if you don&rsquo;t qualify.
+                </p>
+              </div>
+              <Link
+                to={withAttribution("/psd-assessment")}
+                className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#4A8472] text-white text-sm font-bold rounded-md hover:bg-[#3F7061] transition-colors cursor-pointer flex-shrink-0"
+              >
+                Start PSD Assessment
+                <i className="ri-arrow-right-line"></i>
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { name: "Standard", speed: "2–3 business days", key: "psd_standard", fallback: "$100", suffix: "/ 1 dog" },
+                { name: "Priority", speed: "Within 24 hours", key: "psd_priority", fallback: "$120", suffix: "/ 1 dog" },
+                { name: "Annual", speed: "Renews automatically", key: "psd_annual", fallback: "$99", suffix: "/year" },
+              ].map((p) => (
+                <div key={p.name} className="rounded-xl border border-gray-100 bg-[#fafafa] px-4 py-3.5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-0.5">{p.name}</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-extrabold text-gray-900 leading-none">{getPrice(p.key, p.fallback)}</span>
+                    <span className="text-[11px] text-gray-400">{p.suffix}</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">{p.speed}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
+              Not sure which fits?{" "}
+              <Link to="/esa-vs-psd-letter" className="text-[#3F7061] font-semibold hover:underline">
+                Compare an ESA letter vs a PSD letter
+              </Link>
+              . A PSD requires disability-related task training — a letter alone does not make a dog a service dog.
+            </p>
+          </div>
         </div>
 
         {/* Klarna trust panel — mirrors the /esa-letter-housing panel but

@@ -5,15 +5,6 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { useSitePricing } from "../../hooks/useSitePricing";
 
-const PAGE_PATH = "/how-to-get-psd-letter";
-const CANONICAL = `https://pawtenant.com${PAGE_PATH}`;
-const TITLE = "How to Get a Psychiatric Service Dog Letter | PawTenant";
-const DESCRIPTION =
-  "Get a legitimate Psychiatric Service Dog (PSD) letter from a licensed mental health professional. Learn how online PSD evaluations work, what tasks qualify, and how to begin your assessment in minutes.";
-
-const ASSET_BASE = "https://cvwbozlbbmrjxznknouq.supabase.co/storage/v1/object/public/ad-assets";
-const HERO_IMG = `${ASSET_BASE}/pets/portrait-thoughtful-beagle-dog-sitting-indoors.jpg`;
-
 const steps = [
   {
     number: "01",
@@ -67,75 +58,6 @@ const psdTasks = [
   { icon: "ri-heart-pulse-line", title: "Panic Attack Response", desc: "Responding to signs of a panic attack with learned calming behaviors to reduce episode severity." },
 ];
 
-const whyPoints = [
-  { icon: "ri-user-star-line", title: "Board-Licensed Professionals Only", desc: "Every evaluation is conducted by a licensed psychologist, psychiatrist, therapist, or LCSW — never an algorithm or non-licensed staff." },
-  { icon: "ri-shield-check-line", title: "HIPAA-Compliant & Confidential", desc: "All consultations and records are fully HIPAA compliant. Your mental health information is never shared or sold." },
-  { icon: "ri-time-line", title: "24–48 Hour Turnaround", desc: "Most PSD letter evaluations are completed and letters delivered within one to two business days of your consultation." },
-  { icon: "ri-refresh-line", title: "No-Risk Guarantee", desc: "If your letter is ever questioned, our licensed professionals will provide supporting documentation at no additional charge." },
-  { icon: "ri-map-pin-2-line", title: "Valid in All 50 States", desc: "Our network of licensed professionals covers every state, so your psychiatric service dog letter is valid nationwide." },
-];
-
-const pricingPlans = [
-  {
-    name: "Standard",
-    speed: "2–3 Business Days",
-    price: "$100",
-    priceKey: "psd_standard",
-    priceSuffix: "",
-    popular: false,
-    features: [
-      "Official PSD Letter from Licensed LMHP",
-      "ADA & FHA Compliant",
-      "Licensed Professional Signature & NPI",
-      "PDF Delivery via Email",
-      "Valid for 1 Year",
-      "Landlord & Airline Verification Support",
-    ],
-  },
-  {
-    name: "Priority",
-    speed: "Within 24 Hours",
-    price: "$120",
-    priceKey: "psd_priority",
-    priceSuffix: "",
-    popular: true,
-    features: [
-      "Official PSD Letter from Licensed LMHP",
-      "ADA & FHA Compliant",
-      "Licensed Professional Signature & NPI",
-      "PDF Delivery via Email",
-      "Valid for 1 Year",
-      "Landlord & Airline Verification Support",
-      "Same-Day Priority Processing",
-    ],
-  },
-  {
-    name: "Annual Subscription",
-    speed: "Per Year — Auto-Renews",
-    price: "$99",
-    priceKey: "psd_annual",
-    priceSuffix: "/yr",
-    popular: false,
-    features: [
-      "Official PSD Letter from Licensed LMHP",
-      "ADA & FHA Compliant",
-      "Licensed Professional Signature & NPI",
-      "PDF Delivery via Email",
-      "Annual Renewal — Renews Automatically",
-      "Landlord & Airline Verification Support",
-    ],
-  },
-];
-
-const relatedLinks = [
-  { to: "/psychiatric-service-dog-letter-online", icon: "ri-computer-line", title: "PSD Letter Online", desc: "How the online psychiatric service dog evaluation and letter work." },
-  { to: "/psd-letter-requirements", icon: "ri-list-check-2", title: "PSD Letter Requirements", desc: "Qualifying disability, trained tasks, and licensed provider review." },
-  { to: "/psd-letter-for-apartments", icon: "ri-home-heart-line", title: "PSD Letter for Apartments", desc: "Using a PSD letter for a housing accommodation request." },
-  { to: "/esa-vs-psd-letter", icon: "ri-scales-3-line", title: "ESA vs PSD Letter", desc: "Which document fits your situation — a clear comparison." },
-  { to: "/can-a-landlord-deny-a-psd-letter", icon: "ri-scales-line", title: "Can a Landlord Deny a PSD Letter?", desc: "What a landlord can verify — and when they can't reject." },
-  { to: "/all-about-service-dogs", icon: "ri-service-line", title: "All About Service Dogs", desc: "Breeds, training, ADA rights, and how PSDs work." },
-];
-
 const faqs = [
   {
     q: "What qualifies as a psychiatric service dog letter?",
@@ -178,67 +100,21 @@ export default function HowToGetPSDLetterPage() {
 
   return (
     <main>
-      <title>{TITLE}</title>
-      <meta
-        name="keywords"
-        content="get psd letter, psychiatric service dog letter, psd letter online, psd documentation, service dog evaluation, legitimate PSD letter, how to get psd letter, online psd evaluation, licensed mental health professional psd letter"
-      />
+      <title>How to Get a Psychiatric Service Dog Letter | PawTenant</title>
+      <meta name="keywords" content="get psd letter, psychiatric service dog letter, psd documentation, service dog evaluation, legitimate PSD letter" />
       <meta property="og:type" content="article" />
-      <meta property="og:locale" content="en_US" />
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content={TITLE} />
-      <meta name="twitter:description" content={DESCRIPTION} />
-      <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
-
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "FAQPage",
-            mainEntity: faqs.map((faq) => ({
-              "@type": "Question",
-              name: faq.q,
-              acceptedAnswer: { "@type": "Answer", text: faq.a },
-            })),
-          }),
-        }}
-      />
-
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Article",
-            headline: "How to Get a Psychiatric Service Dog Letter",
-            description: DESCRIPTION,
-            mainEntityOfPage: { "@type": "WebPage", "@id": CANONICAL },
-            url: CANONICAL,
-            inLanguage: "en-US",
-            author: { "@type": "Organization", name: "PawTenant", url: "https://pawtenant.com/" },
-            publisher: {
-              "@type": "Organization",
-              name: "PawTenant",
-              logo: { "@type": "ImageObject", url: "https://pawtenant.com/logo.png" },
-            },
-          }),
-        }}
-      />
-
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "BreadcrumbList",
-            itemListElement: [
-              { "@type": "ListItem", position: 1, name: "Home", item: "https://pawtenant.com/" },
-              { "@type": "ListItem", position: 2, name: "How to Get a PSD Letter", item: CANONICAL },
-            ],
-          }),
-        }}
-      />
+      <meta name="twitter:title" content="How to Get a Psychiatric Service Dog Letter | PawTenant" />
+      <meta name="twitter:description" content="Get a legitimate PSD letter from a licensed LMHP. Speak 1-on-1 with a qualified professional and receive your psychiatric service dog letter in 24 hours." />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": faqs.map(faq => ({
+          "@type": "Question",
+          "name": faq.q,
+          "acceptedAnswer": { "@type": "Answer", "text": faq.a }
+        }))
+      }) }} />
 
       <SharedNavbar />
 
@@ -246,10 +122,10 @@ export default function HowToGetPSDLetterPage() {
       <section className="relative pt-28 pb-24">
         <div className="absolute inset-0">
           <img
-            src={HERO_IMG}
-            alt="A calm beagle resting indoors — psychiatric service dogs provide trained task support for mental health"
-            className="w-full h-full object-cover object-top"
+            src="/assets/psd/man-working-holding-dog.jpg"
+            alt="How to get a psychiatric service dog PSD letter from a licensed mental health professional online"
             loading="eager"
+            className="w-full h-full object-cover object-center"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/25"></div>
         </div>
@@ -262,7 +138,7 @@ export default function HowToGetPSDLetterPage() {
               How to Get a Psychiatric Service Dog Letter
             </h1>
             <p className="text-white/85 text-lg leading-relaxed mb-8">
-              A psychiatric service dog letter (PSD letter) supports a trained dog under the Americans with Disabilities Act in addition to housing rights under the Fair Housing Act. Learn exactly how to qualify, what tasks your dog must perform, and how to start your evaluation online today.
+              A psychiatric service dog letter (PSD letter) grants your trained dog full public access rights under the ADA — not just housing protections. Learn exactly how to qualify, what tasks your dog must perform, and how to get your PSD letter online in as little as 24 hours.
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
@@ -280,20 +156,20 @@ export default function HowToGetPSDLetterPage() {
                 See How It Works
               </a>
             </div>
-            <ul className="flex flex-wrap items-center gap-6 mt-8">
-              <li className="flex items-center gap-2 text-white/75 text-xs">
-                <span className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></span>
+            <div className="flex flex-wrap items-center gap-6 mt-8">
+              <div className="flex items-center gap-2 text-white/75 text-xs">
+                <div className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></div>
                 Licensed mental health professionals
-              </li>
-              <li className="flex items-center gap-2 text-white/75 text-xs">
-                <span className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></span>
+              </div>
+              <div className="flex items-center gap-2 text-white/75 text-xs">
+                <div className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></div>
                 Valid in all 50 states
-              </li>
-              <li className="flex items-center gap-2 text-white/75 text-xs">
-                <span className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></span>
+              </div>
+              <div className="flex items-center gap-2 text-white/75 text-xs">
+                <div className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></div>
                 Delivered in 24–48 hours
-              </li>
-            </ul>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -319,16 +195,16 @@ export default function HowToGetPSDLetterPage() {
                   <i className="ri-information-line text-orange-500 text-lg"></i>
                 </div>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  <strong className="text-gray-900">Good to know:</strong> Your dog does not need to be professionally trained or certified to qualify. Owner-trained psychiatric service dogs are recognized under the ADA — the letter documents your medical need, and your dog&apos;s task training demonstrates their service dog status.
+                  <strong className="text-gray-900">Good to know:</strong> Your dog does not need to be professionally trained or certified to qualify. Owner-trained psychiatric service dogs are fully recognized under the ADA — the letter documents your medical need, and your dog&apos;s task training demonstrates their service dog status.
                 </p>
               </div>
             </div>
-            <div className="rounded-2xl overflow-hidden min-h-80 bg-orange-50">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src={`${ASSET_BASE}/pets/close-up-dog-looking-away.jpg`}
-                alt="A focused dog — psychiatric service dogs are task-trained to mitigate mental health symptoms"
-                className="w-full h-full object-cover object-top"
+                src="/assets/breeds/border-collie.jpg"
+                alt="What is a psychiatric service dog PSD letter — official documentation for housing and travel rights"
                 loading="lazy"
+                className="w-full h-full object-cover object-top"
               />
             </div>
           </div>
@@ -458,10 +334,10 @@ export default function HowToGetPSDLetterPage() {
                   <tr key={row.category} className={i % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
                     <td className="px-6 py-4 text-xs font-semibold text-gray-700">{row.category}</td>
                     <td className="px-6 py-4 text-xs text-gray-600">
-                      <span className="inline-flex items-center gap-2">
-                        <span className="w-3 h-3 inline-flex items-center justify-center flex-shrink-0">
+                      <span className="flex items-center gap-2">
+                        <div className="w-3 h-3 flex items-center justify-center flex-shrink-0">
                           <i className="ri-check-line text-orange-500 text-sm"></i>
-                        </span>
+                        </div>
                         {row.psd}
                       </span>
                     </td>
@@ -488,19 +364,25 @@ export default function HowToGetPSDLetterPage() {
       <section className="py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-stretch">
-            <div className="rounded-2xl overflow-hidden min-h-80 bg-orange-50">
+            <div className="rounded-2xl overflow-hidden min-h-80">
               <img
-                src={`${ASSET_BASE}/verification/verification_screen_1080x1920.png`}
-                alt="Landlord verification screen — privacy-safe license verification for PSD and ESA letters"
-                className="w-full h-full object-contain object-center"
+                src="/assets/backgrounds/telehealth-woman-doctor-videocall.jpg"
+                alt="Licensed mental health professional conducting telehealth PSD letter consultation for psychiatric service dog"
                 loading="lazy"
+                className="w-full h-full object-cover object-top"
               />
             </div>
             <div>
               <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Why PawTenant</span>
               <h2 className="text-3xl font-bold text-gray-900 mb-6">Why Get Your PSD Letter Through PawTenant?</h2>
               <div className="space-y-5">
-                {whyPoints.map((point) => (
+                {[
+                  { icon: "ri-user-star-line", title: "Board-Licensed Professionals Only", desc: "Every evaluation is conducted by a licensed psychologist, psychiatrist, therapist, or LCSW — never an algorithm or non-licensed staff." },
+                  { icon: "ri-shield-check-line", title: "HIPAA-Compliant & Confidential", desc: "All consultations and records are fully HIPAA compliant. Your mental health information is never shared or sold." },
+                  { icon: "ri-time-line", title: "24–48 Hour Turnaround", desc: "Most PSD letter evaluations are completed and letters delivered within one to two business days of your consultation." },
+                  { icon: "ri-refresh-line", title: "No-Risk Guarantee", desc: "If your letter is ever questioned, our licensed professionals will provide supporting documentation at no additional charge." },
+                  { icon: "ri-map-pin-2-line", title: "Valid in All 50 States", desc: "Our network of licensed professionals covers every state, so your psychiatric service dog letter is valid nationwide." },
+                ].map((point) => (
                   <div key={point.title} className="flex items-start gap-4">
                     <div className="w-9 h-9 flex items-center justify-center rounded-lg bg-orange-50 flex-shrink-0">
                       <i className={`${point.icon} text-orange-500`}></i>
@@ -528,7 +410,57 @@ export default function HowToGetPSDLetterPage() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {pricingPlans.map((plan) => (
+            {[
+              {
+                name: "Standard",
+                speed: "2–3 Business Days",
+                price: "$100",
+                priceKey: "psd_standard",
+                priceSuffix: "",
+                popular: false,
+                features: [
+                  "Official PSD Letter from Licensed LMHP",
+                  "ADA & FHA Compliant",
+                  "Licensed Professional Signature & NPI",
+                  "PDF Delivery via Email",
+                  "Valid for 1 Year",
+                  "Landlord & Airline Verification Support",
+                ],
+              },
+              {
+                name: "Priority",
+                speed: "Within 24 Hours",
+                price: "$120",
+                priceKey: "psd_priority",
+                priceSuffix: "",
+                popular: true,
+                features: [
+                  "Official PSD Letter from Licensed LMHP",
+                  "ADA & FHA Compliant",
+                  "Licensed Professional Signature & NPI",
+                  "PDF Delivery via Email",
+                  "Valid for 1 Year",
+                  "Landlord & Airline Verification Support",
+                  "Same-Day Priority Processing",
+                ],
+              },
+              {
+                name: "Annual Subscription",
+                speed: "Per Year — Auto-Renews",
+                price: "$99",
+                priceKey: "psd_annual",
+                priceSuffix: "/yr",
+                popular: false,
+                features: [
+                  "Official PSD Letter from Licensed LMHP",
+                  "ADA & FHA Compliant",
+                  "Licensed Professional Signature & NPI",
+                  "PDF Delivery via Email",
+                  "Annual Renewal — Renews Automatically",
+                  "Landlord & Airline Verification Support",
+                ],
+              },
+            ].map((plan) => (
               <div key={plan.name} className={`relative bg-white rounded-2xl border-2 p-8 flex flex-col ${plan.popular ? "border-orange-500" : "border-gray-200"}`}>
                 {plan.popular && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
@@ -546,9 +478,9 @@ export default function HowToGetPSDLetterPage() {
                 <ul className="space-y-2 mb-8 flex-1">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-sm text-gray-700">
-                      <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i className="ri-checkbox-circle-fill text-orange-500 text-base"></i>
-                      </span>
+                      </div>
                       {f}
                     </li>
                   ))}
@@ -573,6 +505,7 @@ export default function HowToGetPSDLetterPage() {
 
       {/* CTA Banner */}
       <section className="relative py-20 bg-orange-500 overflow-hidden">
+        <div className="absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_55%),radial-gradient(circle_at_75%_75%,rgba(255,255,255,0.10),transparent_55%)]"></div>
         <div className="relative w-full max-w-3xl mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to Get Your Psychiatric Service Dog Letter?</h2>
           <p className="text-white/85 text-sm leading-relaxed mb-8 max-w-xl mx-auto">
@@ -598,17 +531,15 @@ export default function HowToGetPSDLetterPage() {
           </div>
           <div className="space-y-3">
             {faqs.map((faq, i) => (
-              <div key={faq.q} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div key={i} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <button
-                  type="button"
                   className="w-full flex items-center justify-between px-6 py-4 text-left cursor-pointer"
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  aria-expanded={openFaq === i}
                 >
                   <span className={`text-sm font-semibold ${openFaq === i ? "text-orange-500" : "text-gray-900"}`}>{faq.q}</span>
-                  <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-4">
+                  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 ml-4">
                     <i className={`${openFaq === i ? "ri-subtract-line" : "ri-add-line"} text-orange-500`}></i>
-                  </span>
+                  </div>
                 </button>
                 {openFaq === i && (
                   <div className="px-6 pb-4">
@@ -621,12 +552,19 @@ export default function HowToGetPSDLetterPage() {
         </div>
       </section>
 
-      {/* Related Resources */}
+      {/* Related Links */}
       <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-6">
-          <h2 className="text-sm font-bold text-gray-900 mb-6">Related Resources</h2>
+          <h4 className="text-sm font-bold text-gray-900 mb-6"><a id="related-resources" href="#related-resources">Related Resources</a></h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {relatedLinks.map((link) => (
+            {[
+              { to: "/psychiatric-service-dog-letter-online", icon: "ri-computer-line", title: "PSD Letter Online", desc: "How the online psychiatric service dog evaluation and letter work." },
+              { to: "/psd-letter-requirements", icon: "ri-list-check-2", title: "PSD Letter Requirements", desc: "Qualifying disability, trained tasks, and licensed provider review." },
+              { to: "/psd-letter-for-apartments", icon: "ri-home-heart-line", title: "PSD Letter for Apartments", desc: "Using a PSD letter for a housing accommodation request." },
+              { to: "/esa-vs-psd-letter", icon: "ri-scales-3-line", title: "ESA vs PSD Letter", desc: "Which document fits your situation — a clear comparison." },
+              { to: "/can-a-landlord-deny-a-psd-letter", icon: "ri-scales-line", title: "Can a Landlord Deny a PSD Letter?", desc: "What a landlord can verify — and when they can't reject." },
+              { to: "/all-about-service-dogs", icon: "ri-service-line", title: "All About Service Dogs", desc: "Breeds, training, ADA rights, and how PSDs work." },
+            ].map((link) => (
               <Link
                 key={link.to}
                 to={link.to}

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 
 // Lazy-loaded pages for code splitting
@@ -161,10 +161,48 @@ function P({
   return <Suspense fallback={fallback}>{<C />}</Suspense>;
 }
 
-function ESAStateRedirect() {
-  const { state } = useParams<{ state: string }>();
-  return <Navigate to={`/esa-letter/${state ?? ""}`} replace />;
+// ── Legacy flat state URLs → canonical nested routes ─────────────────────────
+// The original site (and some older internal links / indexed pages) used flat
+// URLs like /esa-letter-florida. Canonical is /esa-letter/florida (and
+// /psd-letter/:state for PSD). These redirects keep any old link, bookmark, or
+// indexed URL working. `replace` avoids polluting history; the query string is
+// preserved so attribution params (?utm_*, ?gclid) survive the hop.
+//
+// Slug lists mirror src/mocks/states.ts (51) and src/mocks/statesPSD.ts (10).
+// They are duplicated here as plain strings instead of importing those data
+// modules (~104 KB + ~42 KB) into the eager router bundle. If a state page is
+// added or removed there, update these lists too.
+const ESA_STATE_SLUGS = [
+  "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+  "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+  "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+  "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+  "missouri", "montana", "nebraska", "nevada", "new-hampshire", "new-jersey",
+  "new-mexico", "new-york", "north-carolina", "north-dakota", "ohio",
+  "oklahoma", "oregon", "pennsylvania", "rhode-island", "south-carolina",
+  "south-dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+  "washington", "washington-dc", "west-virginia", "wisconsin", "wyoming",
+];
+const PSD_STATE_SLUGS = [
+  "arizona", "california", "florida", "georgia", "illinois", "new-york",
+  "north-carolina", "ohio", "pennsylvania", "texas",
+];
+
+function LegacyStateRedirect({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
 }
+
+const legacyFlatStateRoutes: RouteObject[] = [
+  ...ESA_STATE_SLUGS.map((slug) => ({
+    path: `/esa-letter-${slug}`,
+    element: <LegacyStateRedirect to={`/esa-letter/${slug}`} />,
+  })),
+  ...PSD_STATE_SLUGS.map((slug) => ({
+    path: `/psd-letter-${slug}`,
+    element: <LegacyStateRedirect to={`/psd-letter/${slug}`} />,
+  })),
+];
 
 const routes: RouteObject[] = [
   // Homepage: fallback={null} (not the orange PageLoader). The prerendered hero
@@ -313,6 +351,9 @@ const routes: RouteObject[] = [
   // Legacy redirects to the new canonical URL.
   { path: "/lp/esa-housing", element: <Navigate to="/esa-letter-housing" replace /> },
   { path: "/lp-esa-housing", element: <Navigate to="/esa-letter-housing" replace /> },
+  // Legacy flat state URLs (/esa-letter-florida, /psd-letter-texas, …) →
+  // canonical nested routes. Generated above; NOT in sitemap, NOT canonical.
+  ...legacyFlatStateRoutes,
   { path: "*", element: <P C={NotFound} /> },
 ];
 

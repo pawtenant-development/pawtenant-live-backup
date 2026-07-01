@@ -7,39 +7,6 @@ const benefits = [
   "Can be any domesticated animal, not just dogs",
 ];
 
-const petTypes = [
-  { name: "Dogs", icon: "ri-bear-smile-line" },
-  { name: "Cats", icon: "ri-bear-smile-line" },
-  { name: "Rabbits", icon: "ri-rest-time-line" },
-  { name: "Birds", icon: "ri-bird-line" },
-  { name: "Hamsters", icon: "ri-leaf-line" },
-  { name: "Reptiles", icon: "ri-shield-cross-line" },
-];
-
-// Warm, premium home-lifestyle companion-animal photography (dogs/cats in
-// comfortable apartment settings) — supports the housing-focused ESA message.
-// Below the fold → lazy, with explicit width/height to avoid CLS.
-const petPhotos = [
-  {
-    src: "/assets/lifestyle/esa-golden-retriever-home.jpg",
-    alt: "Emotional support dog resting comfortably on the couch at home",
-    width: 1000,
-    height: 750,
-  },
-  {
-    src: "/assets/lifestyle/esa-cat-apartment-window.jpg",
-    alt: "Cat relaxing peacefully by an apartment window in the sun",
-    width: 1000,
-    height: 750,
-  },
-  {
-    src: "/assets/lifestyle/esa-owner-hugging-dog-home.jpg",
-    alt: "Owner sharing a calm, comforting moment with her dog at home",
-    width: 1000,
-    height: 750,
-  },
-];
-
 export default function WhatIsESA() {
   return (
     <section className="py-12 sm:py-20 bg-white">
@@ -102,58 +69,6 @@ export default function WhatIsESA() {
           </div>
         </div>
 
-        {/* Any Pet Qualifies strip — simplified: plain-text pills, no eyebrow, no icons */}
-        <div className="mt-10 pt-8 sm:mt-16 sm:pt-12 border-t border-slate-200">
-          <div className="text-center mb-6 sm:mb-8">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900">Any Domesticated Animal Can Be an ESA</h3>
-            <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">
-              Dogs, cats, rabbits, birds — if your pet provides emotional comfort, they may qualify. No special training required.
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            {petTypes.map((pet) => (
-              <span
-                key={pet.name}
-                className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white border border-slate-200 text-xs sm:text-sm font-semibold text-gray-700"
-              >
-                {pet.name}
-              </span>
-            ))}
-          </div>
-
-          {/* Warm pet visual strip — keeps the section grounded with real
-              companion-animal imagery instead of text-and-chips only.
-              Compact 3-up grid so the section stays short on every breakpoint. */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-2xl mx-auto mt-6 sm:mt-8">
-            {petPhotos.map((p) => (
-              <div
-                key={p.src}
-                className="rounded-xl overflow-hidden border border-slate-200 aspect-[4/3] bg-slate-100"
-              >
-                <picture>
-                  <source
-                    type="image/webp"
-                    srcSet={p.src.replace(/\.jpg$/, ".webp")}
-                  />
-                  <img
-                    src={p.src}
-                    alt={p.alt}
-                    width={p.width}
-                    height={p.height}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover object-center"
-                  />
-                </picture>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-center text-xs text-gray-400 mt-5">
-            <i className="ri-information-line mr-1"></i>
-            ESA letters cover dogs, cats, rabbits, birds, hamsters, and other domesticated animals
-          </p>
-        </div>
       </div>
     </section>
   );

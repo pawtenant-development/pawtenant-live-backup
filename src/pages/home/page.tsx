@@ -333,10 +333,20 @@ export default function Home() {
         <HudUpdateSection />
       </Suspense>
 
-      {/* Connector: Benefits → Trust */}
-      <JourneyConnector to="Why PawTenant is trustworthy" number={3} total={6} bg="bg-white" />
+      {/* Connector: Benefits → Provider */}
+      <JourneyConnector to="Meet your provider" number={3} total={6} bg="bg-white" />
 
-      {/* 5. Why PawTenant is trustworthy. */}
+      {/* 5. Provider / Licensed Professional section — moved above the trust
+          pillars (owner request 2026-07-02): providers first, then why the
+          letters are trustworthy. */}
+      <Suspense fallback={<SectionFallback />}>
+        <DoctorsSection />
+      </Suspense>
+
+      {/* Connector: Provider → Trust */}
+      <JourneyConnector to="Why PawTenant is trustworthy" number={4} total={6} bg="bg-[#f8f7f4]" />
+
+      {/* 6. Why PawTenant is trustworthy. */}
       <Suspense fallback={<SectionFallback />}>
         <VerificationPillarsSection variant="compact" showCTA showPrivacyNote />
       </Suspense>
@@ -344,16 +354,8 @@ export default function Home() {
         <WhyChooseSection />
       </Suspense>
 
-      {/* Connector: Trust → Provider */}
-      <JourneyConnector to="Meet your provider" number={4} total={6} bg="bg-white" />
-
-      {/* 6. Provider / Licensed Professional section. */}
-      <Suspense fallback={<SectionFallback />}>
-        <DoctorsSection />
-      </Suspense>
-
-      {/* Connector: Provider → Sample letter */}
-      <JourneyConnector to="See a sample letter" number={5} total={6} bg="bg-[#f8f7f4]" />
+      {/* Connector: Trust → Sample letter */}
+      <JourneyConnector to="See a sample letter" number={5} total={6} bg="bg-white" />
 
       {/* 7. Sample letter + verification visual — strong proof. */}
       <Suspense fallback={<SectionFallback />}>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const ANON_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -99,13 +99,37 @@ export default function VerifyResultPage() {
       <meta name="robots" content="noindex, nofollow" />
 
       <div className="min-h-screen bg-[#FFF7ED] flex flex-col">
-        {/* Minimal header */}
+        {/* Minimal header — brand logo (same WebP variants as SharedNavbar)
+            linked to the homepage so landlords can reach the main site. */}
         <header className="bg-white border-b border-gray-100 px-6 py-4">
-          <div className="max-w-5xl mx-auto flex items-center gap-3">
-            <div className="w-8 h-8 flex items-center justify-center bg-orange-500 rounded-lg">
-              <i className="ri-shield-check-line text-white text-sm"></i>
-            </div>
-            <span className="text-sm font-extrabold text-gray-900 tracking-tight">Pawtenant Verification</span>
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+            <Link to="/" aria-label="PawTenant homepage" className="flex items-center gap-3 cursor-pointer">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcSet="/assets/brand/pawtenant-logo-black-320.webp 1x, /assets/brand/pawtenant-logo-black-640.webp 2x"
+                />
+                <img
+                  src="/assets/brand/pawtenant-logo-black-02.png"
+                  alt="PawTenant"
+                  width={400}
+                  height={160}
+                  decoding="async"
+                  className="h-8 sm:h-9 w-auto object-contain"
+                />
+              </picture>
+              <span className="inline-flex items-center gap-1.5 bg-orange-50 border border-orange-100 text-orange-600 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full">
+                <i className="ri-shield-check-line"></i>
+                Verification
+              </span>
+            </Link>
+            <Link
+              to="/"
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-orange-600 transition-colors cursor-pointer"
+            >
+              <i className="ri-home-4-line"></i>
+              Back to pawtenant.com
+            </Link>
           </div>
         </header>
 
