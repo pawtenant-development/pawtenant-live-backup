@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { supabase } from "../../lib/supabaseClient";
+import { uploadProviderApplicationFile } from "../../lib/providerUploads";
 import { US_STATES, US_STATE_CODE_TO_NAME } from "../../lib/usStates";
 
 const licenseTypes = [
@@ -210,13 +211,14 @@ export default function JoinOurNetworkPage() {
     setDocumentFiles((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const uploadFile = async (file: File, folder: string): Promise<string | null> => {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const filePath = `${folder}/${Date.now()}-${safeName}`;
-    const { error } = await supabase.storage.from("provider-uploads").upload(filePath, file, { upsert: false });
-    if (error) return null;
-    const { data } = supabase.storage.from("provider-uploads").getPublicUrl(filePath);
-    return data.publicUrl;
+  // PROVIDER-UPLOADS-PRIVATE-REMEDIATION: files go through the
+  // provider-application-upload edge function (service role) into the now
+  // PRIVATE provider-uploads bucket. We store the storage PATH — not a public
+  // URL — on the application row; admin surfaces resolve paths to short-lived
+  // signed URLs. Returns null on failure (file skipped, submission continues),
+  // matching the old direct-upload behavior.
+  const uploadFile = async (file: File, kind: "headshot" | "document"): Promise<string | null> => {
+    return uploadProviderApplicationFile(file, kind);
   };
 
   // OPS-PROVIDER-APPLICATION-LICENSE-ROWS-V2: license-row mutators. Rows are
@@ -382,19 +384,19 @@ export default function JoinOurNetworkPage() {
     setSubmitting(true);
     const formData = new FormData(form);
 
-    // Upload headshot
+    // Upload headshot — stores the storage PATH (private bucket), not a URL.
     let headshotUrl: string | null = null;
     if (headshotFile) {
       setUploadProgress("Uploading headshot...");
-      headshotUrl = await uploadFile(headshotFile, "headshots");
+      headshotUrl = await uploadFile(headshotFile, "headshot");
     }
 
-    // Upload documents
+    // Upload documents — same: storage paths, resolved to signed URLs by admin.
     const docUrls: string[] = [];
     if (documentFiles.length > 0) {
       setUploadProgress("Uploading documents...");
       for (const doc of documentFiles) {
-        const url = await uploadFile(doc, "documents");
+        const url = await uploadFile(doc, "document");
         if (url) docUrls.push(url);
       }
     }

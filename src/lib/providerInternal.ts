@@ -12,7 +12,8 @@ import { logAudit } from "./auditLogger";
 //     read_only staff get zero rows.
 //   • Files live in the PRIVATE `provider-internal` bucket; downloads use
 //     short-lived signed URLs. Never store these files in provider-uploads
-//     (that bucket is public).
+//     (that bucket is for applicant onboarding uploads — also private now,
+//     but with a broader admin read gate).
 //   • provider_bank_details holds MASKED metadata only (bank name, holder,
 //     last-4, method). Full account/routing numbers are NOT stored as
 //     structured data — upload the bank document as an internal document

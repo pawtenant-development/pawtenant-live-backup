@@ -123,6 +123,92 @@ async function generateUniqueSlug(
   return `${base}-${Date.now().toString(36)}`;
 }
 
+// PROVIDER-UPLOADS-PRIVATE-REMEDIATION (2026-07-02): application headshots
+// live in the PRIVATE provider-uploads bucket (stored as storage paths;
+// legacy rows backfilled from old public URLs). doctor_profiles.photo_url and
+// approved_providers.photo_url feed PUBLIC provider pages, so they must never
+// reference provider-uploads. On approval we copy the headshot into the
+// public provider-headshots bucket — the same home the admin drawer's manual
+// photo upload uses, same "<safe-email>.<ext>" naming — and store that public
+// URL. Non-fatal: on any failure the profile is created without a photo and
+// admin can upload one from the provider drawer.
+async function publishHeadshot(
+  adminClient: ReturnType<typeof createClient>,
+  headshotValue: string | null,
+  email: string,
+): Promise<string | null> {
+  const v = (headshotValue ?? "").trim();
+  if (!v) return null;
+
+  // Resolve the provider-uploads storage path from either stored shape.
+  let path: string | null;
+  if (/^https?:\/\//i.test(v)) {
+    const m = v.match(
+      /\/storage\/v1\/object\/(?:public|sign|authenticated)\/provider-uploads\/(.+?)(?:\?.*)?$/,
+    );
+    if (!m) return v; // external image URL — pass through unchanged
+    try {
+      path = decodeURIComponent(m[1]);
+    } catch {
+      path = m[1];
+    }
+  } else {
+    path = v.startsWith("/") || v.includes("..") ? null : v;
+  }
+  if (!path) return null;
+
+  try {
+    const { data: blob, error: dlErr } = await adminClient.storage
+      .from("provider-uploads")
+      .download(path);
+    if (dlErr || !blob) {
+      console.warn(
+        `[approve-provider-application] headshot download failed (${path}):`,
+        dlErr?.message ?? "no data",
+      );
+      return null;
+    }
+
+    const rawExt = (path.split(".").pop() ?? "").toLowerCase();
+    const ext = /^[a-z0-9]{1,5}$/.test(rawExt)
+      ? (rawExt === "jpeg" ? "jpg" : rawExt)
+      : "jpg";
+    const destPath = `${email.replace(/[^a-z0-9]/gi, "_")}.${ext}`;
+    // provider-headshots rejects the non-standard "image/jpg" alias.
+    const blobType = (blob.type ?? "").toLowerCase();
+    const contentType =
+      blobType && blobType !== "application/octet-stream"
+        ? (blobType === "image/jpg" ? "image/jpeg" : blobType)
+        : ext === "png"
+          ? "image/png"
+          : ext === "webp"
+            ? "image/webp"
+            : "image/jpeg";
+
+    const { error: upErr } = await adminClient.storage
+      .from("provider-headshots")
+      .upload(destPath, await blob.arrayBuffer(), { contentType, upsert: true });
+    if (upErr) {
+      console.warn(
+        `[approve-provider-application] headshot publish failed (${destPath}):`,
+        upErr.message,
+      );
+      return null;
+    }
+
+    const { data: pub } = adminClient.storage
+      .from("provider-headshots")
+      .getPublicUrl(destPath);
+    return pub?.publicUrl ?? null;
+  } catch (e) {
+    console.warn(
+      "[approve-provider-application] publishHeadshot threw:",
+      e instanceof Error ? e.message : String(e),
+    );
+    return null;
+  }
+}
+
 // Ensure an approved_providers row exists for this provider.
 // Keyed by email (case-insensitive). Existing rows are NOT overwritten.
 // Returns { created, slug, error } — failures are non-fatal to the caller.
@@ -559,6 +645,11 @@ Deno.serve(async (req) => {
     const additionalStates = appRow.additional_states ? String(appRow.additional_states) : null;
     const bio = appRow.bio ? String(appRow.bio) : null;
     const headshotUrl = appRow.headshot_url ? String(appRow.headshot_url) : null;
+    // Public-safe photo URL for doctor_profiles / approved_providers — the raw
+    // headshot value is a private provider-uploads reference (see
+    // publishHeadshot above). Null when there is no headshot or the copy
+    // failed; admin can set a photo later from the provider drawer.
+    const publicHeadshotUrl = await publishHeadshot(adminClient, headshotUrl, appEmail);
     // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: NPI is captured on the
     // application form. Sync it into doctor_profiles.npi_number so the provider
     // does not have to re-enter it from the portal. Only fill when missing on
@@ -714,7 +805,7 @@ Deno.serve(async (req) => {
         title,
         bio,
         states: licensedStateCodes,
-        photoUrl: headshotUrl,
+        photoUrl: publicHeadshotUrl,
         phone,
         applicationId,
       });
@@ -804,7 +895,7 @@ Deno.serve(async (req) => {
         state_license_numbers: Object.keys(stateLicenseNumbers).length > 0 ? stateLicenseNumbers : null,
         npi_number: applicationNpiOrNull,
         bio,
-        photo_url: headshotUrl,
+        photo_url: publicHeadshotUrl,
         is_admin: false,
         role: "provider",
         is_active: true,
@@ -869,7 +960,7 @@ Deno.serve(async (req) => {
       title,
       bio,
       states: licensedStateCodes,
-      photoUrl: headshotUrl,
+      photoUrl: publicHeadshotUrl,
       phone,
       applicationId,
     });

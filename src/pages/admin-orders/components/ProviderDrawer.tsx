@@ -5,6 +5,7 @@ import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import ImpersonateProviderView from "./ImpersonateProviderView";
 import ProviderInternalRecords from "./ProviderInternalRecords";
 import { normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay, US_STATE_CODE_TO_NAME } from "../../../lib/usStates";
+import { resolveProviderUploadUrl, resolveProviderUploadUrls } from "../../../lib/providerUploads";
 
 // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: helper used by every
 // outbound call in this drawer that re-saves an existing licensed_states
@@ -231,9 +232,23 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
       .select("documents_urls, headshot_url, status, created_at, license_state, additional_states, license_number, license_types, npi")
       .eq("id", applicationId)
       .maybeSingle();
+    if (error) { setLoadingDocs(false); setDocsError(error.message); setAppDocs(null); return; }
+    // PROVIDER-UPLOADS-PRIVATE-REMEDIATION: documents_urls / headshot_url hold
+    // private-bucket storage paths (legacy rows: backfilled paths). Resolve to
+    // short-lived signed URLs before rendering — the tab's Open / Copy-link
+    // buttons then work exactly as before.
+    const raw = data as ProviderApplicationDocs | null;
+    const resolvedDocs: ProviderApplicationDocs | null = raw
+      ? {
+          ...raw,
+          headshot_url: await resolveProviderUploadUrl(raw.headshot_url),
+          documents_urls: raw.documents_urls
+            ? await resolveProviderUploadUrls(raw.documents_urls)
+            : raw.documents_urls,
+        }
+      : null;
     setLoadingDocs(false);
-    if (error) { setDocsError(error.message); setAppDocs(null); return; }
-    setAppDocs((data as ProviderApplicationDocs) ?? null);
+    setAppDocs(resolvedDocs);
   };
 
   const handleCopyDocLink = async (url: string) => {

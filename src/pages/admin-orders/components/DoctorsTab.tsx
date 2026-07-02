@@ -8,6 +8,7 @@ import ProviderApplicationModal from "./ProviderApplicationModal";
 import ProviderDrawer from "./ProviderDrawer";
 import ProviderRecruitmentTab from "./ProviderRecruitmentTab";
 import { canDelete, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
+import { resolveProviderUploadUrl, resolveProviderUploadUrls } from "../../../lib/providerUploads";
 import { US_STATES, normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay } from "../../../lib/usStates";
 
 // Canonical types — see ../types.ts. PendingApplication.npi + .licenses are
@@ -70,7 +71,19 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
 
   const loadPendingApps = async () => {
     const { data } = await supabase.from("provider_applications").select("*").eq("status", "pending").order("created_at", { ascending: false });
-    setPendingApps((data as PendingApplication[]) ?? []);
+    const apps = (data as PendingApplication[]) ?? [];
+    // PROVIDER-UPLOADS-PRIVATE-REMEDIATION: headshot_url / documents_urls hold
+    // private-bucket storage paths (legacy rows: backfilled paths). Resolve to
+    // short-lived signed URLs once here so the list thumbnail and the review
+    // modal keep rendering them as plain URLs.
+    const resolved = await Promise.all(apps.map(async (app) => ({
+      ...app,
+      headshot_url: await resolveProviderUploadUrl(app.headshot_url),
+      documents_urls: app.documents_urls
+        ? await resolveProviderUploadUrls(app.documents_urls)
+        : app.documents_urls,
+    })));
+    setPendingApps(resolved);
   };
 
   const loadData = async () => {
