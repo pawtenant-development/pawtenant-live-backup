@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { supabase, getAdminToken, getAdminUserToken } from "../../../lib/supabaseClient";
 import UTMLinkGenerator from "./UTMLinkGenerator";
+import GoogleAdsCampaignBuilderPanel from "./GoogleAdsCampaignBuilderPanel";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
 import WebsitePricingPanel from "./WebsitePricingPanel";
 // Phase G hotfix — MasterEmailLayoutPanel and RecoverySequencePanel were
@@ -2933,6 +2934,17 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
       {/* ── UTM Campaign Link Generator ── */}
       <AccordionSection title="UTM Campaign Link Generator" subtitle="Build trackable URLs for marketing campaigns" icon="ri-links-line" iconBg="bg-gray-50" iconColor="text-gray-600">
         <UTMLinkGenerator />
+      </AccordionSection>
+
+      {/* ── Google Ads Campaign Builder — guarded, PAUSED-only creation ── */}
+      <AccordionSection
+        title="Google Ads Campaign Builder"
+        subtitle="Draft, validate, and create PAUSED campaigns — guardrails + owner approval required"
+        icon="ri-advertisement-line"
+        iconBg="bg-[#e8f0f9]"
+        iconColor="text-[#3b6ea5]"
+      >
+        <GoogleAdsCampaignBuilderPanel adminRole={adminRole} />
       </AccordionSection>
 
       {/* ── Admin Dashboard Source of Truth ── */}
