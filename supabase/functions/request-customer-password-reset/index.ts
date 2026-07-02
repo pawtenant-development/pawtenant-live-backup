@@ -12,11 +12,29 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * recovery link via the admin API and delivering it through Resend — the
  * same channel the admin-side reset tool already uses successfully.
  *
+ * Self-heal (PORTAL-RESET-SELF-HEAL, 2026-07-02):
+ *   Some older PAID customers (orders placed before auto-portal-access
+ *   shipped on 2026-06-13) never got an auth.users account, so "forgot
+ *   password" returned the generic success message but sent nothing — a
+ *   silent trap. Now, when there is no auth account BUT a paid order exists
+ *   for that email, we delegate to `send-customer-password-reset` (the exact
+ *   same helper the stripe-webhook and admin "Send Portal Access" button use)
+ *   which safely creates the account, back-links the customer's orders, and
+ *   emails an "Access your PawTenant Customer Portal" set-password link.
+ *
  * Security notes:
- *   - Always returns ok:true regardless of whether the account exists, so
- *     this endpoint cannot be used to enumerate customers.
+ *   - Always returns the SAME generic ok:true regardless of which branch ran
+ *     (existing user / self-heal created / silent), so this endpoint cannot be
+ *     used to enumerate customers or learn whether an account exists.
+ *   - Accounts are ONLY created for emails that have a real PAID order — never
+ *     for unpaid leads or random emails.
+ *   - Auth-user lookup uses the service-role-only admin_find_auth_user_by_email
+ *     RPC (indexed, no 1000-user cap; not callable from the browser).
+ *   - Duplicate accounts are impossible: Supabase enforces email uniqueness on
+ *     createUser, and the delegate re-checks existence before creating.
  *   - Soft rate limit per email (60s) using auth.users.recovery_sent_at so
  *     repeated clicks do not blast Resend with duplicate sends.
+ *   - No recovery links, tokens, or passwords are ever logged.
  */
 
 const corsHeaders = {
@@ -24,7 +42,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const RESET_REDIRECT = "https://www.pawtenant.com/reset-password";
+// Where the recovery (set-password) link lands the customer for the
+// existing-user path. Per-environment override via PORTAL_RESET_REDIRECT
+// (TEST sets it to the test domain); production falls back to www.pawtenant.com.
+const RESET_REDIRECT =
+  Deno.env.get("PORTAL_RESET_REDIRECT") ?? "https://www.pawtenant.com/reset-password";
 const MIN_RESEND_INTERVAL_MS = 60_000;
 
 function okResponse() {
@@ -35,6 +57,23 @@ function okResponse() {
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
+}
+
+/** Mask an email for logs: aslynnlh@gmail.com -> a******@gmail.com */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  const head = local.slice(0, 1);
+  return `${head}${"*".repeat(Math.max(1, local.length - 1))}@${domain}`;
+}
+
+interface AuthUserRow {
+  id: string;
+  email: string | null;
+  email_confirmed_at: string | null;
+  banned_until: string | null;
+  deleted_at: string | null;
+  recovery_sent_at: string | null;
 }
 
 serve(async (req) => {
@@ -56,69 +95,223 @@ serve(async (req) => {
       );
     }
 
+    const masked = maskEmail(targetEmail);
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Look up the user without leaking existence to the caller.
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    const existingUser = existingUsers?.users?.find(
-      (u) => u.email?.toLowerCase() === targetEmail,
+    // Best-effort internal audit row. Never fatal, never contains tokens/links.
+    const audit = async (
+      action: string,
+      description: string,
+      metadata: Record<string, unknown> = {},
+    ) => {
+      console.info(`[request-customer-password-reset] ${action} email=${masked}`, JSON.stringify(metadata));
+      try {
+        await adminClient.from("audit_logs").insert({
+          actor_name: "system:request-customer-password-reset",
+          actor_role: "system",
+          object_type: "customer_portal",
+          object_id: targetEmail,
+          action,
+          description,
+          metadata: { email_masked: masked, ...metadata },
+        });
+      } catch {
+        // audit is best-effort — never block or leak on failure
+      }
+    };
+
+    // ── Look up the auth user (service-role-only RPC; indexed, no 1000 cap) ──
+    const { data: found, error: lookupErr } = await adminClient.rpc(
+      "admin_find_auth_user_by_email",
+      { p_email: targetEmail },
     );
+    if (lookupErr) {
+      console.error("[request-customer-password-reset] lookup RPC failed:", lookupErr.message);
+      // Fail closed but silent — never reveal anything to the caller.
+      return okResponse();
+    }
+    const existingUser: AuthUserRow | null =
+      Array.isArray(found) && found.length > 0 ? (found[0] as AuthUserRow) : null;
 
-    if (!existingUser) {
-      // Silent success — do not reveal that the account is missing.
+    // ══════════════════════════════════════════════════════════════════════
+    // Branch 1 — account exists
+    // ══════════════════════════════════════════════════════════════════════
+    if (existingUser) {
+      const now = Date.now();
+      const isBanned = existingUser.banned_until
+        ? new Date(existingUser.banned_until).getTime() > now
+        : false;
+      const isDeleted = existingUser.deleted_at != null;
+
+      if (isBanned || isDeleted) {
+        // Do not send access to a banned/deleted account. Stay silent so the
+        // caller cannot distinguish this from a normal success.
+        await audit(
+          "reset_requested_banned_or_deleted_silent",
+          "Reset requested for a banned or deleted account — no email sent.",
+          { banned: isBanned, deleted: isDeleted },
+        );
+        return okResponse();
+      }
+
+      // Soft per-email rate limit to protect Resend / avoid send floods.
+      const lastSent = existingUser.recovery_sent_at
+        ? new Date(existingUser.recovery_sent_at).getTime()
+        : 0;
+      if (lastSent && now - lastSent < MIN_RESEND_INTERVAL_MS) {
+        await audit(
+          "reset_requested_existing_user",
+          "Reset requested for existing user within rate-limit window — send skipped.",
+          { rate_limited: true },
+        );
+        return okResponse();
+      }
+
+      // Personalize from any existing order.
+      let firstName = "there";
+      try {
+        const { data: orderRow } = await adminClient
+          .from("orders")
+          .select("first_name")
+          .ilike("email", targetEmail)
+          .not("first_name", "is", null)
+          .limit(1)
+          .maybeSingle();
+        if (orderRow?.first_name) firstName = String(orderRow.first_name).trim() || "there";
+      } catch { /* non-fatal */ }
+
+      const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
+        type: "recovery",
+        email: targetEmail,
+        options: { redirectTo: RESET_REDIRECT },
+      });
+      if (linkErr || !linkData) {
+        console.error("[request-customer-password-reset] generateLink failed:", linkErr?.message);
+        await audit("reset_requested_email_send_failed", "generateLink failed for existing user.", { stage: "generate_link" });
+        return okResponse();
+      }
+      const actionLink = (linkData as { properties?: { action_link?: string } })?.properties?.action_link ?? null;
+      if (!actionLink) {
+        await audit("reset_requested_email_send_failed", "No action_link returned for existing user.", { stage: "generate_link" });
+        return okResponse();
+      }
+      if (!resendApiKey) {
+        console.error("[request-customer-password-reset] RESEND_API_KEY missing — cannot deliver reset email");
+        await audit("reset_requested_email_send_failed", "RESEND_API_KEY missing.", { stage: "resend_config" });
+        return okResponse();
+      }
+
+      const subject = "Reset your PawTenant portal password";
+      const htmlBody = buildResetEmailHtml(subject, firstName, actionLink);
+
+      let sent = false;
+      try {
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "PawTenant <hello@pawtenant.com>", to: [targetEmail], subject, html: htmlBody }),
+        });
+        sent = resendRes.ok;
+        if (!resendRes.ok) console.error("[request-customer-password-reset] Resend failed:", await resendRes.text());
+      } catch (resendEx) {
+        console.error("[request-customer-password-reset] Resend exception:", resendEx);
+      }
+
+      await audit(
+        sent ? "reset_requested_existing_user" : "reset_requested_email_send_failed",
+        sent ? "Reset link emailed to existing user." : "Reset link generated for existing user but Resend delivery failed.",
+        { email_sent: sent },
+      );
       return okResponse();
     }
 
-    // Soft per-email rate limit to protect Resend / avoid send floods.
-    const lastSent = existingUser.recovery_sent_at
-      ? new Date(existingUser.recovery_sent_at).getTime()
-      : 0;
-    if (lastSent && Date.now() - lastSent < MIN_RESEND_INTERVAL_MS) {
-      return okResponse();
-    }
-
-    // Get the first name off any existing order so the email feels personal.
-    let firstName = "there";
+    // ══════════════════════════════════════════════════════════════════════
+    // Branch 2 — no account. Self-heal ONLY if a real PAID order exists.
+    // ══════════════════════════════════════════════════════════════════════
+    let paidOrder: { id: string; first_name: string | null } | null = null;
     try {
       const { data: orderRow } = await adminClient
         .from("orders")
-        .select("first_name")
-        .eq("email", targetEmail)
-        .not("first_name", "is", null)
+        .select("id, first_name")
+        .ilike("email", targetEmail)
+        .not("paid_at", "is", null)
+        .order("paid_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (orderRow?.first_name) firstName = String(orderRow.first_name).trim() || "there";
-    } catch {
-      // Non-fatal — fall back to "there".
-    }
+      paidOrder = (orderRow as { id: string; first_name: string | null } | null) ?? null;
+    } catch { /* non-fatal — treated as no paid order */ }
 
-    const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
-      type: "recovery",
-      email: targetEmail,
-      options: { redirectTo: RESET_REDIRECT },
-    });
-
-    if (linkErr || !linkData) {
-      console.error("[request-customer-password-reset] generateLink failed:", linkErr?.message);
-      // Fail silent — never tell caller anything beyond the generic success.
+    if (!paidOrder) {
+      // No account and no paid order — send nothing, but respond identically.
+      await audit(
+        "reset_requested_no_paid_customer_silent",
+        "Reset requested for an email with no auth account and no paid order — no email sent.",
+        {},
+      );
       return okResponse();
     }
 
-    const actionLink = (linkData as { properties?: { action_link?: string } })?.properties?.action_link ?? null;
-    if (!actionLink) {
-      console.error("[request-customer-password-reset] No action_link returned from generateLink");
-      return okResponse();
+    // Self-heal: delegate to send-customer-password-reset, which creates the
+    // auth user (email_confirm=true), back-links unlinked orders, and emails
+    // the portal-access set-password link. Same helper used by stripe-webhook
+    // and the admin "Send Portal Access" button — no logic duplicated here.
+    let delegateOk = false;
+    let accountCreated = false;
+    let emailSent = false;
+    try {
+      const delegateRes = await fetch(`${supabaseUrl}/functions/v1/send-customer-password-reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${serviceRoleKey}`,
+          "x-internal-secret": serviceRoleKey,
+        },
+        body: JSON.stringify({
+          email: targetEmail,
+          first_name: (paidOrder.first_name ?? "").toString(),
+          action: "welcome",
+        }),
+      });
+      // NOTE: the delegate returns an action_link — deliberately NOT read/logged.
+      const delegateData = await delegateRes.json().catch(() => ({})) as {
+        ok?: boolean; account_created?: boolean; email_sent?: boolean; error?: string;
+      };
+      delegateOk = delegateRes.ok && delegateData.ok === true;
+      accountCreated = delegateData.account_created === true;
+      emailSent = delegateData.email_sent === true;
+      if (!delegateOk) {
+        console.error("[request-customer-password-reset] self-heal delegate failed:", delegateData.error ?? `http ${delegateRes.status}`);
+      }
+    } catch (delegateEx) {
+      console.error("[request-customer-password-reset] self-heal delegate exception:", delegateEx);
     }
 
-    if (!resendApiKey) {
-      console.error("[request-customer-password-reset] RESEND_API_KEY missing — cannot deliver reset email");
-      return okResponse();
+    if (delegateOk && emailSent) {
+      await audit(
+        "reset_requested_self_heal_created_user",
+        "Paid customer had no portal account — account created/linked and portal access link emailed.",
+        { order_id: paidOrder.id, account_created: accountCreated, email_sent: emailSent },
+      );
+    } else {
+      await audit(
+        "reset_requested_email_send_failed",
+        "Self-heal path ran for a paid customer but account creation or email delivery failed.",
+        { order_id: paidOrder.id, delegate_ok: delegateOk, account_created: accountCreated, email_sent: emailSent },
+      );
     }
+    return okResponse();
+  } catch (err) {
+    console.error("[request-customer-password-reset] Server error:", err);
+    // Still return a generic success — the customer should see a consistent response.
+    return okResponse();
+  }
+});
 
-    const subject = "Reset your PawTenant portal password";
-    const htmlBody = `<!DOCTYPE html>
+/** Branded reset email (existing-user path). Kept identical to the prior copy. */
+function buildResetEmailHtml(subject: string, firstName: string, actionLink: string): string {
+  return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title></head>
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
@@ -170,33 +363,4 @@ serve(async (req) => {
   </table>
 </body>
 </html>`;
-
-    try {
-      const resendRes = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "PawTenant <hello@pawtenant.com>",
-          to: [targetEmail],
-          subject,
-          html: htmlBody,
-        }),
-      });
-      if (!resendRes.ok) {
-        const detail = await resendRes.text();
-        console.error("[request-customer-password-reset] Resend failed:", detail);
-      }
-    } catch (resendEx) {
-      console.error("[request-customer-password-reset] Resend exception:", resendEx);
-    }
-
-    return okResponse();
-  } catch (err) {
-    console.error("[request-customer-password-reset] Server error:", err);
-    // Still return a generic success — the customer should see a consistent response.
-    return okResponse();
-  }
-});
+}
