@@ -107,9 +107,22 @@ serve(async (req) => {
       commConfirmationId = (latestOrder as { confirmation_id?: string } | null)?.confirmation_id ?? null;
     }
 
-    // Check if this customer has a Supabase Auth account
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    const existingUser = existingUsers?.users?.find((u) => u.email?.toLowerCase() === targetEmail);
+    // Check if this customer has a Supabase Auth account.
+    // Uses the service-role-only admin_find_auth_user_by_email RPC (indexed,
+    // no 1000-user cap) instead of scanning listUsers({ perPage: 1000 }), which
+    // silently missed users past the first 1000. Same lookup the customer-facing
+    // request-customer-password-reset uses. Returns 0 or 1 row; only existence
+    // is used below, so downstream create/reset behavior is unchanged.
+    const { data: foundUsers, error: lookupErr } = await adminClient.rpc(
+      "admin_find_auth_user_by_email",
+      { p_email: targetEmail },
+    );
+    if (lookupErr) {
+      return new Response(JSON.stringify({ ok: false, error: `Auth lookup failed: ${lookupErr.message}` }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const existingUser = Array.isArray(foundUsers) && foundUsers.length > 0 ? foundUsers[0] : null;
 
     let actionLink: string | null = null;
     let accountCreated = false;
