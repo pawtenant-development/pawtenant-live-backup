@@ -361,24 +361,25 @@ async function processOrder(
   forceUpload = false
 ): Promise<{ confirmationId: string; method: string; quality: string; success: boolean; skipped: boolean; skipReason?: string; error?: string; diagnostics?: Record<string, unknown> }> {
 
-  // ── Skip same-session orders: website tag already fired, no backend upload needed ──
-  // forceUpload=true bypasses this guard (used for manual single-order retries from admin panel)
-  if (!forceUpload && order.google_tag_fired === true) {
-    console.info(`[google-ads][${order.confirmation_id}] Skipped — google_tag_fired=true (same-session, website tag handled conversion)`);
-    await supabase.from("orders").update({
-      google_ads_upload_status: "skipped_website_tag",
-      google_ads_upload_method: "website_tag",
-      google_ads_last_attempt_at: new Date().toISOString(),
-    }).eq("id", order.id);
-    return {
-      confirmationId: order.confirmation_id,
-      method: "website_tag",
-      quality: "strong",
-      success: true,
-      skipped: true,
-      skipReason: "google_tag_fired=true — same-session purchase handled by website gtag conversion",
-    };
-  }
+  // ── Backend API is now the single PRIMARY purchase conversion ──────────────
+  // The Google Ads goal was corrected: "Pawtenant Backend Purchase (API)"
+  // (action 7567366496) = PRIMARY; "ESA Purchase (Dynamic)" and
+  // "PSD Purchase (Dynamic)" = SECONDARY (diagnostics only, "All conversions").
+  //
+  // Previously this function skipped orders where google_tag_fired=true (marking
+  // them "skipped_website_tag") because the website tags were Primary and would
+  // have double-counted. Now that the website tags are Secondary, that skip would
+  // leave the google_tag_fired orders out of the Primary count — so the backend
+  // must upload EVERY eligible paid Google Ads order, google_tag_fired or not.
+  //
+  // No double-counting in the "Conversions" column: the website actions are
+  // Secondary (different conversion actions), so only the backend Primary action
+  // counts for bidding. Dedup is still enforced two ways: the backfill selects
+  // only orders with google_ads_uploaded_at IS NULL, and Google Ads dedupes by
+  // orderId (= confirmation_id). The "skipped_website_tag" status is now
+  // LEGACY-ONLY — no longer written here; the backfill selection still excludes
+  // pre-existing skipped_website_tag rows so historical orders aren't re-touched.
+  // (forceUpload is retained for call-site compatibility / manual retries.)
 
   const gclid = resolveGclid(order.gclid, order.attribution_json, order.confirmation_id);
   const email = order.email?.trim() || null;
@@ -521,7 +522,9 @@ serve(async (req) => {
 
     const mode = body.mode ?? "backfill";
     const dryRun = body.dryRun === true;
-    // forceUpload=true bypasses the google_tag_fired guard — for admin manual retries only
+    // forceUpload is retained for call-site/API compatibility (manual admin retries).
+    // The google_tag_fired skip it used to bypass has been removed — the backend now
+    // uploads every eligible paid order regardless of google_tag_fired.
     const forceUpload = body.forceUpload === true;
 
     // ── List conversion actions ───────────────────────────────────────────────
