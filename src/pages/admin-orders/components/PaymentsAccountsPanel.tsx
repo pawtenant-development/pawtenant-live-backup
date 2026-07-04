@@ -297,6 +297,7 @@ export default function PaymentsAccountsPanel({
     {
       label: "Gross Revenue", value: fmtUSD(gross), color: "text-emerald-600", icon: "ri-money-dollar-circle-line",
       badge: chargeCount > 0 ? `${chargeCount} paid order${chargeCount === 1 ? "" : "s"}` : undefined,
+      tooltip: "Counts paid Stripe charges that settled in this date range (cash basis) — money actually received in the range. This is not the same as the Orders tab's “Completed this month”, which counts letters delivered this month regardless of when they were paid. An order completed this month but paid in an earlier month is revenue for that earlier month, so it is not re-counted here.",
     },
     { label: "Stripe Fees", value: `−${fmtUSD(stripeFees)}`, color: "text-rose-500", icon: "ri-bank-card-2-line" },
     {
