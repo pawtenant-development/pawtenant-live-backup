@@ -11,6 +11,10 @@ import type { Step3Data } from "./components/Step3Checkout";
 import ExitIntentOverlay from "./components/ExitIntentOverlay";
 import WhatHappensNext from "./components/WhatHappensNext";
 import LiveStatusBanner from "./components/LiveStatusBanner";
+import StateSelectionStep from "./components/StateSelectionStep";
+import CustomerOtpStep from "./components/CustomerOtpStep";
+import AssuranceScreen from "./components/AssuranceScreen";
+import type { StateAcknowledgment } from "./components/StateAcknowledgmentModal";
 
 
 import { getDoctorsForState, ALL_STATES } from "../../mocks/doctors";
@@ -29,6 +33,7 @@ import {
   setSelectedState,
 } from "@/lib/attributionStore";
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
+import { getEsaOneTimeTotal, getEsaAnnualTotal } from "@/config/pricing";
 import { trackAssessmentStepView, trackPaymentAttempted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 
 // Lazy-loaded Step 3 checkout (payment) — split into its own bundle chunk.
@@ -45,6 +50,7 @@ function Step3LoadingFallback() {
 }
 
 const defaultStep1: Step1Data = {
+  safetyCheck: "",
   emotionalFrequency: "",
   conditions: [],
   lifeChangeStress: "",
@@ -75,9 +81,8 @@ const defaultStep2: Step2Data = {
 };
 
 function getAssessmentBasePrice(petCount: number, _deliverySpeed: string, plan: "one-time" | "subscription"): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  if (plan === "subscription") return 99 + (n - 1) * 20;
-  return 110 + (n - 1) * 25;
+  if (plan === "subscription") return getEsaAnnualTotal(petCount);
+  return getEsaOneTimeTotal(petCount);
 }
 
 function getDiscountedAssessmentPrice(basePrice: number, coupon: { code: string; discount: number } | null): number {
@@ -86,6 +91,7 @@ function getDiscountedAssessmentPrice(basePrice: number, coupon: { code: string;
 
 // ─── Test / Dev prefill data ──────────────────────────────────────────────────
 const testStep1: Step1Data = {
+  safetyCheck: "no",
   emotionalFrequency: "daily",
   conditions: ["anxiety", "depression"],
   lifeChangeStress: "yes",
@@ -393,6 +399,14 @@ export default function AssessmentPage() {
   const referredBy = tracking.ref || tracking.fullSource || null;
 
   const [currentStep, setCurrentStep] = useState(1);
+  // ── Flow gates (2026-07 restructure) ──────────────────────────────────────
+  // State is collected FIRST (before the questionnaire) so the 30-day
+  // acknowledgment fires early. After "Your Information" the customer verifies
+  // their email via a 6-digit OTP, then sees an assurance screen, then pays.
+  const [stateConfirmed, setStateConfirmed] = useState(false);
+  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "pay">("otp");
+  const [otpVerified, setOtpVerified] = useState(false);
+  const verifiedEmailRef = useRef("");
   const [step1, setStep1] = useState<Step1Data>(defaultStep1);
   const [step2, setStep2] = useState<Step2Data>({ ...defaultStep2, state: preSelectedState });
   const [step3, setStep3] = useState<Step3Data>({ selectedDoctorId: preSelectedDoctorId, plan: "one-time" });
@@ -406,6 +420,12 @@ export default function AssessmentPage() {
   const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
   const [resumeNotFound, setResumeNotFound] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
+  // Legacy-resume pricing: the server (create-payment-intent) is authoritative
+  // and returns the actual pre-discount base it charged (basePriceAmount). We
+  // mirror it here so the checkout UI always shows the SAME amount that will be
+  // charged — including a preserved original quote on a resumed old lead.
+  // null = use the current-pricing computed display.
+  const [quotedBasePriceDollars, setQuotedBasePriceDollars] = useState<number | null>(null);
 
   // ── Sync confirmation ID + coupon into attribution store ─────────────────
   useEffect(() => {
@@ -454,6 +474,7 @@ export default function AssessmentPage() {
 
   // ── answeredInStep1 must be computed BEFORE any effect that uses it ────────
   const answeredInStep1 = [
+    step1.safetyCheck,
     step1.emotionalFrequency,
     step1.conditions.length > 0 ? "yes" : "",
     step1.lifeChangeStress,
@@ -473,6 +494,9 @@ export default function AssessmentPage() {
   // changes plan before paying, preventing "Incomplete" subscriptions piling up.
   const subscriptionIdRef = useRef<string | null>(null);
   const paymentCompletedRef = useRef(false);
+  // Which state's waiting-period acknowledgment has already been audit-logged
+  // this session — prevents duplicate audit rows when Step 2 is revisited.
+  const stateAckAuditRef = useRef<string | null>(null);
 
   // ── Resume flow: if ?resume=CONFIRMATION_ID, pre-fill and jump to step 3 ──
   useEffect(() => {
@@ -533,6 +557,7 @@ export default function AssessmentPage() {
         const answers = (data.assessment_answers ?? {}) as Record<string, unknown>;
 
         setStep1({
+          safetyCheck: (answers.safetyCheck as string) ?? "",
           emotionalFrequency: (answers.emotionalFrequency as string) ?? "",
           conditions: (answers.conditions as string[]) ?? [],
           lifeChangeStress: (answers.lifeChangeStress as string) ?? "",
@@ -575,8 +600,18 @@ export default function AssessmentPage() {
           pets: (answers.pets as Step2Data["pets"]) ?? [{ name: "", age: "", breed: "", type: "", weight: "" }],
           deliverySpeed: (data.delivery_speed as string) ?? "",
           additionalDocs: (answers.additionalDocs as Step2Data["additionalDocs"]) ?? undefined,
+          stateAcknowledgment: (answers.stateAcknowledgment as Step2Data["stateAcknowledgment"]) ?? undefined,
         };
         setStep2(loadedStep2);
+
+        // Pre-seed the displayed price from the saved quote so the resumed
+        // checkout immediately shows the ORIGINAL price (not the recalculated
+        // current one). The server confirms/refines this via basePriceAmount
+        // when the PaymentIntent is minted below.
+        {
+          const savedPrice = typeof data.price === "number" ? data.price : null;
+          if (savedPrice != null && savedPrice > 0) setQuotedBasePriceDollars(savedPrice);
+        }
 
         // Use the existing confirmation ID so payment upserts the right row
         confirmationId.current = resumeConfirmationId;
@@ -611,6 +646,12 @@ export default function AssessmentPage() {
         // fetchClientSecret call — Step 3 will trigger it normally when the
         // customer reaches checkout. Otherwise keep the existing jump-to-Step-3
         // behavior for every other resume use case.
+        // Resume = returning customer from a trusted email link: skip the
+        // state gate and the OTP gate (they've already been through intake).
+        setStateConfirmed(true);
+        setOtpVerified(true);
+        verifiedEmailRef.current = (loadedStep2.email ?? "").trim().toLowerCase();
+        setCheckoutGate("pay");
         if (resumeEditPet) {
           setCurrentStep(1);
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -652,6 +693,11 @@ export default function AssessmentPage() {
     if (!isTestMode) return;
     setStep1(testStep1);
     setStep2(testStep2);
+    // Test shortcut bypasses the state + OTP gates and lands on the pay surface.
+    setStateConfirmed(true);
+    setOtpVerified(true);
+    verifiedEmailRef.current = testStep2.email.trim().toLowerCase();
+    setCheckoutGate("pay");
     setCurrentStep(3);
     window.scrollTo(0, 0);
     fetchClientSecret(testStep2, confirmationId.current);
@@ -754,11 +800,17 @@ export default function AssessmentPage() {
         },
         confId,
       );
-      const result = (await res.json()) as { clientSecret?: string; paymentIntentId?: string; error?: string };
+      const result = (await res.json()) as { clientSecret?: string; paymentIntentId?: string; basePriceAmount?: number; error?: string };
       if (result.clientSecret) {
         setStripeClientSecret(result.clientSecret);
         setStripePaymentIntentId(result.paymentIntentId ?? "");
         setStripeSecretError("");
+        // Server-authoritative pre-discount base (cents). Mirror it into the UI
+        // so the displayed amount always equals what will actually be charged —
+        // including a locked legacy quote on a resumed order.
+        if (typeof result.basePriceAmount === "number" && result.basePriceAmount > 0) {
+          setQuotedBasePriceDollars(result.basePriceAmount / 100);
+        }
       } else {
         const errMsg = result.error ?? "Payment setup failed. Please try again.";
         setStripeSecretError(errMsg);
@@ -789,6 +841,31 @@ export default function AssessmentPage() {
   };
 
   // ── Step navigation ────────────────────────────────────────────────────────
+  // ── State-first gate handlers ─────────────────────────────────────────────
+  const handleStateChange = (nextState: string) => {
+    setStep2((s) => ({
+      ...s,
+      state: nextState,
+      // Invalidate a stale acknowledgment when the state changes.
+      stateAcknowledgment:
+        s.stateAcknowledgment && s.stateAcknowledgment.state === nextState.toUpperCase()
+          ? s.stateAcknowledgment
+          : undefined,
+    }));
+  };
+  const handleStateConfirm = (nextState: string, ack?: StateAcknowledgment) => {
+    setStep2((s) => ({ ...s, state: nextState, stateAcknowledgment: ack ?? s.stateAcknowledgment }));
+    setStateConfirmed(true);
+    setCurrentStep(1);
+    window.scrollTo(0, 0);
+  };
+  const handleOtpVerified = () => {
+    setOtpVerified(true);
+    verifiedEmailRef.current = step2.email.trim().toLowerCase();
+    setCheckoutGate("assurance");
+    window.scrollTo(0, 0);
+  };
+
   const goNext = async () => {
     // Structured event: about to advance from currentStep — log the next view.
     // Fire-and-forget. Step 1 view is already fired by useAssessmentTracking.
@@ -798,6 +875,12 @@ export default function AssessmentPage() {
     } catch { /* analytics must never block the user */ }
 
     if (currentStep === 2) {
+      // Decide the checkout gate: fresh (or changed) email → OTP first; an
+      // already-verified matching email → straight to the pay surface.
+      const needOtp =
+        !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
+      if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
+      else setCheckoutGate("pay");
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
       // Save lead FIRST and await it — saveLeadToSupabase may rewrite
@@ -986,6 +1069,9 @@ export default function AssessmentPage() {
               pets: step2.pets,
               dob: step2.dob,
               additionalDocs: step2.additionalDocs ?? null,
+              // State-law waiting-period acknowledgment evidence (AR/CA/IA/LA/MT)
+              // — captured at state selection in Step 2, null for other states.
+              stateAcknowledgment: step2.stateAcknowledgment ?? null,
             },
           }),
         },
@@ -1043,6 +1129,30 @@ export default function AssessmentPage() {
     // nothing was written to the DB.
     if (!emailConflict) {
       triggerSheetsFullSync();
+    }
+
+    // Surface the state-law acknowledgment in the admin audit timeline (once
+    // per acknowledged state per session). The full evidence object also lives
+    // in orders.assessment_answers.stateAcknowledgment.
+    const ack = step2.stateAcknowledgment;
+    if (!emailConflict && ack && stateAckAuditRef.current !== ack.state) {
+      stateAckAuditRef.current = ack.state;
+      void logAudit({
+        actor_name: "assessment_flow",
+        actor_role: "client",
+        object_type: "order",
+        object_id: confirmationId.current,
+        action: "state_waiting_period_acknowledged",
+        description: `Customer acknowledged the ${ack.state} waiting-period notice at state selection (v${ack.version}, price shown $${ack.priceShown}).`,
+        metadata: {
+          confirmation_id: confirmationId.current,
+          state: ack.state,
+          service: ack.service,
+          version: ack.version,
+          acknowledged_at: ack.acknowledgedAt,
+          price_shown: ack.priceShown,
+        },
+      });
     }
 
     return { emailConflict, error: conflictError };
@@ -1110,6 +1220,7 @@ export default function AssessmentPage() {
             pets: step2.pets,
             dob: step2.dob,
             additionalDocs: step2.additionalDocs ?? null,
+            stateAcknowledgment: step2.stateAcknowledgment ?? null,
           },
         }),
       });
@@ -1324,7 +1435,7 @@ export default function AssessmentPage() {
   // answeredInStep1 already computed above — remove the duplicate declaration below
   // Compute the same progress % used in StepIndicator
   function getProgressPercent(): number {
-    if (currentStep === 1) return Math.round((answeredInStep1 / 12) * 30);
+    if (currentStep === 1) return Math.round((answeredInStep1 / 13) * 30);
     if (currentStep === 2) return 42;
     if (currentStep === 3) return 78;
     return 100;
@@ -1440,6 +1551,23 @@ export default function AssessmentPage() {
               <i className="ri-arrow-right-line"></i>Start Fresh Assessment
             </button>
           </div>
+        ) : !stateConfirmed ? (
+          <>
+            {/* STATE FIRST — collected before the questionnaire so the 30-day
+                acknowledgment (AR/CA/IA/LA/MT) fires early. */}
+            <div className="text-center mb-6">
+              <p className="text-[#1A5C4F] text-xs font-bold tracking-[0.22em] uppercase mb-2">ESA Assessment</p>
+            </div>
+            <StateSelectionStep
+              state={step2.state}
+              service="esa"
+              priceShown={getEsaOneTimeTotal(1)}
+              existingAck={step2.stateAcknowledgment}
+              onChange={handleStateChange}
+              onConfirm={handleStateConfirm}
+            />
+            <WhatHappensNext />
+          </>
         ) : (
           <>
             {/* Header */}
@@ -1476,7 +1604,7 @@ export default function AssessmentPage() {
               <StepIndicator
                 currentStep={currentStep}
                 answeredInStep1={answeredInStep1}
-                totalInStep1={12}
+                totalInStep1={13}
               />
             )}
 
@@ -1523,9 +1651,35 @@ export default function AssessmentPage() {
                 <Step1Assessment data={step1} onChange={setStep1} onNext={goNext} useStep1V2={useStep1V2} />
               )}
               {currentStep === 2 && (
-                <Step2PersonalInfo data={step2} onChange={setStep2} onNext={goNext} onBack={goBack} />
+                <Step2PersonalInfo
+                  data={step2}
+                  onChange={setStep2}
+                  onNext={goNext}
+                  onBack={goBack}
+                  onEditState={() => { setStateConfirmed(false); window.scrollTo(0, 0); }}
+                />
               )}
-              {currentStep === 3 && (
+              {/* Checkout gates: email OTP → assurance → payment. */}
+              {currentStep === 3 && checkoutGate === "otp" && (
+                <CustomerOtpStep
+                  email={step2.email}
+                  firstName={step2.firstName}
+                  confirmationId={confirmationId.current}
+                  letterType="esa"
+                  accent="esa"
+                  onVerified={handleOtpVerified}
+                  onBack={goBack}
+                />
+              )}
+              {currentStep === 3 && checkoutGate === "assurance" && (
+                <AssuranceScreen
+                  letterType="esa"
+                  accent="esa"
+                  onContinue={() => { setCheckoutGate("pay"); window.scrollTo(0, 0); }}
+                  onBack={() => setCheckoutGate("otp")}
+                />
+              )}
+              {currentStep === 3 && checkoutGate === "pay" && (
                 <Suspense fallback={<Step3LoadingFallback />}>
                   <Step3Checkout
                     step1={step1}
@@ -1546,6 +1700,7 @@ export default function AssessmentPage() {
                     appliedCoupon={appliedCoupon}
                     petCount={step2.pets.length}
                     onBeforeRedirect={handleBeforeRedirect}
+                    quotedBasePrice={quotedBasePriceDollars ?? undefined}
                   />
                 </Suspense>
               )}

@@ -54,49 +54,45 @@ const benefitPills = [
 // money-back guarantee"). Prices mirror PSDStep3Checkout (1 dog).
 const pricingPlans = [
   {
-    name: "Standard",
-    speed: "2–3 Business Days",
-    price: "$100",
+    name: "PSD Letter",
+    speed: "One-time — from $129 for 1 dog",
+    price: "$129",
     priceKey: "psd_standard",
     priceSuffix: "",
-    popular: false,
+    note: "$149 total for 2–3 dogs",
+    annualPill: false,
+    highlight: true,
     features: [
-      "Licensed provider evaluation",
+      "Reviewed by a licensed provider (LMHP)",
       "PSD documentation if clinically appropriate",
       "Provider signature, license & NPI",
-      "Secure PDF delivery by email",
+      "Same-day PDF delivery available",
+      "Valid for 12 months",
+      "Landlord documentation support",
+      "Public-access documentation support where applicable",
+      "Secure online assessment",
       "Refund if you don't qualify",
     ],
   },
   {
-    name: "Priority",
-    speed: "Faster Review",
-    price: "$120",
-    priceKey: "psd_priority",
-    priceSuffix: "",
-    popular: true,
-    features: [
-      "Licensed provider evaluation",
-      "PSD documentation if clinically appropriate",
-      "Provider signature, license & NPI",
-      "Secure PDF delivery by email",
-      "Priority review queue",
-      "Refund if you don't qualify",
-    ],
-  },
-  {
-    name: "Annual",
-    speed: "Renews Annually",
-    price: "$99",
+    name: "PSD Annual",
+    speed: "Per year — renews automatically",
+    price: "$109",
     priceKey: "psd_annual",
     priceSuffix: "/yr",
-    popular: false,
+    note: "$129/year total for 2–3 dogs",
+    annualPill: true,
+    highlight: false,
     features: [
-      "Licensed provider evaluation",
+      "Reviewed by a licensed provider (LMHP)",
       "PSD documentation if clinically appropriate",
       "Provider signature, license & NPI",
-      "Secure PDF delivery by email",
-      "Annual renewal coverage",
+      "Same-day PDF delivery available",
+      "Valid for 12 months",
+      "Landlord documentation support",
+      "Public-access documentation support where applicable",
+      "Secure online assessment",
+      "Annual renewal keeps your letter current",
       "Refund if you don't qualify",
     ],
   },
@@ -532,21 +528,43 @@ export default function StatePSDPage() {
               Pricing covers the licensed provider evaluation. PSD documentation is issued only if it&apos;s clinically appropriate for you — and you&apos;re refunded if you don&apos;t qualify. Final pricing is confirmed at checkout.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto items-stretch">
             {pricingPlans.map((plan) => (
-              <div key={plan.name} className={`relative bg-white rounded-2xl border-2 p-8 flex flex-col ${plan.popular ? "border-orange-500" : "border-gray-200"}`}>
-                {plan.popular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-orange-500 text-white text-xs font-bold px-4 py-1.5 rounded-full whitespace-nowrap">Most Popular</span>
-                  </div>
+              <div
+                key={plan.name}
+                className={`relative bg-white rounded-2xl p-8 flex flex-col ${
+                  plan.highlight
+                    ? "border-2 border-orange-400 shadow-[0_16px_44px_-18px_rgba(249,115,22,0.42)]"
+                    : "border-2 border-gray-200"
+                }`}
+              >
+                {plan.highlight && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap shadow-sm">
+                    Most Popular
+                  </span>
                 )}
                 <div className="mb-5">
                   <h3 className="text-gray-900 font-bold text-base mb-1">{plan.name}</h3>
                   <p className="text-gray-400 text-xs mb-4">{plan.speed}</p>
-                  <div className="flex items-end gap-1">
-                    <p className="text-4xl font-extrabold text-gray-900">{getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}</p>
-                    <p className="text-sm text-gray-400 mb-1">/ 1 dog</p>
-                  </div>
+                  {plan.annualPill ? (
+                    <div className="flex flex-col gap-2">
+                      <span className="self-start inline-flex items-center gap-1.5 rounded-full bg-[#4A8472]/10 text-[#2f5d50] border border-[#4A8472]/25 px-3.5 py-1.5 text-sm font-extrabold">
+                        <i className="ri-refresh-line text-[13px]"></i>
+                        Annual from {getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}
+                      </span>
+                      <span className="self-start inline-flex items-center rounded-full bg-[#4A8472]/8 text-[#3F7061] border border-[#4A8472]/20 px-3 py-1 text-[12px] font-bold">
+                        {plan.note}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-end gap-1">
+                        <p className="text-4xl font-extrabold text-gray-900">{getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}</p>
+                        <p className="text-sm text-gray-400 mb-1">/ 1 dog</p>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{plan.note}</p>
+                    </>
+                  )}
                 </div>
                 <ul className="space-y-2 mb-8 flex-1">
                   {plan.features.map((f) => (
@@ -560,7 +578,11 @@ export default function StatePSDPage() {
                 </ul>
                 <Link
                   to="/psd-assessment"
-                  className={`whitespace-nowrap w-full py-3 text-sm font-bold rounded-md transition-colors cursor-pointer text-center block ${plan.popular ? "bg-orange-500 text-white hover:bg-orange-600" : "border-2 border-orange-500 text-orange-500 hover:bg-orange-50"}`}
+                  className={`whitespace-nowrap w-full py-3 text-sm font-bold rounded-md transition-colors cursor-pointer text-center block ${
+                    plan.highlight
+                      ? "bg-orange-500 text-white hover:bg-orange-600 shadow-[0_4px_12px_rgba(249,115,22,0.30)]"
+                      : "border-2 border-orange-500 text-orange-500 hover:bg-orange-50"
+                  }`}
                 >
                   Start My PSD Assessment
                 </Link>

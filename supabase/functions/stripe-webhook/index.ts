@@ -738,13 +738,26 @@ Deno.serve(async (req: Request) => {
       stripeEventId: event.id,
     });
 
+    // ADMIN-ORDER-DISCOUNT-DISPLAY: capture coupon on the Klarna / Checkout
+    // Session path too (card/PI path already does via PI metadata). Defensive:
+    // any missing field yields null, never throws, never changes the amount.
+    const sessCouponCode = (session.metadata?.coupon_code as string) || null;
+    const sessAmtDiscount = session.total_details?.amount_discount;
+    const sessCouponDiscount = typeof sessAmtDiscount === "number" && sessAmtDiscount > 0
+      ? Math.round(sessAmtDiscount) / 100
+      : null;
+
     if ((order.status as string) === "processing") {
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
+      const couponPatch: Record<string, unknown> = {};
+      if (sessCouponCode && !order.coupon_code) couponPatch.coupon_code = sessCouponCode;
+      if (sessCouponDiscount && sessCouponDiscount > 0 && !order.coupon_discount) couponPatch.coupon_discount = sessCouponDiscount;
+      if (Object.keys(couponPatch).length > 0) { await supabase.from("orders").update(couponPatch).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true, matchedBy });
     }
-    await markOrderProcessing(confirmationId, piId, amt, mode, session.id);
+    await markOrderProcessing(confirmationId, piId, amt, mode, session.id, sessCouponCode, sessCouponDiscount);
     const freshOrder = await findOrderByConfId(confirmationId);
     if (freshOrder?.id) {
       await logStatus(freshOrder.id, confirmationId, "processing", `Checkout session ${session.id} completed. PI: ${piId}. Amount: $${amt}. Matched by: ${matchedBy}`);
@@ -792,13 +805,25 @@ Deno.serve(async (req: Request) => {
       stripeEventId: event.id,
     });
 
+    // ADMIN-ORDER-DISCOUNT-DISPLAY: capture coupon on the async (Klarna/QR)
+    // path too. Defensive — missing fields yield null and never change amounts.
+    const asyncCouponCode = (session.metadata?.coupon_code as string) || null;
+    const asyncAmtDiscount = session.total_details?.amount_discount;
+    const asyncCouponDiscount = typeof asyncAmtDiscount === "number" && asyncAmtDiscount > 0
+      ? Math.round(asyncAmtDiscount) / 100
+      : null;
+
     if ((order.status as string) === "processing") {
       if (session.id && !order.checkout_session_id) { await supabase.from("orders").update({ checkout_session_id: session.id }).eq("confirmation_id", confirmationId); }
+      const couponPatch: Record<string, unknown> = {};
+      if (asyncCouponCode && !order.coupon_code) couponPatch.coupon_code = asyncCouponCode;
+      if (asyncCouponDiscount && asyncCouponDiscount > 0 && !order.coupon_discount) couponPatch.coupon_discount = asyncCouponDiscount;
+      if (Object.keys(couponPatch).length > 0) { await supabase.from("orders").update(couponPatch).eq("confirmation_id", confirmationId); }
       await sendPostPaymentEmails(order, piId, amt, matchedBy, session.id);
       schedulePostPaymentTriggers(confirmationId, order, amt);
       return json({ ok: true, idempotent: true });
     }
-    await markOrderProcessing(confirmationId, piId, amt, session.metadata?.payment_mode ?? "klarna", session.id);
+    await markOrderProcessing(confirmationId, piId, amt, session.metadata?.payment_mode ?? "klarna", session.id, asyncCouponCode, asyncCouponDiscount);
     const freshOrder = await findOrderByConfId(confirmationId);
     if (freshOrder) {
       await sendPostPaymentEmails(freshOrder as unknown as Record<string, unknown>, piId, amt, matchedBy, session.id);

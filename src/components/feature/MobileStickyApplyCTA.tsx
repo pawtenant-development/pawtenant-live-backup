@@ -25,7 +25,7 @@ interface Props {
 export default function MobileStickyApplyCTA({
   showAfterPx = 500,
   to = "/assessment",
-  label = "Get Your ESA Letter — From $99",
+  label = "Get Your ESA Letter — From $109",
   icon = "ri-file-text-line",
 }: Props) {
   const [visible, setVisible] = useState(false);

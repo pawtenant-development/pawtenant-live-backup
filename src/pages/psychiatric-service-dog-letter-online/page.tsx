@@ -107,7 +107,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "How much does a PSD letter cost and how long does it take?",
-    a: "PawTenant's PSD letter pricing starts at $100 for standard delivery (2–3 business days), with a 24-hour priority option and an annual plan. Every plan includes a licensed provider review, and you're refunded if you don't qualify.",
+    a: "PawTenant's PSD letter is $129 for 1 dog, or a fixed $149 total covering 2 or 3 dogs — with standard delivery (2–3 business days) or a 24-hour priority option at the same price, plus an annual plan. Every plan includes a licensed provider review, and you're refunded if you don't qualify.",
   },
   {
     q: "Does a PSD letter guarantee housing or travel access?",

@@ -97,7 +97,10 @@ export type QuestionDef =
   | RadioWithTextQuestion
   | TextareaQuestion;
 
-// ── The 12-question manifest ─────────────────────────────────────────────────
+// ── The 13-question manifest ─────────────────────────────────────────────────
+// The FINAL question is a safety screen. When the answer is "yes" the router
+// hard-stops the flow and shows CrisisSupportPanel — no continue, no checkout —
+// until the user changes the answer. See QuestionRouter.tsx.
 
 export const QUESTION_MANIFEST: QuestionDef[] = [
   {
@@ -256,5 +259,18 @@ export const QUESTION_MANIFEST: QuestionDef[] = [
       { label: "Currently looking for housing", value: "looking" },
     ],
     check: (d) => !!d.housingType,
+  },
+  {
+    kind: "radio",
+    id: "safetyCheck",
+    number: 13,
+    question: "Are you currently having thoughts of harming yourself or others?",
+    required: true,
+    hint: "We ask this to keep you safe. Your answer is confidential.",
+    options: [
+      { label: "No", value: "no" },
+      { label: "Yes", value: "yes" },
+    ],
+    check: (d) => d.safetyCheck === "no",
   },
 ];

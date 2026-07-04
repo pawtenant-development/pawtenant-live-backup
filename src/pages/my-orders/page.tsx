@@ -133,6 +133,7 @@ function getDisplayStatus(order: Order): {
 
 const DOC_TYPE_LABEL: Record<string, string> = {
   esa_letter: "ESA Letter",
+  psd_letter: "PSD Letter",
   housing_verification: "Housing Verification Letter",
   landlord_form: "Landlord Form",
   signed_letter: "Signed Letter",
@@ -652,13 +653,13 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
               <p className="text-xs font-bold text-gray-800 mb-0.5">One-Time Renewal</p>
-              <p className="text-xl font-extrabold text-gray-900">$100<span className="text-sm font-semibold text-gray-500">.00</span></p>
+              <p className="text-xl font-extrabold text-gray-900">$129<span className="text-sm font-semibold text-gray-500">.00</span></p>
               <p className="text-xs text-gray-500 mt-0.5">Same-day turnaround available</p>
             </div>
             <div className="bg-amber-50 rounded-lg p-3 border border-amber-300 relative">
               <span className="absolute -top-2 left-3 bg-amber-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
               <p className="text-xs font-bold text-amber-800 mb-0.5">Annual Subscription</p>
-              <p className="text-xl font-extrabold text-amber-700">$99<span className="text-sm font-semibold">/yr</span></p>
+              <p className="text-xl font-extrabold text-amber-700">$109<span className="text-sm font-semibold">/yr</span></p>
               <p className="text-xs text-amber-700 mt-0.5">Auto-renews · Full ADA coverage</p>
             </div>
           </div>
@@ -684,7 +685,7 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
             <p className="text-xs font-bold text-gray-800 mb-0.5">One-Time Renewal</p>
-            <p className="text-xl font-extrabold text-gray-900">$110<span className="text-sm font-semibold text-gray-500">.00</span></p>
+            <p className="text-xl font-extrabold text-gray-900">$129<span className="text-sm font-semibold text-gray-500">.00</span></p>
             <p className="text-xs text-gray-500 mt-0.5">Same-day turnaround available</p>
           </div>
           <div className="bg-[#FFF7ED] rounded-lg p-3 border border-orange-300 relative">

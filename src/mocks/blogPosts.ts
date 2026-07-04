@@ -397,7 +397,7 @@ export const blogPosts: BlogPost[] = [
     sections: [
       {
         heading: "What Does an ESA Letter Actually Cost in California?",
-        content: "In California, the typical cost of a legitimate ESA letter from a licensed mental health professional ranges from $99 to $200 for a single-pet letter. Multi-pet letters generally run $130 to $250. These prices reflect the true cost of a genuine consultation with a California-licensed LMHP — which AB 468 (California's 2022 ESA law) requires. Letters priced well below $99 or offered without a real consultation are almost certainly non-compliant with California law and will likely be rejected by landlords. PawTenant offers single-pet California ESA letters starting at $99, which includes a full telehealth consultation, a same-day letter, and our 100% money-back guarantee."
+        content: "In California, the typical cost of a legitimate ESA letter from a licensed mental health professional ranges from $99 to $200 for a single-pet letter. Multi-pet letters generally run $130 to $250. These prices reflect the true cost of a genuine consultation with a California-licensed LMHP — which AB 468 (California's 2022 ESA law) requires. Letters priced well below $99 or offered without a real consultation are almost certainly non-compliant with California law and will likely be rejected by landlords. PawTenant offers single-pet California ESA letters starting at $109, which includes a full telehealth consultation, a same-day letter, and our 100% money-back guarantee."
       },
       {
         heading: "Why California ESA Letter Costs Are Different From Other States",
@@ -1412,7 +1412,7 @@ export const blogPosts: BlogPost[] = [
       },
       {
         heading: "The Financial Case for Subscribing",
-        content: "Beyond the convenience factor, annual subscriptions simply cost less. PawTenant's subscription plans are priced below the equivalent one-time renewal fees: for a 1-pet renewal, the one-time price is $110 while the annual subscription is $99 per year — a savings of $11 annually. For 2 pets, you save $16 per year. For 3 pets, you save $21 per year. Over five years of required renewals, a single-pet subscriber saves over $55 compared to paying one-time rates each year. For many ESA owners who will maintain their documentation for years or even decades, the lifetime savings are substantial. The discount exists because subscriptions allow us to better forecast demand and schedule therapist availability efficiently — those operational efficiencies translate directly into cost savings for members."
+        content: "Beyond the convenience factor, annual subscriptions simply cost less. PawTenant's subscription plans are priced below the equivalent one-time renewal fees: for a 1-pet renewal, the one-time price is $129 while the annual subscription is $109 per year — a savings of $20 annually. For 2 or 3 pets, the one-time letter is a fixed $149 total versus a fixed $129 per year on subscription — also a savings of $20 per year. Over five years of required renewals, a subscriber saves around $100 compared to paying one-time rates each year. For many ESA owners who will maintain their documentation for years or even decades, the lifetime savings are substantial. The discount exists because subscriptions allow us to better forecast demand and schedule therapist availability efficiently — those operational efficiencies translate directly into cost savings for members."
       },
       {
         heading: "Subscription vs. One-Time Renewal: Which Is Right for You?",

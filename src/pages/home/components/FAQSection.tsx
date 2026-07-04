@@ -11,7 +11,7 @@ const faqs = [
   },
   {
     q: "How long does it take to receive my ESA letter?",
-    a: "Most clients receive their ESA letter within 24 hours of completing the assessment. Premium package customers receive priority processing and often get their letters the same day.",
+    a: "Most clients receive their ESA letter within 24 hours of completing the assessment, once a licensed provider has reviewed it — and same-day PDF delivery is often available.",
   },
   {
     q: "Can my ESA letter be used for housing?",
@@ -71,7 +71,7 @@ const faqs = [
   },
   {
     q: "How much does an ESA letter cost?",
-    a: "PawTenant's housing ESA letter is $110 for one pet (valid one year), with additional pets at $25 each. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not result in a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
+    a: "PawTenant's housing ESA letter is $129 for one pet (valid one year); 2 or 3 pets are covered at a fixed $149 total. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not result in a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
   },
 ];
 

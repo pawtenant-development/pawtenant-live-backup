@@ -200,7 +200,7 @@ function InArticleCTA({ isPSD = false }: { isPSD?: boolean }) {
                 <div className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
                   <i className="ri-check-fill text-orange-500 text-xs"></i>
                 </div>
-                {isPSD ? "From $120" : "From $99"}
+                {isPSD ? "From $129" : "From $109"}
               </div>
             </div>
           </div>
@@ -516,7 +516,7 @@ export default function BlogPostPage() {
                     to={isPSD ? "/psd-assessment" : "/assessment"}
                     className={`whitespace-nowrap block w-full py-2.5 ${isPSD ? "bg-orange-500 hover:bg-orange-600 text-white" : "bg-white text-orange-600 hover:bg-orange-50"} font-semibold text-sm rounded-md transition-colors cursor-pointer text-center`}
                   >
-                    {isPSD ? "Apply Now — from $120" : "Apply Now — from $99"}
+                    {isPSD ? "Apply Now — from $129" : "Apply Now — from $109"}
                   </Link>
                 </div>
 

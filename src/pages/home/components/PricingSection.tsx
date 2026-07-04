@@ -3,45 +3,71 @@ import { useAttributionParams } from "@/hooks/useAttributionParams";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
 import { useSitePricing } from "@/hooks/useSitePricing";
 
+/**
+ * PricingSection — homepage service pricing.
+ *
+ * ESA Housing Letter and PSD Letter are presented as two EQUAL 50/50 service
+ * cards (owner request 2026-07-04): same width, same hierarchy, same CTA
+ * strength, stacked on mobile and side-by-side on desktop. Neither service is
+ * shown as the main product with the other as a small add-on.
+ *
+ * Display-only prices come from useSitePricing() (admin-managed) with the
+ * config fallbacks for prerender/offline safety. This NEVER affects Stripe
+ * checkout amounts. No Standard/Priority split, no combo service, no
+ * "Most Popular" tier — same-day PDF delivery is included/available, not an
+ * upsell tier.
+ *
+ * Compliance: letters are reviewed by a licensed provider, approval is not
+ * automatic, refund if the customer does not qualify. A PSD requires a
+ * task-trained psychiatric service dog; a letter alone does not create
+ * service-dog status.
+ */
 export default function PricingSection() {
   const { withAttribution } = useAttributionParams();
   // Admin-managed display prices (hydrates at runtime; falls back to config).
   const { price: getPrice } = useSitePricing();
 
-  const plans = [
+  const esaFrom = getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime);
+  const esaAnnual = getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription);
+  const psdFrom = getPrice("psd_standard", "$129");
+  const psdAnnual = getPrice("psd_annual", "$109");
+
+  const services = [
     {
-      name: "One-Time ESA Letter",
-      price: getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime),
-      sub: "Delivered Within 24 Hours",
-      popular: false,
-      badge: null,
-      highlight: false,
-      isSubscription: false,
+      key: "esa",
+      label: "ESA Housing Letter",
+      audience: "For qualifying individuals with emotional support animals.",
+      from: esaFrom,
+      annual: esaAnnual,
+      accent: "#F97316",
+      accentHover: "#EA580C",
+      icon: "ri-home-heart-line",
+      to: withAttribution("/assessment"),
+      cta: "Start ESA Assessment",
       features: [
-        "Official ESA Letter from Licensed LMHP",
-        "Fair Housing Act (FHA) Compliant",
-        "Licensed Professional Signature & NPI",
-        "PDF Delivery via Email",
-        "Valid for 1 Year",
-        "Landlord Verification Support",
+        "Housing-focused documentation",
+        "Licensed provider-reviewed",
+        "Same-day PDF delivery available",
+        "Valid for 12 months",
+        "Landlord verification support",
       ],
     },
     {
-      name: "Annual Subscription",
-      price: getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription),
-      sub: "Per Year — Auto-Renews",
-      popular: true,
-      badge: "Best Value",
-      highlight: true,
-      isSubscription: true,
+      key: "psd",
+      label: "PSD Letter",
+      audience: "For qualifying individuals with a task-trained psychiatric service dog.",
+      from: psdFrom,
+      annual: psdAnnual,
+      accent: "#4A8472",
+      accentHover: "#3F7061",
+      icon: "ri-shield-star-line",
+      to: withAttribution("/psd-assessment"),
+      cta: "Start PSD Assessment",
       features: [
-        "Official ESA Letter from Licensed LMHP",
-        "Fair Housing Act (FHA) Compliant",
-        "Licensed Professional Signature & NPI",
-        "PDF Delivery via Email",
-        "Valid for 1 Year — Renews Automatically",
-        "Landlord Verification Support",
-        "Save $11 vs. one-time every year",
+        "Licensed provider-reviewed PSD documentation",
+        "Same-day PDF delivery available",
+        "Valid for 12 months",
+        "Landlord/public-access documentation support where applicable",
       ],
     },
   ];
@@ -56,18 +82,17 @@ export default function PricingSection() {
             Simple <span className="text-orange-500">Pricing</span> — No Hidden Fees
           </h2>
           <p className="text-gray-600 mt-2.5 sm:mt-3 max-w-xl mx-auto text-[13px] sm:text-sm leading-snug">
-            Choose the plan that fits. Every letter is legally valid and signed by a licensed mental health professional.
+            Two clear services — an ESA housing letter and a PSD letter. Every letter is reviewed by a licensed mental health professional. Approval is not automatic, and you&rsquo;re refunded if you don&rsquo;t qualify.
           </p>
         </div>
 
-        {/* Reassurance strip — tighter on mobile so the pill row doesn't
-            push the price cards further down the fold. */}
+        {/* Reassurance strip */}
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 mb-7 sm:mb-10">
           {[
-            { icon: "ri-shield-check-fill", text: "Money-back if not approved" },
+            { icon: "ri-shield-check-fill", text: "Refund if you don't qualify" },
             { icon: "ri-award-fill", text: "Licensed professionals only" },
             { icon: "ri-lock-fill", text: "HIPAA secure" },
-            { icon: "ri-timer-flash-fill", text: "24-hour delivery" },
+            { icon: "ri-timer-flash-fill", text: "Same-day delivery available" },
           ].map((b) => (
             <div key={b.text} className="flex items-center gap-1.5 bg-white border border-orange-100 rounded-full px-3 py-1.5 sm:px-4 sm:py-2">
               <i className={`${b.icon} text-orange-500 text-sm`}></i>
@@ -76,64 +101,45 @@ export default function PricingSection() {
           ))}
         </div>
 
-        {/* ESA / PSD split label — the section now covers both letter types
-            (owner request 2026-07-02). Display-only; checkout prices unchanged. */}
-        <div className="flex items-center justify-center gap-2 mb-4 sm:mb-5">
-          <span className="inline-flex items-center gap-1.5 bg-orange-100 text-orange-700 text-[11px] sm:text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
-            <i className="ri-home-heart-line"></i>
-            ESA Letter
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 max-w-3xl mx-auto items-start">
-          {plans.map((plan) => (
+        {/* Two equal 50/50 service cards — stacked on mobile, side-by-side on desktop */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 max-w-4xl mx-auto items-stretch">
+          {services.map((s) => (
             <div
-              key={plan.name}
-              className={`relative bg-white rounded-2xl flex flex-col transition-all ${
-                plan.highlight
-                  ? "border-2 border-orange-500 md:-mt-4 md:pb-4"
-                  : "border border-gray-200"
-              }`}
+              key={s.key}
+              className="relative bg-white rounded-2xl border border-gray-200 flex flex-col shadow-[0_8px_30px_-18px_rgba(15,23,42,0.18)]"
             >
-              {/* Badge */}
-              {plan.badge && (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                  <span className={`text-white text-xs font-bold px-4 py-1.5 rounded-full whitespace-nowrap ${plan.highlight ? "bg-orange-500" : "bg-gray-500"}`}>
-                    {plan.badge}
+              {/* Card header */}
+              <div className="px-6 sm:px-8 pt-7 sm:pt-8 pb-4 sm:pb-5 border-b border-gray-100">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <span
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${s.accent}1A` }}
+                  >
+                    <i className={`${s.icon} text-lg`} style={{ color: s.accent }}></i>
                   </span>
+                  <h3 className="font-extrabold text-lg text-gray-900">{s.label}</h3>
                 </div>
-              )}
-
-              {/* Card header — tighter padding on mobile */}
-              <div className={`px-6 sm:px-8 pt-6 sm:pt-8 pb-4 sm:pb-5 ${plan.highlight ? "bg-orange-500 rounded-t-2xl" : ""}`}>
-                <h3 className={`font-bold text-base mb-1 ${plan.highlight ? "text-white" : "text-gray-900"}`}>{plan.name}</h3>
-                <p className={`text-[11px] sm:text-xs mb-2.5 sm:mb-3 ${plan.highlight ? "text-orange-100" : "text-gray-500"}`}>{plan.sub}</p>
-                <div className="flex items-end gap-1">
-                  <span className={`text-[34px] sm:text-4xl font-extrabold leading-none ${plan.highlight ? "text-white" : "text-gray-900"}`}>{plan.price}</span>
-                  <span className={`text-[13px] sm:text-sm mb-1 sm:mb-1.5 ${plan.highlight ? "text-orange-100" : "text-gray-400"}`}>
-                    {plan.isSubscription ? ESA_PRICE_LABELS.subscriptionSuffix : ESA_PRICE_LABELS.oneTimeSuffix}
+                <p className="text-[12.5px] sm:text-sm text-gray-500 leading-snug mb-4 min-h-[38px]">{s.audience}</p>
+                <div className="flex items-end gap-1.5">
+                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">From</span>
+                  <span className="text-[34px] sm:text-4xl font-extrabold leading-none text-gray-900">{s.from}</span>
+                  <span className="text-[12.5px] text-gray-400 mb-1">one-time</span>
+                </div>
+                <div className="mt-2.5">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4A8472]/10 text-[#2f5d50] border border-[#4A8472]/25 px-3 py-1 text-[12.5px] sm:text-[13px] font-bold">
+                    <i className="ri-refresh-line text-[12px]"></i>
+                    Annual from {s.annual}/year
                   </span>
                 </div>
               </div>
 
-              {/* Features — tighter padding + row rhythm on mobile so the
-                  full feature set still fits without the card feeling tall.
-                  All features stay visible at every breakpoint (legal /
-                  commercial proof points). */}
-              <div className="px-6 sm:px-8 py-4 sm:py-5 flex-1">
-                {/* Klarna chip — matches the /esa-letter-housing in-card chip
-                    pattern. Sits on the white features panel (not the orange
-                    highlight header) so the pink stays legible on both
-                    plain + highlighted cards. */}
-                <div className="inline-flex items-center gap-2 mb-3 sm:mb-4 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
-                  <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                  <span className="text-[10px] text-slate-700">Available at checkout</span>
-                </div>
+              {/* Features */}
+              <div className="px-6 sm:px-8 py-5 flex-1">
                 <ul className="space-y-2 sm:space-y-2.5">
-                  {plan.features.map((f) => (
+                  {s.features.map((f) => (
                     <li key={f} className="flex items-start gap-2 sm:gap-2.5 text-[13.5px] sm:text-sm text-gray-700 leading-snug">
                       <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <i className={`ri-checkbox-circle-fill text-base ${plan.highlight ? "text-orange-500" : "text-orange-400"}`}></i>
+                        <i className="ri-checkbox-circle-fill text-base" style={{ color: s.accent }}></i>
                       </div>
                       {f}
                     </li>
@@ -141,91 +147,37 @@ export default function PricingSection() {
                 </ul>
               </div>
 
-              {/* CTA — tighter bottom padding on mobile */}
+              {/* CTA */}
               <div className="px-6 sm:px-8 pb-6 sm:pb-8">
                 <Link
-                  to={withAttribution("/assessment")}
-                  className={`whitespace-nowrap w-full py-3 text-sm font-bold rounded-md transition-colors cursor-pointer text-center block ${
-                    plan.highlight
-                      ? "bg-orange-500 text-white hover:bg-orange-600"
-                      : "border-2 border-orange-500 text-orange-500 hover:bg-orange-50"
-                  }`}
+                  to={s.to}
+                  className="whitespace-nowrap w-full py-3 text-sm font-bold rounded-md transition-colors cursor-pointer text-center block text-white"
+                  style={{ backgroundColor: s.accent }}
+                  onMouseOver={(e) => (e.currentTarget.style.backgroundColor = s.accentHover)}
+                  onMouseOut={(e) => (e.currentTarget.style.backgroundColor = s.accent)}
                 >
-                  Get Started — {plan.price}{plan.isSubscription ? ESA_PRICE_LABELS.subscriptionSuffix : ""}
+                  {s.cta}
                 </Link>
-                {plan.highlight && (
-                  <p className="text-center text-[11px] sm:text-xs text-gray-400 mt-2 flex items-center justify-center gap-1">
-                    <i className="ri-shield-check-line text-orange-400"></i>
-                    Money-back if not approved
-                  </p>
-                )}
+                <p className="text-center text-[11px] sm:text-xs text-gray-400 mt-2 flex items-center justify-center gap-1">
+                  <i className="ri-shield-check-line" style={{ color: s.accent }}></i>
+                  Refund if you don&apos;t qualify
+                </p>
               </div>
             </div>
           ))}
         </div>
 
-        {/* PSD pricing — compact companion panel so the homepage covers both
-            letter types without doubling the section height (owner request
-            2026-07-02). Prices are admin-managed display values (same
-            psd_standard / psd_priority / psd_annual keys as PsdPricingMini);
-            checkout/Stripe untouched. Compliance: provider review, task
-            training required, no approval guarantee. */}
-        <div className="max-w-3xl mx-auto mt-6 sm:mt-8">
-          <div className="flex items-center justify-center gap-2 mb-4 sm:mb-5">
-            <span className="inline-flex items-center gap-1.5 bg-[#4A8472]/15 text-[#3F7061] text-[11px] sm:text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
-              <i className="ri-shield-star-line"></i>
-              PSD Letter
-            </span>
-          </div>
-          <div className="bg-white rounded-2xl border border-[#4A8472]/35 p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
-              <div>
-                <h3 className="font-bold text-base text-gray-900 mb-1">
-                  Psychiatric Service Dog (PSD) Letter
-                </h3>
-                <p className="text-[12px] sm:text-xs text-gray-500 leading-relaxed max-w-md">
-                  For qualifying individuals with a task-trained psychiatric service
-                  dog. Reviewed by a licensed provider — approval is not guaranteed,
-                  and you&rsquo;re refunded if you don&rsquo;t qualify.
-                </p>
-              </div>
-              <Link
-                to={withAttribution("/psd-assessment")}
-                className="whitespace-nowrap inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#4A8472] text-white text-sm font-bold rounded-md hover:bg-[#3F7061] transition-colors cursor-pointer flex-shrink-0"
-              >
-                Start PSD Assessment
-                <i className="ri-arrow-right-line"></i>
-              </Link>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                { name: "Standard", speed: "2–3 business days", key: "psd_standard", fallback: "$100", suffix: "/ 1 dog" },
-                { name: "Priority", speed: "Within 24 hours", key: "psd_priority", fallback: "$120", suffix: "/ 1 dog" },
-                { name: "Annual", speed: "Renews automatically", key: "psd_annual", fallback: "$99", suffix: "/year" },
-              ].map((p) => (
-                <div key={p.name} className="rounded-xl border border-gray-100 bg-[#fafafa] px-4 py-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-0.5">{p.name}</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-extrabold text-gray-900 leading-none">{getPrice(p.key, p.fallback)}</span>
-                    <span className="text-[11px] text-gray-400">{p.suffix}</span>
-                  </div>
-                  <p className="text-[11px] text-gray-400 mt-1">{p.speed}</p>
-                </div>
-              ))}
-            </div>
-            <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-              Not sure which fits?{" "}
-              <Link to="/esa-vs-psd-letter" className="text-[#3F7061] font-semibold hover:underline">
-                Compare an ESA letter vs a PSD letter
-              </Link>
-              . A PSD requires disability-related task training — a letter alone does not make a dog a service dog.
-            </p>
-          </div>
-        </div>
+        {/* Shared compliance note — applies equally to both services */}
+        <p className="text-center text-[11px] text-gray-400 mt-5 max-w-2xl mx-auto leading-relaxed">
+          A PSD requires a task-trained psychiatric service dog; a letter alone does not create service-dog status.{" "}
+          <Link to="/esa-vs-psd-letter" className="text-[#3F7061] font-semibold hover:underline">
+            Compare an ESA letter vs a PSD letter
+          </Link>{" "}
+          to see which fits your situation.
+        </p>
 
-        {/* Klarna trust panel — mirrors the /esa-letter-housing panel but
-            sized tighter for the home page since this section already has
-            a trust badges row below. Mobile-first compact spacing. */}
+        {/* Neutral payment-support strip — applies to both services, not attached
+            to only one card. */}
         <div className="mt-6 sm:mt-8 max-w-xl mx-auto bg-gradient-to-br from-[#FFF5FA] to-[#FFE9F1] border border-[#FFA8CD] rounded-xl p-4 sm:p-5 flex items-start gap-3 shadow-[0_2px_12px_rgba(255,168,205,0.20)]">
           <span
             aria-hidden
@@ -238,7 +190,7 @@ export default function PricingSection() {
               Pay with <span className="text-[#B8527F]">Klarna</span> at checkout.
             </div>
             <div className="text-[12px] sm:text-[12.5px] text-slate-600 leading-relaxed">
-              Subject to eligibility and{" "}
+              Available on ESA and PSD checkout, subject to eligibility and{" "}
               <a
                 href="https://www.klarna.com/us/terms-of-use/"
                 target="_blank"
@@ -252,8 +204,7 @@ export default function PricingSection() {
           </div>
         </div>
 
-        {/* Trust badges row — tightened mobile gap so the section closes
-            with a calmer footprint. */}
+        {/* Trust badges row */}
         <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 mt-7 sm:mt-10">
           <div className="inline-flex items-center gap-2 text-sm text-gray-600">
             <i className="ri-shield-check-line text-orange-500 text-lg"></i>

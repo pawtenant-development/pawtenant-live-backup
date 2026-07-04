@@ -6,6 +6,11 @@ import PSDStep1, { PSDStep1Data } from "./components/PSDStep1";
 import Step2PersonalInfo, { Step2Data } from "../assessment/components/Step2PersonalInfo";
 import StepIndicator from "../assessment/components/StepIndicator";
 import ExitIntentOverlay from "../assessment/components/ExitIntentOverlay";
+import StateSelectionStep from "../assessment/components/StateSelectionStep";
+import CustomerOtpStep from "../assessment/components/CustomerOtpStep";
+import AssuranceScreen from "../assessment/components/AssuranceScreen";
+import type { StateAcknowledgment } from "../assessment/components/StateAcknowledgmentModal";
+import { getPsdOneTimeTotal } from "@/config/pricing";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
 import { logAudit, loggedFetch } from "@/lib/auditLogger";
 import {
@@ -41,6 +46,7 @@ function getTrafficSource(): string { return buildFullSource(); }
 function getLandingUrl(): string { return getAttribution().landing_url ?? window.location.href; }
 
 const DEFAULT_STEP1: PSDStep1Data = {
+  safetyCheck: "",
   dogTasks: [],
   taskTraining: "",
   taskDescription: "",
@@ -95,6 +101,11 @@ export default function PSDAssessmentPage() {
   const referredBy = tracking.ref || tracking.fullSource || null;
 
   const [step, setStep] = useState(1);
+  // ── Flow gates (2026-07 restructure) — state first, OTP before checkout ──
+  const [stateConfirmed, setStateConfirmed] = useState(false);
+  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "pay">("otp");
+  const [otpVerified, setOtpVerified] = useState(false);
+  const verifiedEmailRef = useRef("");
   const [step1, setStep1] = useState<PSDStep1Data>(DEFAULT_STEP1);
   const [step2, setStep2] = useState<Step2Data>(DEFAULT_STEP2);
   const [confirmationId, setConfirmationId] = useState(() => {
@@ -190,6 +201,7 @@ export default function PSDAssessmentPage() {
 
         // Restore step 1 PSD answers
         setStep1({
+          safetyCheck: (answers.safetyCheck as string) ?? "",
           dogTasks: (answers.dogTasks as string[]) ?? [],
           taskTraining: (answers.taskTraining as string) ?? "",
           taskDescription: (answers.taskDescription as string) ?? "",
@@ -227,6 +239,11 @@ export default function PSDAssessmentPage() {
 
         // Use the saved confirmation ID so payment upserts the right row
         setConfirmationId(resumeConfirmationId);
+        // Resume = returning customer from a trusted link: skip state + OTP gates.
+        setStateConfirmed(true);
+        setOtpVerified(true);
+        verifiedEmailRef.current = ((data.email as string) ?? "").trim().toLowerCase();
+        setCheckoutGate("pay");
         setStep(3);
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (err) {
@@ -385,8 +402,35 @@ export default function PSDAssessmentPage() {
     setSaving(false);
   };
 
+  // ── State-first + OTP gate handlers ───────────────────────────────────────
+  const handleStateChange = (nextState: string) => {
+    setStep2((s) => ({
+      ...s,
+      state: nextState,
+      stateAcknowledgment:
+        s.stateAcknowledgment && s.stateAcknowledgment.state === nextState.toUpperCase()
+          ? s.stateAcknowledgment
+          : undefined,
+    }));
+  };
+  const handleStateConfirm = (nextState: string, ack?: StateAcknowledgment) => {
+    setStep2((s) => ({ ...s, state: nextState, stateAcknowledgment: ack ?? s.stateAcknowledgment }));
+    setStateConfirmed(true);
+    setStep(1);
+    window.scrollTo(0, 0);
+  };
+  const handleOtpVerified = () => {
+    setOtpVerified(true);
+    verifiedEmailRef.current = step2.email.trim().toLowerCase();
+    setCheckoutGate("assurance");
+    window.scrollTo(0, 0);
+  };
+
   const handleStep2Next = async () => {
     await saveLeadToSupabase(step2);
+    const needOtp = !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
+    if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
+    else setCheckoutGate("pay");
     setStep(3);
   };
 
@@ -496,6 +540,17 @@ export default function PSDAssessmentPage() {
                 <i className="ri-arrow-right-line"></i>Start Fresh Assessment
               </button>
             </div>
+          ) : !stateConfirmed ? (
+            /* STATE FIRST — collected before the questionnaire so the 30-day
+               acknowledgment (AR/CA/IA/LA/MT) fires early. */
+            <StateSelectionStep
+              state={step2.state}
+              service="psd"
+              priceShown={getPsdOneTimeTotal(1)}
+              existingAck={step2.stateAcknowledgment}
+              onChange={handleStateChange}
+              onConfirm={handleStateConfirm}
+            />
           ) : (
             <>
               {resumeConfirmationId && step === 3 && (
@@ -520,10 +575,31 @@ export default function PSDAssessmentPage() {
                   onNext={handleStep2Next}
                   onBack={() => setStep(1)}
                   mode="psd"
+                  onEditState={() => { setStateConfirmed(false); window.scrollTo(0, 0); }}
                 />
               )}
 
-              {step === 3 && (
+              {/* Checkout gates: email OTP → assurance → payment. */}
+              {step === 3 && checkoutGate === "otp" && (
+                <CustomerOtpStep
+                  email={step2.email}
+                  firstName={step2.firstName}
+                  confirmationId={confirmationId}
+                  letterType="psd"
+                  accent="psd"
+                  onVerified={handleOtpVerified}
+                  onBack={() => setStep(2)}
+                />
+              )}
+              {step === 3 && checkoutGate === "assurance" && (
+                <AssuranceScreen
+                  letterType="psd"
+                  accent="psd"
+                  onContinue={() => { setCheckoutGate("pay"); window.scrollTo(0, 0); }}
+                  onBack={() => setCheckoutGate("otp")}
+                />
+              )}
+              {step === 3 && checkoutGate === "pay" && (
                 <Suspense fallback={<PSDStep3LoadingFallback />}>
                   <PSDStep3Checkout
                     step1={step1}

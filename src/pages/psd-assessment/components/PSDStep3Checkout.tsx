@@ -10,6 +10,7 @@ import type { PSDStep1Data } from "./PSDStep1";
 import KlarnaPaymentTab from "../../assessment/components/KlarnaPaymentTab";
 import StripePaymentForm from "../../assessment/components/StripePaymentForm";
 import StripeCardForm from "../../assessment/components/StripeCardForm";
+import { getPsdAnnualTotal, getPsdOneTimeTotal } from "@/config/pricing";
 // ── 2026-05-21 PSD-STEP3-ESA-PARITY ─────────────────────────────────────────
 // Reuse the polished trust/reassurance helpers ESA Step 3 mounts in its left
 // column. These are intentionally pure presentational + brand-agnostic (they
@@ -65,24 +66,22 @@ function SectionLabel({ children }: { children: string }) {
 // Mirrored verbatim for PSD.
 const PAYMENT_SECTION_ID = "step3-payment-section";
 
-type PSDPlan = "standard" | "priority" | "subscription";
+// PSD is now a SINGLE product (no Priority/Standard speed packages). The
+// customer chooses only between a one-time letter and an annual subscription.
+// Price depends solely on dog count. Delivery timing is general operational
+// text, not a purchasable package — so a single fixed delivery_speed is sent
+// to the backend for compatibility (amount is identical regardless).
+type PSDPlan = "onetime" | "subscription";
 type PayTabType = "card" | "klarna";
 
+const PSD_ONETIME_DELIVERY = "24h";
+
 function getPSDPlanPrice(key: PSDPlan, petCount: number): number {
-  const count = Math.min(petCount, 3);
-  if (key === "subscription") {
-    if (count >= 3) return 129;
-    if (count === 2) return 109;
-    return 99;
-  }
-  if (key === "standard") {
-    if (count >= 3) return 135;
-    if (count === 2) return 120;
-    return 100;
-  }
-  if (count >= 3) return 155;
-  if (count === 2) return 140;
-  return 120;
+  // Final structure: 1 dog $129 one-time / $109 annual; 2 or 3 dogs $149
+  // one-time / $129 annual — fixed totals. Mirrors getPSDOneTimeAmount /
+  // getPSDAnnualAmount in create-payment-intent.
+  if (key === "subscription") return getPsdAnnualTotal(petCount);
+  return getPsdOneTimeTotal(petCount);
 }
 
 const PLANS: {
@@ -94,19 +93,11 @@ const PLANS: {
   desc: string;
 }[] = [
   {
-    key: "priority",
-    label: "Priority — 24 Hours",
-    sublabel: "Within 24 hrs",
-    badge: "Most Popular",
-    icon: "ri-rocket-2-line",
-    desc: "Your PSD letter reviewed and delivered within 24 hours of submission.",
-  },
-  {
-    key: "standard",
-    label: "Standard — 2-3 Days",
-    sublabel: "2-3 business days",
-    icon: "ri-time-line",
-    desc: "Standard review and delivery within 2-3 business days.",
+    key: "onetime",
+    label: "PSD Letter — One-Time",
+    sublabel: "One letter · no subscription",
+    icon: "ri-file-shield-2-line",
+    desc: "A one-time PSD letter reviewed by a licensed provider. Price depends only on the number of dogs.",
   },
   {
     key: "subscription",
@@ -298,7 +289,7 @@ function SecurePaymentCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [priceBeforeDiscount]);
 
-  const deliverySpeed = selectedPlan === "standard" ? "2-3days" : "24h";
+  const deliverySpeed = PSD_ONETIME_DELIVERY;
 
   // Subscription params for StripeCardForm lazy flow
   const subscriptionParams = {
@@ -570,7 +561,7 @@ interface PSDStep3CheckoutProps {
 
 export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack }: PSDStep3CheckoutProps) {
   const navigate = useNavigate();
-  const [selectedPlan, setSelectedPlan] = useState<PSDPlan>("priority");
+  const [selectedPlan, setSelectedPlan] = useState<PSDPlan>("onetime");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [resolvedPrice, setResolvedPrice] = useState<number | null>(null);
   const [resolvedBasePriceCents, setResolvedBasePriceCents] = useState<number | null>(null);
@@ -604,11 +595,9 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
   const priceBeforeDiscount = displayBasePriceDollars;
   const displayPrice = Math.max(0, priceBeforeDiscount - couponDiscount);
 
-  const deliveryLabel = selectedPlan === "standard"
-    ? "Standard — 2–3 day delivery"
-    : selectedPlan === "subscription"
-      ? "Annual Subscription"
-      : "Priority — 24-hour delivery";
+  const deliveryLabel = selectedPlan === "subscription"
+    ? "Annual Subscription"
+    : "One-Time PSD Letter";
 
   // Initialize payment intent
   useEffect(() => {
@@ -624,7 +613,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
       if (selectedPlan === "subscription") return;
       if (!step2.email || !confirmationId) return;
       try {
-        const deliverySpeed = selectedPlan === "standard" ? "2-3days" : "24h";
+        const deliverySpeed = PSD_ONETIME_DELIVERY;
         const res = await fetch(`${SUPABASE_URL}/functions/v1/create-payment-intent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
@@ -702,7 +691,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
   const handlePaymentSuccess = async (paymentIntentId: string) => {
     paymentCompletedRef.current = true;
     const plan = selectedPlan === "subscription" ? "subscription" : "one-time";
-    const deliverySpeed = selectedPlan === "standard" ? "2-3days" : "24h";
+    const deliverySpeed = PSD_ONETIME_DELIVERY;
     const paidAt = new Date().toISOString();
     triggerSheetsSync();
 
@@ -1079,6 +1068,16 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
                   );
                 })}
               </div>
+            </div>
+
+            {/* General operational timing note — NOT a purchasable speed
+                package. PSD is one product; timing is informational only. */}
+            <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5">
+              <i className="ri-time-line text-slate-400 text-sm flex-shrink-0 mt-0.5"></i>
+              <p className="text-[12px] sm:text-xs text-slate-600 leading-snug min-w-0">
+                Typical review timing depends on provider availability and any state requirements.
+                We work to complete most letters as quickly as possible after your assessment is submitted.
+              </p>
             </div>
 
             {/* Klarna availability note — same calm slate row ESA uses */}

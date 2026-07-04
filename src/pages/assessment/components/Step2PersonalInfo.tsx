@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { US_STATES } from "../../../lib/usStates";
-import StateComplianceBanner from "./StateComplianceBanner";
+import StateComplianceBanner, { isComplianceState } from "./StateComplianceBanner";
+import StateAcknowledgmentModal, { type StateAcknowledgment } from "./StateAcknowledgmentModal";
 import Hud2026UpdateBanner from "../../../components/feature/Hud2026UpdateBanner";
+import { getEsaOneTimeTotal } from "@/config/pricing";
 
 export interface PetInfo {
   name: string;
@@ -26,6 +28,13 @@ export interface Step2Data {
   pets: PetInfo[];
   deliverySpeed: string;
   additionalDocs?: AdditionalDocInfo;
+  /**
+   * Evidence that the customer acknowledged the state-law waiting-period
+   * notice (AR/CA/IA/LA/MT) at state-selection time. Cleared automatically
+   * when the state changes. Persisted into orders.assessment_answers by the
+   * lead/order upsert in page.tsx.
+   */
+  stateAcknowledgment?: StateAcknowledgment;
 }
 
 interface Step2PersonalInfoProps {
@@ -34,6 +43,13 @@ interface Step2PersonalInfoProps {
   onNext: () => void;
   onBack: () => void;
   mode?: "esa" | "psd";
+  /**
+   * When provided, the state was already chosen in the earlier state step, so
+   * this component renders it read-only with a "Change" affordance (calling
+   * this) instead of a <select>. When omitted, the editable <select> +
+   * acknowledgment modal are shown (legacy behavior).
+   */
+  onEditState?: () => void;
 }
 
 interface FieldProps {
@@ -100,14 +116,62 @@ function validateAge(dob: string): boolean {
 
 
 
-export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode = "esa" }: Step2PersonalInfoProps) {
+export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode = "esa", onEditState }: Step2PersonalInfoProps) {
+  const stateLocked = !!onEditState;
   const isPSD = mode === "psd";
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [errorMessages, setErrorMessages] = useState<Record<string, string>>({});
   const [dobError, setDobError] = useState<string>("");
+  const [ackModalOpen, setAckModalOpen] = useState(false);
+  const stateSelectRef = useRef<HTMLSelectElement>(null);
 
   const update = (field: keyof Step2Data, val: string | PetInfo[] | AdditionalDocInfo | undefined) => {
     onChange({ ...data, [field]: val });
+  };
+
+  // ── State-law acknowledgment (ESA only, AR/CA/IA/LA/MT) ───────────────────
+  // The acknowledgment is valid only for the exact state it was given for —
+  // changing state invalidates it and, if the new state also requires one,
+  // re-triggers the modal.
+  const stateUpper = (data.state ?? "").toUpperCase();
+  const requiresStateAck = !isPSD && isComplianceState(data.state);
+  const hasValidStateAck = !!data.stateAcknowledgment && data.stateAcknowledgment.state === stateUpper;
+
+  const handleStateChange = (newState: string) => {
+    const next: Step2Data = { ...data, state: newState };
+    // Invalidate a stale acknowledgment the moment the state changes.
+    if (data.stateAcknowledgment && data.stateAcknowledgment.state !== newState.toUpperCase()) {
+      next.stateAcknowledgment = undefined;
+    }
+    onChange(next);
+  };
+
+  // Open the modal as soon as a compliance state is selected without a valid
+  // acknowledgment — including when the state was prefilled via ?state= or a
+  // landing-page link.
+  useEffect(() => {
+    // When the state is locked (chosen in the earlier state step), the
+    // acknowledgment was already handled there — never open the modal here.
+    if (!stateLocked && requiresStateAck && !hasValidStateAck) {
+      setAckModalOpen(true);
+    } else {
+      setAckModalOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateUpper, requiresStateAck, hasValidStateAck, stateLocked]);
+
+  const handleStateAcknowledged = (ack: StateAcknowledgment) => {
+    onChange({ ...data, stateAcknowledgment: ack });
+    setAckModalOpen(false);
+  };
+
+  const handlePickDifferentState = () => {
+    setAckModalOpen(false);
+    // Focus the state select so the correction is one tap away.
+    setTimeout(() => {
+      stateSelectRef.current?.focus();
+      stateSelectRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
   };
 
   const updatePet = (idx: number, field: keyof PetInfo, val: string) => {
@@ -165,8 +229,18 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
   };
 
   const handleNext = () => {
-    if (validate()) onNext();
-    else window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!validate()) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    // Hard gate: a compliance state cannot continue without a valid
+    // acknowledgment. Reopen the modal instead of failing silently. Skipped
+    // when the state is locked (already acknowledged in the earlier step).
+    if (!stateLocked && requiresStateAck && !hasValidStateAck) {
+      setAckModalOpen(true);
+      return;
+    }
+    onNext();
   };
 
   const maxDate = new Date();
@@ -179,6 +253,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
         <h2 className="text-2xl font-extrabold text-gray-900">Your Information</h2>
         <p className="text-gray-500 text-sm mt-2">
           All information is kept strictly confidential and protected under HIPAA.
+          Your answers are reviewed by a licensed provider.
         </p>
       </div>
 
@@ -272,25 +347,66 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
             />
           </Field>
           <Field label="State" required error={errors.state}>
-            <select
-              value={data.state}
-              onChange={(e) => update("state", e.target.value)}
-              className={errors.state ? errorInputClass : inputClass}
-            >
-              <option value="">Select your state</option>
-              {US_STATES.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            {stateLocked ? (
+              <div className={`${inputClass} flex items-center justify-between gap-2 bg-gray-50`}>
+                <span className="flex items-center gap-2 min-w-0">
+                  <i className="ri-map-pin-2-line text-gray-400 flex-shrink-0"></i>
+                  <span className="font-semibold text-gray-800 truncate">
+                    {US_STATES.find((s) => s.code === (data.state ?? "").toUpperCase())?.name ?? data.state ?? "—"}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={onEditState}
+                  className="whitespace-nowrap text-xs font-bold text-[#1A5C4F] hover:underline cursor-pointer flex-shrink-0"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <select
+                ref={stateSelectRef}
+                value={data.state}
+                onChange={(e) => handleStateChange(e.target.value)}
+                className={errors.state ? errorInputClass : inputClass}
+              >
+                <option value="">Select your state</option>
+                {US_STATES.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
         </div>
       </div>
 
       {/* State law compliance notice — ESA only, triggers on AR/CA/IA/LA/MT */}
       {!isPSD && (
-        <StateComplianceBanner state={data.state} className="mb-5" />
+        <StateComplianceBanner state={data.state} className={hasValidStateAck ? "mb-2" : "mb-5"} />
+      )}
+      {!isPSD && hasValidStateAck && (
+        <div className="mb-5 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-2.5">
+          <i className="ri-checkbox-circle-fill text-emerald-600 text-sm flex-shrink-0"></i>
+          <p className="text-xs text-emerald-800">
+            <span className="font-bold">State notice acknowledged.</span> Your evaluation can begin
+            today — letter timing follows your state&apos;s rules.
+          </p>
+        </div>
+      )}
+
+      {/* State-law acknowledgment modal — blocks continue until acknowledged.
+          Only used in legacy (unlocked) mode; when the state is locked it was
+          already acknowledged in the earlier state step. */}
+      {!isPSD && !stateLocked && (
+        <StateAcknowledgmentModal
+          open={ackModalOpen}
+          state={data.state}
+          priceShown={getEsaOneTimeTotal(data.pets.length)}
+          onAcknowledge={handleStateAcknowledged}
+          onPickDifferentState={handlePickDifferentState}
+        />
       )}
 
       {/* 2026 HUD support-animal housing update — ESA only, shows once a state
@@ -344,7 +460,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
           <div className="mb-5 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
             <i className="ri-information-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
             <p className="text-xs text-amber-800">
-              <span className="font-bold">Have more than one Psychiatric Service Dog?</span> Click <span className="font-bold">&quot;Add Another Dog&quot;</span> above — you can add up to 3 dogs. Pricing adjusts automatically based on the number of dogs. Dogs added later cannot be included after submission.
+              <span className="font-bold">Have more than one Psychiatric Service Dog?</span> Click <span className="font-bold">&quot;Add Another Dog&quot;</span> above — 2 or 3 dogs are covered at one fixed total. Dogs added later cannot be included after submission.
             </p>
           </div>
         )}

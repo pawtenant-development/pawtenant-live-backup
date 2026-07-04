@@ -48,6 +48,12 @@ interface StripePaymentFormProps {
    * to acknowledge the state-law notice before paying.
    */
   complianceBlocked?: boolean;
+  /**
+   * Optional CTA label override (without the amount — the amount is always
+   * appended). Defaults to "Complete Secure Evaluation". The PSD consultation
+   * flow passes "Book My Consultation".
+   */
+  submitLabel?: string;
 }
 
 // ─── Processing Overlay ───────────────────────────────────────────────────────
@@ -78,6 +84,7 @@ export default function StripePaymentForm({
   setAgreedError,
   couponSlot,
   complianceBlocked = false,
+  submitLabel = "Complete Secure Evaluation",
 }: StripePaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -427,7 +434,7 @@ export default function StripePaymentForm({
           ) : (
             <>
               <i className="ri-lock-2-line text-base"></i>
-              Complete Secure Evaluation — ${amount}.00
+              {submitLabel} — ${amount}.00
             </>
           )}
         </button>

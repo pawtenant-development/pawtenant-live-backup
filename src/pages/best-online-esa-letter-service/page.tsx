@@ -83,7 +83,7 @@ const pawtenantPoints = [
   {
     icon: "ri-price-tag-3-line",
     title: "Clear pricing",
-    desc: "$99/year subscription or $110 one-time, shown before you start. No hidden 'registration' fees.",
+    desc: "$109/year subscription or $129 one-time, shown before you start. No hidden 'registration' fees.",
   },
   {
     icon: "ri-shield-check-line",
@@ -119,7 +119,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "How much should a legitimate ESA letter cost?",
-    a: "Prices vary, but a legitimate letter reflects real clinical work by a licensed provider. PawTenant's ESA letter is $99/year or $110 one-time. Be cautious of letters priced far below the norm — that can signal the evaluation is being skipped, which makes the letter invalid.",
+    a: "Prices vary, but a legitimate letter reflects real clinical work by a licensed provider. PawTenant's ESA letter is $109/year or $129 one-time. Be cautious of letters priced far below the norm — that can signal the evaluation is being skipped, which makes the letter invalid.",
   },
   {
     q: "Can any service guarantee my landlord will accept the letter?",
@@ -233,7 +233,7 @@ export default function BestOnlineESALetterServicePage() {
             </p>
             <p>
               PawTenant is built around that checklist: a licensed provider evaluation in your state,
-              clear $99/year or $110 one-time pricing, verifiable letters, and a refund if you don't
+              clear $109/year or $129 one-time pricing, verifiable letters, and a refund if you don't
               qualify. No service can guarantee landlord approval.
             </p>
           </AIAnswerBox>

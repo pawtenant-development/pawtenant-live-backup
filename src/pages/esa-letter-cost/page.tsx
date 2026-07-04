@@ -69,7 +69,7 @@ const whyChoose = [
   },
   {
     title: "Optimal Pricing without Compromises",
-    desc: "At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at just $99/year. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.",
+    desc: "At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at just $109/year. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.",
     icon: "ri-hand-heart-line",
   },
   {
@@ -506,6 +506,7 @@ export default function ESALetterCostPage() {
               { to: "/landlord-denied-esa-letter", title: "Landlord denied your ESA?", desc: "Your housing rights and calm, practical next steps." },
               { to: "/housing-rights-esa", title: "ESA housing rights (FHA)", desc: "How the Fair Housing Act protects ESA owners." },
               { to: "/renew-esa-letter", title: "Renew your ESA letter", desc: "ESA letters are typically valid for 12 months." },
+              { to: "/pet-rent-savings-calculator", title: "Pet rent savings calculator", desc: "Estimate what pet rent and fees could cost — and what you may save if approved." },
             ]}
           />
         </div>
@@ -522,7 +523,7 @@ export default function ESALetterCostPage() {
           className="whitespace-nowrap flex items-center justify-center gap-2 w-full py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
         >
           <i className="ri-file-text-line"></i>
-          Get Your ESA Letter — From $99
+          Get Your ESA Letter — From $109
         </Link>
       </div>
 

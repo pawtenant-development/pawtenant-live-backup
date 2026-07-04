@@ -55,7 +55,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How much does an ESA letter cost?",
-    a: "PawTenant's housing ESA letter is $110 for one pet, valid for one year, with additional pets at $25 each (up to three per document). The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
+    a: "PawTenant's housing ESA letter is $129 for one pet, valid for one year; 2 or 3 pets are covered at a fixed $149 total (up to three per document). The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
   },
   {
     q: "How do I know if an online ESA letter provider is legitimate?",
@@ -756,11 +756,11 @@ export default function LpEsaHousingPage() {
 
               <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-2">ESA Letter — one-time</div>
               <div className="flex items-baseline gap-2 mb-1">
-                <div className="text-4xl md:text-5xl font-medium tracking-tight text-slate-900">$110</div>
+                <div className="text-4xl md:text-5xl font-medium tracking-tight text-slate-900">$129</div>
                 <div className="text-xs text-slate-500">for 1 pet · valid 1 year</div>
               </div>
               <div className="text-xs text-slate-500 mb-3">
-                Add additional pets at <span className="text-slate-900 font-medium">+$25 each</span> · up to 3 pets per document
+                2 or 3 pets covered at a <span className="text-slate-900 font-medium">fixed $149 total</span> · up to 3 pets per document
               </div>
 
               {/* Klarna chip — Klarna brand pink */}
@@ -776,7 +776,7 @@ export default function LpEsaHousingPage() {
                 <PriceFeat>Unique Verification ID with landlord verification support</PriceFeat>
                 <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
                 <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
-                <PriceFeat>Additional pets at +$25 each (up to 3)</PriceFeat>
+                <PriceFeat>Covers 2 or 3 pets at a fixed $149 total</PriceFeat>
                 <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
               </ul>
 
@@ -800,10 +800,10 @@ export default function LpEsaHousingPage() {
 
               <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-2">PSD Letter — one-time</div>
               <div className="flex items-baseline gap-2 mb-1">
-                <div className="text-4xl md:text-5xl font-medium tracking-tight text-slate-900">From $120</div>
+                <div className="text-4xl md:text-5xl font-medium tracking-tight text-slate-900">From&nbsp;$129</div>
               </div>
               <div className="text-xs text-slate-500 mb-3">
-                For 1 trained psychiatric service dog · <span className="text-slate-900 font-medium">+$20 per extra dog</span>
+                Flat price · <span className="text-slate-900 font-medium">covers up to 3 trained psychiatric service dogs</span>
               </div>
 
               {/* Klarna chip — Klarna brand pink */}
@@ -881,7 +881,7 @@ export default function LpEsaHousingPage() {
                 <span className="text-[9.5px] uppercase tracking-wider text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">Optional</span>
               </div>
               <div className="text-[12px] text-slate-600 leading-relaxed">
-                <span className="font-medium text-slate-900">$99/year</span> for 1 pet · <span className="font-medium text-slate-900">+$20/year</span> per additional pet · cancel anytime
+                <span className="font-medium text-slate-900">$109/year</span> for 1 pet · <span className="font-medium text-slate-900">$129/year</span> fixed total for 2 or 3 pets · cancel anytime
               </div>
             </div>
             <span

@@ -1,6 +1,10 @@
 import { useState } from "react";
+import CrisisSupportPanel from "../../../components/feature/CrisisSupportPanel";
 
 export interface PSDStep1Data {
+  // Safety screen — "no" | "yes". "yes" hard-stops the flow and shows
+  // CrisisSupportPanel; the customer can change the answer to continue.
+  safetyCheck: string;
   dogTasks: string[];
   taskTraining: string;
   taskDescription: string;
@@ -130,6 +134,9 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
   const showDiagText = data.priorDiagnosis === "yes" || data.priorDiagnosis === "informal";
 
   const REQUIRED: Array<{ key: keyof PSDStep1Data; check: () => boolean }> = [
+    // Safety screen must be "no" to continue — "yes" shows the crisis panel
+    // and withholds the continue button until the answer changes.
+    { key: "safetyCheck",        check: () => data.safetyCheck === "no" },
     { key: "dogTasks",           check: () => data.dogTasks.length > 0 },
     { key: "taskTraining",       check: () => !!data.taskTraining },
     { key: "taskDescription",    check: () => data.taskDescription.trim().length >= 15 },
@@ -485,15 +492,39 @@ export default function PSDStep1({ data, onChange, onNext }: Props) {
           ]} />
         </QCard>
 
+        {/* Safety screen — must be "no" to continue. "yes" shows the crisis
+            panel and blocks the flow until the answer is changed. */}
+        <div className={`bg-white rounded-xl border p-6 transition-all ${hasErr("safetyCheck") && data.safetyCheck !== "yes" ? "border-red-300 ring-2 ring-red-200" : "border-gray-200"}`}>
+          <p className="text-sm font-bold text-gray-900 mb-1">
+            Are you currently having thoughts of harming yourself or others?
+            <span className="text-orange-500 ml-1">*</span>
+          </p>
+          <p className="text-xs text-gray-400 mb-4">We ask this to keep you safe. Your answer is confidential.</p>
+          <RadioGroup
+            name="safetyCheck"
+            value={data.safetyCheck}
+            onChange={(v) => update("safetyCheck", v)}
+            options={[
+              { label: "No", value: "no" },
+              { label: "Yes", value: "yes" },
+            ]}
+          />
+          {data.safetyCheck === "yes" && <CrisisSupportPanel />}
+        </div>
+
       </div>
 
-      <div className="mt-8 flex flex-col sm:flex-row sm:justify-end">
-        <button type="button" onClick={() => { if (validate()) onNext(); else window.scrollTo({ top: 0, behavior: "smooth" }); }}
-          className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
-          Continue to Your Information
-          <i className="ri-arrow-right-line"></i>
-        </button>
-      </div>
+      {/* Continue is withheld entirely while the safety answer is "yes" —
+          the crisis panel above is the only next step we offer. */}
+      {data.safetyCheck !== "yes" && (
+        <div className="mt-8 flex flex-col sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => { if (validate()) onNext(); else window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-10 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
+            Continue to Your Information
+            <i className="ri-arrow-right-line"></i>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

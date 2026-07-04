@@ -1,8 +1,12 @@
 import { useState } from "react";
 import { CheckboxGroup, QuestionCard, RadioGroup } from "./step1/primitives";
 import QuestionRouter from "./step1/QuestionRouter";
+import CrisisSupportPanel from "../../../components/feature/CrisisSupportPanel";
 
 export interface Step1Data {
+  // Safety screen — "no" | "yes". "yes" hard-stops the flow and shows
+  // CrisisSupportPanel; the customer can change the answer to continue.
+  safetyCheck: string;
   // New form fields
   emotionalFrequency: string;
   conditions: string[];
@@ -93,6 +97,9 @@ export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = f
   };
 
   const REQUIRED_FIELDS: Array<{ key: keyof Step1Data; check: () => boolean }> = [
+    // Safety screen must be answered "no" to continue — "yes" shows the
+    // crisis panel and blocks the flow until the answer changes.
+    { key: "safetyCheck", check: () => data.safetyCheck === "no" },
     { key: "emotionalFrequency", check: () => !!data.emotionalFrequency },
     { key: "conditions", check: () => data.conditions.length > 0 },
     { key: "lifeChangeStress", check: () => !!data.lifeChangeStress },
@@ -135,6 +142,7 @@ export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = f
         <h2 className="text-2xl font-extrabold text-gray-900">Mental Health Assessment</h2>
         <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">
           This confidential screening helps a licensed mental health professional evaluate your eligibility for an ESA letter. All answers are protected under HIPAA.
+          A letter is signed only if clinically appropriate — approval is not automatic.
         </p>
       </div>
 
@@ -464,18 +472,42 @@ export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = f
           />
         </div>
 
+        {/* Safety screen — must be "no" to continue. "yes" shows the crisis
+            panel and blocks the flow until the answer is changed. */}
+        <div className={`bg-white rounded-xl border p-5 sm:p-6 ${hasErr("safetyCheck") && data.safetyCheck !== "yes" ? "border-red-300" : "border-gray-100"}`}>
+          <p className="text-sm font-bold text-gray-900 mb-1.5">
+            Are you currently having thoughts of harming yourself or others?
+            <span className="text-orange-500 ml-1">*</span>
+          </p>
+          <p className="text-xs text-gray-500 mb-3">We ask this to keep you safe. Your answer is confidential.</p>
+          <RadioGroup
+            name="safetyCheck"
+            value={data.safetyCheck}
+            onChange={(v) => update("safetyCheck", v)}
+            options={[
+              { label: "No", value: "no" },
+              { label: "Yes", value: "yes" },
+            ]}
+          />
+          {data.safetyCheck === "yes" && <CrisisSupportPanel />}
+        </div>
+
       </div>
 
-      <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row sm:justify-end">
-        <button
-          type="button"
-          onClick={handleNext}
-          className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-[#F97316] text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-[#EA580C] active:bg-[#C2410C] transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
-        >
-          Continue to Your Information
-          <i className="ri-arrow-right-line"></i>
-        </button>
-      </div>
+      {/* Continue is withheld entirely while the safety answer is "yes" —
+          the crisis panel above is the only next step we offer. */}
+      {data.safetyCheck !== "yes" && (
+        <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={handleNext}
+            className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-[#F97316] text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-[#EA580C] active:bg-[#C2410C] transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
+          >
+            Continue to Your Information
+            <i className="ri-arrow-right-line"></i>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

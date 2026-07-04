@@ -46,7 +46,7 @@ const comparisonRows = [
   { category: "Housing Protection", psd: "Full protection under FHA", esa: "Full protection under FHA" },
   { category: "Airline Travel", psd: "Yes — allowed in cabin under ACAA rules", esa: "No longer required after 2021 DOT rule" },
   { category: "Letter Required", psd: "PSD letter from licensed mental health professional", esa: "ESA letter from licensed mental health professional" },
-  { category: "Cost", psd: "Similar to ESA letter evaluation", esa: "From $99/year with PawTenant" },
+  { category: "Cost", psd: "Similar to ESA letter evaluation", esa: "From $109/year with PawTenant" },
 ];
 
 const psdTasks = [
@@ -406,74 +406,90 @@ export default function HowToGetPSDLetterPage() {
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">Transparent Pricing</span>
             <h2 className="text-3xl font-bold text-gray-900 mb-3">PSD Letter Pricing</h2>
             <p className="text-gray-500 text-sm max-w-xl mx-auto">
-              Choose the delivery speed that works for you. All packages include a licensed professional consultation and a fully compliant PSD letter — valid in all 50 states.
+              One simple offer — reviewed by a licensed provider, with the same benefits on both plans. Same-day PDF delivery is available, not a separate paid tier. Approval is not automatic, and you&apos;re refunded if you don&apos;t qualify.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto items-stretch">
             {[
               {
-                name: "Standard",
-                speed: "2–3 Business Days",
-                price: "$100",
+                name: "PSD Letter",
+                speed: "One-time — from $129 for 1 dog",
+                price: "$129",
                 priceKey: "psd_standard",
                 priceSuffix: "",
-                popular: false,
+                note: "$149 total for 2–3 dogs",
+                annualPill: false,
+                highlight: true,
                 features: [
-                  "Official PSD Letter from Licensed LMHP",
-                  "ADA & FHA Compliant",
-                  "Licensed Professional Signature & NPI",
-                  "PDF Delivery via Email",
-                  "Valid for 1 Year",
-                  "Landlord & Airline Verification Support",
+                  "Reviewed by a licensed provider (LMHP)",
+                  "PSD documentation if clinically appropriate",
+                  "Provider signature, license number & NPI",
+                  "Same-day PDF delivery available",
+                  "Valid for 12 months",
+                  "Landlord documentation support",
+                  "Public-access documentation support where applicable",
+                  "Secure online assessment",
+                  "Refund if you don't qualify",
                 ],
               },
               {
-                name: "Priority",
-                speed: "Within 24 Hours",
-                price: "$120",
-                priceKey: "psd_priority",
-                priceSuffix: "",
-                popular: true,
-                features: [
-                  "Official PSD Letter from Licensed LMHP",
-                  "ADA & FHA Compliant",
-                  "Licensed Professional Signature & NPI",
-                  "PDF Delivery via Email",
-                  "Valid for 1 Year",
-                  "Landlord & Airline Verification Support",
-                  "Same-Day Priority Processing",
-                ],
-              },
-              {
-                name: "Annual Subscription",
-                speed: "Per Year — Auto-Renews",
-                price: "$99",
+                name: "PSD Annual",
+                speed: "Per year — renews automatically",
+                price: "$109",
                 priceKey: "psd_annual",
                 priceSuffix: "/yr",
-                popular: false,
+                note: "$129/year total for 2–3 dogs",
+                annualPill: true,
+                highlight: false,
                 features: [
-                  "Official PSD Letter from Licensed LMHP",
-                  "ADA & FHA Compliant",
-                  "Licensed Professional Signature & NPI",
-                  "PDF Delivery via Email",
-                  "Annual Renewal — Renews Automatically",
-                  "Landlord & Airline Verification Support",
+                  "Reviewed by a licensed provider (LMHP)",
+                  "PSD documentation if clinically appropriate",
+                  "Provider signature, license number & NPI",
+                  "Same-day PDF delivery available",
+                  "Valid for 12 months",
+                  "Landlord documentation support",
+                  "Public-access documentation support where applicable",
+                  "Secure online assessment",
+                  "Annual renewal keeps your letter current",
+                  "Refund if you don't qualify",
                 ],
               },
             ].map((plan) => (
-              <div key={plan.name} className={`relative bg-white rounded-2xl border-2 p-8 flex flex-col ${plan.popular ? "border-orange-500" : "border-gray-200"}`}>
-                {plan.popular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-orange-500 text-white text-xs font-bold px-4 py-1.5 rounded-full whitespace-nowrap">Most Popular</span>
-                  </div>
+              <div
+                key={plan.name}
+                className={`relative bg-white rounded-2xl p-8 flex flex-col ${
+                  plan.highlight
+                    ? "border-2 border-orange-400 shadow-[0_16px_44px_-18px_rgba(249,115,22,0.42)]"
+                    : "border-2 border-gray-200"
+                }`}
+              >
+                {plan.highlight && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap shadow-sm">
+                    Most Popular
+                  </span>
                 )}
                 <div className="mb-5">
                   <h3 className="text-gray-900 font-bold text-base mb-1">{plan.name}</h3>
                   <p className="text-gray-400 text-xs mb-4">{plan.speed}</p>
-                  <div className="flex items-end gap-1">
-                    <p className="text-4xl font-extrabold text-gray-900">{getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}</p>
-                    <p className="text-sm text-gray-400 mb-1">/ 1 dog</p>
-                  </div>
+                  {plan.annualPill ? (
+                    <div className="flex flex-col gap-2">
+                      <span className="self-start inline-flex items-center gap-1.5 rounded-full bg-[#4A8472]/10 text-[#2f5d50] border border-[#4A8472]/25 px-3.5 py-1.5 text-sm font-extrabold">
+                        <i className="ri-refresh-line text-[13px]"></i>
+                        Annual from {getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}
+                      </span>
+                      <span className="self-start inline-flex items-center rounded-full bg-[#4A8472]/8 text-[#3F7061] border border-[#4A8472]/20 px-3 py-1 text-[12px] font-bold">
+                        {plan.note}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-end gap-1">
+                        <p className="text-4xl font-extrabold text-gray-900">{getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}</p>
+                        <p className="text-sm text-gray-400 mb-1">/ 1 dog</p>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{plan.note}</p>
+                    </>
+                  )}
                 </div>
                 <ul className="space-y-2 mb-8 flex-1">
                   {plan.features.map((f) => (
@@ -487,9 +503,13 @@ export default function HowToGetPSDLetterPage() {
                 </ul>
                 <Link
                   to="/psd-assessment"
-                  className={`whitespace-nowrap w-full py-3 text-sm font-bold rounded-md transition-colors cursor-pointer text-center block ${plan.popular ? "bg-orange-500 text-white hover:bg-orange-600" : "border-2 border-orange-500 text-orange-500 hover:bg-orange-50"}`}
+                  className={`whitespace-nowrap w-full py-3 text-sm font-bold rounded-md transition-colors cursor-pointer text-center block ${
+                    plan.highlight
+                      ? "bg-orange-500 text-white hover:bg-orange-600 shadow-[0_4px_12px_rgba(249,115,22,0.30)]"
+                      : "border-2 border-orange-500 text-orange-500 hover:bg-orange-50"
+                  }`}
                 >
-                  Start Free Assessment
+                  Start PSD Assessment
                 </Link>
               </div>
             ))}

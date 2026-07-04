@@ -14,7 +14,7 @@
  * single source of truth) so the two stay in lock-step.
  */
 import { supabase } from "./supabaseClient";
-import { ESA_PRICING } from "../config/pricing";
+import { ESA_PRICING, PSD_PRICING, RENEWAL_PRICING } from "../config/pricing";
 
 export type ServiceType = "esa" | "psd" | "addon" | "subscription" | "general";
 
@@ -36,12 +36,16 @@ export type SitePricingMap = Record<string, SitePricingRow>;
 /** Pricing keys used across the public site. Keep in sync with the DB seed. */
 export const PRICING_KEYS = {
   esaSinglePet: "esa_single_pet",
-  esaAdditionalPet: "esa_additional_pet",
+  esaMultiPet: "esa_multi_pet",
   esaSubscriptionAnnual: "esa_subscription_annual",
-  esaSubscriptionAddon: "esa_subscription_addon",
+  esaSubscriptionMulti: "esa_subscription_multi",
   psdStandard: "psd_standard",
   psdPriority: "psd_priority",
+  psdMultiDog: "psd_multi_dog",
   psdAnnual: "psd_annual",
+  psdAnnualMulti: "psd_annual_multi",
+  psdConsultation: "psd_consultation",
+  renewalAnnual: "renewal_annual",
   additionalDocumentation: "additional_documentation",
 } as const;
 
@@ -79,12 +83,16 @@ function fb(
 
 export const PRICING_FALLBACKS: SitePricingRow[] = [
   fb(PRICING_KEYS.esaSinglePet, "ESA Letter — One-Time (single pet)", "esa", ESA_PRICING.oneTime * 100, 10),
-  fb(PRICING_KEYS.esaAdditionalPet, "ESA — Additional Pet (one-time)", "esa", ESA_PRICING.oneTimeAddOn * 100, 11),
+  fb(PRICING_KEYS.esaMultiPet, "ESA Letter — 2 or 3 Pets (fixed total)", "esa", ESA_PRICING.oneTimeMultiPetTotal * 100, 11),
   fb(PRICING_KEYS.esaSubscriptionAnnual, "ESA Annual Subscription (single pet)", "subscription", ESA_PRICING.subscription * 100, 12),
-  fb(PRICING_KEYS.esaSubscriptionAddon, "ESA Annual — Additional Pet (per year)", "subscription", ESA_PRICING.subscriptionAddOn * 100, 13),
-  fb(PRICING_KEYS.psdStandard, "PSD Letter — Standard", "psd", 10000, 20),
-  fb(PRICING_KEYS.psdPriority, "PSD Letter — Priority (24h)", "psd", 12000, 21),
-  fb(PRICING_KEYS.psdAnnual, "PSD Letter — Annual Subscription", "psd", 9900, 22),
+  fb(PRICING_KEYS.esaSubscriptionMulti, "ESA Annual — 2 or 3 Pets (fixed total/yr)", "subscription", ESA_PRICING.subscriptionMultiPetTotal * 100, 13),
+  fb(PRICING_KEYS.psdStandard, "PSD Letter — Standard (1 dog)", "psd", PSD_PRICING.oneTime * 100, 20),
+  fb(PRICING_KEYS.psdPriority, "PSD Letter — Priority 24h (1 dog)", "psd", PSD_PRICING.oneTime * 100, 21),
+  fb(PRICING_KEYS.psdMultiDog, "PSD Letter — 2 or 3 Dogs (fixed total)", "psd", PSD_PRICING.oneTimeMultiDogTotal * 100, 22),
+  fb(PRICING_KEYS.psdAnnual, "PSD Annual Subscription (1 dog)", "psd", PSD_PRICING.annual * 100, 23),
+  fb(PRICING_KEYS.psdAnnualMulti, "PSD Annual — 2 or 3 Dogs (fixed total/yr)", "psd", PSD_PRICING.annualMultiDogTotal * 100, 24),
+  fb(PRICING_KEYS.psdConsultation, "Consultation — 15-Minute Call", "psd", PSD_PRICING.consultation * 100, 25),
+  fb(PRICING_KEYS.renewalAnnual, "Renewal — Annual Subscription", "subscription", RENEWAL_PRICING.annual * 100, 26),
   fb(PRICING_KEYS.additionalDocumentation, "Additional Documentation (add-on)", "addon", 4000, 30),
 ];
 

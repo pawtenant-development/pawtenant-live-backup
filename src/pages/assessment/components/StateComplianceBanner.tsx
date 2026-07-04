@@ -15,10 +15,14 @@ export function isComplianceState(code?: string | null): boolean {
 interface StateComplianceBannerProps {
   state: string;
   className?: string;
+  /** "esa" (default) or "psd" — swaps the documentation wording. */
+  service?: "esa" | "psd";
 }
 
-export default function StateComplianceBanner({ state, className = "" }: StateComplianceBannerProps) {
+export default function StateComplianceBanner({ state, className = "", service = "esa" }: StateComplianceBannerProps) {
   if (!isComplianceState(state)) return null;
+  const doc = service === "psd" ? "PSD documentation" : "ESA documentation";
+  const letter = service === "psd" ? "PSD letter" : "ESA letter";
 
   return (
     <div
@@ -33,22 +37,22 @@ export default function StateComplianceBanner({ state, className = "" }: StateCo
         <p className="text-sm font-bold leading-snug">Important State Law Notice</p>
         <p className="text-xs mt-1.5 leading-relaxed text-amber-900/90">
           Your selected state requires a <strong>client-provider relationship period</strong> before
-          ESA documentation can be issued. This means your licensed provider may need to complete the
-          legally required relationship/evaluation period before issuing your final ESA letter.
+          {" "}{doc} can be issued. This means your licensed provider may need to complete the
+          legally required relationship/evaluation period before issuing your final {letter}.
         </p>
         {state.toUpperCase() === "CA" ? (
           <p className="text-xs mt-2 leading-relaxed text-amber-900/90">
             For <strong>California residents</strong>, state law requires at least a{" "}
-            <strong>30-day client-provider relationship</strong> before ESA documentation can be issued.
+            <strong>30-day client-provider relationship</strong> before {doc} can be issued.
           </p>
         ) : (
           <p className="text-xs mt-2 leading-relaxed text-amber-900/90">
             Your selected state may require a <strong>client-provider relationship</strong> or{" "}
-            <strong>waiting period</strong> before ESA documentation can be issued.
+            <strong>waiting period</strong> before {doc} can be issued.
           </p>
         )}
         <p className="text-xs mt-2 leading-relaxed text-amber-900/90">
-          By continuing, you understand that your final ESA documentation may not be issued immediately
+          By continuing, you understand that your final {doc} may not be issued immediately
           and will only be provided if legally permitted and clinically appropriate.
         </p>
       </div>

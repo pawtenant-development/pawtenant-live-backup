@@ -62,57 +62,70 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// ─── ESA Stripe price IDs (LIVE) — base + add-on model ────────────────────
-const ESA_ONETIME_BASE_PRICE_ID = "price_1TNN3RGwm9wIWlgi5wRMMfkW";
-const ESA_ONETIME_ADDON_PRICE_ID = "price_1TNN3yGwm9wIWlgiKd6ZdCUa";
-const ESA_ANNUAL_BASE_PRICE_ID = "price_1TNN4QGwm9wIWlgi05I7rDMe";
-const ESA_ANNUAL_ADDON_PRICE_ID = "price_1TNN4rGwm9wIWlgie4OcX3rZ";
+// ─── ESA Stripe price IDs (TEST) — SUBSCRIPTIONS ONLY ──────────────────────
+// Subscriptions require pre-created recurring Price objects (Stripe rule).
+// Tier model, owner-provided 2026-07: 1 pet → $109/yr; 2 or 3 pets → $129/yr
+// fixed total. Keep in sync with create-payment-intent/index.ts.
+const ESA_ANNUAL_BASE_PRICE_ID = "price_1TpOHNGwm9wIWlgiizgabvkc";   // $109/yr, 1 pet
+const ESA_ANNUAL_MULTI_PRICE_ID = "price_1TpOLeGwm9wIWlgiLMeunzub";  // $129/yr, 2-3 pets
 
-function buildESALineItems(
+function buildESASubscriptionLineItems(
   petCount: number,
-  planType: string,
 ): Array<{ price: string; quantity: number }> {
   const n = Math.max(1, Math.min(3, petCount));
-  const isSub = planType === "subscription";
-  const base = isSub ? ESA_ANNUAL_BASE_PRICE_ID : ESA_ONETIME_BASE_PRICE_ID;
-  const addon = isSub ? ESA_ANNUAL_ADDON_PRICE_ID : ESA_ONETIME_ADDON_PRICE_ID;
-  const items = [{ price: base, quantity: 1 }];
-  if (n > 1) items.push({ price: addon, quantity: n - 1 });
-  return items;
+  return [{ price: n === 1 ? ESA_ANNUAL_BASE_PRICE_ID : ESA_ANNUAL_MULTI_PRICE_ID, quantity: 1 }];
 }
 
-// ─── PSD ONE-TIME Price IDs ────────────────────────────────────────────────
-const PSD_ONETIME_PRICE_IDS: Record<number, { standard: string; priority: string }> = {
-  1: { standard: "price_1TFkAQGwm9wIWlgiMokTLkBQ", priority: "price_1TG6ZMGwm9wIWlgibs4wx4ER" },
-  2: { standard: "price_1TG6XWGwm9wIWlgiiNBWaSl6", priority: "price_1TG6a0Gwm9wIWlgiX0QMNBqL" },
-  3: { standard: "price_1TG6XnGwm9wIWlgips9dkLt3", priority: "price_1TG6aPGwm9wIWlgiWMFQ0mVO" },
-};
+// ─── ESA ONE-TIME inline amount (cents) ────────────────────────────────────
+// 2026-07 PRICING-SINGLE-SOURCE: one-time Klarna/QR sessions use inline
+// `price_data` computed server-side (no Stripe one-time Price IDs). Mirrors
+// getESAOneTimeAmount in create-payment-intent so card, Klarna and QR always
+// charge identical totals. 1 pet = $129; 2 or 3 pets = $149 fixed total.
+function getESAOneTimeAmountCents(petCount: number): number {
+  const n = Math.max(1, Math.min(3, petCount));
+  return (n === 1 ? 129 : 149) * 100;
+}
+
+function buildESAOneTimeInlineLineItem(petCount: number) {
+  const n = Math.max(1, Math.min(3, petCount));
+  const petsLabel = n === 1 ? "1 Pet" : `${n} Pets`;
+  return {
+    price_data: {
+      currency: "usd",
+      product_data: {
+        name: `ESA Letter — ${petsLabel} (One-Time)`,
+        description: `Emotional Support Animal letter evaluation covering ${petsLabel.toLowerCase()}. Reviewed by a licensed provider; issued only if clinically appropriate.`,
+      },
+      unit_amount: getESAOneTimeAmountCents(petCount),
+    },
+    quantity: 1,
+  };
+}
 
 // ─── PSD ANNUAL SUBSCRIPTION Price IDs ────────────────────────────────────
+// (One-time PSD Price IDs removed 2026-07 — one-time sessions use inline
+// price_data; see buildPSDOneTimeKlarnaLineItem.)
+// Tier model, owner-provided 2026-07: 1 dog → $109/yr; 2 or 3 dogs → $129/yr
+// fixed total. Keep in sync with create-payment-intent/index.ts.
 const PSD_ANNUAL_PRICE_IDS: Record<number, string> = {
-  1: "price_1TFkDaGwm9wIWlgisHcWoZfX",
-  2: "price_1TG6RrGwm9wIWlgiRSRzWkOb",
-  3: "price_1TG6TKGwm9wIWlgiNFZbRloA",
+  1: "price_1TpOPOGwm9wIWlgijMnt7NBJ",  // $109/yr, 1 dog
+  2: "price_1TpORnGwm9wIWlgi9KiPhJpg",  // $129/yr, 2-3 dogs
+  3: "price_1TpORnGwm9wIWlgi9KiPhJpg",  // $129/yr, 2-3 dogs
 };
 
-function getPSDPriceId(petCount: number, deliverySpeed: string, planType: string): string {
-  const tier  = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
-  const level = deliverySpeed === "2-3days" ? "standard" : "priority";
-  if (planType === "subscription") return PSD_ANNUAL_PRICE_IDS[tier];
-  return PSD_ONETIME_PRICE_IDS[tier][level];
+function getPSDPriceId(petCount: number, _deliverySpeed: string, _planType: string): string {
+  const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
+  return PSD_ANNUAL_PRICE_IDS[tier];
 }
 
 // ─── PSD ONE-TIME inline amount (cents) — same table as create-payment-intent ──
-// Used as a fallback path for PSD Klarna sessions where the Stripe Price IDs
-// above may not be Klarna-enabled in the dashboard. Letting Stripe create the
-// product on-the-fly from `price_data` sidesteps any per-product activation
-// requirement and matches the inline-card amount exactly.
-function getPSDOneTimeAmountCents(petCount: number, deliverySpeed: string): number {
-  const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
-  const isPriority = deliverySpeed !== "2-3days";
-  if (tier === 1) return isPriority ? 12000 : 10000;
-  if (tier === 2) return isPriority ? 14000 : 12000;
-  return isPriority ? 15500 : 13500;
+// Inline `price_data` lets Stripe create the product on-the-fly and matches
+// the inline-card amount exactly (no dashboard price drift).
+// 2026-07 FINAL: 1 dog = $129; 2 or 3 dogs = $149 fixed total (both delivery
+// speeds). Mirrors getPSDOneTimeAmount in create-payment-intent/index.ts.
+function getPSDOneTimeAmountCents(petCount: number, _deliverySpeed: string): number {
+  const n = Math.max(1, Math.min(3, petCount));
+  return (n === 1 ? 129 : 149) * 100;
 }
 
 function buildPSDOneTimeKlarnaLineItem(petCount: number, deliverySpeed: string) {
@@ -172,6 +185,49 @@ async function resolveStripeCouponId(
 
   console.warn(`[create-checkout-session] Could not resolve Stripe coupon for code: ${couponCode}`);
   return null;
+}
+
+// ─── LEGACY-RESUME PRICE LOCK (2026-07) ───────────────────────────────────────
+// Mirrors create-payment-intent: resumed unpaid orders keep their ORIGINAL saved
+// quote (orders.price) instead of the recalculated current amount, so the Klarna
+// / QR (Checkout Session) path can never silently reprice an old lead. The SERVER
+// is authoritative — the saved price comes from the DB, not the client.
+// LIVE MUST set PRICING_V2_LAUNCH_AT env var at deploy time (default = TEST-safe).
+const PRICING_V2_LAUNCH_AT = new Date(
+  Deno.env.get("PRICING_V2_LAUNCH_AT") ?? "2026-07-03T00:00:00Z",
+);
+
+async function resolveLegacyQuoteLock(
+  confirmationId: string,
+  configBaseCents: number,
+): Promise<{ baseCents: number; pricingSource: string }> {
+  const out = { baseCents: configBaseCents, pricingSource: "current_pricing" };
+  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return out;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data } = await supabase
+      .from("orders")
+      .select("price, created_at, paid_at, payment_intent_id")
+      .eq("confirmation_id", confirmationId)
+      .maybeSingle();
+    if (!data) return out;
+    if (data.payment_intent_id || data.paid_at) return out; // never reprice paid
+    const savedPrice = typeof data.price === "number" ? data.price : null;
+    const isLegacy = data.created_at
+      ? new Date(data.created_at as string).getTime() < PRICING_V2_LAUNCH_AT.getTime()
+      : false;
+    if (savedPrice != null && savedPrice > 0) {
+      const savedCents = Math.round(savedPrice * 100);
+      out.baseCents = savedCents;
+      out.pricingSource = savedCents !== configBaseCents ? "legacy_saved_quote" : "current_pricing";
+      return out;
+    }
+    out.pricingSource = isLegacy ? "legacy_fallback" : "current_pricing";
+    return out;
+  } catch (err) {
+    console.warn("[create-checkout-session] legacy quote lock failed — using current pricing:", err instanceof Error ? err.message : String(err));
+    return out;
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -247,8 +303,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const isESA = letterType !== "psd";
-  const esaLineItems = isESA ? buildESALineItems(petCount, planType) : null;
-  const psdPriceId = !isESA ? getPSDPriceId(petCount, deliverySpeed, planType) : "";
+  // Subscription sessions keep Stripe Price IDs (required for recurring
+  // billing). One-time sessions use inline price_data computed server-side —
+  // see buildESAOneTimeInlineLineItem / buildPSDOneTimeKlarnaLineItem.
+  const psdAnnualPriceId = !isESA && planType === "subscription"
+    ? getPSDPriceId(petCount, deliverySpeed, planType)
+    : "";
 
   // Success/cancel URLs — route to correct thank-you page per letter type
   //
@@ -280,6 +340,10 @@ Deno.serve(async (req: Request) => {
     pet_count: String(petCount),
     payment_mode: mode,
     plan_type: planType,
+    // Overwritten for one-time sessions once the legacy quote lock resolves
+    // below. Subscriptions keep "current_pricing" (recurring Price IDs are not
+    // resume-locked).
+    pricing_source: "current_pricing",
     ...(couponCode ? { coupon_code: couponCode } : {}),
   };
 
@@ -295,7 +359,9 @@ Deno.serve(async (req: Request) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sessionParams: any = {
         mode: "subscription",
-        line_items: isESA ? esaLineItems! : [{ price: psdPriceId, quantity: 1 }],
+        line_items: isESA
+          ? buildESASubscriptionLineItems(petCount)
+          : [{ price: psdAnnualPriceId, quantity: 1 }],
         customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -352,11 +418,27 @@ Deno.serve(async (req: Request) => {
     // charge identical totals before coupons.
     //
     // QR / mobile paths and PSD subscription paths are unchanged.
+    // 2026-07 PRICING-SINGLE-SOURCE: ALL one-time sessions (ESA + PSD, Klarna
+    // + QR) now use inline price_data computed server-side, so Klarna/QR
+    // totals always equal the inline-card PaymentIntent amounts. The retired
+    // one-time Price IDs ($110+$25 ESA catalog, $100-$155 PSD tiers) are no
+    // longer referenced.
     const oneTimeLineItems = (() => {
-      if (isESA) return esaLineItems!;
-      if (mode === "klarna") return [buildPSDOneTimeKlarnaLineItem(petCount, deliverySpeed)];
-      return [{ price: psdPriceId, quantity: 1 }];
+      if (isESA) return [buildESAOneTimeInlineLineItem(petCount)];
+      return [buildPSDOneTimeKlarnaLineItem(petCount, deliverySpeed)];
     })();
+
+    // ── LEGACY-RESUME PRICE LOCK ──────────────────────────────────────────────
+    // Override the inline unit_amount with the saved quote for resumed unpaid
+    // orders so Klarna / QR charges the ORIGINAL price, never the recalculated
+    // current amount. Coupons still apply on top (sessionParams.discounts below).
+    const configBaseCents = oneTimeLineItems[0].price_data.unit_amount;
+    const quoteLock = await resolveLegacyQuoteLock(confirmationId, configBaseCents);
+    if (quoteLock.baseCents !== configBaseCents) {
+      oneTimeLineItems[0].price_data.unit_amount = quoteLock.baseCents;
+      console.info(`[create-checkout-session] legacy price lock: ${confirmationId} $${configBaseCents / 100} → $${quoteLock.baseCents / 100} (${quoteLock.pricingSource})`);
+    }
+    sharedMetadata.pricing_source = quoteLock.pricingSource;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sessionParams: any = {
@@ -404,9 +486,14 @@ Deno.serve(async (req: Request) => {
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && session.id) {
       try {
         const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+        const patch: Record<string, unknown> = {
+          checkout_session_id: session.id,
+          pricing_source: quoteLock.pricingSource,
+        };
+        if (quoteLock.pricingSource === "legacy_saved_quote") patch.quote_locked_at = new Date().toISOString();
         await sb
           .from("orders")
-          .update({ checkout_session_id: session.id })
+          .update(patch)
           .eq("confirmation_id", confirmationId);
       } catch (writebackErr) {
         // Non-fatal — webhook reconciliation will still work. Log and continue.

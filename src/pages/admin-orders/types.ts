@@ -115,6 +115,10 @@ export interface Order {
   paid_at?: string | null;
   coupon_code?: string | null;
   coupon_discount?: number | null;
+  // Legacy-resume pricing (2026-07): how the checkout amount was chosen.
+  // current_pricing | legacy_saved_quote | legacy_fallback. Display/audit only.
+  pricing_source?: string | null;
+  quote_locked_at?: string | null;
   first_touch_json?: AttributionSnapshot | null;
   last_touch_json?: AttributionSnapshot | null;
   // Customer-portal-only fields — read by CustomerPortalPreview + my-orders

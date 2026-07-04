@@ -45,6 +45,7 @@ interface ProviderEarningRow {
 
 // Canonical Order — see ../types.ts
 import type { Order } from "../types";
+import OrderDiscountBreakdown from "./OrderDiscountBreakdown";
 
 interface PaymentHistoryTabProps {
   order: Order;
@@ -367,6 +368,36 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
           )}
         </div>
       </div>
+
+      {/* Legacy-resume pricing note — only when this order kept its ORIGINAL
+          quoted price instead of current pricing (set by create-payment-intent
+          / create-checkout-session at checkout). Keeps admins from thinking the
+          amount is a bug. */}
+      {order.pricing_source === "legacy_saved_quote" && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 flex items-start gap-3">
+          <div className="w-8 h-8 flex items-center justify-center bg-indigo-100 rounded-lg flex-shrink-0">
+            <i className="ri-price-tag-2-line text-indigo-600 text-sm"></i>
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-indigo-800">Legacy quoted price</p>
+            <p className="text-xs text-indigo-700 mt-0.5 leading-relaxed">
+              This is a returning/resumed order. Checkout used the original quoted amount
+              {order.price != null ? <> (<strong>${order.price}</strong>)</> : null}
+              {order.quote_locked_at ? <> · locked {fmt(order.quote_locked_at)}</> : null}
+              , not current public pricing.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Discount / promo breakdown — only renders when this order used a
+          coupon (coupon_code / coupon_discount on the order row). */}
+      <OrderDiscountBreakdown
+        price={order.price}
+        couponCode={order.coupon_code}
+        couponDiscount={order.coupon_discount}
+        variant="full"
+      />
 
       {/* Additional Documentation ($40 add-on) payments */}
       {addonRequests.length > 0 && (

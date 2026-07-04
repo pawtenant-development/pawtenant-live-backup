@@ -10,6 +10,10 @@ import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
 import PSDAssessmentView from "./PSDAssessmentView";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
 import PaymentHistoryTab from "./PaymentHistoryTab";
+// ADMIN-ORDER-DISCOUNT-DISPLAY 2026-07-04 (fix: show order discounts in admin):
+// isolated read-only discount breakdown component, mounted in the Overview
+// payment rail + Payments tab. No payment/pricing logic touched.
+import OrderDiscountBreakdown from "./OrderDiscountBreakdown";
 // ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): isolated mount — admin sends a
 // tracked $40 "Additional Documentation" invoice tied to this order. Approved
 // edit type: additive component mount + one header-menu item.
@@ -3720,19 +3724,15 @@ export default function OrderDetailModal({
                     {/* OPS-ORDER-MODAL-V2-LAYOUT: Patient Notified moved out of
                         Overview Order Details — visible in Comms tab + the Quick
                         Summary "Letter Sent" tile already shows this state. */}
-                    {/* Coupon */}
-                    {order.coupon_code && (
-                      <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Coupon Used</p>
-                        <p className="text-sm font-mono font-semibold text-green-700">{order.coupon_code}</p>
-                      </div>
-                    )}
-                    {order.coupon_discount != null && order.coupon_discount > 0 && (
-                      <div>
-                        <p className="text-xs text-gray-400 mb-0.5">Coupon Discount</p>
-                        <p className="text-sm font-bold text-green-600">-${order.coupon_discount}.00</p>
-                      </div>
-                    )}
+                    {/* Coupon / discount — consolidated Subtotal → Discount →
+                        Paid breakdown (ADMIN-ORDER-DISCOUNT-DISPLAY). Renders
+                        nothing when the order used no coupon. */}
+                    <OrderDiscountBreakdown
+                      price={order.price}
+                      couponCode={order.coupon_code}
+                      couponDiscount={order.coupon_discount}
+                      variant="inline"
+                    />
                     {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: duplicate Referred By
                         removed. The colored source badge below (using
                         classifyOrder — ATTR-CONSISTENCY-LOCK 2026-05-23) is

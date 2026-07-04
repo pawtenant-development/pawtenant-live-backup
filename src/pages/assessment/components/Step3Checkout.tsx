@@ -12,6 +12,8 @@ import StripeCardForm from "./StripeCardForm";
 import type { SubscriptionParams } from "./StripeCardForm";
 import KlarnaPaymentTab from "./KlarnaPaymentTab";
 import StateComplianceBanner, { isComplianceState } from "./StateComplianceBanner";
+import { getEsaOneTimeTotal, getEsaAnnualTotal } from "@/config/pricing";
+import Hud2026UpdateBanner from "../../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 import CompactWhatHappensNext from "./step3/CompactWhatHappensNext";
 import RefundReassurance from "./step3/RefundReassurance";
@@ -74,13 +76,11 @@ const STRIPE_APPEARANCE: StripeElementsOptions["appearance"] = {
 };
 
 function getOneTimePrice(petCount: number): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return 110 + (n - 1) * 25;
+  return getEsaOneTimeTotal(petCount);
 }
 
 function getAnnualSubPrice(petCount: number): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return 99 + (n - 1) * 20;
+  return getEsaAnnualTotal(petCount);
 }
 
 // ─── Card brand marks (inline SVGs) ──────────────────────────────────────────
@@ -258,6 +258,15 @@ interface Step3CheckoutProps {
   onPaymentSuccess?: (paymentIntentId: string) => void;
   petCount?: number;
   onBeforeRedirect?: () => void;
+  /**
+   * Legacy-resume price lock (dollars). When set (>0), overrides the current
+   * one-time base price for DISPLAY so a resumed order shows its original
+   * quoted amount instead of the recalculated current price. The server
+   * (create-payment-intent) is authoritative for the actual charge; this only
+   * keeps the UI in sync. Ignored for the subscription plan (annual uses
+   * current recurring Stripe prices).
+   */
+  quotedBasePrice?: number;
 }
 
 function SectionLabel({ children }: { children: string }) {
@@ -934,6 +943,7 @@ export default function Step3Checkout({
   onBeforeRedirect,
   onCouponApplied,
   appliedCoupon,
+  quotedBasePrice,
 }: Step3CheckoutProps) {
   const [policyModal, setPolicyModal] = useState<{
     url: string;
@@ -1002,16 +1012,26 @@ export default function Step3Checkout({
   }, []);
 
   // ── State-law compliance acknowledgment (AR/CA/IA/LA/MT) ────────────────
-  // Local-only: re-acknowledged each Step 3 session. Source-of-truth for
-  // WHICH state the user picked is step2.state (already persisted via the
-  // order draft / resume flow). We do NOT introduce a second state variable.
+  // The acknowledgment now happens at state selection in Step 2 (modal) and
+  // arrives here as step2.stateAcknowledgment — valid only for the exact
+  // state it was given for. The local checkbox remains ONLY as a fallback
+  // for resumed orders that predate the early acknowledgment.
   const requiresCompliance = isComplianceState(step2.state);
+  const earlyStateAck =
+    step2.stateAcknowledgment &&
+    step2.stateAcknowledgment.state === (step2.state ?? "").toUpperCase()
+      ? step2.stateAcknowledgment
+      : null;
   const [complianceAck, setComplianceAck] = useState(false);
   const [complianceAckError, setComplianceAckError] = useState(false);
-  const complianceBlocked = requiresCompliance && !complianceAck;
+  const complianceBlocked = requiresCompliance && !earlyStateAck && !complianceAck;
 
   const resolvedPetCount = petCount ?? step2.pets?.length ?? 1;
-  const basePrice = getOneTimePrice(resolvedPetCount);
+  // Legacy-resume lock: when the server provides a quoted base (resumed order),
+  // use it for the ONE-TIME display so the shown price matches the actual
+  // charge. Subscriptions always use current recurring pricing.
+  const hasQuotedBase = typeof quotedBasePrice === "number" && quotedBasePrice > 0;
+  const basePrice = hasQuotedBase ? (quotedBasePrice as number) : getOneTimePrice(resolvedPetCount);
   const subPrice = getAnnualSubPrice(resolvedPetCount);
   const selectedPlan = data.plan ?? "one-time";
   const priceBeforeDiscount =
@@ -1136,6 +1156,11 @@ export default function Step3Checkout({
           </div>
         </button>
       </div>
+
+      {/* ── 2026 HUD support-animal housing expectation notice (state-aware) ──
+          Concise, non-scary. Sets honest expectations before payment without a
+          large scary block. Reuses the shared Hud2026UpdateBanner (compact). */}
+      <Hud2026UpdateBanner state={step2.state} variant="compact" className="mb-4" />
 
       {/* The mobile-only state-aware reassurance chip has been moved into the
           right column AFTER the SecurePaymentCard so the top of mobile
@@ -1421,7 +1446,20 @@ export default function Step3Checkout({
             )}
 
             {/* ── State law compliance notice + required acknowledgment ── */}
-            {requiresCompliance && (
+            {requiresCompliance && earlyStateAck && (
+              <div className="space-y-3">
+                <StateComplianceBanner state={step2.state} />
+                <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3.5">
+                  <i className="ri-checkbox-circle-fill text-emerald-600 flex-shrink-0 mt-0.5"></i>
+                  <span className="text-xs text-emerald-900 leading-relaxed">
+                    <span className="font-bold">State notice acknowledged</span> — you confirmed the{" "}
+                    {step2.state.toUpperCase()} waiting-period rules when you selected your state.
+                    Your evaluation begins today; letter timing follows your state&apos;s rules.
+                  </span>
+                </div>
+              </div>
+            )}
+            {requiresCompliance && !earlyStateAck && (
               <div className="space-y-3">
                 <StateComplianceBanner state={step2.state} />
                 <label

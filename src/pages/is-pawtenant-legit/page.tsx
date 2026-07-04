@@ -110,7 +110,7 @@ const trustBlocks = [
   {
     icon: "ri-price-tag-3-line",
     title: "Transparent pricing & refund",
-    desc: "ESA letters are $99/year or $110 one-time, shown before you start. If you don't qualify after the clinical review, you're refunded — no charge for a letter you can't use.",
+    desc: "ESA letters are $109/year or $129 one-time, shown before you start. If you don't qualify after the clinical review, you're refunded — no charge for a letter you can't use.",
   },
   {
     icon: "ri-shield-check-line",
@@ -134,7 +134,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "How much does PawTenant cost?",
-    a: "A PawTenant ESA letter is $99/year (annual subscription) or $110 one-time. The price is shown up front, and if you don't qualify after the clinical review you're refunded.",
+    a: "A PawTenant ESA letter is $109/year (annual subscription) or $129 one-time. The price is shown up front, and if you don't qualify after the clinical review you're refunded.",
   },
   {
     q: "Will my landlord accept a PawTenant letter?",
@@ -246,8 +246,8 @@ export default function IsPawTenantLegitPage() {
             </p>
             <p>
               PawTenant does <strong>not</strong> guarantee approval, does not sell "registrations" or
-              certificates, and refunds you if you don't qualify. Pricing is transparent: $99/year or
-              $110 one-time.
+              certificates, and refunds you if you don't qualify. Pricing is transparent: $109/year or
+              $129 one-time.
             </p>
           </AIAnswerBox>
         </div>

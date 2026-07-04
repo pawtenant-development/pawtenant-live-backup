@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Step1Data } from "../Step1Assessment";
 import { QUESTION_MANIFEST } from "./QuestionManifest";
 import { QuestionView } from "./QuestionView";
+import CrisisSupportPanel from "../../../../components/feature/CrisisSupportPanel";
 import {
   clearStep1Draft,
   isStep1DataEmpty,
@@ -66,6 +67,11 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
   const isLast = currentIndex === total - 1;
   const isFirst = currentIndex === 0;
 
+  // Safety hard-stop: while the safety screen is answered "yes" the flow is
+  // blocked — the crisis panel renders and the Continue button is withheld.
+  // The user can change the answer to "no" to resume.
+  const safetyBlocked = def.id === "safetyCheck" && data.safetyCheck === "yes";
+
   const update = (patch: Partial<Step1Data>) => {
     onChange({ ...data, ...patch });
     // Clear the error as soon as the user starts answering.
@@ -108,13 +114,13 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
         <h2 className="text-2xl font-extrabold text-gray-900">Mental Health Assessment</h2>
         <p className="text-gray-500 text-sm mt-2 max-w-lg mx-auto">
           This confidential screening helps a licensed mental health professional evaluate your eligibility for an ESA letter. All answers are protected under HIPAA.
+          A letter is signed only if clinically appropriate — approval is not automatic.
         </p>
       </div>
 
-      {/* Landlord Verification Badge — shown only on the first question to
-          reduce vertical noise during the rest of the assessment. The user
-          gets the trust signal once at the intro, then the screen stays
-          focused on the question itself. */}
+      {/* Landlord Verification Badge — shown only on the first question
+          (the safety screen is now LAST) to reduce vertical noise during the
+          rest of the assessment. */}
       {currentIndex === 0 && (
         <div className="mb-5 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center gap-3">
           <div className="w-8 h-8 flex items-center justify-center bg-[#2c5282] rounded-lg flex-shrink-0">
@@ -137,13 +143,18 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
 
       {/* Active question card */}
       <div ref={cardRef}>
-        <QuestionView def={def} data={data} onUpdate={update} hasError={errorVisible} />
+        <QuestionView def={def} data={data} onUpdate={update} hasError={errorVisible && !safetyBlocked} />
       </div>
 
-      {/* Optional trained-task free-text note — shown only on the final
-          question. Not required, not part of the manifest/progress count, no
-          PSD upsell. Neutral wording; stored in assessment_answers JSON. */}
-      {isLast && (
+      {/* Crisis support — replaces the Continue button while the safety
+          answer is "yes". No payment CTA, no sales copy, resources only. */}
+      {safetyBlocked && <CrisisSupportPanel />}
+
+      {/* Optional trained-task free-text note — shown on the housing question
+          (the last clinical question; the final manifest question is now the
+          safety screen, which must stay free of extra fields). Not required,
+          not part of the progress count, no PSD upsell. */}
+      {def.id === "housingType" && (
         <div className="mt-5 bg-white rounded-xl border border-gray-100 p-5 sm:p-6">
           <label htmlFor="trainedTaskDescription" className="block text-sm font-bold text-gray-900 mb-1.5">
             Does your animal perform any specific trained task?
@@ -182,15 +193,17 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
           <i className="ri-arrow-left-line"></i>
           Back
         </button>
-        <button
-          type="button"
-          onClick={handleContinue}
-          className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-[#F97316] text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-[#EA580C] active:bg-[#C2410C] transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
-          aria-label={isLast ? "Continue to your information" : `Continue to question ${currentIndex + 2} of ${total}`}
-        >
-          {isLast ? "Continue to Your Information" : `Continue · ${currentIndex + 1} of ${total}`}
-          <i className="ri-arrow-right-line"></i>
-        </button>
+        {!safetyBlocked && (
+          <button
+            type="button"
+            onClick={handleContinue}
+            className="whitespace-nowrap w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 sm:px-10 py-4 sm:py-3.5 bg-[#F97316] text-white font-bold text-base sm:text-sm rounded-xl sm:rounded-lg hover:bg-[#EA580C] active:bg-[#C2410C] transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
+            aria-label={isLast ? "Continue to your information" : `Continue to question ${currentIndex + 2} of ${total}`}
+          >
+            {isLast ? "Continue to Your Information" : `Continue · ${currentIndex + 1} of ${total}`}
+            <i className="ri-arrow-right-line"></i>
+          </button>
+        )}
       </div>
     </div>
   );

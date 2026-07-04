@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Link, useLocation, useSearchParams, useNavigate } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { fireMetaPurchase, fireLead } from "@/lib/metaPixel";
 import { fireMicrosoftPurchase } from "@/lib/microsoftUet";
@@ -266,138 +266,6 @@ function SocialShareSection({ shareLinks, shareUrl, copied, onCopy }: {
   );
 }
 
-// ── Create Account Prompt ─────────────────────────────────────────────────────
-function CreateAccountPrompt({ email }: { email: string }) {
-  const navigate = useNavigate();
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState("");
-  const [alreadyHasAccount, setAlreadyHasAccount] = useState(false);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    setLoading(true);
-    setError("");
-
-    // Use edge function so NO confirmation email is sent — no bounce risk
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-customer-account`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-      },
-      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-    });
-
-    const json = await res.json() as { ok: boolean; error?: string; userId?: string };
-
-    if (!json.ok) {
-      if (json.error === "already_exists") {
-        setAlreadyHasAccount(true);
-        setLoading(false);
-        return;
-      }
-      setError(json.error ?? "Failed to create account. Please try again.");
-      setLoading(false);
-      return;
-    }
-
-    // Sign in immediately — account is confirmed, no email step needed
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (signInErr) {
-      // Account was created successfully but auto sign-in failed — still show success
-      setDone(true);
-      return;
-    }
-    setDone(true);
-  };
-
-  if (alreadyHasAccount) {
-    return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-8">
-        <p className="text-sm font-bold text-gray-800 mb-2">Already have an account?</p>
-        <p className="text-xs text-gray-500 mb-4">Sign in to track your order and re-download your ESA letter anytime.</p>
-        <button
-          type="button"
-          onClick={() => navigate("/customer-login")}
-          className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] cursor-pointer"
-        >
-          <i className="ri-login-box-line"></i>
-          Sign In to My Orders
-        </button>
-      </div>
-    );
-  }
-
-  if (done) {
-    return (
-      <div className="bg-green-50 border border-green-200 rounded-2xl p-6 mb-8 flex items-start gap-3">
-        <div className="w-10 h-10 flex items-center justify-center bg-green-100 rounded-full flex-shrink-0">
-          <i className="ri-checkbox-circle-fill text-green-500 text-xl"></i>
-        </div>
-        <div>
-          <p className="text-sm font-bold text-green-800 mb-1">Account created &amp; ready!</p>
-          <p className="text-xs text-green-700">You&apos;re signed in. Track your order and re-download your ESA letter anytime.</p>
-          <button
-            type="button"
-            onClick={() => navigate("/my-orders")}
-            className="whitespace-nowrap mt-3 inline-flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] cursor-pointer"
-          >
-            <i className="ri-user-line"></i>
-            Go to My Orders
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-orange-100 p-6 sm:p-8 mb-8">
-      <div className="flex items-start gap-4 mb-5">
-        <div className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-[#f0faf7] rounded-xl border border-[#c3e8df]">
-          <i className="ri-user-heart-line text-[#1a5c4f] text-2xl"></i>
-        </div>
-        <div>
-          <p className="text-base font-extrabold text-gray-900 mb-1">Create a free account to track your order</p>
-          <p className="text-sm text-gray-500 leading-relaxed">
-            Set a password and get instant access to your order status, and re-download your ESA letter anytime — no need to contact support.
-          </p>
-        </div>
-      </div>
-      <form onSubmit={handleCreate} className="space-y-3">
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5">
-          <i className="ri-mail-line text-gray-400 text-sm flex-shrink-0"></i>
-          <span className="text-sm text-gray-600 truncate">{email}</span>
-        </div>
-        {error && <p className="text-xs text-red-500">{error}</p>}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Choose a password (min. 6 chars)"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#1a5c4f]"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="whitespace-nowrap w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] transition-colors cursor-pointer disabled:opacity-60"
-          >
-            {loading ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-shield-check-line"></i>}
-            {loading ? "Creating..." : "Create Account"}
-          </button>
-        </div>
-        <p className="text-xs text-gray-400">Free forever. No credit card required.</p>
-      </form>
-    </div>
-  );
-}
-
 export default function AssessmentThankYouPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -540,7 +408,7 @@ export default function AssessmentThankYouPage() {
               });
             }
             // Microsoft Ads (Bing/Yahoo/AOL) purchase conversion — redirect path.
-            // Guarded + deduped inside fireMicrosoftPurchase (no-op off prod host).
+            // Guarded + deduped inside fireMicrosoftPurchase (no-op on TEST).
             {
               const msStep2 = (order._step2 ?? {}) as Record<string, unknown>;
               fireMicrosoftPurchase({
@@ -694,7 +562,7 @@ export default function AssessmentThankYouPage() {
     });
 
     // Microsoft Ads (Bing/Yahoo/AOL) purchase conversion — inline-card path.
-    // Guarded + deduped inside fireMicrosoftPurchase (no-op off prod host).
+    // Guarded + deduped inside fireMicrosoftPurchase (no-op on TEST).
     {
       const msStep2 = ((resolvedState as PendingOrder)._step2 ?? {}) as Record<string, unknown>;
       fireMicrosoftPurchase({
@@ -868,6 +736,26 @@ export default function AssessmentThankYouPage() {
           </p>
         </div>
 
+        {/* ── Customer Portal CTA — verified customers land straight in their
+            portal; anyone without a session is routed to secure login by the
+            /my-orders guard. ── */}
+        <div className="mb-8 bg-[#0f1e1a] rounded-2xl p-6 sm:p-7 text-center">
+          <div className="w-11 h-11 mx-auto flex items-center justify-center bg-white/10 rounded-xl mb-3">
+            <i className="ri-user-star-line text-white text-xl"></i>
+          </div>
+          <p className="text-white font-extrabold text-lg mb-1">Your customer portal is ready</p>
+          <p className="text-white/60 text-sm mb-4 max-w-sm mx-auto leading-relaxed">
+            Track your order status and download your ESA letter the moment it&apos;s issued.
+          </p>
+          <Link
+            to="/my-orders"
+            className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3.5 bg-[#F97316] text-white font-bold text-sm rounded-xl hover:bg-[#EA580C] active:bg-[#C2410C] transition-colors cursor-pointer"
+          >
+            <i className="ri-arrow-right-line"></i>
+            Go to My Portal
+          </Link>
+        </div>
+
         {/* ── Confirmation Card ── */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8 mb-8">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-6 pb-5 border-b border-gray-100">
@@ -949,9 +837,6 @@ export default function AssessmentThankYouPage() {
             )}
           </div>
         </div>
-
-        {/* ── Create Account Prompt ── */}
-        {email && <CreateAccountPrompt email={email} />}
 
         {/* ── Helpful Information While You Wait — calm post-purchase reassurance ── */}
         <HelpfulInfoCard email={email} confirmationId={confirmationId} />
