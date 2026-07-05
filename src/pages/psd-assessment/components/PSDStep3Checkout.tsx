@@ -4,7 +4,6 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import type { StripeElementsOptions } from "@stripe/stripe-js";
 import { AnimatePresence, motion } from "framer-motion";
-import { supabase } from "../../../lib/supabaseClient";
 import type { Step2Data } from "../../assessment/components/Step2PersonalInfo";
 import type { PSDStep1Data } from "./PSDStep1";
 import KlarnaPaymentTab from "../../assessment/components/KlarnaPaymentTab";
@@ -725,8 +724,12 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
       captured_stage: "payment_success",
     };
 
+    // The server may resolve a DIFFERENT canonical confirmation_id than the
+    // one this browser session holds (resume/refresh divergence). Adopt it for
+    // the thank-you navigation so check-payment-status finds the real order.
+    let canonicalConfirmationId = confirmationId;
     try {
-      await fetch(`${SUPABASE_URL}/functions/v1/get-resume-order`, {
+      const upsertRes = await fetch(`${SUPABASE_URL}/functions/v1/get-resume-order`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
         body: JSON.stringify({
@@ -741,59 +744,52 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
           price: displayPrice,
           paymentIntentId,
           paidAt,
+          paymentMethod: "card",
           planType: plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
           letterType: "psd",
           status: "processing",
+          // ── PSD-DUP-FIX: coupon flows through the safe server upsert now
+          // (sticky in get-resume-order — webhook backend values win).
+          ...(couponCode && couponDiscount > 0
+            ? { couponCode, couponDiscount }
+            : {}),
           assessmentAnswers: { ...step1, pets: step2.pets, dob: step2.dob, letterType: "psd" },
           // ── Full attribution at payment time ──
+          // Keys are the camelCase names get-resume-order actually reads
+          // (the previous snake_case keys were silently dropped and only
+          // survived via the raw client upsert removed below).
           gclid:        gclidVal,
           fbclid:       fbclidVal,
-          utm_source:    utmSourceVal,
-          utm_medium:    utmMediumVal,
-          utm_campaign:  utmCampaignVal,
-          utm_term:      utmTermVal,
-          utm_content:   utmContentVal,
-          landing_url:   landingUrlVal,
-          attribution_json: attributionJsonVal,
+          utmSource:    utmSourceVal,
+          utmMedium:    utmMediumVal,
+          utmCampaign:  utmCampaignVal,
+          utmTerm:      utmTermVal,
+          utmContent:   utmContentVal,
+          landingUrl:   landingUrlVal,
+          attributionJson: attributionJsonVal,
         }),
       });
+      const upsertData = (await upsertRes.json().catch(() => null)) as
+        | { ok?: boolean; confirmationId?: string }
+        | null;
+      if (upsertData?.ok && upsertData.confirmationId && upsertData.confirmationId !== confirmationId) {
+        console.info(
+          `[PSDStep3Checkout] adopting canonical confirmationId ${upsertData.confirmationId} (was ${confirmationId})`,
+        );
+        canonicalConfirmationId = upsertData.confirmationId;
+      }
     } catch { /* silent */ }
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from("orders").upsert({
-        user_id: user?.id ?? null,
-        confirmation_id: confirmationId,
-        email: step2.email,
-        first_name: step2.firstName,
-        last_name: step2.lastName,
-        state: step2.state,
-        phone: step2.phone,
-        delivery_speed: deliverySpeed,
-        price: displayPrice,
-        payment_intent_id: paymentIntentId,
-        payment_method: "card",
-        plan_type: plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
-        letter_type: "psd",
-        status: "processing",
-        paid_at: paidAt,
-        // ── PSD-COUPON-PARITY: persist the discount code on the order so the
-        // admin Order Detail shows it for PSD, same as ESA. Only written when a
-        // coupon was actually applied so no-coupon orders stay blank. ──
-        ...(couponCode && couponDiscount > 0 ? { coupon_code: couponCode, coupon_discount: couponDiscount } : {}),
-        assessment_answers: { ...step1, pets: step2.pets, dob: step2.dob, letterType: "psd" },
-        // ── Attribution columns — written at payment time ──
-        gclid:           gclidVal,
-        fbclid:          fbclidVal,
-        utm_source:      utmSourceVal,
-        utm_medium:      utmMediumVal,
-        utm_campaign:    utmCampaignVal,
-        utm_term:        utmTermVal,
-        utm_content:     utmContentVal,
-        landing_url:     landingUrlVal,
-        attribution_json: attributionJsonVal,
-      }, { onConflict: "confirmation_id", ignoreDuplicates: false });
-    } catch { /* silent */ }
+    // ── PSD-DUP-FIX: raw client-side orders.upsert REMOVED ─────────────────
+    // Previously this function also ran supabase.from("orders").upsert(...)
+    // keyed on the browser's confirmation_id. When that id diverged from the
+    // canonical lead row (resume/refresh), get-resume-order correctly matched
+    // the existing row by payment_intent/email — but the raw upsert then
+    // INSERTED a second paid row under the new id (LIVE incident: Mei Miles,
+    // PT-PSDF7TZO3M8 + PT-PSDF0SVCPLF, one Stripe PI). ESA checkout removed
+    // this exact pattern earlier; PSD now matches. get-resume-order is the
+    // single authoritative client-side writer; the Stripe webhook remains the
+    // payment source of truth.
 
     // ── 2026-06-18 PSD-ORDER-ID-FIX ───────────────────────────────────────
     // Pass the internal confirmation_id (PT-…) as order_id — NOT the Stripe
@@ -801,7 +797,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
     // this value (via check-payment-status) and renders it as the Order ID,
     // so passing the pi_… id showed a wrong, un-lookup-able ID. Matches ESA.
     sessionStorage.setItem("esa_payment_success", "true");
-    navigate(`/psd-assessment/thank-you?amount=${displayPrice}&order_id=${confirmationId}`);
+    navigate(`/psd-assessment/thank-you?amount=${displayPrice}&order_id=${canonicalConfirmationId}`);
   };
 
   return (

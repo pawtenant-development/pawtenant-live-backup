@@ -517,6 +517,8 @@ Deno.serve(async (req: Request) => {
         expand: ["latest_invoice.payment_intent"],
         metadata: {
           ...(confirmationId ? { confirmation_id: confirmationId } : {}),
+          ...(email ? { email } : {}),
+          plan: "subscription",
           letter_type: letterType,
           pet_count: String(tier),
           delivery_speed: deliverySpeed,
@@ -559,16 +561,38 @@ Deno.serve(async (req: Request) => {
         : getESAAnnualAmount(petCount);
       const discountCents = Math.max(0, displayAmount - paymentIntent.amount);
 
-      const piMetaPatch: Record<string, string> = {};
+      // ── SUBSCRIPTION-PI-ORPHAN-FIX ────────────────────────────────────────
+      // The invoice PI previously carried ONLY coupon metadata (and receipt_email
+      // was nulled), so stripe-webhook's resolveOrder had no confirmation_id, no
+      // email and no session to match → payment_intent.succeeded was logged as an
+      // orphaned payment and ALL post-payment emails (receipt, portal access,
+      // admin notification) plus coupon capture were skipped for every annual
+      // first purchase. Mirror the one-time PI metadata convention here so the
+      // webhook resolves subscription first invoices exactly like one-time PIs.
+      const piMetaPatch: Record<string, string> = {
+        ...(confirmationId ? { confirmation_id: confirmationId } : {}),
+        ...(email ? { email } : {}),
+        subscription_id: subscription.id,
+        plan: "subscription",
+        letter_type: letterType,
+        pet_count: String(tier),
+        delivery_speed: deliverySpeed,
+        ...buildAttributionMeta(),
+      };
       if (couponCode) piMetaPatch.coupon_code = couponCode;
       if (discountCents > 0) piMetaPatch.coupon_discount_cents = String(discountCents);
 
       try {
         await stripe.paymentIntents.update(paymentIntent.id, {
           receipt_email: null,
-          ...(Object.keys(piMetaPatch).length > 0 ? { metadata: piMetaPatch } : {}),
+          metadata: piMetaPatch,
         });
-      } catch { /* best-effort */ }
+        console.info(`[create-payment-intent] Invoice PI ${paymentIntent.id} metadata stamped: cid=${confirmationId || "none"}, email=${email ? "yes" : "no"}, sub=${subscription.id}, coupon=${couponCode || "none"}`);
+      } catch (metaErr) {
+        // Best-effort, but LOUD — if this fails the webhook falls back to the
+        // subscription-metadata lookup (see stripe-webhook resolveOrder fallback).
+        console.warn(`[create-payment-intent] Invoice PI metadata patch FAILED for ${paymentIntent.id} (webhook will use subscription fallback):`, metaErr instanceof Error ? metaErr.message : String(metaErr));
+      }
 
       console.info(`[create-payment-intent] Subscription ${subscription.id} created for ${confirmationId || email} — pet_count=${petCount}, delivery=${deliverySpeed}, display_amount=$${displayAmount / 100}, coupon=${couponCode || "none"}, discount=$${discountCents / 100}`);
 

@@ -238,6 +238,8 @@ serve(async (req) => {
       referredBy?: string;
       paidAt?: string;
       paymentMethod?: string;
+      couponCode?: string;
+      couponDiscount?: number;
       selectedProvider?: string;
       addonServices?: string[];
       gclid?: string;
@@ -277,7 +279,7 @@ serve(async (req) => {
       const { data: byConfId, error: byConfIdErr } = await supabase
         .from("orders")
         .select(
-          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json"
+          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
         )
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
@@ -301,7 +303,7 @@ serve(async (req) => {
         const { data: byPi } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
           )
           .eq("payment_intent_id", body.paymentIntentId)
           .maybeSingle();
@@ -322,7 +324,7 @@ serve(async (req) => {
         const { data: byEmail } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
           )
           .ilike("email", normalizedEmail)
           .not("status", "in", `("refunded","cancelled")`)
@@ -544,6 +546,26 @@ serve(async (req) => {
       }
       if (body.paidAt !== undefined && body.paidAt !== null && body.paidAt !== "") {
         upsertPayload.paid_at = body.paidAt;
+      }
+
+      // ── PSD-DUP-FIX: coupon fields via the safe server path ──────────────
+      // The PSD checkout previously persisted coupon_code/coupon_discount via
+      // a raw client-side orders.upsert AFTER payment — the same legacy call
+      // that created duplicate paid rows when the browser confirmation_id
+      // diverged from the canonical lead row. That raw upsert is removed;
+      // coupon fields now flow through here instead. STICKY: the webhook's
+      // backend-verified values (from PI metadata) always win — never
+      // overwrite an already-recorded coupon.
+      if (
+        body.couponCode !== undefined &&
+        body.couponCode !== null &&
+        body.couponCode !== "" &&
+        !existingOrder?.coupon_code
+      ) {
+        upsertPayload.coupon_code = body.couponCode;
+        if (typeof body.couponDiscount === "number" && body.couponDiscount > 0) {
+          upsertPayload.coupon_discount = body.couponDiscount;
+        }
       }
 
       // letter_url intentionally never set here — only provider uploads set it.

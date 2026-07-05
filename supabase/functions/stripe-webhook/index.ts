@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
   // coupon_code and coupon_discount added to SELECT so idempotent backfill
   // can check whether those fields are already populated before writing them.
   async function findOrderByConfId(confirmationId: string) {
-    const { data } = await supabase.from("orders").select("id, status, payment_intent_id, checkout_session_id, email, confirmation_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status, coupon_code, coupon_discount").eq("confirmation_id", confirmationId).maybeSingle();
+    const { data } = await supabase.from("orders").select("id, status, payment_intent_id, checkout_session_id, email, confirmation_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status, coupon_code, coupon_discount, subscription_id").eq("confirmation_id", confirmationId).maybeSingle();
     return data;
   }
   async function findOrderByEmail(email: string) {
@@ -222,7 +222,7 @@ Deno.serve(async (req: Request) => {
     return data;
   }
   async function findOrderByPaymentIntent(piId: string) {
-    const { data } = await supabase.from("orders").select("id, status, payment_intent_id, checkout_session_id, email, confirmation_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status").eq("payment_intent_id", piId).maybeSingle();
+    const { data } = await supabase.from("orders").select("id, status, payment_intent_id, checkout_session_id, email, confirmation_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status, coupon_code, coupon_discount, subscription_id").eq("payment_intent_id", piId).maybeSingle();
     return data;
   }
   async function findOrderByCheckoutSession(sessionId: string) {
@@ -230,8 +230,13 @@ Deno.serve(async (req: Request) => {
     return data;
   }
   async function findOrderBySubId(subscriptionId: string) {
-    const { data } = await supabase.from("orders").select("id, status, email, confirmation_id, payment_intent_id, checkout_session_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status").eq("payment_intent_id", subscriptionId).maybeSingle();
-    return data;
+    // Primary: the dedicated subscription_id column (stamped by
+    // markOrderProcessing since SUBSCRIPTION-PI-ORPHAN-FIX). Legacy fallback:
+    // some historical rows stored the sub id in payment_intent_id.
+    const { data } = await supabase.from("orders").select("id, status, email, confirmation_id, payment_intent_id, checkout_session_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status, subscription_id").eq("subscription_id", subscriptionId).maybeSingle();
+    if (data) return data;
+    const { data: legacy } = await supabase.from("orders").select("id, status, email, confirmation_id, payment_intent_id, checkout_session_id, first_name, last_name, phone, state, plan_type, delivery_speed, price, payment_method, letter_type, doctor_name, email_log, paid_at, doctor_status, subscription_id").eq("payment_intent_id", subscriptionId).maybeSingle();
+    return legacy;
   }
 
   async function resolveOrder(confirmationId: string | undefined, piId: string, emailFromMeta: string | undefined, checkoutSessionId?: string): Promise<{ order: Record<string, unknown>; matchedBy: string } | null> {
@@ -251,6 +256,7 @@ Deno.serve(async (req: Request) => {
     checkoutSessionId?: string,
     couponCode?: string | null,
     couponDiscount?: number | null,
+    subscriptionId?: string | null,
   ) {
     const payload: Record<string, unknown> = {
       status: "processing",
@@ -264,6 +270,7 @@ Deno.serve(async (req: Request) => {
     if (checkoutSessionId) payload.checkout_session_id = checkoutSessionId;
     if (couponCode) payload.coupon_code = couponCode;
     if (couponDiscount != null && couponDiscount > 0) payload.coupon_discount = couponDiscount;
+    if (subscriptionId) payload.subscription_id = subscriptionId;
     const { error } = await supabase.from("orders").update(payload).eq("confirmation_id", confirmationId);
     if (error) { console.error(`[stripe-webhook] Failed to update order ${confirmationId}:`, error.message); return false; }
     console.info(`[stripe-webhook] ✓ ${confirmationId} -> processing ($${amountDollars}) via ${paymentMethod}${couponCode ? ` | coupon: ${couponCode} (-$${couponDiscount?.toFixed(2)})` : ""}`);
@@ -525,11 +532,51 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const cidFromMeta = pi.metadata?.confirmation_id;
-    const emailFromMeta = pi.metadata?.email ?? pi.receipt_email;
+    // ── SUBSCRIPTION-PI-ORPHAN-FIX: invoice/subscription-aware resolution ────
+    // Annual first purchases arrive as an invoice PI. Historically that PI
+    // carried no confirmation_id/email metadata, so every annual first payment
+    // was logged as an orphan and skipped ALL post-payment emails + coupon
+    // capture. create-payment-intent now stamps the invoice PI directly; this
+    // block is the safety net for the cases where that best-effort patch fails
+    // (or for PIs minted before the fix): read the parent invoice and the
+    // subscription's own metadata (which has ALWAYS carried confirmation_id).
+    // One-time PIs have pi.invoice = null → zero extra Stripe calls, unchanged.
+    let subscriptionIdFromInvoice: string | null = null;
+    let invoiceBillingReason: string | null = null;
+    let subMeta: Record<string, string> = {};
+    if (pi.invoice) {
+      try {
+        const invoiceId = typeof pi.invoice === "string" ? pi.invoice : (pi.invoice as { id: string }).id;
+        const invoice = await stripe.invoices.retrieve(invoiceId);
+        invoiceBillingReason = (invoice.billing_reason as string) ?? null;
+        subscriptionIdFromInvoice = typeof invoice.subscription === "string"
+          ? invoice.subscription
+          : ((invoice.subscription as { id: string } | null)?.id ?? null);
+        subMeta = (invoice.subscription_details?.metadata ?? {}) as Record<string, string>;
+        if (!subMeta.confirmation_id && subscriptionIdFromInvoice) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(subscriptionIdFromInvoice);
+            subMeta = (sub.metadata ?? {}) as Record<string, string>;
+          } catch { /* best-effort */ }
+        }
+      } catch (err) {
+        console.warn(`[stripe-webhook] Could not read invoice for PI ${pi.id}:`, err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    // Renewal invoices (billing_reason=subscription_cycle) are owned by the
+    // invoice.paid handler — keep first purchase and renewal paths distinct so
+    // renewals never re-run the first-purchase email/trigger pipeline.
+    if (invoiceBillingReason === "subscription_cycle") {
+      console.info(`[stripe-webhook] PI ${pi.id} is a subscription renewal — deferring to invoice.paid`);
+      return json({ ok: true, type: t, skipped: true, reason: "subscription_renewal_handled_by_invoice_paid", piId: pi.id });
+    }
+
+    const cidFromMeta = pi.metadata?.confirmation_id ?? subMeta.confirmation_id;
+    const emailFromMeta = pi.metadata?.email ?? pi.receipt_email ?? subMeta.email;
     const sessionIdFromMeta = pi.metadata?.checkout_session_id;
 
-    const couponCodeFromMeta = (pi.metadata?.coupon_code as string) || null;
+    const couponCodeFromMeta = (pi.metadata?.coupon_code as string) || subMeta.coupon_code || null;
     const couponDiscountDollars = pi.metadata?.coupon_discount_cents
       ? Math.round(Number(pi.metadata.coupon_discount_cents)) / 100
       : null;
@@ -537,7 +584,7 @@ Deno.serve(async (req: Request) => {
     const resolved = await resolveOrder(cidFromMeta, pi.id, emailFromMeta, sessionIdFromMeta);
     if (!resolved) {
       console.error(`[stripe-webhook] ORPHANED PAYMENT: PI ${pi.id}`);
-      try { await supabase.from("audit_logs").insert({ action: "orphaned_payment_intent", object_type: "stripe_payment", object_id: pi.id, description: `Orphaned PI: ${pi.id}`, metadata: { payment_intent_id: pi.id, amount: Math.round((pi.amount_received ?? 0) / 100), confirmation_id_in_meta: cidFromMeta ?? null, email_in_meta: emailFromMeta ?? null, stripe_event_id: event.id, timestamp: new Date().toISOString() } }); } catch { /* non-critical */ }
+      try { await supabase.from("audit_logs").insert({ action: "orphaned_payment_intent", object_type: "stripe_payment", object_id: pi.id, description: `Orphaned PI: ${pi.id}`, metadata: { payment_intent_id: pi.id, amount: Math.round((pi.amount_received ?? 0) / 100), confirmation_id_in_meta: cidFromMeta ?? null, email_in_meta: emailFromMeta ?? null, subscription_id: subscriptionIdFromInvoice, stripe_event_id: event.id, timestamp: new Date().toISOString() } }); } catch { /* non-critical */ }
       return json({ ok: true, skipped: true, reason: "no_matching_order", piId: pi.id });
     }
     const { order, matchedBy } = resolved;
@@ -562,6 +609,7 @@ Deno.serve(async (req: Request) => {
       if (sessionIdFromMeta && !order.checkout_session_id) idempotentPatch.checkout_session_id = sessionIdFromMeta;
       if (couponCodeFromMeta && !order.coupon_code) idempotentPatch.coupon_code = couponCodeFromMeta;
       if (couponDiscountDollars && couponDiscountDollars > 0 && !order.coupon_discount) idempotentPatch.coupon_discount = couponDiscountDollars;
+      if (subscriptionIdFromInvoice && !order.subscription_id) idempotentPatch.subscription_id = subscriptionIdFromInvoice;
       if (Object.keys(idempotentPatch).length > 0) {
         await supabase.from("orders").update(idempotentPatch).eq("confirmation_id", confirmationId);
       }
@@ -572,7 +620,7 @@ Deno.serve(async (req: Request) => {
 
     const updated = await markOrderProcessing(
       confirmationId, pi.id, amt, "card", sessionIdFromMeta,
-      couponCodeFromMeta, couponDiscountDollars,
+      couponCodeFromMeta, couponDiscountDollars, subscriptionIdFromInvoice,
     );
     if (updated) {
       const freshOrder = await findOrderByConfId(confirmationId);
