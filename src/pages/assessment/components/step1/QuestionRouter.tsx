@@ -33,6 +33,16 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
   const [errorVisible, setErrorVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const hydratedRef = useRef(false);
+  // Single pending auto-advance timer. Cleared + reset on every selection and
+  // on any manual navigation so a rapid double-click can never double-advance.
+  const autoAdvanceTimer = useRef<number | null>(null);
+
+  const clearAutoAdvance = () => {
+    if (autoAdvanceTimer.current !== null) {
+      window.clearTimeout(autoAdvanceTimer.current);
+      autoAdvanceTimer.current = null;
+    }
+  };
 
   // ── Hydrate from localStorage on mount (only if parent data is empty) ─────
   useEffect(() => {
@@ -62,10 +72,24 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
     cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [currentIndex]);
 
+  // ── Clear any pending auto-advance timer on unmount ──────────────────────
+  useEffect(() => clearAutoAdvance, []);
+
   const def = QUESTION_MANIFEST[currentIndex];
   const total = QUESTION_MANIFEST.length;
   const isLast = currentIndex === total - 1;
   const isFirst = currentIndex === 0;
+
+  // Auto-advance applies ONLY to simple single-choice radio questions. It is
+  // deliberately excluded for:
+  //   • checkbox (Q2 conditions — multi-select)
+  //   • radio+text (Q8–Q10 — optional follow-up text the user may still fill)
+  //   • textarea (Q11 — free text needing validation)
+  //   • housingType (Q12 — renders the optional trained-task note below it)
+  //   • the LAST question (safety screen — must never auto-jump into Step 2,
+  //     and "yes" must show the crisis panel, not advance)
+  const canAutoAdvance =
+    def.kind === "radio" && !isLast && def.id !== "housingType";
 
   // Safety hard-stop: while the safety screen is answered "yes" the flow is
   // blocked — the crisis panel renders and the Continue button is withheld.
@@ -76,9 +100,22 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
     onChange({ ...data, ...patch });
     // Clear the error as soon as the user starts answering.
     if (errorVisible) setErrorVisible(false);
+    // Auto-advance for simple single-choice questions: save the answer (above)
+    // first, then move to the next question after a short delay so the user
+    // sees their selection register. A single timer (reset on every click)
+    // prevents a double-advance. `canAutoAdvance` already excludes the last
+    // question, so this can never skip into Step 2 or bypass the crisis panel.
+    if (canAutoAdvance && Object.prototype.hasOwnProperty.call(patch, def.id)) {
+      clearAutoAdvance();
+      autoAdvanceTimer.current = window.setTimeout(() => {
+        autoAdvanceTimer.current = null;
+        setCurrentIndex((i) => (i < total - 1 ? i + 1 : i));
+      }, 200);
+    }
   };
 
   const handleContinue = () => {
+    clearAutoAdvance();
     if (!def.check(data)) {
       setErrorVisible(true);
       cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -103,6 +140,7 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
 
   const handleBack = () => {
     if (isFirst) return;
+    clearAutoAdvance();
     setErrorVisible(false);
     setCurrentIndex((i) => i - 1);
   };
