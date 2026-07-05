@@ -1,5 +1,4 @@
 import { useAttributionParams } from "@/hooks/useAttributionParams";
-import SeasonalHeroPromo from "@/components/feature/SeasonalPromoSkin";
 
 export default function HeroSection() {
   const { withAttribution } = useAttributionParams();
@@ -118,15 +117,6 @@ export default function HeroSection() {
             <strong className="font-bold text-white">Full Refund</strong> if you don&rsquo;t qualify
           </p>
 
-          {/* Seasonal Independence Day promo — MOBILE placement: in-flow,
-              centered, directly below the Full Refund line (so it can never
-              cover the HIPAA pill, headline, 50-states pill, CTA or refund).
-              Renders only on mobile + only during the promo window. Remove with
-              the rest of the skin (see src/config/seasonalPromo.ts). */}
-          <div className="sm:hidden mb-2">
-            <SeasonalHeroPromo placement="mobile" />
-          </div>
-
           {/* How-It-Works mini-cards (pre-cleanup) and Provider Credibility
               Strip (pre-cleanup) used to render here. Both removed in the
               2026-05-24 pre-LIVE cleanup — they duplicated the StepsSection
@@ -138,13 +128,6 @@ export default function HeroSection() {
 
         </div>
       </div>
-
-      {/* Seasonal Independence Day promo — DESKTOP placement: anchored to the
-          hero bottom (centered, just above the scroll cue) so it uses the empty
-          low-conflict space and never competes with the headline/CTA. Direct
-          child of the <section> so it anchors to the hero, not the centered
-          content block. Renders only at sm+ and only during the promo window. */}
-      <SeasonalHeroPromo placement="desktop" />
 
       {/* Calm scroll cue at the bottom of the hero cover. Hidden until sm:
           on mobile the hero already feels full-cover via min-h-[100svh]
