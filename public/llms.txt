@@ -101,6 +101,18 @@
 - [Florida ESA housing rules (760.27)](https://pawtenant.com/florida-esa-letter-housing-rules)
 - [Iowa ESA housing rules (216.8B)](https://pawtenant.com/iowa-esa-letter-housing-rules)
 
+## Texas ESA & PSD compliance guides
+
+- [Texas ESA & PSD housing guide (Fair Housing Act + 2026 HUD shift)](https://pawtenant.com/states/texas-esa-psd-guide): the main Texas guide — no state waiting period (unlike California's AB 468), how the May 2026 HUD federal-enforcement shift affects Texas ESA complaints (state TWC enforcement + private suits still available), ESA vs task-trained PSD, Texas fee exemptions (HRC 121.003, Property Code Ch. 301), and the HB 4164 penalty for misrepresenting a service animal
+- [Texas service animal laws & penalties for misrepresentation](https://pawtenant.com/blog/texas-service-animal-laws-penalties): why an ESA is not a service dog under Texas law (H&S 437.023), the strengthened 2023 HB 4164 penalty (up to $1,000 + 30 hours community service under HRC 121.006), what "specially trained or equipped" requires, and the two questions a business may ask
+
+## California ESA & PSD compliance guides
+
+- [California ESA & PSD legal guide (AB 468)](https://pawtenant.com/states/california-esa-psd-guide): the main California guide — AB 468's 30-day clinical-relationship rule for ESA letters, how an ESA differs from a task-trained Psychiatric Service Dog (PSD), what landlords and HOAs can and can't do under FEHA/FHA, penalties for misrepresenting an animal as a service dog, and what a compliant ESA letter must contain
+- [Los Angeles landlord ESA rules](https://pawtenant.com/states/los-angeles-esa-landlord-guide): how LA's Rent Stabilization Ordinance and Just Cause Ordinance layer on top of AB 468 — no-pet policies, pet fees, and eviction protection for a compliant ESA
+- [San Francisco HOA restrictions & PSD accommodations](https://pawtenant.com/states/san-francisco-hoa-psd-guide): how the Davis-Stirling Act, FEHA, and the ADA limit HOA breed/weight/fee rules for a task-trained PSD, the two questions a board may ask, and common-area access
+- [San Diego telehealth ESA guidelines under AB 468](https://pawtenant.com/states/san-diego-telehealth-guide): AB 468 applies to remote evaluations too — a California license, the 30-day relationship, mandatory letter disclosures, and how to verify a provider
+
 ## Pricing & trust pages
 
 - [Is PawTenant legit?](https://pawtenant.com/is-pawtenant-legit): what PawTenant does and does not promise
@@ -136,6 +148,7 @@
 - [PSD letter vs service dog certificate](https://pawtenant.com/blog/psd-letter-vs-service-dog-certificate): why online service dog certificates and registrations carry no legal weight (there is no official registry), and what a verifiable letter from a licensed provider actually does
 - [Can you get a PSD letter for anxiety?](https://pawtenant.com/blog/psd-letter-for-anxiety): anxiety can qualify only if it rises to a disability that substantially limits a major life activity and the dog performs trained tasks; otherwise an ESA may fit — a licensed provider decides
 - [Psychiatric service dog housing rights](https://pawtenant.com/blog/psychiatric-service-dog-housing-rights): Fair Housing Act protections for renters, what a landlord can ask, no pet fees for assistance animals, and how to request — landlords must consider a valid request but are not required to accept
+- [How to train a psychiatric service dog: recognized tasks & requirements](https://pawtenant.com/blog/how-to-train-psychiatric-service-dog-tasks): what makes a dog a recognized PSD under the ADA (individual task training, not a letter/vest/registry), the task categories that qualify, how legal self-training works, the public-access standard, and what a clinical letter can and can't do — a letter supports the disability side for housing but never creates service-dog status
 - [FAQs](https://pawtenant.com/faqs): common ESA questions answered
 - [College / dorm ESA policy](https://pawtenant.com/college-pet-policy): ESA letters for university housing
 

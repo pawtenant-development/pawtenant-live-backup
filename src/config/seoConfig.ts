@@ -295,6 +295,44 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "HUD's 2026 ESA enforcement memo may change how untrained emotional support animals are handled in federal housing complaints. Learn what changed, what rights may remain, and how PSD documentation differs.",
   },
+  // ── California ESA/PSD content cluster — PSD-training blog post ──────────────
+  "/blog/how-to-train-psychiatric-service-dog-tasks": {
+    title: "How to Train a Psychiatric Service Dog: Recognized Tasks & Requirements",
+    description:
+      "A step-by-step legal and training guide to Psychiatric Service Dogs under the ADA — what tasks qualify, how self-training legally works, the public-access standard, and what documentation can and can't do.",
+  },
+  // ── California ESA/PSD content cluster — /states/* regional guides ───────────
+  "/states/california-esa-psd-guide": {
+    title: "California ESA & PSD Legal Guide: AB 468 & Housing Protections | PawTenant",
+    description:
+      "California's AB 468 30-day ESA rule, how emotional support animals and Psychiatric Service Dogs differ, what landlords and HOAs can and can't do, and what a compliant ESA or PSD letter needs.",
+  },
+  "/states/los-angeles-esa-landlord-guide": {
+    title: "Los Angeles Landlord ESA Rules: RSO & AB 468 | PawTenant",
+    description:
+      "How Los Angeles tenant protections — the Rent Stabilization Ordinance and Just Cause Ordinance — layer on top of California's AB 468 ESA requirements, from no-pet policies to pet fees and eviction.",
+  },
+  "/states/san-francisco-hoa-psd-guide": {
+    title: "San Francisco HOA Restrictions & PSD Accommodations | PawTenant",
+    description:
+      "How the Davis-Stirling Act, FEHA, and the ADA limit San Francisco HOA pet policies — breed bans, weight caps, and fees — when a resident has a task-trained Psychiatric Service Dog.",
+  },
+  "/states/san-diego-telehealth-guide": {
+    title: "San Diego Telehealth ESA Guidelines Under AB 468 | PawTenant",
+    description:
+      "How California's AB 468 applies to remote ESA evaluations for San Diego residents — California licensure, the 30-day relationship rule, mandatory letter disclosures, and how to verify a provider.",
+  },
+  // ── Texas ESA/PSD content cluster ───────────────────────────────────────────
+  "/states/texas-esa-psd-guide": {
+    title: "Texas ESA & PSD Housing Laws: Fair Housing Act & 2026 HUD Shift | PawTenant",
+    description:
+      "A complete guide to Emotional Support Animals and Psychiatric Service Dogs under Texas and federal law — no state waiting period, the May 2026 HUD enforcement shift, Texas fee exemptions, and misrepresentation penalties.",
+  },
+  "/blog/texas-service-animal-laws-penalties": {
+    title: "Texas Service Animal Laws & Penalties for Misrepresentation | PawTenant",
+    description:
+      "What Texas law says about service animals vs emotional support animals — the ADA-style task standard, the strengthened HB 4164 misrepresentation penalty (up to $1,000 + community service), and what a business or landlord may ask.",
+  },
   // ── Core ESA-letter blog cluster (how-to / what-is / requirements) ──────────
   "/blog/how-to-get-an-esa-letter-online": {
     title: "How to Get an ESA Letter Online in 2026: Step-by-Step Guide",

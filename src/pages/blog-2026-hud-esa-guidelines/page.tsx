@@ -438,7 +438,12 @@ export default function Blog2026HudEsaGuidelinesPage() {
             <Link to="/esa-letter/california" className={inlineLink}>
               California ESA letter
             </Link>{" "}
-            guide.
+            guide. Texas is a useful example of how this plays out: because the Texas Fair Housing Act is
+            enforced independently by the state, the{" "}
+            <Link to="/states/texas-esa-psd-guide" className={inlineLink}>
+              Texas ESA &amp; PSD guide
+            </Link>{" "}
+            walks through why the 2026 federal shift doesn&apos;t automatically remove state-law protection.
           </Para>
 
           <figure className="my-6">

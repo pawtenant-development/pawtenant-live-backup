@@ -623,5 +623,55 @@ export const blogPostsVerification = [
     ],
     tags: ["psychiatric service dog housing rights", "PSD housing rights", "service dog Fair Housing Act", "psychiatric service dog apartment"],
     relatedSlugs: [],
+  },
+  // Listing card for the standalone rich article at /blog/how-to-train-psychiatric-service-dog-tasks
+  // (California ESA/PSD cluster). The static route in router/config.tsx outranks
+  // /blog/:slug, so clicking this card renders the dedicated page — the section
+  // below is a summary fallback only.
+  {
+    slug: "how-to-train-psychiatric-service-dog-tasks",
+    title: "How to Train Your Dog to Be a Psychiatric Service Dog: Recognized Tasks & Requirements",
+    metaTitle: "How to Train a Psychiatric Service Dog: Recognized Tasks & Requirements",
+    metaDesc: "A step-by-step legal and training guide to Psychiatric Service Dogs under the ADA — what tasks qualify, how self-training legally works, the public-access standard, and what documentation can and can't do.",
+    category: "PSD",
+    date: "July 8, 2026",
+    readTime: "11 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/woman-telehealth-with-dog.jpg",
+    excerpt: "A Psychiatric Service Dog earns its legal status through real, specific, trained tasks — not paperwork speed, a vest, or a certificate. This guide covers what qualifies as a recognized PSD task under the ADA, how self-training legally works, the public-access standard, and what a clinical letter can and can't do.",
+    sections: [
+      {
+        heading: "Task training is what makes a dog a PSD",
+        content: "Under the ADA, a Psychiatric Service Dog is individually trained to perform a specific task tied to a disability — deep pressure therapy, interrupting a dissociative episode, retrieving medication. A dog that only comforts by its presence is not a service animal, regardless of documentation. Self-training is legal, no certification or registry is required, and a clinical letter supports the disability side for housing but never substitutes for the training itself.",
+      },
+    ],
+    tags: ["psychiatric service dog", "PSD task training", "ADA service dog", "self-training"],
+    relatedSlugs: [],
+  },
+  // Listing card for the standalone rich article at /blog/texas-service-animal-laws-penalties
+  // (Texas ESA/PSD cluster). The static route in router/config.tsx outranks
+  // /blog/:slug, so clicking this card renders the dedicated page — the section
+  // below is a summary fallback only.
+  {
+    slug: "texas-service-animal-laws-penalties",
+    title: "Texas Service Animal Laws: Public Access Rights and Penalties for Misrepresentation",
+    metaTitle: "Texas Service Animal Laws & Penalties for Misrepresentation",
+    metaDesc: "What Texas law says about service animals vs emotional support animals — the ADA-style task standard, the strengthened HB 4164 misrepresentation penalty, and what a business or landlord may ask.",
+    category: "Legal & Rights",
+    date: "July 8, 2026",
+    readTime: "8 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/woman-with-dog-office.jpg",
+    excerpt: "Texas has some of the most direct statutory language distinguishing a service animal from an emotional support animal — and, since the 2023 HB 4164 update, clearly enforced penalties for blurring that line. Here's what the law says about public access, the misrepresentation penalty, and what a business may ask.",
+    sections: [
+      {
+        heading: "An ESA is not a service dog under Texas law",
+        content: "Under Texas Health & Safety Code 437.023 and Human Resources Code Chapter 121, an animal that only provides comfort is not a service animal — a service animal is a dog individually trained to perform tasks that mitigate a disability. Misrepresenting an untrained animal as a service animal is a misdemeanor under HRC 121.006, strengthened by HB 4164 (2023) to a fine of up to $1,000 plus 30 hours of community service. Housing (ESAs included) is governed separately by the Fair Housing Act and Texas Property Code Chapter 301.",
+      },
+    ],
+    tags: ["texas service animal laws", "HB 4164", "misrepresentation penalty", "ESA vs service dog"],
+    relatedSlugs: [],
   }
 ];

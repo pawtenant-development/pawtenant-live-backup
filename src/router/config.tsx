@@ -138,6 +138,15 @@ const BlogPsychiatricServiceDogLetterExplainedPage = lazy(() => import("../pages
 const BlogPsdLetterVsServiceDogCertificatePage = lazy(() => import("../pages/blog-psd-letter-vs-service-dog-certificate/page"));
 const BlogPsdLetterForAnxietyPage = lazy(() => import("../pages/blog-psd-letter-for-anxiety/page"));
 const BlogPsychiatricServiceDogHousingRightsPage = lazy(() => import("../pages/blog-psychiatric-service-dog-housing-rights/page"));
+// California ESA/PSD content cluster — /states/* regional guides + PSD-training blog (indexable, in sitemap).
+const CaliforniaEsaPsdGuidePage = lazy(() => import("../pages/states-california-esa-psd-guide/page"));
+const LosAngelesEsaLandlordGuidePage = lazy(() => import("../pages/states-los-angeles-esa-landlord-guide/page"));
+const SanFranciscoHoaPsdGuidePage = lazy(() => import("../pages/states-san-francisco-hoa-psd-guide/page"));
+const SanDiegoTelehealthGuidePage = lazy(() => import("../pages/states-san-diego-telehealth-guide/page"));
+const BlogHowToTrainPsdTasksPage = lazy(() => import("../pages/blog-how-to-train-psychiatric-service-dog-tasks/page"));
+// Texas ESA/PSD content cluster — /states/texas-esa-psd-guide + Texas penalties blog (indexable, in sitemap).
+const TexasEsaPsdGuidePage = lazy(() => import("../pages/states-texas-esa-psd-guide/page"));
+const BlogTexasServiceAnimalPenaltiesPage = lazy(() => import("../pages/blog-texas-service-animal-laws-penalties/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -270,6 +279,13 @@ const routes: RouteObject[] = [
   { path: "/travel-anxiety-esa-letter", element: <P C={TravelAnxietyESALetterPage} /> },
   // HUD 2026 ESA enforcement-change educational page (informational, indexable).
   { path: "/are-esa-letters-still-valid-after-hud-change", element: <P C={AreEsaLettersStillValidAfterHudChangePage} /> },
+  // California ESA/PSD content cluster — /states/* regional guides (informational, indexable).
+  { path: "/states/california-esa-psd-guide", element: <P C={CaliforniaEsaPsdGuidePage} /> },
+  { path: "/states/los-angeles-esa-landlord-guide", element: <P C={LosAngelesEsaLandlordGuidePage} /> },
+  { path: "/states/san-francisco-hoa-psd-guide", element: <P C={SanFranciscoHoaPsdGuidePage} /> },
+  { path: "/states/san-diego-telehealth-guide", element: <P C={SanDiegoTelehealthGuidePage} /> },
+  // Texas ESA/PSD content cluster — main Texas guide (informational, indexable).
+  { path: "/states/texas-esa-psd-guide", element: <P C={TexasEsaPsdGuidePage} /> },
   // Pet rent savings calculator (interactive tool, indexable).
   { path: "/pet-rent-savings-calculator", element: <P C={PetRentSavingsCalculatorPage} /> },
   { path: "/explore-esa-letters-all-states", element: <P C={ExploreStatesPage} /> },
@@ -309,6 +325,10 @@ const routes: RouteObject[] = [
   { path: "/blog/psd-letter-vs-service-dog-certificate", element: <P C={BlogPsdLetterVsServiceDogCertificatePage} /> },
   { path: "/blog/psd-letter-for-anxiety", element: <P C={BlogPsdLetterForAnxietyPage} /> },
   { path: "/blog/psychiatric-service-dog-housing-rights", element: <P C={BlogPsychiatricServiceDogHousingRightsPage} /> },
+  // California ESA/PSD cluster — PSD-training blog article (static segment outranks /blog/:slug).
+  { path: "/blog/how-to-train-psychiatric-service-dog-tasks", element: <P C={BlogHowToTrainPsdTasksPage} /> },
+  // Texas ESA/PSD cluster — Texas service-animal penalties blog (static segment outranks /blog/:slug).
+  { path: "/blog/texas-service-animal-laws-penalties", element: <P C={BlogTexasServiceAnimalPenaltiesPage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },
