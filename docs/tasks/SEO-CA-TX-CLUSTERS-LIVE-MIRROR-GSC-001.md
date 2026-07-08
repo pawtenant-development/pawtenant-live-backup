@@ -108,5 +108,12 @@ docs + operating-rules doc).
 
 ## Status: ✅ COMPLETED — mirrored, deployed, verified, indexing requested for all 8 URLs.
 
+## Tracker parity (2026-07-08, task SEO-CA-TX-LIVE-TRACKER-PARITY-001)
+`docs/seo-content-tracker.md` updated: 7 LIVE rows added (California + Texas ESA/PSD
+clusters) — Status `LIVE complete`, LIVE commit `2fe42a3`, GSC `Requested 2026-07-08`,
+sitemap/llms/internal `LIVE yes` — plus a summary blockquote covering the LIVE mirror,
+production verification, and GSC (sitemap resubmit + Request Indexing for all 7 new URLs
++ HUD recrawl). Docs-only.
+
 ## Next action (updated)
-Commit → push → deploy Vercel prod → production browser verify → GSC indexing requests.
+Done. In ~2–3 days re-check GSC Pages/Indexing to confirm the 7 new pages move to Indexed.
