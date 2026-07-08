@@ -71,6 +71,11 @@ delete from ai_support_messages     where conversation_id='27a84546-7d82-4c33-80
 delete from ai_support_conversations where id='27a84546-7d82-4c33-8062-45d124fddeb3';
 ```
 
+### Deploy & verification
+- Commit `71c8205` (parent `b6c7c25` SEO-docs → `539c877` foundation) pushed to `origin/main` (fast-forward, in sync). Triggers the LIVE Vercel build.
+- pawtenant.com serves HTTP 200 (non-www canonical); `/admin-orders` SPA shell 200.
+- Vercel READY not machine-confirmed: the pawtenant.com Vercel project is NOT in the connected Vercel MCP token's scope (only `zeek-engines` is), and LIVE admin login is OTP-gated (owner-only). Verified instead via build + SQL + edge-function behavior. Owner can confirm READY in the Vercel dashboard and visually confirm the "AI Support" tab after login.
+
 ### Follow-ups / not in scope
 - Keep `ai_chat_reply_mode=draft`; do NOT flip to `auto` without separate explicit approval. Instant off = set mode `off` or `ai_global_kill_switch=true`.
 - SMS pipeline still not deployed in LIVE (intentional). The panel's SMS controls are vestigial until an SMS rollout task.
