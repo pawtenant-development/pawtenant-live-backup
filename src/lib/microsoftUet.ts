@@ -1,7 +1,11 @@
 /**
  * microsoftUet.ts — Microsoft Advertising Universal Event Tracking (UET).
  *
- * UET Tag ID: 187256974  (PawTenant Microsoft Ads account)
+ * UET Tag ID: 97255523  (PawTenant "current" Microsoft Ads account —
+ *              HyperSpace Solutions LLC / G12027LJ / aid 188414461).
+ * NOTE: the prior account's tag 187256974 is INTENTIONALLY ABANDONED
+ *       (task MICROSOFT-ADS-TRACKING-OPTIMIZE-001, 2026-07-08). Do NOT
+ *       reintroduce 187256974 — all spend/tracking now lives in G12027LJ.
  *
  * ── HOW THIS MIRRORS THE EXISTING GOOGLE / META STACK ─────────────────────
  * The bat.js script is loaded ONCE by the shared deferred loader in
@@ -29,7 +33,7 @@
  * the task notes / final report for the documented rationale.
  *
  * ── ENV GUARDS (TEST must NOT pollute Microsoft Ads conversion data) ──────
- *   VITE_MICROSOFT_UET_ID       tag id (default "187256974")
+ *   VITE_MICROSOFT_UET_ID       tag id (default "97255523")
  *   VITE_MICROSOFT_UET_ENABLED  "true" → index.html loads bat.js. Set on
  *                               LIVE only. Unset/false on TEST → bat.js
  *                               never loads, so no pageLoad / conversion
@@ -69,7 +73,7 @@ declare global {
 }
 
 const UET_ID =
-  (import.meta.env.VITE_MICROSOFT_UET_ID as string | undefined) || "187256974";
+  (import.meta.env.VITE_MICROSOFT_UET_ID as string | undefined) || "97255523";
 
 /** True on the production host only — TEST/preview hosts return false. */
 function isProdHost(): boolean {

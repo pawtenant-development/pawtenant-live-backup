@@ -301,7 +301,9 @@
         // UET_ENABLED stays false and bat.js never loads.
         var UET_ENABLED = '%VITE_MICROSOFT_UET_ENABLED%' === 'true';
         var UET_ID = '%VITE_MICROSOFT_UET_ID%';
-        if (!UET_ID || UET_ID.indexOf('%') === 0) UET_ID = '187256974';
+        // Current Microsoft Ads account (HyperSpace/G12027LJ) tag. The old
+        // tag 187256974 is intentionally abandoned — do NOT reintroduce it.
+        if (!UET_ID || UET_ID.indexOf('%') === 0) UET_ID = '97255523';
 
         // ── Single idempotent loader for both gtag.js and fbevents.js ─
         var loaded = false;
