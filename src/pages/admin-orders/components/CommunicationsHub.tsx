@@ -38,6 +38,8 @@ import CommunicationsTemplatesPanel, {
   RecoverySequencePanel,
 } from "./CommunicationsTemplatesPanel";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
+import AiSupportCenterPanel from "./AiSupportCenterPanel";
+import { useAiSupportPendingCount } from "../../../hooks/useAiSupportPendingCount";
 import { useCurrentAdminRole } from "../../../hooks/useCurrentAdminRole";
 import { getAdminIdentity, type AdminIdentity } from "../../../lib/adminIdentity";
 
@@ -49,9 +51,9 @@ type CommunicationsPanelProps = ComponentProps<typeof CommunicationsPanel>;
 type HubOrders = CommunicationsPanelProps["orders"];
 type HubOnViewOrder = CommunicationsPanelProps["onViewOrder"];
 
-type SubKey = "live" | "chats" | "emails" | "sms" | "consultations" | "templates" | "settings";
+type SubKey = "live" | "chats" | "emails" | "sms" | "ai" | "consultations" | "templates" | "settings";
 
-const SUB_KEYS: SubKey[] = ["live", "chats", "emails", "sms", "consultations", "templates", "settings"];
+const SUB_KEYS: SubKey[] = ["live", "chats", "emails", "sms", "ai", "consultations", "templates", "settings"];
 const DEFAULT_SUB: SubKey = "live";
 
 // Phase G2 — basic-access sub-tabs available to support / finance /
@@ -59,13 +61,14 @@ const DEFAULT_SUB: SubKey = "live";
 // owner / admin_manager unless explicitly granted via custom_tab_access.
 // Consultations is included in the basic set so the care team (support
 // role) can work the consultation recovery funnel without extra grants.
-const BASIC_SUBS: SubKey[] = ["live", "chats", "emails", "sms", "consultations"];
+const BASIC_SUBS: SubKey[] = ["live", "chats", "emails", "sms", "ai", "consultations"];
 
 const SUB_CONFIG: { key: SubKey; label: string; icon: string }[] = [
   { key: "live",          label: "Live Visitors",         icon: "ri-pulse-line" },
   { key: "chats",         label: "Chats",                 icon: "ri-chat-3-line" },
   { key: "emails",        label: "Emails",                icon: "ri-mail-line" },
   { key: "sms",           label: "SMS / Calls",           icon: "ri-message-3-line" },
+  { key: "ai",            label: "AI Support",            icon: "ri-robot-2-line" },
   { key: "consultations", label: "Consultations",         icon: "ri-calendar-check-line" },
   { key: "templates",     label: "Templates",             icon: "ri-file-list-3-line" },
   { key: "settings",      label: "Settings & Automation", icon: "ri-settings-3-line" },
@@ -190,6 +193,11 @@ export default function CommunicationsHub({
   // changes are rare and the parent shell re-mounts on auth changes.
   const { role: adminRole } = useCurrentAdminRole();
 
+  // AI Support draft queue badge — count of AI notifications that still need a
+  // human (draft_pending / escalated / send_error …). Draft-only rollout: this
+  // is purely a review indicator; nothing is auto-sent to visitors.
+  const { count: aiPendingCount } = useAiSupportPendingCount();
+
   // Phase F — admin identity (name + email) for Broadcast modal. Same
   // cached helper ChatsTab already uses. No new RPCs, no new fetches
   // beyond what the rest of the admin app already performs.
@@ -294,6 +302,16 @@ export default function CommunicationsHub({
               >
                 <i className={s.icon} />
                 <span>{s.label}</span>
+                {s.key === "ai" && aiPendingCount > 0 && (
+                  <span
+                    className={`ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold ${
+                      isActive ? "bg-white/25 text-white" : "bg-red-500 text-white"
+                    }`}
+                    title={`${aiPendingCount} AI draft${aiPendingCount === 1 ? "" : "s"} need review`}
+                  >
+                    {aiPendingCount > 99 ? "99+" : aiPendingCount}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -385,6 +403,15 @@ export default function CommunicationsHub({
             )}
           </div>
         )}
+
+        {/* AI Support Center — draft-only AI live-chat review. Staff review AI
+            drafts and manage the chat/SMS blacklists; owner/admin controls the
+            chat reply mode (Off / Draft / Auto — Auto is confirmation-gated)
+            and the SMS auto-send toggle (kept OFF). No automatic
+            customer-visible sends happen from this panel; the only manual send
+            path is the human "Approve & send to chat" action, which uses the
+            existing post_agent_chat_message agent path. */}
+        {localActive === "ai" && <AiSupportCenterPanel />}
 
         {/* Consultation Slot Recovery Funnel (V1) — admin-side surface for
             unpaid lead recovery via /consultation-request submissions.
