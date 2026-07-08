@@ -39,6 +39,7 @@ import CommunicationsTemplatesPanel, {
 } from "./CommunicationsTemplatesPanel";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
 import AiSupportCenterPanel from "./AiSupportCenterPanel";
+import CommandCenterPanel from "./commandCenter/CommandCenterPanel";
 import { useAiSupportPendingCount } from "../../../hooks/useAiSupportPendingCount";
 import { useCurrentAdminRole } from "../../../hooks/useCurrentAdminRole";
 import { getAdminIdentity, type AdminIdentity } from "../../../lib/adminIdentity";
@@ -51,9 +52,9 @@ type CommunicationsPanelProps = ComponentProps<typeof CommunicationsPanel>;
 type HubOrders = CommunicationsPanelProps["orders"];
 type HubOnViewOrder = CommunicationsPanelProps["onViewOrder"];
 
-type SubKey = "live" | "chats" | "emails" | "sms" | "ai" | "consultations" | "templates" | "settings";
+type SubKey = "inbox" | "live" | "chats" | "emails" | "sms" | "ai" | "consultations" | "templates" | "settings";
 
-const SUB_KEYS: SubKey[] = ["live", "chats", "emails", "sms", "ai", "consultations", "templates", "settings"];
+const SUB_KEYS: SubKey[] = ["inbox", "live", "chats", "emails", "sms", "ai", "consultations", "templates", "settings"];
 const DEFAULT_SUB: SubKey = "live";
 
 // Phase G2 — basic-access sub-tabs available to support / finance /
@@ -61,9 +62,10 @@ const DEFAULT_SUB: SubKey = "live";
 // owner / admin_manager unless explicitly granted via custom_tab_access.
 // Consultations is included in the basic set so the care team (support
 // role) can work the consultation recovery funnel without extra grants.
-const BASIC_SUBS: SubKey[] = ["live", "chats", "emails", "sms", "ai", "consultations"];
+const BASIC_SUBS: SubKey[] = ["inbox", "live", "chats", "emails", "sms", "ai", "consultations"];
 
 const SUB_CONFIG: { key: SubKey; label: string; icon: string }[] = [
+  { key: "inbox",         label: "Command Center",        icon: "ri-layout-grid-line" },
   { key: "live",          label: "Live Visitors",         icon: "ri-pulse-line" },
   { key: "chats",         label: "Chats",                 icon: "ri-chat-3-line" },
   { key: "emails",        label: "Emails",                icon: "ri-mail-line" },
@@ -320,6 +322,13 @@ export default function CommunicationsHub({
 
       {/* Sub-tab body */}
       <div>
+        {/* Command Center — unified comms triage inbox (chat/SMS/call/email
+            queue + AI draft review + needs-review counts). Draft-only rollout:
+            every send is a human click (chat via post_agent_chat_message; SMS
+            via ai-send-support-reply which is not deployed in LIVE → inert).
+            No auto-send; write actions gated by isAdminLevel + RLS. */}
+        {localActive === "inbox" && <CommandCenterPanel />}
+
         {localActive === "live" && <LiveVisitorsPanel />}
 
         {/* Phase C — mount existing ChatsTab verbatim. Old sidebar "Chats"
