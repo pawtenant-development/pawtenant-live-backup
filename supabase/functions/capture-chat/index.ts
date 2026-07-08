@@ -307,6 +307,39 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 4. AI Support live-chat DRAFT processing (visitor messages only).
+  //    Fire-and-forget AFTER the message is safely stored: the AI pipeline
+  //    classifies + drafts for admin review and never writes back to the
+  //    public chat tables. With ai_chat_reply_mode='draft' (LIVE default) it
+  //    posts NO reply to the visitor. Any failure here is swallowed — capture
+  //    must never break.
+  if (sender === "visitor") {
+    try {
+      const ctx = extractContext(metadata);
+      const shadow = fetch(`${supabaseUrl}/functions/v1/ai-handle-inbound-chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          chatSessionId: sessionId,
+          chatMessageId: chatId,
+          body: message,
+          visitorEmail: email,
+          visitorName: name,
+          pageUrl: ctx.page_url,
+        }),
+      }).then(() => undefined).catch(() => undefined);
+      // Keep the isolate alive for the background call when supported;
+      // otherwise best-effort fire-and-forget.
+      // deno-lint-ignore no-explicit-any
+      (globalThis as any).EdgeRuntime?.waitUntil?.(shadow);
+    } catch {
+      // Intentionally ignored — draft processing must never fail capture.
+    }
+  }
+
   return json(200, {
     ok: true,
     id: chatId,
