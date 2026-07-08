@@ -56,10 +56,12 @@ const TAB_KEY_SET = new Set<string>(ALL_TABS.map((t) => t.key));
 // CommunicationsHub.SUB_CONFIG so the modal mirrors what the user
 // actually sees inside the hub.
 const COMMS_SUB_KEYS = [
+  "inbox",
   "live",
   "chats",
   "emails",
   "sms",
+  "ai",
   "consultations",
   "templates",
   "settings",
@@ -67,10 +69,12 @@ const COMMS_SUB_KEYS = [
 type CommsSubKey = typeof COMMS_SUB_KEYS[number];
 
 const COMMS_SUB_LABELS: Record<CommsSubKey, { label: string; icon: string }> = {
+  inbox:         { label: "Command Center",        icon: "ri-layout-grid-line" },
   live:          { label: "Live Visitors",         icon: "ri-pulse-line" },
   chats:         { label: "Chats",                 icon: "ri-chat-3-line" },
   emails:        { label: "Emails",                icon: "ri-mail-line" },
   sms:           { label: "SMS / Calls",           icon: "ri-message-3-line" },
+  ai:            { label: "AI Support",            icon: "ri-robot-2-line" },
   consultations: { label: "Consultations",         icon: "ri-calendar-check-line" },
   templates:     { label: "Templates",             icon: "ri-file-list-3-line" },
   settings:      { label: "Settings & Automation", icon: "ri-settings-3-line" },
