@@ -63,4 +63,4 @@ No Supabase migration or function deploy. No TEST repo change (LIVE-only; TEST r
 - **Build:** `npm run type-check` — 0 new errors (only pre-existing unrelated: AIAssistantTrustCard/AnalyticsTab/EmployeeHrDirectory/ProviderInternalRecords). `npm run build` ✓ 39.44s, prerender 242/0, attribution parity OK.
 - **Safety:** No migration, no function deploy, no SMS/email/call, no GHL/ads/Stripe/payment/order/provider/refund change, no TEST change. LIVE-only.
 - **Browser:** LIVE admin OTP-gated + prod outside MCP token scope → not driven in-browser. Hamza to confirm: (1) Dashboard link visible in left nav; (2) Team → Roles & Access shows Hamza/Omer as "Full access" (no editable tab control); (3) support/staff still show tab count + edit control.
-- **Commit:** `<pending push>`.
+- **Commit:** LIVE `aa4e3d9` (pushed to `main`; `5855742..aa4e3d9`).
