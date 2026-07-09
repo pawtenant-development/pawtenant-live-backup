@@ -208,6 +208,15 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
   //      do NOT flip the top-level override mode by themselves, but they
   //      DO imply the parent "communications" tab is visible so the user
   //      can reach the sub they were granted.
+
+  // Owner is a full-access role: navigation is governed purely by role and
+  // NEVER by custom_tab_access. This guarantees the owner always sees every
+  // tab (including Dashboard) and can never be locked out by a stray override
+  // saved on their account. (See ADMIN-NAV-OWNER-ACCESS-LIVE-HOTFIX-001.)
+  if (role === "owner") {
+    return ALL_TABS;
+  }
+
   const raw = customTabAccess ?? [];
 
   // Strip sub-tab grants from the top-level comparison.
@@ -234,7 +243,11 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
   const topLevelOverrides = Array.from(overrideSet);
 
   if (topLevelOverrides.length > 0) {
-    return ALL_TABS.filter((t) => topLevelOverrides.includes(t));
+    // Dashboard is the landing view and is never a restrictable tab (it is
+    // always available via isTabVisible). Keep it in the nav even when a
+    // custom override list omits it, so no role/override can ever hide the
+    // Dashboard link. (See ADMIN-NAV-OWNER-ACCESS-LIVE-HOTFIX-001.)
+    return ALL_TABS.filter((t) => t === "dashboard" || topLevelOverrides.includes(t));
   }
   switch (role) {
     case "owner":

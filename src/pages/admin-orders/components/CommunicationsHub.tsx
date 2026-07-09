@@ -110,6 +110,13 @@ function getVisibleSubKeys(
   role: string | null | undefined,
   customTabAccess?: readonly string[] | null,
 ): SubKey[] {
+  // Owner is a full-access role — never restricted by custom_tab_access,
+  // even if stray "communications_<sub>" child grants exist on the account.
+  // (See ADMIN-NAV-OWNER-ACCESS-LIVE-HOTFIX-001.)
+  if (role === "owner") {
+    return SUB_KEYS.slice();
+  }
+
   const explicit: SubKey[] = [];
   if (customTabAccess) {
     for (const key of customTabAccess) {

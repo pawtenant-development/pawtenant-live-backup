@@ -1065,7 +1065,15 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 truncate">{member.full_name}</p>
-                        {member.custom_tab_access && (
+                        {/* Owners have full access by role — the stored
+                            custom_tab_access is inert for them, so don't show a
+                            misleading "custom tabs" count. */}
+                        {member.role === "owner" ? (
+                          <p className="text-xs text-[#7c3aed] mt-0.5 flex items-center gap-1">
+                            <i className="ri-vip-crown-line" style={{ fontSize: "10px" }}></i>
+                            <span>Full access</span>
+                          </p>
+                        ) : member.custom_tab_access && (
                           <p className="text-xs text-[#3b6ea5] mt-0.5 flex items-center gap-1">
                             <i className="ri-layout-grid-line" style={{ fontSize: "10px" }}></i>
                             <span>{member.custom_tab_access.length} custom tabs</span>
@@ -1121,10 +1129,20 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
                       {canManage && (
                         <>
                           <div className="w-px h-4 bg-gray-200 mx-0.5 flex-shrink-0"></div>
-                          <button type="button" onClick={() => setTabAccessMember(member)} title="Edit tab access"
-                            className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#dbeafe] cursor-pointer transition-colors flex-shrink-0">
-                            <i className="ri-layout-grid-line text-xs"></i>
-                          </button>
+                          {/* Owner has full access by role — custom tab access
+                              never applies, so no editable control (it can't
+                              restrict an owner). Non-owners get the editor. */}
+                          {member.role === "owner" ? (
+                            <span title="Owner has full access"
+                              className="inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-[#d8b4fe] text-[#7c3aed] bg-[#f3e8ff] text-[10px] font-bold whitespace-nowrap flex-shrink-0">
+                              <i className="ri-vip-crown-line" style={{ fontSize: "11px" }}></i>Full access
+                            </span>
+                          ) : (
+                            <button type="button" onClick={() => setTabAccessMember(member)} title="Edit tab access"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] hover:bg-[#dbeafe] cursor-pointer transition-colors flex-shrink-0">
+                              <i className="ri-layout-grid-line text-xs"></i>
+                            </button>
+                          )}
                           {/* Owner row: only show Change Email (no password reset, no delete) */}
                           {member.role === "owner" ? (
                             <button type="button"
@@ -1211,10 +1229,19 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
                         {/* Mobile action buttons — hidden for non-admin viewers */}
                         {canManage ? (
                           <div className="flex items-center gap-2 mt-3 flex-wrap">
-                            <button type="button" onClick={() => setTabAccessMember(member)}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] text-xs font-semibold cursor-pointer">
-                              <i className="ri-layout-grid-line text-xs"></i>Tabs
-                            </button>
+                            {/* Owner has full access by role — no editable tab
+                                control (custom tab access can't restrict an owner). */}
+                            {member.role === "owner" ? (
+                              <span title="Owner has full access"
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#d8b4fe] text-[#7c3aed] bg-[#f3e8ff] text-xs font-semibold whitespace-nowrap">
+                                <i className="ri-vip-crown-line text-xs"></i>Full access
+                              </span>
+                            ) : (
+                              <button type="button" onClick={() => setTabAccessMember(member)}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#b8cce4] text-[#3b6ea5] bg-[#e8f0f9] text-xs font-semibold cursor-pointer">
+                                <i className="ri-layout-grid-line text-xs"></i>Tabs
+                              </button>
+                            )}
                             {member.role === "owner" ? (
                               <button type="button"
                                 onClick={() => { setChangeEmailMemberId(member.id); setChangeEmailValue(member.email ?? ""); setChangeEmailMsg(null); }}
