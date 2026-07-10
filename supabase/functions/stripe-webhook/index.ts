@@ -721,50 +721,64 @@ Deno.serve(async (req: Request) => {
     const doctorStatus = order.doctor_status as string | null;
     const refundStatusValue = isFullRefund ? "full" : "partial";
 
-    // Targeted re-select of the refund fields (not in the shared select) so
-    // partial-refund webhooks are idempotent (Stripe may resend the same event).
+    // Targeted re-select of fields not in the shared select — for idempotency
+    // (Stripe may resend the same event) + the Google Ads upload state.
     const { data: prevRefund } = await supabase.from("orders")
-      .select("refund_amount, refund_status").eq("id", orderId).maybeSingle();
+      .select("refund_amount, refund_status, google_ads_upload_status").eq("id", orderId).maybeSingle();
     const prevRefundAmount = prevRefund && typeof prevRefund.refund_amount === "number" ? prevRefund.refund_amount : null;
     const prevRefundStatus = (prevRefund?.refund_status as string | null) ?? "none";
+    const prevAdsStatus = (prevRefund?.google_ads_upload_status as string | null) ?? null;
 
+    // ORDER-REFUND-IDEMPOTENCY-CLEANUP-TEST-001: reconcile the Google Ads refund
+    // adjustment flag BEFORE any idempotency return, so a delayed/replayed
+    // full-refund webhook still sets it even if create-refund already flipped
+    // status. Set-once + applicable-only: only when a conversion was actually
+    // uploaded (uploaded / pending_gclid_upgrade). After the first setter it is
+    // no longer 'uploaded', so this no-ops on replay; failed/null/skip untouched.
+    let adsAdjusted = false;
+    if (isFullRefund && (prevAdsStatus === "uploaded" || prevAdsStatus === "pending_gclid_upgrade")) {
+      await supabase.from("orders").update({ google_ads_upload_status: "refunded_pending_adjustment" }).eq("id", orderId);
+      adsAdjusted = true;
+    }
+
+    // Idempotency — the order already reflects this refund lifecycle:
+    //   FULL: already terminal — 'refunded' OR intentionally 'cancelled' (Refund
+    //         + Cancel). A delayed full-refund webhook must NOT revert a
+    //         'cancelled' order back to 'refunded'.
+    //   PARTIAL: same cumulative amount already recorded.
     if (
-      (isFullRefund && currentStatus === "refunded") ||
+      (isFullRefund && (currentStatus === "refunded" || currentStatus === "cancelled")) ||
       (!isFullRefund && prevRefundStatus === "partial" && prevRefundAmount === refundedAmountDollars)
     ) {
-      return json({ ok: true, idempotent: true, confirmationId });
+      return json({ ok: true, idempotent: true, confirmationId, adsAdjusted });
     }
 
     const refundedAt = new Date().toISOString();
-    // PARTIAL: record money + classification, PRESERVE operational status and
-    // the ads conversion. FULL: flip status to 'refunded' + flag ads adjustment.
+    // PARTIAL: record money + classification, PRESERVE operational status + the
+    // ads conversion. FULL: flip status to 'refunded'. The
+    // orders_status_change_trigger writes the single 'refunded' status log — no
+    // explicit logStatus here (that was the duplicate).
     const orderUpdate: Record<string, unknown> = {
       refunded_at: refundedAt,
       refund_amount: refundedAmountDollars,
       refund_status: refundStatusValue,
     };
-    if (isFullRefund) {
-      orderUpdate.status = "refunded";
-      orderUpdate.google_ads_upload_status = "refunded_pending_adjustment";
-    }
+    if (isFullRefund) orderUpdate.status = "refunded";
     const { error: updateErr } = await supabase.from("orders").update(orderUpdate).eq("id", orderId);
     if (updateErr) { return json({ ok: false, error: updateErr.message }, 500); }
 
-    if (isFullRefund) {
-      await logStatus(orderId, confirmationId, "refunded", `Full refund $${refundedAmountDollars} via Stripe. PI: ${piId}.`);
-    }
-
     // Void provider earnings only on a FULL refund where work was not completed.
+    // `.neq('status','refunded')` keeps a replay from re-touching voided rows.
     const orderWasCompleted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
     if (isFullRefund && !orderWasCompleted) {
-      await supabase.from("doctor_earnings").update({ status: "refunded", notes: `Order refunded via Stripe on ${refundedAt}. Provider had not completed work.` }).eq("confirmation_id", confirmationId).neq("status", "paid");
+      await supabase.from("doctor_earnings").update({ status: "refunded", notes: `Order refunded via Stripe on ${refundedAt}. Provider had not completed work.` }).eq("confirmation_id", confirmationId).neq("status", "paid").neq("status", "refunded");
     }
 
     try {
-      await supabase.from("audit_logs").insert({ action: isFullRefund ? "order_refunded_via_stripe" : "order_partial_refund_via_stripe", object_type: "order", object_id: confirmationId, description: `Order ${isFullRefund ? "refunded" : "partially refunded"}: ${confirmationId}`, metadata: { confirmation_id: confirmationId, order_id: orderId, payment_intent_id: piId, refund_amount: refundedAmountDollars, refund_status: refundStatusValue, is_full_refund: isFullRefund, doctor_status_at_refund: doctorStatus ?? "none", earnings_preserved: orderWasCompleted, refunded_at: refundedAt, stripe_event_id: event.id } });
+      await supabase.from("audit_logs").insert({ action: isFullRefund ? "order_refunded_via_stripe" : "order_partial_refund_via_stripe", object_type: "order", object_id: confirmationId, description: `Order ${isFullRefund ? "refunded" : "partially refunded"}: ${confirmationId}`, metadata: { confirmation_id: confirmationId, order_id: orderId, payment_intent_id: piId, refund_amount: refundedAmountDollars, refund_status: refundStatusValue, is_full_refund: isFullRefund, doctor_status_at_refund: doctorStatus ?? "none", earnings_preserved: orderWasCompleted, ads_adjusted: adsAdjusted, refunded_at: refundedAt, stripe_event_id: event.id } });
     } catch { /* non-critical */ }
 
-    return json({ ok: true, type: t, confirmationId, refundAmount: refundedAmountDollars, refundStatus: refundStatusValue, isFullRefund, earningsPreserved: orderWasCompleted });
+    return json({ ok: true, type: t, confirmationId, refundAmount: refundedAmountDollars, refundStatus: refundStatusValue, isFullRefund, earningsPreserved: orderWasCompleted, adsAdjusted });
   }
 
   // ── checkout.session.completed ────────────────────────────────────────────

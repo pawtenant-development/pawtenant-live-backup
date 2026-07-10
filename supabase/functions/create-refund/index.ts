@@ -141,7 +141,7 @@ Deno.serve(async (req: Request) => {
   if (confirmationId) {
     const { data: order } = await adminClient
       .from("orders")
-      .select("id, status, doctor_status")
+      .select("id, status, doctor_status, google_ads_upload_status")
       .eq("confirmation_id", confirmationId)
       .maybeSingle();
 
@@ -155,31 +155,35 @@ Deno.serve(async (req: Request) => {
         refund_amount: cumulativeRefundedDollars,
         refund_status: refundStatusValue,
       };
-      if (isFullRefund) orderUpdate.status = "refunded";
+      if (isFullRefund) {
+        orderUpdate.status = "refunded";
+        // ORDER-REFUND-IDEMPOTENCY-CLEANUP-TEST-001: flag the Google Ads refund
+        // adjustment HERE too (admin path) so it never depends on the webhook
+        // winning the status race. Set-once + applicable-only — only when a
+        // conversion was actually uploaded (uploaded / pending_gclid_upgrade).
+        // Never overwrites failed / skipped / null states; the webhook applies
+        // the same guard so it can't double-set.
+        const adsStatus = (order.google_ads_upload_status as string | null) ?? null;
+        if (adsStatus === "uploaded" || adsStatus === "pending_gclid_upgrade") {
+          orderUpdate.google_ads_upload_status = "refunded_pending_adjustment";
+        }
+      }
       await adminClient.from("orders").update(orderUpdate).eq("id", order.id);
 
-      // Log the status change only when the operational status actually changed.
-      if (isFullRefund) {
-        try {
-          await adminClient.from("order_status_logs").insert({
-            order_id: order.id,
-            confirmation_id: confirmationId,
-            old_status: order.status,
-            new_status: "refunded",
-            changed_by: actorName,
-            changed_at: new Date().toISOString(),
-          });
-        } catch { /* non-critical */ }
-      }
+      // Status log: the `orders_status_change_trigger` DB trigger already inserts
+      // a single order_status_logs row on the status→refunded transition
+      // (changed_by='system'). No explicit insert here — that was the duplicate.
 
       // Doctor earnings: only void on a FULL refund where the provider had NOT
       // completed the work. A partial refund never voids the provider payout.
+      // `.neq('status','refunded')` keeps a retry from re-touching voided rows.
       const orderWasCompleted = order.doctor_status === "letter_sent" || order.doctor_status === "patient_notified";
       if (isFullRefund && !orderWasCompleted) {
         await adminClient.from("doctor_earnings")
           .update({ status: "refunded", notes: `Order refunded by admin (${actorName}). No payout issued.` })
           .eq("confirmation_id", confirmationId)
-          .neq("status", "paid");
+          .neq("status", "paid")
+          .neq("status", "refunded");
       }
 
       console.info(`[create-refund] Order ${confirmationId} refund recorded — ${refundStatusValue} ($${cumulativeRefundedDollars.toFixed(2)} of charge). status_changed=${isFullRefund}, earnings_preserved=${orderWasCompleted}`);
