@@ -1233,6 +1233,63 @@ export default function OrderDetailModal({
     setTimeout(() => setStatusMsg(""), 3000);
   };
 
+  // OPS-REOPEN-COMPLETED (LIVE mirror 2026-07-10 of TEST ab256b6): reopen a
+  // completed/delivered order for provider review. Unlike the plain forward
+  // "Mark Under Review" (handleSetStatus, which emails the customer), this also
+  // clears the delivered flag (patient_notified -> in_review) so the order
+  // genuinely re-enters the provider review queue, and writes an audit +
+  // status-log entry. It deliberately does NOT email the customer (internal
+  // correction; the customer already received their letter). No refund/cancel,
+  // documents preserved, provider assignment preserved.
+  const handleMarkBackUnderReview = async () => {
+    setStatusUpdating(true);
+    setStatusMsg("");
+    const ts = new Date().toISOString();
+    const prevStatus = order.status;
+    const prevDoctorStatus = order.doctor_status;
+    const patch: Record<string, string> = { status: "under-review" };
+    if (order.doctor_status === "patient_notified") patch.doctor_status = "in_review";
+    const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
+    if (!error) {
+      updateOrderField(patch as Partial<Order>);
+      setStatusMsg("Order moved back to Under Review");
+      try {
+        await supabase.from("audit_logs").insert({
+          action: "manual_reopen_under_review",
+          object_type: "order",
+          object_id: order.confirmation_id,
+          actor_id: adminProfile.user_id,
+          actor_name: adminProfile.full_name,
+          actor_role: adminProfile.role ?? "admin",
+          description: `Completed order moved back to Under Review by ${adminProfile.full_name}. No refund/cancel; documents preserved.`,
+          old_values: { status: prevStatus, doctor_status: prevDoctorStatus },
+          new_values: { status: "under-review", doctor_status: patch.doctor_status ?? prevDoctorStatus },
+          metadata: {
+            confirmation_id: order.confirmation_id,
+            order_id: order.id,
+            timestamp: ts,
+          },
+        });
+      } catch { /* non-critical */ }
+      try {
+        await supabase.from("order_status_logs").insert({
+          order_id: order.id,
+          confirmation_id: order.confirmation_id,
+          old_status: prevStatus,
+          new_status: "under-review",
+          old_doctor_status: prevDoctorStatus,
+          new_doctor_status: patch.doctor_status ?? prevDoctorStatus,
+          changed_by: adminProfile.full_name,
+          changed_at: ts,
+        });
+      } catch { /* non-critical */ }
+    } else {
+      setStatusMsg("Update failed — check RLS");
+    }
+    setStatusUpdating(false);
+    setTimeout(() => setStatusMsg(""), 4000);
+  };
+
   const handleGhlRefire = async () => {
     setGhlFiring(true);
     setGhlMsg("");
@@ -3189,16 +3246,23 @@ export default function OrderDetailModal({
                       <>
                         <div className="border-t border-gray-100 my-1" role="separator"></div>
                         <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p>
-                        {order.status !== "refunded" && !order.refunded_at && order.doctor_status !== "patient_notified" && order.status !== "archived" && (
+                        {/* THIRTY-DAY-STATE-REVIEW (LIVE mirror 2026-07-10): the
+                            plain forward "Mark Under Review" now shows ONLY for
+                            pre-review paid orders. Hidden for under-review (no more
+                            greyed "Already Under Review"), completed, delivered,
+                            cancelled, refunded and archived. Reopening a completed/
+                            delivered order uses the dedicated handler below (no
+                            customer email; provider kept). */}
+                        {order.status !== "under-review" && order.status !== "completed" && order.status !== "cancelled" && order.status !== "refunded" && !order.refunded_at && order.doctor_status !== "patient_notified" && order.status !== "archived" && (
                           <button
                             type="button"
                             onClick={() => { setShowHeaderMore(false); handleSetStatus("under-review", undefined); }}
-                            disabled={statusUpdating || order.status === "under-review"}
+                            disabled={statusUpdating}
                             role="menuitem"
                             className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-sky-700 hover:bg-sky-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <i className="ri-eye-line"></i>
-                            <span className="flex-1 text-left">{order.status === "under-review" ? "Already Under Review" : "Mark Under Review"}</span>
+                            <span className="flex-1 text-left">Mark Under Review</span>
                           </button>
                         )}
                         {/* 30-DAY-OFFICIAL-LETTER (2026-06-18, LIVE mirror of TEST
@@ -3239,6 +3303,23 @@ export default function OrderDetailModal({
                             {!hasProviderDocs && order.doctor_status !== "patient_notified" && (
                               <span className="text-[10px] text-gray-400 font-normal normal-case">letter needed</span>
                             )}
+                          </button>
+                        )}
+                        {/* OPS-REOPEN-COMPLETED / THIRTY-DAY-STATE-REVIEW (LIVE
+                            mirror 2026-07-10 of TEST ab256b6): "Mark Under Review"
+                            for completed/delivered orders. Hidden for under-review,
+                            cancelled, refunded, archived. Uses handleMarkBackUnderReview
+                            — no customer email, provider preserved, audit + status log. */}
+                        {(order.doctor_status === "patient_notified" || order.status === "completed") && order.status !== "cancelled" && order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
+                          <button
+                            type="button"
+                            onClick={() => { setShowHeaderMore(false); handleMarkBackUnderReview(); }}
+                            disabled={statusUpdating}
+                            role="menuitem"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i className="ri-arrow-go-back-line"></i>
+                            <span className="flex-1 text-left">Mark Under Review</span>
                           </button>
                         )}
                         {/* ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): send a
@@ -4258,22 +4339,41 @@ export default function OrderDetailModal({
                 ) : (
                   /* ── PAID ORDER — full actions ── */
                   <div className="space-y-4">
-                    {/* Group 1: Order management actions */}
-                    {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && (
+                    {/* Group 1: Order management actions.
+                        THIRTY-DAY-STATE-REVIEW (LIVE mirror 2026-07-10): status-aware
+                        "Mark Under Review". Hidden entirely for under-review,
+                        cancelled, refunded and archived. Pre-review paid orders get
+                        the plain forward move (handleSetStatus); completed/delivered
+                        orders get the reopen (handleMarkBackUnderReview — no customer
+                        email, provider kept, audit + status log). */}
+                    {order.status !== "under-review" && order.status !== "cancelled" && order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
                     <div>
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                         <i className="ri-settings-3-line"></i>Order Management
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {/* Mark Under Review */}
-                        <button
-                          type="button"
-                          disabled={statusUpdating}
-                          onClick={() => handleSetStatus("under-review", undefined)}
-                          className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 ${order.status === "under-review" ? "bg-gray-100 border-gray-300 text-gray-500" : "border-sky-200 text-sky-700 bg-sky-50/40 hover:bg-sky-50"}`}
-                        >
-                          <i className="ri-eye-line"></i>Mark Under Review
-                        </button>
+                        {/* Forward move — pre-review paid orders only */}
+                        {order.status !== "completed" && order.doctor_status !== "patient_notified" && (
+                          <button
+                            type="button"
+                            disabled={statusUpdating}
+                            onClick={() => handleSetStatus("under-review", undefined)}
+                            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 border-sky-200 text-sky-700 bg-sky-50/40 hover:bg-sky-50"
+                          >
+                            <i className="ri-eye-line"></i>Mark Under Review
+                          </button>
+                        )}
+                        {/* Reopen — completed/delivered orders back to review */}
+                        {(order.status === "completed" || order.doctor_status === "patient_notified") && (
+                          <button
+                            type="button"
+                            disabled={statusUpdating}
+                            onClick={() => handleMarkBackUnderReview()}
+                            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 border-amber-200 text-amber-700 bg-amber-50/40 hover:bg-amber-50"
+                          >
+                            <i className="ri-arrow-go-back-line"></i>Mark Under Review
+                          </button>
+                        )}
                       </div>
                     </div>
                     )}
