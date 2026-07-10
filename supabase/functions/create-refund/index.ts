@@ -117,6 +117,26 @@ Deno.serve(async (req: Request) => {
   const refundAmountDollars = refund.amount / 100;
   const actorName = profile?.full_name ?? "Admin";
 
+  // ── Determine full-vs-partial from Stripe truth ───────────────────────────
+  // ORDER-PARTIAL-REFUND-STATUS-FIX-001: full/partial is decided by the Stripe
+  // charge (cumulative amount_refunded vs amount + the `refunded` flag), NOT by
+  // order.price — which can differ from the captured amount on coupon-bug orders
+  // (e.g. Desiree PT-MR1HX27H: charged $99, price $59, refunded $40 = PARTIAL).
+  let cumulativeRefundedDollars = refundAmountDollars;
+  let isFullRefund = false;
+  try {
+    const ch = await stripe.charges.retrieve(chargeId);
+    const chAmount = (ch as unknown as { amount?: number; amount_refunded?: number; refunded?: boolean });
+    cumulativeRefundedDollars = (chAmount.amount_refunded ?? 0) / 100;
+    isFullRefund = chAmount.refunded === true ||
+      (typeof chAmount.amount === "number" && (chAmount.amount_refunded ?? 0) >= chAmount.amount);
+  } catch (err) {
+    // Conservative fallback: treat as PARTIAL so we never wrongly flip an order
+    // to fully-refunded. The charge.refunded webhook reconciles authoritatively.
+    console.warn("[create-refund] charge retrieve failed; treating as partial:", err);
+  }
+  const refundStatusValue: "partial" | "full" = isFullRefund ? "full" : "partial";
+
   // ── Update order in DB if confirmationId provided ─────────────────────────
   if (confirmationId) {
     const { data: order } = await adminClient
@@ -126,34 +146,43 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (order) {
-      await adminClient.from("orders").update({
-        status: "refunded",
+      // PARTIAL refund: record the money + classification but PRESERVE the
+      // operational status (never cancel, never flip to 'refunded'). FULL
+      // refund: also set status='refunded'. refund_amount holds the cumulative
+      // refunded total so multiple partials accumulate correctly.
+      const orderUpdate: Record<string, unknown> = {
         refunded_at: new Date().toISOString(),
-        refund_amount: refundAmountDollars,
-      }).eq("id", order.id);
+        refund_amount: cumulativeRefundedDollars,
+        refund_status: refundStatusValue,
+      };
+      if (isFullRefund) orderUpdate.status = "refunded";
+      await adminClient.from("orders").update(orderUpdate).eq("id", order.id);
 
-      // Log status change
-      try {
-        await adminClient.from("order_status_logs").insert({
-          order_id: order.id,
-          confirmation_id: confirmationId,
-          old_status: order.status,
-          new_status: "refunded",
-          changed_by: actorName,
-          changed_at: new Date().toISOString(),
-        });
-      } catch { /* non-critical */ }
+      // Log the status change only when the operational status actually changed.
+      if (isFullRefund) {
+        try {
+          await adminClient.from("order_status_logs").insert({
+            order_id: order.id,
+            confirmation_id: confirmationId,
+            old_status: order.status,
+            new_status: "refunded",
+            changed_by: actorName,
+            changed_at: new Date().toISOString(),
+          });
+        } catch { /* non-critical */ }
+      }
 
-      // Doctor earnings: only void if provider had NOT completed the work
+      // Doctor earnings: only void on a FULL refund where the provider had NOT
+      // completed the work. A partial refund never voids the provider payout.
       const orderWasCompleted = order.doctor_status === "letter_sent" || order.doctor_status === "patient_notified";
-      if (!orderWasCompleted) {
+      if (isFullRefund && !orderWasCompleted) {
         await adminClient.from("doctor_earnings")
           .update({ status: "refunded", notes: `Order refunded by admin (${actorName}). No payout issued.` })
           .eq("confirmation_id", confirmationId)
           .neq("status", "paid");
       }
 
-      console.info(`[create-refund] Order ${confirmationId} marked refunded. Earnings preserved: ${orderWasCompleted}`);
+      console.info(`[create-refund] Order ${confirmationId} refund recorded — ${refundStatusValue} ($${cumulativeRefundedDollars.toFixed(2)} of charge). status_changed=${isFullRefund}, earnings_preserved=${orderWasCompleted}`);
     }
   }
 
@@ -202,6 +231,9 @@ Deno.serve(async (req: Request) => {
     ok: true,
     refund: { id: refund.id, amount: refund.amount, status: refund.status },
     refundAmountDollars,
+    cumulativeRefundedDollars,
+    refundStatus: refundStatusValue,
+    isFullRefund,
     confirmationId: confirmationId ?? null,
     customerNotificationQueued,
   });

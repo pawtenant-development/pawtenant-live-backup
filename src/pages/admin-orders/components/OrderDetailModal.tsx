@@ -18,6 +18,10 @@ import OrderDiscountBreakdown from "./OrderDiscountBreakdown";
 // tracked $40 "Additional Documentation" invoice tied to this order. Approved
 // edit type: additive component mount + one header-menu item.
 import AdditionalDocInvoiceModal from "./AdditionalDocInvoiceModal";
+// ORDER-PARTIAL-REFUND-STATUS-FIX-001 (2026-07-10): isolated mount — shared
+// refund-only modal (partial-capable Stripe refund that does NOT cancel the
+// order). Approved edit type: additive component mount.
+import RefundModal from "./RefundModal";
 import { canDelete } from "../../../lib/adminPermissions";
 // ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
 // reads the same canonical classifier the order list pill (OrderCard) and
@@ -124,6 +128,9 @@ interface Order {
   addon_services?: string[] | null;
   refunded_at?: string | null;
   refund_amount?: number | null;
+  // ORDER-PARTIAL-REFUND-STATUS-FIX-001: 'none' | 'partial' | 'full'. Partial
+  // refunds keep the operational status; only 'full' reads as fully refunded.
+  refund_status?: string | null;
   dispute_id?: string | null;
   dispute_status?: string | null;
   // Read by the disputes section render below (~lines 4008/4011). Optional
@@ -222,7 +229,12 @@ function getModalDisplayStatus(order: Order): { label: string; color: string } {
   if (order.fraud_warning) {
     return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
   }
-  if (order.status === "refunded" || order.refunded_at) {
+  // ORDER-PARTIAL-REFUND-STATUS-FIX-001: only a FULL refund reads as
+  // "Refunded". A partial refund (refund_status='partial') keeps its
+  // operational status here; the partial amount is surfaced in the payment
+  // rail's "Refund Issued" block instead. Legacy rows with refunded_at but no
+  // refund_status are only treated as full when not classified partial.
+  if (order.status === "refunded" || order.refund_status === "full") {
     return { label: "Refunded", color: "bg-red-100 text-red-600" };
   }
   if (order.doctor_status === "patient_notified") {
@@ -2389,6 +2401,9 @@ export default function OrderDetailModal({
   // body-card "Cancel This Order" button still mounts this same modal; we
   // also expose it via the header More dropdown.
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  // ORDER-PARTIAL-REFUND-STATUS-FIX-001: "Refund Only" mounts the shared
+  // RefundModal (partial-capable) WITHOUT the cancel path.
+  const [showRefundOnly, setShowRefundOnly] = useState(false);
   const [cancellingOrder, setCancellingOrder] = useState(false);
   const [cancelNote, setCancelNote] = useState("");
   const [cancelWithRefund, setCancelWithRefund] = useState(false);
@@ -3030,20 +3045,38 @@ export default function OrderDetailModal({
                         Accounts payout resolver keys off doctor_status (not
                         order.status), so the provider payout stays deducted and
                         the refund is deducted — Business Net rule unchanged. */}
+                    {/* ORDER-PARTIAL-REFUND-STATUS-FIX-001: two distinct refund
+                        actions. "Refund Only" issues a Stripe refund WITHOUT
+                        cancelling (order stays active — for over-charge/coupon
+                        corrections). "Refund + Cancel" also cancels + notifies.
+                        Gated on not-fully-refunded so both stay available after
+                        a partial refund. */}
                     {(order.payment_intent_id || order.paid_at) &&
                      order.status !== "refunded" &&
-                     !order.refunded_at &&
+                     order.refund_status !== "full" &&
                      order.status !== "cancelled" && (
-                      <button
-                        type="button"
-                        onClick={() => { setShowHeaderMore(false); setShowCancelConfirm(true); }}
-                        role="menuitem"
-                        title="Refund (full or partial) and cancel this order"
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors border-b border-gray-100"
-                      >
-                        <i className="ri-refund-2-line"></i>
-                        <span className="flex-1 text-left">Refund + Cancel Order</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMore(false); setShowRefundOnly(true); }}
+                          role="menuitem"
+                          title="Issue a Stripe refund (full or partial) WITHOUT cancelling the order"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors border-b border-gray-100"
+                        >
+                          <i className="ri-refund-line"></i>
+                          <span className="flex-1 text-left">Refund Only <span className="text-gray-400 font-normal">(keep order active)</span></span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowHeaderMore(false); setShowCancelConfirm(true); }}
+                          role="menuitem"
+                          title="Refund (full or partial) AND cancel this order"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50 cursor-pointer transition-colors border-b border-gray-100"
+                        >
+                          <i className="ri-refund-2-line"></i>
+                          <span className="flex-1 text-left">Refund + Cancel Order</span>
+                        </button>
+                      </>
                     )}
                     <button
                       type="button"
@@ -3920,7 +3953,9 @@ export default function OrderDetailModal({
                       <div className="w-6 h-6 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
                         <i className="ri-refund-line text-red-600" style={{ fontSize: "12px" }}></i>
                       </div>
-                      <p className="text-xs font-extrabold text-red-600 uppercase tracking-widest">Refund Issued</p>
+                      <p className="text-xs font-extrabold text-red-600 uppercase tracking-widest">
+                        {order.refund_status === "partial" ? "Partial Refund" : "Refund Issued"}
+                      </p>
                     </div>
                     <div className="flex flex-wrap gap-4">
                       {order.refund_amount != null && (
@@ -4406,21 +4441,32 @@ export default function OrderDetailModal({
                          2026-05-22 REFUND-CANCEL-FOLLOWUP-2: same gating as the More-menu entry so the body and the
                          dropdown never disagree. Unpaid leads use Archive/Void in the More-menu Danger zone.
                          PAWTENANT-COMPLETED-ORDER-REFUND-WORKFLOW: completed-order exclusion removed (see More-menu note). ── */}
-                    {(order.payment_intent_id || order.paid_at) && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
+                    {(order.payment_intent_id || order.paid_at) && order.status !== "refunded" && order.refund_status !== "full" && order.status !== "cancelled" && (
                     <div className="border-t border-dashed border-orange-200 mt-1 pt-3">
                       <p className="text-xs text-orange-500 mb-2 flex items-center gap-1 font-semibold">
-                        <i className="ri-refund-2-line"></i>Refund + Cancel
+                        <i className="ri-refund-2-line"></i>Refund
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setShowCancelConfirm(true)}
-                        className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
-                      >
-                        <i className="ri-refund-2-line"></i>Refund + Cancel Order
-                      </button>
-                      <p className="text-xs text-gray-400 mt-1.5 flex items-center gap-1">
-                        <i className="ri-information-line"></i>
-                        Issues a Stripe refund (full or partial), marks the order cancelled, and notifies the customer.
+                      {/* ORDER-PARTIAL-REFUND-STATUS-FIX-001: Refund Only (keeps
+                          the order active) vs Refund + Cancel (also cancels). */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowRefundOnly(true)}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
+                        >
+                          <i className="ri-refund-line"></i>Refund Only
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowCancelConfirm(true)}
+                          className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2.5 border border-orange-200 text-orange-700 hover:bg-orange-50 rounded-lg text-sm font-semibold cursor-pointer transition-colors"
+                        >
+                          <i className="ri-refund-2-line"></i>Refund + Cancel Order
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1.5 flex items-start gap-1">
+                        <i className="ri-information-line mt-0.5"></i>
+                        <span><strong>Refund Only</strong> returns money (full or partial) and keeps the order active. <strong>Refund + Cancel</strong> also cancels the order and notifies the customer.</span>
                       </p>
                       {cancelMsg && (
                         <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${cancelMsg.includes("success") || cancelMsg.includes("cancelled") ? "text-[#3b6ea5]" : cancelMsg.includes("failed") || cancelMsg.includes("Failed") ? "text-red-600" : "text-[#3b6ea5]"}`}>
@@ -6172,6 +6218,38 @@ export default function OrderDetailModal({
             first_name: order.first_name,
           }}
           onClose={() => setShowAddonInvoice(false)}
+        />
+      )}
+      {/* ORDER-PARTIAL-REFUND-STATUS-FIX-001: Refund Only (no cancel). Passes
+          the payment intent so create-refund resolves the Stripe charge and
+          decides full-vs-partial from Stripe truth. A partial refund keeps the
+          order active; only a full refund flips status to 'refunded'. */}
+      {showRefundOnly && (order.payment_intent_id || order.paid_at) && (
+        <RefundModal
+          charge={{
+            id: "",
+            amount: typeof order.price === "number" ? order.price : 0,
+            amount_refunded: order.refund_amount ?? 0,
+            customer_name: fullName || null,
+            customer_email: order.email ?? null,
+            description: order.confirmation_id ?? null,
+            created: order.paid_at ? Math.floor(new Date(order.paid_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
+          }}
+          paymentIntentId={order.payment_intent_id ?? undefined}
+          confirmationId={order.confirmation_id ?? undefined}
+          onClose={() => setShowRefundOnly(false)}
+          onRefunded={(_chargeId, newRefundedAmount) => {
+            // Instant local reflection. Authoritative full-vs-partial +
+            // cumulative total come from the backend + charge.refunded webhook.
+            const priceNum = typeof order.price === "number" ? order.price : null;
+            const isFull = priceNum != null && newRefundedAmount >= priceNum;
+            updateOrderField({
+              refund_amount: newRefundedAmount,
+              refunded_at: new Date().toISOString(),
+              refund_status: isFull ? "full" : "partial",
+              ...(isFull ? { status: "refunded" as Order["status"] } : {}),
+            });
+          }}
         />
       )}
     </div>

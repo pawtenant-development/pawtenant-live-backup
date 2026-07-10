@@ -704,7 +704,11 @@ Deno.serve(async (req: Request) => {
     const charge = event.data.object;
     const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : null;
     const refundedAmountDollars = Math.round(charge.amount_refunded ?? 0) / 100;
-    const isFullRefund = charge.refunded === true;
+    // ORDER-PARTIAL-REFUND-STATUS-FIX-001: full-vs-partial is Stripe truth —
+    // `refunded` flag OR cumulative amount_refunded >= amount. A partial refund
+    // must NOT flip the order to 'refunded' or reverse the ads conversion.
+    const isFullRefund = charge.refunded === true ||
+      (typeof charge.amount === "number" && (charge.amount_refunded ?? 0) >= charge.amount);
 
     if (!piId) { return json({ ok: true, skipped: true, reason: "no_payment_intent" }); }
 
@@ -715,30 +719,52 @@ Deno.serve(async (req: Request) => {
     const orderId = order.id as string;
     const currentStatus = order.status as string;
     const doctorStatus = order.doctor_status as string | null;
+    const refundStatusValue = isFullRefund ? "full" : "partial";
 
-    if (currentStatus === "refunded") { return json({ ok: true, idempotent: true, confirmationId }); }
+    // Targeted re-select of the refund fields (not in the shared select) so
+    // partial-refund webhooks are idempotent (Stripe may resend the same event).
+    const { data: prevRefund } = await supabase.from("orders")
+      .select("refund_amount, refund_status").eq("id", orderId).maybeSingle();
+    const prevRefundAmount = prevRefund && typeof prevRefund.refund_amount === "number" ? prevRefund.refund_amount : null;
+    const prevRefundStatus = (prevRefund?.refund_status as string | null) ?? "none";
+
+    if (
+      (isFullRefund && currentStatus === "refunded") ||
+      (!isFullRefund && prevRefundStatus === "partial" && prevRefundAmount === refundedAmountDollars)
+    ) {
+      return json({ ok: true, idempotent: true, confirmationId });
+    }
 
     const refundedAt = new Date().toISOString();
-    const { error: updateErr } = await supabase.from("orders").update({
-      status: "refunded",
+    // PARTIAL: record money + classification, PRESERVE operational status and
+    // the ads conversion. FULL: flip status to 'refunded' + flag ads adjustment.
+    const orderUpdate: Record<string, unknown> = {
       refunded_at: refundedAt,
       refund_amount: refundedAmountDollars,
-      google_ads_upload_status: "refunded_pending_adjustment",
-    }).eq("id", orderId);
+      refund_status: refundStatusValue,
+    };
+    if (isFullRefund) {
+      orderUpdate.status = "refunded";
+      orderUpdate.google_ads_upload_status = "refunded_pending_adjustment";
+    }
+    const { error: updateErr } = await supabase.from("orders").update(orderUpdate).eq("id", orderId);
     if (updateErr) { return json({ ok: false, error: updateErr.message }, 500); }
 
-    await logStatus(orderId, confirmationId, "refunded", `Refund $${refundedAmountDollars} via Stripe. Full: ${isFullRefund}. PI: ${piId}.`);
+    if (isFullRefund) {
+      await logStatus(orderId, confirmationId, "refunded", `Full refund $${refundedAmountDollars} via Stripe. PI: ${piId}.`);
+    }
 
+    // Void provider earnings only on a FULL refund where work was not completed.
     const orderWasCompleted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
-    if (!orderWasCompleted) {
+    if (isFullRefund && !orderWasCompleted) {
       await supabase.from("doctor_earnings").update({ status: "refunded", notes: `Order refunded via Stripe on ${refundedAt}. Provider had not completed work.` }).eq("confirmation_id", confirmationId).neq("status", "paid");
     }
 
     try {
-      await supabase.from("audit_logs").insert({ action: "order_refunded_via_stripe", object_type: "order", object_id: confirmationId, description: `Order refunded: ${confirmationId}`, metadata: { confirmation_id: confirmationId, order_id: orderId, payment_intent_id: piId, refund_amount: refundedAmountDollars, is_full_refund: isFullRefund, doctor_status_at_refund: doctorStatus ?? "none", earnings_preserved: orderWasCompleted, refunded_at: refundedAt, stripe_event_id: event.id } });
+      await supabase.from("audit_logs").insert({ action: isFullRefund ? "order_refunded_via_stripe" : "order_partial_refund_via_stripe", object_type: "order", object_id: confirmationId, description: `Order ${isFullRefund ? "refunded" : "partially refunded"}: ${confirmationId}`, metadata: { confirmation_id: confirmationId, order_id: orderId, payment_intent_id: piId, refund_amount: refundedAmountDollars, refund_status: refundStatusValue, is_full_refund: isFullRefund, doctor_status_at_refund: doctorStatus ?? "none", earnings_preserved: orderWasCompleted, refunded_at: refundedAt, stripe_event_id: event.id } });
     } catch { /* non-critical */ }
 
-    return json({ ok: true, type: t, confirmationId, refundAmount: refundedAmountDollars, isFullRefund, earningsPreserved: orderWasCompleted });
+    return json({ ok: true, type: t, confirmationId, refundAmount: refundedAmountDollars, refundStatus: refundStatusValue, isFullRefund, earningsPreserved: orderWasCompleted });
   }
 
   // ── checkout.session.completed ────────────────────────────────────────────

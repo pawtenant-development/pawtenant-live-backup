@@ -16,6 +16,10 @@ interface RefundCharge {
 interface RefundModalProps {
   charge: RefundCharge;
   confirmationId?: string | null;
+  // Optional — when the caller only has the payment intent (e.g. the Order
+  // Detail Modal "Refund Only" action) and not a resolved Stripe charge id.
+  // create-refund resolves the charge from the PI. (ORDER-PARTIAL-REFUND-STATUS-FIX-001)
+  paymentIntentId?: string | null;
   onClose: () => void;
   onRefunded: (chargeId: string, newRefundedAmount: number) => void;
 }
@@ -26,7 +30,7 @@ const REASONS = [
   { value: "fraudulent", label: "Fraudulent" },
 ];
 
-export default function RefundModal({ charge, confirmationId, onClose, onRefunded }: RefundModalProps) {
+export default function RefundModal({ charge, confirmationId, paymentIntentId, onClose, onRefunded }: RefundModalProps) {
   const [refundType, setRefundType] = useState<"full" | "partial">("full");
   const [amount, setAmount] = useState<string>("");
   const [reason, setReason] = useState("requested_by_customer");
@@ -52,7 +56,8 @@ export default function RefundModal({ charge, confirmationId, onClose, onRefunde
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          chargeId: charge.id,
+          chargeId: charge.id || undefined,
+          paymentIntentId: paymentIntentId || undefined,
           amount: refundType === "partial" ? partialAmount : undefined,
           reason,
           note: note.trim() || undefined,
