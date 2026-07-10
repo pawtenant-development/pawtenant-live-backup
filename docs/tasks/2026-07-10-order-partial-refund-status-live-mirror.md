@@ -64,5 +64,27 @@ No real Stripe refund issued. No SMS/call. No GHL. No checkout/pricing/provider-
 untouched except the already-verified `charge.refunded` `refunded_pending_adjustment` line. Preserved LIVE
 untracked docs (operating rules, google-ads trackers). Idempotency follow-up (v34/v48) NOT mirrored (separate task).
 
-## OUTCOME
-_filled after commit + browser verify._
+## OUTCOME (2026-07-10) — DONE
+- **Commit:** LIVE `4854c99` (pushed `8462873..4854c99`). Diffstat identical to TEST `d855138`
+  (OrderDetailModal 128 / RefundModal 9 / create-refund 72 / stripe-webhook 48) → faithful mirror.
+- **Migration:** applied LIVE — column `refund_status text NOT NULL default 'none'` + CHECK constraint verified.
+  Backfill: **14 full / 1 partial / 1279 none**; no statuses rewritten. Only mismarked partial = Desiree.
+- **Functions:** `create-refund` **v97** (verify_jwt=true), `stripe-webhook` **v142** (verify_jwt=false).
+- **type-check / build:** 0 new errors (only the 4 known pre-existing LIVE files); build PASS (242 prerender/0, parity OK).
+- **Browser verify (Claude in Chrome as Hamza, no OTP):** logged into pawtenant.com admin. Deploy confirmed
+  live (a transient "Failed to fetch dynamically imported module" = old page referencing replaced chunk hashes;
+  hard-reload fixed it). Desiree PT-MR1HX27H modal opens: header "Refunded" (correct — `status='refunded'`
+  uncorrected), REFUND ISSUED block **$40.00**, provider Stephanie White, $59/Paid. Normal paid order
+  (Adam Maher PT-MRELTXUD, Under Review) More menu shows **BOTH "Refund Only (keep order active)" and
+  "Refund + Cancel Order"** → new UI live. **No refund executed.** Console clean (no errors).
+- **Known cosmetic (identical TEST↔LIVE, NOT a mirror defect):** the payment-rail block shows "Refund Issued"
+  (not "Partial Refund") for a partial because `src/pages/admin-orders/page.tsx` orders query selects
+  `refund_amount` but NOT `refund_status` (confirmed absent in BOTH repos; d855138 didn't add it). The CORE
+  fix still holds — `getModalDisplayStatus` keys "Refunded" off `status`/`refund_status='full'`, so a corrected
+  Desiree (`status='completed'`) will read "Order (Completed)". Follow-up: add `refund_status` to the orders
+  query in both repos to light up the "Partial Refund" label.
+- **Desiree correction: NOT RUN** (owner-gated; needs Stripe charge confirmation — no Stripe read tool this
+  session). Ready-to-run SQL above; dry-run confirms it matches exactly 1 row. DB `refund_amount=40` (< captured
+  $99, price $59) + `doctor_status=patient_notified` corroborate a partial on a completed order.
+- **Idempotency follow-up (TEST `73e78c5`, v34/v48) NOT included** — separate LIVE mirror (verify the
+  `log_order_status_change` trigger exists on LIVE first).
