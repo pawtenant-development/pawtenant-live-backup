@@ -8,7 +8,10 @@
  * - Logs the rejection reason in audit_logs + order_status_logs
  * - Sends in-portal notification to ALL admin users
  * - Sends in-portal confirmation to the rejecting provider
- * - Does NOT notify the customer
+ * - Sends an INTERNAL/ADMIN-ONLY email — ONLY when the "provider_rejected_order"
+ *   event is enabled in the Admin Notification routing settings, and ONLY to the
+ *   recipients that routing resolves (specific > group > global fallback).
+ * - Does NOT notify the customer (no customer email, no customer-facing rejection).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -16,6 +19,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? SUPABASE_SERVICE_ROLE_KEY;
+
+const ADMIN_PORTAL_URL = "https://pawtenant.com/admin-orders?tab=orders";
+const FROM_ADDRESS = "PawTenant Admin <noreply@pawtenant.com>";
+const FALLBACK_ADMIN_EMAIL = "eservices.dm@gmail.com";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +34,120 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function escapeHtml(value = ""): string {
+  return String(value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// ── Resolve INTERNAL/admin recipients for the "provider_rejected_order" event ──
+// Uses the existing notification routing settings (get-admin-notif-recipients):
+// specific-per-notification > group ("Providers") > global fallback. Returns
+// enabled=false when the admin turned this event off, in which case no email sends.
+// Recipients are ALWAYS admin/internal addresses — the customer can never appear here.
+async function getAdminNotifRecipients(
+  notificationKey: string,
+): Promise<{ enabled: boolean; recipients: string[] }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/get-admin-notif-recipients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+      body: JSON.stringify({ notificationKey }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { enabled: boolean; recipients: string[]; source?: string };
+    console.log(`[provider-reject-order] recipients for "${notificationKey}": [${data.recipients.join(", ")}] (source: ${data.source ?? "?"}, enabled: ${data.enabled})`);
+    return { enabled: data.enabled, recipients: data.recipients };
+  } catch (err) {
+    // Fail-safe: fall back to the single admin catchall so a routing outage never
+    // silently drops the internal alert. Still admin-only — never the customer.
+    console.warn(`[provider-reject-order] getAdminNotifRecipients failed:`, err instanceof Error ? err.message : String(err));
+    return { enabled: true, recipients: [FALLBACK_ADMIN_EMAIL] };
+  }
+}
+
+async function sendAdminRejectionEmail(opts: {
+  to: string;
+  confirmationId: string;
+  patientName: string;
+  patientEmail: string;
+  providerName: string;
+  reason: string;
+  letterType: string;
+}): Promise<boolean> {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) { console.error("[provider-reject-order] RESEND_API_KEY not set — skipping admin email"); return false; }
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;max-width:560px;width:100%">
+        <tr><td style="background:#b91c1c;padding:22px 32px">
+          <p style="margin:0;color:rgba(255,255,255,0.82);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Internal · Action Required</p>
+          <h1 style="margin:6px 0 0;color:#ffffff;font-size:21px;font-weight:800">Provider Rejected an Order</h1>
+        </td></tr>
+        <tr><td style="padding:26px 32px">
+          <p style="margin:0 0 20px;color:#374151;font-size:14px;line-height:1.6">
+            A provider has rejected or returned this order for admin review. The order has been
+            unassigned and set back to processing so it can be reassigned. <strong>Please open the
+            admin portal and review the order before contacting the customer.</strong>
+            The customer has <strong>not</strong> been notified of any rejection.
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:18px">
+            <tr><td style="padding:16px 20px">
+              <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px">Order</p>
+              <p style="margin:0 0 12px;font-size:16px;font-weight:800;color:#111827">${escapeHtml(opts.confirmationId)}${opts.letterType ? ` &middot; ${escapeHtml(opts.letterType.toUpperCase())}` : ""}</p>
+              <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px">Customer</p>
+              <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#111827">${escapeHtml(opts.patientName)}${opts.patientEmail ? ` &lt;${escapeHtml(opts.patientEmail)}&gt;` : ""}</p>
+              <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px">Rejected by provider</p>
+              <p style="margin:0;font-size:14px;font-weight:600;color:#111827">${escapeHtml(opts.providerName)}</p>
+            </td></tr>
+          </table>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;margin-bottom:22px">
+            <tr><td style="padding:16px 20px">
+              <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px">Reason (internal — provider stated)</p>
+              <p style="margin:0;font-size:14px;color:#374151;font-style:italic">"${escapeHtml(opts.reason)}"</p>
+            </td></tr>
+          </table>
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:22px"><tr><td align="center">
+            <a href="${ADMIN_PORTAL_URL}" style="display:inline-block;background:#1a5c4f;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;padding:13px 30px;border-radius:10px">Review & Reassign in Admin Portal →</a>
+          </td></tr></table>
+          <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;text-align:center">Internal PawTenant admin notification. Do not forward to the customer.</p>
+        </td></tr>
+        <tr><td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:14px 32px;text-align:center">
+          <p style="margin:0;color:#9ca3af;font-size:11px">PawTenant Admin System &bull; Automated internal alert</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: FROM_ADDRESS,
+        to: [opts.to],
+        subject: `⚠️ Provider rejected order ${opts.confirmationId}`,
+        html,
+        tags: [{ name: "email_type", value: "provider_rejected_admin_notification" }],
+      }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      console.error(`[provider-reject-order] Resend error ${res.status}: ${errBody.slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[provider-reject-order] Resend fetch error:", err instanceof Error ? err.message : String(err));
+    return false;
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -237,6 +358,41 @@ Deno.serve(async (req: Request) => {
       console.error("[provider-reject-order] Shared note error:", noteErr);
     }
 
+    // ── Internal/admin EMAIL — routing-gated, admin-only, never the customer ──
+    // Sent only when the "provider_rejected_order" event is ENABLED in the Admin
+    // Notification routing settings, and only to the recipients routing resolves
+    // (specific > group "Providers" > global fallback). Non-fatal: a mail failure
+    // never breaks the rejection itself.
+    let adminEmailSent = 0;
+    let adminEmailEnabled = false;
+    try {
+      const { enabled, recipients } = await getAdminNotifRecipients("provider_rejected_order");
+      adminEmailEnabled = enabled;
+      if (enabled && recipients.length > 0) {
+        const results = await Promise.allSettled(
+          recipients.map((to) =>
+            sendAdminRejectionEmail({
+              to,
+              confirmationId,
+              patientName,
+              patientEmail: order.email ?? "",
+              providerName: profile.full_name,
+              reason: rejectionReason.trim(),
+              letterType: order.letter_type ?? "",
+            })
+          ),
+        );
+        adminEmailSent = results.filter((r) => r.status === "fulfilled" && r.value).length;
+        console.log(`[provider-reject-order] ✓ Internal admin email sent: ${adminEmailSent}/${recipients.length}`);
+      } else if (!enabled) {
+        console.log(`[provider-reject-order] provider_rejected_order notification disabled — no admin email sent`);
+      } else {
+        console.log(`[provider-reject-order] No admin recipients configured — no admin email sent`);
+      }
+    } catch (emailErr) {
+      console.error("[provider-reject-order] Admin email error:", emailErr instanceof Error ? emailErr.message : String(emailErr));
+    }
+
     console.log(`[provider-reject-order] ✓ Order ${confirmationId} fully rejected by ${profile.full_name}`);
 
     return json({
@@ -244,6 +400,7 @@ Deno.serve(async (req: Request) => {
       message: "Order rejected. Admin has been notified and will reassign it.",
       confirmationId,
       rejectedAt,
+      adminEmail: { enabled: adminEmailEnabled, sent: adminEmailSent },
     });
 
   } catch (err: unknown) {
