@@ -54,4 +54,4 @@ LIVE backend/function mirror only. No real Stripe refund. No SMS/call. No GHL. N
 change. No secrets. Ads code touched only inside the already-verified refund blocks. Preserved LIVE untracked docs.
 
 ## Commit
-LIVE `<pending>`.
+LIVE `4853042` (pushed `37e68be..4853042`).
