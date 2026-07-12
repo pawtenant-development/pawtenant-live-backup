@@ -10,6 +10,12 @@ interface Props {
   label?: string;
   /** Optional remix-icon class for the leading icon. */
   icon?: string;
+  /**
+   * Accent shade. "default" keeps the site-wide amber-orange used on every
+   * existing page (unchanged). "bold" is the homepage CRO Apply-Now orange
+   * (orange-500/600) — opt-in so no other route's sticky bar changes.
+   */
+  variant?: "default" | "bold";
 }
 
 /**
@@ -27,6 +33,7 @@ export default function MobileStickyApplyCTA({
   to = "/assessment",
   label = "Get Your ESA Letter — From $109",
   icon = "ri-file-text-line",
+  variant = "default",
 }: Props) {
   const [visible, setVisible] = useState(false);
 
@@ -44,6 +51,14 @@ export default function MobileStickyApplyCTA({
   // Inline styles for the dynamic transform/opacity so Tailwind's JIT
   // can't miss any of these utilities in production builds. The static
   // utilities (md:hidden, fixed, bottom-0, etc.) stay in className.
+  // Accent shade. Default branch is character-for-character the original
+  // amber-orange treatment, so every existing caller renders identically;
+  // only the homepage opts into "bold" (Apply-Now orange-500).
+  const accent =
+    variant === "bold"
+      ? "bg-orange-500 hover:bg-orange-600 shadow-orange-500/20"
+      : "bg-orange-400 hover:bg-orange-500 shadow-orange-400/20";
+
   return (
     <div
       className="md:hidden fixed bottom-0 left-0 right-0 z-[9999] bg-white border-t border-gray-200 px-4 pt-3 pb-[max(16px,env(safe-area-inset-bottom,16px))]"
@@ -58,7 +73,7 @@ export default function MobileStickyApplyCTA({
       <Link
         to={to}
         tabIndex={visible ? 0 : -1}
-        className="whitespace-nowrap flex items-center justify-center gap-2 w-full py-3.5 bg-orange-400 text-white font-bold text-sm rounded-md hover:bg-orange-500 transition-colors cursor-pointer shadow-md shadow-orange-400/20"
+        className={`whitespace-nowrap flex items-center justify-center gap-2 w-full py-3.5 text-white font-bold text-sm rounded-md transition-colors cursor-pointer shadow-md ${accent}`}
       >
         <i className={icon}></i>
         {label}

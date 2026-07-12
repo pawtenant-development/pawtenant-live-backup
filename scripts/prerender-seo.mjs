@@ -210,27 +210,33 @@ html,body{margin:0;padding:0}
 .pt-h-bg{position:absolute;inset:0}
 .pt-h-bg picture{display:block;width:100%;height:100%}
 .pt-h-bg img{width:100%;height:100%;object-fit:cover;object-position:center;opacity:.8}
-.pt-h-ov{position:absolute;inset:0;background:linear-gradient(to right,rgba(17,24,39,.85),rgba(17,24,39,.65),rgba(17,24,39,.25))}
+.pt-h-ov{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(17,24,39,.70),rgba(17,24,39,.60),rgba(17,24,39,.75))}
 .pt-h-wrap{position:relative;z-index:10;width:100%;max-width:80rem;margin:0 auto;padding:5rem 1.25rem;box-sizing:border-box}
-.pt-h-inner{max-width:42rem}
-.pt-h-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(249,115,22,.2);border:1px solid rgba(251,146,60,.4);color:#fdba74;font-size:.75rem;font-weight:600;padding:.375rem .75rem;border-radius:9999px;margin-bottom:1.25rem}
-.pt-h-h1{font-size:1.875rem;line-height:1.15;font-weight:800;color:#fff;margin:0 0 1.25rem}
+.pt-h-inner{max-width:42rem;margin:0 auto;text-align:center}
+.pt-h-rating{display:flex;align-items:center;justify-content:center;gap:.625rem;margin-bottom:1.25rem}
+.pt-h-rating .pt-h-stars{color:#fbbf24;font-size:.9375rem;letter-spacing:2px}
+.pt-h-rating span{color:#fff;font-size:.84375rem;font-weight:700}
+.pt-h-h1{font-family:'Source Serif 4',Georgia,'Times New Roman',serif;font-size:2.125rem;line-height:1.15;font-weight:600;color:#fff;margin:0 0 1.25rem}
 .pt-h-h1 span{color:#fb923c}
+.pt-h-h1 em{font-style:normal}
 .pt-h-br{display:none}
-.pt-h-sub{color:#e5e7eb;font-size:1rem;line-height:1.6;margin:0 0 1.75rem;max-width:36rem}
-.pt-h-pill{display:inline-flex;align-items:center;gap:.625rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:.625rem 1rem;border-radius:9999px;margin-bottom:1.75rem}
+.pt-h-price{color:#f3f4f6;font-size:1.0625rem;margin:0 0 1.75rem}
+.pt-h-price strong{font-family:'Source Serif 4',Georgia,serif;color:#fff;font-weight:700;font-size:1.3125rem}
+.pt-h-cta{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;width:100%;box-sizing:border-box;background:#f97316;color:#fff;font-weight:800;font-size:1rem;padding:1rem 2rem;border-radius:.375rem;text-decoration:none;box-shadow:0 10px 15px -3px rgba(249,115,22,.3)}
+.pt-h-refund{color:rgba(255,255,255,.9);font-size:.8125rem;font-weight:600;margin:.75rem 0 0}
+.pt-h-refund b{color:#6ee7b7;font-weight:800}
+.pt-h-pill{display:inline-flex;align-items:center;gap:.625rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:.625rem 1rem;border-radius:9999px;margin-top:1.75rem}
 .pt-h-pill span{color:#fff;font-size:.75rem;font-weight:600;white-space:nowrap}
-.pt-h-cta{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;width:100%;box-sizing:border-box;background:#fb923c;color:#fff;font-weight:700;font-size:1rem;padding:1rem 2rem;border-radius:.375rem;text-decoration:none;box-shadow:0 10px 15px -3px rgba(251,146,60,.25)}
-@media(min-width:640px){.pt-h-wrap{padding:7rem 1.25rem}.pt-h-h1{font-size:2.25rem}.pt-h-br{display:block}.pt-h-sub{font-size:1.125rem}.pt-h-cta{width:auto;font-size:.875rem;padding:.875rem 2rem}}
+@media(min-width:640px){.pt-h-wrap{padding:7rem 1.25rem}.pt-h-h1{font-size:2.25rem}.pt-h-h1 em{font-style:italic}.pt-h-br{display:block}.pt-h-price{font-size:1.125rem}.pt-h-price strong{font-size:1.4375rem}.pt-h-cta{width:auto;min-width:260px}}
 @media(min-width:768px){.pt-h-wrap{padding:8rem 1.25rem}}
-@media(min-width:1024px){.pt-h-h1{font-size:3rem}}
+@media(min-width:1024px){.pt-h-h1{font-size:3.375rem;line-height:1.12}}
 </style>`;
 
 // Static, self-styled above-the-fold hero (uses the pt-h-* inline CSS above,
 // NOT Tailwind). The <img> is the same preloaded WebP the React hero uses and
 // the <h1> is the LCP text element. Below-the-fold is rendered by React after
 // mount. Copy mirrors HeroSection.tsx exactly so the React re-render is a
-// no-op visually.
+// no-op visually. (CRO redesign 2026-07-11 — HOMEPAGE-CRO-REDESIGN-TEST-IMPLEMENT-001.)
 const HOME_HERO_SKELETON = `<section class="pt-h-hero" id="get-started">
   <div class="pt-h-bg">
     <picture>
@@ -242,11 +248,12 @@ const HOME_HERO_SKELETON = `<section class="pt-h-hero" id="get-started">
   </div>
   <div class="pt-h-wrap">
     <div class="pt-h-inner">
-      <div class="pt-h-badge">HIPAA Compliant</div>
-      <h1 class="pt-h-h1">Get an <span>ESA Letter</span> Online<br class="pt-h-br" /> Fast, Simple &amp; Stress Free</h1>
-      <p class="pt-h-sub">Get your ESA letter online from licensed mental health professionals &mdash; accepted for housing nationwide under the Fair Housing Act. No waiting rooms, no hassle.</p>
-      <div class="pt-h-pill"><span>Serving all 50 US states</span></div>
-      <a class="pt-h-cta" href="/assessment">Get Your ESA Letter Now</a>
+      <div class="pt-h-rating"><span class="pt-h-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span><span>4.9 &middot; Trusted by 15,000+ pet owners</span></div>
+      <h1 class="pt-h-h1">Get an <span>ESA Letter</span> Online<br class="pt-h-br" /> <em>Your Landlord Can Verify</em></h1>
+      <p class="pt-h-price">Start for as low as <strong>$32.25</strong></p>
+      <a class="pt-h-cta" href="/assessment">Check If You Qualify</a>
+      <p class="pt-h-refund"><b>&#10003;</b> Full refund if you don&rsquo;t qualify</p>
+      <div><div class="pt-h-pill"><span>Serving all 50 US states</span></div></div>
     </div>
   </div>
 </section>`;

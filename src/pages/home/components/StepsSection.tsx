@@ -1,35 +1,80 @@
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 
-/*
- * 2026-07-04 compact-steps pass.
- *
- * Replaced the three heavy "artifact mockup" cards (assessment-question
- * mockup, provider-review mockup, embedded sample-letter image) with a clean,
- * icon-based 3-step section. Goal: shorter vertical height, easier to scan on
- * one screen, more premium. Desktop = 3-up cards on a soft connector line;
- * mobile = stacked cards with a chevron connector.
- *
- * H2 wording + section ID #how-it-works preserved (HeroSection deep-links to
- * this anchor). Compliance-safe copy: "reviewed by a licensed provider",
+/**
+ * StepsSection — CRO redesign 2026-07-11 (HOMEPAGE-CRO-REDESIGN-TEST-IMPLEMENT-001).
+ * 3 steps with large circular illustrated icons (owner reference: Pettable),
+ * "3-minute assessment" wording, honest "approval is never automatic" line.
+ * H2 wording preserved verbatim for SEO: "Get Your ESA Letter in 3 Simple Steps".
+ * Section ID #how-it-works preserved (in-page anchors deep-link here).
+ * Icons are inline SVGs (self-contained — avoids regenerating the self-hosted
+ * Remix Icon subset). Compliance-safe copy: "reviewed by a licensed provider",
  * "if approved", "refund if you don't qualify" — no guaranteed-approval,
  * government-approved, or registry claims.
  */
 
-const STEPS = [
+const FONT_DISPLAY = { fontFamily: '"Source Serif 4", Georgia, "Times New Roman", serif' };
+
+function StepIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative w-24 h-24 mx-auto mb-5">
+      {/* soft organic blob behind the ring */}
+      <div
+        aria-hidden
+        className="absolute bg-[#FDF0E3]"
+        style={{ inset: "10px -6px -4px 10px", borderRadius: "58% 42% 55% 45%/50% 58% 42% 50%" }}
+      />
+      <div className="relative w-24 h-24 rounded-full bg-white border-[1.5px] border-[#231F1A] flex items-center justify-center text-[#231F1A]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const steps = [
   {
-    icon: "ri-survey-line",
-    title: "Complete the Assessment",
-    desc: "Quick, secure questions about your needs and your animal — about 5 minutes, all online.",
+    num: 1,
+    title: "3-minute assessment",
+    text: "Answer a few questions about your ESA needs. Free to start — you only pay if you choose to continue.",
+    meta: "≈ 3 minutes",
+    metaIcon: "ri-time-line",
+    icon: (
+      <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="5" y="4" width="14" height="17" rx="2" />
+        <path d="M9 4.5V3h6v1.5M9 10h6M9 13.5h6M9 17h3.5" />
+        <circle cx="16.5" cy="17.5" r="3.4" fill="#EDF4F0" stroke="#3F7061" />
+        <path d="M15.1 17.5l1 1 1.8-1.9" stroke="#3F7061" />
+      </svg>
+    ),
   },
   {
-    icon: "ri-shield-check-line",
-    title: "Licensed Provider Review",
-    desc: "A licensed provider reviews your information for eligibility in your state.",
+    num: 2,
+    title: "Licensed clinician review",
+    text: "A provider licensed in your state evaluates your case. This is a real clinical review — approval is never automatic.",
+    meta: "Licensed in your state",
+    metaIcon: "ri-shield-check-line",
+    icon: (
+      <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="9" r="3.4" />
+        <path d="M5.5 20c.9-3.2 3.4-4.8 6.5-4.8s5.6 1.6 6.5 4.8" />
+        <path d="M17.5 5.5l1.2-1.2M19.5 9h1.7" stroke="#3F7061" />
+      </svg>
+    ),
   },
   {
-    icon: "ri-file-download-line",
-    title: "Receive Your Letter",
-    desc: "If approved, your PDF letter is delivered online with landlord-ready verification details.",
+    num: 3,
+    title: "Receive your verifiable letter",
+    text: "If approved, your signed PDF arrives — within 24 hours in most states — ready to hand to your landlord.",
+    meta: "QR-verifiable PDF",
+    metaIcon: "ri-qr-code-line",
+    icon: (
+      <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 3.5h9l3.5 3.5v13.5h-12.5V3.5z" />
+        <path d="M15 3.5V7h3.5" />
+        <path d="M9 12h6M9 15h6" />
+        <circle cx="12" cy="19.2" r="2.6" fill="#EDF4F0" stroke="#3F7061" />
+        <path d="M11 19.2l.8.8 1.4-1.5" stroke="#3F7061" />
+      </svg>
+    ),
   },
 ];
 
@@ -37,66 +82,57 @@ export default function StepsSection() {
   const { withAttribution } = useAttributionParams();
 
   return (
-    <section id="how-it-works" className="py-12 sm:py-16 bg-[#f8f7f4]">
-      <div className="max-w-5xl mx-auto px-5 sm:px-6">
-        {/* Header */}
-        <div className="text-center mb-8 sm:mb-10">
-          <p className="text-[#4A8472] text-[12px] sm:text-sm font-semibold tracking-widest uppercase mb-2">Simple Process</p>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-tight">
-            Get Your <span className="text-orange-500">ESA Letter</span> in 3 Simple Steps
-          </h2>
-          <p className="text-gray-500 mt-2.5 max-w-lg mx-auto text-[13.5px] sm:text-sm leading-relaxed">
-            A streamlined path from a quick assessment to a landlord-ready letter — no waiting rooms, no in-person visits.
+    <section id="how-it-works" className="py-14 sm:py-20 bg-[#FDFBF7]">
+      <div className="max-w-7xl mx-auto px-5 sm:px-6">
+        <div className="text-center mb-10 sm:mb-12">
+          <p className="text-[#6B6359] text-xs sm:text-sm font-extrabold tracking-widest uppercase mb-2.5">
+            Simple Process
           </p>
+          <h2
+            className="text-[26px] sm:text-4xl font-semibold text-[#231F1A] leading-tight"
+            style={FONT_DISPLAY}
+          >
+            Get Your ESA Letter in 3 Simple Steps
+          </h2>
         </div>
 
-        {/* Steps — compact icon cards. Desktop: 3-up on a soft connector line.
-            Mobile: stacked with a chevron connector between cards. */}
-        <div className="relative">
-          <div
-            aria-hidden
-            className="hidden md:block absolute top-[92px] left-16 right-16 h-px bg-gradient-to-r from-[#4A8472]/0 via-[#4A8472]/30 to-[#4A8472]/0 pointer-events-none"
-          />
-
-          <ol className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 relative">
-            {STEPS.map((step, i) => (
-              <li key={step.title} className="relative">
-                <div className="relative z-10 h-full bg-white border border-gray-200 rounded-2xl px-6 py-7 text-center flex flex-col items-center shadow-[0_2px_8px_rgba(15,23,42,0.04)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.07)] transition-shadow">
-                  {/* Icon circle with step-number chip */}
-                  <div className="relative mb-4">
-                    <div className="w-14 h-14 rounded-2xl bg-[#4A8472]/10 flex items-center justify-center">
-                      <i className={`${step.icon} text-[#4A8472] text-2xl`}></i>
-                    </div>
-                    <span className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-orange-500 text-white text-[11px] font-bold flex items-center justify-center shadow-sm">
-                      {i + 1}
-                    </span>
-                  </div>
-                  <h3 className="text-[15px] font-bold text-gray-900 mb-1.5">{step.title}</h3>
-                  <p className="text-[13px] text-gray-500 leading-relaxed">{step.desc}</p>
-                </div>
-
-                {/* Mobile-only chevron connector under each card except the last */}
-                {i < STEPS.length - 1 && (
-                  <div aria-hidden className="md:hidden flex items-center justify-center mt-2 mb-1 text-[#4A8472]">
-                    <i className="ri-arrow-down-s-line text-2xl leading-none -my-2"></i>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          {steps.map((s) => (
+            <div
+              key={s.num}
+              className="relative bg-white border border-[#EAE3D7] rounded-2xl px-6 py-8 sm:px-8 sm:py-9 text-center shadow-[0_1px_2px_rgba(35,31,26,0.05),0_10px_30px_-14px_rgba(35,31,26,0.14)]"
+            >
+              <div className="relative">
+                <span
+                  className="absolute left-1/2 -translate-x-[60px] -top-1 z-10 w-7 h-7 rounded-full bg-[#3F7061] text-white text-[13.5px] font-bold flex items-center justify-center"
+                  style={FONT_DISPLAY}
+                  aria-hidden
+                >
+                  {s.num}
+                </span>
+                <StepIcon>{s.icon}</StepIcon>
+              </div>
+              <h3 className="text-[17.5px] font-extrabold text-[#231F1A] mb-2">{s.title}</h3>
+              <p className="text-sm text-[#6B6359] leading-relaxed max-w-[280px] mx-auto">{s.text}</p>
+              <p className="inline-flex items-center gap-1.5 mt-3.5 text-xs font-extrabold text-[#3F7061]">
+                <i className={s.metaIcon} aria-hidden></i>
+                {s.meta}
+              </p>
+            </div>
+          ))}
         </div>
 
-        {/* CTA + trust note */}
-        <div className="text-center mt-8 sm:mt-10">
+        <div className="text-center mt-9 sm:mt-10">
           <a
             href={withAttribution("/assessment")}
-            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 sm:px-8 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer shadow-[0_4px_12px_rgba(249,115,22,0.30)] sm:shadow-none"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 bg-orange-500 text-white font-extrabold text-base rounded-md hover:bg-orange-600 transition-colors cursor-pointer shadow-lg shadow-orange-500/25"
           >
-            Start Your ESA Letter Online
-            <i className="ri-arrow-right-line"></i>
+            Check If You Qualify
+            <i className="ri-arrow-right-line" aria-hidden></i>
           </a>
-          <p className="text-[12px] text-gray-500 mt-3">
-            ≈ 5 minutes · Reviewed by a licensed provider · 100% refund if you don&apos;t qualify.
+          <p className="text-[#6B6359] text-[13px] font-semibold mt-3 flex items-center justify-center gap-1.5">
+            <i className="ri-checkbox-circle-fill text-[#4A8472]" aria-hidden></i>
+            Full refund if you don&rsquo;t qualify
           </p>
         </div>
       </div>

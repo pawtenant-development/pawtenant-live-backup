@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from "react";
-import { Link } from "react-router-dom";
 import { DOCTORS } from "../../../mocks/doctors";
 import { useDynamicDoctors } from "../../../hooks/useDynamicDoctors";
 import type { Doctor } from "../../../mocks/doctors";
@@ -130,19 +129,24 @@ export default function DoctorsSection() {
   };
 
   return (
-    <section ref={sectionRef} className="py-12 sm:py-20 bg-[#f8f7f4]">
+    <section ref={sectionRef} className="py-12 sm:py-20 bg-[#FDFBF7]">
       <div className="max-w-7xl mx-auto px-5 sm:px-6">
-        {/* Header */}
+        {/* Header — CRO redesign 2026-07-11: providers shown as credibility
+            (checkable credentials), not a mid-funnel choice; per-card CTAs
+            removed so the assessment stays the single conversion path. */}
         <div className="flex items-end justify-between mb-8 sm:mb-12 flex-wrap gap-4">
           <div className="max-w-xl">
-            <span className="inline-block px-3 sm:px-4 py-1 sm:py-1.5 bg-orange-100 text-orange-600 text-[11px] sm:text-xs font-semibold rounded-full uppercase tracking-widest mb-3 sm:mb-4">
-              Licensed Providers
-            </span>
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-gray-900 mb-2 sm:mb-3 leading-tight">
-              Choose Your <span className="text-orange-500">Provider</span>
+            <p className="text-[#4A8472] text-xs sm:text-sm font-extrabold tracking-widest uppercase mb-2.5">
+              Real Clinicians
+            </p>
+            <h2
+              className="text-[26px] sm:text-4xl font-semibold text-[#231F1A] mb-2 sm:mb-3 leading-tight"
+              style={{ fontFamily: '"Source Serif 4", Georgia, "Times New Roman", serif' }}
+            >
+              Meet the Licensed Professionals
             </h2>
-            <p className="text-gray-500 text-[14px] sm:text-base leading-relaxed">
-              Select the licensed mental health professional you&apos;d like to work with. Availability depends on the states where the provider is currently licensed.
+            <p className="text-[#6B6359] text-[14px] sm:text-base leading-relaxed">
+              Every letter is reviewed and signed by a licensed mental health professional — with a public license record you can check yourself.
             </p>
           </div>
           {/* Scroll controls */}
@@ -192,17 +196,13 @@ export default function DoctorsSection() {
                   <div className="h-2 w-full bg-gray-100 rounded mb-1" />
                   <div className="h-2 w-full bg-gray-100 rounded mb-1" />
                   <div className="h-2 w-3/4 bg-gray-100 rounded mb-5" />
-                  <div className="w-full mb-5">
+                  <div className="w-full mt-auto">
                     <div className="h-2 w-16 bg-gray-100 rounded mb-2" />
                     <div className="flex gap-1.5">
                       <div className="h-5 w-10 bg-gray-100 rounded-full" />
                       <div className="h-5 w-10 bg-gray-100 rounded-full" />
                       <div className="h-5 w-10 bg-gray-100 rounded-full" />
                     </div>
-                  </div>
-                  <div className="mt-auto w-full flex flex-col gap-2">
-                    <div className="h-9 w-full bg-gray-200 rounded-xl" />
-                    <div className="h-9 w-full bg-gray-100 rounded-xl" />
                   </div>
                 </div>
               ))
@@ -269,40 +269,21 @@ export default function DoctorsSection() {
                       {doctor.title} — {doctor.role}
                     </p>
 
-                    {/* Bio */}
-                    <p className="text-gray-500 text-xs leading-relaxed mb-5 line-clamp-3">{doctor.bio}</p>
-
-                    {/* Licensed In */}
-                    <div className="w-full text-left mb-5">
-                      <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2">Licensed In</p>
+                    {/* Licensed In — credibility, no per-card conversion forks. */}
+                    <div className="w-full text-left mt-auto">
+                      <p className="text-[#B5AC9F] text-xs font-bold uppercase tracking-widest mb-2">Licensed In</p>
                       <div className="flex flex-wrap gap-1.5">
                         {visibleStates.map((state) => (
-                          <span key={state} className="px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-gray-600 text-xs font-medium">
+                          <span key={state} className="px-2 py-0.5 rounded-full bg-[#F7F2E9] border border-[#EAE3D7] text-[#4A443C] text-xs font-medium">
                             {state}
                           </span>
                         ))}
                         {extraCount > 0 && (
-                          <span className="px-2 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-600 text-xs font-medium">
+                          <span className="px-2 py-0.5 rounded-full bg-[#EDF4F0] border border-[#D6E5DF] text-[#3F7061] text-xs font-semibold">
                             +{extraCount} more
                           </span>
                         )}
                       </div>
-                    </div>
-
-                    {/* CTAs */}
-                    <div className="mt-auto w-full flex flex-col gap-2">
-                      <Link
-                        to={`/doctors/${doctor.id}`}
-                        className="whitespace-nowrap w-full py-2.5 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-gray-700 transition-colors cursor-pointer text-center block"
-                      >
-                        View Profile
-                      </Link>
-                      <Link
-                        to={`/assessment?doctor=${doctor.id}`}
-                        className="whitespace-nowrap w-full py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-colors cursor-pointer text-center block"
-                      >
-                        Book Consultation
-                      </Link>
                     </div>
                   </div>
                 );

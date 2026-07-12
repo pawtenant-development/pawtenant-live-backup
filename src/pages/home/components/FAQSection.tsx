@@ -1,77 +1,58 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+
+/**
+ * FAQSection — CRO redesign 2026-07-11 (HOMEPAGE-CRO-REDESIGN-TEST-IMPLEMENT-001).
+ *
+ * Pruned from 18 to 9 questions (removed the stale "Basic vs Premium packages"
+ * answer — those packages no longer exist — plus duplicates). Answers reuse the
+ * existing approved copy; the cost answer now points to /esa-letter-cost
+ * (owner decision: pricing lives on the cost page only) and a new
+ * landlord-refusal question names the concrete support deliverables.
+ * FAQPage JSON-LD injection pattern preserved (useEffect — avoids React 19
+ * double-hoisting / Google "Duplicate FAQPage" error).
+ * Includes the calm HUD-2026 strip (replaces the old HudUpdateSection whose
+ * primary button exited to a blog post mid-funnel).
+ */
+
+const FONT_DISPLAY = { fontFamily: '"Source Serif 4", Georgia, "Times New Roman", serif' };
 
 const faqs = [
   {
-    q: "What is an Emotional Support Animal (ESA)?",
-    a: "An Emotional Support Animal (ESA) is a companion animal that provides therapeutic emotional support to individuals with mental health conditions. Unlike service animals, ESAs do not require special training. Their presence alone provides comfort and support for conditions like anxiety, depression, PTSD, and more.",
-  },
-  {
-    q: "Who qualifies for an ESA letter?",
-    a: "Anyone diagnosed with a mental or emotional disability by a licensed mental health professional may qualify for an ESA letter. Common qualifying conditions include anxiety disorders, depression, PTSD, phobias, and other mental health conditions. Our assessment helps determine your eligibility.",
-  },
-  {
-    q: "How long does it take to receive my ESA letter?",
-    a: "Most clients receive their ESA letter within 24 hours of completing the assessment, once a licensed provider has reviewed it — and same-day PDF delivery is often available.",
-  },
-  {
-    q: "Can my ESA letter be used for housing?",
-    a: "Yes! Our ESA letters are fully compliant with the Fair Housing Act (FHA). This means landlords are required to make reasonable accommodations for you and your emotional support animal, even in no-pet buildings. They cannot charge you pet deposits or monthly pet fees.",
-  },
-  {
-    q: "Do ESA letters work on airplanes?",
-    a: "As of 2021, the Department of Transportation (DOT) updated its rules, allowing airlines to treat ESAs as pets rather than service animals. Most airlines no longer accommodate ESAs in the cabin as service animals. However, our housing ESA letters remain fully valid for housing accommodations.",
-  },
-  {
-    q: "Can my ESA be any type of animal?",
-    a: "Yes, ESAs can be any domesticated animal, including dogs, cats, rabbits, birds, and more. The key requirement is that your mental health professional determines the animal provides therapeutic benefit to you.",
-  },
-  {
-    q: "Are PawTenant ESA letters legitimate?",
+    q: "Are PawTenant ESA letters valid for housing?",
     a: "Yes. Every PawTenant ESA letter is reviewed and signed by a licensed mental health professional who is credentialed in your state. Each letter includes the provider's full name, license number, state of licensure, signature, and a unique Verification ID so housing providers can confirm authenticity directly with us.",
-  },
-  {
-    q: "Is it safe to get an ESA letter online?",
-    a: "Yes. Telehealth evaluations are widely used in mental health care and are recognized in every US state. Our process follows the same clinical standards as an in-person visit: a licensed mental health professional reviews your assessment, conducts a clinical evaluation, and — if you qualify — issues a signed letter. The platform is HIPAA-compliant and your health information is never shared with your landlord during verification.",
   },
   {
     q: "Can my landlord reject my ESA letter?",
     a: "Under the Fair Housing Act, housing providers are generally required to consider reasonable accommodation requests for qualifying ESAs — even in no-pet buildings. They may ask for documentation from a licensed professional, which your PawTenant letter provides. Landlords can deny requests in narrow circumstances (e.g., the animal poses a direct threat or causes substantial property damage), but they cannot reject a legitimate ESA letter solely because of a no-pet policy. If your landlord questions the letter, our support team can help you respond.",
   },
   {
-    q: "Do I need to train my emotional support animal?",
-    a: "No. ESAs are not required to have specialized training. This is one of the main differences between an ESA and a service animal: service animals must be individually trained to perform a specific task related to a disability, while ESAs provide therapeutic support through their presence and companionship. Your animal should be well-behaved enough to live in housing, but no formal training or certification is needed.",
+    q: "How much does an ESA letter cost?",
+    a: "We keep pricing simple and transparent — no subscriptions and no hidden fees, with a full refund if you don't qualify after the licensed provider's review. See the current pricing and what's included on our ESA Letter Cost page. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
+  },
+  {
+    q: "How long does it take to receive my ESA letter?",
+    a: "Most clients receive their ESA letter within 24 hours of completing the assessment, once a licensed provider has reviewed it. Five states (California, Arkansas, Iowa, Louisiana and Montana) legally require a 30-day provider relationship before a letter can be issued — we manage that timeline for you, starting from your assessment.",
+  },
+  {
+    q: "Who qualifies for an ESA letter?",
+    a: "Anyone diagnosed with a mental or emotional disability by a licensed mental health professional may qualify for an ESA letter. Common qualifying conditions include anxiety disorders, depression, PTSD, phobias, and other mental health conditions. Our assessment helps determine your eligibility.",
   },
   {
     q: "Is the online evaluation a real clinical evaluation?",
     a: "Yes. The evaluation is conducted by a real licensed mental health professional — not a chatbot or automated system. The provider reviews your assessment responses, may follow up with additional questions, and applies clinical judgment to determine whether an ESA is appropriate for your situation. If you do not qualify, the provider will not issue a letter and you'll receive a refund per our money-back guarantee.",
   },
   {
-    q: "How do I know if an ESA letter online is legit?",
-    a: "A legitimate ESA letter online must be signed by a licensed mental health professional (LMHP) — such as a licensed therapist, psychologist, or clinical social worker — who is licensed in your state. It should include their license number, state of licensure, signature, and contact information. PawTenant letters also include a unique Verification ID so landlords can confirm authenticity instantly. Avoid any service that issues letters without a real clinical evaluation.",
-  },
-  {
-    q: "What is the difference between Basic and Premium packages?",
-    a: "Both packages include a legitimate ESA letter from a licensed professional. The Premium Package adds priority same-day processing and a discounted annual renewal. If you need your letter urgently or want renewal savings, the Premium Package is the better value.",
-  },
-  {
     q: "Can my landlord verify my ESA letter?",
     a: "Yes. Every finalized ESA letter issued through PawTenant includes a unique Verification ID. Landlords can enter this ID at pawtenant.com/verify to instantly confirm the letter's authenticity and the provider's license — without accessing any of your personal health information. Your diagnosis and medical details are never disclosed during verification.",
   },
   {
-    q: "Does landlord verification expose my private health information?",
-    a: "No. The verification system is designed to be privacy-safe. It only confirms that the letter is genuine and was issued by a licensed mental health professional. Your diagnosis, treatment history, and any other health details remain completely confidential and are protected under HIPAA.",
+    q: "What if my landlord refuses my letter?",
+    a: "Our team responds directly to your landlord's verification request, and you get a step-by-step accommodation-request guide plus our landlord-denial playbook. Under the Fair Housing Act, landlords must consider reasonable accommodation requests — and your letter carries the license details they check.",
   },
   {
-    q: "I need an ESA letter for my dog — what's the process?",
-    a: "The process is straightforward: complete a confidential clinical assessment (about 5 minutes), and a Licensed Mental Health Practitioner credentialed in your state reviews it. If an emotional support animal is clinically appropriate, you receive a housing ESA letter that names your dog and includes the provider's credentials. The process is the same for cats, rabbits, birds, and other domesticated animals — what matters is the clinical determination, not the species.",
-  },
-  {
-    q: "How do I get an ESA letter from a doctor or licensed provider?",
-    a: "ESA letters are not issued by general-practice doctors — they're signed by a Licensed Mental Health Practitioner (therapist, psychologist, LCSW, LPC, or LMHP) credentialed in your state. PawTenant matches your assessment to a licensed provider, who conducts the clinical review and signs the letter when an emotional support animal is clinically appropriate. The provider's license number and signature appear on every letter, and landlords can verify both.",
-  },
-  {
-    q: "How much does an ESA letter cost?",
-    a: "PawTenant's housing ESA letter is $129 for one pet (valid one year); 2 or 3 pets are covered at a fixed $149 total. The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not result in a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
+    q: "Do ESA letters work on airplanes?",
+    a: "As of 2021, the Department of Transportation allows airlines to treat ESAs as pets, so most airlines no longer accept ESAs in the cabin. Airlines do accept task-trained psychiatric service dogs via a DOT attestation form — a PSD letter documents your need and can support that process, but your dog's task training is what qualifies it. Our housing ESA letters remain fully valid for housing accommodations.",
   },
 ];
 
@@ -106,37 +87,56 @@ export default function FAQSection() {
   }, []);
 
   return (
-    <section id="faq" className="py-20 bg-[#FFF7ED]" aria-label="Frequently Asked Questions">
-      {/* Schema is now injected via useEffect above — no inline script tag */}
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <p className="text-orange-600 text-sm font-semibold tracking-widest uppercase mb-2">FAQ</p>
-          <h2 className="text-3xl font-extrabold text-gray-900">
-            Frequently Asked <span className="text-orange-500">Questions</span>
-          </h2>
-          <p className="text-gray-600 mt-3 max-w-xl mx-auto text-sm">
-            Everything you need to know about getting a <strong>legit ESA letter online</strong>, the process, and your housing rights.
+    <section id="faq" className="py-14 sm:py-20 bg-[#F7F2E9]" aria-label="Frequently Asked Questions">
+      <div className="max-w-7xl mx-auto px-5 sm:px-6">
+        {/* HUD 2026 — calm informational strip (text link, never a primary CTA). */}
+        <div className="max-w-3xl mx-auto mb-10 bg-white border border-[#EAE3D7] rounded-xl px-5 py-4 flex items-start gap-3">
+          <span className="bg-[#F7F2E9] text-[#4A443C] text-[10.5px] font-extrabold rounded-md px-2 py-1 uppercase tracking-wider flex-shrink-0 mt-0.5">
+            2026 Update
+          </span>
+          <p className="text-[13px] text-[#6B6359] leading-relaxed">
+            HUD&rsquo;s enforcement approach for support animals changed in 2026 — but your housing
+            options didn&rsquo;t disappear. State law, Section 504 and private rights still apply.{" "}
+            <Link
+              to="/are-esa-letters-still-valid-after-hud-change"
+              className="text-[#231F1A] font-extrabold underline hover:text-black"
+            >
+              Read what changed →
+            </Link>
           </p>
+        </div>
+
+        <div className="text-center mb-10">
+          <h2
+            className="text-[26px] sm:text-4xl font-semibold text-[#231F1A] leading-tight"
+            style={FONT_DISPLAY}
+          >
+            Frequently Asked Questions
+          </h2>
         </div>
 
         <div className="max-w-3xl mx-auto space-y-3">
           {faqs.map((faq, idx) => (
             <div
               key={idx}
-              className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${
+              className={`bg-white rounded-xl border border-[#EAE3D7] overflow-hidden ${
                 idx >= 4 && !showAllMobile ? "hidden sm:block" : ""
               }`}
             >
               <button
-                className="w-full flex items-center justify-between p-5 text-left cursor-pointer hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center justify-between p-5 text-left cursor-pointer hover:bg-[#FDFBF7] transition-colors"
                 onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
                 aria-expanded={openIndex === idx}
                 aria-controls={`faq-answer-${idx}`}
                 id={`faq-question-${idx}`}
               >
-                <span className="text-gray-900 font-semibold text-sm pr-4">{faq.q}</span>
+                <span className="text-[#231F1A] font-extrabold text-sm pr-4">{faq.q}</span>
                 <div className="w-6 h-6 flex items-center justify-center flex-shrink-0" aria-hidden="true">
-                  <i className={`text-orange-500 text-lg transition-transform duration-200 ${openIndex === idx ? "ri-subtract-line" : "ri-add-line"}`}></i>
+                  <i
+                    className={`text-[#6B6359] text-lg transition-transform duration-200 ${
+                      openIndex === idx ? "ri-subtract-line" : "ri-add-line"
+                    }`}
+                  ></i>
                 </div>
               </button>
               {openIndex === idx && (
@@ -144,9 +144,31 @@ export default function FAQSection() {
                   id={`faq-answer-${idx}`}
                   role="region"
                   aria-labelledby={`faq-question-${idx}`}
-                  className="px-5 pb-5 text-gray-700 text-sm leading-relaxed border-t border-gray-100 pt-4"
+                  className="px-5 pb-5 text-[#4A443C] text-sm leading-relaxed border-t border-[#F1EAE0] pt-4"
                 >
                   {faq.a}
+                  {faq.q === "How much does an ESA letter cost?" && (
+                    <>
+                      {" "}
+                      <Link
+                        to="/esa-letter-cost"
+                        className="text-[#3F7061] font-extrabold underline hover:text-[#2f5d50]"
+                      >
+                        See the ESA Letter Cost page →
+                      </Link>
+                    </>
+                  )}
+                  {faq.q === "What if my landlord refuses my letter?" && (
+                    <>
+                      {" "}
+                      <Link
+                        to="/landlord-denied-esa-letter"
+                        className="text-[#3F7061] font-extrabold underline hover:text-[#2f5d50]"
+                      >
+                        Read the landlord-denial playbook →
+                      </Link>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -156,10 +178,10 @@ export default function FAQSection() {
               <button
                 type="button"
                 onClick={() => setShowAllMobile(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                className="inline-flex items-center min-h-[44px] gap-2 px-5 py-2.5 bg-white border border-[#DCD2C0] rounded-full text-sm font-bold text-[#4A443C] hover:bg-[#FDFBF7] transition-colors cursor-pointer"
               >
                 Show more questions
-                <i className="ri-arrow-down-s-line"></i>
+                <i className="ri-arrow-down-s-line" aria-hidden></i>
               </button>
             </div>
           )}
