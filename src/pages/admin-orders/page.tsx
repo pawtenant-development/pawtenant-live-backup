@@ -728,36 +728,80 @@ export default function AdminOrdersPage() {
       // gclid,fbclid,first_touch_json,last_touch_json). If a 400 returns under
       // load, drop ONLY first_touch_json,last_touch_json — the five flat
       // utm/click-id columns MUST stay (paid-signal for the pill hierarchy).
-      const ordersRes = await supabase
-        .from("orders")
-        .select("id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json")
-        .order("created_at", { ascending: false });
+      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json";
 
-      if (!ordersRes.error) {
-        const loadedOrders = (ordersRes.data as Order[]) ?? [];
+      // LIVE-ADMIN-ORDERS-EMPTY 2026-07-13: page the orders read newest-first.
+      // At ~1300+ orders the previous single unbounded select of every column
+      // (incl. large JSON: assessment_answers, email_log, first/last_touch_json
+      // ≈ 5 MB) took 20-90s in the live admin session — past the 8s
+      // authenticated statement window — so the Orders tab hung on
+      // "Loading all orders…" and never rendered rows. The KPI cards use
+      // separate lightweight count queries so they still populated, which is
+      // exactly the reported symptom. Small pages return in ~1-2s: page 1
+      // unblocks the loader, the rest backfill silently. Columns are unchanged,
+      // so every downstream consumer receives the same fields as before.
+      const ORDERS_PAGE_SIZE = 250;
+      const fetchOrdersPage = (from: number) =>
+        supabase
+          .from("orders")
+          .select(ORDERS_SELECT)
+          .order("created_at", { ascending: false })
+          .range(from, from + ORDERS_PAGE_SIZE - 1);
+
+      // Note counts for a batch of loaded ids — SECONDARY, non-blocking.
+      // Chunked by page so the id list never overflows the request URI (the
+      // old all-ids-at-once variant 400'd once the table grew).
+      const loadNoteCounts = (rows: Order[]) => {
+        if (rows.length === 0) return;
+        void (async () => {
+          try {
+            const { data: notesData } = await supabase
+              .from("doctor_notes")
+              .select("order_id")
+              .in("order_id", rows.map((o) => o.id));
+            if (notesData && isLatest()) {
+              const counts: Record<string, number> = {};
+              (notesData as { order_id: string }[]).forEach((n) => {
+                counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
+              });
+              setOrderNoteCounts((prev) => ({ ...prev, ...counts }));
+            }
+          } catch (notesErr) {
+            console.error("[admin-orders] doctor_notes query failed:", notesErr);
+          }
+        })();
+      };
+
+      const firstPage = await fetchOrdersPage(0);
+      if (!firstPage.error) {
+        let accumulated = (firstPage.data as Order[]) ?? [];
         // Sequence guard: a stale older fetch must never overwrite a newer one.
         if (isLatest()) {
-          setOrders(loadedOrders);
+          setOrders(accumulated);
           setOrdersError(false);
         }
+        loadNoteCounts(accumulated);
 
-        // Note counts depend on the loaded order ids — SECONDARY, non-blocking.
-        if (loadedOrders.length > 0) {
+        // Backfill the remaining pages in the background — never blocks the
+        // loader. The sequence guard stops this loop the moment a newer load
+        // (boot re-run, 30s auto-refresh or manual refresh) supersedes it.
+        if (accumulated.length === ORDERS_PAGE_SIZE) {
           void (async () => {
-            try {
-              const { data: notesData } = await supabase
-                .from("doctor_notes")
-                .select("order_id")
-                .in("order_id", loadedOrders.map((o) => o.id));
-              if (notesData && isLatest()) {
-                const counts: Record<string, number> = {};
-                (notesData as { order_id: string }[]).forEach((n) => {
-                  counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
-                });
-                setOrderNoteCounts(counts);
+            for (let from = ORDERS_PAGE_SIZE, guard = 0; guard < 200; guard++, from += ORDERS_PAGE_SIZE) {
+              if (!isLatest()) return;
+              const pageRes = await fetchOrdersPage(from);
+              if (pageRes.error) {
+                console.error("[admin-orders] orders page fetch failed:", pageRes.error);
+                return;
               }
-            } catch (notesErr) {
-              console.error("[admin-orders] doctor_notes query failed:", notesErr);
+              const chunk = (pageRes.data as Order[]) ?? [];
+              if (!isLatest()) return;
+              if (chunk.length > 0) {
+                accumulated = accumulated.concat(chunk);
+                setOrders(accumulated.slice());
+                loadNoteCounts(chunk);
+              }
+              if (chunk.length < ORDERS_PAGE_SIZE) return;
             }
           })();
         }
@@ -765,7 +809,7 @@ export default function AdminOrdersPage() {
         // Do NOT clear existing orders on failure. Flag it so the Orders tab
         // shows a retry affordance instead of a misleading empty state; the
         // 30s auto-refresh keeps retrying.
-        console.error("[admin-orders] orders query failed:", ordersRes.error);
+        console.error("[admin-orders] orders query failed:", firstPage.error);
         if (isLatest()) setOrdersError(true);
       }
 
