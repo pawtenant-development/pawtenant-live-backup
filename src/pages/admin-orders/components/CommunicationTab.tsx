@@ -2,6 +2,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken } from "../../../lib/supabaseClient";
+// AI Support Assistant (Phase 1, rules scaffold) — admin-only, draft-only suggestions.
+// Generates suggested SMS replies + call summaries locally; never sends or writes.
+import AISupportAssistant from "./AISupportAssistant";
 
 interface CommunicationTabProps {
   orderId: string;
@@ -207,6 +210,7 @@ export default function CommunicationTab({
   hasDocuments = false,
   price,
   letterType,
+  state,
 }: CommunicationTabProps) {
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [smsText, setSmsText] = useState("");
@@ -361,6 +365,20 @@ export default function CommunicationTab({
   }, [orderId, confirmationId, email]);
 
   useEffect(() => { loadCommLogs(); }, [loadCommLogs]);
+
+  // RA-ADMIN-VISIBILITY-STORAGE-HARDENING-LIVE-001: when the admin clicks
+  // "Contact customer" on the order Overview Housing-Accommodation block, open
+  // the email composer preselected to the approved RA upload-reminder template.
+  // Editable/manual send only — this NEVER auto-sends.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const slug = (e as CustomEvent<{ slug?: string }>).detail?.slug || "ra_additional_documentation_request";
+      setActivePanel("email");
+      setEmailType(slug);
+    };
+    window.addEventListener("pt:ra-contact-customer", handler);
+    return () => window.removeEventListener("pt:ra-contact-customer", handler);
+  }, []);
 
   // ── Build unified timeline sorted oldest → newest (for chat layout) ────
   // communications is primary; email_log entries are kept ONLY if not already
@@ -834,6 +852,24 @@ export default function CommunicationTab({
             )}
           </div>
         )}
+
+        {/* AI Support Assistant — draft-only suggestions (no send, no DB write) */}
+        <AISupportAssistant
+          commLogs={commLogs}
+          firstName={firstName}
+          state={state}
+          letterType={letterType}
+          price={price}
+          orderId={orderId}
+          confirmationId={confirmationId}
+          onUseDraft={(t) => {
+            setSmsText(t.slice(0, 320));
+            // Treat AI drafts as manual content so send uses the textbox, not a template slug.
+            setSelectedSmsSlug(null);
+            setActivePanel(null);
+            setShowTemplates(false);
+          }}
+        />
 
         {/* SMS send status */}
         {sendMsg && (

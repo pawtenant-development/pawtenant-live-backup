@@ -12,7 +12,7 @@ import StripeCardForm from "./StripeCardForm";
 import type { SubscriptionParams } from "./StripeCardForm";
 import KlarnaPaymentTab from "./KlarnaPaymentTab";
 import StateComplianceBanner, { isComplianceState } from "./StateComplianceBanner";
-import { getEsaOneTimeTotal, getEsaAnnualTotal } from "@/config/pricing";
+import { getEsaOneTimeTotal, getEsaAnnualTotal, getBundleOneTimeTotal, getBundleAnnualTotal, isRaBundle } from "@/config/pricing";
 import Hud2026UpdateBanner from "../../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 import CompactWhatHappensNext from "./step3/CompactWhatHappensNext";
@@ -257,6 +257,11 @@ interface Step3CheckoutProps {
   onRetryClientSecret?: () => void;
   onPaymentSuccess?: (paymentIntentId: string) => void;
   petCount?: number;
+  /** Selected package (PACKAGE-RA-LETTER-BUNDLE-001): esa_standard | esa_ra_bundle. */
+  packageKey?: string;
+  onPackageChange?: (packageKey: string) => void;
+  /** Return to the dedicated package-selection step (package is chosen there now). */
+  onChangePackage?: () => void;
   onBeforeRedirect?: () => void;
   /**
    * Legacy-resume price lock (dollars). When set (>0), overrides the current
@@ -443,6 +448,8 @@ interface SecurePaymentCardProps {
   appliedCoupon: { code: string; discount: number } | null;
   onDiscountChange: (discount: number, code: string) => void;
   subscriptionParams?: SubscriptionParams;
+  /** Selected package key (PACKAGE-RA-LETTER-BUNDLE-001) — forwarded to Klarna. */
+  packageKey?: string;
   /**
    * When true, pay buttons render disabled regardless of card/terms state.
    * Driven by state-specific compliance acknowledgment on ESA (AR/CA/IA/LA/MT).
@@ -470,6 +477,7 @@ function SecurePaymentCard({
   appliedCoupon,
   onDiscountChange,
   subscriptionParams,
+  packageKey,
   complianceBlocked = false,
 }: SecurePaymentCardProps) {
   const isSubscription = plan === "subscription";
@@ -619,6 +627,7 @@ function SecurePaymentCard({
                 subscriptionParams={subscriptionParams}
                 priceBeforeDiscount={priceBeforeDiscount}
                 onDiscountChange={onDiscountChange}
+                appliedFromParent={appliedCoupon ?? null}
                 onPaymentSuccess={handlePaymentSuccess}
                 complianceBlocked={complianceBlocked}
               />
@@ -718,6 +727,7 @@ function SecurePaymentCard({
             agreedError={klarnaAgreedError}
             setAgreedError={setKlarnaAgreedError}
             confirmationId={confirmationId}
+            packageKey={packageKey}
             onSuccess={() => onPaymentSuccess?.("klarna-success")}
             couponCode={appliedCouponCode}
             complianceBlocked={complianceBlocked}
@@ -940,6 +950,9 @@ export default function Step3Checkout({
   onPaymentSuccess,
   confirmationId = "",
   petCount,
+  packageKey = "esa_standard",
+  onPackageChange,
+  onChangePackage,
   onBeforeRedirect,
   onCouponApplied,
   appliedCoupon,
@@ -1031,8 +1044,13 @@ export default function Step3Checkout({
   // use it for the ONE-TIME display so the shown price matches the actual
   // charge. Subscriptions always use current recurring pricing.
   const hasQuotedBase = typeof quotedBasePrice === "number" && quotedBasePrice > 0;
-  const basePrice = hasQuotedBase ? (quotedBasePrice as number) : getOneTimePrice(resolvedPetCount);
-  const subPrice = getAnnualSubPrice(resolvedPetCount);
+  // RA bundle = flat $179 one-time / $159 annual (1–3 pets). Legacy-quote lock
+  // never applies to bundles, so ignore quotedBasePrice when a bundle is chosen.
+  const isBundle = isRaBundle(packageKey);
+  const basePrice = isBundle
+    ? getBundleOneTimeTotal()
+    : hasQuotedBase ? (quotedBasePrice as number) : getOneTimePrice(resolvedPetCount);
+  const subPrice = isBundle ? getBundleAnnualTotal() : getAnnualSubPrice(resolvedPetCount);
   const selectedPlan = data.plan ?? "one-time";
   const priceBeforeDiscount =
     selectedPlan === "subscription" ? subPrice : basePrice;
@@ -1071,6 +1089,7 @@ export default function Step3Checkout({
     state: step2.state,
     confirmationId,
     letterType: "esa",
+    packageKey,
   };
 
   const paymentCardProps: SecurePaymentCardProps = {
@@ -1093,6 +1112,7 @@ export default function Step3Checkout({
     appliedCoupon: localCoupon,
     onDiscountChange: handleCouponChange,
     subscriptionParams,
+    packageKey,
     complianceBlocked,
   };
 
@@ -1286,6 +1306,36 @@ export default function Step3Checkout({
                     <p className="text-[10px] text-slate-500 mt-1.5">per year</p>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* ── Selected package summary (chosen on the dedicated package step) ── */}
+            <div className={`${cardClass} mb-3`}>
+              <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <SectionLabel>Your Package</SectionLabel>
+                  <p className="text-sm font-bold text-slate-900 leading-tight">
+                    {isBundle ? "ESA + Reasonable Accommodation Letter" : "Standard ESA Letter"}
+                  </p>
+                  {isBundle && (
+                    <span
+                      className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: ACTION_ORANGE_SOFT, color: ACTION_ORANGE_DARK }}
+                    >
+                      Reasonable Accommodation bundle · landlord-ready
+                    </span>
+                  )}
+                </div>
+                {onChangePackage && (
+                  <button
+                    type="button"
+                    onClick={onChangePackage}
+                    className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-bold cursor-pointer whitespace-nowrap"
+                    style={{ color: ACTION_GREEN_DARK }}
+                  >
+                    <i className="ri-arrow-left-right-line"></i> Change
+                  </button>
+                )}
               </div>
             </div>
 

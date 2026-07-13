@@ -44,6 +44,16 @@ interface Order {
   letter_type?: string | null;
   refunded_at?: string | null;
   refund_amount?: number | null;
+  // RA bundle (PACKAGE-RA-LETTER-BUNDLE-001)
+  package_key?: string | null;
+  package_display_name?: string | null;
+  includes_reasonable_accommodation_letter?: boolean | null;
+  additional_documentation_status?: string | null;
+  // Customer preferred contact time (CUSTOMER-PORTAL-ORDER-GUIDANCE-RA-PROVIDER-SLOTS-001)
+  preferred_provider_contact_date?: string | null;
+  preferred_provider_contact_window?: string | null;
+  preferred_provider_contact_note?: string | null;
+  preferred_provider_contact_timezone?: string | null;
 }
 
 // ─── PSD order detection helper ──────────────────────────────────────────────
@@ -207,7 +217,7 @@ export default function ProviderPortalPage() {
     if (showSpinner) setLoadingOrders(true);
     const { data } = await supabase
       .from("orders")
-      .select("id, confirmation_id, email, first_name, last_name, phone, state, status, doctor_status, doctor_user_id, price, payment_intent_id, delivery_speed, selected_provider, assessment_answers, letter_url, signed_letter_url, patient_notification_sent_at, created_at, letter_type, refunded_at, refund_amount, addon_services")
+      .select("id, confirmation_id, email, first_name, last_name, phone, state, status, doctor_status, doctor_user_id, price, payment_intent_id, delivery_speed, selected_provider, assessment_answers, letter_url, signed_letter_url, patient_notification_sent_at, created_at, letter_type, refunded_at, refund_amount, addon_services, package_key, package_display_name, includes_reasonable_accommodation_letter, additional_documentation_status, preferred_provider_contact_date, preferred_provider_contact_window, preferred_provider_contact_note, preferred_provider_contact_timezone")
       .eq("doctor_user_id", profile.user_id)
       .order("created_at", { ascending: false });
     setOrders((data as Order[]) ?? []);
@@ -778,6 +788,11 @@ export default function ProviderPortalPage() {
                               ) : (
                                 <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-[#e8f0f9] text-[#2c5282] border border-[#b8cce4] rounded-full text-[10px] font-extrabold">
                                   <i className="ri-heart-line" style={{ fontSize: "9px" }}></i>ESA Letter
+                                </span>
+                              )}
+                              {order.includes_reasonable_accommodation_letter && (
+                                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-full text-[10px] font-extrabold">
+                                  <i className="ri-file-shield-2-line" style={{ fontSize: "9px" }}></i>RA Form Needed
                                 </span>
                               )}
                             </div>

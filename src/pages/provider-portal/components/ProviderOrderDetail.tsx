@@ -1,6 +1,7 @@
 // ProviderOrderDetail — Full order view for providers
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { openSecureDocument, downloadSecureDocument } from "../../../lib/openSecureDocument";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
 import {
   LOGO_URL as ASSESSMENT_LOGO,
@@ -41,7 +42,24 @@ interface Order {
   letter_id?: string | null;
   letter_issue_date?: string | null;
   letter_expiry_date?: string | null;
+  // RA bundle (PACKAGE-RA-LETTER-BUNDLE-001)
+  package_key?: string | null;
+  package_display_name?: string | null;
+  includes_reasonable_accommodation_letter?: boolean | null;
+  additional_documentation_status?: string | null;
+  // Customer preferred contact time (CUSTOMER-PORTAL-ORDER-GUIDANCE-RA-PROVIDER-SLOTS-001)
+  preferred_provider_contact_date?: string | null;
+  preferred_provider_contact_window?: string | null;
+  preferred_provider_contact_note?: string | null;
+  preferred_provider_contact_timezone?: string | null;
 }
+
+const CONTACT_WINDOW_LABEL: Record<string, string> = {
+  morning: "Morning (8am–12pm)",
+  afternoon: "Afternoon (12pm–5pm)",
+  evening: "Evening (5pm–8pm)",
+  any: "Any time",
+};
 
 // ─── PSD order detection helper ───────────────────────────────────────────────
 function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
@@ -113,20 +131,14 @@ export default function ProviderOrderDetail({
   const [order, setOrder] = useState<Order>(initialOrder);
   const [section, setSection] = useState<Section>("overview");
 
-  // Upload form (single — kept for backward compat)
-  const [docUrl, setDocUrl] = useState("");
-  const [docLabel, setDocLabel] = useState("ESA Letter – Signed");
-  const [docType, setDocType] = useState("esa_letter");
-  const [providerNote, setProviderNote] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitMsg, setSubmitMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  // isPSDOrder is the canonical product detector (drives labels + copy).
+  const orderIsPsd = isPSDOrder(initialOrder);
 
-  // File upload state
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [uploadedFileName, setUploadedFileName] = useState("");
-  const [useUrlFallback, setUseUrlFallback] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Provider note carried on the letter submission; submitted flag gates the
+  // "order completed" banner. (The legacy single-file upload state was removed
+  // along with its dead handlers — uploads now stream through the queue below.)
+  const [providerNote, setProviderNote] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
   // Multi-file queue
   const [fileQueue, setFileQueue] = useState<QueueItem[]>([]);
@@ -136,6 +148,15 @@ export default function ProviderOrderDetail({
 
   // Confirmation popup before submitting
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+
+  // Completed Housing Accommodation form uploader — a SEPARATE document class from
+  // the ESA/PSD letter. It receives NO verification ID / footer and does NOT
+  // complete the base ESA/PSD letter. Kept separate from the letter queue on purpose.
+  const [housingFile, setHousingFile] = useState<File | null>(null);
+  const [housingUploading, setHousingUploading] = useState(false);
+  const [housingMsg, setHousingMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Transient error toast for secure document open/download failures.
+  const [docMsg, setDocMsg] = useState<string | null>(null);
 
   // In-Review status update
   const [markingInReview, setMarkingInReview] = useState(false);
@@ -261,86 +282,25 @@ export default function ProviderOrderDetail({
     setRejecting(false);
   };
 
-  const handleSubmitLetter = async () => {
-    if (!docUrl.trim()) {
-      setSubmitMsg({ ok: false, text: "Please enter the document URL." });
-      return;
-    }
-    if (!docLabel.trim()) {
-      setSubmitMsg({ ok: false, text: "Please enter a document label." });
-      return;
-    }
-    setSubmitting(true);
-    setSubmitMsg(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? SUPABASE_KEY;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/provider-submit-letter`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          apikey: SUPABASE_KEY,
-        },
-        body: JSON.stringify({
-          confirmationId: order.confirmation_id,
-          documentUrl: docUrl.trim(),
-          documentLabel: docLabel.trim(),
-          docType,
-          providerNote: providerNote.trim() || null,
-        }),
-      });
-      const result = await res.json() as { ok: boolean; error?: string; patientNotified?: boolean };
-      if (result.ok) {
-        setSubmitMsg({ ok: true, text: result.patientNotified
-          ? "Letter submitted! The patient has been notified by email."
-          : "Letter submitted and saved successfully."
-        });
-        setSubmitted(true);
-        setDocUrl("");
-        setProviderNote("");
-        const updated = {
-          ...order,
-          doctor_status: "letter_sent",
-          signed_letter_url: docUrl.trim(),
-          patient_notification_sent_at: new Date().toISOString(),
-        };
-        setOrder(updated);
-        onOrderUpdated({ id: order.id, doctor_status: "letter_sent", signed_letter_url: docUrl.trim() });
-        loadDocs();
-      } else {
-        setSubmitMsg({ ok: false, text: result.error ?? "Submission failed. Please try again." });
-      }
-    } catch {
-      setSubmitMsg({ ok: false, text: "Network error. Please check your connection." });
-    }
-    setSubmitting(false);
-  };
+  // RA-PROVIDER-DOCUMENT-WORKFLOW-RELEASE-BLOCKERS-001: the legacy single-file
+  // upload handlers (client-side storage write to provider-letters) were removed.
+  // All provider letter uploads now go through the multi-file queue below, which
+  // streams the file to the provider-submit-letter edge function — the file is
+  // stored in the private provider-letters bucket SERVER-SIDE via the service
+  // role (after the assignment check), so the client never writes to storage.
 
-  const handleFileSelect = async (file: File) => {
-    if (!file) return;
-    setUploadingFile(true);
-    setSubmitMsg(null);
-    try {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const fileName = `${order.confirmation_id}-${Date.now()}-${safeName}`;
-      const { data, error } = await supabase.storage
-        .from("provider-letters")
-        .upload(fileName, file, { contentType: file.type, upsert: true });
-      if (error) {
-        setSubmitMsg({ ok: false, text: `Upload failed: ${error.message}` });
-        setUploadingFile(false);
-        return;
-      }
-      const { data: { publicUrl } } = supabase.storage.from("provider-letters").getPublicUrl(data.path);
-      setDocUrl(publicUrl);
-      setUploadedFileName(file.name);
-      const nameWithoutExt = file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " ");
-      if (docLabel === "ESA Letter – Signed") setDocLabel(nameWithoutExt);
-    } catch {
-      setSubmitMsg({ ok: false, text: "Upload error. Please try again." });
-    }
-    setUploadingFile(false);
+  // RA-ADMIN-VISIBILITY-STORAGE-HARDENING-LIVE-001: open a submitted document via
+  // a fresh signed URL from get-document-signed-url — required now that the
+  // provider-letters bucket is PRIVATE (raw file_url links 404). The assigned
+  // provider is authorized per-order by that function; unrelated providers are
+  // denied. Opens a tab synchronously so the popup blocker doesn't fire.
+  const openDoc = async (documentId: string) => {
+    const r = await openSecureDocument(documentId);
+    if (!r.ok) setDocMsg(r.error ?? "Could not open the document. Please try again.");
+  };
+  const downloadDoc = async (documentId: string, filename?: string) => {
+    const r = await downloadSecureDocument(documentId, filename);
+    if (!r.ok) setDocMsg(r.error ?? "Could not download the document. Please try again.");
   };
 
   // ── Add files to queue ──────────────────────────────────────────────────────
@@ -374,29 +334,13 @@ export default function ProviderOrderDetail({
       file: null,
       url: "",
       label: "Additional Document",
-      docType: "other",
+      // The letter queue only submits the ESA/PSD letter (product-derived). Housing
+      // forms use the dedicated uploader in the Housing Accommodation section.
+      docType: isPSDOrder(order) ? "psd_letter" : "esa_letter",
       uploading: false,
       error: null,
       done: false,
     }]);
-  };
-
-  // ── Upload a single queue item file to Supabase Storage ───────────────────
-  const uploadQueueFile = async (item: QueueItem): Promise<string> => {
-    if (!item.file) return item.url;
-    updateQueueItem(item.id, { uploading: true, error: null });
-    const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const fileName = `${order.confirmation_id}-${Date.now()}-${safeName}`;
-    const { data, error } = await supabase.storage
-      .from("provider-letters")
-      .upload(fileName, item.file, { contentType: item.file.type, upsert: true });
-    if (error) {
-      updateQueueItem(item.id, { uploading: false, error: error.message });
-      throw new Error(error.message);
-    }
-    const { data: { publicUrl } } = supabase.storage.from("provider-letters").getPublicUrl(data.path);
-    updateQueueItem(item.id, { uploading: false, url: publicUrl });
-    return publicUrl;
   };
 
   // ── Submit all queued items ─────────────────────────────────────────────────
@@ -411,45 +355,62 @@ export default function ProviderOrderDetail({
     for (const item of fileQueue) {
       if (item.done) continue;
       try {
-        // Step 1: upload file if needed
-        const finalUrl = item.file ? await uploadQueueFile(item) : item.url;
-        if (!finalUrl.trim()) {
-          updateQueueItem(item.id, { error: "URL is required" });
-          failCount++;
-          continue;
+        updateQueueItem(item.id, { uploading: true, error: null });
+        let res: Response;
+        if (item.file) {
+          // Preferred path: stream the file to provider-submit-letter, which
+          // stores it in the private provider-letters bucket via the service role
+          // (after verifying assignment). No client-side storage write, so the
+          // upload can never hit the client RLS path.
+          const fd = new FormData();
+          fd.append("file", item.file);
+          fd.append("confirmationId", order.confirmation_id);
+          fd.append("documentLabel", item.label.trim() || "Document");
+          fd.append("docType", item.docType);
+          if (providerNote.trim()) fd.append("providerNote", providerNote.trim());
+          res = await fetch(`${SUPABASE_URL}/functions/v1/provider-submit-letter`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_KEY },
+            body: fd,
+          });
+        } else {
+          // External / Drive-link item: legacy JSON body.
+          if (!item.url.trim()) {
+            updateQueueItem(item.id, { error: "URL is required", uploading: false });
+            failCount++;
+            continue;
+          }
+          res = await fetch(`${SUPABASE_URL}/functions/v1/provider-submit-letter`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              apikey: SUPABASE_KEY,
+            },
+            body: JSON.stringify({
+              confirmationId: order.confirmation_id,
+              documentUrl: item.url.trim(),
+              documentLabel: item.label.trim() || "Document",
+              docType: item.docType,
+              providerNote: providerNote.trim() || null,
+            }),
+          });
         }
-        // Step 2: submit to provider-submit-letter
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/provider-submit-letter`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            apikey: SUPABASE_KEY,
-          },
-          body: JSON.stringify({
-            confirmationId: order.confirmation_id,
-            documentUrl: finalUrl,
-            documentLabel: item.label.trim() || "Document",
-            docType: item.docType,
-            providerNote: providerNote.trim() || null,
-          }),
-        });
         const result = await res.json() as { ok: boolean; error?: string };
         if (result.ok) {
-          updateQueueItem(item.id, { done: true, url: finalUrl });
+          updateQueueItem(item.id, { done: true, uploading: false });
           successCount++;
           // Order goes straight to patient_notified + completed
           const updatedOrder = {
             ...order,
             doctor_status: "patient_notified",
             status: "completed",
-            signed_letter_url: finalUrl,
             patient_notification_sent_at: new Date().toISOString(),
           };
           setOrder(updatedOrder);
-          onOrderUpdated({ id: order.id, doctor_status: "patient_notified", status: "completed", signed_letter_url: finalUrl });
+          onOrderUpdated({ id: order.id, doctor_status: "patient_notified", status: "completed" });
         } else {
-          updateQueueItem(item.id, { error: result.error ?? "Submission failed" });
+          updateQueueItem(item.id, { error: result.error ?? "Submission failed", uploading: false });
           failCount++;
         }
       } catch (err) {
@@ -468,6 +429,47 @@ export default function ProviderOrderDetail({
     }
   };
 
+  // ── Upload the COMPLETED Housing Accommodation form (separate class) ──────────
+  // Streams the completed/signed landlord form to provider-submit-letter with
+  // doc_type "housing_completed": the backend stores it privately, marks the RA /
+  // add-on workflow complete, and — critically — mints NO verification ID, injects
+  // NO footer, and does NOT complete the ESA/PSD letter lifecycle.
+  const handleUploadHousingForm = async () => {
+    if (!housingFile) return;
+    setHousingUploading(true);
+    setHousingMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? SUPABASE_KEY;
+      const fd = new FormData();
+      fd.append("file", housingFile);
+      fd.append("confirmationId", order.confirmation_id);
+      fd.append("documentLabel", "Completed Housing Accommodation Form");
+      fd.append("docType", "housing_completed");
+      if (providerNote.trim()) fd.append("providerNote", providerNote.trim());
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/provider-submit-letter`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_KEY },
+        body: fd,
+      });
+      const result = await res.json() as { ok: boolean; error?: string };
+      if (result.ok) {
+        setHousingMsg({ ok: true, text: "Completed Housing Accommodation form uploaded and shared with the customer." });
+        setHousingFile(null);
+        // Reflect RA-workflow completion locally — NO letter-lifecycle change.
+        setOrder((o) => ({ ...o, additional_documentation_status: "completed" }));
+        onOrderUpdated({ id: order.id, additional_documentation_status: "completed" });
+        await loadDocs();
+      } else {
+        setHousingMsg({ ok: false, text: result.error ?? "Upload failed" });
+      }
+    } catch (e) {
+      setHousingMsg({ ok: false, text: e instanceof Error ? e.message : "Upload failed" });
+    } finally {
+      setHousingUploading(false);
+    }
+  };
+
   const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
   const initials = fullName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
   const doctorStatus = order.doctor_status ?? "pending_review";
@@ -478,6 +480,82 @@ export default function ProviderOrderDetail({
   const isRefunded = order.status === "refunded" || !!order.refunded_at;
   const isRejected = doctorStatus === "provider_rejected";
 
+  // ── Document taxonomy (ORDER-PAYMENT-GATING-RA-DOCUMENT-TAXONOMY-INTAKE-PORTAL-001) ──
+  // Three distinct classes, never mixed:
+  //   • customerForms       — doc_type "customer_upload": the customer's Housing
+  //     Accommodation / landlord SOURCE form (reference material for the provider).
+  //   • housingCompletedDocs — doc_type "housing_completed": the provider's COMPLETED
+  //     Housing Accommodation form (returned to the customer; NO verification ID).
+  //   • providerDocs        — the ESA/PSD LETTERS only (the clinical deliverable).
+  const customerForms = uploadedDocs.filter((d) => d.doc_type === "customer_upload");
+  const housingCompletedDocs = uploadedDocs.filter((d) => d.doc_type === "housing_completed");
+  const providerDocs = uploadedDocs.filter((d) => d.doc_type !== "customer_upload" && d.doc_type !== "housing_completed");
+
+  // Shared "completed Housing form" block — the dedicated upload action (distinct
+  // from the ESA/PSD letter submission) plus a read-only list of completed forms.
+  // Rendered inside both the paid $70 add-on section and the Combo RA section.
+  const renderHousingCompletion = () => {
+    if (readOnly && housingCompletedDocs.length === 0) return null;
+    return (
+      <div className="mt-3 pt-3 border-t border-emerald-200/70">
+        <p className="text-xs font-bold text-emerald-800 mb-1.5 flex items-center gap-1.5">
+          <i className="ri-file-upload-line"></i>Completed Housing Accommodation form
+        </p>
+        {housingCompletedDocs.length > 0 ? (
+          <ul className="space-y-1.5 mb-2">
+            {housingCompletedDocs.map((d) => (
+              <li key={d.id} className="flex items-center justify-between gap-2 bg-white border border-emerald-100 rounded-lg px-3 py-2">
+                <span className="flex items-center gap-2 min-w-0">
+                  <i className="ri-file-check-line text-emerald-600 flex-shrink-0"></i>
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-gray-800 truncate">{d.label}</span>
+                    {d.uploaded_at && <span className="block text-[10px] text-gray-400">Completed {fmtDate(d.uploaded_at)}</span>}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 flex-shrink-0">
+                  <button type="button" onClick={() => openDoc(d.id)} className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 whitespace-nowrap flex items-center gap-1 cursor-pointer">
+                    <i className="ri-eye-line"></i>Open
+                  </button>
+                  <button type="button" onClick={() => downloadDoc(d.id, d.label)} className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 whitespace-nowrap flex items-center gap-1 cursor-pointer">
+                    <i className="ri-download-2-line"></i>Download
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          !readOnly && (
+            <p className="text-xs text-gray-600 mb-2">
+              Upload the completed / signed version of the customer&apos;s form. It is returned to the customer as a
+              Housing Accommodation document — <strong>not</strong> the ESA/PSD letter, and it receives <strong>no</strong> verification ID.
+            </p>
+          )
+        )}
+        {!readOnly && (
+          <>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-50 cursor-pointer">
+                <i className="ri-attachment-2"></i>{housingFile ? "Change file" : "Choose completed form"}
+                <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0] ?? null; setHousingFile(f); setHousingMsg(null); }} />
+              </label>
+              {housingFile && <span className="text-xs text-gray-500 truncate max-w-[160px]">{housingFile.name}</span>}
+              <button type="button" disabled={!housingFile || housingUploading} onClick={handleUploadHousingForm}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
+                <i className="ri-upload-cloud-line"></i>{housingUploading ? "Uploading…" : "Upload completed form"}
+              </button>
+            </div>
+            {housingMsg && (
+              <p className={`text-xs mt-2 flex items-center gap-1 font-semibold ${housingMsg.ok ? "text-emerald-700" : "text-red-600"}`}>
+                <i className={housingMsg.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{housingMsg.text}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   // Format date helper
   const fmtDate = (d: string | null | undefined) => {
     if (!d) return "—";
@@ -486,8 +564,15 @@ export default function ProviderOrderDetail({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {docMsg && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] max-w-sm w-[90%] bg-red-600 text-white text-xs font-semibold rounded-lg shadow-lg px-4 py-3 flex items-start gap-2">
+          <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+          <span className="flex-1">{docMsg}</span>
+          <button type="button" onClick={() => setDocMsg(null)} className="cursor-pointer opacity-80 hover:opacity-100 flex-shrink-0"><i className="ri-close-line"></i></button>
+        </div>
+      )}
       <div className="absolute inset-0 bg-black/50" onClick={onClose}></div>
-      <div className="relative bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="relative bg-white rounded-2xl w-full max-w-3xl lg:max-w-5xl xl:max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-100 flex-shrink-0">
@@ -601,6 +686,45 @@ export default function ProviderOrderDetail({
                 </div>
               </div>
 
+              {/* ── Customer preferred contact time (read-only) ── */}
+              {(order.preferred_provider_contact_window || order.preferred_provider_contact_date || order.preferred_provider_contact_note) && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 flex items-center justify-center bg-indigo-100 rounded-lg flex-shrink-0">
+                      <i className="ri-calendar-schedule-line text-indigo-600 text-sm"></i>
+                    </div>
+                    <p className="text-xs font-extrabold text-indigo-700 uppercase tracking-widest">Customer Preferred Contact Time</p>
+                    <span className="ml-auto text-[10px] font-bold text-indigo-500 bg-indigo-100 px-2 py-0.5 rounded-full">Preference</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {order.preferred_provider_contact_window && (
+                      <div>
+                        <p className="text-xs text-indigo-400 mb-0.5">Best time</p>
+                        <p className="text-sm font-semibold text-indigo-900">{CONTACT_WINDOW_LABEL[order.preferred_provider_contact_window] ?? order.preferred_provider_contact_window}</p>
+                      </div>
+                    )}
+                    {order.preferred_provider_contact_date && (
+                      <div>
+                        <p className="text-xs text-indigo-400 mb-0.5">Preferred date</p>
+                        <p className="text-sm font-semibold text-indigo-900">{fmtDate(order.preferred_provider_contact_date)}</p>
+                      </div>
+                    )}
+                    {order.preferred_provider_contact_timezone && (
+                      <div>
+                        <p className="text-xs text-indigo-400 mb-0.5">Time zone</p>
+                        <p className="text-sm font-semibold text-indigo-900">{order.preferred_provider_contact_timezone}</p>
+                      </div>
+                    )}
+                  </div>
+                  {order.preferred_provider_contact_note && (
+                    <p className="mt-2 text-xs text-indigo-800 bg-white border border-indigo-100 rounded-lg px-3 py-2 italic">&ldquo;{order.preferred_provider_contact_note}&rdquo;</p>
+                  )}
+                  <p className="mt-2 text-[11px] text-indigo-500 flex items-center gap-1">
+                    <i className="ri-information-line"></i>Customer preference only — not a scheduled appointment. Review can continue regardless.
+                  </p>
+                </div>
+              )}
+
               {/* ── Additional Services Required ── */}
               {(() => {
                 const ADDON_LABELS: Record<string, { label: string; icon: string; note: string }> = {
@@ -667,7 +791,7 @@ export default function ProviderOrderDetail({
                 const pending = addonRequests.find((r) => r.status === "pending");
                 const req = paid ?? pending;
                 if (!req) return null;
-                const customerUploads = uploadedDocs.filter((d) => d.doc_type === "customer_upload");
+                const customerUploads = customerForms;
                 return (
                   <div className="bg-sky-50 border-2 border-sky-200 rounded-xl p-4">
                     <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -679,14 +803,18 @@ export default function ProviderOrderDetail({
                       </div>
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${paid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                         <i className={paid ? "ri-checkbox-circle-fill" : "ri-time-line"}></i>
-                        {paid ? "Paid · $40" : "Payment pending"}
+                        {paid ? "Add-on active" : "Not yet active"}
                       </span>
                     </div>
+                    <p className="text-[11px] text-sky-700 font-semibold mb-2 flex items-center gap-1.5 flex-wrap">
+                      {paid && <span className="inline-flex items-center gap-1 bg-sky-100 px-2 py-0.5 rounded-full"><i className="ri-price-tag-3-line"></i>Purchased Add-on</span>}
+                      {req.created_at && <span className="text-sky-500 font-normal">requested {fmtDate(req.created_at)}</span>}
+                    </p>
                     {paid ? (
                       <>
                         <p className="text-xs text-sky-800 leading-relaxed mb-2">
-                          The patient paid for additional documentation and this case has been reopened for your review.
-                          Please review the uploaded form below and complete the requested documentation.
+                          Additional documentation was authorized for this case and it has been reopened for your
+                          review. Please review the uploaded form below and complete the requested documentation.
                         </p>
                         <p className="text-xs text-emerald-700 leading-relaxed mb-3 flex items-start gap-1.5">
                           <i className="ri-money-dollar-circle-line mt-0.5"></i>
@@ -695,7 +823,7 @@ export default function ProviderOrderDetail({
                       </>
                     ) : (
                       <p className="text-xs text-amber-700 leading-relaxed mb-3">
-                        The patient started an additional-documentation request but payment is not yet complete. No action needed until it shows as Paid.
+                        This additional-documentation request isn&apos;t active yet. No action is needed until it becomes active.
                       </p>
                     )}
                     {paid && (
@@ -712,19 +840,94 @@ export default function ProviderOrderDetail({
                           <ul className="space-y-1.5">
                             {customerUploads.map((d) => (
                               <li key={d.id} className="flex items-center justify-between gap-2 bg-white border border-sky-100 rounded-lg px-3 py-2">
-                                <span className="flex items-center gap-1.5 min-w-0">
+                                <span className="flex items-center gap-2 min-w-0">
                                   <i className="ri-file-text-line text-sky-500 flex-shrink-0"></i>
-                                  <span className="text-xs text-gray-700 truncate">{d.label}</span>
+                                  <span className="min-w-0">
+                                    <span className="block text-xs font-semibold text-gray-800 truncate">{d.label}</span>
+                                    {d.uploaded_at && <span className="block text-[10px] text-gray-400">Uploaded {fmtDate(d.uploaded_at)}</span>}
+                                  </span>
                                 </span>
-                                <a href={d.file_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-sky-600 hover:text-sky-800 whitespace-nowrap flex items-center gap-1">
-                                  <i className="ri-download-2-line"></i>Open
-                                </a>
+                                <span className="flex items-center gap-2 flex-shrink-0">
+                                  <button type="button" onClick={() => openDoc(d.id)} className="text-xs font-semibold text-sky-600 hover:text-sky-800 whitespace-nowrap flex items-center gap-1 cursor-pointer">
+                                    <i className="ri-eye-line"></i>Open
+                                  </button>
+                                  <button type="button" onClick={() => downloadDoc(d.id, d.label)} className="text-xs font-semibold text-sky-600 hover:text-sky-800 whitespace-nowrap flex items-center gap-1 cursor-pointer">
+                                    <i className="ri-download-2-line"></i>Download
+                                  </button>
+                                </span>
                               </li>
                             ))}
                           </ul>
                         )}
                       </div>
                     )}
+                    {paid && renderHousingCompletion()}
+                  </div>
+                );
+              })()}
+
+              {/* ── RA bundle — Reasonable Accommodation documentation (PACKAGE-RA-LETTER-BUNDLE-001) ── */}
+              {order.includes_reasonable_accommodation_letter === true && (() => {
+                const raUploads = customerForms;
+                return (
+                  <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 flex items-center justify-center bg-emerald-100 rounded-lg flex-shrink-0">
+                          <i className="ri-file-shield-2-line text-emerald-600 text-sm"></i>
+                        </div>
+                        <p className="text-xs font-extrabold text-emerald-700 uppercase tracking-widest">Housing Accommodation</p>
+                      </div>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                        <i className="ri-attachment-2"></i>{raUploads.length > 0 ? "Form provided" : "RA form may be needed"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 font-semibold mb-2 flex items-center gap-1.5 flex-wrap">
+                      <span className="inline-flex items-center gap-1 bg-emerald-100 px-2 py-0.5 rounded-full"><i className="ri-checkbox-circle-fill"></i>Included with Combo Package</span>
+                      {order.additional_documentation_status && <span className="text-emerald-500 font-normal">status: {String(order.additional_documentation_status).replace(/_/g, " ")}</span>}
+                    </p>
+                    <p className="text-xs text-emerald-700 leading-relaxed mb-3 flex items-start gap-1.5">
+                      <i className="ri-money-dollar-circle-line mt-0.5"></i>
+                      <span>This Housing Accommodation request is compensated at your standard per-case rate.</span>
+                    </p>
+                    <p className="text-xs text-emerald-800 leading-relaxed mb-3">
+                      This order includes Reasonable Accommodation documentation support. If the customer uploaded a
+                      landlord / property-manager / HOA / tenant-association form, review it below and complete it where
+                      clinically appropriate. If no form is attached, continue the standard ESA/PSD review — an upload is
+                      only required when the customer has an external form.
+                    </p>
+                    <p className="text-xs font-bold text-emerald-800 mb-1.5 flex items-center gap-1.5">
+                      <i className="ri-attachment-2"></i>Customer-uploaded form{raUploads.length === 1 ? "" : "s"}
+                    </p>
+                    {raUploads.length === 0 ? (
+                      <div className="flex items-start gap-2 bg-white border border-emerald-100 rounded-lg px-3 py-2.5">
+                        <i className="ri-information-line text-emerald-500 text-sm mt-0.5 flex-shrink-0"></i>
+                        <p className="text-xs text-gray-600">No file uploaded yet. The customer may not have a form to complete, or may upload it from their portal — check back if they do.</p>
+                      </div>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {raUploads.map((d) => (
+                          <li key={d.id} className="flex items-center justify-between gap-2 bg-white border border-emerald-100 rounded-lg px-3 py-2">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <i className="ri-file-text-line text-emerald-500 flex-shrink-0"></i>
+                              <span className="min-w-0">
+                                <span className="block text-xs font-semibold text-gray-800 truncate">{d.label}</span>
+                                {d.uploaded_at && <span className="block text-[10px] text-gray-400">Uploaded {fmtDate(d.uploaded_at)}</span>}
+                              </span>
+                            </span>
+                            <span className="flex items-center gap-2 flex-shrink-0">
+                              <button type="button" onClick={() => openDoc(d.id)} className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 whitespace-nowrap flex items-center gap-1 cursor-pointer">
+                                <i className="ri-eye-line"></i>Open
+                              </button>
+                              <button type="button" onClick={() => downloadDoc(d.id, d.label)} className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 whitespace-nowrap flex items-center gap-1 cursor-pointer">
+                                <i className="ri-download-2-line"></i>Download
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {renderHousingCompletion()}
                   </div>
                 );
               })()}
@@ -854,14 +1057,23 @@ export default function ProviderOrderDetail({
                 )}
               </div>
 
-              {/* Documents in this order */}
-              {(uploadedDocs.length > 0 || order.signed_letter_url) && (
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Submitted Documents</p>
+              {/* Provider-submitted letters — the provider's own ESA/PSD deliverables
+                  ONLY. The customer's Housing Accommodation form (doc_type
+                  "customer_upload") is a different document class shown in the Housing
+                  Accommodation section above; it is excluded here so it never appears
+                  twice. RA-PROVIDER-DOCUMENT-WORKFLOW-RELEASE-BLOCKERS-001. */}
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Provider Submitted Letters</p>
+                {providerDocs.length === 0 && !order.signed_letter_url ? (
+                  <div className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5">
+                    <i className="ri-information-line text-gray-400 text-sm mt-0.5 flex-shrink-0"></i>
+                    <p className="text-xs text-gray-500">No letter submitted yet. Upload the completed {orderIsPsd ? "PSD" : "ESA"} letter from the Upload Letter tab.</p>
+                  </div>
+                ) : (
                   <div className="space-y-2">
-                    {uploadedDocs.map((doc) => (
-                      <a key={doc.id} href={doc.file_url} target="_blank" rel="noopener noreferrer"
-                        className="whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl hover:bg-[#dce8f5] cursor-pointer transition-colors">
+                    {providerDocs.map((doc) => (
+                      <button key={doc.id} type="button" onClick={() => openDoc(doc.id)}
+                        className="w-full text-left whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl hover:bg-[#dce8f5] cursor-pointer transition-colors">
                         <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
                           <i className="ri-file-check-line text-[#2c5282]"></i>
                         </div>
@@ -873,24 +1085,24 @@ export default function ProviderOrderDetail({
                           </p>
                         </div>
                         <i className="ri-external-link-line text-[#2c5282]/60"></i>
-                      </a>
+                      </button>
                     ))}
-                    {order.signed_letter_url && !uploadedDocs.some((d) => d.file_url === order.signed_letter_url) && (
+                    {order.signed_letter_url && !providerDocs.some((d) => d.file_url === order.signed_letter_url) && (
                       <a href={order.signed_letter_url} target="_blank" rel="noopener noreferrer"
                         className="whitespace-nowrap flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl hover:bg-[#dce8f5] cursor-pointer transition-colors">
                         <div className="w-8 h-8 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
                           <i className="ri-shield-check-line text-[#2c5282]"></i>
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-bold text-[#2c5282]">Signed ESA Letter</p>
+                          <p className="text-sm font-bold text-[#2c5282]">{orderIsPsd ? "Signed PSD Letter" : "Signed ESA Letter"}</p>
                           <p className="text-xs text-[#2c5282]/60">Your submitted document</p>
                         </div>
                         <i className="ri-external-link-line text-[#2c5282]/60"></i>
                       </a>
                     )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Refunded banner */}
               {isRefunded && (
@@ -1117,15 +1329,15 @@ export default function ProviderOrderDetail({
                   {/* Read-only: show what was already submitted */}
                   {loadingDocs ? (
                     <div className="flex justify-center py-4"><i className="ri-loader-4-line animate-spin text-[#2c5282]"></i></div>
-                  ) : uploadedDocs.length > 0 && (
+                  ) : providerDocs.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
                         <i className="ri-file-check-line text-gray-400 text-sm"></i>
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                          Previously Submitted ({uploadedDocs.length}) — Read Only
+                          Previously Submitted ({providerDocs.length}) — Read Only
                         </p>
                       </div>
-                      {uploadedDocs.map((doc) => (
+                      {providerDocs.map((doc) => (
                         <div key={doc.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0 opacity-75">
                           <div className="w-8 h-8 flex items-center justify-center bg-violet-50 rounded-lg flex-shrink-0">
                             <i className="ri-file-check-line text-violet-500 text-sm"></i>
@@ -1137,10 +1349,10 @@ export default function ProviderOrderDetail({
                               {doc.sent_to_customer && <span className="ml-2 text-[#2c5282] font-semibold">· Sent to patient ✓</span>}
                             </p>
                           </div>
-                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                          <button type="button" onClick={() => openDoc(doc.id)}
                             className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-200 cursor-pointer">
                             <i className="ri-external-link-line"></i>Open
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -1181,12 +1393,12 @@ export default function ProviderOrderDetail({
                   {/* Previously uploaded docs */}
                   {loadingDocs ? (
                     <div className="flex justify-center py-4"><i className="ri-loader-4-line animate-spin text-[#2c5282]"></i></div>
-                  ) : uploadedDocs.length > 0 && (
+                  ) : providerDocs.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest px-4 py-3 border-b border-gray-100 bg-gray-50">
-                        Previously Submitted ({uploadedDocs.length})
+                        Previously Submitted ({providerDocs.length})
                       </p>
-                      {uploadedDocs.map((doc) => (
+                      {providerDocs.map((doc) => (
                         <div key={doc.id} className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
                           <div className="w-8 h-8 flex items-center justify-center bg-violet-50 rounded-lg flex-shrink-0">
                             <i className="ri-file-check-line text-violet-500 text-sm"></i>
@@ -1198,10 +1410,10 @@ export default function ProviderOrderDetail({
                               {doc.sent_to_customer && <span className="ml-2 text-[#2c5282] font-semibold">· Sent to patient ✓</span>}
                             </p>
                           </div>
-                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
+                          <button type="button" onClick={() => openDoc(doc.id)}
                             className="whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-200 cursor-pointer">
                             <i className="ri-external-link-line"></i>Open
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -1301,21 +1513,14 @@ export default function ProviderOrderDetail({
                                   disabled={item.done}
                                   className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2c5282] bg-white disabled:bg-gray-50 disabled:text-gray-400"
                                 />
-                                <div className="relative">
-                                  <select
-                                    value={item.docType}
-                                    onChange={(e) => updateQueueItem(item.id, { docType: e.target.value })}
-                                    disabled={item.done}
-                                    className="appearance-none pl-2.5 pr-6 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:border-[#2c5282] cursor-pointer disabled:bg-gray-50 disabled:text-gray-400"
-                                  >
-                                    <option value="esa_letter">ESA Letter</option>
-                                    <option value="signed_letter">Signed Letter</option>
-                                    <option value="housing_verification">Housing Verification</option>
-                                    <option value="landlord_form">Landlord Form</option>
-                                    <option value="other">Other</option>
-                                  </select>
-                                  <i className="ri-arrow-down-s-line absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" style={{ fontSize: "11px" }}></i>
-                                </div>
+                                {/* Document type is fixed to the order's product
+                                    (ESA/PSD) — not provider-selectable, so a PSD order
+                                    can never be mislabeled ESA. Completed Housing
+                                    Accommodation forms use the dedicated uploader in the
+                                    Housing Accommodation section, not this letter queue. */}
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#e8f0f9] text-[#2c5282] whitespace-nowrap flex-shrink-0">
+                                  <i className="ri-file-text-line"></i>{orderIsPsd ? "PSD Letter" : "ESA Letter"}
+                                </span>
                               </div>
                               {item.error && (
                                 <p className="text-xs text-red-500 flex items-center gap-1">

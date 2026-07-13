@@ -26,6 +26,8 @@ interface QRPaymentTabProps {
   confirmationId: string;
   selectedProvider?: string;
   letterType?: "esa" | "psd";
+  /** RA bundle package key (PACKAGE-RA-LETTER-BUNDLE-001). */
+  packageKey?: string;
   onSuccess?: () => void;
   /** Applied coupon code to pass to backend for discount */
   couponCode?: string;
@@ -65,6 +67,7 @@ export default function QRPaymentTab({
   confirmationId,
   selectedProvider,
   letterType = "esa",
+  packageKey,
   onSuccess,
   couponCode,
 }: QRPaymentTabProps) {
@@ -109,6 +112,7 @@ export default function QRPaymentTab({
           mode: "qr",
           planType,
           origin: window.location.origin,
+          ...(packageKey ? { packageKey } : {}),
           // Pass coupon code for backend discount application
           ...(couponCode ? { couponCode } : {}),
         }),

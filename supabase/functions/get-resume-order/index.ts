@@ -707,7 +707,7 @@ serve(async (req) => {
     const { data, error } = await supabase
       .from("orders")
       .select(
-        "confirmation_id, first_name, last_name, email, phone, state, delivery_speed, price, assessment_answers, payment_intent_id, paid_at, status, plan_type, letter_type"
+        "confirmation_id, first_name, last_name, email, phone, state, delivery_speed, price, assessment_answers, payment_intent_id, paid_at, status, plan_type, letter_type, package_key, billing_plan"
       )
       .eq("confirmation_id", confirmationId)
       .maybeSingle();
@@ -734,6 +734,8 @@ serve(async (req) => {
       status: data.status,
       plan_type: data.plan_type,
       letter_type: data.letter_type,
+      package_key: data.package_key,
+      billing_plan: data.billing_plan,
       already_paid: alreadyPaid,
     };
 

@@ -16,6 +16,7 @@ const HowToGetESAPage = lazy(() => import("../pages/how-to-get-esa/page"));
 const EverythingEsaOnlinePage = lazy(() => import("../pages/everything-esa-online/page"));
 const HousingRightsPage = lazy(() => import("../pages/housing-rights/page"));
 const ESALetterCostPage = lazy(() => import("../pages/esa-letter-cost/page"));
+const PSDLetterCostPage = lazy(() => import("../pages/psd-letter-cost/page"));
 const ExploreStatesPage = lazy(() => import("../pages/explore-states/page"));
 const StateESAPage = lazy(() => import("../pages/state-esa/page"));
 const ServiceDogsPage = lazy(() => import("../pages/service-dogs/page"));
@@ -234,6 +235,7 @@ const routes: RouteObject[] = [
   { path: "/everything-you-need-to-know-about-obtaining-an-esa-letter-online", element: <P C={EverythingEsaOnlinePage} /> },
   { path: "/housing-rights-esa", element: <P C={HousingRightsPage} /> },
   { path: "/esa-letter-cost", element: <P C={ESALetterCostPage} /> },
+  { path: "/psd-letter-cost", element: <P C={PSDLetterCostPage} /> },
   // ESA laws / compliance content pages (informational, indexable).
   { path: "/esa-laws", element: <P C={ESALawsPage} /> },
   { path: "/are-online-esa-letters-legit", element: <P C={AreOnlineESALettersLegitPage} /> },

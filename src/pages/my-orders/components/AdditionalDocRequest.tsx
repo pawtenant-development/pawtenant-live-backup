@@ -15,6 +15,13 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { ADDITIONAL_DOC_PRICING } from "../../../config/pricing";
+
+/** Whole-dollar string for an amount in cents (history-accurate display). */
+function dollars(cents: number | null | undefined): string {
+  const n = typeof cents === "number" && cents > 0 ? Math.round(cents / 100) : ADDITIONAL_DOC_PRICING.addon;
+  return `$${n}`;
+}
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
@@ -144,22 +151,22 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
 
   function UploadPanel() {
     return (
-      <div className="mt-3 border-t border-sky-200 pt-3">
-        <p className="text-xs font-bold text-sky-800 mb-1.5 flex items-center gap-1.5">
+      <div className="mt-3 border-t border-[#dbe4f0] pt-3">
+        <p className="text-xs font-bold text-[#1e3a5f] mb-1.5 flex items-center gap-1.5">
           <i className="ri-upload-2-line"></i>Upload your form for the provider
         </p>
-        <p className="text-[11px] text-sky-700 leading-relaxed mb-2">
+        <p className="text-[11px] text-[#1e3a5f] leading-relaxed mb-2">
           Attach the housing, landlord or association form your provider needs to complete (PDF, image or Word — max 25&nbsp;MB).
         </p>
         {uploads.length > 0 && (
           <ul className="mb-2 space-y-1.5">
             {uploads.map((u) => (
-              <li key={u.id} className="flex items-center justify-between gap-2 bg-white border border-sky-100 rounded-lg px-3 py-2">
+              <li key={u.id} className="flex items-center justify-between gap-2 bg-white border border-[#dbe4f0] rounded-lg px-3 py-2">
                 <span className="flex items-center gap-1.5 min-w-0">
-                  <i className="ri-file-text-line text-sky-500 flex-shrink-0"></i>
+                  <i className="ri-file-text-line text-[#3b6ea5] flex-shrink-0"></i>
                   <span className="text-xs text-gray-700 truncate">{u.label}</span>
                 </span>
-                <a href={u.file_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-sky-600 hover:text-sky-800 whitespace-nowrap flex items-center gap-1">
+                <a href={u.file_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-[#3b6ea5] hover:text-[#1e3a5f] whitespace-nowrap flex items-center gap-1">
                   <i className="ri-external-link-line"></i>View
                 </a>
               </li>
@@ -177,7 +184,7 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 disabled:opacity-60 cursor-pointer transition-colors"
+          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] disabled:opacity-60 cursor-pointer transition-colors"
         >
           {uploading ? <><i className="ri-loader-4-line animate-spin"></i>Uploading…</> : <><i className="ri-upload-2-line"></i>{uploads.length > 0 ? "Upload another file" : "Upload a file"}</>}
         </button>
@@ -233,13 +240,13 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
   // Paid / in-progress → received confirmation.
   if (active?.status === "paid") {
     return (
-      <div className="mt-4 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+      <div className="mt-4 bg-[#f8fafc] border border-[#dbe4f0] rounded-xl px-4 py-3">
         <div className="flex items-start gap-2.5">
-          <i className="ri-file-check-line text-sky-600 mt-0.5"></i>
-          <div className="text-xs text-sky-800 leading-relaxed">
+          <i className="ri-file-check-line text-[#3b6ea5] mt-0.5"></i>
+          <div className="text-xs text-[#1e3a5f] leading-relaxed">
             <p className="font-bold mb-0.5">Additional documentation request received.</p>
             <p>
-              Your $40 payment was received and your case has been reopened for provider review. Upload the specific
+              Your {dollars(active.amount_cents)} payment was received and your case has been reopened for provider review. Upload the specific
               form you need completed below so your provider can review it. Provider review is based on a clinical
               assessment of your file.
             </p>
@@ -258,7 +265,7 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
           <i className="ri-time-line text-amber-600 mt-0.5"></i>
           <div className="text-xs text-amber-800 leading-relaxed flex-1">
             <p className="font-bold mb-0.5">Additional documentation — payment pending.</p>
-            <p>We also emailed you a secure payment link. You can finish your $40 payment below.</p>
+            <p>We also emailed you a secure payment link. You can finish your {dollars(active.amount_cents)} payment below.</p>
           </div>
         </div>
         <div className="mt-2.5 flex items-center gap-3">
@@ -282,16 +289,16 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
 
   return (
     <>
-      <div className="mt-4 bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-100 rounded-xl px-4 py-3">
+      <div className="mt-4 bg-[#ffffff] border border-[#e2e8f0] rounded-xl px-4 py-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-start gap-2.5 min-w-0">
-            <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg border border-sky-100 flex-shrink-0">
-              <i className="ri-file-add-line text-sky-600"></i>
+            <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg border border-[#e2e8f0] flex-shrink-0">
+              <i className="ri-file-add-line text-[#3b6ea5]"></i>
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-extrabold text-sky-800">Need additional documentation?</p>
-              <p className="text-xs text-sky-700 leading-relaxed mt-0.5">
-                Request provider review for extra housing/provider documentation or forms for this case.
+              <p className="text-xs font-extrabold text-[#172033]">Need help with a separate landlord or property form?</p>
+              <p className="text-xs text-[#5F6B7A] leading-relaxed mt-0.5">
+                Add optional provider review for an extra housing or property-manager form for this order.
                 {wasRefunded && " A previous request was refunded — you can submit a new one."}
               </p>
             </div>
@@ -299,9 +306,9 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
           <button
             type="button"
             onClick={() => { setError(""); setModalOpen(true); }}
-            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 cursor-pointer transition-colors"
+            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#e2e8f0] text-[#172033] text-xs font-bold rounded-lg hover:border-[#3b6ea5] hover:text-[#3b6ea5] cursor-pointer transition-colors"
           >
-            <i className="ri-file-add-line"></i>Request Additional Documentation
+            <i className="ri-file-add-line"></i>Add documentation
           </button>
         </div>
       </div>
@@ -312,7 +319,7 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
             <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
               <div>
                 <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <i className="ri-file-add-line text-sky-600"></i>Additional Documentation
+                  <i className="ri-file-add-line text-[#3b6ea5]"></i>Additional Documentation
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">Order {order.confirmation_id}</p>
               </div>
@@ -327,17 +334,17 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">One-time service</p>
                   <p className="text-xs text-gray-600 mt-0.5">Additional documentation / forms</p>
                 </div>
-                <p className="text-2xl font-extrabold text-gray-900">$40.00</p>
+                <p className="text-2xl font-extrabold text-gray-900">${ADDITIONAL_DOC_PRICING.addon}.00</p>
               </div>
 
               <p className="text-xs text-gray-600 leading-relaxed">
-                Need extra housing or provider documentation completed after your original letter? This $40 service
+                Need extra housing or provider documentation completed after your original letter? This ${ADDITIONAL_DOC_PRICING.addon} service
                 reopens your case for <span className="font-semibold">provider review</span>. After payment, please reply
                 to our confirmation email with the specific form you need completed, or upload it in your portal.
               </p>
               <ul className="text-xs text-gray-600 space-y-1.5">
-                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-sky-500 mt-0.5"></i>Your case is reopened for review by a licensed provider.</li>
-                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-sky-500 mt-0.5"></i>Your original order, letter and payment are unchanged.</li>
+                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#3b6ea5] mt-0.5"></i>Your case is reopened for review by a licensed provider.</li>
+                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#3b6ea5] mt-0.5"></i>Your original order, letter and payment are unchanged.</li>
                 <li className="flex items-start gap-2"><i className="ri-information-line text-gray-400 mt-0.5"></i>Provider review is based on a clinical assessment of your file. We cannot guarantee third-party or landlord acceptance of any document.</li>
               </ul>
 
@@ -350,9 +357,9 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
                 type="button"
                 onClick={startNew}
                 disabled={submitting}
-                className="px-4 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                className="px-4 py-2 text-xs font-bold text-white bg-[#3b6ea5] hover:bg-[#1e3a5f] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
-                {submitting ? <><i className="ri-loader-4-line animate-spin"></i> Starting…</> : <><i className="ri-bank-card-line"></i> Pay $40 and reopen my case</>}
+                {submitting ? <><i className="ri-loader-4-line animate-spin"></i> Starting…</> : <><i className="ri-bank-card-line"></i> Pay ${ADDITIONAL_DOC_PRICING.addon} and reopen my case</>}
               </button>
             </div>
           </div>

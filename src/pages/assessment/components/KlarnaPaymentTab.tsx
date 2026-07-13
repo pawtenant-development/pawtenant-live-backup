@@ -25,6 +25,8 @@ interface KlarnaPaymentTabProps {
   confirmationId: string;
   selectedProvider?: string;
   letterType?: "esa" | "psd";
+  /** RA bundle package key (PACKAGE-RA-LETTER-BUNDLE-001). */
+  packageKey?: string;
   onSuccess?: () => void;
   /** Applied coupon code to pass to backend for discount */
   couponCode?: string;
@@ -70,6 +72,7 @@ export default function KlarnaPaymentTab({
   confirmationId,
   selectedProvider,
   letterType = "esa",
+  packageKey,
   onSuccess,
   couponCode,
   complianceBlocked = false,
@@ -139,6 +142,7 @@ export default function KlarnaPaymentTab({
           mode: "klarna",
           planType,
           origin: window.location.origin,
+          ...(packageKey ? { packageKey } : {}),
           // Pass coupon code for backend discount application
           ...(couponCode ? { couponCode } : {}),
         }),

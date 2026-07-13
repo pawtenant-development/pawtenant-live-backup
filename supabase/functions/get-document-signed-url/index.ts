@@ -125,6 +125,7 @@ Deno.serve(async (req: Request) => {
   // document belongs to.
   let isServiceRole = false;
   let callerEmail = "";
+  let callerUserId = "";
   let isAdmin = false;
   if (bearer === SUPABASE_SERVICE_ROLE_KEY) {
     isServiceRole = true;
@@ -134,6 +135,7 @@ Deno.serve(async (req: Request) => {
       return json(401, { ok: false, error: "Invalid token" });
     }
     callerEmail = (userResp.user.email ?? "").trim().toLowerCase();
+    callerUserId = userResp.user.id;
     const { data: profile } = await admin
       .from("doctor_profiles")
       .select("is_admin")
@@ -168,18 +170,33 @@ Deno.serve(async (req: Request) => {
 
   const row = doc as OrderDocRow;
 
-  // ── Customer auth: must own the order ─────────────────────────────────
+  // ── Non-admin auth: owning customer OR the assigned provider ──────────
+  // RA-ADMIN-VISIBILITY-STORAGE-HARDENING-LIVE-001: the assigned provider may
+  // resolve a signed URL for their OWN assigned order's documents (needed for
+  // the Housing workflow — the provider re-signs source forms on open).
+  // Authorization is strictly per-order, so an UNRELATED provider is denied.
+  // Owning-customer (customer_visible + email match), admin, and service-role
+  // checks are unchanged.
   if (!isServiceRole && !isAdmin) {
-    if (!row.customer_visible) {
-      return json(403, { ok: false, error: "Document is not customer-visible" });
-    }
     const { data: order } = await admin
       .from("orders")
-      .select("email")
+      .select("email, doctor_user_id, doctor_email")
       .eq("id", row.order_id)
       .maybeSingle();
     const orderEmail = ((order?.email as string | null) ?? "").trim().toLowerCase();
-    if (!orderEmail || orderEmail !== callerEmail) {
+    const orderDoctorEmail = ((order?.doctor_email as string | null) ?? "").trim().toLowerCase();
+    const isAssignedProvider =
+      (!!callerUserId && (order?.doctor_user_id as string | null) === callerUserId) ||
+      (!!callerEmail && !!orderDoctorEmail && orderDoctorEmail === callerEmail);
+    const isOwningCustomer = !!orderEmail && orderEmail === callerEmail;
+
+    if (isAssignedProvider) {
+      // provider is authorized regardless of customer_visible
+    } else if (isOwningCustomer) {
+      if (!row.customer_visible) {
+        return json(403, { ok: false, error: "Document is not customer-visible" });
+      }
+    } else {
       return json(403, { ok: false, error: "Not authorized for this document" });
     }
   }

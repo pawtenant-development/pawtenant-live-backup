@@ -14,7 +14,9 @@ import LiveStatusBanner from "./components/LiveStatusBanner";
 import StateSelectionStep from "./components/StateSelectionStep";
 import CustomerOtpStep from "./components/CustomerOtpStep";
 import AssuranceScreen from "./components/AssuranceScreen";
+import PackageSelectionStep from "./components/PackageSelectionStep";
 import type { StateAcknowledgment } from "./components/StateAcknowledgmentModal";
+import { nextBookingGate } from "@/lib/bookingProgress";
 
 
 import { getDoctorsForState, ALL_STATES } from "../../mocks/doctors";
@@ -33,7 +35,8 @@ import {
   setSelectedState,
 } from "@/lib/attributionStore";
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
-import { getEsaOneTimeTotal, getEsaAnnualTotal } from "@/config/pricing";
+import { getEsaOneTimeTotal, getEsaAnnualTotal, getPackageTotal } from "@/config/pricing";
+import type { PackageKey } from "@/config/pricing";
 import { trackAssessmentStepView, trackPaymentAttempted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 
 // Lazy-loaded Step 3 checkout (payment) — split into its own bundle chunk.
@@ -80,9 +83,14 @@ const defaultStep2: Step2Data = {
   additionalDocs: undefined,
 };
 
-function getAssessmentBasePrice(petCount: number, _deliverySpeed: string, plan: "one-time" | "subscription"): number {
-  if (plan === "subscription") return getEsaAnnualTotal(petCount);
-  return getEsaOneTimeTotal(petCount);
+function getAssessmentBasePrice(
+  petCount: number,
+  _deliverySpeed: string,
+  plan: "one-time" | "subscription",
+  packageKey: PackageKey = "esa_standard",
+): number {
+  // RA bundle = flat $179 one-time / $159 annual; standard keeps tiered pricing.
+  return getPackageTotal(packageKey, plan === "subscription" ? "annual" : "one_time", petCount);
 }
 
 function getDiscountedAssessmentPrice(basePrice: number, coupon: { code: string; discount: number } | null): number {
@@ -404,12 +412,26 @@ export default function AssessmentPage() {
   // acknowledgment fires early. After "Your Information" the customer verifies
   // their email via a 6-digit OTP, then sees an assurance screen, then pays.
   const [stateConfirmed, setStateConfirmed] = useState(false);
-  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "pay">("otp");
+  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("otp");
   const [otpVerified, setOtpVerified] = useState(false);
   const verifiedEmailRef = useRef("");
+  // Where OTP verification should land the customer next. First-time flow →
+  // "assurance"; a resume of a package-selected lead → "pay"; else → "package".
+  // (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001)
+  const postOtpGateRef = useRef<"assurance" | "package" | "pay">("assurance");
   const [step1, setStep1] = useState<Step1Data>(defaultStep1);
   const [step2, setStep2] = useState<Step2Data>({ ...defaultStep2, state: preSelectedState });
   const [step3, setStep3] = useState<Step3Data>({ selectedDoctorId: preSelectedDoctorId, plan: "one-time" });
+  // RA bundle selection (PACKAGE-RA-LETTER-BUNDLE-001): esa_standard | esa_ra_bundle.
+  // Optional preselect from the ESA cost-page combo CTA (?package=esa_ra_bundle):
+  // pre-highlights the RA card only — OTP and server-side pricing are unaffected;
+  // the customer still confirms on the package step.
+  const [selectedPackage, setSelectedPackage] = useState<PackageKey>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("package") === "esa_ra_bundle"
+        ? "esa_ra_bundle" : "esa_standard";
+    } catch { return "esa_standard"; }
+  });
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [stripeClientSecret, setStripeClientSecret] = useState("");
@@ -646,20 +668,57 @@ export default function AssessmentPage() {
         // fetchClientSecret call — Step 3 will trigger it normally when the
         // customer reaches checkout. Otherwise keep the existing jump-to-Step-3
         // behavior for every other resume use case.
-        // Resume = returning customer from a trusted email link: skip the
-        // state gate and the OTP gate (they've already been through intake).
         setStateConfirmed(true);
-        setOtpVerified(true);
-        verifiedEmailRef.current = (loadedStep2.email ?? "").trim().toLowerCase();
-        setCheckoutGate("pay");
+
+        // ── Deterministic, auth-gated resume routing
+        //    (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001) ──
+        // Restore the saved package (authoritative identity — never inferred from
+        // price) so a package-selected lead resumes at checkout; a no-package lead
+        // resumes at the package step.
+        const savedPackageKey = typeof data.package_key === "string" ? data.package_key : null;
+        if (savedPackageKey === "esa_ra_bundle" || savedPackageKey === "esa_standard") {
+          setSelectedPackage(savedPackageKey);
+        }
+        const nextGate = nextBookingGate({
+          confirmation_id: resumeConfirmationId,
+          letter_type: (data.letter_type as string) ?? "esa",
+          status: (data.status as string) ?? "lead",
+          package_key: savedPackageKey,
+        });
+
+        // A confirmation ID in a URL is not authentication. Only skip OTP when the
+        // visitor already holds a Supabase session for THIS order's email; otherwise
+        // require OTP (the code goes to the order's email — only the owner can
+        // complete it) before any checkout data is actionable.
+        const orderEmail = (loadedStep2.email ?? "").trim().toLowerCase();
+        let sessionEmail = "";
+        try {
+          const { data: sess } = await supabase.auth.getUser();
+          sessionEmail = (sess?.user?.email ?? "").trim().toLowerCase();
+        } catch { /* ignore — treat as unauthenticated */ }
+        const alreadyAuthed = !!orderEmail && sessionEmail === orderEmail;
+
         if (resumeEditPet) {
+          // Repeat-customer new-pet review: land on Step 1; the normal Step 2 → OTP
+          // path handles auth. Skip the eager PI mint.
+          setOtpVerified(alreadyAuthed);
+          verifiedEmailRef.current = alreadyAuthed ? orderEmail : "";
           setCurrentStep(1);
           window.scrollTo({ top: 0, behavior: "smooth" });
-        } else {
+        } else if (alreadyAuthed) {
+          setOtpVerified(true);
+          verifiedEmailRef.current = orderEmail;
+          setCheckoutGate(nextGate);
           setCurrentStep(3);
           window.scrollTo({ top: 0, behavior: "smooth" });
-          // Fetch Stripe client_secret immediately for resume flow
-          fetchClientSecret(loadedStep2, resumeConfirmationId);
+          if (nextGate === "pay") fetchClientSecret(loadedStep2, resumeConfirmationId);
+        } else {
+          setOtpVerified(false);
+          verifiedEmailRef.current = "";
+          postOtpGateRef.current = nextGate;
+          setCheckoutGate("otp");
+          setCurrentStep(3);
+          window.scrollTo({ top: 0, behavior: "smooth" });
         }
       } catch (err) {
         setResumeNotFound(true);
@@ -693,11 +752,11 @@ export default function AssessmentPage() {
     if (!isTestMode) return;
     setStep1(testStep1);
     setStep2(testStep2);
-    // Test shortcut bypasses the state + OTP gates and lands on the pay surface.
+    // Test shortcut bypasses the state + OTP gates and lands on the package step.
     setStateConfirmed(true);
     setOtpVerified(true);
     verifiedEmailRef.current = testStep2.email.trim().toLowerCase();
-    setCheckoutGate("pay");
+    setCheckoutGate("package");
     setCurrentStep(3);
     window.scrollTo(0, 0);
     fetchClientSecret(testStep2, confirmationId.current);
@@ -726,18 +785,18 @@ export default function AssessmentPage() {
   // Covers the case where the initial call was skipped (empty email at the
   // time of the resume/test-mode trigger) but the email is now available.
   useEffect(() => {
-    if (currentStep !== 3) return;
+    if (currentStep !== 3 || checkoutGate !== "pay") return; // only mint at the checkout gate
     if (stripeClientSecret) return; // already have one — don't re-fetch
     const email = step2.email?.trim();
     if (!email || !email.includes("@") || !email.includes(".")) return;
     fetchClientSecret(step2, confirmationId.current, appliedCoupon);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, step2.email]);
+  }, [currentStep, checkoutGate, step2.email]);
 
   // ── Fetch Stripe client_secret from server ────────────────────────────────
   // Accepts step2 data directly so it works both from goNext (current state)
   // and from the resume useEffect (state hasn't updated yet).
-  const fetchClientSecret = async (s2: Step2Data, confId: string, coupon: { code: string; discount: number } | null = null) => {
+  const fetchClientSecret = async (s2: Step2Data, confId: string, coupon: { code: string; discount: number } | null = null, pkg: PackageKey = selectedPackage) => {
     // Guard: email must be a valid non-empty address before calling Stripe
     if (!s2.email || !s2.email.includes("@") || !s2.email.includes(".")) return;
     // In-flight lock — prevents duplicate concurrent calls (resume + retry + useEffect)
@@ -786,6 +845,7 @@ export default function AssessmentPage() {
             lastName: s2.lastName,
             state: s2.state,
             plan: step3.plan,
+            packageKey: pkg,
             couponCode: coupon?.code ?? "",
             // ── Phase 1: minimal attribution into Stripe metadata ─────────
             // Six fields only. NEVER include full attribution_json — the
@@ -859,10 +919,19 @@ export default function AssessmentPage() {
     setCurrentStep(1);
     window.scrollTo(0, 0);
   };
+  const handleViewPortal = () => {
+    // The customer is authenticated after OTP (magic-link session established in
+    // CustomerOtpStep). Send them to their portal focused on this saved order.
+    navigate(`/my-orders?order=${encodeURIComponent(confirmationId.current)}`);
+  };
   const handleOtpVerified = () => {
     setOtpVerified(true);
     verifiedEmailRef.current = step2.email.trim().toLowerCase();
-    setCheckoutGate("assurance");
+    // Route to the resolved next step: first-time → assurance; resume → package/pay.
+    const target = postOtpGateRef.current;
+    postOtpGateRef.current = "assurance";
+    setCheckoutGate(target);
+    if (target === "pay") fetchClientSecret(step2, confirmationId.current, appliedCoupon, selectedPackage);
     window.scrollTo(0, 0);
   };
 
@@ -880,7 +949,7 @@ export default function AssessmentPage() {
       const needOtp =
         !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
       if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
-      else setCheckoutGate("pay");
+      else setCheckoutGate("package");
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
       // Save lead FIRST and await it — saveLeadToSupabase may rewrite
@@ -927,6 +996,40 @@ export default function AssessmentPage() {
     window.scrollTo(0, 0);
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
+  };
+
+  // ── RA bundle package selection (PACKAGE-RA-LETTER-BUNDLE-001) ──────────────
+  // The one-time PaymentIntent amount is minted server-side; when the package
+  // changes on the one-time plan we re-mint so the card charge matches the new
+  // package (subscription mints its own PI at pay time from subscriptionParams).
+  const handlePackageChange = (pkg: string) => {
+    const next = (pkg === "esa_ra_bundle" ? "esa_ra_bundle" : "esa_standard") as PackageKey;
+    setSelectedPackage(next);
+    // Clear the previous package's server-quoted base so the checkout shows the
+    // correct price for the new package immediately (no stale flicker); the
+    // re-mint below re-confirms it (incl. any resume/legacy lock).
+    setQuotedBasePriceDollars(null);
+    if (step3.plan !== "subscription") {
+      fetchClientSecret(step2, confirmationId.current, appliedCoupon, next);
+    }
+  };
+
+  // Dedicated package step → advance to checkout with the chosen package (mints the
+  // one-time PI for it; annual mints its own PI at pay time from subscriptionParams).
+  const handlePackageSelect = (pkg: string) => {
+    handlePackageChange(pkg);
+    setCheckoutGate("pay");
+    window.scrollTo(0, 0);
+  };
+
+  // Wrap the Step3 onChange so switching BACK to one-time re-mints the PI with
+  // the currently selected package (its amount may be stale from a prior mint).
+  const handleStep3Change = (next: Step3Data) => {
+    const switchingToOneTime = next.plan !== "subscription" && step3.plan === "subscription";
+    setStep3(next);
+    if (switchingToOneTime) {
+      fetchClientSecret(step2, confirmationId.current, appliedCoupon, selectedPackage);
+    }
   };
 
   /** Called only if the user somehow clicks "Load Payment Form" fallback button */
@@ -1320,8 +1423,10 @@ export default function AssessmentPage() {
     paymentCompletedRef.current = true; // prevent unmount cleanup from cancelling the subscription
     markPaid();
     const selectedDoc = getDoctorsForState(step2.state).find((d) => d.id === step3.selectedDoctorId);
-    // Compute correct price based on actual pet count + delivery speed + plan
-    const basePrice = getAssessmentBasePrice(step2.pets.length, "", step3.plan);
+    // Compute correct price based on actual pet count + plan + selected package
+    // (RA bundle = flat $179/$159). Must match the server-charged amount so the
+    // client order write never overwrites the webhook's price.
+    const basePrice = getAssessmentBasePrice(step2.pets.length, "", step3.plan, selectedPackage);
     const price = getDiscountedAssessmentPrice(basePrice, appliedCoupon);
     const docName = selectedDoc ? `${selectedDoc.name}, ${selectedDoc.title}` : "";
 
@@ -1675,8 +1780,19 @@ export default function AssessmentPage() {
                 <AssuranceScreen
                   letterType="esa"
                   accent="esa"
-                  onContinue={() => { setCheckoutGate("pay"); window.scrollTo(0, 0); }}
+                  onContinue={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
+                  onViewPortal={handleViewPortal}
                   onBack={() => setCheckoutGate("otp")}
+                />
+              )}
+              {currentStep === 3 && checkoutGate === "package" && (
+                <PackageSelectionStep
+                  letterType="esa"
+                  accent="esa"
+                  petCount={step2.pets.length}
+                  selectedPackage={selectedPackage}
+                  onSelect={handlePackageSelect}
+                  onBack={() => setCheckoutGate("assurance")}
                 />
               )}
               {currentStep === 3 && checkoutGate === "pay" && (
@@ -1685,7 +1801,10 @@ export default function AssessmentPage() {
                     step1={step1}
                     step2={step2}
                     data={step3}
-                    onChange={setStep3}
+                    onChange={handleStep3Change}
+                    packageKey={selectedPackage}
+                    onPackageChange={handlePackageChange}
+                    onChangePackage={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
                     onSubmit={handleSubmit}
                     onBack={goBack}
                     submitting={submitting}

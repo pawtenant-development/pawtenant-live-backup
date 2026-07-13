@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -92,6 +93,34 @@ function getPSDAnnualAmount(petCount: number): number {
 // PSD Consultation — $79 clinical guidance call (separate lead product; no
 // letter is created or promised by this purchase).
 const PSD_CONSULTATION_AMOUNT = 7900;
+
+// ─── RA bundle packages (PACKAGE-RA-LETTER-BUNDLE-001) ────────────────────────
+// ESA/PSD + Reasonable Accommodation Letter. FLAT $179 one-time / $159/yr annual
+// for 1–3 pets/dogs. One-time = dynamic PI amount; annual = on-the-fly product +
+// inline recurring price_data (NO pre-created Stripe Price). Mirrors src/config/pricing.ts.
+const BUNDLE_ONE_TIME_AMOUNT = 17900; // $179 flat total
+const BUNDLE_ANNUAL_AMOUNT = 15900;   // $159/yr flat total
+
+const PACKAGE_DISPLAY_NAMES: Record<string, string> = {
+  esa_standard: "ESA Letter",
+  esa_ra_bundle: "ESA + Reasonable Accommodation Letter",
+  psd_standard: "PSD Documentation",
+  psd_ra_bundle: "PSD + Reasonable Accommodation Letter",
+};
+
+const ALLOWED_PACKAGE_KEYS = ["esa_standard", "esa_ra_bundle", "psd_standard", "psd_ra_bundle"];
+
+// Resolve the canonical package key from an explicit body value, falling back to
+// the standard package for the given letterType. Backward compatible — any caller
+// that doesn't send packageKey behaves exactly as before.
+function resolvePackageKey(rawPackageKey: string, letterType: string): string {
+  if (ALLOWED_PACKAGE_KEYS.includes(rawPackageKey)) return rawPackageKey;
+  return letterType === "psd" ? "psd_standard" : "esa_standard";
+}
+
+function isRaBundleKey(packageKey: string): boolean {
+  return packageKey === "esa_ra_bundle" || packageKey === "psd_ra_bundle";
+}
 
 // ─── Stripe recurring Price IDs (TEST) — tier model, owner-provided 2026-07 ──
 // 1 pet/dog → $109/yr base Price; 2 or 3 → $129/yr fixed-total Price.
@@ -236,6 +265,30 @@ async function stampPricingSource(confirmationId: string, pricingSource: string)
   } catch { /* best-effort audit only — never block payment setup */ }
 }
 
+// RA-DOCUMENT-WORKFLOW-PORTALS-CONSISTENCY-001: stamp the authoritative package
+// entitlement onto the (unpaid) order at PI-creation time so combo orders carry
+// package_key / billing_plan / includes_reasonable_accommodation_letter regardless
+// of whether the webhook fires first (webhook still reconciles — defense-in-depth).
+// Uses the SAME server-validated packageKey the amount is charged on (NOT price
+// inference). Guarded to unpaid orders; best-effort, never blocks payment setup.
+async function stampPackageEntitlement(
+  confirmationId: string,
+  pkgKey: string,
+  billingPlan: "one_time" | "annual",
+): Promise<void> {
+  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await supabase
+      .from("orders")
+      .update(packageEntitlementPatch(pkgKey, billingPlan))
+      .eq("confirmation_id", confirmationId)
+      .is("paid_at", null);
+  } catch (err) {
+    console.warn("[create-payment-intent] package entitlement stamp failed (webhook will reconcile):", err instanceof Error ? err.message : String(err));
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -274,6 +327,12 @@ Deno.serve(async (req: Request) => {
   // Coupon code from frontend (validated by our DB validate-coupon function)
   const couponCode = (body.couponCode as string) ?? "";
 
+  // ── RA bundle package (PACKAGE-RA-LETTER-BUNDLE-001) ──────────────────────
+  // packageKey drives the flat bundle pricing + fulfillment flag. Optional and
+  // backward compatible — omitted → standard package for this letterType.
+  const packageKey = resolvePackageKey((body.packageKey as string) ?? "", letterType);
+  const isBundle = isRaBundleKey(packageKey);
+
   // ── Phase 1 analytics: read attribution fields (all optional, all safe) ──
   // Six fields ONLY are forwarded into Stripe payment_intent.metadata so
   // attribution survives even if the Supabase lead-write is lost. We do NOT
@@ -300,6 +359,18 @@ Deno.serve(async (req: Request) => {
     put("fbclid",       fbclid);
     put("channel",      channel);
     return meta;
+  }
+
+  // Package metadata carried on the PI/subscription so the webhook can persist
+  // package_* onto the order. Only stamped for the esa/psd letter products.
+  function buildPackageMeta(billingPlan: "one_time" | "annual"): Record<string, string> {
+    if (letterType !== "esa" && letterType !== "psd") return {};
+    return {
+      package_key: packageKey,
+      package_display_name: PACKAGE_DISPLAY_NAMES[packageKey] ?? "",
+      billing_plan: billingPlan,
+      includes_ra_letter: isBundle ? "true" : "false",
+    };
   }
 
   // ── Action: cancel_subscription ──────────────────────────────────────────
@@ -354,12 +425,19 @@ Deno.serve(async (req: Request) => {
 
     if (!piId) return json({ error: "paymentIntentId is required for update_amount" }, 400);
 
+    // update_amount only ever adjusts a ONE-TIME PaymentIntent. Resolve the package
+    // so a standard↔bundle switch re-prices to the flat bundle amount server-side.
+    const pkg = resolvePackageKey((body.packageKey as string) ?? "", lt);
+    const bundle = isRaBundleKey(pkg);
+
     // Re-derive base amount server-side — never trust a client-supplied dollar value
     const baseAmount = lt === "psd-consultation"
       ? PSD_CONSULTATION_AMOUNT
-      : lt === "psd"
-        ? getPSDOneTimeAmount(pc, ds)
-        : getESAOneTimeAmount(pc);
+      : bundle
+        ? BUNDLE_ONE_TIME_AMOUNT
+        : lt === "psd"
+          ? getPSDOneTimeAmount(pc, ds)
+          : getESAOneTimeAmount(pc);
 
     let discountCents = 0;
     if (cc) {
@@ -380,6 +458,14 @@ Deno.serve(async (req: Request) => {
     if (cc && discountCents > 0) {
       metadataPatch.coupon_code = cc;
       metadataPatch.coupon_discount_cents = String(discountCents);
+    }
+    // Persist the final package selection onto the PI so the webhook records the
+    // correct package even if the customer switched at Step 3.
+    if (lt === "esa" || lt === "psd") {
+      metadataPatch.package_key = pkg;
+      metadataPatch.package_display_name = PACKAGE_DISPLAY_NAMES[pkg] ?? "";
+      metadataPatch.billing_plan = "one_time";
+      metadataPatch.includes_ra_letter = bundle ? "true" : "false";
     }
 
     try {
@@ -459,8 +545,25 @@ Deno.serve(async (req: Request) => {
       }
       const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
 
-      let subscriptionItems: Array<{ price: string; quantity: number }>;
-      if (letterType === "psd") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let subscriptionItems: any[];
+      if (isBundle) {
+        // RA bundle annual = flat $159/yr. The Subscriptions API requires a
+        // product id (not inline product_data), so create an on-the-fly product;
+        // the amount stays server-authoritative with NO pre-created Price.
+        const bundleProduct = await stripe.products.create({
+          name: PACKAGE_DISPLAY_NAMES[packageKey] ?? "PawTenant RA Bundle (Annual)",
+        });
+        subscriptionItems = [{
+          price_data: {
+            currency: "usd",
+            product: bundleProduct.id,
+            recurring: { interval: "year" },
+            unit_amount: BUNDLE_ANNUAL_AMOUNT,
+          },
+          quantity: 1,
+        }];
+      } else if (letterType === "psd") {
         const priceId = PSD_ANNUAL_PRICE_IDS[tier];
         if (!priceId) return json({ error: "No subscription price found" }, 400);
         subscriptionItems = [{ price: priceId, quantity: 1 }];
@@ -526,6 +629,8 @@ Deno.serve(async (req: Request) => {
           last_name: lastName,
           state,
           ...(couponCode ? { coupon_code: couponCode } : {}),
+          // ── RA bundle package metadata (additive) ───────────────────────
+          ...buildPackageMeta("annual"),
           // ── Phase 1: attribution metadata (additive, all optional) ──────
           ...buildAttributionMeta(),
         },
@@ -556,9 +661,11 @@ Deno.serve(async (req: Request) => {
       // Annual display amount must be the SUBSCRIPTION price (previously the
       // PSD branch wrongly used the one-time amount, which stamped a phantom
       // coupon_discount on every PSD subscription).
-      const displayAmount = letterType === "psd"
-        ? getPSDAnnualAmount(petCount)
-        : getESAAnnualAmount(petCount);
+      const displayAmount = isBundle
+        ? BUNDLE_ANNUAL_AMOUNT
+        : letterType === "psd"
+          ? getPSDAnnualAmount(petCount)
+          : getESAAnnualAmount(petCount);
       const discountCents = Math.max(0, displayAmount - paymentIntent.amount);
 
       // ── SUBSCRIPTION-PI-ORPHAN-FIX ────────────────────────────────────────
@@ -577,6 +684,7 @@ Deno.serve(async (req: Request) => {
         letter_type: letterType,
         pet_count: String(tier),
         delivery_speed: deliverySpeed,
+        ...buildPackageMeta("annual"),
         ...buildAttributionMeta(),
       };
       if (couponCode) piMetaPatch.coupon_code = couponCode;
@@ -596,6 +704,9 @@ Deno.serve(async (req: Request) => {
 
       console.info(`[create-payment-intent] Subscription ${subscription.id} created for ${confirmationId || email} — pet_count=${petCount}, delivery=${deliverySpeed}, display_amount=$${displayAmount / 100}, coupon=${couponCode || "none"}, discount=$${discountCents / 100}`);
 
+      // Stamp authoritative package entitlement now (annual) — webhook-independent.
+      await stampPackageEntitlement(confirmationId, packageKey, "annual");
+
       return json({
         clientSecret: paymentIntent.client_secret,
         subscriptionId: subscription.id,
@@ -609,6 +720,8 @@ Deno.serve(async (req: Request) => {
     let baseAmount: number;
     if (letterType === "psd-consultation") {
       baseAmount = PSD_CONSULTATION_AMOUNT;
+    } else if (isBundle) {
+      baseAmount = BUNDLE_ONE_TIME_AMOUNT; // flat $179, 1–3 pets/dogs
     } else if (letterType === "psd") {
       baseAmount = getPSDOneTimeAmount(petCount, deliverySpeed);
     } else {
@@ -621,10 +734,15 @@ Deno.serve(async (req: Request) => {
     // the saved price from the DB — the client-supplied petCount/plan cannot
     // override a resumed order's locked amount.
     let pricingSource = "current_pricing";
-    if (letterType !== "psd-consultation") {
+    if (letterType !== "psd-consultation" && !isBundle) {
       const lock = await resolveLegacyQuoteLock(confirmationId, baseAmount);
       baseAmount = lock.baseCents;
       pricingSource = lock.pricingSource;
+    } else if (isBundle) {
+      // RA bundles are brand-new flat-priced products with no legacy quotes to
+      // preserve; skipping the lock also prevents a standard saved lead price
+      // (e.g. $129) from suppressing the $179 bundle upcharge on an in-session upgrade.
+      pricingSource = "bundle_flat";
     }
 
     // Apply coupon discount server-side at PI creation so Stripe charges the
@@ -661,6 +779,8 @@ Deno.serve(async (req: Request) => {
         ...(couponCode && discountCents > 0
           ? { coupon_code: couponCode, coupon_discount_cents: String(discountCents) }
           : {}),
+        // ── RA bundle package metadata (additive) ─────────────────────────
+        ...buildPackageMeta("one_time"),
         // ── Phase 1: attribution metadata (additive, all optional) ────────
         ...buildAttributionMeta(),
       },
@@ -669,6 +789,8 @@ Deno.serve(async (req: Request) => {
     // Persist the pricing decision for admin visibility (best-effort, never
     // blocks payment setup). Amount is already locked above.
     await stampPricingSource(confirmationId, pricingSource);
+    // Stamp authoritative package entitlement now (one-time) — webhook-independent.
+    await stampPackageEntitlement(confirmationId, packageKey, "one_time");
 
     console.info(`[create-payment-intent] PI ${paymentIntent.id} — $${finalAmount / 100} (${letterType}, ${petCount} pet(s), ${deliverySpeed}, coupon: ${couponCode || "none"}, discount: $${discountCents / 100}, pricing: ${pricingSource}) — cid: ${confirmationId || "none"}`);
 

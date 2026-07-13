@@ -106,7 +106,6 @@ Deno.serve(async (req: Request) => {
 
   const confirmationId = body.confirmationId as string | undefined;
   const doctorEmail = body.doctorEmail as string | undefined;
-  const skipPaymentCheck = body.skipPaymentCheck === true;
 
   if (!confirmationId || !doctorEmail) return json({ error: "confirmationId and doctorEmail are required" }, 400);
 
@@ -158,13 +157,15 @@ Deno.serve(async (req: Request) => {
   if (doctorAvailabilityStatus === "at_capacity") return json({ error: `Provider ${doctorName} (${normalizedEmail}) is currently at capacity and not accepting new assignments.`, availability_status: "at_capacity" }, 400);
   if (isPortalProvider && !doctorPortalAccessed) return json({ error: `Provider ${doctorName} must complete account setup and access the portal before receiving orders.`, reason: "pending_account_setup" }, 400);
 
-  const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, additional_documents_requested, delivery_speed, price, payment_intent_id, status, letter_type, addon_services").eq("confirmation_id", confirmationId).maybeSingle();
+  const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, additional_documents_requested, delivery_speed, price, payment_intent_id, paid_at, status, letter_type, addon_services").eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);
 
-  if (!skipPaymentCheck) {
-    const orderIsPaid = !!(order.payment_intent_id) || (order.status !== "lead" && !!order.status);
-    if (!orderIsPaid) return json({ ok: false, warning: `Order ${confirmationId} has not been paid yet.`, action: "skipped_unpaid_order", orderStatus: order.status ?? "unknown" }, 400);
-  }
+  // ORDER-PAYMENT-GATING: skipPaymentCheck is intentionally NO LONGER honored — an
+  // unpaid base order is never assignable via ANY path. Key ONLY on canonical
+  // payment fields (payment_intent_id / paid_at), NOT status (a synthetic /
+  // mis-advanced order can be non-'lead' while never actually paid).
+  const orderIsPaid = !!order.payment_intent_id || !!order.paid_at;
+  if (!orderIsPaid) return json({ ok: false, error: `Order ${confirmationId} cannot be assigned: the consultation booking has not been paid.`, action: "rejected_unpaid_order", orderStatus: order.status ?? "unknown" }, 400);
 
   const now = new Date().toISOString();
   const updatePayload: Record<string, unknown> = { doctor_status: "pending_review", doctor_name: doctorName, doctor_email: normalizedEmail, last_contacted_at: now };

@@ -5,43 +5,54 @@ import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
 import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
-import { ESA_PRICE_LABELS } from "@/config/pricing";
+import { ESA_PRICE_LABELS, BUNDLE_PRICING } from "@/config/pricing";
 import { useSitePricing } from "@/hooks/useSitePricing";
 
-const pricingPlans = [
+import HeroPriceLine from "@/components/feature/HeroPriceLine";
+// Two ESA packages (no PSD on this page). Standard prices hydrate from the
+// admin-managed site_pricing_settings (via getPrice) with config fallbacks;
+// the Reasonable Accommodation bundle is a FLAT total for 1–3 pets ($179
+// one-time / $159 per year) sourced from BUNDLE_PRICING — never per-pet.
+// The combo CTA preselects the RA package via ?package=esa_ra_bundle; OTP and
+// server-side pricing still run — the query param only pre-highlights the card.
+const packages = [
   {
-    label: "One-Time ESA Letter",
-    sublabel: "Delivered Within 24 Hours",
-    price: ESA_PRICE_LABELS.oneTime,
-    priceKey: "esa_single_pet",
-    period: "one-time",
+    key: "esa_standard",
+    label: "ESA Standard Letter",
+    sublabel: "Licensed-provider housing letter",
+    oneTime: ESA_PRICE_LABELS.oneTime,          // $129 (1 pet)
+    oneTimeKey: "esa_single_pet",
+    annual: ESA_PRICE_LABELS.subscription,      // $109/yr (1 pet)
+    annualKey: "esa_subscription_annual",
     highlight: false,
-    cta: "Get Your Official ESA Letter",
+    cta: "Start ESA Assessment",
+    href: "/assessment",
     features: [
-      "Full mental health evaluation",
-      "Licensed clinician letter",
-      "NPI & license number included",
-      "Valid for housing nationwide",
-      "Digital delivery within 24 hours",
-      "100% money-back guarantee",
+      "Full mental health evaluation by a licensed clinician",
+      "Signed ESA letter with NPI & license number",
+      "Valid for housing nationwide under the Fair Housing Act",
+      "Digital delivery — typically within 24 hours",
+      "Covers 1 pet · 2–3 pets $149 one-time / $129 per year",
+      "100% money-back guarantee if you don't qualify",
     ],
   },
   {
-    label: "Annual Subscription",
-    sublabel: "Per Year — Auto-Renews",
-    price: ESA_PRICE_LABELS.subscription,
-    priceKey: "esa_subscription_annual",
-    period: "/year",
+    key: "esa_ra_bundle",
+    label: "ESA + Reasonable Accommodation",
+    sublabel: "Adds support with a separate landlord / property / HOA form",
+    oneTime: `$${BUNDLE_PRICING.oneTime}`,      // $179 flat (1–3 pets)
+    oneTimeKey: null,
+    annual: `$${BUNDLE_PRICING.annual}`,        // $159/yr flat (1–3 pets)
+    annualKey: null,
     highlight: true,
-    cta: "Get Your Official ESA Letter",
+    cta: "Start with RA Document Support",
+    href: "/assessment?package=esa_ra_bundle",
     features: [
-      "Full mental health evaluation",
-      "Licensed clinician letter",
-      "NPI & license number included",
-      "Valid for housing nationwide",
-      "Annual renewal — renews automatically",
-      "Save $11 vs. one-time every year",
-      "100% money-back guarantee",
+      "Everything in the Standard ESA Letter",
+      "Reasonable Accommodation document support — help completing a separate landlord, property-manager, or HOA form if your housing provider asks for one",
+      "Flat price for 1–3 pets — no per-pet add-on",
+      "Not every landlord requires a separate form; this is here if yours does",
+      "Same licensed-provider review and money-back guarantee",
     ],
   },
 ];
@@ -166,12 +177,13 @@ export default function ESALetterCostPage() {
               <i className="ri-price-tag-3-line text-orange-400"></i>
               From {getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)}/year · {getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)} one-time
             </div>
-            <h1 className="text-[28px] sm:text-4xl md:text-5xl font-bold text-white mb-4 sm:mb-5 leading-[1.15]">
+            <h1 className="text-[28px] sm:text-4xl md:text-5xl text-white mb-4 sm:mb-5 leading-[1.15] pt-hero-display">
               Affordable ESA Letter with Money Back Guarantee
             </h1>
             <p className="text-white/85 text-[15px] sm:text-lg leading-relaxed mb-6 sm:mb-8">
               Licensed mental health professionals · no hidden fees · 100% refund if you don't qualify.
             </p>
+            <HeroPriceLine tone="light" className="mb-5" />
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
               <Link
                 to="/assessment"
@@ -195,30 +207,33 @@ export default function ESALetterCostPage() {
       <section className="py-14 sm:py-20 bg-white">
         <div className="max-w-7xl mx-auto px-5 sm:px-6">
           <div className="text-center mb-10 sm:mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">Get Your Official ESA Letter for Just</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">Choose Your ESA Package</h2>
             <p className="text-gray-500 text-[13.5px] sm:text-sm max-w-2xl mx-auto leading-relaxed">
               Our ESA letters cover all your housing arrangements, from rentals and vacation homes to college dorms. Our licensed mental health professionals ensure compliance, legal enforcement, and authenticity in providing ESA letters.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 max-w-3xl mx-auto items-stretch">
-            {pricingPlans.map((plan) => (
+            {packages.map((pkg) => (
               <div
-                key={plan.label}
+                key={pkg.key}
                 className={`relative rounded-2xl p-6 sm:p-8 border-2 text-center flex flex-col ${
-                  plan.highlight
+                  pkg.highlight
                     ? "border-orange-500 bg-orange-50 shadow-[0_8px_24px_rgba(249,115,22,0.12)]"
                     : "border-gray-200 bg-white"
                 }`}
               >
-                {plan.highlight && (
+                {pkg.highlight && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-block bg-orange-500 text-white text-[10px] sm:text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-sm whitespace-nowrap">
-                    Most Popular
+                    Includes Document Support
                   </span>
                 )}
-                <p className="text-gray-600 text-[13px] sm:text-sm mb-1 mt-1">{plan.label}</p>
-                <p className="text-orange-500 text-[11px] sm:text-xs font-semibold mb-3">{plan.sublabel}</p>
-                <p className="text-4xl sm:text-5xl font-black text-gray-900 mb-1 leading-none">{getPrice(plan.priceKey, plan.price)}</p>
-                <p className="text-gray-400 text-[11px] sm:text-xs mb-4">{plan.period}</p>
+                <p className="text-gray-900 font-bold text-[15px] sm:text-base mb-1 mt-1">{pkg.label}</p>
+                <p className="text-orange-500 text-[11px] sm:text-xs font-semibold mb-3 min-h-[32px] flex items-center justify-center">{pkg.sublabel}</p>
+                <div className="mb-1">
+                  <span className="text-4xl sm:text-5xl font-black text-gray-900 leading-none">{pkg.oneTimeKey ? getPrice(pkg.oneTimeKey, pkg.oneTime) : pkg.oneTime}</span>
+                  <span className="text-gray-500 text-sm font-semibold ml-1.5">one-time</span>
+                </div>
+                <p className="text-gray-400 text-[12px] sm:text-[13px] mb-4">or {pkg.annualKey ? getPrice(pkg.annualKey, pkg.annual) : pkg.annual}/year (annual)</p>
 
                 {/* Klarna chip — neutral payment-method mention only */}
                 <div className="inline-flex self-center items-center gap-1.5 mb-1 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
@@ -228,7 +243,7 @@ export default function ESALetterCostPage() {
 
                 <div className="h-px bg-gray-200 my-5 sm:my-6"></div>
                 <ul className="space-y-2.5 sm:space-y-3 text-left mb-7 sm:mb-8 flex-1">
-                  {plan.features.map((f) => (
+                  {pkg.features.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 sm:gap-3">
                       <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i className="ri-checkbox-circle-fill text-orange-500"></i>
@@ -238,18 +253,21 @@ export default function ESALetterCostPage() {
                   ))}
                 </ul>
                 <Link
-                  to="/assessment"
+                  to={pkg.href}
                   className={`block w-full py-3.5 font-bold text-[14px] sm:text-sm rounded-md transition-colors cursor-pointer mt-auto ${
-                    plan.highlight
+                    pkg.highlight
                       ? "bg-orange-500 text-white hover:bg-orange-600 shadow-[0_2px_6px_rgba(249,115,22,0.30)]"
                       : "bg-gray-900 text-white hover:bg-gray-800"
                   }`}
                 >
-                  {plan.cta}
+                  {pkg.cta}
                 </Link>
               </div>
             ))}
           </div>
+          <p className="text-center text-[12.5px] sm:text-sm text-gray-500 mt-6 max-w-2xl mx-auto leading-relaxed">
+            <strong className="text-gray-700">Not sure if you need the Reasonable Accommodation option?</strong> Most tenants only need the Standard letter. Choose the Reasonable Accommodation package if your landlord, property manager, or HOA asks you to complete a separate accommodation form. Housing decisions remain with your provider and your housing provider — approval is never guaranteed.
+          </p>
           <div className="flex items-center justify-center gap-2 mt-6 text-[13px] sm:text-sm text-gray-500 text-center">
             <i className="ri-refresh-line text-orange-500"></i>
             100% refund if your letter doesn't work

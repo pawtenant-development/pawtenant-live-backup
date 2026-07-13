@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -19,6 +20,29 @@ function json(body: unknown, status = 200): Response {
 
 function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+// RA-ADMIN-VISIBILITY-STORAGE-HARDENING-LIVE-001: download document bytes via a
+// service-role Storage download (parsed from the stored URL) so footer injection
+// works on the now-private provider-letters bucket; fall back to fetch for
+// external / non-Supabase URLs.
+const STORAGE_PATH_RE = /^\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/;
+async function downloadDocumentBytes(
+  supabase: ReturnType<typeof createClient>,
+  fileUrl: string,
+): Promise<ArrayBuffer> {
+  try {
+    const m = new URL(fileUrl).pathname.match(STORAGE_PATH_RE);
+    if (m) {
+      const bucket = decodeURIComponent(m[1]);
+      const path = decodeURIComponent(m[2]);
+      const { data, error } = await supabase.storage.from(bucket).download(path);
+      if (!error && data) return await data.arrayBuffer();
+    }
+  } catch { /* fall through to fetch */ }
+  const dlRes = await fetch(fileUrl);
+  if (!dlRes.ok) throw new Error(`Failed to download PDF: HTTP ${dlRes.status}`);
+  return await dlRes.arrayBuffer();
 }
 
 async function resolveProfileId(
@@ -74,7 +98,12 @@ async function generateVerificationId(
       return null;
     }
 
-    const letterId = genResult as string;
+    // ── 2026-05-20 LETTER-DELIVERY-PRODUCT-TYPE-CONSISTENCY ────────────────
+    // Swap the ESA-/PSD- prefix on the RPC output to match the order's
+    // letter_type. The RPC's p_state-only signature can't emit PSD IDs
+    // on its own; this rewrite keeps the unique (state, code) tail while
+    // forcing the correct product prefix.
+    const letterId = applyVerificationPrefix(genResult as string, letterType);
     const profileId = await resolveProfileId(supabase, authUserId);
 
     const { error: insertErr } = await supabase
@@ -158,9 +187,7 @@ async function injectPdfVerification(
       }
     }
 
-    const dlRes = await fetch(fileUrl);
-    if (!dlRes.ok) throw new Error(`Failed to download PDF: HTTP ${dlRes.status}`);
-    const pdfBytes = await dlRes.arrayBuffer();
+    const pdfBytes = await downloadDocumentBytes(supabase, fileUrl);
 
     let pdfDoc: PDFDocument;
     try {
@@ -345,14 +372,46 @@ Deno.serve(async (req: Request) => {
     if (!profile) return json({ ok: false, error: "Provider profile not found" }, 403);
     if (profile.is_active === false) return json({ ok: false, error: "Provider account is inactive" }, 403);
 
-    const body = await req.json() as {
-      confirmationId: string; documentUrl: string; documentLabel: string;
-      docType?: string; providerNote?: string;
-    };
+    // RA-PROVIDER-DOCUMENT-WORKFLOW-RELEASE-BLOCKERS-001: accept the letter as a
+    // multipart file (preferred — the provider file is uploaded to the private
+    // provider-letters bucket SERVER-SIDE via the service role below, so the
+    // client never performs a storage write and can never hit
+    // "new row violates row-level security policy"). The legacy JSON body
+    // ({ documentUrl }) is still accepted for external / Drive-link submissions.
+    const reqContentType = req.headers.get("content-type") ?? "";
+    let confirmationId = "";
+    let documentUrl = "";
+    let documentLabel = "";
+    let docType: string | undefined;
+    let providerNote: string | undefined;
+    let uploadedFile: File | null = null;
 
-    const { confirmationId, documentUrl, documentLabel, docType, providerNote } = body;
-    if (!confirmationId || !documentUrl || !documentLabel) {
-      return json({ ok: false, error: "confirmationId, documentUrl, and documentLabel are required" }, 400);
+    if (reqContentType.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const f = form.get("file");
+      uploadedFile = f instanceof File ? f : null;
+      confirmationId = String(form.get("confirmationId") ?? "");
+      documentLabel = String(form.get("documentLabel") ?? "");
+      const dt = form.get("docType"); docType = dt ? String(dt) : undefined;
+      const pn = form.get("providerNote"); providerNote = pn ? String(pn) : undefined;
+      const du = form.get("documentUrl"); documentUrl = du ? String(du) : "";
+    } else {
+      const body = await req.json() as {
+        confirmationId: string; documentUrl?: string; documentLabel: string;
+        docType?: string; providerNote?: string;
+      };
+      confirmationId = body.confirmationId;
+      documentUrl = body.documentUrl ?? "";
+      documentLabel = body.documentLabel;
+      docType = body.docType;
+      providerNote = body.providerNote;
+    }
+
+    if (!confirmationId || !documentLabel) {
+      return json({ ok: false, error: "confirmationId and documentLabel are required" }, 400);
+    }
+    if (!uploadedFile && !documentUrl) {
+      return json({ ok: false, error: "A file or documentUrl is required" }, 400);
     }
 
     const { data: order, error: orderFetchErr } = await supabase
@@ -376,20 +435,78 @@ Deno.serve(async (req: Request) => {
       await supabase.from("orders").update({ doctor_user_id: user.id }).eq("id", order.id);
     }
 
+    // ── Server-side provider-letters upload (assigned provider verified above) ──
+    // Uploads run with the SERVICE ROLE (RLS-bypassing) to an ORDER-SCOPED path in
+    // the PRIVATE provider-letters bucket. This is the fix for the client-side RLS
+    // failure and keeps storage least-privilege (no client write access needed).
+    let uploadedFilePath: string | null = null;
+    let uploadedMime: string | null = null;
+    let uploadedSize: number | null = null;
+    if (uploadedFile) {
+      const ALLOWED_MIME = new Set([
+        "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp",
+      ]);
+      const mime = uploadedFile.type || "application/octet-stream";
+      if (!ALLOWED_MIME.has(mime)) {
+        return json({ ok: false, error: `Unsupported file type: ${mime}. Upload a PDF or image.` }, 415);
+      }
+      const MAX_BYTES = 25 * 1024 * 1024;
+      const buf = new Uint8Array(await uploadedFile.arrayBuffer());
+      if (buf.byteLength === 0) return json({ ok: false, error: "The uploaded file is empty." }, 400);
+      if (buf.byteLength > MAX_BYTES) return json({ ok: false, error: "File exceeds the 25MB limit." }, 413);
+
+      const stem = (order.confirmation_id as string) || (order.id as string);
+      const safe = (uploadedFile.name || "letter.pdf").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
+      const objectPath = `${stem}/provider/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safe}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("provider-letters")
+        .upload(objectPath, buf, { contentType: mime, upsert: false });
+      if (upErr) return json({ ok: false, error: `Upload failed: ${upErr.message}` }, 500);
+
+      const SIGNED_TTL = 60 * 60 * 24 * 365 * 10;
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("provider-letters")
+        .createSignedUrl(objectPath, SIGNED_TTL);
+      if (signErr || !signed?.signedUrl) {
+        try { await supabase.storage.from("provider-letters").remove([objectPath]); } catch { /* best effort */ }
+        return json({ ok: false, error: `Signed URL failed: ${signErr?.message ?? "no signed url"}` }, 500);
+      }
+      documentUrl = signed.signedUrl;
+      uploadedFilePath = objectPath;
+      uploadedMime = mime;
+      uploadedSize = buf.byteLength;
+    }
+
     const now = new Date();
-    const issueDate = (order.letter_issue_date as string | null) ?? toDateString(now);
-    const expiryDate = (() => {
-      const d = new Date(issueDate);
-      d.setFullYear(d.getFullYear() + 1);
-      return toDateString(d);
-    })();
-    const isNewIssue = !order.letter_issue_date;
+
+    // ── Document taxonomy classification (authoritative, product-derived) ──────
+    // ESA/PSD product is derived from the ORDER (letter_type / confirmation id),
+    // NOT from the provider's free choice — so a provider can never misclassify a
+    // PSD order's letter as ESA (or vice-versa). A "completed Housing Accommodation
+    // form" is a SEPARATE document class: it receives NO verification ID, NO footer
+    // /QR, and does NOT complete the base ESA/PSD letter lifecycle. Any doc type we
+    // do not recognize FAILS CLOSED (never mints/stamps/completes).
+    const isPSD = (order.letter_type as string) === "psd" || (confirmationId ?? "").toUpperCase().includes("-PSD");
+    const letterType: "esa" | "psd" = isPSD ? "psd" : "esa";
+    const FINAL_LETTER_TYPES = new Set(["esa_letter", "psd_letter", "signed_letter", "letter"]);
+    const HOUSING_COMPLETED_TYPES = new Set(["housing_completed", "ra_completed_form"]);
+    const requestedType = (docType ?? "").trim() || "esa_letter"; // legacy default = final letter
+    const isHousingCompleted = HOUSING_COMPLETED_TYPES.has(requestedType);
+    const isFinalLetter = FINAL_LETTER_TYPES.has(requestedType);
+    if (!isHousingCompleted && !isFinalLetter) {
+      return json({ ok: false, error: `Unsupported document type for provider submission: ${requestedType}` }, 400);
+    }
+    // Stored type is product-accurate: final letters become esa_letter/psd_letter
+    // (from the order), completed housing forms canonicalize to housing_completed.
+    const storedDocType = isHousingCompleted ? "housing_completed" : `${letterType}_letter`;
 
     const { data: insertedDoc, error: docError } = await supabase
       .from("order_documents")
       .insert({
         order_id: order.id, confirmation_id: confirmationId, label: documentLabel,
-        doc_type: docType ?? "esa_letter", file_url: documentUrl,
+        doc_type: storedDocType, file_url: documentUrl,
+        file_path: uploadedFilePath, mime_type: uploadedMime, file_size_bytes: uploadedSize,
         notes: providerNote?.trim() || null, uploaded_by: profile.full_name,
         sent_to_customer: false, customer_visible: true, footer_injected: false,
       })
@@ -399,6 +516,76 @@ Deno.serve(async (req: Request) => {
     if (docError) return json({ ok: false, error: `Failed to save document: ${docError.message}` }, 500);
 
     const documentId = insertedDoc?.id ?? null;
+
+    // ══ COMPLETED HOUSING ACCOMMODATION FORM ══════════════════════════════════
+    // Separate class: NO verification ID, NO footer/QR, and the base ESA/PSD letter
+    // lifecycle (status / doctor_status / letter_id / validity dates /
+    // signed_letter_url) is LEFT UNTOUCHED. We only mark the RA / Additional-
+    // Documentation workflow complete and make the file available to the customer.
+    if (isHousingCompleted) {
+      // Mark the Housing workflow complete. If the base ESA/PSD letter is ALREADY
+      // delivered (letter_id minted), this is a LATE follow-up on a reopened order →
+      // return the order to 'completed' and restore the delivered doctor_status so it
+      // leaves the active queue. If the base letter is NOT yet delivered (normal
+      // in-flow combo), leave status/doctor_status untouched so the base ESA/PSD
+      // workflow continues on its own. Base letter fields (letter_id / validity /
+      // signed_letter_url) are never touched here.
+      const housingOrderPatch: Record<string, unknown> = { additional_documentation_status: "completed" };
+      if (order.letter_id) {
+        housingOrderPatch.status = "completed";
+        housingOrderPatch.doctor_status = "patient_notified";
+      }
+      await supabase.from("orders").update(housingOrderPatch).eq("id", order.id);
+
+      await supabase.from("doctor_notifications").insert({
+        doctor_user_id: user.id, title: "Housing Form Completed",
+        message: `Completed Housing Accommodation form uploaded for order ${confirmationId}.`,
+        type: "housing_form_completed", confirmation_id: confirmationId, order_id: order.id,
+      });
+
+      try {
+        await supabase.from("communications").insert({
+          order_id: order.id, confirmation_id: confirmationId,
+          channel: "internal", direction: "outbound",
+          subject: "Completed Housing Accommodation form uploaded",
+          body: providerNote?.trim() || "Provider uploaded the completed Housing Accommodation form.",
+          status: "logged", sent_at: new Date().toISOString(), source: "provider_submit_housing",
+          metadata: { provider_id: user.id, provider_name: profile.full_name, document_label: documentLabel, doc_type: "housing_completed" },
+        });
+      } catch (commErr) { console.error("[provider-submit-letter] housing comm log error:", commErr); }
+
+      await supabase.from("audit_logs").insert({
+        actor_name: profile.full_name ?? "Provider", actor_role: "provider",
+        object_type: "order_document", object_id: confirmationId,
+        action: "housing_form_completed",
+        description: `Completed Housing Accommodation form uploaded for order ${confirmationId} — no verification ID, no footer, base letter untouched.`,
+        metadata: { order_id: order.id, confirmation_id: confirmationId, document_id: documentId, doc_type: "housing_completed", uploaded_by: profile.full_name },
+      });
+
+      notifyAdminLetterSubmitted({
+        confirmationId, providerName: profile.full_name,
+        documentLabel: `${documentLabel} (Completed Housing Form)`,
+        providerNote: providerNote?.trim() || null,
+        customerEmail: order.email as string,
+        customerFirstName: order.first_name ?? "", customerLastName: order.last_name ?? "",
+      }).catch(() => {});
+
+      return json({
+        ok: true, documentSaved: true, housingCompleted: true,
+        verificationIssued: false, letterId: null, pdfFooterInjected: false,
+        docType: "housing_completed",
+        message: "Completed Housing Accommodation form uploaded and shared with the customer. No verification ID is issued for housing forms.",
+      });
+    }
+
+    // ══ FINAL ESA / PSD LETTER ════════════════════════════════════════════════
+    const issueDate = (order.letter_issue_date as string | null) ?? toDateString(now);
+    const expiryDate = (() => {
+      const d = new Date(issueDate);
+      d.setFullYear(d.getFullYear() + 1);
+      return toDateString(d);
+    })();
+    const isNewIssue = !order.letter_issue_date;
 
     const orderUpdatePatch: Record<string, unknown> = {
       doctor_status: "patient_notified",
@@ -413,8 +600,6 @@ Deno.serve(async (req: Request) => {
     await supabase.from("orders").update(orderUpdatePatch).eq("id", order.id);
 
     const state = ((order.state as string) ?? "").toUpperCase().trim().slice(0, 2);
-    const isPSD = (order.letter_type as string) === "psd" || (confirmationId ?? "").toUpperCase().includes("-PSD");
-    const letterType: "esa" | "psd" = isPSD ? "psd" : "esa";
 
     let resolvedLetterId: string | null = (order.letter_id as string | null) ?? null;
 
@@ -426,14 +611,24 @@ Deno.serve(async (req: Request) => {
     }
 
     let pdfInjectionResult: { ok: boolean; processedUrl?: string; error?: string } = { ok: false };
-    const finalDocTypes = ["esa_letter", "psd_letter", "letter", "signed_letter"];
-    const isFinalLetter = finalDocTypes.includes(docType ?? "esa_letter");
 
-    if (resolvedLetterId && documentId && documentUrl && isFinalLetter) {
+    if (resolvedLetterId && documentId && documentUrl) {
       pdfInjectionResult = await injectPdfVerification(supabase, {
         orderId: order.id, confirmationId, documentId,
         fileUrl: documentUrl, letterId: resolvedLetterId,
       });
+    }
+
+    // The customer's authoritative delivered letter must be the FINALIZED (stamped)
+    // version, not the provider's original upload. Once the footer is injected,
+    // repoint orders.signed_letter_url to the processed URL so every consumer
+    // (customer portal, letter emails, legacy links) resolves the stamped letter
+    // (RA-LATE-UPLOAD-... blocker F). The original stays in provider-letters and is
+    // only reachable via the explicit admin/provider "Open Original" action.
+    if (pdfInjectionResult.ok && pdfInjectionResult.processedUrl) {
+      await supabase.from("orders")
+        .update({ signed_letter_url: pdfInjectionResult.processedUrl })
+        .eq("id", order.id);
     }
 
     const notifyRes = await fetch(`${SUPABASE_URL}/functions/v1/notify-patient-letter`, {
@@ -452,10 +647,11 @@ Deno.serve(async (req: Request) => {
     });
 
     try {
+      const commsMeta = LETTER_LABELS[letterType];
       await supabase.from("communications").insert({
         order_id: order.id, confirmation_id: confirmationId,
         channel: "email", direction: "outbound",
-        subject: "Your ESA/PSD Letter is Ready",
+        subject: `Your ${commsMeta.productLabel} is Ready`,
         body: providerNote?.trim() || "Provider submitted your letter. Patient notification sent.",
         status: "sent", sent_at: new Date().toISOString(), source: "provider_submit",
         metadata: {

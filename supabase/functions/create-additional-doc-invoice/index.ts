@@ -37,7 +37,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ADDON_AMOUNT_CENTS = 4000; // $40
+const ADDON_AMOUNT_CENTS = 7000; // $70 (raised from $40; server-authoritative — historical rows keep their own amount)
 const COMPANY_NAME = "PawTenant";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;

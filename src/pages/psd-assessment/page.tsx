@@ -9,6 +9,10 @@ import ExitIntentOverlay from "../assessment/components/ExitIntentOverlay";
 import StateSelectionStep from "../assessment/components/StateSelectionStep";
 import CustomerOtpStep from "../assessment/components/CustomerOtpStep";
 import AssuranceScreen from "../assessment/components/AssuranceScreen";
+import PackageSelectionStep from "../assessment/components/PackageSelectionStep";
+import { supabase } from "../../lib/supabaseClient";
+import { nextBookingGate } from "@/lib/bookingProgress";
+import type { PackageKey } from "@/config/pricing";
 import type { StateAcknowledgment } from "../assessment/components/StateAcknowledgmentModal";
 import { getPsdOneTimeTotal } from "@/config/pricing";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
@@ -103,9 +107,20 @@ export default function PSDAssessmentPage() {
   const [step, setStep] = useState(1);
   // ── Flow gates (2026-07 restructure) — state first, OTP before checkout ──
   const [stateConfirmed, setStateConfirmed] = useState(false);
-  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "pay">("otp");
+  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("otp");
+  // Optional preselect from the PSD cost-page combo CTA (?package=psd_ra_bundle):
+  // pre-highlights the RA card only — OTP and server-side pricing are unaffected.
+  const [selectedPackage, setSelectedPackage] = useState<PackageKey>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("package") === "psd_ra_bundle"
+        ? "psd_ra_bundle" : "psd_standard";
+    } catch { return "psd_standard"; }
+  });
   const [otpVerified, setOtpVerified] = useState(false);
   const verifiedEmailRef = useRef("");
+  // Post-OTP routing target: first-time → "assurance"; resume → "package"/"pay".
+  // (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001)
+  const postOtpGateRef = useRef<"assurance" | "package" | "pay">("assurance");
   const [step1, setStep1] = useState<PSDStep1Data>(DEFAULT_STEP1);
   const [step2, setStep2] = useState<Step2Data>(DEFAULT_STEP2);
   const [confirmationId, setConfirmationId] = useState(() => {
@@ -239,11 +254,44 @@ export default function PSDAssessmentPage() {
 
         // Use the saved confirmation ID so payment upserts the right row
         setConfirmationId(resumeConfirmationId);
-        // Resume = returning customer from a trusted link: skip state + OTP gates.
         setStateConfirmed(true);
-        setOtpVerified(true);
-        verifiedEmailRef.current = ((data.email as string) ?? "").trim().toLowerCase();
-        setCheckoutGate("pay");
+
+        // ── Deterministic, auth-gated resume routing
+        //    (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001) ──
+        // Restore the saved package (authoritative identity — never inferred from
+        // price); package-selected lead → checkout, no-package lead → package step.
+        const savedPackageKey = typeof data.package_key === "string" ? data.package_key : null;
+        if (savedPackageKey === "psd_ra_bundle" || savedPackageKey === "psd_standard") {
+          setSelectedPackage(savedPackageKey);
+        }
+        const nextGate = nextBookingGate({
+          confirmation_id: resumeConfirmationId,
+          letter_type: (data.letter_type as string) ?? "psd",
+          status: (data.status as string) ?? "lead",
+          package_key: savedPackageKey,
+        });
+
+        // A confirmation ID in a URL is not authentication. Only skip OTP when the
+        // visitor already holds a Supabase session for THIS order's email; else
+        // require OTP (code goes to the order's email) before checkout.
+        const orderEmail = ((data.email as string) ?? "").trim().toLowerCase();
+        let sessionEmail = "";
+        try {
+          const { data: sess } = await supabase.auth.getUser();
+          sessionEmail = (sess?.user?.email ?? "").trim().toLowerCase();
+        } catch { /* ignore — treat as unauthenticated */ }
+        const alreadyAuthed = !!orderEmail && sessionEmail === orderEmail;
+
+        if (alreadyAuthed) {
+          setOtpVerified(true);
+          verifiedEmailRef.current = orderEmail;
+          setCheckoutGate(nextGate);
+        } else {
+          setOtpVerified(false);
+          verifiedEmailRef.current = "";
+          postOtpGateRef.current = nextGate;
+          setCheckoutGate("otp");
+        }
         setStep(3);
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (err) {
@@ -419,10 +467,15 @@ export default function PSDAssessmentPage() {
     setStep(1);
     window.scrollTo(0, 0);
   };
+  const handleViewPortal = () => {
+    navigate(`/my-orders?order=${encodeURIComponent(confirmationId)}`);
+  };
   const handleOtpVerified = () => {
     setOtpVerified(true);
     verifiedEmailRef.current = step2.email.trim().toLowerCase();
-    setCheckoutGate("assurance");
+    const target = postOtpGateRef.current;
+    postOtpGateRef.current = "assurance";
+    setCheckoutGate(target);
     window.scrollTo(0, 0);
   };
 
@@ -430,8 +483,16 @@ export default function PSDAssessmentPage() {
     await saveLeadToSupabase(step2);
     const needOtp = !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
     if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
-    else setCheckoutGate("pay");
+    else setCheckoutGate("package");
     setStep(3);
+  };
+
+  // Dedicated PSD package step → advance to checkout with the chosen package.
+  // PSDStep3Checkout re-mints the PI when selectedPackage changes.
+  const handlePackageSelect = (pkg: string) => {
+    setSelectedPackage((pkg === "psd_ra_bundle" ? "psd_ra_bundle" : "psd_standard") as PackageKey);
+    setCheckoutGate("pay");
+    window.scrollTo(0, 0);
   };
 
   return (
@@ -595,8 +656,19 @@ export default function PSDAssessmentPage() {
                 <AssuranceScreen
                   letterType="psd"
                   accent="psd"
-                  onContinue={() => { setCheckoutGate("pay"); window.scrollTo(0, 0); }}
+                  onContinue={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
+                  onViewPortal={handleViewPortal}
                   onBack={() => setCheckoutGate("otp")}
+                />
+              )}
+              {step === 3 && checkoutGate === "package" && (
+                <PackageSelectionStep
+                  letterType="psd"
+                  accent="psd"
+                  petCount={step2.pets.length}
+                  selectedPackage={selectedPackage}
+                  onSelect={handlePackageSelect}
+                  onBack={() => setCheckoutGate("assurance")}
                 />
               )}
               {step === 3 && checkoutGate === "pay" && (
@@ -605,6 +677,8 @@ export default function PSDAssessmentPage() {
                     step1={step1}
                     step2={step2}
                     confirmationId={confirmationId}
+                    packageKey={selectedPackage}
+                    onChangePackage={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
                     onBack={() => setStep(2)}
                   />
                 </Suspense>

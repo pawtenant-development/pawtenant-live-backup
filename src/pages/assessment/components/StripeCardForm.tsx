@@ -169,6 +169,9 @@ export interface SubscriptionParams {
   state: string;
   confirmationId: string;
   letterType?: string;
+  /** RA bundle package key (PACKAGE-RA-LETTER-BUNDLE-001). Server prices the
+   *  flat $159/yr bundle when this is esa_ra_bundle / psd_ra_bundle. */
+  packageKey?: string;
 }
 
 interface StripeCardFormProps {
@@ -183,6 +186,10 @@ interface StripeCardFormProps {
   priceBeforeDiscount?: number;
   /** Callback when a coupon is applied or removed */
   onDiscountChange?: (discount: number, code: string) => void;
+  /** Page-level applied coupon forwarded from the parent (e.g. applied before the
+   *  user switched to the annual plan). Mirrored into the coupon row so the code is
+   *  applied to the subscription AND sent to the backend (RA-LATE-UPLOAD-... blocker E). */
+  appliedFromParent?: { code: string; discount: number } | null;
   /**
    * When true, disables the submit button and short-circuits handlePay.
    * Used by state-law compliance flow (AR/CA/IA/LA/MT) to require the user
@@ -201,6 +208,7 @@ export default function StripeCardForm({
   subscriptionParams,
   priceBeforeDiscount,
   onDiscountChange,
+  appliedFromParent,
   complianceBlocked = false,
 }: StripeCardFormProps) {
   const stripe = useStripe();
@@ -278,6 +286,7 @@ export default function StripeCardForm({
           state: subscriptionParams.state,
           confirmationId: subscriptionParams.confirmationId,
           letterType: subscriptionParams.letterType ?? "esa",
+          packageKey: subscriptionParams.packageKey,
           // Pass coupon code so backend can apply Stripe discount
           couponCode: appliedCouponCode || undefined,
           metadata: {
@@ -441,6 +450,7 @@ export default function StripeCardForm({
           <CouponRow
             basePrice={priceBeforeDiscount ?? totalPrice}
             onDiscountChange={handleDiscountChange}
+            appliedFromParent={appliedFromParent ?? null}
           />
         </div>
       )}

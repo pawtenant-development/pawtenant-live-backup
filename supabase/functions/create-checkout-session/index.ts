@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -146,6 +147,54 @@ function buildPSDOneTimeKlarnaLineItem(petCount: number, deliverySpeed: string) 
   };
 }
 
+// ─── RA bundle packages (PACKAGE-RA-LETTER-BUNDLE-001) ────────────────────────
+// ESA/PSD + Reasonable Accommodation Letter. FLAT $179 one-time / $159 annual for
+// 1–3 pets/dogs. One-time = inline price_data; annual = inline recurring price_data
+// (no pre-created Stripe Price). Mirrors create-payment-intent + src/config/pricing.ts.
+const BUNDLE_ONE_TIME_AMOUNT_CENTS = 17900;
+const BUNDLE_ANNUAL_AMOUNT_CENTS = 15900;
+
+const PACKAGE_DISPLAY_NAMES: Record<string, string> = {
+  esa_standard: "ESA Letter",
+  esa_ra_bundle: "ESA + Reasonable Accommodation Letter",
+  psd_standard: "PSD Documentation",
+  psd_ra_bundle: "PSD + Reasonable Accommodation Letter",
+};
+const ALLOWED_PACKAGE_KEYS = ["esa_standard", "esa_ra_bundle", "psd_standard", "psd_ra_bundle"];
+function resolvePackageKey(rawPackageKey: string, letterType: string): string {
+  if (ALLOWED_PACKAGE_KEYS.includes(rawPackageKey)) return rawPackageKey;
+  return letterType === "psd" ? "psd_standard" : "esa_standard";
+}
+function isRaBundleKey(packageKey: string): boolean {
+  return packageKey === "esa_ra_bundle" || packageKey === "psd_ra_bundle";
+}
+function buildBundleOneTimeInlineLineItem(packageKey: string) {
+  const name = PACKAGE_DISPLAY_NAMES[packageKey] ?? "PawTenant RA Bundle";
+  return {
+    price_data: {
+      currency: "usd",
+      product_data: {
+        name: `${name} (One-Time)`,
+        description: "Provider-reviewed documentation plus Reasonable Accommodation letter request support. Landlord-ready package; issued only if clinically appropriate.",
+      },
+      unit_amount: BUNDLE_ONE_TIME_AMOUNT_CENTS,
+    },
+    quantity: 1,
+  };
+}
+function buildBundleSubscriptionLineItem(packageKey: string) {
+  const name = PACKAGE_DISPLAY_NAMES[packageKey] ?? "PawTenant RA Bundle";
+  return {
+    price_data: {
+      currency: "usd",
+      product_data: { name: `${name} (Annual)` },
+      recurring: { interval: "year" as const },
+      unit_amount: BUNDLE_ANNUAL_AMOUNT_CENTS,
+    },
+    quantity: 1,
+  };
+}
+
 /**
  * Resolve a Stripe coupon ID from a coupon code string.
  * 1. Try direct coupon ID lookup.
@@ -258,6 +307,10 @@ Deno.serve(async (req: Request) => {
   // Coupon code from frontend (already validated against Stripe by validate-coupon)
   const couponCode     = (body.couponCode     as string) ?? "";
 
+  // ── RA bundle package (PACKAGE-RA-LETTER-BUNDLE-001) ──────────────────────
+  const packageKey = resolvePackageKey((body.packageKey as string) ?? "", letterType);
+  const isBundle = isRaBundleKey(packageKey);
+
   if (!email || !confirmationId) {
     return json({ error: "email and confirmationId are required" }, 400);
   }
@@ -345,6 +398,14 @@ Deno.serve(async (req: Request) => {
     // resume-locked).
     pricing_source: "current_pricing",
     ...(couponCode ? { coupon_code: couponCode } : {}),
+    ...((letterType === "esa" || letterType === "psd")
+      ? {
+          package_key: packageKey,
+          package_display_name: PACKAGE_DISPLAY_NAMES[packageKey] ?? "",
+          billing_plan: planType === "subscription" ? "annual" : "one_time",
+          includes_ra_letter: isBundle ? "true" : "false",
+        }
+      : {}),
   };
 
   try {
@@ -359,9 +420,11 @@ Deno.serve(async (req: Request) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sessionParams: any = {
         mode: "subscription",
-        line_items: isESA
-          ? buildESASubscriptionLineItems(petCount)
-          : [{ price: psdAnnualPriceId, quantity: 1 }],
+        line_items: isBundle
+          ? [buildBundleSubscriptionLineItem(packageKey)]
+          : isESA
+            ? buildESASubscriptionLineItems(petCount)
+            : [{ price: psdAnnualPriceId, quantity: 1 }],
         customer_email: email,
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -390,10 +453,12 @@ Deno.serve(async (req: Request) => {
       if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY && session.id) {
         try {
           const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-          await sb
-            .from("orders")
-            .update({ checkout_session_id: session.id })
-            .eq("confirmation_id", confirmationId);
+          const upd: Record<string, unknown> = { checkout_session_id: session.id };
+          // Stamp authoritative package entitlement now (annual) — webhook-independent.
+          if (letterType === "esa" || letterType === "psd") {
+            Object.assign(upd, packageEntitlementPatch(packageKey, "annual"));
+          }
+          await sb.from("orders").update(upd).eq("confirmation_id", confirmationId).is("paid_at", null);
         } catch (writebackErr) {
           console.warn("[create-checkout-session] subscription checkout_session_id writeback failed:", writebackErr);
         }
@@ -424,6 +489,7 @@ Deno.serve(async (req: Request) => {
     // one-time Price IDs ($110+$25 ESA catalog, $100-$155 PSD tiers) are no
     // longer referenced.
     const oneTimeLineItems = (() => {
+      if (isBundle) return [buildBundleOneTimeInlineLineItem(packageKey)];
       if (isESA) return [buildESAOneTimeInlineLineItem(petCount)];
       return [buildPSDOneTimeKlarnaLineItem(petCount, deliverySpeed)];
     })();
@@ -433,7 +499,11 @@ Deno.serve(async (req: Request) => {
     // orders so Klarna / QR charges the ORIGINAL price, never the recalculated
     // current amount. Coupons still apply on top (sessionParams.discounts below).
     const configBaseCents = oneTimeLineItems[0].price_data.unit_amount;
-    const quoteLock = await resolveLegacyQuoteLock(confirmationId, configBaseCents);
+    // RA bundles are flat-priced with no legacy quote to preserve (prevents a
+    // standard saved lead price from suppressing the $179 bundle upcharge).
+    const quoteLock = isBundle
+      ? { baseCents: configBaseCents, pricingSource: "bundle_flat" }
+      : await resolveLegacyQuoteLock(confirmationId, configBaseCents);
     if (quoteLock.baseCents !== configBaseCents) {
       oneTimeLineItems[0].price_data.unit_amount = quoteLock.baseCents;
       console.info(`[create-checkout-session] legacy price lock: ${confirmationId} $${configBaseCents / 100} → $${quoteLock.baseCents / 100} (${quoteLock.pricingSource})`);
@@ -491,10 +561,17 @@ Deno.serve(async (req: Request) => {
           pricing_source: quoteLock.pricingSource,
         };
         if (quoteLock.pricingSource === "legacy_saved_quote") patch.quote_locked_at = new Date().toISOString();
+        // Stamp authoritative package entitlement now (one-time) — webhook-independent.
+        // At checkout-session creation the order is always unpaid, so the paid_at
+        // guard only skips the nonsensical already-paid case (correct to skip).
+        if (letterType === "esa" || letterType === "psd") {
+          Object.assign(patch, packageEntitlementPatch(packageKey, "one_time"));
+        }
         await sb
           .from("orders")
           .update(patch)
-          .eq("confirmation_id", confirmationId);
+          .eq("confirmation_id", confirmationId)
+          .is("paid_at", null);
       } catch (writebackErr) {
         // Non-fatal — webhook reconciliation will still work. Log and continue.
         console.warn("[create-checkout-session] checkout_session_id writeback failed:", writebackErr);

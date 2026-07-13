@@ -39,6 +39,19 @@ export const RENEWAL_PRICING = {
 } as const;
 
 /**
+ * Additional Documentation add-on (optional, purchased AFTER the original letter
+ * for a separate landlord / property / HOA form on a STANDARD order).
+ * RA-DOCUMENT-WORKFLOW-PORTALS-CONSISTENCY-001 (2026-07-10): owner-approved price
+ * raised $40 → $70. This is the DISPLAY price for the pre-purchase CTA only; the
+ * authoritative charge is computed server-side in create-additional-doc-invoice
+ * (ADDON_AMOUNT_CENTS). Historical paid requests keep their own amount_cents and
+ * are shown from that value, never relabelled to $70.
+ */
+export const ADDITIONAL_DOC_PRICING = {
+  addon: 70,
+} as const;
+
+/**
  * One-time ESA letter total by pet count. 1 pet = $129; 2 or 3 pets = $149
  * fixed total. This is the ONLY client-side formula — Step 3 checkout and the
  * assessment page import it so the number can never drift between surfaces.
@@ -76,3 +89,79 @@ export const ESA_PRICE_LABELS = {
   subscriptionSuffix: "/year",
   startingFrom: "$109",
 } as const;
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Reasonable Accommodation (RA) letter bundles — PACKAGE-RA-LETTER-BUNDLE-001
+ *
+ * ESA + Reasonable Accommodation Letter  and  PSD + Reasonable Accommodation
+ * Letter are sold as a single combined package on top of the standard letter.
+ *
+ * FLAT pricing for 1–3 pets/dogs (NOT per-pet, NOT tiered) — owner instruction:
+ *   Bundle one-time: $179   ·   Bundle annual: $159/yr
+ *
+ * The server-side canonical copies live in create-payment-intent/index.ts and
+ * create-checkout-session/index.ts — keep all three in sync.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/** Canonical package identifiers used across UI, checkout body, Stripe metadata,
+ *  and the orders.package_key column. */
+export type PackageKey =
+  | "esa_standard"
+  | "esa_ra_bundle"
+  | "psd_standard"
+  | "psd_ra_bundle";
+
+/** Billing plan identifiers stored in orders.billing_plan (distinct from the
+ *  legacy display string orders.plan_type). */
+export type BillingPlan = "one_time" | "annual";
+
+export const BUNDLE_PRICING = {
+  /** Flat one-time total for the RA bundle (1–3 pets/dogs). */
+  oneTime: 179,
+  /** Flat annual total for the RA bundle (1–3 pets/dogs). */
+  annual: 159,
+} as const;
+
+export const PACKAGE_DISPLAY_NAMES: Record<PackageKey, string> = {
+  esa_standard: "ESA Letter",
+  esa_ra_bundle: "ESA + Reasonable Accommodation Letter",
+  psd_standard: "PSD Documentation",
+  psd_ra_bundle: "PSD + Reasonable Accommodation Letter",
+};
+
+/** True when a package includes the Reasonable Accommodation letter add-on. */
+export function isRaBundle(packageKey: string | null | undefined): boolean {
+  return packageKey === "esa_ra_bundle" || packageKey === "psd_ra_bundle";
+}
+
+/** Flat one-time RA bundle total (1–3 pets/dogs). */
+export function getBundleOneTimeTotal(): number {
+  return BUNDLE_PRICING.oneTime;
+}
+
+/** Flat annual RA bundle total (1–3 pets/dogs). */
+export function getBundleAnnualTotal(): number {
+  return BUNDLE_PRICING.annual;
+}
+
+/**
+ * Resolve the displayed total for any package + plan + pet/dog count.
+ * Standard packages keep the existing tiered pricing; RA bundles are flat.
+ * Mirrors the server-side amount logic (create-payment-intent) exactly.
+ */
+export function getPackageTotal(
+  packageKey: PackageKey,
+  plan: BillingPlan,
+  petCount: number,
+): number {
+  switch (packageKey) {
+    case "esa_ra_bundle":
+    case "psd_ra_bundle":
+      return plan === "annual" ? getBundleAnnualTotal() : getBundleOneTimeTotal();
+    case "psd_standard":
+      return plan === "annual" ? getPsdAnnualTotal(petCount) : getPsdOneTimeTotal(petCount);
+    case "esa_standard":
+    default:
+      return plan === "annual" ? getEsaAnnualTotal(petCount) : getEsaOneTimeTotal(petCount);
+  }
+}

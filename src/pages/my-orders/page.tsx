@@ -1,8 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import ContactSupportWidget from "./components/ContactSupportWidget";
 import AdditionalDocRequest, { canRequestAdditionalDoc } from "./components/AdditionalDocRequest";
+import RaDocumentUpload, { showRaDocumentUpload } from "./components/RaDocumentUpload";
+import OrderOverviewCard from "./components/OrderOverviewCard";
+import LetterDeliveryCard from "./components/LetterDeliveryCard";
+import ProviderInfoCard from "./components/ProviderInfoCard";
+import AssessmentCard from "./components/AssessmentCard";
+import PreferredContactCard from "./components/PreferredContactCard";
+import PsdUpsellCard from "./components/PsdUpsellCard";
+import PortalSocialSection from "./components/PortalSocialSection";
+import GoogleReviewCard from "./components/GoogleReviewCard";
+import CustomerPortalHeader from "./components/CustomerPortalHeader";
+import OrderSwitcher from "./components/OrderSwitcher";
+import SelectedOrderHeader from "./components/SelectedOrderHeader";
+import { isAnnual as isAnnualOrder } from "./components/orderDisplay";
+import OrderLifecycle from "./components/OrderLifecycle";
+import UnpaidBookingCard from "./components/UnpaidBookingCard";
+import LockedFeaturePreviews from "./components/LockedFeaturePreviews";
+import MyDocumentsCard from "./components/MyDocumentsCard";
+import NeedHelpCard from "./components/NeedHelpCard";
+import CustomerPortalSection from "./components/CustomerPortalSection";
+import { isUnpaidLead, isPaidOrder, isTerminalOrder } from "@/lib/bookingProgress";
+import { resolveAccountGreeting, type NameUserLike } from "@/lib/customerName";
 
 interface OrderDocument {
   id: string;
@@ -24,6 +45,8 @@ interface Order {
   last_name: string | null;
   state: string | null;
   selected_provider: string | null;
+  doctor_user_id?: string | null;
+  doctor_name?: string | null;
   plan_type: string | null;
   delivery_speed: string | null;
   price: number | null;
@@ -32,8 +55,24 @@ interface Order {
   doctor_status: string | null;
   letter_url: string | null;
   signed_letter_url: string | null;
+  letter_id?: string | null;
   letter_type: string | null;
   additional_documents_requested: { types?: string[]; otherDescription?: string } | null;
+  // RA bundle (PACKAGE-RA-LETTER-BUNDLE-001)
+  package_key?: string | null;
+  package_display_name?: string | null;
+  billing_plan?: string | null;
+  includes_reasonable_accommodation_letter?: boolean | null;
+  additional_documentation_status?: string | null;
+  // Portal guidance (CUSTOMER-PORTAL-ORDER-GUIDANCE-RA-PROVIDER-SLOTS-001)
+  user_id?: string | null;
+  phone?: string | null;
+  refunded_at?: string | null;
+  assessment_answers?: Record<string, unknown> | null;
+  preferred_provider_contact_date?: string | null;
+  preferred_provider_contact_window?: string | null;
+  preferred_provider_contact_note?: string | null;
+  preferred_provider_contact_timezone?: string | null;
   created_at: string;
   documents?: OrderDocument[];
 }
@@ -42,9 +81,10 @@ function isPSDOrder(order: Order): boolean {
   return order.letter_type === "psd" || (order.confirmation_id?.includes("-PSD") ?? false);
 }
 
-function ReturningCustomerActions({ orderId }: { orderId: string }) {
+function ReturningCustomerActions({ orderId, showUpgrade = false, showRepeat = false, title }: { orderId: string; showUpgrade?: boolean; showRepeat?: boolean; title?: string }) {
   const [busy, setBusy] = useState<"upgrade" | "repeat" | null>(null);
   const [err, setErr] = useState("");
+  if (!showUpgrade && !showRepeat) return null;
 
   const spawn = async (action: "upgrade" | "repeat") => {
     setBusy(action);
@@ -77,27 +117,31 @@ function ReturningCustomerActions({ orderId }: { orderId: string }) {
   };
 
   return (
-    <div className="mt-4 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-xl px-4 py-3">
-      <p className="text-xs font-extrabold text-orange-700 uppercase tracking-wide mb-2">Next steps</p>
+    <div className="mt-4 bg-gradient-to-r from-[#e8f0f9] to-white border border-[#e8f0f9] rounded-xl px-4 py-3">
+      <p className="text-xs font-extrabold text-[#1e3a5f] uppercase tracking-wide mb-2">{title ?? "Next steps"}</p>
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => spawn("upgrade")}
-          disabled={busy !== null}
-          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-60 cursor-pointer transition-colors"
-        >
-          {busy === "upgrade" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-vip-crown-line"></i>}
-          Upgrade to Annual Subscription
-        </button>
-        <button
-          type="button"
-          onClick={() => spawn("repeat")}
-          disabled={busy !== null}
-          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 disabled:opacity-60 cursor-pointer transition-colors"
-        >
-          {busy === "repeat" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-add-circle-line"></i>}
-          Buy Another ESA
-        </button>
+        {showUpgrade && (
+          <button
+            type="button"
+            onClick={() => spawn("upgrade")}
+            disabled={busy !== null}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] disabled:opacity-60 cursor-pointer transition-colors"
+          >
+            {busy === "upgrade" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-vip-crown-line"></i>}
+            Upgrade to Annual Subscription
+          </button>
+        )}
+        {showRepeat && (
+          <button
+            type="button"
+            onClick={() => spawn("repeat")}
+            disabled={busy !== null}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#e2e8f0] text-[#5F6B7A] text-xs font-bold rounded-lg hover:bg-[#ffffff] hover:text-[#3b6ea5] disabled:opacity-60 cursor-pointer transition-colors"
+          >
+            {busy === "repeat" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-add-circle-line"></i>}
+            Buy Another ESA
+          </button>
+        )}
       </div>
       {err && <p className="text-xs text-red-600 mt-2 flex items-center gap-1"><i className="ri-error-warning-line"></i>{err}</p>}
     </div>
@@ -112,41 +156,28 @@ function getDisplayStatus(order: Order): {
   const ds = order.doctor_status;
   const isPaid = !!(order as Order & { payment_intent_id?: string | null }).payment_intent_id;
 
-  if (s === "cancelled") return { label: "Cancelled", color: "bg-red-100 text-red-700", icon: "ri-close-circle-line", bgGradient: "from-red-50 to-rose-50", step: -1 };
-  if (s === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) return { label: "Refunded", color: "bg-red-100 text-red-600", icon: "ri-refund-line", bgGradient: "from-red-50 to-rose-50", step: -1 };
+  // Warm-clinical palette (CUSTOMER-PORTAL-PROVIDER-PROFILE-ACCOUNT-HUB-FINAL-REDESIGN-001):
+  // green=completed · review-blue=under review · amber=pending/payment · warm-neutral=assigned.
+  // The selected-order header uses a single calm warm-raised gradient for all statuses.
+  const WARM = "from-[#ffffff] to-white";
+  if (s === "cancelled") return { label: "Cancelled", color: "bg-[#f1f5f9] text-[#475569]", icon: "ri-close-circle-line", bgGradient: WARM, step: -1 };
+  if (s === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) return { label: "Refunded", color: "bg-[#f1f5f9] text-[#475569]", icon: "ri-refund-line", bgGradient: WARM, step: -1 };
 
   // CRITICAL: check payment FIRST — unpaid leads must never show provider statuses
-  if (!isPaid || s === "lead") return { label: "Pending Payment", color: "bg-amber-100 text-amber-700", icon: "ri-time-line", bgGradient: "from-amber-50 to-yellow-50", step: -1 };
+  if (!isPaid || s === "lead") return { label: "Pending Payment", color: "bg-[#FFFBEB] text-[#B45309]", icon: "ri-time-line", bgGradient: WARM, step: -1 };
 
   // Completed ONLY when provider has notified patient
-  if (ds === "patient_notified") return { label: "Completed", color: "bg-green-100 text-green-700", icon: "ri-checkbox-circle-fill", bgGradient: "from-green-50 to-emerald-50", step: 3 };
+  if (ds === "patient_notified") return { label: "Completed", color: "bg-[#ECFDF5] text-[#059669]", icon: "ri-checkbox-circle-fill", bgGradient: WARM, step: 3 };
   // 30-day reissue — customer sees "Under Review"
-  if (ds === "thirty_day_reissue") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 2 };
+  if (ds === "thirty_day_reissue") return { label: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]", icon: "ri-stethoscope-line", bgGradient: WARM, step: 2 };
   // letter_sent is INTERNAL — customer sees "Under Review"
-  if (ds === "letter_sent") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 2 };
-  if (ds === "in_review" || ds === "approved") return { label: "Under Review", color: "bg-sky-100 text-sky-700", icon: "ri-stethoscope-line", bgGradient: "from-sky-50 to-blue-50", step: 2 };
-  if (ds === "pending_review" || s === "under-review") return { label: "Assigned to Provider", color: "bg-violet-100 text-violet-700", icon: "ri-user-received-line", bgGradient: "from-violet-50 to-purple-50", step: 1 };
+  if (ds === "letter_sent") return { label: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]", icon: "ri-stethoscope-line", bgGradient: WARM, step: 2 };
+  if (ds === "in_review" || ds === "approved") return { label: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]", icon: "ri-stethoscope-line", bgGradient: WARM, step: 2 };
+  if (ds === "pending_review" || s === "under-review") return { label: "Assigned to Provider", color: "bg-[#eef2f7] text-[#475569]", icon: "ri-user-received-line", bgGradient: WARM, step: 1 };
   // Paid but no provider yet
-  if (s === "completed" || s === "paid" || s === "processing") return { label: "Payment Confirmed", color: "bg-amber-100 text-amber-700", icon: "ri-loader-4-line", bgGradient: "from-amber-50 to-orange-50", step: 0 };
-  return { label: "Payment Confirmed", color: "bg-amber-100 text-amber-700", icon: "ri-loader-4-line", bgGradient: "from-amber-50 to-orange-50", step: 0 };
+  if (s === "completed" || s === "paid" || s === "processing") return { label: "Payment Confirmed", color: "bg-[#FFFBEB] text-[#B45309]", icon: "ri-loader-4-line", bgGradient: WARM, step: 0 };
+  return { label: "Payment Confirmed", color: "bg-[#FFFBEB] text-[#B45309]", icon: "ri-loader-4-line", bgGradient: WARM, step: 0 };
 }
-
-const DOC_TYPE_LABEL: Record<string, string> = {
-  esa_letter: "ESA Letter",
-  psd_letter: "PSD Letter",
-  housing_verification: "Housing Verification Letter",
-  landlord_form: "Landlord Form",
-  signed_letter: "Signed Letter",
-  other: "Supporting Document",
-};
-
-const DOC_TYPE_ICON: Record<string, string> = {
-  esa_letter: "ri-file-text-line",
-  housing_verification: "ri-home-smile-line",
-  landlord_form: "ri-building-line",
-  signed_letter: "ri-shield-check-line",
-  other: "ri-file-line",
-};
 
 function getDaysUntilRenewal(createdAt: string): number {
   const created = new Date(createdAt);
@@ -156,438 +187,259 @@ function getDaysUntilRenewal(createdAt: string): number {
   return Math.max(0, Math.ceil((renewDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
-function OrderStatusTimeline({ order }: { order: Order }) {
-  const displayStatus = getDisplayStatus(order);
-  const stepIndex = displayStatus.step;
+// Two-column grid class tokens (kept as literal strings so Tailwind's JIT emits
+// them). The right-hand column starts at the top of the grid (aligned with the
+// lifecycle/overview) and spans both main rows so it stays on the right on desktop.
+const TWO_COL_GRID =
+  "mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_336px] lg:gap-6 lg:items-start";
+const COL_MAIN_TOP = "lg:col-start-1 lg:row-start-1 space-y-4 min-w-0";
+const COL_SIDE = "lg:col-start-2 lg:row-start-1 lg:row-span-2 space-y-4 min-w-0";
+const COL_MAIN_BOTTOM = "lg:col-start-1 lg:row-start-2 space-y-4 min-w-0";
 
-  const steps = [
-    { key: "paid", label: "Payment Confirmed", icon: "ri-checkbox-circle-fill" },
-    { key: "assigned", label: "Provider Assigned", icon: "ri-user-received-line" },
-    { key: "letter", label: "Letter Issued", icon: "ri-file-shield-line" },
-    { key: "delivered", label: "Documents Delivered", icon: "ri-mail-check-line" },
-  ];
+function OrderCard({
+  order,
+  userEmail,
+  onContactSupport,
+  addonSuccessOrder,
+  layout = "two-col",
+}: {
+  order: Order;
+  userEmail: string;
+  onContactSupport: () => void;
+  addonSuccessOrder?: string | null;
+  // "two-col" = dedicated right-hand Documents column (single-order view).
+  // "single" = stacked one column (used beside the multi-order switcher rail),
+  // Documents still surfacing right after the Housing workflow.
+  layout?: "two-col" | "single";
+}) {
+  const isLead = isUnpaidLead(order) && !isTerminalOrder(order);
+  const isRefunded = order.status === "refunded" || !!(order as Order & { refunded_at?: string | null }).refunded_at;
+  const isCancelled = order.status === "cancelled" && !(order as Order & { refunded_at?: string | null }).refunded_at;
+  const delivered = order.doctor_status === "patient_notified" || !!order.letter_id;
+  // Landlord-verifiable card is ESA-specific copy; PSD verification IDs still show
+  // inline on the My Documents letter row.
+  const showVerify = delivered && !isPSDOrder(order);
 
-  const getStepState = (idx: number) => {
-    if (order.status === "cancelled") return "inactive";
-    if (order.status === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) return "inactive";
-    if (order.doctor_status === "patient_notified") return "done";
-    if (stepIndex === 3) return "done";
-    if (idx < stepIndex) return "done";
-    if (idx === stepIndex) return "active";
-    return "inactive";
-  };
+  // ── Main column, TOP: booking → progress → overview → provider → letter →
+  //    Housing Accommodation workflow. (Documents come right after this on mobile.) ──
+  const mainTop = (
+    <>
+      {isLead && (
+        <UnpaidBookingCard
+          order={order}
+          onReviewAssessment={() =>
+            document.getElementById("portal-my-assessment")?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        />
+      )}
 
-  return (
-    <div className="flex items-center gap-0">
-      {steps.map((step, idx) => {
-        const state = getStepState(idx);
-        const done = state === "done" || (idx === 0 && (order.status === "completed" || order.status === "paid" || order.status === "processing" || order.doctor_status != null));
-        const active = state === "active";
-        return (
-          <div key={step.key} className="flex items-start flex-1 last:flex-none">
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm transition-colors ${done ? "bg-orange-500 text-white" : active ? "bg-amber-400 text-white" : "bg-gray-100 text-gray-400"}`}>
-                <i className={`${step.icon} ${active ? "animate-pulse" : ""}`}></i>
-              </div>
-              <p className={`text-center mt-1 max-w-[60px] leading-tight ${done ? "text-orange-500" : active ? "text-amber-600" : "text-gray-400"}`} style={{ fontSize: "10px", fontWeight: 600 }}>
-                {step.label}
-              </p>
-            </div>
-            {idx < steps.length - 1 && (
-              <div className={`flex-1 h-0.5 mx-1 mt-4 ${idx < stepIndex ? "bg-orange-400" : "bg-gray-200"}`}></div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+      <OrderLifecycle order={order} />
 
-function DocumentsSection({ order }: { order: Order }) {
-  const providerCompleted = order.doctor_status === "patient_notified";
+      <OrderOverviewCard order={order} />
 
-  // ── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ────────────────────
-  // doc_id is carried alongside file_url so the View / Download buttons can
-  // route through the get-document-signed-url edge function instead of
-  // opening the broken /storage/v1/object/public/letters URL directly.
-  // Legacy rows that only have order.signed_letter_url (no matching
-  // order_documents row) keep the direct-link fallback — those pre-date
-  // the order_documents table and were stored before the bucket was made
-  // private, so they generally still work.
-  const allDocs: Array<{ id?: string; label: string; doc_type: string; file_url: string; uploaded_at?: string; isLegacy?: boolean }> = [];
+      {isLead && <LockedFeaturePreviews order={order} />}
 
-  if (providerCompleted) {
-    if (order.signed_letter_url) {
-      const matchingDoc = order.documents?.find(
-        (d) => d.file_url === order.signed_letter_url && d.footer_injected && d.processed_file_url
-      );
-      const serveUrl = matchingDoc?.processed_file_url ?? order.signed_letter_url;
-      const docLabel = isPSDOrder(order) ? "Signed PSD Letter" : "Signed ESA Letter";
-      allDocs.push({ id: matchingDoc?.id, label: docLabel, doc_type: "signed_letter", file_url: serveUrl, isLegacy: true });
-    }
-  }
-
-  if (providerCompleted && order.documents) {
-    order.documents.filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url).forEach((d) => {
-      const serveUrl = (d.footer_injected && d.processed_file_url) ? d.processed_file_url : d.file_url;
-      allDocs.push({ id: d.id, label: d.label, doc_type: d.doc_type, file_url: serveUrl, uploaded_at: d.uploaded_at });
-    });
-  }
-
-  if (allDocs.length === 0) return null;
-
-  // Click-handler that fetches a fresh signed URL from get-document-signed-url
-  // and either previews (target=_blank) or downloads (anchor with `download`).
-  // window.open is called synchronously before the await so the popup blocker
-  // doesn't fire; the new tab is closed if the fetch fails so the user
-  // isn't left staring at a blank page.
-  const openDocument = async (docId: string | undefined, fallbackUrl: string, mode: "view" | "download") => {
-    if (!docId) {
-      // Legacy order (no doc id) — direct link
-      window.open(fallbackUrl, mode === "view" ? "_blank" : "_self");
-      return;
-    }
-    const win = mode === "view" ? window.open("about:blank", "_blank") : null;
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token ?? "";
-      const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-      const supabaseAnon = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
-      const res = await fetch(`${supabaseUrl}/functions/v1/get-document-signed-url`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnon,
-          Authorization: `Bearer ${token || supabaseAnon}`,
-        },
-        body: JSON.stringify({ documentId: docId }),
-      });
-      const data = await res.json() as { ok?: boolean; signedUrl?: string; error?: string };
-      if (!data.ok || !data.signedUrl) {
-        console.error("[my-orders] get-document-signed-url failed:", data.error ?? "unknown");
-        if (win) win.close();
-        return;
-      }
-      if (mode === "view" && win) {
-        win.location.href = data.signedUrl;
-      } else {
-        // Download flow: create a temporary anchor with `download` attr.
-        const a = document.createElement("a");
-        a.href = data.signedUrl;
-        a.download = "";
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-    } catch (err) {
-      console.error("[my-orders] open document threw:", err);
-      if (win) win.close();
-    }
-  };
-
-  return (
-    <div className="mt-4">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-6 h-6 flex items-center justify-center bg-orange-50 rounded-md flex-shrink-0">
-          <i className="ri-folder-open-line text-orange-500 text-sm"></i>
-        </div>
-        <p className="text-sm font-extrabold text-gray-900">My Documents</p>
-        <span className="text-xs font-bold px-2 py-0.5 bg-orange-50 text-orange-600 rounded-full">{allDocs.length}</span>
-      </div>
-        <div className="space-y-2">
-        {allDocs.map((doc, idx) => {
-          const icon = DOC_TYPE_ICON[doc.doc_type] ?? "ri-file-line";
-          const typeLabel = DOC_TYPE_LABEL[doc.doc_type] ?? "Document";
-          return (
-            <div key={idx} className="bg-white rounded-xl border border-gray-200 px-4 py-3 hover:border-orange-200 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-                  <i className={`${icon} text-orange-500 text-base`}></i>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900 truncate">{doc.label}</p>
-                  <p className="text-xs text-gray-400 truncate">
-                    {typeLabel}{doc.uploaded_at ? ` · ${new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 mt-2.5 pl-12">
-                {/* LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX: route through
-                    get-document-signed-url when the doc has an id; legacy
-                    rows without a doc id fall through to direct link. */}
-                <button type="button" onClick={() => openDocument(doc.id, doc.file_url, "view")}
-                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer transition-colors">
-                  <i className="ri-eye-line"></i>View
-                </button>
-                <button type="button" onClick={() => openDocument(doc.id, doc.file_url, "download")}
-                  className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors">
-                  <i className="ri-download-line"></i>Download
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        </div>
-    </div>
-  );
-}
-
-function OrderCard({ order, userEmail, onContactSupport, addonSuccessOrder }: { order: Order; userEmail: string; onContactSupport: () => void; addonSuccessOrder?: string | null }) {
-  const displayStatus = getDisplayStatus(order);
-  const deliveryLabel = order.delivery_speed === "24hours" || order.delivery_speed === "24h"
-    ? "Within 24 hours"
-    : "Within 2–3 business days";
-  const formattedDate = new Date(order.created_at).toLocaleDateString("en-US", {
-    year: "numeric", month: "long", day: "numeric",
-  });
-  const hasDocuments = !!order.signed_letter_url || (order.documents && order.documents.length > 0);
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      {/* Status ribbon */}
-      <div className={`bg-gradient-to-r ${displayStatus.bgGradient} px-4 sm:px-5 py-3 border-b border-gray-100`}>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-y-2 gap-x-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${displayStatus.color}`}>
-              <i className={`${displayStatus.icon} ${order.status === "processing" && !order.doctor_status ? "animate-spin" : ""}`}></i>
-              {displayStatus.label}
-            </span>
-            {isPSDOrder(order) ? (
-              <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                <i className="ri-service-line text-xs"></i>PSD Letter
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
-                <i className="ri-heart-line text-xs"></i>ESA Letter
-              </span>
-            )}
-            <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-gray-900 text-white font-mono tracking-wide">
-              <i className="ri-hashtag text-gray-400 text-[10px]"></i>{order.confirmation_id}
-            </span>
-          </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <span className="text-xs text-gray-500 font-medium">{new Date(order.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</span>
+      {isRefunded && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700 flex items-start gap-2">
+          <i className="ri-refund-line flex-shrink-0 mt-0.5"></i>
+          <div>
+            <p className="font-bold mb-0.5">Your order has been refunded.</p>
+            <p>The refund should appear on your original payment method within <strong>5–10 business days</strong>. If you have questions, please contact our support team.</p>
             <button
               type="button"
               onClick={onContactSupport}
-              className="whitespace-nowrap inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-orange-500 transition-colors cursor-pointer"
+              className="whitespace-nowrap mt-2 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
             >
-              <i className="ri-question-line"></i>Help
+              <i className="ri-customer-service-2-line"></i>Contact Support
             </button>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="px-5 py-5">
-        {/* Progress timeline */}
-        <div className="mb-5">
-          <OrderStatusTimeline order={order} />
-        </div>
-
-        {/* Details grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
-          {order.selected_provider && (
-            <div className="flex items-start gap-2">
-              <div className="w-7 h-7 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-                <i className="ri-stethoscope-line text-orange-500 text-sm"></i>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-gray-400 mb-0.5">Provider</p>
-                <p className="text-xs font-semibold text-gray-800 leading-snug truncate">{order.selected_provider}</p>
-              </div>
-            </div>
-          )}
-          <div className="flex items-start gap-2">
-            <div className="w-7 h-7 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-              <i className="ri-map-pin-line text-orange-500 text-sm"></i>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-0.5">State</p>
-              <p className="text-xs font-semibold text-gray-800">{order.state ?? "—"}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <div className="w-7 h-7 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-              <i className="ri-price-tag-3-line text-orange-500 text-sm"></i>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-0.5">Plan</p>
-              <p className="text-xs font-semibold text-gray-800">{order.plan_type ?? "One-Time"}</p>
-              {order.price && <p className="text-xs text-gray-500">${order.price}.00</p>}
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <div className="w-7 h-7 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-              <i className="ri-timer-flash-line text-orange-500 text-sm"></i>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-0.5">Delivery</p>
-              <p className="text-xs font-semibold text-gray-800">
-                {order.delivery_speed === "24hours" || order.delivery_speed === "24h" ? "Within 24 hrs" : "2–3 business days"}
-              </p>
-            </div>
+      {isCancelled && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700 flex items-start gap-2">
+          <i className="ri-close-circle-line flex-shrink-0 mt-0.5"></i>
+          <div>
+            <p className="font-bold mb-0.5">This order has been cancelled.</p>
+            <p>If you believe this is an error or need assistance, please contact our support team.</p>
+            <button
+              type="button"
+              onClick={onContactSupport}
+              className="whitespace-nowrap mt-2 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <i className="ri-customer-service-2-line"></i>Contact Support
+            </button>
           </div>
         </div>
+      )}
 
-        {/* Refunded message */}
-        {(order.status === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700 flex items-start gap-2 mb-4">
-            <i className="ri-refund-line flex-shrink-0 mt-0.5"></i>
-            <div>
-              <p className="font-bold mb-0.5">Your order has been refunded.</p>
-              <p>The refund should appear on your original payment method within <strong>5–10 business days</strong>. If you have questions, please contact our support team.</p>
-              <button
-                type="button"
-                onClick={onContactSupport}
-                className="whitespace-nowrap mt-2 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-              >
-                <i className="ri-customer-service-2-line"></i>Contact Support
-              </button>
-            </div>
+      {/* Status-specific messages — PAID orders only. An unpaid lead's
+          doctor_status can read "pending_review" from an unassigned default, so
+          gating on isPaidOrder prevents a false "assigned to provider" message. */}
+      {isPaidOrder(order) && order.doctor_status !== "patient_notified" && !isRefunded && !isCancelled && (
+        <div className={`rounded-xl px-4 py-3 text-xs flex items-start gap-2 ${
+          order.doctor_status === "letter_sent"
+            ? "bg-[#e8f0f9] border border-[#dbe4f0] text-[#B45309]"
+            : order.doctor_status === "in_review" || order.doctor_status === "approved"
+            ? "bg-[#EFF6FF] border border-[#DBEAFE] text-[#2563EB]"
+            : order.doctor_status === "pending_review"
+            ? "bg-[#ffffff] border border-[#e2e8f0] text-[#475569]"
+            : "bg-[#FFFBEB] border border-[#dbe4f0] text-[#B45309]"
+        }`}>
+          <i className={`flex-shrink-0 mt-0.5 ${
+            order.doctor_status === "letter_sent" ? "ri-file-shield-line" :
+            order.doctor_status === "in_review" ? "ri-stethoscope-line" :
+            order.doctor_status === "pending_review" ? "ri-user-received-line" :
+            "ri-time-line"
+          }`}></i>
+          <div className="flex-1">
+            <span>
+              {order.doctor_status === "letter_sent"
+                ? "Your evaluation is nearing completion. You'll receive an email once your documents are ready to download."
+                : order.doctor_status === "in_review" || order.doctor_status === "approved"
+                ? "Your provider is actively reviewing your case. You'll receive an email as soon as your documents are ready."
+                : order.doctor_status === "pending_review"
+                ? "Your case has been assigned to a licensed provider and is awaiting initial review. You'll receive an email once your evaluation begins."
+                : (
+                    <>
+                      <strong>Your payment was received — your case is being queued for provider assignment.</strong>
+                      {" "}A licensed {isPSDOrder(order) ? "healthcare" : "mental health"} provider will be assigned to your case{" "}
+                      {order.delivery_speed === "24hours" || order.delivery_speed === "24h"
+                        ? "within a few hours."
+                        : "within 1 business day."
+                      }
+                      {" "}Once assigned, your {isPSDOrder(order) ? "PSD" : "ESA"} letter will be ready{" "}
+                      {order.delivery_speed === "24hours" || order.delivery_speed === "24h"
+                        ? "within 24 hours."
+                        : "within 2–3 business days."
+                      }
+                      {" "}You'll receive an email notification when your provider is assigned.
+                    </>
+                  )
+              }
+            </span>
+            <button
+              type="button"
+              onClick={onContactSupport}
+              className="whitespace-nowrap mt-2 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <i className="ri-customer-service-2-line"></i>Have a question? Contact support
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Cancelled message */}
-        {order.status === "cancelled" && !(order as Order & { refunded_at?: string | null }).refunded_at && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700 flex items-start gap-2 mb-4">
-            <i className="ri-close-circle-line flex-shrink-0 mt-0.5"></i>
-            <div>
-              <p className="font-bold mb-0.5">This order has been cancelled.</p>
-              <p>If you believe this is an error or need assistance, please contact our support team.</p>
-              <button
-                type="button"
-                onClick={onContactSupport}
-                className="whitespace-nowrap mt-2 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-              >
-                <i className="ri-customer-service-2-line"></i>Contact Support
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Assigned provider */}
+      <ProviderInfoCard order={order} />
 
-        {/* Status-specific messages */}
-        {order.doctor_status !== "patient_notified" && order.status !== "refunded" && !(order as Order & { refunded_at?: string | null }).refunded_at && order.status !== "cancelled" && (
-          <div className={`rounded-xl px-4 py-3 text-xs flex items-start gap-2 mb-4 ${
-            order.doctor_status === "letter_sent"
-              ? "bg-[#FFF7ED] border border-orange-200 text-orange-700"
-              : order.doctor_status === "in_review" || order.doctor_status === "approved"
-              ? "bg-sky-50 border border-sky-200 text-sky-700"
-              : order.doctor_status === "pending_review"
-              ? "bg-violet-50 border border-violet-200 text-violet-700"
-              : "bg-amber-50 border border-amber-200 text-amber-700"
-          }`}>
-            <i className={`flex-shrink-0 mt-0.5 ${
-              order.doctor_status === "letter_sent" ? "ri-file-shield-line" :
-              order.doctor_status === "in_review" ? "ri-stethoscope-line" :
-              order.doctor_status === "pending_review" ? "ri-user-received-line" :
-              "ri-time-line"
-            }`}></i>
-            <div className="flex-1">
-              <span>
-                {order.doctor_status === "letter_sent"
-                  ? "Your evaluation is nearing completion. You'll receive an email once your documents are ready to download."
-                  : order.doctor_status === "in_review" || order.doctor_status === "approved"
-                  ? "Your provider is actively reviewing your case. You'll receive an email as soon as your documents are ready."
-                  : order.doctor_status === "pending_review"
-                  ? "Your case has been assigned to a licensed provider and is awaiting initial review. You'll receive an email once your evaluation begins."
-                  : (
-                      <>
-                        <strong>Your payment was received — your case is being queued for provider assignment.</strong>
-                        {" "}A licensed {isPSDOrder(order) ? "healthcare" : "mental health"} provider will be assigned to your case{" "}
-                        {order.delivery_speed === "24hours" || order.delivery_speed === "24h"
-                          ? "within a few hours."
-                          : "within 1 business day."
-                        }
-                        {" "}Once assigned, your {isPSDOrder(order) ? "PSD" : "ESA"} letter will be ready{" "}
-                        {order.delivery_speed === "24hours" || order.delivery_speed === "24h"
-                          ? "within 24 hours."
-                          : "within 2–3 business days."
-                        }
-                        {" "}You'll receive an email notification when your provider is assigned.
-                      </>
-                    )
-                }
-              </span>
-              <button
-                type="button"
-                onClick={onContactSupport}
-                className="whitespace-nowrap mt-2 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
-              >
-                <i className="ri-customer-service-2-line"></i>Have a question? Contact support
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Where your letter will appear (pre-delivery placeholder) */}
+      <LetterDeliveryCard order={order} />
 
-        {order.doctor_status === "patient_notified" && (
-          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2 mb-4">
-            <i className="ri-checkbox-circle-fill flex-shrink-0"></i>
-            Your documents were sent to <strong>{userEmail}</strong>. Download them below.
-          </div>
-        )}
+      {/* Housing Accommodation workflow: combo (included) upload, OR the standard
+          $70 add-on (mutually exclusive). The completed form itself is a My
+          Documents deliverable, not duplicated here. */}
+      {showRaDocumentUpload(order) && <RaDocumentUpload order={order} />}
+      {!showRaDocumentUpload(order) && canRequestAdditionalDoc(order) && (
+        <AdditionalDocRequest
+          order={order}
+          highlightSuccess={
+            !!addonSuccessOrder &&
+            addonSuccessOrder.toUpperCase() === (order.confirmation_id ?? "").toUpperCase()
+          }
+        />
+      )}
 
-        {/* Documents section */}
-        <DocumentsSection order={order} />
+      {order.doctor_status === "patient_notified" && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2">
+          <i className="ri-checkbox-circle-fill flex-shrink-0"></i>
+          <span>Your documents were sent to <strong>{userEmail}</strong> and are ready in <strong>My Documents</strong>.</span>
+        </div>
+      )}
+    </>
+  );
 
-        {/* Returning-customer actions — only for PAID, non-PSD orders (V1: ESA only) */}
-        {order.payment_intent_id && !isPSDOrder(order) && (
-          <ReturningCustomerActions orderId={order.id} />
-        )}
+  // ── Right column: My Documents → Verification → Need Help ──
+  const rightCol = (
+    <>
+      <MyDocumentsCard order={order} />
 
-        {/* Additional Documentation add-on — paid, non-refunded/cancelled orders */}
-        {canRequestAdditionalDoc(order) && (
-          <AdditionalDocRequest
-            order={order}
-            highlightSuccess={
-              !!addonSuccessOrder &&
-              addonSuccessOrder.toUpperCase() === (order.confirmation_id ?? "").toUpperCase()
-            }
-          />
-        )}
+      {showVerify && (
+        <CustomerPortalSection title="Verification" icon="ri-shield-check-line" tone="blue">
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Your ESA letter includes a unique <strong>Verification ID</strong> and QR code. Landlords can instantly
+            confirm its authenticity at{" "}
+            <a href="/esa-letter-verification" className="underline underline-offset-2 font-bold text-[#3b6ea5] hover:text-[#1e3a5f] cursor-pointer">pawtenant.com/esa-letter-verification</a>{" "}
+            — zero health info disclosed.
+          </p>
+          <a
+            href="/esa-letter-verification"
+            className="whitespace-nowrap mt-2.5 inline-flex items-center gap-1.5 text-xs font-bold text-[#3b6ea5] hover:text-[#1e3a5f] transition-colors cursor-pointer"
+          >
+            <i className="ri-qr-code-line"></i>See how verification works
+            <i className="ri-arrow-right-s-line"></i>
+          </a>
+        </CustomerPortalSection>
+      )}
 
-        {/* Landlord Verification Badge — shown when letter is delivered */}
-        {order.doctor_status === "patient_notified" && (
-          <div className="mt-4 bg-[#FFF7ED] border border-orange-200 rounded-xl px-4 py-3 flex items-start gap-3">
-            <div className="w-9 h-9 flex items-center justify-center bg-orange-500 rounded-lg flex-shrink-0">
-              <i className="ri-shield-check-line text-white text-base"></i>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-extrabold text-orange-600 mb-0.5">Your letter is landlord-verifiable</p>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                Your ESA letter includes a unique <strong>Verification ID</strong> and QR code. Landlords can instantly confirm its authenticity at{" "}
-                <a href="/esa-letter-verification" className="underline underline-offset-2 font-bold hover:text-orange-600 cursor-pointer">pawtenant.com/esa-letter-verification</a>{" "}
-                — zero health info disclosed.
-              </p>
-              <a
-                href="/esa-letter-verification"
-                className="whitespace-nowrap mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-orange-500 hover:text-orange-600 transition-colors cursor-pointer"
-              >
-                <i className="ri-qr-code-line"></i>See how verification works
-                <i className="ri-arrow-right-s-line"></i>
-              </a>
-            </div>
-          </div>
-        )}
+      <NeedHelpCard onContactSupport={onContactSupport} />
+    </>
+  );
 
-        {/* Additional docs requested indicator */}
-        {order.additional_documents_requested && (order.additional_documents_requested.types ?? []).filter((t) => t !== "ESA Letter").length > 0 && (
-          <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 flex items-start gap-2">
-            <i className="ri-file-add-line text-amber-600 text-sm flex-shrink-0 mt-0.5"></i>
-            <div>
-              <p className="text-xs font-bold text-amber-800 mb-1">Additional documents requested</p>
-              <div className="flex flex-wrap gap-1.5">
-                {(order.additional_documents_requested.types ?? [])
-                  .filter((t) => t !== "ESA Letter")
-                  .map((t) => (
-                    <span key={t} className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">{t}</span>
-                  ))}
-              </div>
-              <p className="text-xs text-amber-600 mt-1">Our team will coordinate these with your provider. Check your email for updates.</p>
-            </div>
-          </div>
-        )}
+  // ── Main column, BOTTOM: submitted assessment → contact time → next steps ──
+  const mainBottom = (
+    <>
+      {/* Your submitted assessment (view / download) */}
+      <div id="portal-my-assessment">
+        <AssessmentCard order={order} />
       </div>
+
+      {/* Preferred provider contact time (optional) */}
+      <PreferredContactCard order={order} />
+
+      {/* Next steps — one-time ESA orders can upgrade to annual; annual orders show nothing.
+          "Buy Another ESA" lives at the account level, not in the selected order. */}
+      {order.payment_intent_id && !isPSDOrder(order) && !isAnnualOrder(order) && (
+        <ReturningCustomerActions orderId={order.id} showUpgrade title="Next steps" />
+      )}
+
+      {/* Additional docs requested indicator */}
+      {order.additional_documents_requested && (order.additional_documents_requested.types ?? []).filter((t) => t !== "ESA Letter").length > 0 && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 flex items-start gap-2">
+          <i className="ri-file-add-line text-amber-600 text-sm flex-shrink-0 mt-0.5"></i>
+          <div>
+            <p className="text-xs font-bold text-amber-800 mb-1">Additional documents requested</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(order.additional_documents_requested.types ?? [])
+                .filter((t) => t !== "ESA Letter")
+                .map((t) => (
+                  <span key={t} className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full font-medium">{t}</span>
+                ))}
+            </div>
+            <p className="text-xs text-amber-600 mt-1">Our team will coordinate these with your provider. Check your email for updates.</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  // Single-column (beside the multi-order switcher): stack top → documents →
+  // bottom, so Documents still land right after the Housing workflow.
+  if (layout === "single") {
+    return (
+      <div className="mt-4 space-y-4 min-w-0">
+        {mainTop}
+        {rightCol}
+        {mainBottom}
+      </div>
+    );
+  }
+
+  // Two-column (single-order view): dedicated right-hand Documents column.
+  return (
+    <div className={TWO_COL_GRID}>
+      <div className={COL_MAIN_TOP}>{mainTop}</div>
+      <div className={COL_SIDE}>{rightCol}</div>
+      <div className={COL_MAIN_BOTTOM}>{mainBottom}</div>
     </div>
   );
 }
@@ -608,29 +460,29 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
   if (isSubscription) {
     const isUrgent = daysLeft <= 30;
     return (
-      <div className={`rounded-xl border overflow-hidden ${isUrgent ? "border-orange-300 bg-orange-50" : isPSD ? "border-amber-200 bg-amber-50" : "border-orange-200 bg-[#FFF7ED]"}`}>
+      <div className={`rounded-xl border overflow-hidden ${isUrgent ? "border-[#dbe4f0] bg-[#e8f0f9]" : "border-[#dbe4f0] bg-white"}`}>
         <div className="px-5 py-4 flex items-start gap-4">
-          <div className={`w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 ${isUrgent ? "bg-orange-100" : isPSD ? "bg-amber-100" : "bg-orange-100"}`}>
-            <i className={`text-lg ${isUrgent ? "ri-alarm-warning-line text-orange-500" : isPSD ? "ri-service-line text-amber-600" : "ri-shield-check-line text-orange-500"}`}></i>
+          <div className="w-10 h-10 flex items-center justify-center rounded-full flex-shrink-0 bg-[#e8f0f9]">
+            <i className={`text-lg text-[#3b6ea5] ${isUrgent ? "ri-alarm-warning-line" : "ri-shield-check-line"}`}></i>
           </div>
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-extrabold ${isUrgent ? "text-orange-800" : isPSD ? "text-amber-800" : "text-orange-700"}`}>
+            <p className="text-sm font-extrabold text-[#1e3a5f]">
               {isUrgent ? `Your ${isPSD ? "PSD" : "ESA"} coverage renews in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : `Your ${isPSD ? "PSD" : "ESA"} coverage is active`}
             </p>
-            <p className={`text-xs mt-0.5 ${isUrgent ? "text-orange-700" : isPSD ? "text-amber-700" : "text-orange-600"}`}>
+            <p className="text-xs mt-0.5 text-slate-600">
               Annual renewal on <strong>{renewalDate}</strong>
             </p>
             {isUrgent && (
               <a href={renewUrl}
-                className="whitespace-nowrap mt-3 inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
+                className="whitespace-nowrap mt-3 inline-flex items-center gap-2 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] transition-colors cursor-pointer">
                 <i className="ri-refresh-line"></i>Renew Now
               </a>
             )}
           </div>
           {!isUrgent && (
             <div className="text-right flex-shrink-0">
-              <p className={`text-2xl font-extrabold ${isPSD ? "text-amber-700" : "text-orange-500"}`}>{daysLeft}</p>
-              <p className={`text-xs font-semibold ${isPSD ? "text-amber-600" : "text-orange-400"}`}>days left</p>
+              <p className="text-2xl font-extrabold text-[#3b6ea5]">{daysLeft}</p>
+              <p className="text-xs font-semibold text-[#6f97c2]">days left</p>
             </div>
           )}
         </div>
@@ -641,8 +493,8 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
   // One-time plan renewal card
   if (isPSD) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-white overflow-hidden">
-        <div className="bg-amber-600 px-5 py-3 flex items-center gap-2">
+      <div className="rounded-xl border border-[#dbe4f0] bg-white overflow-hidden">
+        <div className="bg-[#3b6ea5] px-5 py-3 flex items-center gap-2">
           <i className="ri-service-line text-white text-sm"></i>
           <p className="text-sm font-extrabold text-white">Renew Your PSD Letter</p>
         </div>
@@ -656,15 +508,15 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
               <p className="text-xl font-extrabold text-gray-900">$129<span className="text-sm font-semibold text-gray-500">.00</span></p>
               <p className="text-xs text-gray-500 mt-0.5">Same-day turnaround available</p>
             </div>
-            <div className="bg-amber-50 rounded-lg p-3 border border-amber-300 relative">
-              <span className="absolute -top-2 left-3 bg-amber-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
-              <p className="text-xs font-bold text-amber-800 mb-0.5">Annual Subscription</p>
-              <p className="text-xl font-extrabold text-amber-700">$109<span className="text-sm font-semibold">/yr</span></p>
-              <p className="text-xs text-amber-700 mt-0.5">Auto-renews · Full ADA coverage</p>
+            <div className="bg-[#e8f0f9] rounded-lg p-3 border border-[#dbe4f0] relative">
+              <span className="absolute -top-2 left-3 bg-[#3b6ea5] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
+              <p className="text-xs font-bold text-[#1e3a5f] mb-0.5">Annual Subscription</p>
+              <p className="text-xl font-extrabold text-[#3b6ea5]">$109<span className="text-sm font-semibold">/yr</span></p>
+              <p className="text-xs text-[#3b6ea5] mt-0.5">Auto-renews · Full ADA coverage</p>
             </div>
           </div>
           <a href={renewUrl}
-            className="whitespace-nowrap w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-amber-600 text-white font-extrabold text-sm rounded-lg hover:bg-amber-700 transition-colors cursor-pointer">
+            className="whitespace-nowrap w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#3b6ea5] text-white font-extrabold text-sm rounded-lg hover:bg-[#1e3a5f] transition-colors cursor-pointer">
             <i className="ri-refresh-line"></i>Renew My PSD Letter
           </a>
         </div>
@@ -673,8 +525,8 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
   }
 
   return (
-    <div className="rounded-xl border border-orange-200 bg-white overflow-hidden">
-      <div className="bg-orange-500 px-5 py-3 flex items-center gap-2">
+    <div className="rounded-xl border border-[#dbe4f0] bg-white overflow-hidden">
+      <div className="bg-[#3b6ea5] px-5 py-3 flex items-center gap-2">
         <i className="ri-refresh-line text-white text-sm"></i>
         <p className="text-sm font-extrabold text-white">Renew Your ESA Coverage</p>
       </div>
@@ -688,15 +540,15 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
             <p className="text-xl font-extrabold text-gray-900">$129<span className="text-sm font-semibold text-gray-500">.00</span></p>
             <p className="text-xs text-gray-500 mt-0.5">Same-day turnaround available</p>
           </div>
-          <div className="bg-[#FFF7ED] rounded-lg p-3 border border-orange-300 relative">
-            <span className="absolute -top-2 left-3 bg-orange-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
-            <p className="text-xs font-bold text-orange-700 mb-0.5">Subscribe &amp; Save</p>
-            <p className="text-xl font-extrabold text-orange-500">$99<span className="text-sm font-semibold">/yr</span></p>
-            <p className="text-xs text-orange-600 mt-0.5">Auto-renews · Never lose coverage</p>
+          <div className="bg-[#ffffff] rounded-lg p-3 border border-[#dbe4f0] relative">
+            <span className="absolute -top-2 left-3 bg-[#3b6ea5] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
+            <p className="text-xs font-bold text-[#B45309] mb-0.5">Subscribe &amp; Save</p>
+            <p className="text-xl font-extrabold text-[#3b6ea5]">$109<span className="text-sm font-semibold">/yr</span></p>
+            <p className="text-xs text-[#1e3a5f] mt-0.5">Auto-renews · Never lose coverage</p>
           </div>
         </div>
         <a href={renewUrl}
-          className="whitespace-nowrap w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-orange-500 text-white font-extrabold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
+          className="whitespace-nowrap w-full inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#3b6ea5] text-white font-extrabold text-sm rounded-lg hover:bg-[#1e3a5f] transition-colors cursor-pointer">
           <i className="ri-refresh-line"></i>Renew My ESA Letter
         </a>
       </div>
@@ -710,6 +562,9 @@ export default function MyOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName] = useState("");
+  // Authenticated user's metadata — a name source (NEVER the email). Kept so the
+  // account greeting + selected-order name resolve without deriving from email.
+  const [authMeta, setAuthMeta] = useState<Record<string, unknown> | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
   const [searchParams] = useSearchParams();
   // Add-on (Additional Documentation) checkout return: ?addon=success|cancelled&order=CID
@@ -717,12 +572,25 @@ export default function MyOrdersPage() {
   const addonSuccessOrder = addonParam === "success" ? searchParams.get("order") : null;
   const addonCancelledOrder = addonParam === "cancelled" ? searchParams.get("order") : null;
   const [addonBannerDismissed, setAddonBannerDismissed] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isAdminPreview, setIsAdminPreview] = useState(false);
   const [searchEmail, setSearchEmail] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [allAdminOrders, setAllAdminOrders] = useState<Order[]>([]);
   const [adminStatusFilter, setAdminStatusFilter] = useState<string>("all");
+
+  // Focus a specific order when arrived via ?order=CID (booking CTA, assurance
+  // "View My Customer Portal", or add-on return). Runs once after orders load;
+  // never overrides a manual switcher choice.
+  // (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001)
+  useEffect(() => {
+    const focus = searchParams.get("order");
+    if (!focus || selectedOrderId || orders.length === 0) return;
+    const match = orders.find((o) => (o.confirmation_id ?? "").toUpperCase() === focus.toUpperCase());
+    if (match) setSelectedOrderId(match.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
   const loadOrdersForEmail = async (email: string) => {
     setSearchLoading(true);
@@ -798,7 +666,10 @@ export default function MyOrdersPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { navigate("/customer-login"); return; }
         setUserEmail(user.email ?? "");
-        setUserName(user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "");
+        // Do NOT derive a name from the email. Keep only real metadata; the
+        // authoritative display name is resolved from the order / metadata later.
+        setAuthMeta((user.user_metadata as Record<string, unknown> | undefined) ?? null);
+        setUserName((user.user_metadata?.full_name as string | undefined) ?? "");
 
         // Check if admin
         const { data: profile } = await supabase
@@ -809,7 +680,7 @@ export default function MyOrdersPage() {
 
         if (profile?.is_admin) {
           setIsAdminPreview(true);
-          setUserName(profile.full_name ?? user.email?.split("@")[0] ?? "Admin");
+          setUserName(profile.full_name ?? "Admin");
           // Auto-load preview_email from URL param (e.g. from "Customer View" button in order detail)
           const urlPreviewEmail = searchParams.get("preview_email");
           if (urlPreviewEmail) {
@@ -919,6 +790,29 @@ export default function MyOrdersPage() {
     load();
   }, [navigate]);
 
+  // Refetch a single order's customer-visible documents and merge them in.
+  // The realtime `orders` UPDATE below only carries the changed order row (which
+  // has no `documents`), so a document the provider adds on an already-open portal
+  // — a newly delivered letter or a completed Housing Accommodation form — would
+  // otherwise stay invisible until a full reload. Re-pulling order_documents on the
+  // status change closes that gap (CUSTOMER-PORTAL-DOCUMENTS-IA-HOUSING-VISIBILITY-001).
+  const refetchOrderDocuments = useCallback(async (orderId: string) => {
+    const { data: docsData } = await supabase
+      .from("order_documents")
+      .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+      .eq("order_id", orderId)
+      .eq("customer_visible", true)
+      .order("uploaded_at", { ascending: true });
+    const docs = (docsData as OrderDocument[]) ?? [];
+    setOrders((prev) => {
+      const idx = prev.findIndex((o) => o.id === orderId);
+      if (idx === -1) return prev; // not an order we're showing — no-op
+      const next = prev.slice();
+      next[idx] = { ...next[idx], documents: docs };
+      return next;
+    });
+  }, []);
+
   // ── Real-time: update order status the moment admin/provider changes something ──
   useEffect(() => {
     if (!userEmail) return;
@@ -932,15 +826,18 @@ export default function MyOrdersPage() {
           setOrders((prev) =>
             prev.map((o) =>
               o.id === updated.id
-                ? { ...o, ...updated }
+                ? { ...o, ...updated } // orders row has no `documents` — preserved
                 : o
             )
           );
+          // Pull the order's documents so a just-delivered letter / completed
+          // housing form appears live (no-op if it isn't one of ours).
+          void refetchOrderDocuments(updated.id);
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [userEmail]);
+  }, [userEmail, refetchOrderDocuments]);
 
   const handleAdminSearch = async () => {
     const q = searchInput.trim();
@@ -1030,9 +927,28 @@ export default function MyOrdersPage() {
   };
 
   const completedOrders = orders.filter((o) => o.doctor_status === "patient_notified");
+  // Portal cross-sell / review visibility (CUSTOMER-PORTAL-REPEAT-PURCHASE-UPSSELL-REVIEWS-001).
+  // PSD upsell only for customers with a paid ESA letter and NO PSD order.
+  const hasPaidEsa = orders.some((o) => !!o.payment_intent_id && !isPSDOrder(o) && o.status !== "refunded" && o.status !== "cancelled");
+  const hasAnyPsd = orders.some((o) => isPSDOrder(o));
+  const showPsdUpsell = !isAdminPreview && hasPaidEsa && !hasAnyPsd;
+  const hasDelivered = completedOrders.length > 0;
+  // Account-hub selection (CUSTOMER-PORTAL-ACCOUNT-HUB-REDESIGN-001): show ONE order's
+  // full detail at a time. Falls back to the first (most recent) order — no effect
+  // needed, so a changing list can't strand an invalid selection.
+  const selectedOrder = filteredOrders.find((o) => o.id === selectedOrderId) ?? filteredOrders[0] ?? null;
+  const latestPaidEsa = orders.find((o) => !!o.payment_intent_id && !isPSDOrder(o) && o.status !== "refunded" && o.status !== "cancelled") ?? null;
+
+  // Authoritative, order-safe personalization (never derived from the email).
+  // In admin "Customer View" the viewer is NOT the customer, so pass no viewer
+  // identity — the greeting + order name then come from the previewed customer's
+  // own orders, and the admin's name never leaks in.
+  const viewerUser: NameUserLike | null = isAdminPreview ? null : { email: userEmail, user_metadata: authMeta ?? undefined };
+  const accountGreeting = resolveAccountGreeting(filteredOrders, null, viewerUser);
+  const supportName = isAdminPreview ? userName : (accountGreeting.fullName ?? userName);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f8fafc]">
       {/* Navbar */}
       <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
         <Link to="/" className="flex items-center gap-2 cursor-pointer">
@@ -1047,9 +963,9 @@ export default function MyOrdersPage() {
           <button
             type="button"
             onClick={() => setSupportOpen(true)}
-            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-orange-500 transition-colors cursor-pointer"
+            className="whitespace-nowrap hidden sm:flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-[#3b6ea5] transition-colors cursor-pointer"
           >
-            <i className="ri-customer-service-2-line text-orange-500"></i>Support
+            <i className="ri-customer-service-2-line text-[#3b6ea5]"></i>Support
           </button>
           <button
             type="button"
@@ -1061,15 +977,14 @@ export default function MyOrdersPage() {
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
-        {/* Header */}
-        <div className="mb-8">
-          <p className="text-xs text-orange-500 font-bold uppercase tracking-widest mb-1">Customer Portal</p>
-          <h1 className="text-2xl font-extrabold text-gray-900">
-            {userName ? `Welcome back, ${userName.charAt(0).toUpperCase() + userName.slice(1)}` : "My Orders"}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">View your orders, download documents, and manage your ESA coverage.</p>
-        </div>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+        {/* Account header (name / email / status summary / support) */}
+        <CustomerPortalHeader
+          greeting={accountGreeting}
+          userEmail={userEmail}
+          orders={orders}
+          onContactSupport={() => setSupportOpen(true)}
+        />
 
         {/* ── Admin Preview Banner ── */}
         {isAdminPreview && (
@@ -1177,10 +1092,10 @@ export default function MyOrdersPage() {
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { admin: "processing / paid", customer: "Payment Confirmed", color: "bg-amber-100 text-amber-700" },
-                    { admin: "pending_review / under-review", customer: "Assigned to Provider", color: "bg-violet-100 text-violet-700" },
-                    { admin: "in_review / approved / letter_sent", customer: "Under Review", color: "bg-sky-100 text-sky-700" },
-                    { admin: "patient_notified", customer: "Completed", color: "bg-green-100 text-green-700" },
+                    { admin: "processing / paid", customer: "Payment Confirmed", color: "bg-amber-50 text-[#B45309]" },
+                    { admin: "pending_review / under-review", customer: "Assigned to Provider", color: "bg-[#eef2f7] text-[#475569]" },
+                    { admin: "in_review / approved / letter_sent", customer: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]" },
+                    { admin: "patient_notified", customer: "Completed", color: "bg-[#ECFDF5] text-[#059669]" },
                   ].map((item) => (
                     <div key={item.admin} className="space-y-1">
                       <p className="text-[10px] text-gray-400 font-semibold">Admin sees:</p>
@@ -1218,14 +1133,14 @@ export default function MyOrdersPage() {
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="text-center">
-              <i className="ri-loader-4-line animate-spin text-3xl text-orange-400 block mb-3"></i>
+              <i className="ri-loader-4-line animate-spin text-3xl text-[#6f97c2] block mb-3"></i>
               <p className="text-sm text-gray-500">Loading your orders...</p>
             </div>
           </div>
         ) : filteredOrders.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-            <div className="w-16 h-16 flex items-center justify-center bg-orange-50 rounded-full mx-auto mb-4">
-              <i className="ri-file-list-3-line text-orange-400 text-3xl"></i>
+            <div className="w-16 h-16 flex items-center justify-center bg-[#e8f0f9] rounded-full mx-auto mb-4">
+              <i className="ri-file-list-3-line text-[#6f97c2] text-3xl"></i>
             </div>
             {isAdminPreview && searchEmail ? (
               <>
@@ -1251,7 +1166,7 @@ export default function MyOrdersPage() {
                   No orders are linked to your account yet. If you made a purchase, make sure you used the same email address.
                 </p>
                 <Link to="/assessment"
-                  className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-orange-500 text-white font-bold text-sm rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
+                  className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-[#3b6ea5] text-white font-bold text-sm rounded-lg hover:bg-[#1e3a5f] transition-colors cursor-pointer">
                   <i className="ri-file-text-line"></i>Get Your ESA Letter
                 </Link>
               </>
@@ -1280,17 +1195,60 @@ export default function MyOrdersPage() {
                 <button type="button" onClick={() => setAddonBannerDismissed(true)} className="text-amber-500 hover:text-amber-700"><i className="ri-close-line"></i></button>
               </div>
             )}
-            <div className="space-y-5">
-              {filteredOrders.map((order) => (
-                <OrderCard key={order.id} order={order} userEmail={userEmail} onContactSupport={() => setSupportOpen(true)} addonSuccessOrder={addonSuccessOrder} />
-              ))}
+            {/* Account hub — order switcher (left) + selected order detail (right).
+                Only the SELECTED order renders full detail; the rest are compact
+                list items, so full dashboards no longer stack. */}
+            <div className={filteredOrders.length > 1 ? "grid lg:grid-cols-[300px_minmax(0,1fr)] gap-5 items-start" : ""}>
+              {filteredOrders.length > 1 && (
+                <div className="lg:sticky lg:top-20">
+                  <OrderSwitcher
+                    orders={filteredOrders}
+                    selectedId={selectedOrder?.id ?? null}
+                    onSelect={setSelectedOrderId}
+                    getStatus={(o) => getDisplayStatus(o as unknown as Order)}
+                  />
+                </div>
+              )}
+              <div className="min-w-0">
+                {selectedOrder && (
+                  <>
+                    <SelectedOrderHeader
+                      order={selectedOrder}
+                      status={getDisplayStatus(selectedOrder)}
+                      onContactSupport={() => setSupportOpen(true)}
+                      user={viewerUser}
+                    />
+                    <OrderCard
+                      order={selectedOrder}
+                      userEmail={userEmail}
+                      onContactSupport={() => setSupportOpen(true)}
+                      addonSuccessOrder={addonSuccessOrder}
+                      layout={filteredOrders.length > 1 ? "single" : "two-col"}
+                    />
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* PSD cross-sell — ESA customers who have not bought PSD (account-level, once) */}
+            {showPsdUpsell && (
+              <div className="mt-6">
+                <PsdUpsellCard />
+              </div>
+            )}
+
+            {/* Account-level "buy another" — secondary, not inside the selected order */}
+            {!isAdminPreview && latestPaidEsa && (
+              <div className="mt-4">
+                <ReturningCustomerActions orderId={latestPaidEsa.id} showRepeat title="Add another letter" />
+              </div>
+            )}
 
             {/* Renewal Section */}
             {completedOrders.length > 0 && (
               <div className="mt-8">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-7 h-7 flex items-center justify-center bg-orange-500 rounded-lg flex-shrink-0">
+                  <div className="w-7 h-7 flex items-center justify-center bg-[#3b6ea5] rounded-lg flex-shrink-0">
                     <i className="ri-refresh-line text-white text-sm"></i>
                   </div>
                   <h2 className="text-base font-extrabold text-gray-900">Coverage Renewal</h2>
@@ -1308,8 +1266,8 @@ export default function MyOrdersPage() {
         {/* Help strip */}
         <div className="mt-10 bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-lg flex-shrink-0">
-              <i className="ri-customer-service-2-line text-orange-500 text-base"></i>
+            <div className="w-9 h-9 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0">
+              <i className="ri-customer-service-2-line text-[#3b6ea5] text-base"></i>
             </div>
             <div>
               <p className="text-sm font-bold text-gray-800">Need help with your order?</p>
@@ -1317,37 +1275,43 @@ export default function MyOrdersPage() {
             </div>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <a href="tel:+14099655885" className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-orange-500 transition-colors cursor-pointer">
-              <i className="ri-phone-line text-orange-500"></i>(409) 965-5885
+            <a href="tel:+14099655885" className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-[#3b6ea5] transition-colors cursor-pointer">
+              <i className="ri-phone-line text-[#3b6ea5]"></i>(409) 965-5885
             </a>
-            <a href="mailto:hello@pawtenant.com" className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-orange-500 transition-colors cursor-pointer">
-              <i className="ri-mail-line text-orange-500"></i>Email Us
+            <a href="mailto:hello@pawtenant.com" className="whitespace-nowrap inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-[#3b6ea5] transition-colors cursor-pointer">
+              <i className="ri-mail-line text-[#3b6ea5]"></i>Email Us
             </a>
             <button
               type="button"
               onClick={() => setSupportOpen(true)}
-              className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition-colors cursor-pointer"
+              className="whitespace-nowrap inline-flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] transition-colors cursor-pointer"
             >
               <i className="ri-message-3-line"></i>Send a Message
             </button>
           </div>
         </div>
 
+        {/* Review CTA (subtle pre-delivery, stronger after completion) */}
+        <GoogleReviewCard delivered={hasDelivered} />
+
+        {/* Follow PawTenant on social */}
+        <PortalSocialSection />
+
         {/* ── California AB 468 / 30-Day Notice Box ── */}
-        <div className="mt-6 bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
-          <div className="bg-amber-100 px-5 py-3 flex items-center gap-2 border-b border-amber-200">
-            <div className="w-6 h-6 flex items-center justify-center bg-amber-500 rounded-full flex-shrink-0">
+        <div className="mt-6 bg-[#f8fafc] border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="bg-[#e8f0f9] px-5 py-3 flex items-center gap-2 border-b border-slate-200">
+            <div className="w-6 h-6 flex items-center justify-center bg-[#3b6ea5] rounded-full flex-shrink-0">
               <i className="ri-scales-3-line text-white text-xs"></i>
             </div>
-            <p className="text-sm font-extrabold text-amber-900">California Residents — Important Legal Notice</p>
-            <span className="ml-auto text-xs font-bold text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">AB 468 Law</span>
+            <p className="text-sm font-extrabold text-[#1e3a5f]">California Residents — Important Legal Notice</p>
+            <span className="ml-auto text-xs font-bold text-[#3b6ea5] bg-white px-2 py-0.5 rounded-full whitespace-nowrap">AB 468 Law</span>
           </div>
           <div className="px-5 py-4">
-            <p className="text-sm font-bold text-amber-900 mb-2 flex items-center gap-2">
-              <i className="ri-information-line text-amber-600"></i>
+            <p className="text-sm font-bold text-[#1e3a5f] mb-2 flex items-center gap-2">
+              <i className="ri-information-line text-[#3b6ea5]"></i>
               30-Day Relationship Requirement for ESA Letters
             </p>
-            <p className="text-sm text-amber-800 leading-relaxed mb-3">
+            <p className="text-sm text-slate-600 leading-relaxed mb-3">
               California law (AB 468, effective January 1, 2022) requires that any licensed mental health professional (LMHP) issuing an ESA letter must have established a <strong>client-provider relationship of at least 30 days</strong> prior to issuing the letter. This applies specifically to ESA letters for <strong>dogs</strong>.
             </p>
             <div className="grid sm:grid-cols-2 gap-3 mb-3">
@@ -1357,20 +1321,20 @@ export default function MyOrdersPage() {
                 { icon: "ri-file-text-line", title: "Legally Compliant Letter", desc: "Your ESA letter will be fully compliant with AB 468, making it recognized by California landlords and housing providers." },
                 { icon: "ri-time-line", title: "Plan Ahead", desc: "Because of this requirement, California residents should plan for a 30+ day timeline from initial consultation to letter issuance." },
               ].map((item) => (
-                <div key={item.title} className="flex items-start gap-2.5 bg-white/70 rounded-xl p-3 border border-amber-200">
-                  <div className="w-7 h-7 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0 mt-0.5">
-                    <i className={`${item.icon} text-amber-600 text-sm`}></i>
+                <div key={item.title} className="flex items-start gap-2.5 bg-white rounded-xl p-3 border border-slate-200">
+                  <div className="w-7 h-7 flex items-center justify-center bg-[#e8f0f9] rounded-lg flex-shrink-0 mt-0.5">
+                    <i className={`${item.icon} text-[#3b6ea5] text-sm`}></i>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-amber-900 mb-0.5">{item.title}</p>
-                    <p className="text-xs text-amber-700 leading-relaxed">{item.desc}</p>
+                    <p className="text-xs font-bold text-[#1e3a5f] mb-0.5">{item.title}</p>
+                    <p className="text-xs text-slate-600 leading-relaxed">{item.desc}</p>
                   </div>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-amber-700 leading-relaxed">
+            <p className="text-xs text-slate-500 leading-relaxed">
               <strong>Other affected states:</strong> Arkansas, Iowa, Louisiana, and Montana have similar requirements. If you reside in these states, the same 30-day notice applies.{" "}
-              <a href="mailto:hello@pawtenant.com" className="text-amber-800 font-semibold underline underline-offset-2 cursor-pointer hover:text-amber-900">Contact us</a> if you have questions about your state&apos;s requirements.
+              <a href="mailto:hello@pawtenant.com" className="text-[#3b6ea5] font-semibold underline underline-offset-2 cursor-pointer hover:text-[#1e3a5f]">Contact us</a> if you have questions about your state&apos;s requirements.
             </p>
           </div>
         </div>
@@ -1382,7 +1346,7 @@ export default function MyOrdersPage() {
             <span className="mx-2 text-gray-200">|</span>
             <span className="flex items-center gap-1"><i className="ri-lock-line text-green-500"></i> 256-bit SSL</span>
             <span className="mx-2 text-gray-200">|</span>
-            <span className="flex items-center gap-1"><i className="ri-award-line text-orange-400"></i> Licensed Professionals</span>
+            <span className="flex items-center gap-1"><i className="ri-award-line text-[#6f97c2]"></i> Licensed Professionals</span>
           </div>
           <div className="flex items-center gap-4 flex-wrap justify-center">
             <Link to="/terms-of-use" className="text-xs text-gray-400 hover:text-gray-700 underline underline-offset-2 transition-colors cursor-pointer">Terms of Use</Link>
@@ -1398,7 +1362,7 @@ export default function MyOrdersPage() {
       {/* Floating support widget */}
       <ContactSupportWidget
         userEmail={userEmail}
-        userName={userName}
+        userName={supportName}
         orders={orders}
         externalOpen={supportOpen}
         onExternalClose={() => setSupportOpen(false)}

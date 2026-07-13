@@ -22,6 +22,11 @@ import AdditionalDocInvoiceModal from "./AdditionalDocInvoiceModal";
 // refund-only modal (partial-capable Stripe refund that does NOT cancel the
 // order). Approved edit type: additive component mount.
 import RefundModal from "./RefundModal";
+// RA-DOCUMENT-WORKFLOW-PORTALS-CONSISTENCY-001 (2026-07-11): isolated component
+// mounts — admin Housing Accommodation overview status + Documents panel
+// (self-contained children). Approved edit type: additive component mount.
+import OrderRaOverviewStatus from "./OrderRaOverviewStatus";
+import OrderRaDocPanel from "./OrderRaDocPanel";
 import { canDelete } from "../../../lib/adminPermissions";
 // ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
 // reads the same canonical classifier the order list pill (OrderCard) and
@@ -1165,7 +1170,6 @@ export default function OrderDetailModal({
         body: JSON.stringify({
           confirmationId: order.confirmation_id,
           doctorEmail: assignEmail,
-          skipPaymentCheck: true,
         }),
       });
       const result = await res.json() as {
@@ -2415,6 +2419,13 @@ export default function OrderDetailModal({
   const readyDoctors = eligibleDoctors.filter((d) => d.assignment_ready !== false);
   const pendingSetupDoctors = eligibleDoctors.filter((d) => d.assignment_ready === false);
 
+  // ORDER-PAYMENT-GATING (frontend mirror of the assign-doctor backend gate):
+  // the base consultation must be paid before ANY assignment control is exposed.
+  // Key ONLY on canonical base-payment fields — never order.status, which a paid
+  // add-on or manual advance can flip to processing/under-review while the base
+  // order was never actually paid (e.g. paid $70 Housing add-on on an unpaid base).
+  const isBaseOrderPaid = !!(order.payment_intent_id || order.paid_at);
+
   // ── Remove Provider / Mark Unassigned state ──
   const [removingProvider, setRemovingProvider] = useState(false);
   const [removeProviderMsg, setRemoveProviderMsg] = useState("");
@@ -2778,7 +2789,6 @@ export default function OrderDetailModal({
         body: JSON.stringify({
           confirmationId: order.confirmation_id,
           doctorEmail: order.doctor_email,
-          skipPaymentCheck: true,
         }),
       });
       const result = await res.json() as {
@@ -3619,6 +3629,17 @@ export default function OrderDetailModal({
                 ))}
               </div>
 
+              {/* RA-ADMIN-VISIBILITY-STORAGE-HARDENING-LIVE-001: prominent
+                  Housing Accommodation status + follow-up, high in the Overview
+                  so admins never miss the workflow. Self-contained child
+                  (isolated mount); callbacks reuse existing modal helpers. */}
+              <OrderRaOverviewStatus
+                orderId={initialOrder.id}
+                onOpenDocuments={() => setSection("documents")}
+                onContactCustomer={() => setSection("comms")}
+                onOpenFile={(id) => openDocumentSignedUrl(id, false)}
+              />
+
               {/* OPS-PAYMENTS-TAB-REPAIR-TOOLS: compact unpaid/unlinked
                   warning. The full repair panel (Stripe ID input + Link
                   Payment + Manual Override) lives on the Payments tab —
@@ -3823,11 +3844,9 @@ export default function OrderDetailModal({
                       <p className="text-xs text-gray-400 mb-0.5">Date Created</p>
                       <p className="text-sm font-semibold text-gray-800">{fmt(order.created_at)}</p>
                     </div>
-                    {/* Requested Provider */}
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Requested Provider</p>
-                      <p className={`text-sm font-semibold ${order.selected_provider ? "text-[#3b6ea5]" : "text-gray-400"}`}>{order.selected_provider ?? "—"}</p>
-                    </div>
+                    {/* Requested Provider removed (ORDER-PAYMENT-GATING-...): PawTenant
+                        does not offer customer provider selection. Legacy DB column
+                        orders.selected_provider is retained but no longer surfaced. */}
                     {/* Payment status */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Payment Status</p>
@@ -4169,7 +4188,7 @@ export default function OrderDetailModal({
                       </p>
                     </div>
                   </div>
-                ) : !order.payment_intent_id && order.status !== "processing" && order.status !== "under-review" && order.status !== "completed" ? (
+                ) : !isBaseOrderPaid ? (
                   <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
                     <div className="w-9 h-9 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
                       <i className="ri-lock-2-line text-amber-600 text-base"></i>
@@ -4903,6 +4922,11 @@ export default function OrderDetailModal({
                 );
               })()}
 
+              {/* RA-DOCUMENT-WORKFLOW-PORTALS-CONSISTENCY-001 (2026-07-11): isolated
+                  mount — admin Housing Accommodation Documents panel (source, upload
+                  status, uploaded file + signed-URL open). Self-contained child. */}
+              <OrderRaDocPanel orderId={initialOrder.id} onOpenFile={(id) => openDocumentSignedUrl(id, false)} />
+
               {/* Action bar */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Letters &amp; Documents</p>
@@ -4931,7 +4955,11 @@ export default function OrderDetailModal({
                         let failed = 0;
                         try {
                           const token = await getAdminToken();
-                          for (const doc of orderDocs) {
+                          // Only FINAL ESA/PSD letters receive a verification footer.
+                          // Housing forms (customer_upload / housing_completed /
+                          // housing_verification / landlord_form) are NEVER stamped.
+                          const FINAL_LETTER_TYPES = ["esa_letter", "psd_letter", "signed_letter", "letter"];
+                          for (const doc of orderDocs.filter((d) => FINAL_LETTER_TYPES.includes(d.doc_type ?? ""))) {
                             const res = await fetch(`${supabaseUrl}/functions/v1/inject-pdf-footer`, {
                               method: "POST",
                               headers: {
@@ -5147,8 +5175,12 @@ export default function OrderDetailModal({
                               }
                               {doc.customer_visible ? "Visible" : "Hidden"}
                             </button>
-                            {/* Inject / Generate+Inject footer button — always visible */}
-                            {(() => {
+                            {/* Inject / Generate+Inject footer button — ONLY for final
+                                ESA/PSD letters. Housing Accommodation forms
+                                (customer_upload / housing_completed / housing_verification
+                                / landlord_form) and any other type never receive a
+                                verification ID / footer. */}
+                            {["esa_letter", "psd_letter", "signed_letter", "letter"].includes(doc.doc_type ?? "") && (() => {
                               const needsGenerate = !order.letter_id;
                               const label = reinjectingFooter
                                 ? "Processing..."

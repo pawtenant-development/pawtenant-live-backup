@@ -9,7 +9,8 @@ import type { PSDStep1Data } from "./PSDStep1";
 import KlarnaPaymentTab from "../../assessment/components/KlarnaPaymentTab";
 import StripePaymentForm from "../../assessment/components/StripePaymentForm";
 import StripeCardForm from "../../assessment/components/StripeCardForm";
-import { getPsdAnnualTotal, getPsdOneTimeTotal } from "@/config/pricing";
+import { getPackageTotal, isRaBundle } from "@/config/pricing";
+import type { PackageKey } from "@/config/pricing";
 // ── 2026-05-21 PSD-STEP3-ESA-PARITY ─────────────────────────────────────────
 // Reuse the polished trust/reassurance helpers ESA Step 3 mounts in its left
 // column. These are intentionally pure presentational + brand-agnostic (they
@@ -75,12 +76,11 @@ type PayTabType = "card" | "klarna";
 
 const PSD_ONETIME_DELIVERY = "24h";
 
-function getPSDPlanPrice(key: PSDPlan, petCount: number): number {
-  // Final structure: 1 dog $129 one-time / $109 annual; 2 or 3 dogs $149
-  // one-time / $129 annual — fixed totals. Mirrors getPSDOneTimeAmount /
-  // getPSDAnnualAmount in create-payment-intent.
-  if (key === "subscription") return getPsdAnnualTotal(petCount);
-  return getPsdOneTimeTotal(petCount);
+function getPSDPlanPrice(key: PSDPlan, petCount: number, packageKey: PackageKey = "psd_standard"): number {
+  // Standard: 1 dog $129 one-time / $109 annual; 2 or 3 dogs $149 / $129 — fixed
+  // totals. RA bundle (psd_ra_bundle): flat $179 one-time / $159 annual (1–3 dogs).
+  // Mirrors create-payment-intent amount logic.
+  return getPackageTotal(packageKey, key === "subscription" ? "annual" : "one_time", petCount);
 }
 
 const PLANS: {
@@ -224,6 +224,7 @@ interface SecurePaymentCardProps {
   clientSecret: string | null;
   onPaymentSuccess: (paymentIntentId: string) => void;
   selectedPlan: PSDPlan;
+  packageKey: string;
   petCount: number;
   email: string;
   firstName: string;
@@ -239,6 +240,7 @@ function SecurePaymentCard({
   clientSecret,
   onPaymentSuccess,
   selectedPlan,
+  packageKey,
   petCount,
   email,
   firstName,
@@ -300,6 +302,7 @@ function SecurePaymentCard({
     state,
     confirmationId,
     letterType: "psd" as const,
+    packageKey,
   };
 
   return (
@@ -435,6 +438,7 @@ function SecurePaymentCard({
             amount={totalPrice}
             plan="one-time"
             letterType="psd"
+            packageKey={packageKey}
             petCount={petCount}
             deliverySpeed={deliverySpeed}
             email={email}
@@ -556,11 +560,18 @@ interface PSDStep3CheckoutProps {
   step2: Step2Data;
   confirmationId: string;
   onBack: () => void;
+  /** Package chosen on the dedicated package step (PACKAGE-RA-BUNDLE-UX-STORAGE-HARDENING-001). */
+  packageKey?: string;
+  /** Return to the dedicated package-selection step. */
+  onChangePackage?: () => void;
 }
 
-export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack }: PSDStep3CheckoutProps) {
+export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack, packageKey, onChangePackage }: PSDStep3CheckoutProps) {
   const navigate = useNavigate();
   const [selectedPlan, setSelectedPlan] = useState<PSDPlan>("onetime");
+  // RA bundle selection (PACKAGE-RA-LETTER-BUNDLE-001): psd_standard | psd_ra_bundle.
+  // Package is now chosen on the dedicated package step and passed in as a prop.
+  const selectedPackage: PackageKey = (packageKey as PackageKey) ?? "psd_standard";
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [resolvedPrice, setResolvedPrice] = useState<number | null>(null);
   const [resolvedBasePriceCents, setResolvedBasePriceCents] = useState<number | null>(null);
@@ -587,7 +598,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const planBasePrice = getPSDPlanPrice(selectedPlan, step2.pets.length);
+  const planBasePrice = getPSDPlanPrice(selectedPlan, step2.pets.length, selectedPackage);
   const displayBasePriceDollars = resolvedBasePriceCents != null
     ? Math.round(resolvedBasePriceCents / 100)
     : planBasePrice;
@@ -621,6 +632,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
             petCount: step2.pets.length,
             deliverySpeed,
             letterType: "psd",
+            packageKey: selectedPackage,
             email: step2.email,
             customerName: `${step2.firstName} ${step2.lastName}`,
             // ── PSD-COUPON-PARITY: send the coupon so Stripe charges the
@@ -661,7 +673,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
     const timer = setTimeout(() => { init(); }, 350);
     return () => { cancelled = true; clearTimeout(timer); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPlan, confirmationId, couponCode]);
+  }, [selectedPlan, selectedPackage, confirmationId, couponCode]);
 
   useEffect(() => {
     return () => {
@@ -983,6 +995,36 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
             {/* ── Plan Toggle — ESA Step 3 parity: motion buttons with orange
                 accent on the selected state. PSD has 3 plans where ESA has 2,
                 so we just iterate the PLANS array. */}
+            {/* ── Selected package summary (chosen on the dedicated package step) ── */}
+            <div className={CARD_SHELL}>
+              <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <SectionLabel>Your Package</SectionLabel>
+                  <p className="text-sm font-bold text-slate-900 leading-tight">
+                    {isRaBundle(selectedPackage) ? "PSD + Reasonable Accommodation Letter" : "Standard PSD Documentation"}
+                  </p>
+                  {isRaBundle(selectedPackage) && (
+                    <span
+                      className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: ACTION_ORANGE_SOFT, color: ACTION_ORANGE_DARK }}
+                    >
+                      Reasonable Accommodation bundle · landlord-ready
+                    </span>
+                  )}
+                </div>
+                {onChangePackage && (
+                  <button
+                    type="button"
+                    onClick={onChangePackage}
+                    className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer whitespace-nowrap"
+                  >
+                    <i className="ri-arrow-left-right-line"></i> Change
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* ── Plan card ── */}
             <div className={CARD_SHELL}>
               <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                 <SectionLabel>Choose Your Plan</SectionLabel>
@@ -996,7 +1038,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
               <div className="p-3 space-y-2.5">
                 {PLANS.map((plan) => {
                   const isSelected = selectedPlan === plan.key;
-                  const planPrice = getPSDPlanPrice(plan.key, step2.pets.length);
+                  const planPrice = getPSDPlanPrice(plan.key, step2.pets.length, selectedPackage);
                   return (
                     <motion.button
                       key={plan.key}
@@ -1167,6 +1209,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack 
               clientSecret={clientSecret}
               onPaymentSuccess={handlePaymentSuccess}
               selectedPlan={selectedPlan}
+              packageKey={selectedPackage}
               petCount={step2.pets.length}
               email={step2.email}
               firstName={step2.firstName}
