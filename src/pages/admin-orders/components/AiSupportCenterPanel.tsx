@@ -18,7 +18,7 @@
  *
  * Self-contained: own fetches, no new props required by the hub.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase, getAdminUserToken } from "../../../lib/supabaseClient";
 import BlacklistManager from "./commandCenter/BlacklistManager";
 import { useCurrentAdminRole } from "../../../hooks/useCurrentAdminRole";
@@ -235,6 +235,65 @@ function ToggleCard({
           }`}
         />
       </button>
+    </div>
+  );
+}
+
+// ── Presentational helpers for the grouped, safety-first control layout ─────────
+// Pure display only — no state, no side effects. Every real control below is
+// still wired to the existing settings handlers.
+function SectionShell({
+  icon, iconWrap, title, subtitle, status, children,
+}: {
+  icon: string;
+  iconWrap?: string;
+  title: string;
+  subtitle?: string;
+  status?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${iconWrap ?? "bg-gray-50 text-gray-500 border border-gray-100"}`}>
+            <i className={`${icon} text-lg`} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 truncate">{title}</p>
+            {subtitle && <p className="text-[11px] text-gray-500 truncate">{subtitle}</p>}
+          </div>
+        </div>
+        {status}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Semantic status pill — safe(green) / draft(amber) / block(red) / info(indigo) / plan(muted). Never the action accent. */
+function StatePill({ tone, children }: { tone: "safe" | "draft" | "block" | "info" | "plan"; children: ReactNode }) {
+  const map = {
+    safe: "bg-emerald-100 text-emerald-700",
+    draft: "bg-amber-100 text-amber-700",
+    block: "bg-red-100 text-red-700",
+    info: "bg-indigo-100 text-indigo-700",
+    plan: "bg-gray-100 text-gray-500",
+  } as const;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${map[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+function RuleRow({ icon, title, desc }: { icon: string; title: string; desc: string }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <i className={`${icon} text-[#3b6ea5] text-base mt-0.5 shrink-0`} />
+      <p className="text-xs text-gray-600 leading-relaxed">
+        <b className="text-gray-800">{title}.</b> {desc}
+      </p>
     </div>
   );
 }
@@ -764,6 +823,19 @@ export default function AiSupportCenterPanel() {
   }, [simPhone, simText, flash, loadConversations, loadNotifications]);
 
   const aiFullyOff = settings.ai_global_kill_switch || !settings.ai_sms_enabled;
+  // Effective chat mode (mirrors the legacy boolean for older readers).
+  const chatModeEff: "off" | "draft" | "auto" =
+    settings.ai_chat_reply_mode === "off" || settings.ai_chat_reply_mode === "auto"
+      ? settings.ai_chat_reply_mode
+      : settings.ai_chat_reply_mode === "draft"
+      ? "draft"
+      : settings.ai_chat_auto_reply_enabled ? "auto" : "off";
+  const smsAutoOn = settings.ai_sms_auto_send_enabled;
+  // "Nothing customer-facing sends automatically" is true only when every
+  // auto-send path is off. Any auto path flips the banner to a warning state.
+  const nothingAutoSends =
+    !aiFullyOff && !smsAutoOn && chatModeEff !== "auto" && !settings.ai_missed_call_sms_enabled;
+  const lastActivityIso = notifications[0]?.created_at ?? conversations[0]?.last_inbound_at ?? null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -773,152 +845,252 @@ export default function AiSupportCenterPanel() {
         </div>
       )}
 
-      {/* ── Status strip ── */}
-      <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest">AI Support Center</p>
-            <h2 className="text-base font-semibold text-gray-900">Automated SMS & call support</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              AI answers safe questions, drafts everything else, and always lets a human take over.
-              Legal, medical, crisis, fraud and refund messages are never auto-sent.
-            </p>
+      {/* ── 1+2. AI Support overview + Safety status (global banner) ── */}
+      <div className={`rounded-lg border px-5 py-4 ${
+        aiFullyOff
+          ? "border-gray-200 bg-gray-50"
+          : nothingAutoSends
+          ? "border-emerald-200 bg-gradient-to-b from-emerald-50 to-white"
+          : "border-amber-300 bg-gradient-to-b from-amber-50 to-white"
+      }`}>
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:justify-between">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-white ${
+              aiFullyOff ? "bg-gray-400" : nothingAutoSends ? "bg-emerald-600" : "bg-amber-500"
+            }`}>
+              <i className={`text-lg ${aiFullyOff ? "ri-pause-circle-line" : nothingAutoSends ? "ri-shield-check-line" : "ri-alert-line"}`} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest">AI Support Center</p>
+              <h2 className="text-base font-bold text-gray-900">
+                {aiFullyOff
+                  ? "AI is fully paused"
+                  : nothingAutoSends
+                  ? "Nothing customer-facing sends automatically"
+                  : "Some AI auto-sending is enabled"}
+              </h2>
+              <p className="text-xs text-gray-600 mt-0.5 max-w-3xl">
+                {aiFullyOff
+                  ? "The global kill switch (or the AI SMS master switch) is off — the AI drafts and sends nothing anywhere."
+                  : "AI can classify messages, draft replies for staff, and capture calls. A human approves every outbound message. Legal, medical, crisis, fraud, refund and complaint topics are never auto-sent."}
+                {lastActivityIso && <> {" · "}Last AI activity {fmtWhen(lastActivityIso)}.</>}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${aiFullyOff ? "bg-gray-100 text-gray-500" : settings.ai_sms_auto_send_enabled ? "bg-emerald-100 text-emerald-700" : "bg-cyan-100 text-cyan-700"}`}>
-              <span className={`w-2 h-2 rounded-full ${aiFullyOff ? "bg-gray-400" : settings.ai_sms_auto_send_enabled ? "bg-emerald-500" : "bg-cyan-500"}`} />
-              {aiFullyOff ? "AI OFF" : settings.ai_sms_auto_send_enabled ? "Auto-send ON" : "Shadow mode (draft-only)"}
-            </span>
-            <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${settings.ai_chat_auto_reply_enabled ? "bg-amber-100 text-amber-700" : "bg-indigo-50 text-indigo-600"}`}
-              title="Live chat auto-reply is restricted to explicitly whitelisted TEST chat sessions; everyone else stays in draft-only shadow mode."
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={!canManage || !settingsLoaded}
+              onClick={() => void saveSetting("ai_global_kill_switch", !settings.ai_global_kill_switch)}
+              className={`text-xs font-bold px-3.5 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                settings.ai_global_kill_switch
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+              }`}
             >
-              <span className={`w-2 h-2 rounded-full ${settings.ai_chat_auto_reply_enabled ? "bg-amber-500" : "bg-indigo-400"}`} />
-              {settings.ai_chat_auto_reply_enabled
-                ? `Chat auto-reply: ${chatTestSessions.length} TEST session${chatTestSessions.length === 1 ? "" : "s"}`
-                : "Chat auto-reply OFF (shadow)"}
-            </span>
+              <i className={`mr-1 ${settings.ai_global_kill_switch ? "ri-play-circle-line" : "ri-pause-circle-line"}`} />
+              {settings.ai_global_kill_switch ? "Resume all AI" : "Pause all AI"}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ── Control cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        <ToggleCard
-          title="Global Kill Switch"
-          description="Emergency stop. ON = AI never drafts, replies, or sends anywhere."
-          value={settings.ai_global_kill_switch}
-          danger
-          disabled={!canManage || !settingsLoaded}
-          onChange={(v) => void saveSetting("ai_global_kill_switch", v)}
-        />
-        <ToggleCard
-          title="AI SMS"
-          description="Master switch for the AI SMS pipeline (classify + draft)."
-          value={settings.ai_sms_enabled}
-          disabled={!canManage || !settingsLoaded}
-          onChange={(v) => void saveSetting("ai_sms_enabled", v)}
-        />
-        <ToggleCard
-          title="SMS Auto-send"
-          description="Allow AI to actually send replies for safe categories. Requires confirmation."
-          value={settings.ai_sms_auto_send_enabled}
-          disabled={!canManage || !settingsLoaded}
-          onChange={(v) => requestToggle("ai_sms_auto_send_enabled", v, "SMS Auto-send", true)}
-        />
-        <ToggleCard
-          title="AI Calls"
-          description="AI voice answering. No voice provider is configured yet — stays off until webhook setup."
-          value={settings.ai_call_enabled}
-          disabled={!canManage || !settingsLoaded}
-          onChange={(v) => requestToggle("ai_call_enabled", v, "AI Calls", true)}
-        />
-        <ToggleCard
-          title="Missed-call SMS"
-          description="Text callers back automatically when support misses their call."
-          value={settings.ai_missed_call_sms_enabled}
-          disabled={!canManage || !settingsLoaded}
-          onChange={(v) => requestToggle("ai_missed_call_sms_enabled", v, "Missed-call SMS", true)}
-        />
-        {(() => {
-          const chatMode: "off" | "draft" | "auto" =
-            settings.ai_chat_reply_mode === "off" || settings.ai_chat_reply_mode === "auto"
-              ? settings.ai_chat_reply_mode
-              : settings.ai_chat_reply_mode === "draft"
-              ? "draft"
-              : settings.ai_chat_auto_reply_enabled ? "auto" : "off";
-          const statusText =
-            chatMode === "auto"
-              ? "Auto — AI posts replies to website visitors automatically (safe topics only; risky topics stay template + escalate)."
-              : chatMode === "draft"
-              ? "Draft — AI writes a suggested reply for staff review. Nothing is sent to the visitor automatically."
-              : "Off — AI writes no reply for live chat.";
-          const badge =
-            chatMode === "auto"
-              ? "bg-amber-100 text-amber-700"
-              : chatMode === "draft"
-              ? "bg-blue-100 text-blue-700"
-              : "bg-gray-100 text-gray-600";
-          return (
-            <div className="bg-white rounded-lg border border-gray-200 px-4 py-3 sm:col-span-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-gray-900">Live Chat AI Mode</p>
-                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${badge}`}>
-                  {chatMode === "auto" ? "Sending" : chatMode === "draft" ? "Draft only" : "Off"}
-                </span>
-              </div>
-              <div className="mt-2 inline-flex rounded-md border border-gray-200 overflow-hidden">
-                {(["off", "draft", "auto"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    disabled={!canManage || !settingsLoaded}
-                    onClick={() => requestChatMode(m)}
-                    className={`text-xs px-3 py-1.5 capitalize disabled:opacity-50 ${
-                      chatMode === m
-                        ? m === "auto" ? "bg-amber-500 text-white" : m === "draft" ? "bg-[#3b6ea5] text-white" : "bg-gray-600 text-white"
-                        : "bg-white text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {m === "auto" ? "Auto (send)" : m === "draft" ? "Draft (review)" : "Off"}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">{statusText}</p>
-            </div>
-          );
-        })()}
-        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
-          <p className="text-sm font-semibold text-gray-900">Limits</p>
-          <div className="mt-2 flex flex-col gap-2">
-            <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
-              Confidence threshold
-              <input
-                type="number" step="0.01" min="0" max="1"
-                defaultValue={settings.ai_confidence_threshold}
-                disabled={!canManage}
-                onBlur={(e) => {
-                  const v = Math.min(1, Math.max(0, Number(e.target.value) || 0.78));
-                  if (v !== settings.ai_confidence_threshold) void saveSetting("ai_confidence_threshold", v);
-                }}
-                className="w-20 border border-gray-200 rounded-md px-2 py-1 text-sm text-right disabled:bg-gray-50"
-              />
-            </label>
-            <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
-              Max auto-replies / conversation / day
-              <input
-                type="number" step="1" min="0" max="20"
-                defaultValue={settings.ai_max_auto_replies_per_conversation_per_day}
-                disabled={!canManage}
-                onBlur={(e) => {
-                  const v = Math.min(20, Math.max(0, Math.round(Number(e.target.value) || 3)));
-                  if (v !== settings.ai_max_auto_replies_per_conversation_per_day) void saveSetting("ai_max_auto_replies_per_conversation_per_day", v);
-                }}
-                className="w-20 border border-gray-200 rounded-md px-2 py-1 text-sm text-right disabled:bg-gray-50"
-              />
-            </label>
+      {/* ── 10. Current effective-state summary ── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        {([
+          { label: "Overall mode", value: aiFullyOff ? "Paused" : smsAutoOn ? "Auto-send" : "Draft-first", tone: aiFullyOff ? "plan" : smsAutoOn ? "draft" : "safe" },
+          { label: "SMS auto-send", value: smsAutoOn ? "ON" : "Disabled", tone: smsAutoOn ? "block" : "safe" },
+          { label: "Chat replies", value: chatModeEff === "auto" ? "Auto" : chatModeEff === "draft" ? "Draft only" : "Off", tone: chatModeEff === "auto" ? "draft" : "safe" },
+          { label: "Calls", value: "Capture & log", tone: "info" },
+          { label: "Email AI", value: "Planned", tone: "plan" },
+        ] as const).map((k) => (
+          <div key={k.label} className="bg-white rounded-lg border border-gray-200 px-3 py-2.5">
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{k.label}</p>
+            <p className={`text-sm font-bold mt-0.5 ${
+              k.tone === "safe" ? "text-emerald-700"
+                : k.tone === "block" ? "text-red-600"
+                : k.tone === "draft" ? "text-amber-600"
+                : k.tone === "info" ? "text-indigo-700"
+                : "text-gray-500"
+            }`}>{k.value}</p>
           </div>
+        ))}
+      </div>
+
+      {/* ── 3–6. Channel controls (grouped by channel) ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        {/* 3. CHAT */}
+        <SectionShell
+          icon="ri-chat-3-line"
+          iconWrap="bg-indigo-50 text-indigo-600 border border-indigo-100"
+          title="Chat AI"
+          subtitle="Website visitor live chat"
+          status={<StatePill tone={chatModeEff === "off" ? "plan" : "draft"}>{chatModeEff === "auto" ? "Auto (sending)" : chatModeEff === "draft" ? "Draft only" : "Off"}</StatePill>}
+        >
+          <p className="text-xs text-gray-600">
+            {chatModeEff === "auto"
+              ? "AI posts replies to website visitors automatically (safe topics only; risky topics stay template + escalate)."
+              : chatModeEff === "draft"
+              ? "AI writes a suggested reply for staff review. Nothing is sent to the visitor automatically."
+              : "AI writes no reply for live chat."}
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Reply mode</span>
+            <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
+              {(["off", "draft", "auto"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={!canManage || !settingsLoaded}
+                  onClick={() => requestChatMode(m)}
+                  className={`text-xs px-3 py-1.5 capitalize disabled:opacity-50 ${
+                    chatModeEff === m
+                      ? m === "auto" ? "bg-amber-500 text-white" : m === "draft" ? "bg-[#3b6ea5] text-white" : "bg-gray-600 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {m === "auto" ? "Auto (send)" : m === "draft" ? "Draft (review)" : "Off"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="bg-gray-50 rounded-md px-2.5 py-1.5"><span className="text-gray-400">Cooldown</span><br /><b className="text-gray-700">{settings.ai_chat_auto_reply_cooldown_seconds}s</b></div>
+            <div className="bg-gray-50 rounded-md px-2.5 py-1.5"><span className="text-gray-400">Cap / session / day</span><br /><b className="text-gray-700">{settings.ai_chat_max_auto_replies_per_session_per_day}</b></div>
+          </div>
+          <p className="text-[11px] text-gray-500"><i className="ri-information-line mr-1" />Per-session controls &amp; silencing are managed inside each conversation (open a chat below) and via the blacklist.</p>
+        </SectionShell>
+
+        {/* 4. SMS */}
+        <SectionShell
+          icon="ri-message-3-line"
+          iconWrap={smsAutoOn ? "bg-red-50 text-red-600 border border-red-100" : "bg-teal-50 text-teal-600 border border-teal-100"}
+          title="SMS AI"
+          subtitle="Text conversations (via GHL)"
+          status={<StatePill tone={smsAutoOn ? "block" : "safe"}>{smsAutoOn ? "Auto-send ON" : "Auto-send disabled"}</StatePill>}
+        >
+          <p className="text-xs text-gray-600">AI drafts SMS replies for approval. It cannot text a customer without a human pressing send.</p>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-gray-600 font-semibold">AI SMS pipeline (classify + draft)</span>
+              <button
+                type="button"
+                disabled={!canManage || !settingsLoaded}
+                onClick={() => void saveSetting("ai_sms_enabled", !settings.ai_sms_enabled)}
+                aria-label={`AI SMS pipeline: ${settings.ai_sms_enabled ? "on" : "off"}`}
+                className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${settings.ai_sms_enabled ? "bg-emerald-600" : "bg-gray-200"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${settings.ai_sms_enabled ? "translate-x-5" : ""}`} />
+              </button>
+            </div>
+            <div className={`flex items-center justify-between gap-2 text-xs rounded-md px-3 py-2 border ${smsAutoOn ? "border-red-300 bg-red-50" : "border-red-100 bg-red-50/40"}`}>
+              <span className="text-gray-700 font-semibold"><i className="ri-error-warning-line text-red-500 mr-1" />Auto-send to customers</span>
+              <button
+                type="button"
+                disabled={!canManage || !settingsLoaded}
+                onClick={() => requestToggle("ai_sms_auto_send_enabled", !smsAutoOn, "SMS Auto-send", true)}
+                aria-label={`SMS auto-send: ${smsAutoOn ? "on" : "off"}`}
+                className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${smsAutoOn ? "bg-red-600" : "bg-gray-200"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${smsAutoOn ? "translate-x-5" : ""}`} />
+              </button>
+            </div>
+          </div>
+          <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-[11px] text-red-700 leading-relaxed">
+            <b>Keep SMS auto-send OFF unless the owner approves.</b> Enabling it needs a typed confirmation. Tester-guard, STOP/DND/blacklist, the 3-minute delayed send, and human/recent-call suppression all still apply. Crisis, legal, fraud, refund &amp; complaint never auto-send.
+          </div>
+        </SectionShell>
+
+        {/* 6. CALLS — capture / logging first */}
+        <SectionShell
+          icon="ri-phone-line"
+          iconWrap="bg-[#e8f0f9] text-[#3b6ea5] border border-[#c9dcf0]"
+          title="Calls & missed calls"
+          subtitle="Capture & log first"
+          status={<StatePill tone="info">Capture &amp; log</StatePill>}
+        >
+          <p className="text-xs text-gray-600">Outbound &amp; missed calls are captured and logged for the team (via GHL). AI does not place or auto-answer calls.</p>
+          <ToggleCard
+            title="AI voice answering"
+            description="No voice provider webhook is configured — stays off until setup."
+            value={settings.ai_call_enabled}
+            disabled={!canManage || !settingsLoaded}
+            onChange={(v) => requestToggle("ai_call_enabled", v, "AI Calls", true)}
+          />
+          <ToggleCard
+            title="Auto missed-call SMS"
+            description="Text callers back automatically after a missed call. Capture-first: off by default."
+            value={settings.ai_missed_call_sms_enabled}
+            danger
+            disabled={!canManage || !settingsLoaded}
+            onChange={(v) => requestToggle("ai_missed_call_sms_enabled", v, "Missed-call SMS", true)}
+          />
+        </SectionShell>
+
+        {/* 5. EMAIL — planned, not built */}
+        <SectionShell
+          icon="ri-mail-line"
+          iconWrap="bg-gray-50 text-gray-400 border border-gray-100"
+          title="Email AI"
+          subtitle="Draft assistance"
+          status={<StatePill tone="plan">Planned · not enabled</StatePill>}
+        >
+          <p className="text-xs text-gray-600">Not built yet — there is no email AI pipeline in this system today.</p>
+          <div className="rounded-md bg-gray-50 border border-dashed border-gray-200 px-3 py-3 text-[11px] text-gray-500 flex items-start gap-2">
+            <i className="ri-time-line text-gray-400 text-base mt-0.5" />
+            <span>When email AI ships it will start <b className="text-gray-600">draft-only</b>, like every other channel — no auto-send. This card is a placeholder; no controls are active.</span>
+          </div>
+        </SectionShell>
+      </div>
+
+      {/* ── 7. Escalation & human-handling rules (read-only reference) ── */}
+      <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
+        <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest">Escalation &amp; human-handling rules</p>
+        <p className="text-xs text-gray-500 mt-0.5 mb-3">How the AI steps back for a human. These are enforced by the backend — shown here for reference (read only).</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2.5">
+          <RuleRow icon="ri-user-voice-line" title="Human takeover wins" desc="If a human replies or takes over a conversation, the AI stops drafting and sending for it." />
+          <RuleRow icon="ri-time-line" title="Recent human reply" desc="A recent human reply suppresses the AI on that thread so it never talks over staff." />
+          <RuleRow icon="ri-phone-line" title="Recent call" desc="A recent call to/from the customer suppresses AI SMS for a cooldown window." />
+          <RuleRow icon="ri-forbid-line" title="Blacklist / human-only" desc="Blacklisted or human-only contacts never receive an AI reply (managed below)." />
+          <RuleRow icon="ri-shield-cross-line" title="Never auto-send topics" desc="Refund, complaint, legal/eviction, medical crisis and fraud always escalate — never auto-send." />
+          <RuleRow icon="ri-timer-flash-line" title="Delayed send + re-check" desc="Approved SMS auto-replies hold ~3 minutes and re-check every gate before sending." />
         </div>
+        <p className="text-[11px] text-gray-400 mt-3"><i className="ri-information-line mr-1" />The AI is a support assistant — it never acts as a doctor or provider and never makes clinical, legal, or eligibility decisions.</p>
+      </div>
+
+      {/* ── 8. Cooldown, caps & confidence ── */}
+      <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
+        <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest">Cooldown, caps &amp; confidence</p>
+        <p className="text-xs text-gray-500 mt-0.5 mb-3">Rate limits that keep the AI conservative.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="flex items-center justify-between gap-2 text-xs text-gray-600 bg-gray-50 rounded-md px-3 py-2">
+            Confidence threshold
+            <input
+              type="number" step="0.01" min="0" max="1"
+              defaultValue={settings.ai_confidence_threshold}
+              disabled={!canManage}
+              onBlur={(e) => {
+                const v = Math.min(1, Math.max(0, Number(e.target.value) || 0.78));
+                if (v !== settings.ai_confidence_threshold) void saveSetting("ai_confidence_threshold", v);
+              }}
+              className="w-20 border border-gray-200 rounded-md px-2 py-1 text-sm text-right disabled:bg-gray-50"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-2 text-xs text-gray-600 bg-gray-50 rounded-md px-3 py-2">
+            Max auto-replies / conversation / day
+            <input
+              type="number" step="1" min="0" max="20"
+              defaultValue={settings.ai_max_auto_replies_per_conversation_per_day}
+              disabled={!canManage}
+              onBlur={(e) => {
+                const v = Math.min(20, Math.max(0, Math.round(Number(e.target.value) || 3)));
+                if (v !== settings.ai_max_auto_replies_per_conversation_per_day) void saveSetting("ai_max_auto_replies_per_conversation_per_day", v);
+              }}
+              className="w-20 border border-gray-200 rounded-md px-2 py-1 text-sm text-right disabled:bg-gray-50"
+            />
+          </label>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-2">Live chat cooldown {settings.ai_chat_auto_reply_cooldown_seconds}s · chat cap {settings.ai_chat_max_auto_replies_per_session_per_day}/session/day.</p>
       </div>
       {!canManage && (
         <p className="text-xs text-gray-400 -mt-2">
@@ -926,9 +1098,9 @@ export default function AiSupportCenterPanel() {
         </p>
       )}
 
-      {/* ── Category behavior ── */}
+      {/* ── 9. Category safety rules ── */}
       <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
-        <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest">Category behavior</p>
+        <p className="text-xs text-[#3b6ea5] font-bold uppercase tracking-widest">Category safety rules</p>
         <p className="text-xs text-gray-500 mt-0.5 mb-3">
           What AI may do per topic. Legal, medical crisis, fraud, refunds and complaints can never auto-send, even if set to Auto-send.
         </p>
