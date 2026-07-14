@@ -1930,54 +1930,38 @@ export default function OrderDetailModal({
       const parsedRefundAmount = parseFloat(cancelRefundAmount);
       const wantsRefund = !!order.payment_intent_id && parsedRefundAmount > 0 && parsedRefundAmount <= capturedAmount;
 
-      // If refund requested, process it first
+      // REFUND-ONLY-PROVIDER-EARNINGS-SEPARATION-002: the whole Refund + Cancel
+      // operation — the refund (idempotent), orders.status='cancelled', and voiding
+      // of ONLY non-completed provider earnings, plus its audit — is now owned by the
+      // cancel-order backend action. This modal only invokes it, then sends the
+      // customer comms below. create-refund / stripe-webhook never touch earnings.
       let refundAmount: number | undefined;
       let refundSkipped = false;
       let refundSkipReason = "";
-      if (wantsRefund) {
-        const isPartial = parsedRefundAmount < capturedAmount;
-        const refundRes = await fetch(`${supabaseUrl}/functions/v1/create-refund`, {
+      try {
+        const cancelRes = await fetch(`${supabaseUrl}/functions/v1/cancel-order`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
-            // Pass paymentIntentId — the edge function resolves the charge automatically
-            paymentIntentId: order.payment_intent_id,
-            // amount in dollars; omit for full refund so Stripe refunds the full charge balance
-            amount: isPartial ? parsedRefundAmount : undefined,
+            confirmationId: order.confirmation_id,
+            // dollars; 0 => cancel with no refund. cancel-order decides partial/full.
+            refundAmount: wantsRefund ? parsedRefundAmount : 0,
             reason: "requested_by_customer",
             note: cancelNote.trim() || "Order cancelled by admin",
-            confirmationId: order.confirmation_id,
-            // The Refund + Cancel modal owns customer notifications via its own
-            // email/SMS checkboxes — suppress the generic auto-fired refund email.
-            skipCustomerNotification: true,
           }),
         });
-        const refundData = await refundRes.json() as { ok: boolean; error?: string; refund?: { amount: number }; refundAmountDollars?: number };
-        if (!refundData.ok) {
-          const errMsg = refundData.error ?? "Unknown error";
-          // If it's a test/live mode mismatch, skip the refund but still cancel the order
-          const isModeMismatch = errMsg.toLowerCase().includes("test mode") || errMsg.toLowerCase().includes("live mode");
-          if (isModeMismatch) {
-            refundSkipped = true;
-            refundSkipReason = "Payment was made in test mode — Stripe refund skipped. Order will be cancelled without a refund.";
-          } else {
-            setCancelMsg(`Refund failed: ${errMsg}. Order not cancelled.`);
-            setCancellingOrder(false);
-            return;
-          }
-        } else {
-          refundAmount = refundData.refundAmountDollars ?? (refundData.refund ? refundData.refund.amount / 100 : undefined);
+        const cancelData = await cancelRes.json().catch(() => ({ ok: false, error: "Invalid response" })) as
+          { ok: boolean; error?: string; refund?: { dollars: number } | null; refundSkipped?: boolean; refundSkipReason?: string };
+        if (!cancelData.ok) {
+          setCancelMsg(`${cancelData.error ?? "Cancellation failed"}.`);
+          setCancellingOrder(false);
+          return;
         }
-      }
-
-      // Update order status to cancelled
-      const { error } = await supabase
-        .from("orders")
-        .update({ status: "cancelled" })
-        .eq("id", order.id);
-
-      if (error) {
-        setCancelMsg(`Failed to update order status: ${error.message}`);
+        refundAmount = cancelData.refund?.dollars;
+        refundSkipped = cancelData.refundSkipped ?? false;
+        refundSkipReason = cancelData.refundSkipReason ?? "";
+      } catch (err) {
+        setCancelMsg(`Cancellation failed: ${err instanceof Error ? err.message : "network error"}. Order not cancelled.`);
         setCancellingOrder(false);
         return;
       }

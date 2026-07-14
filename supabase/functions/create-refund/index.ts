@@ -53,11 +53,15 @@ Deno.serve(async (req: Request) => {
     note?: string;
     confirmationId?: string;
     skipCustomerNotification?: boolean;
+    // REFUND-ONLY-PROVIDER-EARNINGS-SEPARATION-002: optional Stripe idempotency key.
+    // The cancel-order backend action passes a stable key so a retried Refund + Cancel
+    // never issues a second Stripe refund.
+    idempotencyKey?: string;
   };
   try { body = await req.json(); }
   catch { return json({ ok: false, error: "Invalid JSON body" }, 400); }
 
-  const { chargeId: rawChargeId, paymentIntentId, amount, reason, note, confirmationId, skipCustomerNotification } = body;
+  const { chargeId: rawChargeId, paymentIntentId, amount, reason, note, confirmationId, skipCustomerNotification, idempotencyKey } = body;
 
   // @ts-ignore
   const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
@@ -106,7 +110,10 @@ Deno.serve(async (req: Request) => {
     if (amount && amount > 0) {
       params.amount = Math.round(amount * 100);
     }
-    refund = await stripe.refunds.create(params);
+    // REFUND-ONLY-PROVIDER-EARNINGS-SEPARATION-002: when a stable idempotencyKey is
+    // supplied (cancel-order path), Stripe dedupes so a retried Refund + Cancel never
+    // issues a second refund. Direct Refund-Only calls omit it (unchanged behavior).
+    refund = await stripe.refunds.create(params, idempotencyKey ? { idempotencyKey } : undefined);
     console.info(`[create-refund] ✓ Refund ${refund.id} issued — $${(refund.amount / 100).toFixed(2)} for charge ${chargeId}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -177,19 +184,14 @@ Deno.serve(async (req: Request) => {
       // a single order_status_logs row on the status→refunded transition
       // (changed_by='system'). No explicit insert here — that was the duplicate.
 
-      // Doctor earnings: only void on a FULL refund where the provider had NOT
-      // completed the work. A partial refund never voids the provider payout.
-      // `.neq('status','refunded')` keeps a retry from re-touching voided rows.
-      const orderWasCompleted = order.doctor_status === "letter_sent" || order.doctor_status === "patient_notified";
-      if (isFullRefund && !orderWasCompleted) {
-        await adminClient.from("doctor_earnings")
-          .update({ status: "refunded", notes: `Order refunded by admin (${actorName}). No payout issued.` })
-          .eq("confirmation_id", confirmationId)
-          .neq("status", "paid")
-          .neq("status", "refunded");
-      }
+      // REFUND-ONLY-PROVIDER-EARNINGS-SEPARATION-002: create-refund is FINANCIAL
+      // ONLY and NEVER touches provider earnings. A Refund Only (partial OR full)
+      // preserves doctor_earnings entirely. Earnings voiding for a genuine
+      // Refund + Cancel is owned exclusively by the cancel-order backend action
+      // (cancel_order_and_void_earnings RPC), keyed on the cancellation — never on
+      // refund state here. This also keeps the charge.refunded webhook race-safe.
 
-      console.info(`[create-refund] Order ${confirmationId} refund recorded — ${refundStatusValue} ($${cumulativeRefundedDollars.toFixed(2)} of charge). status_changed=${isFullRefund}, earnings_preserved=${orderWasCompleted}`);
+      console.info(`[create-refund] Order ${confirmationId} refund recorded — ${refundStatusValue} ($${cumulativeRefundedDollars.toFixed(2)} of charge). Earnings untouched (financial-only).`);
     }
   }
 

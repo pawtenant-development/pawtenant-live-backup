@@ -768,12 +768,12 @@ Deno.serve(async (req: Request) => {
     const { error: updateErr } = await supabase.from("orders").update(orderUpdate).eq("id", orderId);
     if (updateErr) { return json({ ok: false, error: updateErr.message }, 500); }
 
-    // Void provider earnings only on a FULL refund where work was not completed.
-    // `.neq('status','refunded')` keeps a replay from re-touching voided rows.
+    // REFUND-ONLY-PROVIDER-EARNINGS-SEPARATION-002: the charge.refunded webhook is
+    // FINANCIAL ONLY — it NEVER voids provider earnings and NEVER infers service
+    // cancellation from Stripe refund state (a refund may be a Refund Only). Earnings
+    // voiding is owned solely by the cancel-order backend action, keyed on the explicit
+    // cancellation. `orderWasCompleted` is kept purely as informational audit context.
     const orderWasCompleted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
-    if (isFullRefund && !orderWasCompleted) {
-      await supabase.from("doctor_earnings").update({ status: "refunded", notes: `Order refunded via Stripe on ${refundedAt}. Provider had not completed work.` }).eq("confirmation_id", confirmationId).neq("status", "paid").neq("status", "refunded");
-    }
 
     try {
       await supabase.from("audit_logs").insert({ action: isFullRefund ? "order_refunded_via_stripe" : "order_partial_refund_via_stripe", object_type: "order", object_id: confirmationId, description: `Order ${isFullRefund ? "refunded" : "partially refunded"}: ${confirmationId}`, metadata: { confirmation_id: confirmationId, order_id: orderId, payment_intent_id: piId, refund_amount: refundedAmountDollars, refund_status: refundStatusValue, is_full_refund: isFullRefund, doctor_status_at_refund: doctorStatus ?? "none", earnings_preserved: orderWasCompleted, ads_adjusted: adsAdjusted, refunded_at: refundedAt, stripe_event_id: event.id } });
