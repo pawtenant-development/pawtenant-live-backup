@@ -289,6 +289,29 @@ async function stampPackageEntitlement(
   }
 }
 
+// BATCH-0.2A CHECKOUT-LIFECYCLE: stamp the authoritative moment the customer
+// genuinely initiates checkout — a real PaymentIntent / subscription is minted at
+// the Step-3 pay gate (NOT a pricing/assessment page load). FIRST-WRITE-WINS:
+// guarded to `checkout_started_at IS NULL` so retries, in-session amount changes
+// (update_amount returns earlier and never reaches here) and returning checkout
+// sessions all keep the ORIGINAL timestamp. Also guarded to unpaid rows so a paid
+// order is never re-stamped. Assessment-only leads never reach this function, so
+// they stay NULL. Best-effort: never blocks payment setup.
+async function stampCheckoutStarted(confirmationId: string): Promise<void> {
+  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await supabase
+      .from("orders")
+      .update({ checkout_started_at: new Date().toISOString() })
+      .eq("confirmation_id", confirmationId)
+      .is("checkout_started_at", null)
+      .is("paid_at", null);
+  } catch (err) {
+    console.warn("[create-payment-intent] checkout_started_at stamp failed (non-blocking):", err instanceof Error ? err.message : String(err));
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -537,6 +560,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     // ── Subscription payment intent ──────────────────────────────────────────
+    // BATCH-0.2A: stamp checkout_started_at (first-write-wins) — past the action
+    // branches, email check and duplicate-charge guard, a real PaymentIntent/
+    // subscription is about to be minted = genuine checkout start.
+    await stampCheckoutStarted(confirmationId);
+
     if (plan === "subscription") {
       // A consultation is a one-time purchase — never a subscription. Guard so
       // a malformed request can't accidentally mint an ESA subscription.

@@ -29,6 +29,32 @@ function isAlreadyPaid(
   return !!(order?.payment_intent_id || order?.paid_at);
 }
 
+// ── BATCH-0.2A: attribution "meaningfulness" test ────────────────────────
+// A touch snapshot is "meaningful" when it carries real attribution evidence:
+// a paid click id, a valid utm source/campaign, or a known non-direct
+// channel/referrer. Used to protect a meaningful last_touch_json from being
+// erased by a direct/empty return visit (documented precedence in the upsert).
+function isUnresolvedMacro(s: string): boolean {
+  const t = s.trim();
+  return /^\{\{[^{}]*\}\}$/.test(t) || /^\{[a-z0-9_.:+-]+\}$/i.test(t);
+}
+function isRealValue(v: unknown): boolean {
+  return typeof v === "string" && v.trim().length > 0 && !isUnresolvedMacro(v);
+}
+function isMeaningfulTouch(touch: unknown): boolean {
+  if (!touch || typeof touch !== "object") return false;
+  const t = touch as Record<string, unknown>;
+  const clickIds = ["gclid", "gbraid", "wbraid", "fbclid", "msclkid", "ttclid"];
+  if (clickIds.some((k) => isRealValue(t[k]))) return true;
+  if (isRealValue(t.utm_source) || isRealValue(t.utm_campaign)) return true;
+  const dead = new Set(["", "direct", "none", "unknown", "(direct)", "(none)"]);
+  const ch = typeof t.channel === "string" ? t.channel.trim().toLowerCase() : "";
+  if (ch && !dead.has(ch)) return true;
+  const fs = typeof t.fullSource === "string" ? t.fullSource.trim().toLowerCase() : "";
+  if (fs && !dead.has(fs)) return true;
+  return false;
+}
+
 async function fireGHLServerSide(opts: {
   supabase: ReturnType<typeof createClient>;
   confirmationId: string;
@@ -251,6 +277,11 @@ serve(async (req) => {
       utmContent?: string;
       landingUrl?: string;
       attributionJson?: Record<string, unknown>;
+      gbraid?: string;
+      wbraid?: string;
+      sessionId?: string;
+      firstTouchJson?: Record<string, unknown>;
+      lastTouchJson?: Record<string, unknown>;
       suppressLeadNotification?: boolean;
       skipGhlSync?: boolean;
     };
@@ -279,7 +310,7 @@ serve(async (req) => {
       const { data: byConfId, error: byConfIdErr } = await supabase
         .from("orders")
         .select(
-          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
+          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
         )
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
@@ -303,7 +334,7 @@ serve(async (req) => {
         const { data: byPi } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
           )
           .eq("payment_intent_id", body.paymentIntentId)
           .maybeSingle();
@@ -324,7 +355,7 @@ serve(async (req) => {
         const { data: byEmail } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
           )
           .ilike("email", normalizedEmail)
           .not("status", "in", `("refunded","cancelled")`)
@@ -488,6 +519,30 @@ serve(async (req) => {
       stickyAttrSet(body.landingUrl,   existingOrder?.landing_url,  "landing_url");
       stickyAttrSet(body.referredBy,   existingOrder?.referred_by,  "referred_by");
 
+      // ── BATCH-0.2A: gbraid / wbraid (Google Ads click ids) ───────────────
+      // The assessment/PSD clients send these nested inside the touch snapshots
+      // (first_touch_json / attribution_json / last_touch_json) rather than as
+      // flat top-level fields, so derive the scalar from there (a flat body.gbraid
+      // / body.wbraid is also honored for forward-compat). Same STICKY rule as
+      // gclid: written on first capture, never overwritten — so gclid/gbraid/wbraid
+      // coexist and none clobbers another.
+      const deriveTouchStr = (key: "gbraid" | "wbraid"): string | undefined => {
+        const flat = body[key];
+        if (typeof flat === "string" && flat.trim() !== "") return flat;
+        const fromJson = (src: unknown): string | undefined => {
+          if (!src || typeof src !== "object") return undefined;
+          const val = (src as Record<string, unknown>)[key];
+          return typeof val === "string" && val.trim() !== "" ? val : undefined;
+        };
+        return (
+          fromJson(body.firstTouchJson) ??
+          fromJson(body.attributionJson) ??
+          fromJson(body.lastTouchJson)
+        );
+      };
+      stickyAttrSet(deriveTouchStr("gbraid"), existingOrder?.gbraid, "gbraid");
+      stickyAttrSet(deriveTouchStr("wbraid"), existingOrder?.wbraid, "wbraid");
+
       // attribution_json: same sticky rule but uses jsonb-shaped check
       // (an empty object {} still counts as "present" — we do not want
       // to flip a deliberate empty snapshot back to a populated one).
@@ -537,8 +592,35 @@ serve(async (req) => {
       ) {
         upsertPayload.first_touch_json = body.firstTouchJson;
       }
+      // ── BATCH-0.2A: last_touch_json overwrite guard ─────────────────────
+      // last_touch_json is the MOST-RECENT campaign touch and normally updates on
+      // revisits with a fresh utm/click id. But a direct / empty return visit
+      // (resume via /r/manual, or a later organic revisit whose click ids have
+      // expired) must NOT erase a meaningful paid/campaign last-touch already on
+      // the row.
+      //
+      // Documented precedence — overwrite the existing last_touch_json ONLY when:
+      //   (a) there is no existing last_touch_json yet, OR
+      //   (b) the existing last_touch_json is itself NOT meaningful (direct/empty), OR
+      //   (c) the INCOMING touch IS meaningful (a genuinely newer attributable
+      //       touch: real paid click id, valid utm source/campaign, or a known
+      //       non-direct channel/referrer).
+      // The ONLY blocked case is: existing IS meaningful AND incoming is NOT.
+      // This never freezes last-touch permanently — a real newer attributable
+      // touch always wins.
       if (body.lastTouchJson !== undefined && body.lastTouchJson !== null) {
-        upsertPayload.last_touch_json = body.lastTouchJson;
+        const existingLast = existingOrder?.last_touch_json ?? null;
+        if (
+          !existingLast ||
+          !isMeaningfulTouch(existingLast) ||
+          isMeaningfulTouch(body.lastTouchJson)
+        ) {
+          upsertPayload.last_touch_json = body.lastTouchJson;
+        } else {
+          console.info(
+            `[get-resume-order] last_touch_json overwrite SKIPPED for ${effectiveConfirmationId}: incoming touch is direct/empty and would erase a meaningful last-touch`
+          );
+        }
       }
 
       if (body.paymentIntentId !== undefined && body.paymentIntentId !== null && body.paymentIntentId !== "") {

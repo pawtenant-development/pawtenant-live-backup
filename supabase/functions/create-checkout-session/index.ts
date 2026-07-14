@@ -279,6 +279,26 @@ async function resolveLegacyQuoteLock(
   }
 }
 
+// BATCH-0.2A CHECKOUT-LIFECYCLE: stamp the authoritative moment the customer
+// genuinely initiates checkout via Klarna / QR / hosted checkout. FIRST-WRITE-WINS:
+// guarded to `checkout_started_at IS NULL` so a retried / re-opened session keeps
+// the ORIGINAL timestamp, and to unpaid rows so a paid order is never re-stamped.
+// Assessment-only leads never reach this function, so they stay NULL. Best-effort.
+async function stampCheckoutStarted(confirmationId: string): Promise<void> {
+  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await supabase
+      .from("orders")
+      .update({ checkout_started_at: new Date().toISOString() })
+      .eq("confirmation_id", confirmationId)
+      .is("checkout_started_at", null)
+      .is("paid_at", null);
+  } catch (err) {
+    console.warn("[create-checkout-session] checkout_started_at stamp failed (non-blocking):", err instanceof Error ? err.message : String(err));
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -410,6 +430,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     // ── SUBSCRIPTION CHECKOUT ──────────────────────────────────────────────
+    // BATCH-0.2A: stamp checkout_started_at (first-write-wins) — past the email/
+    // confirmationId check and duplicate-charge guard, a real Checkout Session is
+    // about to be created = genuine checkout start (Klarna / QR / hosted).
+    await stampCheckoutStarted(confirmationId);
+
     if (planType === "subscription") {
       // Resolve coupon to Stripe coupon ID if provided
       let stripeCouponId: string | null = null;

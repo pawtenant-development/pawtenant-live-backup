@@ -903,20 +903,26 @@ export function buildChannel(): string {
     const urlUtm    = sanitizeMacroValue(p.get("utm_source"));
     const urlFbclid = p.get("fbclid");
     const urlGclid  = p.get("gclid");
+    const urlGbraid = p.get("gbraid");
+    const urlWbraid = p.get("wbraid");
     if (urlUtm) {
       const normalized = normalizeSource(urlUtm);
       if (normalized) return normalized;
     }
     if (urlFbclid) return "facebook_ads";
     if (urlGclid)  return "google_ads";
+    // gbraid / wbraid are Google Ads click ids (iOS/app + web-to-app). A visit
+    // arriving with only gbraid/wbraid (no gclid/utm) is still Google paid.
+    if (urlGbraid || urlWbraid) return "google_ads";
   }
 
   // ── 4. Stored attribution ─────────────────────────────────────────────────
   const data = getAttribution();
-  const { gclid, fbclid, utm_source, referrer } = data;
+  const { gclid, gbraid, wbraid, fbclid, utm_source, referrer } = data;
 
   if (fbclid) return "facebook_ads";
   if (gclid)  return "google_ads";
+  if (gbraid || wbraid) return "google_ads";
   if (utm_source) {
     const normalized = normalizeSource(utm_source);
     if (normalized) return normalized;

@@ -206,12 +206,12 @@
     <script>
       (function() {
         var params = new URLSearchParams(window.location.search);
-        var fields = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','fbclid','msclkid'];
+        var fields = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','gbraid','wbraid','fbclid','msclkid'];
         // Reject un-interpolated ad macros ({{site_source_name}}, {keyword}, ...) so a raw
         // placeholder never lands in sessionStorage. This inline script runs BEFORE the
         // bundle, so it must mirror the sanitizer in src/lib/attributionMacros.ts.
-        // Click IDs (gclid/fbclid/msclkid) are opaque and are never treated as macros.
-        var CLICK_IDS = { gclid: 1, fbclid: 1, msclkid: 1 };
+        // Click IDs (gclid/gbraid/wbraid/fbclid/msclkid) are opaque and are never treated as macros.
+        var CLICK_IDS = { gclid: 1, gbraid: 1, wbraid: 1, fbclid: 1, msclkid: 1 };
         function isUnresolvedMacro(s) {
           return /^\{\{[^{}]*\}\}$/.test(s) || /^\{[a-z0-9_.:+-]+\}$/i.test(s);
         }
