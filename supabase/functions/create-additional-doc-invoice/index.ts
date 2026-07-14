@@ -1,13 +1,13 @@
 // create-additional-doc-invoice
 //
-// Tracked "$40 Additional Documentation" add-on tied to an EXISTING paid order.
+// Tracked "$50 Additional Documentation" add-on tied to an EXISTING paid order.
 // Use case: a customer/clinic/landlord needs extra forms completed by the
 // provider AFTER the original ESA/PSD letter is done.
 //
 // This NEVER creates a brand-new ESA/PSD order. It:
 //   1. Creates (or reuses a pending) row in
 //      public.order_additional_documentation_requests.
-//   2. Creates a Stripe Checkout Session for $40 with discriminator metadata
+//   2. Creates a Stripe Checkout Session for $50 with discriminator metadata
 //      (type=additional_documentation) on BOTH the session AND the payment
 //      intent so the webhook can route it without touching the parent order.
 //   3. Emails the customer the secure payment link (logged to communications).
@@ -37,7 +37,10 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ADDON_AMOUNT_CENTS = 7000; // $70 (raised from $40; server-authoritative — historical rows keep their own amount)
+// TEST-CUSTOMER-PORTAL-ADDON-PRICE-50-001 (2026-07-14): owner-approved reduction $70 → $50.
+// Server-authoritative — the client never supplies the amount (customer-portal AND admin
+// invoice both charge this single constant). Historical rows keep their own amount_cents.
+const ADDON_AMOUNT_CENTS = 5000; // $50 (was $70, was $40)
 const COMPANY_NAME = "PawTenant";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;

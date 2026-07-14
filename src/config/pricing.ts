@@ -42,13 +42,15 @@ export const RENEWAL_PRICING = {
  * Additional Documentation add-on (optional, purchased AFTER the original letter
  * for a separate landlord / property / HOA form on a STANDARD order).
  * RA-DOCUMENT-WORKFLOW-PORTALS-CONSISTENCY-001 (2026-07-10): owner-approved price
- * raised $40 → $70. This is the DISPLAY price for the pre-purchase CTA only; the
+ * raised $40 → $70.
+ * TEST-CUSTOMER-PORTAL-ADDON-PRICE-50-001 (2026-07-14): owner-approved price
+ * lowered $70 → $50. This is the DISPLAY price for the pre-purchase CTA only; the
  * authoritative charge is computed server-side in create-additional-doc-invoice
  * (ADDON_AMOUNT_CENTS). Historical paid requests keep their own amount_cents and
- * are shown from that value, never relabelled to $70.
+ * are shown from that value, never relabelled to the current price.
  */
 export const ADDITIONAL_DOC_PRICING = {
-  addon: 70,
+  addon: 50,
 } as const;
 
 /**

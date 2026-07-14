@@ -1,4 +1,4 @@
-// AdditionalDocRequest — customer-facing "$40 Additional Documentation" flow
+// AdditionalDocRequest — customer-facing "$50 Additional Documentation" flow
 // inside /my-orders. Reuses the existing tracked add-on backend
 // (create-additional-doc-invoice edge function) which already supports the
 // owning-customer path (auth = customer access token; ownership = caller email
@@ -7,7 +7,7 @@
 //   • list   → load existing add-on requests for this order (auto-reconciles a
 //              paid-but-unconfirmed Stripe session, so completion never depends
 //              on the webhook being delivered).
-//   • create → start a fresh $40 Checkout session and redirect to Stripe.
+//   • create → start a fresh $50 Checkout session and redirect to Stripe.
 //   • resume → finish an abandoned pending payment without creating a duplicate.
 //
 // After payment the order reopens to "under-review" (doctor_status in_review)
@@ -335,6 +335,18 @@ export default function AdditionalDocRequest({ order, highlightSuccess }: Props)
                   <p className="text-xs text-gray-600 mt-0.5">Additional documentation / forms</p>
                 </div>
                 <p className="text-2xl font-extrabold text-gray-900">${ADDITIONAL_DOC_PRICING.addon}.00</p>
+              </div>
+
+              {/* Refund reassurance — tied to provider non-approval / non-completion ONLY
+                  (not landlord rejection, not change-of-mind). See task copy spec. */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 flex items-start gap-2.5">
+                <i className="ri-shield-check-line text-emerald-600 text-base mt-0.5 flex-shrink-0"></i>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-emerald-800">100% refundable if your request is not approved by the reviewing provider.</p>
+                  <p className="text-[11px] text-emerald-700 leading-relaxed mt-1">
+                    If the reviewing provider determines that the requested documentation cannot be completed, your full ${ADDITIONAL_DOC_PRICING.addon} add-on payment will be refunded.
+                  </p>
+                </div>
               </div>
 
               <p className="text-xs text-gray-600 leading-relaxed">
