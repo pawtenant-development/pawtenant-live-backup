@@ -35,6 +35,8 @@ import {
   type ChatSession,
   type NotifPermission,
 } from "../hooks/useAdminChatNotifier";
+import { useAiSupportEventNotifier } from "../hooks/useAiSupportEventNotifier";
+import { useAdminOpsNotifier } from "../hooks/useAdminOpsNotifier";
 
 export type { ChatSession, NotifPermission, AdminAlert };
 
@@ -120,11 +122,23 @@ export function AdminChatProvider({ enabled, children }: ProviderProps) {
     setDockedSessionIdState(null);
   }, []);
 
+  // Visibility model: every internal user with Chats-tab access sees all
+  // chats. Commission/ownership protection is enforced server-side in the
+  // SECURITY DEFINER assignment RPCs, not by hiding rows from the UI.
   const notifier = useAdminChatNotifier({
     enabled,
     suppressToast,
     selectedSessionId,
   });
+
+  // AI Support browser notifications (draft pending / escalated / blocked /
+  // send error). Opt-in gated inside the hook via soundPrefs +
+  // Notification.permission — inert until the admin enables desktop alerts.
+  useAiSupportEventNotifier(enabled);
+
+  // Operational browser notifications: missed calls + new contact-form
+  // emails. Same opt-in gate; foreground-only (Stage 4 = service worker).
+  useAdminOpsNotifier(enabled);
 
   const value = useMemo<AdminChatContextValue>(
     () => ({
