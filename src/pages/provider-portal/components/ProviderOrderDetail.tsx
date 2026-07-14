@@ -477,7 +477,9 @@ export default function ProviderOrderDetail({
   const assessmentCount = assessmentAnswers ? Object.keys(assessmentAnswers).length : 0;
   const isLetterSubmitted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
   const isThirtyDayReissue = doctorStatus === "thirty_day_reissue";
-  const isRefunded = order.status === "refunded" || !!order.refunded_at;
+  // REFUND-ONLY-OPERATIONAL: only operational cancellation locks the provider —
+  // Refund Only (partial OR full) keeps the case active. Never key on refund fields.
+  const isRefunded = order.status === "cancelled" || order.status === "refunded";
   const isRejected = doctorStatus === "provider_rejected";
 
   // ── Document taxonomy (ORDER-PAYMENT-GATING-RA-DOCUMENT-TAXONOMY-INTAKE-PORTAL-001) ──

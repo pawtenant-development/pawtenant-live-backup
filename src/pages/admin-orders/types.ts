@@ -83,6 +83,7 @@ export interface Order {
   sent_followup_at?: string | null;
   addon_services?: string[] | null;
   refunded_at?: string | null;
+  refund_status?: string | null;
   refund_amount?: number | null;
   dispute_id?: string | null;
   dispute_status?: string | null;

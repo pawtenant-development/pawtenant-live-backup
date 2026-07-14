@@ -149,8 +149,11 @@ function getOrderDisplayStatus(order: Order) {
   if (order.fraud_warning) {
     return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
   }
-  // Refunded
-  if (order.status === "refunded" || order.refunded_at) {
+  // REFUND-ONLY-OPERATIONAL: operational status is the order's cancellation
+  // state, never a refund field. Only 'cancelled' (Refund + Cancel) or a legacy
+  // 'refunded' status reads as terminal here; a Refund Only (partial or full)
+  // keeps its active operational status and shows refund info separately.
+  if (order.status === "refunded" || order.status === "cancelled") {
     return { label: "Refunded", color: "bg-red-100 text-red-600" };
   }
   // Stage 4 — letter delivered
@@ -444,14 +447,12 @@ export default function AdminOrdersPage() {
 
       const paidUnassignedQ = supabase.from("orders").select("id", head)
         .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
-        .is("refunded_at", null)
         .not("payment_intent_id", "is", null)
         .is("doctor_email", null).is("doctor_user_id", null)
         .or("doctor_status.is.null,doctor_status.neq.patient_notified");
 
       const underReviewQ = supabase.from("orders").select("id", head)
         .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
-        .is("refunded_at", null)
         .not("payment_intent_id", "is", null)
         .or("doctor_email.not.is.null,doctor_user_id.not.is.null")
         .or("doctor_status.is.null,doctor_status.neq.patient_notified");
@@ -728,7 +729,7 @@ export default function AdminOrdersPage() {
       // gclid,fbclid,first_touch_json,last_touch_json). If a 400 returns under
       // load, drop ONLY first_touch_json,last_touch_json — the five flat
       // utm/click-id columns MUST stay (paid-signal for the pill hierarchy).
-      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json";
+      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,refund_status,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json";
 
       // LIVE-ADMIN-ORDERS-EMPTY 2026-07-13: page the orders read newest-first.
       // At ~1300+ orders the previous single unbounded select of every column
@@ -1061,7 +1062,6 @@ export default function AdminOrdersPage() {
         !!o.payment_intent_id &&
         o.status !== "lead" &&
         o.status !== "refunded" &&
-        !o.refunded_at &&
         o.doctor_status !== "patient_notified";
     });
     const skippedCount = selectedOrders.size - assignableIds.length;
@@ -1353,13 +1353,13 @@ export default function AdminOrdersPage() {
     } else if (statusFilter === "lead_unpaid") {
       matchStatus = !o.payment_intent_id || o.status === "lead";
     } else if (statusFilter === "paid_unassigned") {
-      matchStatus = !!o.payment_intent_id && o.status !== "lead" && o.status !== "refunded" && !o.refunded_at && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified";
+      matchStatus = !!o.payment_intent_id && o.status !== "lead" && o.status !== "refunded" && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified";
     } else if (statusFilter === "under_review") {
-      matchStatus = !!o.payment_intent_id && o.status !== "lead" && o.status !== "refunded" && !o.refunded_at && (!!o.doctor_email || !!o.doctor_user_id) && o.doctor_status !== "patient_notified";
+      matchStatus = !!o.payment_intent_id && o.status !== "lead" && o.status !== "refunded" && (!!o.doctor_email || !!o.doctor_user_id) && o.doctor_status !== "patient_notified";
     } else if (statusFilter === "completed") {
       matchStatus = o.doctor_status === "patient_notified";
     } else if (statusFilter === "refunded") {
-      matchStatus = o.status === "refunded" || !!o.refunded_at;
+      matchStatus = o.status === "refunded" || o.status === "cancelled";
     } else if (statusFilter === "disputed") {
       matchStatus = o.status === "disputed" || !!o.dispute_id;
     } else if (statusFilter === "cancelled") {
@@ -1498,7 +1498,7 @@ export default function AdminOrdersPage() {
     setSourceFilter(null);
   };
 
-  const totalUnassigned = orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length;
+  const totalUnassigned = orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !!o.payment_intent_id && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length;
   const unlinkedStates = Array.from(
     new Set(
       orders
@@ -2058,7 +2058,7 @@ export default function AdminOrdersPage() {
                   },
                   {
                     label: "Paid (Unassigned)",
-                    value: kpiCounts.paidUnassigned ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && o.status !== "lead" && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length,
+                    value: kpiCounts.paidUnassigned ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !!o.payment_intent_id && o.status !== "lead" && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length,
                     sub: "Open backlog",
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
@@ -2066,7 +2066,7 @@ export default function AdminOrdersPage() {
                   },
                   {
                     label: "Under Review",
-                    value: kpiCounts.underReview ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !o.refunded_at && !!o.payment_intent_id && o.status !== "lead" && (o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified").length,
+                    value: kpiCounts.underReview ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !!o.payment_intent_id && o.status !== "lead" && (o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified").length,
                     sub: "Open backlog",
                     icon: "ri-time-line",
                     color: "text-violet-600",
@@ -2782,7 +2782,6 @@ export default function AdminOrdersPage() {
                   !o.payment_intent_id ||
                   o.status === "lead" ||
                   o.status === "refunded" ||
-                  !!o.refunded_at ||
                   o.doctor_status === "patient_notified"
                 )
               ).length;
@@ -2822,7 +2821,6 @@ export default function AdminOrdersPage() {
                         !!o.payment_intent_id &&
                         o.status !== "lead" &&
                         o.status !== "refunded" &&
-                        !o.refunded_at &&
                         o.doctor_status !== "patient_notified"
                       ).length;
                       const isReadOnly = adminProfile?.role === "read_only";
@@ -2912,7 +2910,6 @@ export default function AdminOrdersPage() {
                         !!o.payment_intent_id &&
                         o.status !== "lead" &&
                         o.status !== "refunded" &&
-                        !o.refunded_at &&
                         o.doctor_status !== "patient_notified"
                       ).length;
                       const skippedCount = selectedOrders.size - assignableCount;

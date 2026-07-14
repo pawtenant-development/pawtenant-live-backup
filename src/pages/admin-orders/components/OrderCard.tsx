@@ -166,7 +166,7 @@ function isPriorityOrder(o: Pick<Order, "price">) { return (o.price ?? 0) > 130;
 function getOrderDisplayStatus(o: Order): { label: string; color: string } {
   if (o.status === "disputed" || o.dispute_id) return { label: "Disputed", color: "bg-red-100 text-red-700" };
   if (o.fraud_warning) return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
-  if (o.status === "refunded" || o.refunded_at) return { label: "Refunded", color: "bg-red-100 text-red-600" };
+  if (o.status === "cancelled" || o.status === "refunded") return { label: "Refunded", color: "bg-red-100 text-red-600" };
   if (o.doctor_status === "patient_notified" || o.doctor_status === "completed") return { label: "Completed", color: "bg-emerald-100 text-emerald-700" };
   if (o.status === "lead" || !o.payment_intent_id) {
     if (o.payment_failure_reason) return { label: "Payment Failed", color: "bg-red-100 text-red-700" };
@@ -257,7 +257,9 @@ export default function OrderCard({
   const isPendingThisAssign = pendingAssign?.confirmationId === order.confirmation_id;
   const isLead = order.status === "lead" || !order.payment_intent_id;
   const seqStatus = getSeqStatus(order);
-  const isRefunded = order.status === "refunded" || !!order.refunded_at;
+  // REFUND-ONLY-OPERATIONAL: only operational cancellation makes an order
+  // non-assignable. Refund Only (partial OR full) stays active. Not a refund field.
+  const isRefunded = order.status === "cancelled" || order.status === "refunded";
   const isCompleted = order.doctor_status === "patient_notified" || order.doctor_status === "completed";
   const showAssignSection = !isLead && !isRefunded && !isCompleted;
   const showRecovery = isLead;

@@ -146,17 +146,20 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (order) {
-      // PARTIAL refund: record the money + classification but PRESERVE the
-      // operational status (never cancel, never flip to 'refunded'). FULL
-      // refund: also set status='refunded'. refund_amount holds the cumulative
-      // refunded total so multiple partials accumulate correctly.
+      // REFUND-ONLY-OPERATIONAL: create-refund is purely FINANCIAL — it records
+      // the refund money + classification and NEVER changes the operational status.
+      // Refund Only (partial OR full) keeps the order active; only the
+      // "Refund + Cancel" action sets status='cancelled' (in OrderDetailModal).
+      // refund_amount holds the cumulative refunded total so partials accumulate.
       const orderUpdate: Record<string, unknown> = {
         refunded_at: new Date().toISOString(),
         refund_amount: cumulativeRefundedDollars,
         refund_status: refundStatusValue,
       };
       if (isFullRefund) {
-        orderUpdate.status = "refunded";
+        // REFUND-ONLY-OPERATIONAL: do NOT set status='refunded' — a full refund via
+        // Refund Only keeps the order operational; only Refund + Cancel sets
+        // status='cancelled'. A full MONETARY refund still reverses the ad conversion.
         // ORDER-REFUND-IDEMPOTENCY-CLEANUP-TEST-001: flag the Google Ads refund
         // adjustment HERE too (admin path) so it never depends on the webhook
         // winning the status race. Set-once + applicable-only — only when a

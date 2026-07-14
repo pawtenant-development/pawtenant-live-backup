@@ -93,9 +93,14 @@ const DOCTOR_STATUS_COLOR: Record<string, { badge: string; dot: string }> = {
   thirty_day_reissue: { badge: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
 };
 
-// ─── Helper: is this order cancelled or refunded (no work needed) ────────────
-function isOrderInactive(order: Pick<Order, "status" | "refunded_at">): boolean {
-  return order.status === "refunded" || !!order.refunded_at || order.status === "cancelled";
+// ─── Helper: is this order operationally cancelled (no work needed) ──────────
+// REFUND-ONLY-OPERATIONAL: operational workflow is controlled by the order's
+// cancellation state, NOT by any refund field. Refund Only (partial OR full)
+// keeps the order active; only "Refund + Cancel" (status='cancelled') or a
+// legacy fully-refunded status ('refunded') makes it inactive. Never key on
+// refund_status / refunded_at / refund_amount.
+function isOrderInactive(order: Pick<Order, "status">): boolean {
+  return order.status === "cancelled" || order.status === "refunded";
 }
 
 function statusMatchesFilter(doctorStatus: string | null, filter: StatusFilter, order: Order): boolean {
@@ -759,7 +764,9 @@ export default function ProviderPortalPage() {
                   const isNew = doctorStatus === "pending_review";
                   const isLetterIssued = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
                   const isThirtyDay = doctorStatus === "thirty_day_reissue";
-                  const isRefunded = order.status === "refunded" || !!order.refunded_at;
+                  // REFUND-ONLY-OPERATIONAL: only operational cancellation locks the
+                  // card — Refund Only (partial OR full) keeps the case active.
+                  const isRefunded = order.status === "cancelled" || order.status === "refunded";
                   const isPSD = isPSDOrder(order);
 
                   return (

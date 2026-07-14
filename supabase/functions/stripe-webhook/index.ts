@@ -763,7 +763,8 @@ Deno.serve(async (req: Request) => {
       refund_amount: refundedAmountDollars,
       refund_status: refundStatusValue,
     };
-    if (isFullRefund) orderUpdate.status = "refunded";
+    // REFUND-ONLY-OPERATIONAL: do NOT flip status to 'refunded' on a full refund —
+    // a Refund Only keeps the order operational; only Refund + Cancel sets 'cancelled'.
     const { error: updateErr } = await supabase.from("orders").update(orderUpdate).eq("id", orderId);
     if (updateErr) { return json({ ok: false, error: updateErr.message }, 500); }
 

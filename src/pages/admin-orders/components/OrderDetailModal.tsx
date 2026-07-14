@@ -234,12 +234,11 @@ function getModalDisplayStatus(order: Order): { label: string; color: string } {
   if (order.fraud_warning) {
     return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
   }
-  // ORDER-PARTIAL-REFUND-STATUS-FIX-001: only a FULL refund reads as
-  // "Refunded". A partial refund (refund_status='partial') keeps its
-  // operational status here; the partial amount is surfaced in the payment
-  // rail's "Refund Issued" block instead. Legacy rows with refunded_at but no
-  // refund_status are only treated as full when not classified partial.
-  if (order.status === "refunded" || order.refund_status === "full") {
+  // REFUND-ONLY-OPERATIONAL: the operational status is the order's cancellation
+  // state, never a refund field. Only 'cancelled' (Refund + Cancel) or a legacy
+  // 'refunded' status reads as "Refunded" here; a Refund Only (partial or full)
+  // keeps its active operational status and surfaces refund info separately.
+  if (order.status === "refunded" || order.status === "cancelled") {
     return { label: "Refunded", color: "bg-red-100 text-red-600" };
   }
   if (order.doctor_status === "patient_notified") {
@@ -2857,6 +2856,13 @@ export default function OrderDetailModal({
     if (section === "comms" || section === "notes") onClearUnread?.(order.confirmation_id);
   }, [section, loadEmailLog]);
 
+  // REFUND-ONLY-OPERATIONAL / P0: operational workflow (assignment, fulfillment,
+  // provider queue) is controlled ONLY by the order's cancellation state, never by
+  // any refund field. Refund Only (partial OR full) keeps the order operational;
+  // only "Refund + Cancel" (status='cancelled') or a legacy 'refunded' status locks
+  // it. Financial refund state lives in refund_status/refund_amount only.
+  const isOperationallyCancelled = order.status === "cancelled" || order.status === "refunded";
+
   // OPS-PAYMENTS-TAB-REPAIR-TOOLS: Single source of truth for whether
   // the order is unpaid/unlinked and a repair tool would be useful.
   // Used by the compact warning card on Overview and by the full
@@ -2864,7 +2870,7 @@ export default function OrderDetailModal({
   const paymentRepairNeeded =
     !order.payment_intent_id &&
     order.status !== "refunded" &&
-    !order.refunded_at &&
+    !isOperationallyCancelled &&
     order.doctor_status !== "patient_notified";
 
   // OPS-PAYMENTS-TAB-REPAIR-TOOLS: full Payment Not Linked repair
@@ -3263,7 +3269,7 @@ export default function OrderDetailModal({
                             cancelled, refunded and archived. Reopening a completed/
                             delivered order uses the dedicated handler below (no
                             customer email; provider kept). */}
-                        {order.status !== "under-review" && order.status !== "completed" && order.status !== "cancelled" && order.status !== "refunded" && !order.refunded_at && order.doctor_status !== "patient_notified" && order.status !== "archived" && (
+                        {order.status !== "under-review" && order.status !== "completed" && order.status !== "cancelled" && order.status !== "refunded" && !isOperationallyCancelled && order.doctor_status !== "patient_notified" && order.status !== "archived" && (
                           <button
                             type="button"
                             onClick={() => { setShowHeaderMore(false); handleSetStatus("under-review", undefined); }}
@@ -3286,7 +3292,7 @@ export default function OrderDetailModal({
                             order is tracked by the DB trigger handle_official_letter_
                             completion(); the official-letter reopen is handled by the
                             scheduled reopen_due_official_letter_orders() job. */}
-                        {order.status === "under-review" && !order.refunded_at && (
+                        {order.status === "under-review" && !isOperationallyCancelled && (
                           <button
                             type="button"
                             onClick={() => { setShowHeaderMore(false); handleSetStatus("completed"); }}
@@ -3299,7 +3305,7 @@ export default function OrderDetailModal({
                             <span className="flex-1 text-left">Mark as Completed</span>
                           </button>
                         )}
-                        {order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
+                        {order.status !== "refunded" && !isOperationallyCancelled && order.status !== "archived" && (
                           <button
                             type="button"
                             onClick={() => { setShowHeaderMore(false); handleSetStatus("completed", "patient_notified"); }}
@@ -3320,7 +3326,7 @@ export default function OrderDetailModal({
                             for completed/delivered orders. Hidden for under-review,
                             cancelled, refunded, archived. Uses handleMarkBackUnderReview
                             — no customer email, provider preserved, audit + status log. */}
-                        {(order.doctor_status === "patient_notified" || order.status === "completed") && order.status !== "cancelled" && order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
+                        {(order.doctor_status === "patient_notified" || order.status === "completed") && order.status !== "cancelled" && order.status !== "refunded" && !isOperationallyCancelled && order.status !== "archived" && (
                           <button
                             type="button"
                             onClick={() => { setShowHeaderMore(false); handleMarkBackUnderReview(); }}
@@ -3334,7 +3340,7 @@ export default function OrderDetailModal({
                         )}
                         {/* ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): send a
                             tracked $40 additional-documentation invoice. */}
-                        {order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
+                        {order.status !== "refunded" && !isOperationallyCancelled && order.status !== "archived" && (
                           <button
                             type="button"
                             onClick={() => { setShowHeaderMore(false); setShowAddonInvoice(true); }}
@@ -4173,7 +4179,7 @@ export default function OrderDetailModal({
                       </p>
                     </div>
                   </div>
-                ) : order.status === "refunded" || order.refunded_at ? (
+                ) : isOperationallyCancelled ? (
                   <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
                     <div className="w-9 h-9 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0">
                       <i className="ri-refund-line text-red-600 text-base"></i>
@@ -4365,7 +4371,7 @@ export default function OrderDetailModal({
                         the plain forward move (handleSetStatus); completed/delivered
                         orders get the reopen (handleMarkBackUnderReview — no customer
                         email, provider kept, audit + status log). */}
-                    {order.status !== "under-review" && order.status !== "cancelled" && order.status !== "refunded" && !order.refunded_at && order.status !== "archived" && (
+                    {order.status !== "under-review" && order.status !== "cancelled" && order.status !== "refunded" && !isOperationallyCancelled && order.status !== "archived" && (
                     <div>
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                         <i className="ri-settings-3-line"></i>Order Management
@@ -4499,7 +4505,7 @@ export default function OrderDetailModal({
                     )}
 
                     {/* ── Mark as Unpaid / Revert to Lead — for chargebacks, accidental payments, etc. ── */}
-                    {order.payment_intent_id && order.doctor_status !== "patient_notified" && order.status !== "refunded" && !order.refunded_at && order.status !== "cancelled" && (
+                    {order.payment_intent_id && order.doctor_status !== "patient_notified" && order.status !== "refunded" && !isOperationallyCancelled && order.status !== "cancelled" && (
                     <div className="border-t border-dashed border-amber-200 mt-1 pt-3">
                       <p className="text-xs text-amber-600 mb-2 flex items-center gap-1 font-semibold">
                         <i className="ri-arrow-go-back-line"></i>Revert to Lead
