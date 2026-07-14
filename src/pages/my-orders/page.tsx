@@ -53,6 +53,9 @@ interface Order {
   payment_intent_id: string | null;
   status: string;
   doctor_status: string | null;
+  // Authoritative "patient-notification email sent" timestamp. The portal only
+  // claims documents were emailed (vs merely "ready") when this is set.
+  patient_notification_sent_at?: string | null;
   letter_url: string | null;
   signed_letter_url: string | null;
   letter_id?: string | null;
@@ -198,13 +201,11 @@ const COL_MAIN_BOTTOM = "lg:col-start-1 lg:row-start-2 space-y-4 min-w-0";
 
 function OrderCard({
   order,
-  userEmail,
   onContactSupport,
   addonSuccessOrder,
   layout = "two-col",
 }: {
   order: Order;
-  userEmail: string;
   onContactSupport: () => void;
   addonSuccessOrder?: string | null;
   // "two-col" = dedicated right-hand Documents column (single-order view).
@@ -352,7 +353,17 @@ function OrderCard({
       {order.doctor_status === "patient_notified" && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2">
           <i className="ri-checkbox-circle-fill flex-shrink-0"></i>
-          <span>Your documents were sent to <strong>{userEmail}</strong> and are ready in <strong>My Documents</strong>.</span>
+          {/* Delivery recipient is the ORDER's email — never the authenticated
+              viewer/admin session (Admin Customer View previews another customer).
+              Only claim it was emailed when patient_notification_sent_at proves the
+              delivery email actually went out; otherwise just say it's ready. */}
+          <span>
+            {order.email && order.patient_notification_sent_at ? (
+              <>Your documents were sent to <strong>{order.email}</strong> and are ready in <strong>My Documents</strong>.</>
+            ) : (
+              <>Your documents are ready in <strong>My Documents</strong>.</>
+            )}
+          </span>
         </div>
       )}
     </>
@@ -1220,7 +1231,6 @@ export default function MyOrdersPage() {
                     />
                     <OrderCard
                       order={selectedOrder}
-                      userEmail={userEmail}
                       onContactSupport={() => setSupportOpen(true)}
                       addonSuccessOrder={addonSuccessOrder}
                       layout={filteredOrders.length > 1 ? "single" : "two-col"}
