@@ -38,8 +38,9 @@
   "name": "react",
   "private": true,
   "scripts": {
-    "build": "vite build && node scripts/prerender-seo.mjs && node scripts/check-attribution-parity.mjs --warn-only",
+    "build": "vite build && node scripts/prerender-seo.mjs && node scripts/check-attribution-parity.mjs --warn-only && node scripts/verify-attribution-hygiene.mjs --warn-only",
     "check:attribution": "node scripts/check-attribution-parity.mjs",
+    "check:attribution-hygiene": "node scripts/verify-attribution-hygiene.mjs",
     "dev": "vite",
     "indexnow": "node scripts/submit-indexnow.mjs",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",

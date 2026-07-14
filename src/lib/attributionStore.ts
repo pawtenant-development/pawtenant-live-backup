@@ -54,6 +54,9 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { sanitizeMacroValue } from "./attributionMacros";
+import { detectAiChannelFromReferrer } from "./aiReferral";
+
 const SS = typeof sessionStorage !== "undefined" ? sessionStorage : null;
 const LS = typeof localStorage !== "undefined" ? localStorage : null;
 
@@ -283,7 +286,10 @@ export function captureFromUrl(search: string): void {
   const skipped: Record<string, string> = {};
   const cleared: string[] = [];
 
-  const urlUtmSource = params.get("utm_source");
+  // utm_source is sanitized so an UN-EXPANDED macro (e.g. "{{site_source_name}}")
+  // is treated as absent — it must NOT be stored AND must NOT trigger the
+  // last-touch override below that would clear a real gclid/fbclid.
+  const urlUtmSource = sanitizeMacroValue(params.get("utm_source"));
   const urlFbclid    = params.get("fbclid");
   const urlGclid     = params.get("gclid");
 
@@ -424,7 +430,7 @@ export function captureFromUrl(search: string): void {
   if (urlUtmSource) {
     // LAST-TOUCH: fresh utm_source in URL → OVERRIDE any previously stored UTMs.
     utmFields.forEach(([field, param]) => {
-      const val = params.get(param);
+      const val = sanitizeMacroValue(params.get(param));
       if (val) {
         const existing = ssGet(KEYS[field]);
         if (existing && existing !== val) {
@@ -435,7 +441,7 @@ export function captureFromUrl(search: string): void {
       }
     });
     // ref is still set-once
-    const refVal = params.get("ref");
+    const refVal = sanitizeMacroValue(params.get("ref"));
     if (refVal && !ssGet(KEYS.ref)) {
       ssSet(KEYS.ref, refVal);
       captured.ref = refVal;
@@ -444,13 +450,13 @@ export function captureFromUrl(search: string): void {
   } else if (!ssGet("utm_captured")) {
     // First-landing: capture everything that's in the URL.
     utmFields.forEach(([field, param]) => {
-      const val = params.get(param);
+      const val = sanitizeMacroValue(params.get(param));
       if (val) {
         ssSet(KEYS[field], val);
         captured[field] = val;
       }
     });
-    const refVal = params.get("ref");
+    const refVal = sanitizeMacroValue(params.get("ref"));
     if (refVal) {
       ssSet(KEYS.ref, refVal);
       captured.ref = refVal;
@@ -460,7 +466,7 @@ export function captureFromUrl(search: string): void {
     // After first landing, no fresh utm_source in URL:
     // fill any still-missing UTMs (don't overwrite existing values).
     utmFields.forEach(([field, param]) => {
-      const val = params.get(param);
+      const val = sanitizeMacroValue(params.get(param));
       const existing = ssGet(KEYS[field]);
       if (val && !existing) {
         ssSet(KEYS[field], val);
@@ -481,7 +487,7 @@ export function captureFromUrl(search: string): void {
     AD_PARAM_ALIASES.forEach(([field, aliases]) => {
       let val: string | null = null;
       for (const alias of aliases) {
-        const v = params.get(alias);
+        const v = sanitizeMacroValue(params.get(alias));
         if (v) { val = v; break; }
       }
       if (!val) return;
@@ -855,6 +861,8 @@ export function buildFullSource(): string {
   if (utm_source && utm_medium) return `${utm_source} / ${utm_medium}`;
   if (utm_source) return utm_source;
   if (referrer) {
+    const aiHost = detectAiChannelFromReferrer(referrer);
+    if (aiHost) return aiHost;
     try {
       const host = new URL(referrer).hostname.toLowerCase();
       if (host.includes("google") || host.includes("bing") || host.includes("yahoo")) return "Google Organic";
@@ -892,7 +900,7 @@ export function buildChannel(): string {
   const currentSearch = typeof window !== "undefined" ? window.location.search : "";
   if (currentSearch) {
     const p = new URLSearchParams(currentSearch);
-    const urlUtm    = p.get("utm_source");
+    const urlUtm    = sanitizeMacroValue(p.get("utm_source"));
     const urlFbclid = p.get("fbclid");
     const urlGclid  = p.get("gclid");
     if (urlUtm) {
@@ -916,6 +924,11 @@ export function buildChannel(): string {
 
   // ── 5. Referrer ──────────────────────────────────────────────────────────
   if (referrer) {
+    // AI answer engines (ChatGPT, Claude, Gemini, ...) frequently arrive with
+    // ONLY a referrer and no utm/click id. Detect them BEFORE the search-engine
+    // host check so e.g. gemini.google.com is not mislabeled "organic_search".
+    const aiHost = detectAiChannelFromReferrer(referrer);
+    if (aiHost) return aiHost;
     try {
       const host = new URL(referrer).hostname.toLowerCase();
       if (host.includes("google") || host.includes("bing") || host.includes("yahoo")) {

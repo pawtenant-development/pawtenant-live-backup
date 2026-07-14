@@ -207,9 +207,19 @@
       (function() {
         var params = new URLSearchParams(window.location.search);
         var fields = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','fbclid','msclkid'];
+        // Reject un-interpolated ad macros ({{site_source_name}}, {keyword}, ...) so a raw
+        // placeholder never lands in sessionStorage. This inline script runs BEFORE the
+        // bundle, so it must mirror the sanitizer in src/lib/attributionMacros.ts.
+        // Click IDs (gclid/fbclid/msclkid) are opaque and are never treated as macros.
+        var CLICK_IDS = { gclid: 1, fbclid: 1, msclkid: 1 };
+        function isUnresolvedMacro(s) {
+          return /^\{\{[^{}]*\}\}$/.test(s) || /^\{[a-z0-9_.:+-]+\}$/i.test(s);
+        }
         fields.forEach(function(k) {
           var v = params.get(k);
-          if (v) sessionStorage.setItem(k, v);
+          if (!v) return;
+          if (!CLICK_IDS[k] && isUnresolvedMacro(v)) return;
+          sessionStorage.setItem(k, v);
         });
         if (!sessionStorage.getItem('landing_url')) {
           sessionStorage.setItem('landing_url', window.location.href);
