@@ -1,8 +1,28 @@
-// PSDAssessmentView — Renders PSD Psychiatric Service Dog evaluation answers
-// inside the OrderDetailModal / ProviderOrderDetail Assessment tab.
-// Matches the branded style of the ESA intake form (logo + contact info at top).
+// PSDAssessmentView — read-only, neutral rendering of a customer's PSD intake.
+//
+// PSD-PROVIDER-RAW-ASSESSMENT-001.
+//
+// The licensed provider — not this component — makes the eligibility decision.
+// So this view shows the customer's ACTUAL answers as a simple numbered
+// question-and-answer list (the same style as the ESA intake), with NO
+// automated pass/fail checklist and NO green/red colouring that could pre-empt
+// the provider's clinical judgment. Concerning answers (e.g. "still learning,
+// performs inconsistently") are shown neutrally, exactly as the customer chose.
+//
+// Shared, unchanged, by the provider portal, the admin Order Detail modal, and
+// the customer portal. It is purely presentational and never mutates data.
 
 import { useRef } from "react";
+import {
+  PSD_QUESTIONNAIRE_ITEMS,
+  normalizePsdAnswers,
+  isAnswered,
+  resolvePsdOptionLabel,
+  getPsdMultiValues,
+  getPsdText,
+  getPsdPets,
+  getPsdEvidence,
+} from "./psdAssessmentSchema";
 
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 
@@ -20,31 +40,6 @@ const STATE_NAMES: Record<string, string> = {
   DC: "Washington D.C.",
 };
 
-interface PSDAnswers {
-  dogTasks?: string[];
-  taskTraining?: string;
-  taskDescription?: string;
-  taskReliability?: string;
-  taskPublicAccess?: string;
-  taskEvidenceUrl?: string;
-  taskEvidenceType?: string;
-  dogDuration?: string;
-  emotionalFrequency?: string;
-  conditions?: string[];
-  lifeChangeStress?: string;
-  dailyImpact?: string;
-  medication?: string;
-  medicationDetails?: string;
-  priorDiagnosis?: string;
-  specificDiagnosis?: string;
-  currentTreatment?: string;
-  treatmentDetails?: string;
-  dogHelpDescription?: string;
-  housingType?: string;
-  pets?: { name?: string; type?: string; age?: string; breed?: string; weight?: string }[];
-  dob?: string;
-}
-
 interface OrderInfo {
   firstName?: string | null;
   lastName?: string | null;
@@ -58,105 +53,8 @@ interface OrderInfo {
 interface Props {
   answers: Record<string, unknown> | null;
   orderInfo?: OrderInfo;
-}
-
-// ── Label maps ────────────────────────────────────────────────────────────────
-
-const TASK_TRAINING_LABELS: Record<string, string> = {
-  professional: "Professionally trained by a certified trainer",
-  owner_trained: "Owner-trained (self-trained with the dog)",
-  mixed: "Mix of professional and owner training",
-  in_training: "Currently in training",
-};
-
-const TASK_RELIABILITY_LABELS: Record<string, string> = {
-  very_reliable: "Very reliably — performs the task consistently every time",
-  mostly_reliable: "Mostly reliably — performs the task most of the time",
-  inconsistent: "Sometimes — still learning, performs inconsistently",
-  in_training: "Still in early training — not yet reliable",
-};
-
-const TASK_PUBLIC_ACCESS_LABELS: Record<string, string> = {
-  yes: "Yes — well-behaved and under control in public",
-  mostly: "Mostly — minor issues but generally manageable",
-  training: "Working on it — still training for public access",
-  no: "No — not yet ready for public access",
-};
-
-const DURATION_LABELS: Record<string, string> = {
-  lt6months: "Less than 6 months",
-  "6to12months": "6–12 months",
-  "1to2years": "1–2 years",
-  gt2years: "More than 2 years",
-};
-
-const FREQ_LABELS: Record<string, string> = {
-  rarely: "Rarely — a few times a month",
-  sometimes: "Sometimes — a few times a week",
-  often: "Often — most days",
-  daily: "Almost always — daily or near-daily",
-};
-
-const LIFE_CHANGE_LABELS: Record<string, string> = {
-  yes_current: "Yes — currently going through a major life change",
-  yes_recent: "Yes — recently went through one and still adjusting",
-  no: "Not significantly — situation feels generally stable",
-};
-
-const MEDICATION_LABELS: Record<string, string> = {
-  yes_taking: "Yes, currently prescribed and taking",
-  yes_not_taking: "Yes, prescribed but not currently taking",
-  previous: "Previously prescribed, no longer taking",
-  never: "No, never prescribed",
-};
-
-const DIAGNOSIS_LABELS: Record<string, string> = {
-  yes: "Yes, formal diagnosis",
-  informal: "Told I may have a condition, not formally diagnosed",
-  no: "No, never been evaluated",
-  prefer_not: "Prefer not to say",
-};
-
-const TREATMENT_LABELS: Record<string, string> = {
-  active: "Yes, actively in treatment",
-  previous: "Previously received treatment",
-  considering: "No, but considering it",
-  none: "No treatment at this time",
-};
-
-const HOUSING_LABELS: Record<string, string> = {
-  apt_nopet: "Apartment with no-pet policy",
-  condo: "Condo or townhouse",
-  house_rent: "Renting a house",
-  dorm: "College dorm or on-campus housing",
-  looking: "Currently looking for housing",
-};
-
-// ── ADA task checklist ────────────────────────────────────────────────────────
-
-const ALL_DOG_TASKS = [
-  "Interrupting anxiety or panic attacks",
-  "Providing deep pressure therapy (DPT)",
-  "Grounding during dissociation or flashbacks",
-  "Alerting to emotional distress before it escalates",
-  "Retrieving medication or water",
-  "Guiding handler through crowds or public spaces",
-  "Waking handler from nightmares (PTSD)",
-  "Creating personal space / blocking (crowd control)",
-  "Performing safety checks of rooms",
-  "Tethering — preventing self-harm or wandering",
-  "Alerting to sounds or persons for hearing impairment",
-  "Reminding handler to take medication",
-];
-
-function AnswerRow({ label, value, accent }: { label: string; value: string | undefined; accent?: string }) {
-  if (!value) return null;
-  return (
-    <div className="flex items-start gap-2 py-2.5 border-b border-gray-50 last:border-0">
-      <span className="text-xs text-gray-400 w-40 flex-shrink-0 pt-0.5">{label}</span>
-      <span className={`text-sm font-semibold flex-1 ${accent ?? "text-gray-800"}`}>{value}</span>
-    </div>
-  );
+  /** Cosmetic only — tunes the intro/footer wording. Never changes what is shown. */
+  audience?: "provider" | "admin" | "customer";
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -177,7 +75,7 @@ function formatDate(iso?: string | null): string {
 
 function handlePrintAssessment(
   contentRef: React.RefObject<HTMLDivElement | null>,
-  orderInfo?: OrderInfo,
+  confirmationId?: string | null,
 ) {
   const el = contentRef.current;
   if (!el) return;
@@ -187,7 +85,7 @@ function handlePrintAssessment(
   printWin.document.write(`<!DOCTYPE html>
 <html>
 <head>
-  <title>PSD Evaluation — ${orderInfo?.confirmationId ?? "PawTenant"}</title>
+  <title>PSD Intake — ${confirmationId ?? "PawTenant"}</title>
   <script src="https://cdn.tailwindcss.com"><\/script>
   <style>
     @media print {
@@ -209,8 +107,47 @@ function handlePrintAssessment(
   printWin.document.close();
 }
 
-export default function PSDAssessmentView({ answers, orderInfo }: Props) {
+// ── Neutral answer badge ──────────────────────────────────────────────────────
+// Identifies state only (selected / uploaded / answered / not answered). It never
+// signals a clinical judgment, so it is intentionally colour-neutral.
+function Badge({ text }: { text: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 bg-slate-100 text-slate-600 text-xs font-semibold flex-shrink-0">
+      {text}
+    </span>
+  );
+}
+
+function QuestionBlock({
+  n,
+  label,
+  badge,
+  children,
+}: {
+  n?: number;
+  label: string;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-4">
+      <div className="w-7 h-7 flex items-center justify-center bg-amber-500 text-white text-xs font-bold rounded-full flex-shrink-0 mt-0.5">
+        {n ?? "•"}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-3 mb-1.5">
+          <p className="text-sm font-bold text-gray-800">{label}</p>
+          {badge}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function PSDAssessmentView({ answers, orderInfo, audience = "provider" }: Props) {
   const contentRef = useRef<HTMLDivElement>(null);
+
   if (!answers) {
     return (
       <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-10 text-center">
@@ -223,13 +160,27 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
     );
   }
 
-  const a = answers as PSDAnswers;
-  const dogTasks = a.dogTasks ?? [];
-  const conditions = a.conditions ?? [];
-  const pets = a.pets ?? [];
+  const a = normalizePsdAnswers(answers);
+  const pets = getPsdPets(a);
+  const dob = getPsdText(a, "dob");
+  const evidence = getPsdEvidence(a);
 
   const fullName = [orderInfo?.firstName, orderInfo?.lastName].filter(Boolean).join(" ") || "—";
   const stateName = STATE_NAMES[orderInfo?.state ?? ""] ?? orderInfo?.state ?? "—";
+
+  const hasAnyQuestionnaire = PSD_QUESTIONNAIRE_ITEMS.some((q) =>
+    q.kind === "evidence" ? evidence.present : isAnswered(a[q.key]),
+  );
+
+  const introText =
+    audience === "customer"
+      ? "This is the information you submitted for your Psychiatric Service Dog request — the same intake your licensed provider reviews."
+      : "The customer's own answers, exactly as submitted. The licensed provider reviews these responses and makes the eligibility determination.";
+
+  const footerText =
+    audience === "customer"
+      ? "This is a copy of the intake information you submitted for your case."
+      : "This document is confidential and intended solely for licensed professionals reviewing this case.";
 
   return (
     <div className="space-y-6" ref={contentRef}>
@@ -238,7 +189,7 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
       <div className="flex justify-end no-print">
         <button
           type="button"
-          onClick={() => handlePrintAssessment(contentRef, orderInfo)}
+          onClick={() => handlePrintAssessment(contentRef, orderInfo?.confirmationId)}
           className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 cursor-pointer transition-colors"
         >
           <i className="ri-printer-line"></i>Print / Save as PDF
@@ -247,12 +198,10 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
 
       {/* ── BRANDED HEADER ─────────────────────────────────────────────────── */}
       <div className="bg-[#f8f7f4] border border-gray-200 rounded-xl overflow-hidden">
-        {/* Logo + title band */}
         <div className="bg-white px-6 py-5 text-center border-b border-gray-100">
           <img src={LOGO_URL} alt="PawTenant" className="h-10 mx-auto mb-3 object-contain" />
-          <h2 className="text-lg font-extrabold text-amber-700 mb-1">PawTenant — PSD Evaluation Form</h2>
-          <p className="text-xs text-gray-500">Psychiatric Service Dog (ADA) Assessment &bull; Confidential</p>
-          {/* Contact strip */}
+          <h2 className="text-lg font-extrabold text-amber-700 mb-1">PawTenant — PSD Intake Form</h2>
+          <p className="text-xs text-gray-500">Psychiatric Service Dog Assessment &bull; Confidential</p>
           <div className="flex items-center justify-center gap-5 mt-3 flex-wrap">
             {[
               { icon: "ri-mail-line", text: "hello@pawtenant.com" },
@@ -264,6 +213,7 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
               </span>
             ))}
           </div>
+          <p className="text-xs text-gray-500 max-w-lg mx-auto leading-relaxed mt-3">{introText}</p>
         </div>
 
         {/* Patient info grid */}
@@ -275,14 +225,14 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
               <InfoRow label="State" value={stateName} />
               <InfoRow label="Email" value={orderInfo.email ?? "—"} />
               <InfoRow label="Phone" value={orderInfo.phone ?? "—"} />
-              {a.dob && <InfoRow label="Date of Birth" value={a.dob} />}
+              {dob && <InfoRow label="Date of Birth" value={dob} />}
               <InfoRow label="Order ID" value={orderInfo.confirmationId ?? "—"} />
               <InfoRow label="Submitted" value={formatDate(orderInfo.createdAt)} />
             </div>
           </div>
         )}
 
-        {/* Dog info (from pets array) */}
+        {/* Service dog info (from pets array) */}
         {pets.length > 0 && (
           <div className="px-6 py-4 border-t border-gray-100">
             <p className="text-xs font-extrabold text-amber-700 uppercase tracking-widest mb-3">Service Dog Information</p>
@@ -314,351 +264,133 @@ export default function PSDAssessmentView({ answers, orderInfo }: Props) {
         )}
       </div>
 
-      {/* ── PSD Badge Summary ──────────────────────────────────────────────── */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 flex items-center justify-center bg-amber-100 rounded-xl flex-shrink-0">
-            <i className="ri-service-line text-amber-600 text-lg"></i>
-          </div>
-          <div>
-            <p className="text-sm font-extrabold text-amber-900">Psychiatric Service Dog (PSD) Evaluation</p>
-            <p className="text-xs text-amber-700">ADA-compliant assessment — dog must perform at least one specific task</p>
-          </div>
-          <span className="ml-auto inline-flex items-center gap-1 px-3 py-1 bg-amber-600 text-white rounded-full text-xs font-extrabold flex-shrink-0">
-            <i className="ri-service-fill" style={{ fontSize: "10px" }}></i>PSD
-          </span>
-        </div>
-        <div className="flex items-center gap-4 mt-3 text-xs text-amber-700">
-          <span className="flex items-center gap-1">
-            <i className="ri-shield-check-line"></i>
-            <strong>{dogTasks.length}</strong> task{dogTasks.length !== 1 ? "s" : ""} reported
-          </span>
-          <span className="flex items-center gap-1">
-            <i className="ri-heart-pulse-line"></i>
-            <strong>{conditions.length}</strong> condition{conditions.length !== 1 ? "s" : ""} reported
-          </span>
-        </div>
-      </div>
-
-      {/* ── Section 1 — Dog Tasks ──────────────────────────────────────────── */}
+      {/* ── Questionnaire — neutral numbered question & answer ─────────────── */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-3.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
           <div className="w-7 h-7 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
-            <i className="ri-checkbox-multiple-line text-amber-600 text-sm"></i>
+            <i className="ri-questionnaire-line text-amber-600 text-sm"></i>
           </div>
-          <div>
-            <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Q1 — Dog Tasks Performed</p>
-            <p className="text-xs text-gray-400 mt-0.5">ADA requires at least 1 trained task directly related to disability</p>
-          </div>
-          {dogTasks.length > 0 ? (
-            <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-extrabold">
-              <i className="ri-check-line"></i>{dogTasks.length} selected
-            </span>
+          <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Assessment Responses</p>
+        </div>
+
+        <div className="p-5">
+          {!hasAnyQuestionnaire ? (
+            <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
+              <p className="text-sm text-gray-400">No questionnaire answers recorded for this order.</p>
+            </div>
           ) : (
-            <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-extrabold">
-              <i className="ri-close-line"></i>None selected
-            </span>
+            <div className="space-y-6">
+              {PSD_QUESTIONNAIRE_ITEMS.map((q) => {
+                // ── Evidence upload ──
+                if (q.kind === "evidence") {
+                  if (!evidence.present) return null;
+                  const iconClass =
+                    evidence.type === "video" ? "ri-video-line" :
+                    evidence.type === "photo" ? "ri-image-line" :
+                    evidence.type === "link" ? "ri-links-line" : "ri-attachment-2";
+                  return (
+                    <QuestionBlock
+                      key={q.key}
+                      n={q.n}
+                      label={q.label}
+                      badge={<Badge text={evidence.type ? `Uploaded · ${evidence.type}` : "Uploaded"} />}
+                    >
+                      <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <div className="w-9 h-9 flex items-center justify-center bg-slate-100 rounded-lg flex-shrink-0">
+                          <i className={`${iconClass} text-slate-500 text-base`}></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-700 capitalize">
+                            {evidence.type ? `${evidence.type} attached by customer` : "Evidence attached by customer"}
+                          </p>
+                          {evidence.openable ? (
+                            <p className="text-xs text-slate-500 truncate mt-0.5">{evidence.url}</p>
+                          ) : evidence.url ? (
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              Uploaded during intake — not stored as an openable link.
+                            </p>
+                          ) : null}
+                        </div>
+                        {evidence.openable && (
+                          <a
+                            href={evidence.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 text-white text-xs font-bold rounded-lg hover:bg-slate-700 cursor-pointer transition-colors flex-shrink-0"
+                          >
+                            <i className="ri-external-link-line"></i>
+                            {evidence.type === "video" ? "Watch" : evidence.type === "photo" ? "View" : "Open"}
+                          </a>
+                        )}
+                      </div>
+                    </QuestionBlock>
+                  );
+                }
+
+                // ── Multi-select — list only the customer's selected answers ──
+                if (q.kind === "multi") {
+                  const selected = getPsdMultiValues(a, q.key);
+                  if (selected.length === 0) return null;
+                  return (
+                    <QuestionBlock
+                      key={q.key}
+                      n={q.n}
+                      label={q.label}
+                      badge={<Badge text={`${selected.length} selected`} />}
+                    >
+                      <div className="flex flex-wrap gap-1.5">
+                        {selected.map((s) => (
+                          <span
+                            key={s}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700"
+                          >
+                            <i className="ri-check-line text-slate-400" style={{ fontSize: "11px" }}></i>{s}
+                          </span>
+                        ))}
+                      </div>
+                    </QuestionBlock>
+                  );
+                }
+
+                // ── Free-text — verbatim, line breaks preserved ──
+                if (q.kind === "text") {
+                  const text = getPsdText(a, q.key);
+                  if (!isAnswered(text)) return null;
+                  return (
+                    <QuestionBlock key={q.key} n={q.n} label={q.label}>
+                      <div className="bg-slate-50 border-l-4 border-slate-300 rounded-r-lg px-4 py-3">
+                        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{text}</p>
+                      </div>
+                    </QuestionBlock>
+                  );
+                }
+
+                // ── Single-select — resolved label, verbatim fallback ──
+                const value = a[q.key];
+                if (!isAnswered(value)) return null;
+                const label = resolvePsdOptionLabel(q.options, value);
+                const followUpText = q.followUp ? getPsdText(a, q.followUp.key) : "";
+                return (
+                  <QuestionBlock key={q.key} n={q.n} label={q.label}>
+                    <p className="text-sm font-semibold text-gray-800 leading-relaxed">{label}</p>
+                    {q.followUp && isAnswered(followUpText) && (
+                      <div className="mt-2 flex items-start gap-2">
+                        <span className="text-xs text-gray-400 flex-shrink-0 mt-0.5">{q.followUp.label}:</span>
+                        <span className="text-sm text-gray-700 whitespace-pre-wrap">{followUpText}</span>
+                      </div>
+                    )}
+                  </QuestionBlock>
+                );
+              })}
+            </div>
           )}
         </div>
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {ALL_DOG_TASKS.map((task) => {
-            const selected = dogTasks.includes(task);
-            return (
-              <div
-                key={task}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-xs font-semibold ${
-                  selected
-                    ? "bg-amber-50 border-amber-300 text-amber-800"
-                    : "bg-gray-50 border-gray-100 text-gray-400"
-                }`}
-              >
-                <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 ${selected ? "bg-amber-500 border-amber-500" : "border-gray-300"}`}>
-                  {selected && <i className="ri-check-line text-white leading-none" style={{ fontSize: "11px" }}></i>}
-                </div>
-                {task}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Section 2 — Training & Duration ───────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
-          <div className="w-7 h-7 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-            <i className="ri-time-line text-[#1a5c4f] text-sm"></i>
-          </div>
-          <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Training &amp; Duration</p>
-        </div>
-        <div className="px-5 py-1">
-          <AnswerRow label="Training method" value={TASK_TRAINING_LABELS[a.taskTraining ?? ""] ?? a.taskTraining} />
-          <AnswerRow label="Duration with dog" value={DURATION_LABELS[a.dogDuration ?? ""] ?? a.dogDuration} />
-        </div>
-      </div>
-
-      {/* ── Section 2b — Task Training Details (new ADA fields) ───────────── */}
-      {(a.taskDescription || a.taskReliability || a.taskPublicAccess || a.taskEvidenceUrl) && (
-        <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
-          <div className="px-5 py-3.5 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
-            <div className="w-7 h-7 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
-              <i className="ri-shield-star-line text-amber-600 text-sm"></i>
-            </div>
-            <div className="flex-1">
-              <p className="text-xs font-extrabold text-amber-900 uppercase tracking-wider">ADA Task Training Details</p>
-              <p className="text-xs text-amber-600 mt-0.5">Provider-reviewed task description, reliability, and public access behavior</p>
-            </div>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-600 text-white rounded-full text-xs font-extrabold flex-shrink-0">
-              <i className="ri-service-line" style={{ fontSize: "10px" }}></i>ADA
-            </span>
-          </div>
-
-          <div className="p-5 space-y-5">
-            {/* Task description */}
-            {a.taskDescription && (
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <i className="ri-file-text-line text-amber-500"></i>Step-by-Step Task Description
-                </p>
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                  <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{a.taskDescription}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Reliability + Public Access side by side */}
-            {(a.taskReliability || a.taskPublicAccess) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {a.taskReliability && (
-                  <div className={`rounded-xl border px-4 py-3 ${
-                    a.taskReliability === "very_reliable" ? "bg-green-50 border-green-200" :
-                    a.taskReliability === "mostly_reliable" ? "bg-emerald-50 border-emerald-200" :
-                    a.taskReliability === "inconsistent" ? "bg-amber-50 border-amber-200" :
-                    "bg-red-50 border-red-200"
-                  }`}>
-                    <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
-                      <i className="ri-bar-chart-line"></i>Task Reliability
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                        a.taskReliability === "very_reliable" ? "bg-green-500" :
-                        a.taskReliability === "mostly_reliable" ? "bg-emerald-500" :
-                        a.taskReliability === "inconsistent" ? "bg-amber-500" :
-                        "bg-red-500"
-                      }`}></div>
-                      <p className={`text-xs font-semibold ${
-                        a.taskReliability === "very_reliable" ? "text-green-800" :
-                        a.taskReliability === "mostly_reliable" ? "text-emerald-800" :
-                        a.taskReliability === "inconsistent" ? "text-amber-800" :
-                        "text-red-800"
-                      }`}>
-                        {TASK_RELIABILITY_LABELS[a.taskReliability] ?? a.taskReliability}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {a.taskPublicAccess && (
-                  <div className={`rounded-xl border px-4 py-3 ${
-                    a.taskPublicAccess === "yes" ? "bg-green-50 border-green-200" :
-                    a.taskPublicAccess === "mostly" ? "bg-emerald-50 border-emerald-200" :
-                    a.taskPublicAccess === "training" ? "bg-amber-50 border-amber-200" :
-                    "bg-red-50 border-red-200"
-                  }`}>
-                    <p className="text-xs font-bold text-gray-500 mb-1 flex items-center gap-1">
-                      <i className="ri-store-2-line"></i>Public Access Behavior
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                        a.taskPublicAccess === "yes" ? "bg-green-500" :
-                        a.taskPublicAccess === "mostly" ? "bg-emerald-500" :
-                        a.taskPublicAccess === "training" ? "bg-amber-500" :
-                        "bg-red-500"
-                      }`}></div>
-                      <p className={`text-xs font-semibold ${
-                        a.taskPublicAccess === "yes" ? "text-green-800" :
-                        a.taskPublicAccess === "mostly" ? "text-emerald-800" :
-                        a.taskPublicAccess === "training" ? "text-amber-800" :
-                        "text-red-800"
-                      }`}>
-                        {TASK_PUBLIC_ACCESS_LABELS[a.taskPublicAccess] ?? a.taskPublicAccess}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Task Training Evidence */}
-            {a.taskEvidenceUrl && (
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <i className={`${a.taskEvidenceType === "video" ? "ri-video-line" : a.taskEvidenceType === "photo" ? "ri-image-line" : "ri-links-line"} text-amber-500`}></i>
-                  Task Training Evidence
-                  <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-bold capitalize">
-                    {a.taskEvidenceType || "file"}
-                  </span>
-                </p>
-                <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
-                  <div className="w-9 h-9 flex items-center justify-center bg-amber-100 rounded-lg flex-shrink-0">
-                    <i className={`${a.taskEvidenceType === "video" ? "ri-video-line" : a.taskEvidenceType === "photo" ? "ri-image-line" : "ri-links-line"} text-amber-600 text-base`}></i>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-amber-900">
-                      {a.taskEvidenceType === "link" ? "External Link" : a.taskEvidenceType === "video" ? "Video File Attached" : "Photo Attached"}
-                    </p>
-                    <p className="text-xs text-amber-700 truncate mt-0.5">{a.taskEvidenceUrl}</p>
-                  </div>
-                  <a
-                    href={a.taskEvidenceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 cursor-pointer transition-colors flex-shrink-0"
-                  >
-                    <i className="ri-external-link-line"></i>
-                    {a.taskEvidenceType === "video" ? "Watch" : a.taskEvidenceType === "photo" ? "View" : "Open Link"}
-                  </a>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Section 3 — Mental Health ──────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
-          <div className="w-7 h-7 flex items-center justify-center bg-violet-100 rounded-lg flex-shrink-0">
-            <i className="ri-heart-pulse-line text-violet-600 text-sm"></i>
-          </div>
-          <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Mental Health Information</p>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <p className="text-xs font-bold text-gray-500 mb-2">Conditions experienced</p>
-            {conditions.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {conditions.map((c) => (
-                  <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 bg-violet-50 border border-violet-200 rounded-full text-xs font-semibold text-violet-700">
-                    <i className="ri-checkbox-circle-fill" style={{ fontSize: "9px" }}></i>{c}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400 italic">No conditions reported</p>
-            )}
-          </div>
-          <div className="border-t border-gray-50 pt-3 space-y-0">
-            <AnswerRow label="Emotional frequency" value={FREQ_LABELS[a.emotionalFrequency ?? ""] ?? a.emotionalFrequency} />
-            <AnswerRow label="Life change stress" value={LIFE_CHANGE_LABELS[a.lifeChangeStress ?? ""] ?? a.lifeChangeStress} />
-            <AnswerRow label="Daily impact" value={FREQ_LABELS[a.dailyImpact ?? ""] ?? a.dailyImpact} />
-            <AnswerRow label="Medication" value={MEDICATION_LABELS[a.medication ?? ""] ?? a.medication} />
-            {a.medicationDetails && <AnswerRow label="Medication details" value={a.medicationDetails} accent="text-gray-700" />}
-            <AnswerRow label="Prior diagnosis" value={DIAGNOSIS_LABELS[a.priorDiagnosis ?? ""] ?? a.priorDiagnosis} />
-            {a.specificDiagnosis && <AnswerRow label="Specific diagnosis" value={a.specificDiagnosis} accent="text-violet-700" />}
-            <AnswerRow label="Current treatment" value={TREATMENT_LABELS[a.currentTreatment ?? ""] ?? a.currentTreatment} />
-            {a.treatmentDetails && <AnswerRow label="Treatment details" value={a.treatmentDetails} accent="text-gray-700" />}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Section 4 — How the dog helps ─────────────────────────────────── */}
-      {a.dogHelpDescription && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
-            <div className="w-7 h-7 flex items-center justify-center bg-orange-100 rounded-lg flex-shrink-0">
-              <i className="ri-message-3-line text-orange-600 text-sm"></i>
-            </div>
-            <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">How the Dog Helps — Patient&apos;s Own Words</p>
-          </div>
-          <div className="px-5 py-4">
-            <p className="text-sm text-gray-700 leading-relaxed italic bg-orange-50 border border-orange-100 rounded-xl px-4 py-3">
-              &ldquo;{a.dogHelpDescription}&rdquo;
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ── Section 5 — Housing ───────────────────────────────────────────── */}
-      {a.housingType && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
-            <div className="w-7 h-7 flex items-center justify-center bg-sky-100 rounded-lg flex-shrink-0">
-              <i className="ri-home-line text-sky-600 text-sm"></i>
-            </div>
-            <p className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Housing Type</p>
-          </div>
-          <div className="px-5 py-4">
-            <p className="text-sm font-semibold text-gray-800">{HOUSING_LABELS[a.housingType] ?? a.housingType}</p>
-          </div>
-        </div>
-      )}
-
-      {/* ── ADA Provider Checklist ─────────────────────────────────────────── */}
-      <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-xl p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-7 h-7 flex items-center justify-center bg-[#e8f5f1] rounded-lg flex-shrink-0">
-            <i className="ri-shield-check-line text-[#1a5c4f] text-sm"></i>
-          </div>
-          <p className="text-xs font-extrabold text-[#1a5c4f] uppercase tracking-wider">Provider ADA Eligibility Checklist</p>
-        </div>
-        <div className="space-y-2.5">
-          {[
-            {
-              label: "Dog performs at least 1 specific trained task",
-              pass: dogTasks.length > 0,
-              note: dogTasks.length > 0 ? `${dogTasks.length} task${dogTasks.length !== 1 ? "s" : ""} reported` : "No tasks reported — does not meet ADA requirement",
-            },
-            {
-              label: "Patient has a disability that substantially limits major life activity",
-              pass: conditions.length > 0 || !!a.specificDiagnosis,
-              note: conditions.length > 0 ? `${conditions.length} condition${conditions.length !== 1 ? "s" : ""} reported` : "No conditions or diagnosis disclosed",
-            },
-            {
-              label: "Tasks are directly related to the patient's disability",
-              pass: !!a.dogHelpDescription && a.dogHelpDescription.trim().length > 20,
-              note: a.dogHelpDescription ? "Patient provided description of therapeutic relationship" : "No description provided",
-            },
-            {
-              label: "Dog is trained (not in early training stages)",
-              pass: a.taskTraining !== "in_training",
-              note: TASK_TRAINING_LABELS[a.taskTraining ?? ""] ?? "Training status not provided",
-            },
-            {
-              label: "Step-by-step task description provided",
-              pass: !!a.taskDescription && a.taskDescription.trim().length >= 15,
-              note: a.taskDescription ? `${a.taskDescription.trim().length} characters — ADA task behavior documented` : "No task description provided",
-            },
-            {
-              label: "Dog performs tasks reliably",
-              pass: a.taskReliability === "very_reliable" || a.taskReliability === "mostly_reliable",
-              note: TASK_RELIABILITY_LABELS[a.taskReliability ?? ""] ?? "Reliability not reported",
-            },
-            {
-              label: "Dog is under control in public (ADA public access)",
-              pass: a.taskPublicAccess === "yes" || a.taskPublicAccess === "mostly",
-              note: TASK_PUBLIC_ACCESS_LABELS[a.taskPublicAccess ?? ""] ?? "Public access behavior not reported",
-            },
-          ].map((item) => (
-            <div key={item.label} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${item.pass ? "bg-[#e8f5f1] border-[#b8ddd5]" : "bg-red-50 border-red-200"}`}>
-              <div className={`w-6 h-6 flex items-center justify-center rounded-full flex-shrink-0 mt-0.5 ${item.pass ? "bg-[#1a5c4f]" : "bg-red-500"}`}>
-                <i className={`${item.pass ? "ri-check-line" : "ri-close-line"} text-white leading-none`} style={{ fontSize: "11px" }}></i>
-              </div>
-              <div>
-                <p className={`text-xs font-bold ${item.pass ? "text-[#1a5c4f]" : "text-red-700"}`}>{item.label}</p>
-                <p className={`text-xs mt-0.5 ${item.pass ? "text-[#1a5c4f]/70" : "text-red-600"}`}>{item.note}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-[#1a5c4f]/60 mt-3 flex items-center gap-1">
-          <i className="ri-information-line"></i>
-          This checklist is a guide for the provider. Final eligibility determination is at the licensed professional&apos;s discretion.
-        </p>
       </div>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <div className="border-t border-gray-100 pt-4 pb-2 text-center">
         <p className="text-xs text-gray-400">PawTenant &bull; Secure PSD Consultation Support &bull; pawtenant.com</p>
-        <p className="text-xs text-gray-400 mt-1">This document is confidential and intended solely for licensed professionals reviewing this case.</p>
+        <p className="text-xs text-gray-400 mt-1">{footerText}</p>
       </div>
 
     </div>

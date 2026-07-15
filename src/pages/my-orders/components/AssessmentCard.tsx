@@ -90,6 +90,7 @@ export default function AssessmentCard({ order }: { order: AssessmentCardOrder }
         <div className="mt-3 border-t border-gray-100 pt-3">
           {psd ? (
             <PSDAssessmentView
+              audience="customer"
               answers={order.assessment_answers}
               orderInfo={{
                 firstName: order.first_name,

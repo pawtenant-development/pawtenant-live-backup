@@ -1184,6 +1184,7 @@ export default function ProviderOrderDetail({
               {/* ── PSD Assessment ── */}
               {isPSDOrder(order) ? (
                 <PSDAssessmentView
+                  audience="provider"
                   answers={order.assessment_answers}
                   orderInfo={{
                     firstName: order.first_name,
