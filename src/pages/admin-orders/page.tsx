@@ -36,6 +36,15 @@ import BroadcastModal from "./components/BroadcastModal";
 import CommunicationsPanel from "./components/CommunicationsPanel";
 import SystemHealthTab from "./components/SystemHealthTab";
 import OrderCard from "./components/OrderCard";
+import {
+  isRefundedBucket,
+  isCancelled,
+  isPaidUnassigned,
+  isUnderReview,
+  isAssignable,
+  EXCLUDE_FULL_REFUND_OR,
+  EXCLUDE_REFUNDED_AT_OR,
+} from "./orderClassification";
 import AdminSidebar from "./components/AdminSidebar";
 import CompanyNotificationsBell from "./components/CompanyNotificationsBell";
 import ApprovalRequestModal from "./components/ApprovalRequestModal";
@@ -149,11 +158,11 @@ function getOrderDisplayStatus(order: Order) {
   if (order.fraud_warning) {
     return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
   }
-  // REFUND-ONLY-OPERATIONAL: operational status is the order's cancellation
-  // state, never a refund field. Only 'cancelled' (Refund + Cancel) or a legacy
-  // 'refunded' status reads as terminal here; a Refund Only (partial or full)
-  // keeps its active operational status and shows refund info separately.
-  if (order.status === "refunded" || order.status === "cancelled") {
+  // REFUND-ONLY-OPERATIONAL: a fully refunded order (full Stripe refund),
+  // Refund + Cancel ('cancelled') or a legacy 'refunded' status reads as
+  // terminal here. An active *partial* Refund Only keeps its operational
+  // status (handled by the stages below) and shows refund info separately.
+  if (isRefundedBucket(order)) {
     return { label: "Refunded", color: "bg-red-100 text-red-600" };
   }
   // Stage 4 — letter delivered
@@ -447,12 +456,14 @@ export default function AdminOrdersPage() {
 
       const paidUnassignedQ = supabase.from("orders").select("id", head)
         .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
+        .or(EXCLUDE_FULL_REFUND_OR).or(EXCLUDE_REFUNDED_AT_OR)
         .not("payment_intent_id", "is", null)
         .is("doctor_email", null).is("doctor_user_id", null)
         .or("doctor_status.is.null,doctor_status.neq.patient_notified");
 
       const underReviewQ = supabase.from("orders").select("id", head)
         .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
+        .or(EXCLUDE_FULL_REFUND_OR).or(EXCLUDE_REFUNDED_AT_OR)
         .not("payment_intent_id", "is", null)
         .or("doctor_email.not.is.null,doctor_user_id.not.is.null")
         .or("doctor_status.is.null,doctor_status.neq.patient_notified");
@@ -1055,14 +1066,11 @@ export default function AdminOrdersPage() {
     setBulkAssigning(true);
     setShowBulkConfirm(false);
     setBulkMsg("");
-    // Only assign orders that are paid, not refunded, and not completed
+    // Only assign orders that are paid, not refunded/cancelled, and not completed
+    // (active partial Refund Only stays assignable — see orderClassification).
     const assignableIds = Array.from(selectedOrders).filter((cid) => {
       const o = orders.find((x) => x.confirmation_id === cid);
-      return o &&
-        !!o.payment_intent_id &&
-        o.status !== "lead" &&
-        o.status !== "refunded" &&
-        o.doctor_status !== "patient_notified";
+      return o ? isAssignable(o) : false;
     });
     const skippedCount = selectedOrders.size - assignableIds.length;
     let successCount = 0;
@@ -1353,17 +1361,17 @@ export default function AdminOrdersPage() {
     } else if (statusFilter === "lead_unpaid") {
       matchStatus = !o.payment_intent_id || o.status === "lead";
     } else if (statusFilter === "paid_unassigned") {
-      matchStatus = !!o.payment_intent_id && o.status !== "lead" && o.status !== "refunded" && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified";
+      matchStatus = isPaidUnassigned(o);
     } else if (statusFilter === "under_review") {
-      matchStatus = !!o.payment_intent_id && o.status !== "lead" && o.status !== "refunded" && (!!o.doctor_email || !!o.doctor_user_id) && o.doctor_status !== "patient_notified";
+      matchStatus = isUnderReview(o);
     } else if (statusFilter === "completed") {
       matchStatus = o.doctor_status === "patient_notified";
     } else if (statusFilter === "refunded") {
-      matchStatus = o.status === "refunded" || o.status === "cancelled";
+      matchStatus = isRefundedBucket(o);
     } else if (statusFilter === "disputed") {
       matchStatus = o.status === "disputed" || !!o.dispute_id;
     } else if (statusFilter === "cancelled") {
-      matchStatus = o.status === "cancelled";
+      matchStatus = isCancelled(o);
     } else if (statusFilter === "payment_failed") {
       matchStatus = !!(o.payment_failure_reason && (o.status === "lead" || !o.payment_intent_id));
     } else {
@@ -1498,7 +1506,7 @@ export default function AdminOrdersPage() {
     setSourceFilter(null);
   };
 
-  const totalUnassigned = orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !!o.payment_intent_id && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length;
+  const totalUnassigned = orders.filter(isPaidUnassigned).length;
   const unlinkedStates = Array.from(
     new Set(
       orders
@@ -2058,7 +2066,7 @@ export default function AdminOrdersPage() {
                   },
                   {
                     label: "Paid (Unassigned)",
-                    value: kpiCounts.paidUnassigned ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !!o.payment_intent_id && o.status !== "lead" && !o.doctor_email && !o.doctor_user_id && o.doctor_status !== "patient_notified").length,
+                    value: kpiCounts.paidUnassigned ?? orders.filter(isPaidUnassigned).length,
                     sub: "Open backlog",
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
@@ -2066,7 +2074,7 @@ export default function AdminOrdersPage() {
                   },
                   {
                     label: "Under Review",
-                    value: kpiCounts.underReview ?? orders.filter((o) => o.status !== "cancelled" && o.status !== "refunded" && !!o.payment_intent_id && o.status !== "lead" && (o.doctor_email || o.doctor_user_id) && o.doctor_status !== "patient_notified").length,
+                    value: kpiCounts.underReview ?? orders.filter(isUnderReview).length,
                     sub: "Open backlog",
                     icon: "ri-time-line",
                     color: "text-violet-600",
@@ -2778,12 +2786,7 @@ export default function AdminOrdersPage() {
             {/* Lead warning strip */}
             {(() => {
               const nonAssignableCount = orders.filter((o) =>
-                selectedOrders.has(o.confirmation_id) && (
-                  !o.payment_intent_id ||
-                  o.status === "lead" ||
-                  o.status === "refunded" ||
-                  o.doctor_status === "patient_notified"
-                )
+                selectedOrders.has(o.confirmation_id) && !isAssignable(o)
               ).length;
               const assignableCount = selectedOrders.size - nonAssignableCount;
               return nonAssignableCount > 0 ? (
@@ -2817,11 +2820,7 @@ export default function AdminOrdersPage() {
                     {/* Assign dropdown — blocked for read_only */}
                     {(() => {
                       const assignableCount = orders.filter((o) =>
-                        selectedOrders.has(o.confirmation_id) &&
-                        !!o.payment_intent_id &&
-                        o.status !== "lead" &&
-                        o.status !== "refunded" &&
-                        o.doctor_status !== "patient_notified"
+                        selectedOrders.has(o.confirmation_id) && isAssignable(o)
                       ).length;
                       const isReadOnly = adminProfile?.role === "read_only";
                       return assignableCount > 0 ? (
@@ -2906,11 +2905,7 @@ export default function AdminOrdersPage() {
                   <div className="flex items-center gap-3 flex-wrap">
                     {(() => {
                       const assignableCount = orders.filter((o) =>
-                        selectedOrders.has(o.confirmation_id) &&
-                        !!o.payment_intent_id &&
-                        o.status !== "lead" &&
-                        o.status !== "refunded" &&
-                        o.doctor_status !== "patient_notified"
+                        selectedOrders.has(o.confirmation_id) && isAssignable(o)
                       ).length;
                       const skippedCount = selectedOrders.size - assignableCount;
                       return (
