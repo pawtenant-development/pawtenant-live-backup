@@ -3,6 +3,10 @@ import { useMemo, useState, useRef, useEffect } from "react";
 // Phase K3 — shared normalized classifier so dashboard aggregation
 // agrees with Orders pills + filter dropdown + Live Visitors chips.
 import { classifyOrder, ACQUISITION_VISUAL } from "../../../lib/acquisitionClassifier";
+// PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a partially-refunded order is
+// still active work — it must stay in the overdue-unassigned alert and in every
+// active KPI count. A bare refunded_at silently dropped it from all of them.
+import { isRefundedBucket } from "../../../lib/orderClassification";
 
 interface Order {
   id: string;
@@ -281,9 +285,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     const THREE_HOURS = 3 * 60 * 60 * 1000;
     return orders
       .filter(o =>
-        o.status !== "cancelled" &&
-        o.status !== "refunded" &&
-        !(o as Order & { refunded_at?: string | null }).refunded_at &&
+        !isRefundedBucket(o) &&
         !!o.payment_intent_id &&
         !o.doctor_email &&
         !(o as Order & { doctor_user_id?: string }).doctor_user_id &&
@@ -300,7 +302,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).getTime();
     const monthEnd   = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
 
-    const activeOrders = orders.filter(o => o.status !== "cancelled" && o.status !== "refunded" && !(o as Order & { refunded_at?: string | null }).refunded_at);
+    const activeOrders = orders.filter(o => !isRefundedBucket(o));
 
     const leadUnpaid            = activeOrders.filter(o => !o.payment_intent_id).length;
     const paymentFailed         = activeOrders.filter(o => !!(o.payment_failure_reason) && !o.payment_intent_id).length;
@@ -398,7 +400,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
 
   // Pipeline donut data
   const activeTotal = useMemo(() => {
-    return orders.filter(o => o.status !== "cancelled" && o.status !== "refunded" && !(o as Order & { refunded_at?: string | null }).refunded_at).length;
+    return orders.filter(o => !isRefundedBucket(o)).length;
   }, [orders]);
 
   const pipelineSegments: DonutSegment[] = [

@@ -2,6 +2,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
+// PARTIAL-REFUND-TERMINAL-STATE-LIVE-MIRROR-001 (tracker row 392) — canonical
+// refund classification, mirrored from TEST ebe8a46.
+import {
+  isPartialRefund,
+  isOperationallyCancelled as isOrderCancelled,
+  refundDisposition,
+  refundDispositionLabel,
+} from "@/lib/orderClassification";
 import OrderNotesPanel from "./OrderNotesPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 import CommunicationTab from "./CommunicationTab";
@@ -238,7 +246,13 @@ function getModalDisplayStatus(order: Order): { label: string; color: string } {
   // state, never a refund field. Only 'cancelled' (Refund + Cancel) or a legacy
   // 'refunded' status reads as "Refunded" here; a Refund Only (partial or full)
   // keeps its active operational status and surfaces refund info separately.
-  if (order.status === "refunded" || order.status === "cancelled") {
+  // PARTIAL-REFUND-TERMINAL-STATE-LIVE-MIRROR-001 (tracker row 392): LIVE's
+  // status-only rule above is PRESERVED — a Refund Only (partial or full) keeps
+  // its operational status. The ONLY addition is rule 4: explicit partial
+  // evidence overrides a STALE status='refunded' (the PT-MR1HX27H shape), so
+  // this header badge can never disagree with the Orders queue, which is what
+  // made an admin revoke a valid verification ID. 0 such rows exist today.
+  if (!isPartialRefund(order) && (order.status === "refunded" || order.status === "cancelled")) {
     return { label: "Refunded", color: "bg-red-100 text-red-600" };
   }
   if (order.doctor_status === "patient_notified") {
@@ -576,13 +590,41 @@ function NotesTabMerged({ orderId, confirmationId, adminUserId, adminName }: {
   );
 }
 
-function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: string }) {
+// PARTIAL-REFUND-TERMINAL-STATE-LIVE-MIRROR-001 (tracker row 392) — refund-aware
+// revoke confirmation.
+//
+// The previous dialog already had a reason box, an undo warning and the
+// public-verify consequence, and it STILL failed to prevent the PT-MR1HX27H
+// incident, because it showed NO refund context: no order ID, no
+// partial-vs-full, no cancellation state. Worse, its reason placeholder read
+// "e.g. Order cancelled and refunded, ...", which invited exactly the recorded
+// reason "Cancelled" on an order that was never cancelled.
+//
+// Authorized manual revocation is NOT weakened — every path stays available.
+function VerificationIdRow({
+  orderId,
+  letterId,
+  confirmationId,
+  order,
+}: {
+  orderId: string;
+  letterId: string;
+  confirmationId: string;
+  order: Order;
+}) {
   const [status, setStatus] = useState<string>("valid");
   const [copied, setCopied] = useState(false);
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
   const [revokeReason, setRevokeReason] = useState("");
   const [revoking, setRevoking] = useState(false);
   const [revokeMsg, setRevokeMsg] = useState("");
+  // Explicit final confirmation — the admin must actively acknowledge that this
+  // revokes a live customer-facing verification ID.
+  const [finalAck, setFinalAck] = useState(false);
+
+  const disposition = refundDisposition(order);
+  const partialOnly = disposition === "partial";
+  const cancelled = isOrderCancelled(order);
 
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
   const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -649,6 +691,7 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
         setStatus("revoked");
         setShowRevokeConfirm(false);
         setRevokeReason("");
+        setFinalAck(false);
         setRevokeMsg(result.alreadyRevoked ? "Already revoked." : "Verification ID revoked successfully.");
       } else {
         setRevokeMsg(result.error ?? "Revoke failed — check edge function logs");
@@ -716,7 +759,7 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
       {/* ── Revoke Confirm Dialog ── */}
       {showRevokeConfirm && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowRevokeConfirm(false)}></div>
+          <div className="absolute inset-0 bg-black/50" onClick={() => { setShowRevokeConfirm(false); setFinalAck(false); }}></div>
           <div className="relative bg-white rounded-2xl border border-gray-200 p-6 max-w-sm w-full">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 flex items-center justify-center bg-red-100 rounded-xl flex-shrink-0">
@@ -731,6 +774,47 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
                 </p>
               </div>
             </div>
+
+            {/* Canonical context — what order this is, and what actually happened
+                to it financially. Revocation is a customer-facing action and must
+                never be taken on a guess about the refund state. */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-3 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-500 font-semibold">Order</span>
+                <span className="font-mono font-bold text-gray-800">{confirmationId}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-500 font-semibold">Verification ID</span>
+                <span className="font-mono font-bold text-gray-800">{letterId}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-500 font-semibold">Refund</span>
+                <span className={`font-bold ${partialOnly ? "text-amber-700" : disposition === "none" ? "text-gray-700" : "text-red-700"}`}>
+                  {refundDispositionLabel(disposition)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-500 font-semibold">Cancellation</span>
+                <span className={`font-bold ${cancelled ? "text-red-700" : "text-gray-700"}`}>
+                  {cancelled ? "Cancelled" : "Not cancelled"}
+                </span>
+              </div>
+            </div>
+
+            {/* The specific trap that caused the PT-MR1HX27H incident. */}
+            {partialOnly && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 mb-3 text-xs text-amber-800">
+                <p className="flex items-start gap-1.5 font-bold">
+                  <i className="ri-alert-fill mt-0.5"></i>
+                  A partial refund does not normally require verification revocation.
+                </p>
+                <p className="mt-1 leading-relaxed">
+                  This order is <strong>still active and not cancelled</strong>. The customer paid, kept their
+                  letter, and only received a partial billing adjustment. Revoking will tell their landlord the
+                  letter is invalid. Only continue if the letter itself is genuinely invalid.
+                </p>
+              </div>
+            )}
 
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 space-y-1.5 text-xs text-red-700">
               <p className="flex items-center gap-1.5 font-semibold">
@@ -747,26 +831,45 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
               </p>
             </div>
 
-            <div className="mb-4">
+            <div className="mb-3">
               <label className="block text-xs font-bold text-gray-600 mb-1.5">
-                Reason for revocation <span className="text-gray-400 font-normal">(optional)</span>
+                Reason for revocation <span className="text-red-500 font-normal">(required)</span>
               </label>
               <textarea
                 value={revokeReason}
                 onChange={(e) => setRevokeReason(e.target.value.slice(0, 300))}
                 rows={2}
-                placeholder="e.g. Order cancelled and refunded, fraudulent order, customer requested..."
+                /* The old examples ("Order cancelled and refunded, …") implied every
+                   refund means cancellation, and plausibly produced the bogus reason
+                   "Cancelled" recorded against PT-MR1HX27H. These examples describe
+                   reasons the LETTER is invalid — which is what revocation means. */
+                placeholder="e.g. Letter issued in error, provider licence invalid at time of issue, fraudulent order, duplicate letter ID..."
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-red-400 resize-none"
                 autoFocus
               />
               <p className="text-xs text-gray-400 text-right mt-0.5">{revokeReason.length}/300</p>
             </div>
 
+            {/* Explicit final confirmation — deliberate, not a reflex click. */}
+            <label className="flex items-start gap-2 mb-4 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={finalAck}
+                onChange={(e) => setFinalAck(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-red-600 cursor-pointer flex-shrink-0"
+              />
+              <span className="text-xs text-gray-600 leading-relaxed">
+                I confirm the letter for <strong className="font-mono">{confirmationId}</strong> is genuinely
+                invalid and that revoking <strong className="font-mono">{letterId}</strong> should show it as
+                revoked to the public and to the customer&rsquo;s landlord.
+              </span>
+            </label>
+
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleRevoke}
-                disabled={revoking}
+                disabled={revoking || !finalAck || revokeReason.trim().length === 0}
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-50"
               >
                 {revoking
@@ -776,7 +879,7 @@ function VerificationIdRow({ orderId, letterId }: { orderId: string; letterId: s
               </button>
               <button
                 type="button"
-                onClick={() => { setShowRevokeConfirm(false); setRevokeReason(""); }}
+                onClick={() => { setShowRevokeConfirm(false); setRevokeReason(""); setFinalAck(false); }}
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 Cancel
@@ -3934,7 +4037,12 @@ export default function OrderDetailModal({
 
                   {/* ── Verification ID ── shown only when letter has been issued via the live provider-submit flow */}
                   {order.letter_id && (
-                    <VerificationIdRow orderId={order.id} letterId={order.letter_id} />
+                    <VerificationIdRow
+                      orderId={order.id}
+                      letterId={order.letter_id}
+                      confirmationId={order.confirmation_id}
+                      order={order}
+                    />
                   )}
 
                   {/* ── Letter Validity Dates ── */}

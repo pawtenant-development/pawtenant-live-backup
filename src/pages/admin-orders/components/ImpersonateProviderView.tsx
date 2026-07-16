@@ -1,6 +1,7 @@
 // ImpersonateProviderView — Admin view of provider portal (read-only)
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { isWorkStopped, isPartialRefund } from "../../../lib/orderClassification";
 
 interface Order {
   id: string;
@@ -22,6 +23,8 @@ interface Order {
   letter_type?: string | null;
   refunded_at?: string | null;
   refund_amount?: number | null;
+  // Canonical refund marker — REQUIRED by orderClassification.
+  refund_status?: string | null;
 }
 
 interface Earning {
@@ -82,8 +85,11 @@ function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): bool
   return order.letter_type === "psd" || order.confirmation_id.includes("-PSD");
 }
 
-function isOrderInactive(order: Pick<Order, "status" | "refunded_at">): boolean {
-  return order.status === "refunded" || !!order.refunded_at || order.status === "cancelled";
+// PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: must mirror the real provider
+// portal exactly — only a FULL refund or an explicit cancellation makes an order
+// inactive. A partial refund stays in the queue and stays workable.
+function isOrderInactive(order: Pick<Order, "status">): boolean {
+  return isWorkStopped(order);
 }
 
 function statusMatchesFilter(doctorStatus: string | null, filter: StatusFilter, order: Order): boolean {
@@ -109,7 +115,7 @@ export default function ImpersonateProviderView({ provider }: ImpersonateProvide
       setLoadingOrders(true);
       const { data } = await supabase
         .from("orders")
-        .select("id, confirmation_id, email, first_name, last_name, phone, state, status, doctor_status, price, delivery_speed, assessment_answers, letter_url, signed_letter_url, patient_notification_sent_at, created_at, letter_type, refunded_at, refund_amount")
+        .select("id, confirmation_id, email, first_name, last_name, phone, state, status, doctor_status, price, delivery_speed, assessment_answers, letter_url, signed_letter_url, patient_notification_sent_at, created_at, letter_type, refunded_at, refund_amount, refund_status")
         .eq("doctor_user_id", provider.user_id)
         .order("created_at", { ascending: false });
       setOrders((data as Order[]) ?? []);
@@ -301,7 +307,10 @@ export default function ImpersonateProviderView({ provider }: ImpersonateProvide
                 const isNew = doctorStatus === "pending_review";
                 const isLetterIssued = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
                 const isThirtyDay = doctorStatus === "thirty_day_reissue";
-                const isRefunded = order.status === "refunded" || !!order.refunded_at;
+                // Mirrors provider-portal/page.tsx exactly: only full refund or
+                // cancellation locks; a partial refund gets an inline chip.
+                const isRefunded = isWorkStopped(order);
+                const isPartial = isPartialRefund(order) && !isRefunded;
                 const isPSD = isPSDOrder(order);
 
                 return (
@@ -320,6 +329,9 @@ export default function ImpersonateProviderView({ provider }: ImpersonateProvide
                             )}
                             {isRefunded && (
                               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-red-100 text-red-700 border border-red-300 rounded-full text-[9px] font-extrabold">Refunded</span>
+                            )}
+                            {isPartial && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[9px] font-extrabold">Partial — Active</span>
                             )}
                             {isPSD ? (
                               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-300 rounded-full text-[9px] font-extrabold">PSD</span>

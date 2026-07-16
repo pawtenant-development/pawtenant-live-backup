@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { isRefundedBucket } from "../../../lib/orderClassification";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
@@ -26,6 +27,9 @@ export interface ContactPrefOrder {
   doctor_status?: string | null;
   payment_intent_id?: string | null;
   refunded_at?: string | null;
+  // Required by the canonical classifier — partial vs full refund.
+  refund_status?: string | null;
+  refund_amount?: number | null;
   preferred_provider_contact_date?: string | null;
   preferred_provider_contact_window?: string | null;
   preferred_provider_contact_note?: string | null;
@@ -52,8 +56,10 @@ export default function PreferredContactCard({ order }: { order: ContactPrefOrde
   const [error, setError] = useState("");
 
   const isPaid = !!order.payment_intent_id;
-  const closed = order.status === "cancelled" || order.status === "refunded" || !!order.refunded_at
-    || order.doctor_status === "patient_notified";
+  // PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a partial refund keeps the
+  // order live, so the customer keeps provider-contact scheduling. Only a full
+  // refund / cancellation (or delivery) closes this card.
+  const closed = isRefundedBucket(order) || order.doctor_status === "patient_notified";
   if (!isPaid || closed) return null;
 
   const today = new Date();

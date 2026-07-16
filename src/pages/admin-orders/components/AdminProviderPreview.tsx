@@ -29,6 +29,8 @@ interface Order {
   created_at: string;
   letter_type?: string | null;
   refunded_at?: string | null;
+  // Canonical refund marker — REQUIRED by orderClassification downstream.
+  refund_status?: string | null;
   refund_amount?: number | null;
   addon_services?: string[] | null;
 }
@@ -84,7 +86,7 @@ export default function AdminProviderPreview() {
           price, payment_intent_id, delivery_speed, selected_provider,
           assessment_answers, letter_url, signed_letter_url,
           patient_notification_sent_at, created_at, letter_type,
-          refunded_at, refund_amount, addon_services
+          refunded_at, refund_amount, refund_status, addon_services
         `)
         .eq("confirmation_id", confirmationId)
         .maybeSingle();

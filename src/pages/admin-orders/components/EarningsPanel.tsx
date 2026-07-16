@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import StateBreakdownChart from "./StateBreakdownChart";
+import { isRefundTerminal } from "../../../lib/orderClassification";
 
 interface Earning {
   id: string;
@@ -367,7 +368,8 @@ export default function EarningsPanel() {
         .order("full_name"),
       supabase
         .from("orders")
-        .select("id, confirmation_id, status, refunded_at")
+        // refund_status is REQUIRED to tell a partial refund from a full one.
+        .select("id, confirmation_id, status, refunded_at, refund_status")
         .eq("doctor_status", "patient_notified"),
     ]);
 
@@ -375,14 +377,21 @@ export default function EarningsPanel() {
     const profileList = (profilesRes.data as DoctorProfile[]) ?? [];
 
     // Build set of completed order IDs and confirmation IDs
-    type CompletedOrderRow = { id: string; confirmation_id: string; status: string; refunded_at: string | null };
+    type CompletedOrderRow = {
+      id: string; confirmation_id: string; status: string;
+      refunded_at: string | null; refund_status: string | null;
+    };
     const completedRows = (completedOrdersRes.data ?? []) as CompletedOrderRow[];
     const completedOrderIds = new Set(completedRows.map((o) => o.id));
     const completedConfirmIds = new Set(completedRows.map((o) => o.confirmation_id));
 
-    // Track which of those completed orders were later refunded → provider still gets paid
-    const newRefundedOrderIds = new Set(completedRows.filter((o) => o.status === "refunded" || !!o.refunded_at).map((o) => o.id));
-    const newRefundedConfirmIds = new Set(completedRows.filter((o) => o.status === "refunded" || !!o.refunded_at).map((o) => o.confirmation_id));
+    // Track which completed orders were later FULLY refunded → provider still gets
+    // paid, and the badge reassures the admin of that. A partial refund does not
+    // threaten the provider's earning at all, so it must not raise this badge —
+    // labelling it "Refunded" misrepresented a live, partially-adjusted order.
+    const fullyRefundedRows = completedRows.filter((o) => isRefundTerminal(o));
+    const newRefundedOrderIds = new Set(fullyRefundedRows.map((o) => o.id));
+    const newRefundedConfirmIds = new Set(fullyRefundedRows.map((o) => o.confirmation_id));
     setRefundedOrderIds(newRefundedOrderIds);
     setRefundedConfirmIds(newRefundedConfirmIds);
 

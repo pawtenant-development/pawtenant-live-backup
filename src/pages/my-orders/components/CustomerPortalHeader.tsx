@@ -4,11 +4,15 @@
 
 import { OrderLike, isPSD } from "./orderDisplay";
 import type { AccountGreeting } from "@/lib/customerName";
+import { isRefundedBucket } from "@/lib/orderClassification";
 
 interface HeaderOrder extends OrderLike {
   doctor_status?: string | null;
   status?: string;
   refunded_at?: string | null;
+  // Required by the canonical classifier — partial vs full refund.
+  refund_status?: string | null;
+  refund_amount?: number | null;
 }
 
 export default function CustomerPortalHeader({
@@ -25,9 +29,10 @@ export default function CustomerPortalHeader({
 }) {
   const total = orders.length;
   const completed = orders.filter((o) => o.doctor_status === "patient_notified").length;
+  // A partially-refunded order is still in progress and must be counted.
   const active = orders.filter(
     (o) => !!o.payment_intent_id && o.doctor_status !== "patient_notified"
-      && o.status !== "refunded" && o.status !== "cancelled" && !o.refunded_at,
+      && !isRefundedBucket(o),
   ).length;
   const pendingPayment = orders.filter((o) => !o.payment_intent_id && o.status !== "cancelled").length;
 

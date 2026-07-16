@@ -44,7 +44,7 @@ import {
   isAssignable,
   EXCLUDE_FULL_REFUND_OR,
   EXCLUDE_REFUNDED_AT_OR,
-} from "./orderClassification";
+} from "@/lib/orderClassification";
 import AdminSidebar from "./components/AdminSidebar";
 import CompanyNotificationsBell from "./components/CompanyNotificationsBell";
 import ApprovalRequestModal from "./components/ApprovalRequestModal";

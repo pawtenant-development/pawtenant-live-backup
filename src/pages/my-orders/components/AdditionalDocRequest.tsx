@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { ADDITIONAL_DOC_PRICING } from "../../../config/pricing";
+import { isRefundedBucket } from "../../../lib/orderClassification";
 
 /** Whole-dollar string for an amount in cents (history-accurate display). */
 function dollars(cents: number | null | undefined): string {
@@ -47,15 +48,24 @@ export interface AddonEligibleOrder {
   status: string;
   payment_intent_id?: string | null;
   refunded_at?: string | null;
+  // Required by the canonical classifier — without it a partial refund is
+  // indistinguishable from a full one.
+  refund_status?: string | null;
+  refund_amount?: number | null;
 }
 
-/** Show the flow only on a paid order that is not a lead / refunded / cancelled. */
+/**
+ * Show the flow only on a paid order that is not a lead / fully refunded /
+ * cancelled.
+ *
+ * PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a partial refund no longer
+ * blocks the request. The customer still has a live order and must keep the
+ * ability to request additional documentation.
+ */
 export function canRequestAdditionalDoc(order: AddonEligibleOrder): boolean {
   const isPaid = !!order.payment_intent_id;
-  const refunded = order.status === "refunded" || !!order.refunded_at;
-  const cancelled = order.status === "cancelled";
   const lead = order.status === "lead";
-  return isPaid && !refunded && !cancelled && !lead;
+  return isPaid && !isRefundedBucket(order) && !lead;
 }
 
 interface Props {

@@ -1,11 +1,19 @@
 // ProviderEarnings — Provider's own earnings view
+//
+// PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: `refunded_at` alone must NEVER
+// suppress, hide or void an earning. The ONLY payout-exclusion sentinel is an
+// explicit cancellation (status='cancelled'), owned by cancel-order /
+// cancel_order_and_void_earnings. Amounts and formulas are untouched here.
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { isWorkStopped, isPartialRefund } from "../../../lib/orderClassification";
 
 interface OrderInfo {
   status: string;
   doctor_status: string | null;
   refunded_at: string | null;
+  // REQUIRED by the canonical classifier — joined in every earnings select.
+  refund_status?: string | null;
   refund_amount?: number | null;
 }
 
@@ -52,8 +60,14 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
       if (e.status === "paid") return true;
       const order = e.orders as OrderInfo | null;
       if (!order) return false;
+      // Completed work stays visible regardless of any later refund activity.
       if (order.doctor_status === "patient_notified") return true;
-      if (order.refunded_at || order.status === "refunded" || order.status === "cancelled") return false;
+      // Only an explicit cancellation or the legacy hard-refund status removes
+      // an unfinished order's earning from view — the same REFUND-ONLY-
+      // OPERATIONAL rule the provider queue uses, so an order the provider can
+      // still see and work always keeps its earning visible. A partial refund
+      // never suppresses an earning; `refunded_at` is not consulted at all.
+      if (isWorkStopped(order)) return false;
       return false;
     }),
   []);
@@ -62,7 +76,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
   const fetchEarningById = useCallback(async (id: string): Promise<Earning | null> => {
     const { data } = await supabase
       .from("doctor_earnings")
-      .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, earning_type, orders!order_id(status, doctor_status, refunded_at)")
+      .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, earning_type, orders!order_id(status, doctor_status, refunded_at, refund_status)")
       .eq("id", id)
       .maybeSingle();
     return (data as unknown as Earning | null);
@@ -73,7 +87,7 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
       const [earningsRes, profileRes] = await Promise.all([
         supabase
           .from("doctor_earnings")
-          .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, earning_type, orders!order_id(status, doctor_status, refunded_at)")
+          .select("id, order_id, confirmation_id, patient_name, patient_state, doctor_amount, status, paid_at, notes, payment_reference, created_at, earning_type, orders!order_id(status, doctor_status, refunded_at, refund_status)")
           .eq("doctor_user_id", userId)
           .order("created_at", { ascending: false }),
         supabase
@@ -345,7 +359,11 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
             <div className="space-y-3">
               {filtered.map((earning) => {
                 const orderInfo = earning.orders as OrderInfo | null;
-                const wasRefunded = !!(orderInfo?.refunded_at || orderInfo?.status === "refunded");
+                // Only a full refund / cancellation marks the earning's row as
+                // affected. A partial refund does not change the earning at all.
+                // Only a cancelled / legacy-refunded order marks the row as
+                // affected. A partial refund does not change the earning at all.
+                const wasRefunded = !!orderInfo && isWorkStopped(orderInfo) && !isPartialRefund(orderInfo);
                 return (
                   <div key={earning.id}
                     className={`bg-white rounded-xl border p-5 ${earning.status === "paid" ? "border-[#b8cce4]" : wasRefunded ? "border-orange-200" : "border-gray-200"}`}>

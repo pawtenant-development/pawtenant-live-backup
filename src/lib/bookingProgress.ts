@@ -9,6 +9,12 @@
 // Paid-vs-unpaid is derived from the authoritative `status` field ('lead' is the
 // only unpaid state; every 'lead' row in TEST has no payment_intent_id / paid_at /
 // provider). NEVER inferred from price, package name, or amount.
+//
+// PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: refund terminality is delegated
+// to the canonical classifier. A PARTIAL refund is NOT terminal — the customer
+// paid, the letter is still owed, and every lifecycle step must keep its state.
+
+import { isRefundTerminal, isOperationallyCancelled } from "@/lib/orderClassification";
 
 export interface BookingOrderLike {
   confirmation_id: string;
@@ -21,6 +27,10 @@ export interface BookingOrderLike {
   checkout_session_id?: string | null;
   paid_at?: string | null;
   refunded_at?: string | null;
+  // Required for canonical refund classification — a query feeding this resolver
+  // MUST select refund_status, else a partial refund cannot be distinguished.
+  refund_status?: string | null;
+  refund_amount?: number | string | null;
   package_key?: string | null;
   billing_plan?: string | null;
   letter_id?: string | null;
@@ -28,7 +38,9 @@ export interface BookingOrderLike {
   includes_reasonable_accommodation_letter?: boolean | null;
 }
 
-const TERMINAL = new Set(["cancelled", "refunded", "archived"]);
+// Archived is a customer-portal-only terminal state with no refund meaning.
+// Cancellation and full-refund terminality come from the canonical classifier.
+const TERMINAL_NON_REFUND = new Set(["archived"]);
 
 export function isPsdOrder(o: BookingOrderLike): boolean {
   return o.letter_type === "psd" || (o.confirmation_id?.includes("-PSD") ?? false);
@@ -39,8 +51,17 @@ export function isUnpaidLead(o: BookingOrderLike): boolean {
   return (o.status ?? "") === "lead";
 }
 
+/**
+ * The order is over for the customer: archived, explicitly cancelled, or made
+ * financially whole by a FULL refund.
+ *
+ * A partial refund is deliberately NOT terminal (rule 7) — the customer still
+ * paid for and is still owed the letter, so the lifecycle must not regress.
+ */
 export function isTerminalOrder(o: BookingOrderLike): boolean {
-  return TERMINAL.has(o.status ?? "") || !!o.refunded_at;
+  return TERMINAL_NON_REFUND.has(o.status ?? "")
+    || isOperationallyCancelled(o)
+    || isRefundTerminal(o);
 }
 
 /** Authoritative "customer has paid" — status has moved past 'lead' and it is not

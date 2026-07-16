@@ -3,7 +3,7 @@ import { useState, useCallback } from "react";
 import OrderNotesPanel from "./OrderNotesPanel";
 import { supabase } from "@/lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
-import { isRefundedBucket } from "../orderClassification";
+import { isRefundedBucket } from "@/lib/orderClassification";
 // Canonical types — see ../types.ts. Re-exported below for back-compat
 // with any existing `import { Order, DoctorContact } from "./OrderCard"`.
 import type { Order, DoctorContact } from "../types";

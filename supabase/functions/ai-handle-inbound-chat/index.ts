@@ -39,6 +39,7 @@ import {
   type SupportCategory,
 } from "../_shared/aiSupport/policy.ts";
 import { AI_SUPPORT_SYSTEM_PROMPT } from "../_shared/aiSupport/prompt.ts";
+import { isRefundTerminal, type ClassifiableOrder } from "../_shared/orderClassification.ts";
 import {
   authorizeRequest,
   countAutoRepliesToday,
@@ -284,15 +285,20 @@ async function lookupOrderStatusSafe(
   try {
     const { data } = await admin
       .from("orders")
-      .select("status, paid_at, payment_failed_at, refunded_at, dispute_status")
+      // refund_status is REQUIRED — a partial refund must not read as a problem.
+      .select("status, paid_at, payment_failed_at, refunded_at, refund_status, refund_amount, dispute_status")
       .ilike("confirmation_id", orderId) // exact (no wildcards in a PT- id) but case-insensitive
       .limit(1)
       .maybeSingle();
     if (!data) return notFound;
 
     const s = String(data.status ?? "").toLowerCase().trim();
+    // PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a partial refund is a
+    // normal billing adjustment on a live order — it must NOT flag the order as
+    // a problem, which changed the reply and escalated an in-review order.
     const problem =
-      !!data.refunded_at || !!data.payment_failed_at || !!data.dispute_status ||
+      isRefundTerminal(data as ClassifiableOrder) ||
+      !!data.payment_failed_at || !!data.dispute_status ||
       ["cancelled", "canceled", "archived", "lead"].includes(s);
 
     if (s === "completed") {

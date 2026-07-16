@@ -4,6 +4,11 @@
 
 import { resolveOrderAttribution, type ResolvedAttribution, type ResolvableOrder } from "./attributionResolver";
 import { extractDob, dobBirthYear, dobToAge } from "./dob";
+import {
+  refundDisposition,
+  isRefundTerminal,
+  type ClassifiableOrder,
+} from "./orderClassification";
 
 export interface ExportableOrder {
   [key: string]: unknown;
@@ -50,8 +55,11 @@ function serviceType(o: ExportableOrder): string {
 }
 
 // Derived: high-level payment status from timestamps (no extra columns leaked).
+// PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: only a FULL refund undoes the
+// payment. A partially-refunded customer still Paid — the partial is reported in
+// the dedicated Refund/Dispute Status and Refund Amount columns.
 function paymentStatus(o: ExportableOrder): string {
-  if (o.refunded_at) return "Refunded";
+  if (isRefundTerminal(o as ClassifiableOrder)) return "Refunded";
   if (o.paid_at) return "Paid";
   if (o.payment_failed_at) return "Failed";
   return "Unpaid";
@@ -66,9 +74,15 @@ function sequenceStage(o: ExportableOrder): string {
   return "Not Started";
 }
 
+// This column IS the place refund activity belongs — it reports the canonical
+// disposition rather than a bare "Refunded" that hid the partial/full split.
 function refundDisputeStatus(o: ExportableOrder): string {
   const parts: string[] = [];
-  if (o.refunded_at) parts.push("Refunded");
+  const disposition = refundDisposition(o as ClassifiableOrder);
+  if (disposition === "partial") parts.push("Partial Refund");
+  else if (disposition === "full") parts.push("Refunded");
+  else if (disposition === "full_cancelled") parts.push("Refunded + Cancelled");
+  else if (disposition === "unknown") parts.push("Refund (completeness unknown)");
   if (o.dispute_status) parts.push(`Dispute: ${str(o.dispute_status)}`);
   if (o.fraud_warning) parts.push("Fraud Warning");
   return parts.join(" | ");

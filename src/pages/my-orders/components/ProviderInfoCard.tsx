@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import CustomerPortalSection from "./CustomerPortalSection";
 
+import { isRefundTerminal, isOperationallyCancelled } from "@/lib/orderClassification";
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
 const STATE_NAMES: Record<string, string> = {
@@ -75,8 +76,10 @@ export default function ProviderInfoCard({ order }: { order: ProviderCardOrder }
     return () => { cancelled = true; };
   }, [order.id, assigned]);
 
-  // Hide for unpaid / cancelled / refunded — provider assignment isn't relevant.
-  if (order.status === "lead" || order.status === "cancelled" || order.status === "refunded") return null;
+  // Hide for unpaid / cancelled / FULLY refunded — provider assignment isn't
+  // relevant there. PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a partial
+  // refund keeps the provider relationship live, so the card stays.
+  if (order.status === "lead" || isOperationallyCancelled(order) || isRefundTerminal(order)) return null;
 
   const ds = order.doctor_status ?? "";
   const kind = isPSD(order) ? "healthcare" : "mental health";

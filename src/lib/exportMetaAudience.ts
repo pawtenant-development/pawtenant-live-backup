@@ -17,6 +17,7 @@
 // already supplied a DOB; age is calculated at export time and never stored.
 
 import { extractDob, dobBirthYear, dobToAge } from "./dob";
+import { isRefundTerminal, hasAnyRefund, type ClassifiableOrder } from "./orderClassification";
 
 export interface MetaAudienceOrder {
   [key: string]: unknown;
@@ -51,12 +52,16 @@ function normPhone(value: unknown): string {
   return str(value).replace(/\D/g, "");
 }
 
-// Paid = has paid_at and is not refunded. paid_or_refunded includes refunds.
+// Paid = has paid_at and was not made whole by a FULL refund.
+// paid_or_refunded additionally includes any refund activity.
+//
+// PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a partially-refunded customer
+// is still a paying client and must stay in the "paid" audience. Excluding them
+// on a bare refunded_at dropped real customers out of Meta targeting.
 function isEligible(o: MetaAudienceOrder, mode: MetaAudienceMode): boolean {
   const paid = !!o.paid_at;
-  const refunded = !!o.refunded_at;
-  if (mode === "paid_or_refunded") return paid || refunded;
-  return paid && !refunded;
+  if (mode === "paid_or_refunded") return paid || hasAnyRefund(o as ClassifiableOrder);
+  return paid && !isRefundTerminal(o as ClassifiableOrder);
 }
 
 // Build the deduplicated, identifiers-only rows for the chosen mode.

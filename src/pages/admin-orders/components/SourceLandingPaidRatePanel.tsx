@@ -43,7 +43,7 @@ import {
   UNKNOWN_LANDING,
   UNKNOWN_SOURCE,
 } from "@/lib/analyticsNormalize";
-import { isPaidOrder, isRefundedOrder } from "@/lib/analyticsMetrics";
+import { isPaidOrder, isLostOrder } from "@/lib/analyticsMetrics";
 import { fetchMarketingSpendSummary, type MarketingSpendSummary } from "@/lib/companyExpenses";
 
 // ── Row shapes ──────────────────────────────────────────────────────────────
@@ -55,10 +55,14 @@ interface PaidRateOrder extends ResolvableOrder {
   price?: number | null;
   refunded_at?: string | null;
   refund_amount?: number | null;
+  refund_status?: string | null;
+  status?: string | null;
   fbclid?: string | null;
 }
+// refund_status is REQUIRED by the canonical classifier — without it a partial
+// refund is indistinguishable from a full one and the order reads as lost.
 const ORDER_COLUMNS =
-  "id,created_at,paid_at,payment_intent_id,price,refunded_at,refund_amount," +
+  "id,created_at,paid_at,payment_intent_id,price,refunded_at,refund_amount,refund_status,status," +
   "referred_by,landing_url,session_id," +
   "utm_source,utm_medium,utm_campaign,utm_term,utm_content,gclid,fbclid," +
   "first_touch_json,last_touch_json";
@@ -254,7 +258,9 @@ export default function SourceLandingPaidRatePanel(
       const customerFacing = !landingBlank && isCustomerFacingLandingPage(landingClean);
       const landingTable = groupUnknownLandingPage(landingClean);
       const isPaid = isPaidOrder(o);
-      const isRefunded = isRefundedOrder(o);
+      // Lost = full refund / cancelled / voided. A partial refund is NOT lost:
+      // it stays in netPaid and keeps its (already-net) revenue.
+      const isRefunded = isLostOrder(o);
       const price = typeof o.price === "number" ? o.price : 0;
       return {
         source,

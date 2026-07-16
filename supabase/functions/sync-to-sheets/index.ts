@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  isRefundTerminal,
+  refundDisposition,
+  type ClassifiableOrder,
+} from "../_shared/orderClassification.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,6 +47,11 @@ const COLUMNS: string[] = [
   "referred_by",
   "landing_url",
   "attribution_json",
+  // Canonical refund disposition (none / Partial Refund / Refunded /
+  // Refunded + Cancelled). APPENDED LAST on purpose: every pre-existing column
+  // keeps its position, so the Apps Script header sync is additive and no
+  // existing sheet data shifts.
+  "refund_status",
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -51,8 +61,11 @@ function str(v: unknown): string {
   return String(v);
 }
 
+// PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: only a FULL refund undoes the
+// payment. A partially-refunded customer still Paid; the partial is reported in
+// the dedicated Refund Status column instead of overwriting Payment Status.
 function derivePaymentStatus(o: Record<string, unknown>): string {
-  if (o.refunded_at) return "Refunded";
+  if (isRefundTerminal(o as ClassifiableOrder)) return "Refunded";
   if (o.dispute_id) return "Disputed";
   const status = str(o.status);
   if (["processing", "completed", "letter_sent", "review", "approved"].includes(status) && o.payment_intent_id)
@@ -75,9 +88,22 @@ function deriveOrderStatus(o: Record<string, unknown>): string {
     cancelled: "Cancelled",
     refunded: "Refunded",
   };
-  if (o.refunded_at) return "Refunded";
+  // A partial refund must NOT override the real operational status — the order
+  // is still being worked and the sheet must reflect that.
+  if (isRefundTerminal(o as ClassifiableOrder)) return "Refunded";
   if (o.dispute_id) return "Disputed";
   return map[status] ?? status;
+}
+
+/** Canonical refund disposition for the dedicated Refund Status column. */
+function deriveRefundStatus(o: Record<string, unknown>): string {
+  switch (refundDisposition(o as ClassifiableOrder)) {
+    case "none": return "";
+    case "partial": return "Partial Refund";
+    case "full": return "Refunded";
+    case "full_cancelled": return "Refunded + Cancelled";
+    case "unknown": return "Refund (completeness unknown)";
+  }
 }
 
 function deriveTrafficSource(o: Record<string, unknown>): string {
@@ -190,6 +216,7 @@ function buildRow(o: Record<string, unknown>): Record<string, string> {
     referred_by: str(o.referred_by),
     landing_url: str(o.landing_url),
     attribution_json: attrJson ? JSON.stringify(attrJson) : "",
+    refund_status: deriveRefundStatus(o),
   };
 }
 
@@ -215,7 +242,8 @@ Deno.serve(async (req: Request) => {
       .from("orders")
       .select(
         `confirmation_id, first_name, last_name, email, phone, state,
-         letter_type, status, payment_intent_id, refunded_at, dispute_id,
+         letter_type, status, payment_intent_id, refunded_at, refund_status,
+         refund_amount, dispute_id,
          referred_by, created_at, subscription_id, price,
          gclid, fbclid,
          utm_source, utm_medium, utm_campaign, utm_term, utm_content,

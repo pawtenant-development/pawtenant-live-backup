@@ -23,6 +23,7 @@ import MyDocumentsCard from "./components/MyDocumentsCard";
 import NeedHelpCard from "./components/NeedHelpCard";
 import CustomerPortalSection from "./components/CustomerPortalSection";
 import { isUnpaidLead, isPaidOrder, isTerminalOrder } from "@/lib/bookingProgress";
+import { isRefundTerminal, isOperationallyCancelled, isPartialRefund } from "@/lib/orderClassification";
 import { resolveAccountGreeting, type NameUserLike } from "@/lib/customerName";
 
 interface OrderDocument {
@@ -163,8 +164,11 @@ function getDisplayStatus(order: Order): {
   // green=completed · review-blue=under review · amber=pending/payment · warm-neutral=assigned.
   // The selected-order header uses a single calm warm-raised gradient for all statuses.
   const WARM = "from-[#ffffff] to-white";
-  if (s === "cancelled") return { label: "Cancelled", color: "bg-[#f1f5f9] text-[#475569]", icon: "ri-close-circle-line", bgGradient: WARM, step: -1 };
-  if (s === "refunded" || (order as Order & { refunded_at?: string | null }).refunded_at) return { label: "Refunded", color: "bg-[#f1f5f9] text-[#475569]", icon: "ri-refund-line", bgGradient: WARM, step: -1 };
+  if (isOperationallyCancelled(order)) return { label: "Cancelled", color: "bg-[#f1f5f9] text-[#475569]", icon: "ri-close-circle-line", bgGradient: WARM, step: -1 };
+  // PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: only a FULL refund ends the
+  // order. A partial refund must fall through to the real operational status so
+  // the customer keeps their lifecycle, their letter and their documents.
+  if (isRefundTerminal(order)) return { label: "Refunded", color: "bg-[#f1f5f9] text-[#475569]", icon: "ri-refund-line", bgGradient: WARM, step: -1 };
 
   // CRITICAL: check payment FIRST — unpaid leads must never show provider statuses
   if (!isPaid || s === "lead") return { label: "Pending Payment", color: "bg-[#FFFBEB] text-[#B45309]", icon: "ri-time-line", bgGradient: WARM, step: -1 };
@@ -214,8 +218,11 @@ function OrderCard({
   layout?: "two-col" | "single";
 }) {
   const isLead = isUnpaidLead(order) && !isTerminalOrder(order);
-  const isRefunded = order.status === "refunded" || !!(order as Order & { refunded_at?: string | null }).refunded_at;
-  const isCancelled = order.status === "cancelled" && !(order as Order & { refunded_at?: string | null }).refunded_at;
+  // Only a FULL refund shows the "your order has been refunded" message. A
+  // partial refund keeps the order live and gets its own informational notice.
+  const isRefunded = isRefundTerminal(order);
+  const isCancelled = isOperationallyCancelled(order) && !isRefunded;
+  const isPartialRefunded = isPartialRefund(order) && !isRefunded && !isCancelled;
   const delivered = order.doctor_status === "patient_notified" || !!order.letter_id;
   // Landlord-verifiable card is ESA-specific copy; PSD verification IDs still show
   // inline on the My Documents letter row.
@@ -246,6 +253,30 @@ function OrderCard({
           <div>
             <p className="font-bold mb-0.5">Your order has been refunded.</p>
             <p>The refund should appear on your original payment method within <strong>5–10 business days</strong>. If you have questions, please contact our support team.</p>
+            <button
+              type="button"
+              onClick={onContactSupport}
+              className="whitespace-nowrap mt-2 inline-flex items-center gap-1 text-xs font-bold underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <i className="ri-customer-service-2-line"></i>Contact Support
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Partial refund — the order is NOT over. Calm, factual, and explicit
+          that the letter is still coming, so the customer is never told their
+          order ended when only a billing adjustment was made. */}
+      {isPartialRefunded && (
+        <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-xl px-4 py-3 text-xs text-[#92400E] flex items-start gap-2">
+          <i className="ri-refund-line flex-shrink-0 mt-0.5"></i>
+          <div>
+            <p className="font-bold mb-0.5">A partial refund was issued on this order.</p>
+            <p>
+              Your order is still active and is being processed as normal — this was a billing
+              adjustment only. The refunded amount should appear on your original payment method
+              within <strong>5–10 business days</strong>.
+            </p>
             <button
               type="button"
               onClick={onContactSupport}

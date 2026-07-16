@@ -9,6 +9,7 @@
 
 import CustomerPortalSection from "./CustomerPortalSection";
 
+import { isRefundTerminal, isOperationallyCancelled } from "@/lib/orderClassification";
 export interface DeliveryOrder {
   letter_type?: string | null;
   confirmation_id: string;
@@ -23,8 +24,12 @@ function isPSD(order: DeliveryOrder): boolean {
 export default function LetterDeliveryCard({ order }: { order: DeliveryOrder }) {
   // Once delivered, DocumentsSection owns the real download buttons.
   if (order.doctor_status === "patient_notified") return null;
-  // No pre-delivery placeholder for cancelled/refunded/unpaid states.
-  if (order.status === "cancelled" || order.status === "refunded" || order.status === "lead") return null;
+  // No pre-delivery placeholder for cancelled/fully-refunded/unpaid states.
+  // PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a PARTIAL refund keeps the
+  // letter coming, so the customer must keep this card. The old bare
+  // status==='refunded' test had no partial guard, so a partial carrying a stale
+  // status='refunded' silently hid the letter from a customer still owed one.
+  if (isOperationallyCancelled(order) || isRefundTerminal(order) || order.status === "lead") return null;
 
   const letter = isPSD(order) ? "PSD letter" : "ESA letter";
   const reviewing = order.doctor_status === "in_review"
