@@ -21,6 +21,12 @@ import {
   previewOpsBell,
   previewChatFirstMessage,
 } from "../../../lib/notificationSounds";
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  notify,
+  type NotifPermission,
+} from "../../../lib/desktopNotify";
 
 // Compact top-right profile / status menu (Facebook/LinkedIn style).
 // Owns: light admin shortcuts (Runbook / Providers), sound settings,
@@ -112,7 +118,22 @@ export default function AdminProfileMenu({
   const [resolved, setResolved] = useState(false); // finished first lookup
   const [prefs, setPrefs] = useState<SoundPrefs>(getSoundPrefs());
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [notifPerm, setNotifPerm] = useState<NotifPermission>(() => getNotificationPermission());
   const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Toggle OS-level browser notifications. Turning ON requests browser
+  // permission (we're inside a click handler, so the prompt is allowed);
+  // denied/unsupported keeps the pref OFF so the UI never over-promises.
+  const toggleBrowserNotifications = useCallback(async () => {
+    if (prefs.desktopNotificationsEnabled) {
+      setSoundPrefs({ desktopNotificationsEnabled: false });
+      return;
+    }
+    let perm = getNotificationPermission();
+    if (perm === "default") perm = await requestNotificationPermission();
+    setNotifPerm(perm);
+    setSoundPrefs({ desktopNotificationsEnabled: perm === "granted" });
+  }, [prefs.desktopNotificationsEnabled]);
 
   // Single source of truth for the user's display picture: team_members.display_picture_url
   // (same field the /company portal hero uses). Falls back to initials when unset.
@@ -254,6 +275,58 @@ export default function AdminProfileMenu({
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Browser notifications — OS-level toasts for missed calls, new
+                contact emails, AI Support events (draft pending / escalated /
+                blocked / send error) and new visitors. Opt-in + permission. */}
+            <div className="px-3 py-3 border-b border-gray-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <i className="ri-notification-3-line text-[#3b6ea5]"></i>Browser Notifications
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void toggleBrowserNotifications()}
+                  disabled={notifPerm === "denied" || notifPerm === "unsupported"}
+                  className={`relative w-7 h-3.5 rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    prefs.desktopNotificationsEnabled && notifPerm === "granted" ? "bg-[#3b6ea5]" : "bg-gray-300"
+                  }`}
+                  aria-pressed={prefs.desktopNotificationsEnabled && notifPerm === "granted"}
+                  aria-label="Toggle browser notifications"
+                >
+                  <span className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-all ${
+                    prefs.desktopNotificationsEnabled && notifPerm === "granted" ? "left-3.5" : "left-0.5"
+                  }`}></span>
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 leading-snug">
+                Chrome/OS toasts for missed calls, new emails, AI drafts &amp; escalations, and new visitors — even when this tab is in the background. Works while any admin tab is open.
+              </p>
+              {notifPerm === "denied" && (
+                <p className="text-[11px] text-red-600 leading-snug mt-1">
+                  Blocked in your browser — re-allow notifications for this site in Chrome site settings.
+                </p>
+              )}
+              {notifPerm === "unsupported" && (
+                <p className="text-[11px] text-gray-400 leading-snug mt-1">
+                  Notifications API unavailable in this browser.
+                </p>
+              )}
+              {prefs.desktopNotificationsEnabled && notifPerm === "granted" && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    notify("PawTenant test notification", {
+                      body: "Browser notifications are working on this device.",
+                      tag: "pt-test-notification",
+                    })
+                  }
+                  className="mt-1.5 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 cursor-pointer"
+                >
+                  Send test browser notification
+                </button>
+              )}
             </div>
 
             {/* Account actions */}
