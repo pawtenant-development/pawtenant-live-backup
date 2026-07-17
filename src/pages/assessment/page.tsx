@@ -465,7 +465,15 @@ export default function AssessmentPage() {
     if (preSelectedState) setSelectedState(preSelectedState);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preSelectedState]);
-  const isTestMode = searchParams.get("testCheckout") === "1";
+  // SECURITY (CHECKOUT-PRICING-PHASED-SUBSCRIPTION-CONTINUATION-002 Phase 0):
+  // `?testCheckout=1` pre-fills fake data and jumps straight to the payment step,
+  // bypassing the state + OTP gates (see the effect below). It is a LOCAL-DEV QA
+  // affordance ONLY. `import.meta.env.DEV` is statically replaced with `false` in
+  // any production build (`vite build`), so this whole shortcut is dead-code-
+  // eliminated on every deployed site (Vercel TEST and LIVE) — the query param is
+  // inert in production and can no longer bypass OTP. It still works under
+  // `vite dev` (localhost) for QA.
+  const isTestMode = import.meta.env.DEV && searchParams.get("testCheckout") === "1";
   const [resendEmail, setResendEmail] = useState("");
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
