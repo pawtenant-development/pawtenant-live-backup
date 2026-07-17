@@ -686,13 +686,26 @@ function VerificationIdRow({
           reason: revokeReason.trim() || "Revoked by admin",
         }),
       });
-      const result = await res.json() as { ok: boolean; revoked?: boolean; alreadyRevoked?: boolean; error?: string };
+      // LETTER-VERIFICATION-REVOKE-AUDIT-FIX-001 (tracker row 393): the function
+      // now reports whether the audit row was actually written. A revoke that
+      // leaves no audit trail must NEVER read as a plain success — that silence
+      // is exactly what let the PT-MR1HX27H revocation happen unrecorded.
+      const result = await res.json() as {
+        ok: boolean; revoked?: boolean; alreadyRevoked?: boolean; error?: string;
+        auditLogged?: boolean; auditError?: string;
+      };
       if (result.ok) {
         setStatus("revoked");
         setShowRevokeConfirm(false);
         setRevokeReason("");
         setFinalAck(false);
-        setRevokeMsg(result.alreadyRevoked ? "Already revoked." : "Verification ID revoked successfully.");
+        if (result.revoked && result.auditLogged === false) {
+          setRevokeMsg(
+            "Revoked, but the AUDIT LOG FAILED to record it — report this to engineering."
+          );
+        } else {
+          setRevokeMsg(result.alreadyRevoked ? "Already revoked." : "Verification ID revoked successfully.");
+        }
       } else {
         setRevokeMsg(result.error ?? "Revoke failed — check edge function logs");
       }
@@ -700,7 +713,9 @@ function VerificationIdRow({
       setRevokeMsg("Network error — please try again");
     }
     setRevoking(false);
-    setTimeout(() => setRevokeMsg(""), 6000);
+    // Routine messages auto-clear; an audit-log failure must persist until the
+    // admin acts on it.
+    setTimeout(() => setRevokeMsg((m) => (m.includes("AUDIT LOG FAILED") ? m : "")), 6000);
   };
 
   return (
@@ -750,8 +765,8 @@ function VerificationIdRow({
         </a>
       </p>
       {revokeMsg && (
-        <p className={`text-xs mt-1.5 flex items-center gap-1 font-semibold ${revokeMsg.includes("success") || revokeMsg.includes("Already") ? "text-[#3b6ea5]" : "text-red-600"}`}>
-          <i className={revokeMsg.includes("success") || revokeMsg.includes("Already") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
+        <p className={`text-xs mt-1.5 flex items-center gap-1 font-semibold ${(revokeMsg.includes("success") || revokeMsg.includes("Already")) && !revokeMsg.includes("AUDIT LOG FAILED") ? "text-[#3b6ea5]" : "text-red-600"}`}>
+          <i className={(revokeMsg.includes("success") || revokeMsg.includes("Already")) && !revokeMsg.includes("AUDIT LOG FAILED") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>
           {revokeMsg}
         </p>
       )}
