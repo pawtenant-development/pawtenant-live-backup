@@ -66,3 +66,4 @@ graphify-out/graph.html
 .claude/tmp/
 .claude/launch.json
 .claude/scheduled_tasks.lock
+.vercel
