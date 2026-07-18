@@ -110,6 +110,24 @@ interface EventRow {
   created_at: string;
 }
 
+// Per-event-name rollup used by the Assessment & Checkout Funnel section.
+interface EventStat {
+  count:       number;
+  first:       string | null;
+  latest:      string | null;
+  latestProps: Record<string, unknown> | null;
+}
+
+// One row in the per-order funnel stepper.
+interface FunnelStep {
+  key:    string;
+  label:  string;
+  icon:   string;
+  at:     string | null;
+  latest?: string | null;
+  count?:  number;
+}
+
 // ATTR-MULTI-SESSION-ORDER-JOURNEY (2026-05-19): one row per visitor
 // session ever linked to this order, surfaced via get_order_linked_sessions
 // so the journey panel can render Session 1 / Session 2 / … groupings
@@ -137,6 +155,12 @@ interface AttributionJourneyTabProps {
 
 // Orders predating this date had no client-side tracking — banner shown.
 const TRACKING_ENABLED_AT = "2026-04-21T00:00:00.000Z";
+
+// Assessment→checkout funnel instrumentation shipped later than the base
+// attribution tracking above. Orders created before this cannot have funnel
+// milestones, so an absent step means "never recorded", not "never reached" —
+// the stepper must say Unknown and no drop-off may be inferred.
+const FUNNEL_TRACKING_ENABLED_AT = "2026-07-16T12:00:00.000Z";
 
 // Matches the get_live_visitors RPC's default window.
 const LIVE_ACTIVE_WINDOW_MS = 90_000;
@@ -190,6 +214,55 @@ const EVENT_VISUALS: Record<string, EventVisual> = {
     icon:     "ri-checkbox-circle-line",
     chip:     "bg-amber-50 text-amber-800 border-amber-300",
     dot:      "bg-amber-600",
+  },
+  assessment_submitted: {
+    category: "assessment",
+    label:    "Assessment submitted",
+    icon:     "ri-file-check-line",
+    chip:     "bg-amber-50 text-amber-800 border-amber-300",
+    dot:      "bg-amber-600",
+  },
+  otp_requested: {
+    category: "assessment",
+    label:    "OTP requested",
+    icon:     "ri-mail-send-line",
+    chip:     "bg-sky-50 text-sky-700 border-sky-200",
+    dot:      "bg-sky-500",
+  },
+  otp_verified: {
+    category: "assessment",
+    label:    "OTP verified",
+    icon:     "ri-shield-check-line",
+    chip:     "bg-emerald-50 text-emerald-700 border-emerald-200",
+    dot:      "bg-emerald-500",
+  },
+  customer_portal_viewed: {
+    category: "order",
+    label:    "Portal viewed",
+    icon:     "ri-account-circle-line",
+    chip:     "bg-indigo-50 text-indigo-700 border-indigo-200",
+    dot:      "bg-indigo-500",
+  },
+  checkout_viewed: {
+    category: "payment",
+    label:    "Checkout viewed",
+    icon:     "ri-shopping-bag-3-line",
+    chip:     "bg-violet-50 text-violet-700 border-violet-200",
+    dot:      "bg-violet-500",
+  },
+  payment_fields_completed: {
+    category: "payment",
+    label:    "Card details completed",
+    icon:     "ri-input-method-line",
+    chip:     "bg-violet-50 text-violet-700 border-violet-200",
+    dot:      "bg-violet-500",
+  },
+  payment_failed: {
+    category: "payment",
+    label:    "Payment failed",
+    icon:     "ri-error-warning-line",
+    chip:     "bg-red-50 text-red-700 border-red-200",
+    dot:      "bg-red-500",
   },
   payment_attempted: {
     category: "payment",
@@ -547,7 +620,10 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
     }
 
     // Last page before payment success / order created (whichever earliest).
-    const paidAt = orderRow.paid_at ?? visitorSession?.paid_at ?? null;
+    // Paid time comes ONLY from canonical orders.paid_at — never the client-stamped
+    // visitor_sessions.paid_at, which can be set for an unpaid order and would make
+    // "time to convert" imply a conversion that never happened.
+    const paidAt = orderRow.paid_at ?? null;
     const conversionTs = paidAt ? new Date(paidAt).getTime() : new Date(orderRow.created_at).getTime();
     let lastPageBefore: string | null = null;
     if (conversionTs) {
@@ -578,6 +654,116 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
       timeToConvertMin,
       pageCount,
       eventCount: events.length,
+    };
+  }, [events, visitorSession, orderRow]);
+
+  // ── Assessment & Checkout Funnel (per-order milestones) ─────────────────
+  // Derived entirely from the fetched events stream + canonical order fields.
+  // Never fabricates: a milestone with no signal renders "Unknown" (historical)
+  // or "—" (not reached), never "No".
+  const funnel = useMemo(() => {
+    if (!orderRow) return null;
+
+    const stat = (name: string): EventStat => {
+      const rows = events.filter((e) => e.event_name === name);
+      if (rows.length === 0) return { count: 0, first: null, latest: null, latestProps: null };
+      const sorted = [...rows].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+      return {
+        count:       rows.length,
+        first:       sorted[0].created_at,
+        latest:      sorted[sorted.length - 1].created_at,
+        latestProps: sorted[sorted.length - 1].props ?? null,
+      };
+    };
+
+    const started   = stat("assessment_started");
+    const stepView  = stat("assessment_step_view");
+    const otpReq    = stat("otp_requested");
+    const otpVer    = stat("otp_verified");
+    const submitted = stat("assessment_submitted");
+    const portal    = stat("customer_portal_viewed");
+    const checkout  = stat("checkout_viewed");
+    const fields    = stat("payment_fields_completed");
+    const attempted = stat("payment_attempted");
+    const failed    = stat("payment_failed");
+    const succeeded = stat("payment_success");
+
+    const startedAt   = started.first ?? stepView.first ?? visitorSession?.assessment_started_at ?? null;
+    const submittedAt = submitted.first ?? null;
+    // Payment success is a financial fact, so it reads ONLY from the canonical
+    // order row the Stripe webhook writes. The payment_success event and
+    // visitor_sessions.paid_at are both stamped client-side and can assert a
+    // payment the order never took: on TEST an unpaid lead (status='lead',
+    // orders.paid_at NULL, no payment_success event) rendered "Payment
+    // succeeded" and "Converted (paid)" purely from the session mirror, which
+    // also suppressed its real drop-off. Same rule the Live Visitors Paid badge
+    // already follows.
+    const paidAt      = orderRow.paid_at ?? null;
+
+    const failCat = typeof failed.latestProps?.["category"] === "string"
+      ? (failed.latestProps!["category"] as string)
+      : null;
+
+    const steps: FunnelStep[] = [
+      { key: "assessment_started",       label: "Assessment started",        icon: "ri-edit-line",           at: startedAt },
+      { key: "otp_requested",            label: "OTP requested",             icon: "ri-mail-send-line",      at: otpReq.first,    count: otpReq.count || undefined },
+      { key: "otp_verified",             label: "OTP verified",              icon: "ri-shield-check-line",   at: otpVer.first },
+      { key: "assessment_submitted",     label: "Assessment submitted",      icon: "ri-file-check-line",     at: submittedAt },
+      { key: "customer_portal_viewed",   label: "Customer Portal viewed",    icon: "ri-account-circle-line", at: portal.first,   latest: portal.latest,   count: portal.count || undefined },
+      { key: "checkout_viewed",          label: "Checkout viewed",           icon: "ri-shopping-bag-3-line", at: checkout.first, latest: checkout.latest, count: checkout.count || undefined },
+      { key: "payment_fields_completed", label: "Payment fields completed",  icon: "ri-input-method-line",   at: fields.first },
+      { key: "payment_attempted",        label: "Payment attempted",         icon: "ri-bank-card-line",      at: attempted.first, latest: attempted.latest, count: attempted.count || undefined },
+      { key: "payment_succeeded",        label: "Payment succeeded",         icon: "ri-checkbox-circle-fill", at: paidAt },
+    ];
+
+    // Last completed step = last in-order step that fired.
+    let lastCompletedIdx = -1;
+    steps.forEach((s, i) => { if (s.at) lastCompletedIdx = i; });
+    const lastCompleted = lastCompletedIdx >= 0 ? steps[lastCompletedIdx].label : null;
+
+    // Likely drop-off = first non-fired step after the last completed one.
+    // Orders that predate funnel instrumentation have no milestone telemetry,
+    // so an unfired step carries no information: inferring a drop-off from it
+    // would assert a customer stalled where we simply never measured.
+    const preFunnelTracking =
+      new Date(orderRow.created_at) < new Date(FUNNEL_TRACKING_ENABLED_AT);
+
+    let dropOff: string | null = null;
+    if (paidAt) {
+      dropOff = null; // converted
+    } else if (preFunnelTracking) {
+      dropOff = null; // not measurable — surfaced as "Unknown", never a guess
+    } else if (lastCompletedIdx >= 0 && lastCompletedIdx < steps.length - 1) {
+      dropOff = steps[lastCompletedIdx + 1].label;
+    } else if (lastCompletedIdx === -1) {
+      dropOff = steps[0].label;
+    }
+
+    const noData =
+      !startedAt && !submittedAt && !paidAt &&
+      [otpReq, otpVer, portal, checkout, fields, attempted, succeeded].every((s) => s.count === 0);
+
+    const deltaMin = (from: string | null, to: string | null): number | null => {
+      if (!from || !to) return null;
+      const d = new Date(to).getTime() - new Date(from).getTime();
+      return Number.isFinite(d) && d >= 0 ? Math.round(d / 60_000) : null;
+    };
+
+    return {
+      steps,
+      lastCompleted,
+      dropOff,
+      converted: !!paidAt,
+      noData,
+      preFunnelTracking,
+      failure: { count: failed.count, latestCategory: failCat, latest: failed.latest },
+      timings: {
+        otpToCheckout:      deltaMin(otpVer.first, checkout.first),
+        checkoutToAttempt:  deltaMin(checkout.first, attempted.first),
+        firstToPaid:        deltaMin(startedAt, paidAt),
+      },
     };
   }, [events, visitorSession, orderRow]);
 
@@ -946,6 +1132,93 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
         </Section>
       )}
 
+      {/* ── 4c. Assessment & Checkout Funnel ──────────────────────────── */}
+      {funnel && (
+        <Section icon="ri-funds-line" iconTint="indigo" title="Assessment & Checkout Funnel">
+          {funnel.noData && funnel.preFunnelTracking ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <p className="text-xs text-gray-500">
+                <i className="ri-information-line mr-1"></i>
+                Not tracked — order predates funnel tracking. Funnel milestones are
+                unavailable for this order.
+              </p>
+            </div>
+          ) : (
+            <>
+              {funnel.preFunnelTracking && (
+                <div className="mb-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-xs text-gray-500">
+                    <i className="ri-information-line mr-1"></i>
+                    Order predates funnel tracking — steps below marked{" "}
+                    <span className="font-semibold">Unknown</span> were never recorded
+                    and may still have happened.
+                  </p>
+                </div>
+              )}
+              <FunnelStepper steps={funnel.steps} historical={funnel.preFunnelTracking} />
+
+              {/* Failure summary (only when a real failure was recorded) */}
+              {funnel.failure.count > 0 && (
+                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200">
+                  <i className="ri-error-warning-line text-red-500" />
+                  <span className="text-[11px] font-bold text-red-700">
+                    {funnel.failure.count} payment {funnel.failure.count === 1 ? "failure" : "failures"}
+                  </span>
+                  {funnel.failure.latestCategory && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-white border border-red-200 text-red-600 font-mono">
+                      {funnel.failure.latestCategory}
+                    </span>
+                  )}
+                  {funnel.failure.latest && (
+                    <span className="text-[10px] text-red-400 font-mono ml-auto">{fmtDt(funnel.failure.latest)}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Drop-off + timings summary */}
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <MetricCard
+                  icon="ri-flag-line"
+                  label="Last completed step"
+                  value={funnel.lastCompleted ?? "—"}
+                  tint={funnel.converted ? "emerald" : "indigo"}
+                />
+                <MetricCard
+                  icon={funnel.converted ? "ri-checkbox-circle-line" : "ri-logout-box-r-line"}
+                  label={funnel.converted ? "Outcome" : "Likely drop-off point"}
+                  value={
+                    funnel.converted
+                      ? "Converted (paid)"
+                      : funnel.preFunnelTracking
+                        ? "Unknown — not tracked"
+                        : (funnel.dropOff ?? "—")
+                  }
+                  tint={funnel.converted ? "emerald" : "amber"}
+                />
+                <MetricCard
+                  icon="ri-time-line"
+                  label="OTP verified → checkout viewed"
+                  value={fmtDelta(funnel.timings.otpToCheckout)}
+                  tint="sky"
+                />
+                <MetricCard
+                  icon="ri-time-line"
+                  label="Checkout viewed → payment attempt"
+                  value={fmtDelta(funnel.timings.checkoutToAttempt)}
+                  tint="violet"
+                />
+                <MetricCard
+                  icon="ri-timer-flash-line"
+                  label="First assessment event → payment"
+                  value={fmtDelta(funnel.timings.firstToPaid)}
+                  tint={funnel.converted ? "emerald" : "gray"}
+                />
+              </div>
+            </>
+          )}
+        </Section>
+      )}
+
       {/* ── 5. Funnel Timeline ────────────────────────────────────────── */}
       <Section icon="ri-flow-chart" iconTint="indigo" title="Funnel Timeline">
         <FunnelTimeline
@@ -953,7 +1226,7 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
             { label: "Assessment started",   at: visitorSession?.assessment_started_at ?? null, icon: "ri-edit-line",            tint: "amber"   },
             { label: "Chat opened",          at: visitorSession?.chat_opened_at ?? null,        icon: "ri-chat-3-line",          tint: "sky"     },
             { label: "Order created",        at: orderRow.created_at,                           icon: "ri-shopping-cart-line",   tint: "indigo"  },
-            { label: "Payment success",      at: orderRow.paid_at ?? visitorSession?.paid_at ?? null, icon: "ri-bank-card-fill", tint: "emerald" },
+            { label: "Payment success",      at: orderRow.paid_at ?? null, icon: "ri-bank-card-fill", tint: "emerald" },
             { label: "Provider notified",    at: orderRow.doctor_status === "patient_notified" ? "fired" : null, icon: "ri-user-heart-line", tint: "violet" },
           ]}
         />
@@ -1236,6 +1509,53 @@ function FunnelTimeline({ steps }: { steps: TimelineStep[] }) {
   );
 }
 
+// ── Assessment & Checkout Funnel stepper ──────────────────────────────────
+//
+// Semantic status: green = completed (fired), gray = not reached / unknown.
+// A step never renders "No" — missing telemetry shows "Unknown" (historical)
+// or "—" (not reached). Payment failures are surfaced separately in red.
+
+function FunnelStepper({ steps, historical }: { steps: FunnelStep[]; historical: boolean }) {
+  return (
+    <ol className="relative">
+      {steps.map((s, i) => {
+        const fired = !!s.at;
+        const isLast = i === steps.length - 1;
+        const repeated = (s.count ?? 0) > 1;
+        return (
+          <li key={s.key} className="relative flex items-start gap-3 pb-3 last:pb-0">
+            {!isLast && (
+              <span className={`absolute left-[11px] top-6 w-px h-[calc(100%-12px)] ${fired ? "bg-emerald-200" : "bg-gray-100"}`} />
+            )}
+            <span
+              className={`relative z-10 inline-flex items-center justify-center w-6 h-6 rounded-full ring-4 flex-shrink-0 ${
+                fired ? "bg-emerald-500 ring-emerald-100 text-white" : "bg-gray-200 ring-gray-50 text-gray-400"
+              }`}
+            >
+              <i className={`${fired ? "ri-check-line" : s.icon} text-[11px]`} />
+            </span>
+            <div className="flex-1 flex items-center justify-between gap-2 min-h-[24px]">
+              <span className={`text-xs ${fired ? "font-semibold text-emerald-700" : "text-gray-400"}`}>
+                {s.label}
+                {repeated && (
+                  <span className="ml-1.5 text-[10px] font-mono text-gray-500">×{s.count}</span>
+                )}
+              </span>
+              <span className={`text-[10px] font-mono text-right ${fired ? "text-gray-500" : "text-gray-300"}`}>
+                {fired
+                  ? (repeated && s.latest && s.latest !== s.at
+                      ? `${fmtDt(s.at)} → ${fmtDt(s.latest)}`
+                      : fmtDt(s.at))
+                  : historical ? "Unknown" : "—"}
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 // ── Session card (ATTR-MULTI-SESSION-ORDER-JOURNEY) ───────────────────────
 
 function SessionGroupCard({
@@ -1324,6 +1644,15 @@ function fmtDt(iso: string | null): string {
       month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
     });
   } catch { return iso; }
+}
+
+function fmtDelta(min: number | null): string {
+  if (min === null) return "—";
+  if (min < 1) return "under 1 min";
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 function pathOnly(url: string): string {

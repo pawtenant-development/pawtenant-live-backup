@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { trackPaymentAttempted, trackPaymentFieldsCompleted, trackPaymentFailed, classifyPaymentFailure } from "@/lib/trackEvent";
 import {
   CardNumberElement,
   CardExpiryElement,
@@ -54,6 +55,8 @@ interface StripePaymentFormProps {
    * flow passes "Book My Consultation".
    */
   submitLabel?: string;
+  /** Order id — analytics only (funnel milestones). No card data is recorded. */
+  confirmationId?: string;
 }
 
 // ─── Processing Overlay ───────────────────────────────────────────────────────
@@ -85,6 +88,7 @@ export default function StripePaymentForm({
   couponSlot,
   complianceBlocked = false,
   submitLabel = "Complete Secure Evaluation",
+  confirmationId,
 }: StripePaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -106,6 +110,18 @@ export default function StripePaymentForm({
 
   // Ref to scroll error into view
   const errorRef = useRef<HTMLDivElement>(null);
+
+  // Funnel: fire payment_fields_completed once when all card fields first
+  // report complete. Records ONLY a boolean + checkout_type — never card data.
+  const fieldsCompleteFiredRef = useRef(false);
+  useEffect(() => {
+    const allComplete =
+      fieldState.number.complete && fieldState.expiry.complete && fieldState.cvc.complete;
+    if (allComplete && !fieldsCompleteFiredRef.current && confirmationId) {
+      fieldsCompleteFiredRef.current = true;
+      trackPaymentFieldsCompleted(confirmationId, { checkout_type: "card_elements" });
+    }
+  }, [fieldState, confirmationId]);
 
   // ── Field change handlers ─────────────────────────────────────────────────
 
@@ -187,6 +203,13 @@ export default function StripePaymentForm({
 
     setProcessing(true);
 
+    // Funnel: the customer pressed Pay and we are beginning Stripe confirmation.
+    // This is the real payment_attempted moment (NOT PaymentIntent creation).
+    // Repeatable — a genuine retry after a decline fires again and is counted.
+    if (confirmationId) {
+      try { trackPaymentAttempted(confirmationId, { checkout_type: "card_elements" }); } catch { /* analytics never blocks */ }
+    }
+
     const cardElement = elements.getElement(CardNumberElement);
     if (!cardElement) {
       setPaymentError("Card form not ready — please refresh and try again.");
@@ -202,6 +225,10 @@ export default function StripePaymentForm({
       const msg = error.message ?? "Payment failed — please try again.";
       setPaymentError(msg);
       onError(msg);
+      // Funnel: record a safe failure category only (no raw message).
+      if (confirmationId) {
+        try { trackPaymentFailed(confirmationId, classifyPaymentFailure({ type: error.type, code: error.code })); } catch { /* analytics never blocks */ }
+      }
       setProcessing(false);
       setTimeout(() => errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     } else if (paymentIntent?.status === "succeeded") {
@@ -212,6 +239,9 @@ export default function StripePaymentForm({
         const msg = authError.message ?? "Authentication failed — please try again.";
         setPaymentError(msg);
         onError(msg);
+        if (confirmationId) {
+          try { trackPaymentFailed(confirmationId, classifyPaymentFailure({ type: authError.type, code: authError.code })); } catch { /* analytics never blocks */ }
+        }
         setProcessing(false);
       } else if (confirmedIntent?.status === "succeeded") {
         onSuccess(confirmedIntent.id);

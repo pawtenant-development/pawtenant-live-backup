@@ -20,6 +20,7 @@ import CompactWhatHappensNext from "./step3/CompactWhatHappensNext";
 import RefundReassurance from "./step3/RefundReassurance";
 import SupportCard from "./step3/SupportCard";
 import { US_STATES } from "../../../lib/usStates";
+import { trackCheckoutViewed } from "@/lib/trackEvent";
 
 // ─── Module-level Stripe constants ───────────────────────────────────────────
 const stripePromise = loadStripe(
@@ -622,6 +623,7 @@ function SecurePaymentCard({
                 appliedFromParent={appliedCoupon ?? null}
                 onPaymentSuccess={handlePaymentSuccess}
                 complianceBlocked={complianceBlocked}
+                confirmationId={confirmationId}
               />
             </Elements>
           ) : stripeSecretLoading || !elementsOptions ? (
@@ -694,6 +696,7 @@ function SecurePaymentCard({
                   agreedError={cardAgreedError}
                   setAgreedError={setCardAgreedError}
                   complianceBlocked={complianceBlocked}
+                  confirmationId={confirmationId}
                 />
               </Elements>
             </>
@@ -956,6 +959,12 @@ export default function Step3Checkout({
     url: string;
     title: string;
   } | null>(null);
+
+  // Funnel: the checkout surface actually rendered. Fired once per order per
+  // page load (deduped in the helper by confirmation_id).
+  useEffect(() => {
+    if (confirmationId) trackCheckoutViewed(confirmationId, { funnel_type: "esa" });
+  }, [confirmationId]);
 
   const [localCoupon, setLocalCoupon] = useState<{
     code: string;

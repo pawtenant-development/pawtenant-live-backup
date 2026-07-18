@@ -20,14 +20,27 @@
  *   page_view
  *   cta_click
  *   assessment_started        (helper: trackAssessmentStarted)
+ *   otp_requested             (helper: trackOtpRequested)
+ *   otp_verified              (helper: trackOtpVerified)
+ *   assessment_submitted      (helper: trackAssessmentSubmitted)
  *   assessment_completed      (helper: trackAssessmentCompleted)
  *   assessment_step_view      (legacy helper)
+ *   customer_portal_viewed    (helper: trackCustomerPortalViewed)
+ *   checkout_viewed           (helper: trackCheckoutViewed)
+ *   payment_fields_completed  (helper: trackPaymentFieldsCompleted)
  *   payment_attempted         (helper: trackPaymentAttempted)
+ *   payment_failed            (helper: trackPaymentFailed)
  *   payment_success           (helper: trackPaymentSuccess)
  *   recovery_email_sent       (helper: trackRecoveryEmailSent)
  *   recovery_sms_sent         (helper: trackRecoverySmsSent)
  *   recovery_click            (helper: trackRecoveryClick)
  *   recovery_conversion       (helper: trackRecoveryConversion)
+ *
+ * PRIVACY CONTRACT for the checkout/funnel helpers below: they record ONLY
+ * a confirmation_id, letter_type, and coarse booleans / safe category enums.
+ * They MUST NEVER receive or store card numbers, CVC, expiry, OTP codes,
+ * billing details typed into Stripe, raw Stripe element values, medical
+ * assessment answers, email or phone. Callers pass nothing sensitive.
  */
 
 import { supabase } from "./supabaseClient";
@@ -127,6 +140,53 @@ function fire(
 }
 
 /**
+ * Durable one-time firer for milestone events. Routes to the record_event_once
+ * RPC, which inserts with ON CONFLICT DO NOTHING against a partial unique index
+ * on (event_name, props->>'confirmation_id') covering exactly the one-time
+ * milestones (otp_verified, assessment_submitted, payment_fields_completed,
+ * payment_success). Unlike the in-memory FIRED set, this survives refresh,
+ * resume, remount, callback replay and multiple tabs/devices: the DB enforces
+ * "at most one row per (milestone, order)". The in-memory FIRED guard is kept
+ * as a same-session fast-path so we don't even issue the redundant network call.
+ * Repeatable events must NOT use this — they keep using fire()/record_event.
+ */
+function fireOnce(
+  eventName: string,
+  props: Record<string, unknown>,
+  dedupKey: string,
+): void {
+  try {
+    if (typeof window === "undefined") return;
+    if (!eventName || !dedupKey) return;
+    if (alreadyFired(eventName, dedupKey)) return; // same-session fast-path
+
+    let sessionId: string | null = null;
+    try { sessionId = getSessionId(); } catch { sessionId = null; }
+
+    const pageUrl = typeof props.page_url === "string" ? (props.page_url as string) : null;
+
+    const payload = {
+      p_session_id: sessionId,
+      p_event_name: eventName,
+      p_page_url:   pageUrl,
+      p_props:      props,
+    };
+
+    try {
+      void Promise.resolve(supabase.rpc("record_event_once", payload))
+        .then(({ error }) => {
+          if (error && IS_DEV) console.debug("[trackEvent] record_event_once error:", error.message, payload);
+        })
+        .catch((err) => { if (IS_DEV) console.debug("[trackEvent] record_event_once threw:", err); });
+    } catch (err) {
+      if (IS_DEV) console.debug("[trackEvent] fireOnce sync throw:", err);
+    }
+  } catch (err) {
+    if (IS_DEV) console.debug("[trackEvent] fireOnce outer guard:", err);
+  }
+}
+
+/**
  * Generic event firer. Async, non-blocking, swallows ALL errors.
  *
  * Phase-3: now auto-enriches `props` with channel / source / campaign /
@@ -190,7 +250,13 @@ export function trackAssessmentCompleted(
   );
 }
 
-/** payment_attempted — fired right before Stripe confirmation. */
+/**
+ * payment_attempted — fired ONLY when the customer presses the final Pay
+ * button and the app begins Stripe confirmation (stripe.confirmCardPayment).
+ * NOT fired when a PaymentIntent is merely created/refreshed. Deliberately NOT
+ * deduped: each genuine attempt (a real retry after a decline) is a distinct
+ * event and must be counted.
+ */
 export function trackPaymentAttempted(
   confirmationId: string,
   extra?: Record<string, unknown>,
@@ -198,7 +264,7 @@ export function trackPaymentAttempted(
   fire(
     "payment_attempted",
     getEnrichedProps({ confirmation_id: confirmationId, ...(extra ?? {}) }),
-    confirmationId,
+    // No dedup key — separate real attempts are distinct events.
   );
 }
 
@@ -211,10 +277,179 @@ export function trackPaymentSuccess(
   confirmationId: string,
   extra?: Record<string, unknown>,
 ): void {
-  fire(
+  // One-time milestone: durable so redirect bounces / remounts / two tabs can't
+  // double-record a success for the same order. (Admin paid truth is still
+  // orders.paid_at, not this event.)
+  fireOnce(
     "payment_success",
     getEnrichedProps({ confirmation_id: confirmationId, ...(extra ?? {}) }),
     confirmationId,
+  );
+}
+
+// ── Assessment → checkout funnel helpers ─────────────────────────────────────
+//
+// These fill the gaps between the existing assessment_* and payment_* events
+// so the Admin Attribution tab can show the full per-order funnel. All are
+// fire-and-forget and deduped per confirmation_id per browser session (the
+// FIRED set clears on reload, so a genuinely new session re-fires — matching
+// "checkout_viewed / portal_viewed may recur across separate sessions").
+
+/** Safe, non-PII payment failure categories stored in analytics. */
+export type PaymentFailureCategory =
+  | "validation_failed"
+  | "authentication_required"
+  | "card_declined"
+  | "processing_error"
+  | "session_expired"
+  | "unknown";
+
+/**
+ * Map a Stripe error shape to a coarse, privacy-safe category. Accepts a plain
+ * object (no Stripe types) carrying only `type` / `code` strings — NEVER the
+ * raw message, so no card / decline detail can leak into analytics.
+ */
+export function classifyPaymentFailure(
+  err: { type?: string | null; code?: string | null } | null | undefined,
+): PaymentFailureCategory {
+  const type = (err?.type ?? "").toLowerCase();
+  const code = (err?.code ?? "").toLowerCase();
+
+  if (type === "validation_error") return "validation_failed";
+  if (code === "card_declined" || code === "expired_card" || code === "incorrect_cvc" ||
+      code === "incorrect_number" || code === "insufficient_funds") return "card_declined";
+  if (code === "authentication_required" || code === "payment_intent_authentication_failure")
+    return "authentication_required";
+  if (code === "processing_error" || type === "api_error") return "processing_error";
+  if (code === "payment_intent_unexpected_state" || code === "resource_missing" ||
+      code === "expired_session") return "session_expired";
+  if (type === "card_error") return "card_declined";
+  return "unknown";
+}
+
+/**
+ * otp_requested — fired for each genuine NEW code the server dispatches. The
+ * caller gates on a non-cooldown accepted send, so a within-45s cooldown reply
+ * (no new email) does NOT fire. Repeatable: a genuine resend after cooldown is a
+ * distinct request and must be counted, so this is NOT deduped.
+ */
+export function trackOtpRequested(
+  confirmationId: string,
+  letterType: "esa" | "psd",
+  extra?: Record<string, unknown>,
+): void {
+  fire(
+    "otp_requested",
+    getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }),
+    // No dedup key — a genuine resend is a distinct request.
+  );
+}
+
+/**
+ * otp_verified — fired ONLY after verify-customer-otp returns verified:true.
+ * The server verification result is the gate: this helper is never called on
+ * a form view or a failed attempt. No OTP code is ever passed here.
+ */
+export function trackOtpVerified(
+  confirmationId: string,
+  letterType: "esa" | "psd",
+  extra?: Record<string, unknown>,
+): void {
+  // One-time milestone — durable across refresh/resume/remount/two tabs.
+  fireOnce(
+    "otp_verified",
+    getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }),
+    confirmationId,
+  );
+}
+
+/**
+ * assessment_submitted — fired once per order when the assessment answers are
+ * successfully persisted (the lead upsert), not on button click. Distinct from
+ * assessment_completed, which marks the payment milestone.
+ */
+export function trackAssessmentSubmitted(
+  confirmationId: string,
+  letterType: "esa" | "psd",
+  extra?: Record<string, unknown>,
+): void {
+  // One-time milestone — durable across refresh/resume/remount/two tabs.
+  fireOnce(
+    "assessment_submitted",
+    getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }),
+    confirmationId,
+  );
+}
+
+/**
+ * customer_portal_viewed — fired once per portal page-load per order when the
+ * authenticated customer's own order renders. Not fired for admin preview and
+ * not on every rerender (deduped by confirmation_id within the page session).
+ */
+export function trackCustomerPortalViewed(
+  confirmationId: string,
+  extra?: Record<string, unknown>,
+): void {
+  if (!confirmationId) return;
+  fire(
+    "customer_portal_viewed",
+    getEnrichedProps({ confirmation_id: confirmationId, ...(extra ?? {}) }),
+    confirmationId,
+  );
+}
+
+/**
+ * checkout_viewed — fired when the checkout surface actually renders for the
+ * customer. Deduped per order per browser session; a fresh page load (new
+ * session) re-fires, which is the intended "viewed again" signal.
+ */
+export function trackCheckoutViewed(
+  confirmationId: string,
+  extra?: Record<string, unknown>,
+): void {
+  if (!confirmationId) return;
+  fire(
+    "checkout_viewed",
+    getEnrichedProps({ confirmation_id: confirmationId, ...(extra ?? {}) }),
+    confirmationId,
+  );
+}
+
+/**
+ * payment_fields_completed — boolean/timestamp milestone fired once when all
+ * required Stripe card fields first report complete. Records ONLY
+ * { complete: true, checkout_type } — never any card data. The `complete`
+ * signal comes from Stripe Element onChange events (no field contents cross
+ * into our code).
+ */
+export function trackPaymentFieldsCompleted(
+  confirmationId: string,
+  extra?: { checkout_type?: string } & Record<string, unknown>,
+): void {
+  if (!confirmationId) return;
+  // One-time milestone (first time all fields report complete) — durable across
+  // refresh/resume/remount/two tabs.
+  fireOnce(
+    "payment_fields_completed",
+    getEnrichedProps({ confirmation_id: confirmationId, complete: true, ...(extra ?? {}) }),
+    confirmationId,
+  );
+}
+
+/**
+ * payment_failed — fired on a real Stripe/confirm failure. Stores only a safe
+ * category enum, never the raw error message or decline detail. NOT deduped:
+ * genuinely separate failed attempts should each record.
+ */
+export function trackPaymentFailed(
+  confirmationId: string,
+  category: PaymentFailureCategory,
+  extra?: Record<string, unknown>,
+): void {
+  fire(
+    "payment_failed",
+    getEnrichedProps({ confirmation_id: confirmationId, category, ...(extra ?? {}) }),
+    // No dedup key — separate real attempts are distinct events.
   );
 }
 

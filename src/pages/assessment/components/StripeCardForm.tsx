@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CardNumberElement,
   CardExpiryElement,
@@ -7,6 +7,7 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import PolicyModal from "./PolicyModal";
+import { trackPaymentAttempted, trackPaymentFieldsCompleted, trackPaymentFailed, classifyPaymentFailure } from "@/lib/trackEvent";
 
 // ─── CouponRow (inline in payment form) ──────────────────────────────────────
 
@@ -196,6 +197,8 @@ interface StripeCardFormProps {
    * to acknowledge the state-law notice before paying.
    */
   complianceBlocked?: boolean;
+  /** Order id — analytics only (funnel milestones). No card data is recorded. */
+  confirmationId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,6 +213,7 @@ export default function StripeCardForm({
   onDiscountChange,
   appliedFromParent,
   complianceBlocked = false,
+  confirmationId,
 }: StripeCardFormProps) {
   const stripe = useStripe();
   const elements = useElements();
@@ -225,6 +229,18 @@ export default function StripeCardForm({
 
   const allFieldsComplete = fieldsDone.number && fieldsDone.expiry && fieldsDone.cvc;
   const canSubmit = !processing && !!stripe && !!elements && !complianceBlocked;
+
+  // Order id for analytics (prop or subscription params). Never carries card data.
+  const funnelConfId = confirmationId ?? subscriptionParams?.confirmationId;
+
+  // Funnel: payment_fields_completed once when all card fields first complete.
+  const fieldsCompleteFiredRef = useRef(false);
+  useEffect(() => {
+    if (allFieldsComplete && !fieldsCompleteFiredRef.current && funnelConfId) {
+      fieldsCompleteFiredRef.current = true;
+      trackPaymentFieldsCompleted(funnelConfId, { checkout_type: "card_elements" });
+    }
+  }, [allFieldsComplete, funnelConfId]);
 
   // Wrap onDiscountChange to also capture the coupon code.
   // ISSUE 4: discount value comes directly from the backend validate-coupon
@@ -322,6 +338,9 @@ export default function StripeCardForm({
 
     if (confirmError) {
       setCardError(confirmError.message ?? "Payment failed — please try again.");
+      if (funnelConfId) {
+        try { trackPaymentFailed(funnelConfId, classifyPaymentFailure({ type: confirmError.type, code: confirmError.code })); } catch { /* analytics never blocks */ }
+      }
       setProcessing(false);
     } else if (paymentIntent?.status === "succeeded") {
       onPaymentSuccess(paymentIntent.id);
@@ -353,6 +372,9 @@ export default function StripeCardForm({
 
     if (error) {
       setCardError(error.message ?? "Payment failed — please try again.");
+      if (funnelConfId) {
+        try { trackPaymentFailed(funnelConfId, classifyPaymentFailure({ type: error.type, code: error.code })); } catch { /* analytics never blocks */ }
+      }
       setProcessing(false);
     } else if (paymentIntent?.status === "succeeded") {
       onPaymentSuccess(paymentIntent.id);
@@ -372,6 +394,18 @@ export default function StripeCardForm({
     setCardError("");
     setTermsError(false);
     setProcessing(true);
+
+    // Funnel: the customer pressed Pay and we are beginning Stripe confirmation.
+    // This is the real payment_attempted moment (NOT PaymentIntent creation).
+    // Repeatable — a genuine retry after a decline fires again and is counted.
+    if (funnelConfId) {
+      try {
+        trackPaymentAttempted(funnelConfId, {
+          checkout_type: "card_elements",
+          plan: isSubscription ? "subscription" : "one_time",
+        });
+      } catch { /* analytics never blocks */ }
+    }
 
     if (isSubscription) {
       await handleSubscriptionPay();

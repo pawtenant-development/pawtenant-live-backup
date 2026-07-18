@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import OtpDigitsInput from "@/components/feature/OtpDigitsInput";
+import { trackOtpRequested, trackOtpVerified } from "@/lib/trackEvent";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -56,6 +57,13 @@ export default function CustomerOtpStep({ email, firstName, confirmationId, lett
     if (r?.ok) {
       setInfo(r.cooldown ? "A code was just sent — check your inbox." : `We sent a 6-digit code to ${email}.`);
       setCooldown(r.retryInSeconds ?? 45);
+      // Funnel: fire only when the server actually dispatched a NEW code. A
+      // within-45s cooldown reply (ok:true, cooldown:true) is not a new send, so
+      // it must not count as a fresh otp_requested. A genuine resend after the
+      // cooldown expires does fire again (the helper is repeatable).
+      if (!r.cooldown) {
+        try { trackOtpRequested(confirmationId, letterType); } catch { /* analytics never blocks */ }
+      }
     } else {
       setError(r?.error ?? "Could not send the code. Please try again.");
     }
@@ -81,6 +89,9 @@ export default function CustomerOtpStep({ email, firstName, confirmationId, lett
     setVerifying(true);
     const r = await post("verify-customer-otp", { email, code: fullCode, confirmationId });
     if (r?.ok && r?.verified) {
+      // Funnel: server confirmed the OTP. Fired only on verified:true — the
+      // server result is the source of truth. No code value is recorded.
+      try { trackOtpVerified(confirmationId, letterType); } catch { /* analytics never blocks */ }
       // Best-effort: establish a browser session so the portal CTA works
       // seamlessly after payment. Never blocks the flow.
       if (r.sessionToken) {

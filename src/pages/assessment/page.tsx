@@ -37,7 +37,7 @@ import {
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
 import { getEsaOneTimeTotal, getEsaAnnualTotal, getPackageTotal } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
-import { trackAssessmentStepView, trackPaymentAttempted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
+import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 
 // Lazy-loaded Step 3 checkout (payment) — split into its own bundle chunk.
 const Step3Checkout = lazy(() => import("./components/Step3Checkout"));
@@ -812,12 +812,10 @@ export default function AssessmentPage() {
     stripeSecretInFlight.current = true;
     setStripeSecretLoading(true);
     setStripeSecretError("");
-    // Structured event — fired before the Stripe call so analytics sees the
-    // attempt even if the network call fails. Wrapped in try/catch so a
-    // tracking failure can never block payment.
-    try {
-      trackPaymentAttempted(confId, { plan: step3.plan, pet_count: s2.pets?.length ?? 1 });
-    } catch { /* ignore */ }
+    // NOTE: payment_attempted is intentionally NOT fired here. Creating/refreshing
+    // a PaymentIntent is not a payment attempt — the customer has not pressed Pay.
+    // payment_attempted now fires in the Stripe form components at the moment the
+    // customer presses the final Pay button and Stripe confirmation begins.
     // Read attribution + canonical session id once. Six fields ONLY into Stripe.
     let attrForStripe = { utm_source: null as string | null, utm_campaign: null as string | null, gclid: null as string | null, fbclid: null as string | null };
     try {
@@ -1225,6 +1223,12 @@ export default function AssessmentPage() {
           // will refetch automatically.
           setStripeClientSecret("");
           setStripePaymentIntentId("");
+        }
+
+        // Funnel: assessment answers persisted (lead upsert succeeded). Fired
+        // once per order, only on a real ok result and not on an email conflict.
+        if (result?.ok && !result.emailConflict) {
+          try { trackAssessmentSubmitted(confirmationId.current, "esa"); } catch { /* analytics never blocks */ }
         }
       } catch {
         // Response not JSON — row was still written server-side; continue.

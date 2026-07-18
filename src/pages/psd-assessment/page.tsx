@@ -17,6 +17,7 @@ import type { StateAcknowledgment } from "../assessment/components/StateAcknowle
 import { getPsdOneTimeTotal } from "@/config/pricing";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
 import { logAudit, loggedFetch } from "@/lib/auditLogger";
+import { trackAssessmentSubmitted } from "@/lib/trackEvent";
 import {
   buildAttributionJson,
   getAttribution,
@@ -349,7 +350,7 @@ export default function PSDAssessmentPage() {
 
     // Save via service_role edge function — bypasses RLS + CHECK constraints reliably
     try {
-      await loggedFetch(
+      const upsertRes = await loggedFetch(
         "get-resume-order/upsert-psd-lead",
         RESUME_ORDER_URL,
         {
@@ -388,6 +389,12 @@ export default function PSDAssessmentPage() {
         },
         confirmationId,
       );
+      // Funnel: PSD assessment answers persisted. loggedFetch only throws on a
+      // hard network error, so a 4xx/5xx still resolves — gate on the response
+      // status or this would claim a submit the server actually rejected.
+      if (upsertRes?.ok) {
+        try { trackAssessmentSubmitted(confirmationId, "psd"); } catch { /* analytics never blocks */ }
+      }
     } catch {
       // silent — GHL webhook + Google Sheets still fire below
     }

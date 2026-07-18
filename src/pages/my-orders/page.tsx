@@ -25,6 +25,7 @@ import CustomerPortalSection from "./components/CustomerPortalSection";
 import { isUnpaidLead, isPaidOrder, isTerminalOrder } from "@/lib/bookingProgress";
 import { isRefundTerminal, isOperationallyCancelled, isPartialRefund } from "@/lib/orderClassification";
 import { resolveAccountGreeting, type NameUserLike } from "@/lib/customerName";
+import { trackCustomerPortalViewed } from "@/lib/trackEvent";
 
 interface OrderDocument {
   id: string;
@@ -818,6 +819,14 @@ export default function MyOrdersPage() {
             documents: docsByOrderId.get(o.id) ?? [],
           }));
           setOrders(ordersWithDocs);
+          // Funnel: the authenticated customer's own portal rendered. One
+          // event per order per portal load (deduped inside the helper).
+          // Not fired for the admin-preview branch above.
+          for (const o of ordersWithDocs) {
+            if (o.confirmation_id) {
+              try { trackCustomerPortalViewed(o.confirmation_id); } catch { /* analytics never blocks */ }
+            }
+          }
         } else {
           setOrders([]);
         }

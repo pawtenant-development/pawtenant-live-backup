@@ -11,6 +11,7 @@ import StripePaymentForm from "../../assessment/components/StripePaymentForm";
 import StripeCardForm from "../../assessment/components/StripeCardForm";
 import { getPackageTotal, getPackageRenewal, isRaBundle } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
+import { trackCheckoutViewed } from "@/lib/trackEvent";
 import SubscriptionRenewalNotice from "../../../components/feature/SubscriptionRenewalNotice";
 // ── 2026-05-21 PSD-STEP3-ESA-PARITY ─────────────────────────────────────────
 // Reuse the polished trust/reassurance helpers ESA Step 3 mounts in its left
@@ -399,6 +400,7 @@ function SecurePaymentCard({
                 priceBeforeDiscount={priceBeforeDiscount}
                 onDiscountChange={handleDiscountChange}
                 onPaymentSuccess={onPaymentSuccess}
+                confirmationId={confirmationId}
               />
             </Elements>
           ) : (
@@ -425,6 +427,7 @@ function SecurePaymentCard({
                   agreedError={cardAgreedError}
                   setAgreedError={setCardAgreedError}
                   couponSlot={couponSlot}
+                  confirmationId={confirmationId}
                 />
               </Elements>
             )
@@ -591,6 +594,11 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
 
   const subscriptionIdRef = useRef<string | null>(null);
   const paymentCompletedRef = useRef(false);
+
+  // Funnel: PSD checkout surface rendered. Once per order per page load.
+  useEffect(() => {
+    if (confirmationId) trackCheckoutViewed(confirmationId, { funnel_type: "psd" });
+  }, [confirmationId]);
 
   // Public coupons never apply to subscriptions — clear any applied one-time
   // coupon when the annual plan is selected so it can't leak into a subscription.
