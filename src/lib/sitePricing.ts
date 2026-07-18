@@ -91,7 +91,8 @@ export const PRICING_FALLBACKS: SitePricingRow[] = [
   fb(PRICING_KEYS.psdMultiDog, "PSD Letter — 2 or 3 Dogs (fixed total)", "psd", PSD_PRICING.oneTimeMultiDogTotal * 100, 22),
   fb(PRICING_KEYS.psdAnnual, "PSD Annual Subscription (1 dog)", "psd", PSD_PRICING.annual * 100, 23),
   fb(PRICING_KEYS.psdAnnualMulti, "PSD Annual — 2 or 3 Dogs (fixed total/yr)", "psd", PSD_PRICING.annualMultiDogTotal * 100, 24),
-  fb(PRICING_KEYS.psdConsultation, "Consultation — 15-Minute Call", "psd", PSD_PRICING.consultation * 100, 25),
+  // psd_consultation RETIRED 2026-07 — no active $79 consultation. Historical
+  // orders keep their own amounts; the DB row is set is_active=false.
   fb(PRICING_KEYS.renewalAnnual, "Renewal — Annual Subscription", "subscription", RENEWAL_PRICING.annual * 100, 26),
   fb(PRICING_KEYS.additionalDocumentation, "Additional Documentation (add-on)", "addon", 4000, 30),
 ];

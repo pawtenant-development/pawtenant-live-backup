@@ -2,6 +2,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
+import {
+  oneTimeCents,
+  firstYearPriceId,
+  COMBO_ONE_TIME_CENTS,
+  COMBO_ANNUAL_CENTS,
+} from "../_shared/pricingMatrix.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -16,36 +22,35 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
  * We purposely ignore refunded/cancelled rows so a support-refunded order
  * doesn't lock the email forever.
  */
-async function findPaidOrderBlockingEmail(
-  email: string,
-  currentConfirmationId: string,
+// CUSTOMER-PORTAL-REPEAT-PURCHASE-UPSSELL-REVIEWS-001:
+// Order identity is the confirmation_id, NOT the email — repeat purchases with the
+// same email are allowed. We only refuse to open a Checkout Session for an order
+// that is ITSELF already paid (prevents charging the same confirmation_id twice).
+// Refunded/cancelled rows ignored.
+async function findAlreadyPaidCurrentOrder(
+  confirmationId: string,
 ): Promise<{ confirmation_id: string; payment_intent_id: string | null; paid_at: string | null } | null> {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
-  const normalized = email.trim().toLowerCase();
-  if (!normalized) return null;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !confirmationId) return null;
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data } = await supabase
       .from("orders")
       .select("confirmation_id, payment_intent_id, paid_at, status")
-      .ilike("email", normalized)
-      .not("status", "in", `("refunded","cancelled")`)
-      .order("created_at", { ascending: false })
-      .limit(5);
+      .eq("confirmation_id", confirmationId)
+      .maybeSingle();
     if (!data) return null;
-    for (const row of data) {
-      const paid = !!(row.payment_intent_id || row.paid_at);
-      if (paid && row.confirmation_id !== currentConfirmationId) {
-        return {
-          confirmation_id: row.confirmation_id as string,
-          payment_intent_id: (row.payment_intent_id as string | null) ?? null,
-          paid_at: (row.paid_at as string | null) ?? null,
-        };
-      }
+    const paid = !!(data.payment_intent_id || data.paid_at);
+    const dead = data.status === "refunded" || data.status === "cancelled";
+    if (paid && !dead) {
+      return {
+        confirmation_id: data.confirmation_id as string,
+        payment_intent_id: (data.payment_intent_id as string | null) ?? null,
+        paid_at: (data.paid_at as string | null) ?? null,
+      };
     }
     return null;
   } catch (err) {
-    console.warn("[create-checkout-session] paid-email check failed:", err);
+    console.warn("[create-checkout-session] current-order paid check failed:", err);
     return null;
   }
 }
@@ -63,18 +68,15 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// ─── ESA Stripe price IDs (TEST) — SUBSCRIPTIONS ONLY ──────────────────────
+// ─── ESA subscription FIRST-YEAR Price IDs — from _shared/pricingMatrix.ts ──
 // Subscriptions require pre-created recurring Price objects (Stripe rule).
-// Tier model, owner-provided 2026-07: 1 pet → $109/yr; 2 or 3 pets → $129/yr
-// fixed total. Keep in sync with create-payment-intent/index.ts.
-const ESA_ANNUAL_BASE_PRICE_ID = "price_1TpOHNGwm9wIWlgiizgabvkc";   // $109/yr, 1 pet
-const ESA_ANNUAL_MULTI_PRICE_ID = "price_1TpOLeGwm9wIWlgiLMeunzub";  // $129/yr, 2-3 pets
-
+// 1 pet → $115/yr first year; 2 or 3 → $135/yr first year. The renewal
+// ($100 / $115) is applied by the webhook via a Subscription Schedule after
+// the first invoice is paid. Old $109/$129 prices retired for NEW subs.
 function buildESASubscriptionLineItems(
   petCount: number,
 ): Array<{ price: string; quantity: number }> {
-  const n = Math.max(1, Math.min(3, petCount));
-  return [{ price: n === 1 ? ESA_ANNUAL_BASE_PRICE_ID : ESA_ANNUAL_MULTI_PRICE_ID, quantity: 1 }];
+  return [{ price: firstYearPriceId("esa", petCount), quantity: 1 }];
 }
 
 // ─── ESA ONE-TIME inline amount (cents) ────────────────────────────────────
@@ -83,8 +85,7 @@ function buildESASubscriptionLineItems(
 // getESAOneTimeAmount in create-payment-intent so card, Klarna and QR always
 // charge identical totals. 1 pet = $129; 2 or 3 pets = $149 fixed total.
 function getESAOneTimeAmountCents(petCount: number): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return (n === 1 ? 129 : 149) * 100;
+  return oneTimeCents(petCount);
 }
 
 function buildESAOneTimeInlineLineItem(petCount: number) {
@@ -103,20 +104,12 @@ function buildESAOneTimeInlineLineItem(petCount: number) {
   };
 }
 
-// ─── PSD ANNUAL SUBSCRIPTION Price IDs ────────────────────────────────────
-// (One-time PSD Price IDs removed 2026-07 — one-time sessions use inline
-// price_data; see buildPSDOneTimeKlarnaLineItem.)
-// Tier model, owner-provided 2026-07: 1 dog → $109/yr; 2 or 3 dogs → $129/yr
-// fixed total. Keep in sync with create-payment-intent/index.ts.
-const PSD_ANNUAL_PRICE_IDS: Record<number, string> = {
-  1: "price_1TpOPOGwm9wIWlgijMnt7NBJ",  // $109/yr, 1 dog
-  2: "price_1TpORnGwm9wIWlgi9KiPhJpg",  // $129/yr, 2-3 dogs
-  3: "price_1TpORnGwm9wIWlgi9KiPhJpg",  // $129/yr, 2-3 dogs
-};
-
+// ─── PSD subscription FIRST-YEAR Price ID — from _shared/pricingMatrix.ts ───
+// (One-time PSD sessions use inline price_data; see buildPSDOneTimeKlarnaLineItem.)
+// 1 dog → $115/yr first year; 2 or 3 → $135/yr first year. Renewal applied by
+// the webhook via a Subscription Schedule. Old $109/$129 prices retired.
 function getPSDPriceId(petCount: number, _deliverySpeed: string, _planType: string): string {
-  const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
-  return PSD_ANNUAL_PRICE_IDS[tier];
+  return firstYearPriceId("psd", petCount);
 }
 
 // ─── PSD ONE-TIME inline amount (cents) — same table as create-payment-intent ──
@@ -125,8 +118,7 @@ function getPSDPriceId(petCount: number, _deliverySpeed: string, _planType: stri
 // 2026-07 FINAL: 1 dog = $129; 2 or 3 dogs = $149 fixed total (both delivery
 // speeds). Mirrors getPSDOneTimeAmount in create-payment-intent/index.ts.
 function getPSDOneTimeAmountCents(petCount: number, _deliverySpeed: string): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return (n === 1 ? 129 : 149) * 100;
+  return oneTimeCents(petCount);
 }
 
 function buildPSDOneTimeKlarnaLineItem(petCount: number, deliverySpeed: string) {
@@ -148,11 +140,12 @@ function buildPSDOneTimeKlarnaLineItem(petCount: number, deliverySpeed: string) 
 }
 
 // ─── RA bundle packages (PACKAGE-RA-LETTER-BUNDLE-001) ────────────────────────
-// ESA/PSD + Reasonable Accommodation Letter. FLAT $179 one-time / $159 annual for
-// 1–3 pets/dogs. One-time = inline price_data; annual = inline recurring price_data
-// (no pre-created Stripe Price). Mirrors create-payment-intent + src/config/pricing.ts.
-const BUNDLE_ONE_TIME_AMOUNT_CENTS = 17900;
-const BUNDLE_ANNUAL_AMOUNT_CENTS = 15900;
+// ESA/PSD + Reasonable Accommodation Letter. FLAT $179 one-time / $159 annual
+// for 1–3 pets/dogs. One-time = inline price_data; annual = inline recurring
+// price_data (no pre-created Stripe Price object). Mirrors create-payment-intent
+// + src/config/pricing.ts — keep in sync.
+const BUNDLE_ONE_TIME_AMOUNT_CENTS = COMBO_ONE_TIME_CENTS;
+const BUNDLE_ANNUAL_AMOUNT_CENTS = COMBO_ANNUAL_CENTS;
 
 const PACKAGE_DISPLAY_NAMES: Record<string, string> = {
   esa_standard: "ESA Letter",
@@ -161,6 +154,7 @@ const PACKAGE_DISPLAY_NAMES: Record<string, string> = {
   psd_ra_bundle: "PSD + Reasonable Accommodation Letter",
 };
 const ALLOWED_PACKAGE_KEYS = ["esa_standard", "esa_ra_bundle", "psd_standard", "psd_ra_bundle"];
+
 function resolvePackageKey(rawPackageKey: string, letterType: string): string {
   if (ALLOWED_PACKAGE_KEYS.includes(rawPackageKey)) return rawPackageKey;
   return letterType === "psd" ? "psd_standard" : "esa_standard";
@@ -168,6 +162,7 @@ function resolvePackageKey(rawPackageKey: string, letterType: string): string {
 function isRaBundleKey(packageKey: string): boolean {
   return packageKey === "esa_ra_bundle" || packageKey === "psd_ra_bundle";
 }
+
 function buildBundleOneTimeInlineLineItem(packageKey: string) {
   const name = PACKAGE_DISPLAY_NAMES[packageKey] ?? "PawTenant RA Bundle";
   return {
@@ -182,6 +177,7 @@ function buildBundleOneTimeInlineLineItem(packageKey: string) {
     quantity: 1,
   };
 }
+
 function buildBundleSubscriptionLineItem(packageKey: string) {
   const name = PACKAGE_DISPLAY_NAMES[packageKey] ?? "PawTenant RA Bundle";
   return {
@@ -279,26 +275,6 @@ async function resolveLegacyQuoteLock(
   }
 }
 
-// BATCH-0.2A CHECKOUT-LIFECYCLE: stamp the authoritative moment the customer
-// genuinely initiates checkout via Klarna / QR / hosted checkout. FIRST-WRITE-WINS:
-// guarded to `checkout_started_at IS NULL` so a retried / re-opened session keeps
-// the ORIGINAL timestamp, and to unpaid rows so a paid order is never re-stamped.
-// Assessment-only leads never reach this function, so they stay NULL. Best-effort.
-async function stampCheckoutStarted(confirmationId: string): Promise<void> {
-  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
-  try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    await supabase
-      .from("orders")
-      .update({ checkout_started_at: new Date().toISOString() })
-      .eq("confirmation_id", confirmationId)
-      .is("checkout_started_at", null)
-      .is("paid_at", null);
-  } catch (err) {
-    console.warn("[create-checkout-session] checkout_started_at stamp failed (non-blocking):", err instanceof Error ? err.message : String(err));
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -331,45 +307,29 @@ Deno.serve(async (req: Request) => {
   const packageKey = resolvePackageKey((body.packageKey as string) ?? "", letterType);
   const isBundle = isRaBundleKey(packageKey);
 
+  // ── PSD consultation RETIRED (2026-07) — no active purchase path. ─────────
+  if (letterType === "psd-consultation" || packageKey === "psd_consultation") {
+    return json({ error: "The PSD consultation is no longer available.", retired: true }, 410);
+  }
+
   if (!email || !confirmationId) {
     return json({ error: "email and confirmationId are required" }, 400);
   }
 
-  // ── Returning-customer bypass ────────────────────────────────────────────
-  // See create-payment-intent for rationale. parent_order_id is set only by
-  // service-role create-returning-order, so this cannot be triggered from the
-  // public /assessment flow.
-  let isReturningCustomer = false;
-  if (confirmationId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      const { data: currentRow } = await sb
-        .from("orders")
-        .select("parent_order_id")
-        .eq("confirmation_id", confirmationId)
-        .maybeSingle();
-      isReturningCustomer = !!currentRow?.parent_order_id;
-    } catch (err) {
-      console.warn("[create-checkout-session] returning-customer lookup failed:", err);
-    }
-  }
-
-  // ── HARD BLOCK: email already has a PAID order under a different row ─────
-  // Mirrors the guard in create-payment-intent. Without this, redirect flows
-  // (Klarna / QR card / Link) can still reach a Stripe Checkout Session even
-  // when the inline card path is blocked.
-  const paidBlocker = isReturningCustomer
-    ? null
-    : await findPaidOrderBlockingEmail(email, confirmationId);
-  if (paidBlocker) {
+  // ── Duplicate-charge guard (CUSTOMER-PORTAL-REPEAT-PURCHASE-UPSSELL-REVIEWS-001) ──
+  // Mirrors create-payment-intent. Repeat purchases with the same email are allowed;
+  // we only refuse to open a Checkout Session for an order that is ITSELF already
+  // paid (prevents charging the same confirmation_id twice via Klarna / QR / Link).
+  const alreadyPaidOrder = await findAlreadyPaidCurrentOrder(confirmationId);
+  if (alreadyPaidOrder) {
     console.warn(
-      `[create-checkout-session] REFUSED: email ${email} already paid under ${paidBlocker.confirmation_id} (PI ${paidBlocker.payment_intent_id ?? "n/a"})`,
+      `[create-checkout-session] REFUSED: order ${confirmationId} is already paid (PI ${alreadyPaidOrder.payment_intent_id ?? "n/a"})`,
     );
     return json(
       {
-        error: "An order already exists for this email. Please use a different email or contact support to resume your existing order.",
-        emailConflict: true,
+        error: "This order has already been paid. Start a new order to purchase again.",
         alreadyPaid: true,
+        confirmationId,
       },
       409,
     );
@@ -418,6 +378,7 @@ Deno.serve(async (req: Request) => {
     // resume-locked).
     pricing_source: "current_pricing",
     ...(couponCode ? { coupon_code: couponCode } : {}),
+    // ── RA bundle package metadata (persisted onto the order by the webhook) ──
     ...((letterType === "esa" || letterType === "psd")
       ? {
           package_key: packageKey,
@@ -430,17 +391,17 @@ Deno.serve(async (req: Request) => {
 
   try {
     // ── SUBSCRIPTION CHECKOUT ──────────────────────────────────────────────
-    // BATCH-0.2A: stamp checkout_started_at (first-write-wins) — past the email/
-    // confirmationId check and duplicate-charge guard, a real Checkout Session is
-    // about to be created = genuine checkout start (Klarna / QR / hosted).
-    await stampCheckoutStarted(confirmationId);
-
     if (planType === "subscription") {
-      // Resolve coupon to Stripe coupon ID if provided
-      let stripeCouponId: string | null = null;
+      // Phase 8: NO public coupons on subscriptions — reject server-side (never
+      // silently ignored). The annual plan already carries the built-in saving.
       if (couponCode) {
-        stripeCouponId = await resolveStripeCouponId(stripe, couponCode);
+        return json({
+          error: "Coupons can't be applied to subscription plans — the annual plan already includes the built-in saving.",
+          couponRejected: true,
+        }, 400);
       }
+      // (No coupon attach below — couponCode is guaranteed empty past this point.)
+      const stripeCouponId: string | null = null;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sessionParams: any = {
@@ -479,7 +440,8 @@ Deno.serve(async (req: Request) => {
         try {
           const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
           const upd: Record<string, unknown> = { checkout_session_id: session.id };
-          // Stamp authoritative package entitlement now (annual) — webhook-independent.
+          // Stamp authoritative package entitlement now (annual) so a Klarna combo
+          // can never be downgraded by a reconciliation-race — webhook-independent.
           if (letterType === "esa" || letterType === "psd") {
             Object.assign(upd, packageEntitlementPatch(packageKey, "annual"));
           }
@@ -523,9 +485,9 @@ Deno.serve(async (req: Request) => {
     // Override the inline unit_amount with the saved quote for resumed unpaid
     // orders so Klarna / QR charges the ORIGINAL price, never the recalculated
     // current amount. Coupons still apply on top (sessionParams.discounts below).
+    // RA bundles are flat-priced with no legacy quotes to preserve → skip the
+    // lock (prevents a standard saved lead price from suppressing the bundle price).
     const configBaseCents = oneTimeLineItems[0].price_data.unit_amount;
-    // RA bundles are flat-priced with no legacy quote to preserve (prevents a
-    // standard saved lead price from suppressing the $179 bundle upcharge).
     const quoteLock = isBundle
       ? { baseCents: configBaseCents, pricingSource: "bundle_flat" }
       : await resolveLegacyQuoteLock(confirmationId, configBaseCents);
@@ -586,9 +548,8 @@ Deno.serve(async (req: Request) => {
           pricing_source: quoteLock.pricingSource,
         };
         if (quoteLock.pricingSource === "legacy_saved_quote") patch.quote_locked_at = new Date().toISOString();
-        // Stamp authoritative package entitlement now (one-time) — webhook-independent.
-        // At checkout-session creation the order is always unpaid, so the paid_at
-        // guard only skips the nonsensical already-paid case (correct to skip).
+        // Stamp authoritative package entitlement now (one-time) so a Klarna combo
+        // can never be downgraded by a reconciliation-race — webhook-independent.
         if (letterType === "esa" || letterType === "psd") {
           Object.assign(patch, packageEntitlementPatch(packageKey, "one_time"));
         }

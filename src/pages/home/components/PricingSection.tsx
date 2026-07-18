@@ -30,7 +30,7 @@ export default function PricingSection() {
   const esaFrom = getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime);
   const esaAnnual = getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription);
   const psdFrom = getPrice("psd_standard", "$129");
-  const psdAnnual = getPrice("psd_annual", "$109");
+  const psdAnnual = getPrice("psd_annual", "$115");
 
   const services = [
     {

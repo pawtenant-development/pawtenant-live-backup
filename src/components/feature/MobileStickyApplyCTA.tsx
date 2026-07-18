@@ -31,7 +31,7 @@ interface Props {
 export default function MobileStickyApplyCTA({
   showAfterPx = 500,
   to = "/assessment",
-  label = "Get Your ESA Letter — From $109",
+  label = "Get Your ESA Letter — From $115",
   icon = "ri-file-text-line",
   variant = "default",
 }: Props) {

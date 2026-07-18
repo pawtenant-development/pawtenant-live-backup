@@ -12,8 +12,8 @@ import {
 
 // Dedicated PSD pricing / cost page. ESA pricing is intentionally NOT shown here
 // (the ESA cost page owns that). Two PSD packages only:
-//   • PSD Standard Documentation  — 1 dog $129 one-time / $109 per year
-//                                    (2–3 dogs $149 one-time / $129 per year)
+//   • PSD Standard Documentation  — 1 dog $129 one-time / $115 first year
+//                                    (2–3 dogs $149 one-time / $135 first year)
 //   • PSD + Reasonable Accommodation — FLAT $179 one-time / $159 per year (1–3)
 // Prices are read from the pricing helpers so they can never drift from the
 // server-authoritative amounts (create-payment-intent / create-checkout-session).
@@ -34,7 +34,7 @@ const packages = [
     label: "PSD Standard Documentation",
     sublabel: "Licensed-provider psychiatric service dog documentation",
     oneTime: `$${getPsdOneTimeTotal(1)}`, // $129 (1 dog)
-    annual: `$${getPsdAnnualTotal(1)}`, // $109/yr (1 dog)
+    annual: `$${getPsdAnnualTotal(1)}`, // $115/yr first year (1 dog)
     highlight: false,
     cta: "Start PSD Assessment",
     href: "/psd-assessment",
@@ -43,7 +43,7 @@ const packages = [
       "Documentation of a qualifying disability-related need, if appropriate",
       "Supports housing and travel contexts where applicable",
       "Digital delivery — typically within 24 hours",
-      "Covers 1 dog · 2–3 dogs $149 one-time / $129 per year",
+      "Covers 1 dog · 2–3 dogs $149 one-time / $135 per year",
       "100% money-back guarantee if you don't qualify",
     ],
   },
@@ -78,7 +78,7 @@ const included = [
 const faqs = [
   {
     q: "What does a PSD letter cost?",
-    a: "Standard PSD documentation starts at $129 one-time for one dog (or $109 per year on the annual plan). Two or three dogs are a fixed total of $149 one-time / $129 per year — there is no per-dog add-on. The Reasonable Accommodation package, which adds support completing a separate landlord or HOA form, is a flat $179 one-time or $159 per year for 1–3 dogs.",
+    a: "Standard PSD documentation starts at $129 one-time for one dog (or $115 for the first year on the annual plan, which renews lower after year one). Two or three dogs are a fixed total of $149 one-time / $135 per year — there is no per-dog add-on. The Reasonable Accommodation package, which adds support completing a separate landlord or HOA form, is a flat $179 one-time or $159 per year for 1–3 dogs.",
   },
   {
     q: "What is the difference between a PSD letter and an ESA letter?",

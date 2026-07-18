@@ -446,7 +446,7 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
   "/renew-esa-letter": {
     title: "Renew Your ESA Letter in 2026 — Fast & FHA-Compliant | PawTenant",
     description:
-      "ESA letters expire after 12 months. Renew your emotional support animal letter with a licensed therapist in 2026. Same-day delivery, 100% money-back guarantee. From $109.",
+      "ESA letters expire after 12 months. Renew your emotional support animal letter with a licensed therapist in 2026. Same-day delivery, 100% money-back guarantee. From $115.",
   },
   "/join-our-network": {
     title: "Join PawTenant's Licensed Provider Network | PawTenant",

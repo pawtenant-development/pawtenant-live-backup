@@ -2,6 +2,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
+import {
+  oneTimeCents,
+  firstYearCents,
+  renewalCents,
+  firstYearPriceId,
+  COMBO_ONE_TIME_CENTS,
+  COMBO_ANNUAL_CENTS,
+} from "../_shared/pricingMatrix.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -15,36 +23,36 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
  * We purposely ignore refunded/cancelled rows so a support-refunded order
  * doesn't lock the email forever.
  */
-async function findPaidOrderBlockingEmail(
-  email: string,
-  currentConfirmationId: string,
+// CUSTOMER-PORTAL-REPEAT-PURCHASE-UPSSELL-REVIEWS-001:
+// Order identity is the confirmation_id, NOT the email — a returning customer may
+// buy again with the same email (ESA→PSD, ESA→ESA, etc.). We therefore no longer
+// block on "email already has a paid order". The only duplicate protection kept
+// here is: refuse to mint a payment for an order that is ITSELF already paid, so the
+// SAME confirmation_id can never be charged twice. Refunded/cancelled rows ignored.
+async function findAlreadyPaidCurrentOrder(
+  confirmationId: string,
 ): Promise<{ confirmation_id: string; payment_intent_id: string | null; paid_at: string | null } | null> {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
-  const normalized = email.trim().toLowerCase();
-  if (!normalized) return null;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !confirmationId) return null;
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data } = await supabase
       .from("orders")
       .select("confirmation_id, payment_intent_id, paid_at, status")
-      .ilike("email", normalized)
-      .not("status", "in", `("refunded","cancelled")`)
-      .order("created_at", { ascending: false })
-      .limit(5);
+      .eq("confirmation_id", confirmationId)
+      .maybeSingle();
     if (!data) return null;
-    for (const row of data) {
-      const paid = !!(row.payment_intent_id || row.paid_at);
-      if (paid && row.confirmation_id !== currentConfirmationId) {
-        return {
-          confirmation_id: row.confirmation_id as string,
-          payment_intent_id: (row.payment_intent_id as string | null) ?? null,
-          paid_at: (row.paid_at as string | null) ?? null,
-        };
-      }
+    const paid = !!(data.payment_intent_id || data.paid_at);
+    const dead = data.status === "refunded" || data.status === "cancelled";
+    if (paid && !dead) {
+      return {
+        confirmation_id: data.confirmation_id as string,
+        payment_intent_id: (data.payment_intent_id as string | null) ?? null,
+        paid_at: (data.paid_at as string | null) ?? null,
+      };
     }
     return null;
   } catch (err) {
-    console.warn("[create-payment-intent] paid-email check failed:", err);
+    console.warn("[create-payment-intent] current-order paid check failed:", err);
     return null;
   }
 }
@@ -62,44 +70,44 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// ─── FINAL pricing structure (2026-07) ────────────────────────────────────────
+// ─── FINAL pricing structure (2026-07, phased subscriptions) ─────────────────
 // One-time (both products): 1 pet/dog = $129; 2 or 3 = $149 FIXED TOTAL.
-// Annual (both products):   1 pet/dog = $109/yr; 2 or 3 = $129/yr FIXED TOTAL.
-// Mirrors src/config/pricing.ts — keep both in sync. Annual amounts MUST match
-// what the Stripe recurring Prices below actually bill (they feed the discount
-// calc displayAmount − PI.amount; a mismatch stamps phantom coupon_discount).
+// Subscription FIRST YEAR:  1 pet/dog = $115; 2 or 3 = $135 FIXED TOTAL.
+// Subscription RENEWAL yr2+: 1 pet/dog = $100; 2 or 3 = $115 (phase 2 schedule).
+// Amounts + Stripe Price IDs come from _shared/pricingMatrix.ts (single server
+// source; scripts/check-pricing-parity.mjs fails the build if it drifts from
+// src/config/pricing.ts). The subscription is minted at the FIRST-YEAR price;
+// the webhook attaches the renewal phase after the first invoice is paid.
 
 function getESAOneTimeAmount(petCount: number): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return (n === 1 ? 129 : 149) * 100; // cents
+  return oneTimeCents(petCount);
 }
 
 function getESAAnnualAmount(petCount: number): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return (n === 1 ? 109 : 129) * 100; // cents
+  return firstYearCents(petCount); // FIRST-YEAR subscription amount (billed today)
 }
 
 // One-time PSD letter (both delivery speeds).
 function getPSDOneTimeAmount(petCount: number, _deliverySpeed: string): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return (n === 1 ? 129 : 149) * 100; // cents
+  return oneTimeCents(petCount);
 }
 
 function getPSDAnnualAmount(petCount: number): number {
-  const n = Math.max(1, Math.min(3, petCount));
-  return (n === 1 ? 109 : 129) * 100; // cents
+  return firstYearCents(petCount); // FIRST-YEAR subscription amount (billed today)
 }
 
-// PSD Consultation — $79 clinical guidance call (separate lead product; no
-// letter is created or promised by this purchase).
-const PSD_CONSULTATION_AMOUNT = 7900;
+// PSD Consultation RETIRED 2026-07 — no active purchase path. Requests for
+// letterType "psd-consultation" are rejected up front (see handler guard);
+// historical consultation orders keep their own recorded amounts.
 
 // ─── RA bundle packages (PACKAGE-RA-LETTER-BUNDLE-001) ────────────────────────
-// ESA/PSD + Reasonable Accommodation Letter. FLAT $179 one-time / $159/yr annual
-// for 1–3 pets/dogs. One-time = dynamic PI amount; annual = on-the-fly product +
-// inline recurring price_data (NO pre-created Stripe Price). Mirrors src/config/pricing.ts.
-const BUNDLE_ONE_TIME_AMOUNT = 17900; // $179 flat total
-const BUNDLE_ANNUAL_AMOUNT = 15900;   // $159/yr flat total
+// ESA + Reasonable Accommodation Letter  and  PSD + Reasonable Accommodation
+// Letter. FLAT pricing for 1–3 pets/dogs (owner instruction). One-time is a
+// dynamic PaymentIntent amount; annual uses inline recurring price_data so NO
+// pre-created Stripe Price object / Price ID is required. Mirrors
+// src/config/pricing.ts BUNDLE_PRICING — keep in sync.
+const BUNDLE_ONE_TIME_AMOUNT = COMBO_ONE_TIME_CENTS; // $179 flat total
+const BUNDLE_ANNUAL_AMOUNT = COMBO_ANNUAL_CENTS;     // $159/yr flat total (no year-two drop)
 
 const PACKAGE_DISPLAY_NAMES: Record<string, string> = {
   esa_standard: "ESA Letter",
@@ -111,7 +119,7 @@ const PACKAGE_DISPLAY_NAMES: Record<string, string> = {
 const ALLOWED_PACKAGE_KEYS = ["esa_standard", "esa_ra_bundle", "psd_standard", "psd_ra_bundle"];
 
 // Resolve the canonical package key from an explicit body value, falling back to
-// the standard package for the given letterType. Backward compatible — any caller
+// the standard package for the given letterType. Backward compatible: any caller
 // that doesn't send packageKey behaves exactly as before.
 function resolvePackageKey(rawPackageKey: string, letterType: string): string {
   if (ALLOWED_PACKAGE_KEYS.includes(rawPackageKey)) return rawPackageKey;
@@ -122,26 +130,14 @@ function isRaBundleKey(packageKey: string): boolean {
   return packageKey === "esa_ra_bundle" || packageKey === "psd_ra_bundle";
 }
 
-// ─── Stripe recurring Price IDs (TEST) — tier model, owner-provided 2026-07 ──
-// 1 pet/dog → $109/yr base Price; 2 or 3 → $129/yr fixed-total Price.
-// The old base+add-on model ($99 + $20/pet) and $99/$109/$129 PSD tiers are
-// retired. Keep in sync with create-checkout-session/index.ts.
-const ESA_ANNUAL_BASE_PRICE_ID = "price_1TpOHNGwm9wIWlgiizgabvkc";   // $109/yr, 1 pet
-const ESA_ANNUAL_MULTI_PRICE_ID = "price_1TpOLeGwm9wIWlgiLMeunzub";  // $129/yr, 2-3 pets
-
+// ─── Subscription FIRST-YEAR Price IDs — from _shared/pricingMatrix.ts ───────
+// 1 pet/dog → $115/yr first-year Price; 2 or 3 → $135/yr first-year Price. The
+// renewal ($100 / $115) is applied by the webhook via a Stripe Subscription
+// Schedule after the first invoice is paid. The old flat $109/$129 recurring
+// Prices are retired for NEW subscriptions (existing subscriptions untouched).
 function buildESAAnnualItems(petCount: number): Array<{ price: string; quantity: number }> {
-  const n = Math.max(1, Math.min(3, petCount));
-  return [{ price: n === 1 ? ESA_ANNUAL_BASE_PRICE_ID : ESA_ANNUAL_MULTI_PRICE_ID, quantity: 1 }];
+  return [{ price: firstYearPriceId("esa", petCount), quantity: 1 }];
 }
-
-const PSD_ANNUAL_BASE_PRICE_ID = "price_1TpOPOGwm9wIWlgijMnt7NBJ";   // $109/yr, 1 dog
-const PSD_ANNUAL_MULTI_PRICE_ID = "price_1TpORnGwm9wIWlgi9KiPhJpg";  // $129/yr, 2-3 dogs
-
-const PSD_ANNUAL_PRICE_IDS: Record<number, string> = {
-  1: PSD_ANNUAL_BASE_PRICE_ID,
-  2: PSD_ANNUAL_MULTI_PRICE_ID,
-  3: PSD_ANNUAL_MULTI_PRICE_ID,
-};
 
 /**
  * Resolve a Stripe coupon from a coupon code. Tries the code as a coupon ID
@@ -265,12 +261,14 @@ async function stampPricingSource(confirmationId: string, pricingSource: string)
   } catch { /* best-effort audit only — never block payment setup */ }
 }
 
-// RA-DOCUMENT-WORKFLOW-PORTALS-CONSISTENCY-001: stamp the authoritative package
-// entitlement onto the (unpaid) order at PI-creation time so combo orders carry
-// package_key / billing_plan / includes_reasonable_accommodation_letter regardless
-// of whether the webhook fires first (webhook still reconciles — defense-in-depth).
-// Uses the SAME server-validated packageKey the amount is charged on (NOT price
-// inference). Guarded to unpaid orders; best-effort, never blocks payment setup.
+// RA-DOCUMENT-WORKFLOW-PORTALS-CONSISTENCY-001 (2026-07-11): stamp the
+// authoritative package entitlement onto the (unpaid) order at PI-creation time
+// so combo (RA bundle) orders carry package_key / billing_plan /
+// includes_reasonable_accommodation_letter regardless of whether the Stripe
+// webhook fires first — the webhook still reconciles too (defense-in-depth).
+// This uses the SAME server-validated packageKey the amount is charged on — it
+// is NOT price inference. Guarded to unpaid orders so a paid order is never
+// re-stamped. Best-effort: never blocks payment setup.
 async function stampPackageEntitlement(
   confirmationId: string,
   pkgKey: string,
@@ -286,29 +284,6 @@ async function stampPackageEntitlement(
       .is("paid_at", null);
   } catch (err) {
     console.warn("[create-payment-intent] package entitlement stamp failed (webhook will reconcile):", err instanceof Error ? err.message : String(err));
-  }
-}
-
-// BATCH-0.2A CHECKOUT-LIFECYCLE: stamp the authoritative moment the customer
-// genuinely initiates checkout — a real PaymentIntent / subscription is minted at
-// the Step-3 pay gate (NOT a pricing/assessment page load). FIRST-WRITE-WINS:
-// guarded to `checkout_started_at IS NULL` so retries, in-session amount changes
-// (update_amount returns earlier and never reaches here) and returning checkout
-// sessions all keep the ORIGINAL timestamp. Also guarded to unpaid rows so a paid
-// order is never re-stamped. Assessment-only leads never reach this function, so
-// they stay NULL. Best-effort: never blocks payment setup.
-async function stampCheckoutStarted(confirmationId: string): Promise<void> {
-  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
-  try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    await supabase
-      .from("orders")
-      .update({ checkout_started_at: new Date().toISOString() })
-      .eq("confirmation_id", confirmationId)
-      .is("checkout_started_at", null)
-      .is("paid_at", null);
-  } catch (err) {
-    console.warn("[create-payment-intent] checkout_started_at stamp failed (non-blocking):", err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -356,6 +331,13 @@ Deno.serve(async (req: Request) => {
   const packageKey = resolvePackageKey((body.packageKey as string) ?? "", letterType);
   const isBundle = isRaBundleKey(packageKey);
 
+  // ── PSD consultation RETIRED (2026-07) ────────────────────────────────────
+  // No active purchase path. Reject any attempt to mint a charge for it before
+  // any Stripe call. Historical consultation orders keep their recorded amounts.
+  if (letterType === "psd-consultation" || packageKey === "psd_consultation") {
+    return json({ error: "The PSD consultation is no longer available.", retired: true }, 410);
+  }
+
   // ── Phase 1 analytics: read attribution fields (all optional, all safe) ──
   // Six fields ONLY are forwarded into Stripe payment_intent.metadata so
   // attribution survives even if the Supabase lead-write is lost. We do NOT
@@ -385,7 +367,8 @@ Deno.serve(async (req: Request) => {
   }
 
   // Package metadata carried on the PI/subscription so the webhook can persist
-  // package_* onto the order. Only stamped for the esa/psd letter products.
+  // package_key / package_display_name / billing_plan / includes_ra_letter onto
+  // the order. Only stamped for the esa/psd letter products (not consultation).
   function buildPackageMeta(billingPlan: "one_time" | "annual"): Record<string, string> {
     if (letterType !== "esa" && letterType !== "psd") return {};
     return {
@@ -448,19 +431,18 @@ Deno.serve(async (req: Request) => {
 
     if (!piId) return json({ error: "paymentIntentId is required for update_amount" }, 400);
 
-    // update_amount only ever adjusts a ONE-TIME PaymentIntent. Resolve the package
-    // so a standard↔bundle switch re-prices to the flat bundle amount server-side.
+    // update_amount only ever adjusts a ONE-TIME PaymentIntent (annual switches
+    // re-create a subscription PI). Resolve the package so a standard↔bundle
+    // switch re-prices to the flat bundle amount server-side.
     const pkg = resolvePackageKey((body.packageKey as string) ?? "", lt);
     const bundle = isRaBundleKey(pkg);
 
     // Re-derive base amount server-side — never trust a client-supplied dollar value
-    const baseAmount = lt === "psd-consultation"
-      ? PSD_CONSULTATION_AMOUNT
-      : bundle
-        ? BUNDLE_ONE_TIME_AMOUNT
-        : lt === "psd"
-          ? getPSDOneTimeAmount(pc, ds)
-          : getESAOneTimeAmount(pc);
+    const baseAmount = bundle
+      ? BUNDLE_ONE_TIME_AMOUNT
+      : lt === "psd"
+        ? getPSDOneTimeAmount(pc, ds)
+        : getESAOneTimeAmount(pc);
 
     let discountCents = 0;
     if (cc) {
@@ -482,8 +464,8 @@ Deno.serve(async (req: Request) => {
       metadataPatch.coupon_code = cc;
       metadataPatch.coupon_discount_cents = String(discountCents);
     }
-    // Persist the final package selection onto the PI so the webhook records the
-    // correct package even if the customer switched at Step 3.
+    // Persist the final package selection onto the PI (one-time plan) so the
+    // webhook records the correct package even if the customer switched at Step 3.
     if (lt === "esa" || lt === "psd") {
       metadataPatch.package_key = pkg;
       metadataPatch.package_display_name = PACKAGE_DISPLAY_NAMES[pkg] ?? "";
@@ -516,43 +498,21 @@ Deno.serve(async (req: Request) => {
     return json({ error: "email is required" }, 400);
   }
 
-  // ── Returning-customer bypass ────────────────────────────────────────────
-  // If the CURRENT confirmationId row was spawned by create-returning-order
-  // (i.e. parent_order_id is set), this is an authorized upgrade/repeat —
-  // skip the paid-email block. Only service-role create-returning-order can
-  // set parent_order_id, so the public /assessment flow remains strict.
-  let isReturningCustomer = false;
-  if (confirmationId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      const { data: currentRow } = await sb
-        .from("orders")
-        .select("parent_order_id")
-        .eq("confirmation_id", confirmationId)
-        .maybeSingle();
-      isReturningCustomer = !!currentRow?.parent_order_id;
-    } catch (err) {
-      console.warn("[create-payment-intent] returning-customer lookup failed:", err);
-    }
-  }
-
-  // ── HARD BLOCK: email already has a PAID order under a different row ─────
-  // The DB-level protection in get-resume-order catches the LEAD write, but
-  // a motivated user could still reach this endpoint (stale state, bypassed
-  // Step 2 guard, direct API call). Refuse here so Stripe never charges a card
-  // for an email that already has a fulfilled order.
-  const paidBlocker = isReturningCustomer
-    ? null
-    : await findPaidOrderBlockingEmail(email, confirmationId);
-  if (paidBlocker) {
+  // ── Duplicate-charge guard (CUSTOMER-PORTAL-REPEAT-PURCHASE-UPSSELL-REVIEWS-001) ──
+  // Repeat purchases with the same email are allowed (order identity is the
+  // confirmation_id, not the email). We only refuse to mint a payment for an order
+  // that is ITSELF already paid — this prevents charging the same confirmation_id
+  // twice while letting a returning customer start and pay for a NEW order.
+  const alreadyPaidOrder = await findAlreadyPaidCurrentOrder(confirmationId);
+  if (alreadyPaidOrder) {
     console.warn(
-      `[create-payment-intent] REFUSED: email ${email} already paid under ${paidBlocker.confirmation_id} (PI ${paidBlocker.payment_intent_id ?? "n/a"})`,
+      `[create-payment-intent] REFUSED: order ${confirmationId} is already paid (PI ${alreadyPaidOrder.payment_intent_id ?? "n/a"})`,
     );
     return json(
       {
-        error: "An order already exists for this email. Please use a different email or contact support to resume your existing order.",
-        emailConflict: true,
+        error: "This order has already been paid. Start a new order to purchase again.",
         alreadyPaid: true,
+        confirmationId,
       },
       409,
     );
@@ -560,25 +520,26 @@ Deno.serve(async (req: Request) => {
 
   try {
     // ── Subscription payment intent ──────────────────────────────────────────
-    // BATCH-0.2A: stamp checkout_started_at (first-write-wins) — past the action
-    // branches, email check and duplicate-charge guard, a real PaymentIntent/
-    // subscription is about to be minted = genuine checkout start.
-    await stampCheckoutStarted(confirmationId);
-
     if (plan === "subscription") {
-      // A consultation is a one-time purchase — never a subscription. Guard so
-      // a malformed request can't accidentally mint an ESA subscription.
-      if (letterType === "psd-consultation") {
-        return json({ error: "PSD consultations are one-time purchases" }, 400);
+      // ── Phase 8: NO public coupons on subscriptions ─────────────────────────
+      // The subscription price is already the built-in saving. Public coupons are
+      // rejected server-side (never silently ignored). Exceptional subscription
+      // discounts are an admin/backend-only, audited path — not this endpoint.
+      if (couponCode) {
+        return json({
+          error: "Coupons can't be applied to subscription plans — the annual plan already includes the built-in saving.",
+          couponRejected: true,
+        }, 400);
       }
       const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let subscriptionItems: any[];
       if (isBundle) {
-        // RA bundle annual = flat $159/yr. The Subscriptions API requires a
-        // product id (not inline product_data), so create an on-the-fly product;
-        // the amount stays server-authoritative with NO pre-created Price.
+        // RA bundle annual = flat $159/yr. The Stripe Subscriptions API (unlike
+        // Checkout Sessions) does NOT accept inline `price_data.product_data` — it
+        // requires an existing `product` id. Create an on-the-fly product so the
+        // amount stays server-authoritative with NO pre-created Price object/id.
         const bundleProduct = await stripe.products.create({
           name: PACKAGE_DISPLAY_NAMES[packageKey] ?? "PawTenant RA Bundle (Annual)",
         });
@@ -592,7 +553,7 @@ Deno.serve(async (req: Request) => {
           quantity: 1,
         }];
       } else if (letterType === "psd") {
-        const priceId = PSD_ANNUAL_PRICE_IDS[tier];
+        const priceId = firstYearPriceId("psd", petCount);
         if (!priceId) return json({ error: "No subscription price found" }, 400);
         subscriptionItems = [{ price: priceId, quantity: 1 }];
       } else {
@@ -626,16 +587,9 @@ Deno.serve(async (req: Request) => {
         } catch { /* best-effort */ }
       }
 
-      // ── Resolve coupon to Stripe coupon ID ──────────────────────────────
-      // The coupon code was already validated by validate-coupon (Stripe-only).
-      // Here we resolve it again to attach to the subscription.
-      let stripeCouponId: string | null = null;
-      if (couponCode) {
-        const coupon = await resolveStripeCoupon(stripe, couponCode);
-        stripeCouponId = coupon ? coupon.id : null;
-      }
-
       // ── Build subscription params ────────────────────────────────────────
+      // No coupon handling here: public coupons on subscriptions are rejected
+      // above, so the subscription is always minted at the pure first-year price.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const subscriptionParams: any = {
         customer: customerId,
@@ -656,19 +610,12 @@ Deno.serve(async (req: Request) => {
           first_name: firstName,
           last_name: lastName,
           state,
-          ...(couponCode ? { coupon_code: couponCode } : {}),
           // ── RA bundle package metadata (additive) ───────────────────────
           ...buildPackageMeta("annual"),
           // ── Phase 1: attribution metadata (additive, all optional) ──────
           ...buildAttributionMeta(),
         },
       };
-
-      // Attach coupon to subscription if resolved
-      if (stripeCouponId) {
-        subscriptionParams.coupon = stripeCouponId;
-        console.info(`[create-payment-intent] Applying coupon ${stripeCouponId} (code: ${couponCode}) to subscription`);
-      }
 
       const subscription = await stripe.subscriptions.create(subscriptionParams);
 
@@ -715,8 +662,7 @@ Deno.serve(async (req: Request) => {
         ...buildPackageMeta("annual"),
         ...buildAttributionMeta(),
       };
-      if (couponCode) piMetaPatch.coupon_code = couponCode;
-      if (discountCents > 0) piMetaPatch.coupon_discount_cents = String(discountCents);
+      // No coupon fields on subscription PIs — subscriptions never take a public coupon.
 
       try {
         await stripe.paymentIntents.update(paymentIntent.id, {
@@ -735,20 +681,25 @@ Deno.serve(async (req: Request) => {
       // Stamp authoritative package entitlement now (annual) — webhook-independent.
       await stampPackageEntitlement(confirmationId, packageKey, "annual");
 
+      // Renewal amount (year two onward) for the checkout disclosure. Combo is
+      // flat (no drop); standard uses the tier renewal price. The webhook attaches
+      // the actual renewal-price schedule after the first invoice is paid.
+      const renewalAmountCents = isBundle ? BUNDLE_ANNUAL_AMOUNT : renewalCents(petCount);
+
       return json({
         clientSecret: paymentIntent.client_secret,
         subscriptionId: subscription.id,
         amount: paymentIntent.amount,
         basePriceAmount: paymentIntent.amount,
         paymentIntentId: paymentIntent.id,
+        firstYearAmount: displayAmount,
+        renewalAmount: renewalAmountCents,
       });
     }
 
     // ── One-time payment intent ──────────────────────────────────────────────
     let baseAmount: number;
-    if (letterType === "psd-consultation") {
-      baseAmount = PSD_CONSULTATION_AMOUNT;
-    } else if (isBundle) {
+    if (isBundle) {
       baseAmount = BUNDLE_ONE_TIME_AMOUNT; // flat $179, 1–3 pets/dogs
     } else if (letterType === "psd") {
       baseAmount = getPSDOneTimeAmount(petCount, deliverySpeed);
@@ -761,15 +712,16 @@ Deno.serve(async (req: Request) => {
     // the consultation product (flat $79, never resume-repriced). Server reads
     // the saved price from the DB — the client-supplied petCount/plan cannot
     // override a resumed order's locked amount.
+    // RA bundles are brand-new flat-priced products with no legacy quotes to
+    // preserve; skipping the lock also prevents a standard saved lead price
+    // (e.g. $129) from suppressing the $179 bundle upcharge on an in-session
+    // upgrade. Standard packages keep the existing resume/legacy behavior.
     let pricingSource = "current_pricing";
     if (letterType !== "psd-consultation" && !isBundle) {
       const lock = await resolveLegacyQuoteLock(confirmationId, baseAmount);
       baseAmount = lock.baseCents;
       pricingSource = lock.pricingSource;
     } else if (isBundle) {
-      // RA bundles are brand-new flat-priced products with no legacy quotes to
-      // preserve; skipping the lock also prevents a standard saved lead price
-      // (e.g. $129) from suppressing the $179 bundle upcharge on an in-session upgrade.
       pricingSource = "bundle_flat";
     }
 

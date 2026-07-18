@@ -287,8 +287,7 @@ export default function StripeCardForm({
           confirmationId: subscriptionParams.confirmationId,
           letterType: subscriptionParams.letterType ?? "esa",
           packageKey: subscriptionParams.packageKey,
-          // Pass coupon code so backend can apply Stripe discount
-          couponCode: appliedCouponCode || undefined,
+          // No coupon on subscriptions — the server rejects public subscription coupons.
           metadata: {
             confirmationId: subscriptionParams.confirmationId,
             firstName: subscriptionParams.firstName,
@@ -444,8 +443,8 @@ export default function StripeCardForm({
         )}
       </div>
 
-      {/* ── Discount code ── */}
-      {onDiscountChange && (
+      {/* ── Discount code — one-time purchases only (subscriptions reject coupons) ── */}
+      {onDiscountChange && !isSubscription && (
         <div className="px-5 pb-4">
           <CouponRow
             basePrice={priceBeforeDiscount ?? totalPrice}

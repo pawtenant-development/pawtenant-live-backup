@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
-import PsdPricingMini from "../../components/feature/PsdPricingMini";
+import PsdPricingSection from "../../components/feature/PsdPricingSection";
 import EsaVsPsdCard from "../../components/feature/EsaVsPsdCard";
 import AIAssistantTrustCard from "../../components/feature/AIAssistantTrustCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
@@ -344,8 +344,8 @@ export default function PsychiatricServiceDogLetterOnlinePage() {
         ]}
       />
 
-      {/* PRICING */}
-      <PsdPricingMini className="bg-white border-t border-gray-100" />
+      {/* PRICING — 3-card PSD plans + payment trust strip */}
+      <PsdPricingSection className="bg-white border-t border-gray-100" />
 
       {/* FAQ */}
       <section className="py-14 sm:py-16 bg-[#fafafa] border-t border-gray-100">

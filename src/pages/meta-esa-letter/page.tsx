@@ -688,7 +688,7 @@ export default function MetaEsaLetterPage() {
                   <div className="text-[11px] text-slate-500 leading-snug mt-0.5">for a trained dog</div>
                 </div>
                 <div className="rounded-xl border border-[#4A8472]/30 bg-[#4A8472]/10 p-4">
-                  <div className="text-3xl font-bold tracking-tight text-slate-900">From&nbsp;$109<span className="text-base font-semibold text-slate-500">/year</span></div>
+                  <div className="text-3xl font-bold tracking-tight text-slate-900">From&nbsp;$115<span className="text-base font-semibold text-slate-500">/year</span></div>
                   <div className="text-[12px] font-semibold text-slate-700 mt-1">Annual</div>
                   <div className="text-[11px] text-slate-500 leading-snug mt-0.5">renews yearly</div>
                 </div>

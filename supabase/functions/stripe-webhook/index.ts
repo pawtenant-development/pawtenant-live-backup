@@ -3,6 +3,7 @@ import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { completeAdditionalDocPayment } from "../_shared/completeAdditionalDocPayment.ts";
+import { attachRenewalSchedule } from "../_shared/subscriptionSchedule.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -989,6 +990,18 @@ Deno.serve(async (req: Request) => {
       let order = cid ? await findOrderByConfId(cid) : null;
       if (!order && invoice.subscription) order = await findOrderBySubId(invoice.subscription);
       if (order?.id) { await supabase.from("orders").update({ status: "processing", price: amt, paid_at: new Date().toISOString(), payment_failed_at: null, payment_failure_reason: null }).eq("id", order.id); await logStatus(order.id, order.confirmation_id as string, "processing", `Annual renewal billed: $${amt}`); }
+    } else if (billing === "subscription_create" && invoice.subscription) {
+      // ── Phase 4 (Option B): first subscription invoice paid → attach the
+      // phased renewal schedule. Idempotent + replay-safe. The order-paid stamp
+      // and post-payment emails are owned by payment_intent.succeeded; this ONLY
+      // installs the year-two renewal phase, so nothing here re-sends emails.
+      const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
+      try {
+        const res = await attachRenewalSchedule(stripe, supabase, subId, cid ?? null);
+        console.info(`[stripe-webhook] renewal schedule for sub ${subId}: ${res.attached ? `attached ${res.scheduleId} (first renewal ${res.firstRenewalAt})` : `skipped (${res.skipped})`}`);
+      } catch (schedErr) {
+        console.error(`[stripe-webhook] renewal schedule attach FAILED for sub ${subId} (renewal will fall back to a flat first-year price until repaired):`, schedErr instanceof Error ? schedErr.message : String(schedErr));
+      }
     }
     return json({ ok: true, type: t, billing, amount: amt });
   }

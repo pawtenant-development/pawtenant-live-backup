@@ -46,7 +46,7 @@ const comparisonRows = [
   { category: "Housing Protection", psd: "Full protection under FHA", esa: "Full protection under FHA" },
   { category: "Airline Travel", psd: "Yes — allowed in cabin under ACAA rules", esa: "No longer required after 2021 DOT rule" },
   { category: "Letter Required", psd: "PSD letter from licensed mental health professional", esa: "ESA letter from licensed mental health professional" },
-  { category: "Cost", psd: "Similar to ESA letter evaluation", esa: "From $109/year with PawTenant" },
+  { category: "Cost", psd: "Similar to ESA letter evaluation", esa: "From $115/year with PawTenant" },
 ];
 
 const psdTasks = [
@@ -435,10 +435,10 @@ export default function HowToGetPSDLetterPage() {
               {
                 name: "PSD Annual",
                 speed: "Per year — renews automatically",
-                price: "$109",
+                price: "$115",
                 priceKey: "psd_annual",
                 priceSuffix: "/yr",
-                note: "$129/year total for 2–3 dogs",
+                note: "$135/year total for 2–3 dogs",
                 annualPill: true,
                 highlight: false,
                 features: [

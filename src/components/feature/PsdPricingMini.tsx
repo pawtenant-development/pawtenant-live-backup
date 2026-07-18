@@ -10,7 +10,7 @@ import { useSitePricing } from "@/hooks/useSitePricing";
  * /psd-assessment (the PSD intake), not /assessment (ESA intake). Pricing
  * matches the current PSD offer so every surface stays consistent:
  *   One-time: $129 for 1 dog / $149 fixed total for 2–3 dogs.
- *   Annual:   $109/yr for 1 dog / $129/yr fixed total for 2–3 dogs.
+ *   Annual:   $115 first year for 1 dog / $135 first year for 2–3 dogs (renews $100 / $115).
  * Same benefits on both plans. Same-day PDF delivery is included/available —
  * NOT a separate paid priority tier. No Standard/Priority split.
  *
@@ -58,11 +58,11 @@ const PLANS = [
   },
   {
     name: "PSD Annual",
-    speed: "Per year — renews automatically",
-    price: "$109",
+    speed: "First year — renews automatically",
+    price: "$115",
     priceKey: "psd_annual",
     suffix: "/year",
-    note: "$129/year total for 2–3 dogs",
+    note: "$135 first year for 2–3 dogs · renews lower",
     annualPill: true,
     highlight: false,
     features: [

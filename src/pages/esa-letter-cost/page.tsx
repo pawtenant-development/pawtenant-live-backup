@@ -22,7 +22,7 @@ const packages = [
     sublabel: "Licensed-provider housing letter",
     oneTime: ESA_PRICE_LABELS.oneTime,          // $129 (1 pet)
     oneTimeKey: "esa_single_pet",
-    annual: ESA_PRICE_LABELS.subscription,      // $109/yr (1 pet)
+    annual: ESA_PRICE_LABELS.subscription,      // $115/yr first year (1 pet)
     annualKey: "esa_subscription_annual",
     highlight: false,
     cta: "Start ESA Assessment",
@@ -32,7 +32,7 @@ const packages = [
       "Signed ESA letter with NPI & license number",
       "Valid for housing nationwide under the Fair Housing Act",
       "Digital delivery — typically within 24 hours",
-      "Covers 1 pet · 2–3 pets $149 one-time / $129 per year",
+      "Covers 1 pet · 2–3 pets $149 one-time / $135 per year",
       "100% money-back guarantee if you don't qualify",
     ],
   },
@@ -80,7 +80,7 @@ const whyChoose = [
   },
   {
     title: "Optimal Pricing without Compromises",
-    desc: "At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at just $109/year. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.",
+    desc: "At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at just $115/year. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.",
     icon: "ri-hand-heart-line",
   },
   {
@@ -541,7 +541,7 @@ export default function ESALetterCostPage() {
           className="whitespace-nowrap flex items-center justify-center gap-2 w-full py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
         >
           <i className="ri-file-text-line"></i>
-          Get Your ESA Letter — From $109
+          Get Your ESA Letter — From $115
         </Link>
       </div>
 

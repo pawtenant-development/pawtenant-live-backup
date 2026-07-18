@@ -881,7 +881,7 @@ export default function LpEsaHousingPage() {
                 <span className="text-[9.5px] uppercase tracking-wider text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">Optional</span>
               </div>
               <div className="text-[12px] text-slate-600 leading-relaxed">
-                <span className="font-medium text-slate-900">$109/year</span> for 1 pet · <span className="font-medium text-slate-900">$129/year</span> fixed total for 2 or 3 pets · cancel anytime
+                <span className="font-medium text-slate-900">$115/year</span> for 1 pet · <span className="font-medium text-slate-900">$135/year</span> fixed total for 2 or 3 pets · cancel anytime
               </div>
             </div>
             <span

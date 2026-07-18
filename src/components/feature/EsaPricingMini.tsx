@@ -106,7 +106,7 @@ export default function EsaPricingMini({ className, premium = false }: Props) {
             </div>
             <p className={`text-[13px] leading-snug mt-2.5 ${highlight ? "text-orange-50" : "text-gray-500"}`}>
               {highlight
-                ? "Renews automatically. Save $11 vs. one-time every year."
+                ? "Renews automatically. First year $115, then renews lower."
                 : "Valid for 1 year. Pay once — no auto-renewal."}
             </p>
           </div>

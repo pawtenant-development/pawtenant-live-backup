@@ -15,7 +15,7 @@
 //     explainer); raw "remove before publishing" link notes deleted.
 // Facts verified: CA AB 468 (Health & Safety §122318) 30-day rule; FL Stat.
 // §760.27; DOT 2021 ESA air-travel rule. Pricing matches site (llms.txt):
-// ESA letter $109/year or $129 one-time.
+// ESA letter $115/year or $129 one-time.
 //
 // SEO title/description/canonical come from CORE_PAGE_META via SEOManager +
 // prerender. This file adds keyword/OG/Twitter meta + BlogPosting/Breadcrumb/
@@ -106,7 +106,7 @@ const faqs = [
   },
   {
     q: "How much does a legitimate ESA letter cost?",
-    a: "Across the industry, a one-year ESA letter from a licensed provider typically runs from about $99 to $199. At PawTenant the ESA letter is $109 per year (annual subscription) or $129 one-time. Letters priced below $50 almost always skip a real evaluation — a red flag. Higher price alone does not mean stronger protection; what matters is that a licensed clinician conducted a genuine assessment.",
+    a: "Across the industry, a one-year ESA letter from a licensed provider typically runs from about $99 to $199. At PawTenant the ESA letter is $115 per year (annual subscription) or $129 one-time. Letters priced below $50 almost always skip a real evaluation — a red flag. Higher price alone does not mean stronger protection; what matters is that a licensed clinician conducted a genuine assessment.",
   },
   {
     q: "Is an ESA letter valid in all 50 states?",
@@ -262,7 +262,7 @@ export default function BlogHowToGetEsaLetterOnlinePage() {
             <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
               <li><strong className="text-gray-900">Who qualifies:</strong> anxiety, depression, PTSD, ADHD, bipolar, phobias, OCD and similar conditions that substantially limit daily life</li>
               <li><strong className="text-gray-900">The process:</strong> intake form &rarr; licensed-provider evaluation &rarr; letter, often within 24&ndash;72 hours</li>
-              <li><strong className="text-gray-900">Cost:</strong> $109/year or $129 one-time at PawTenant ($99&ndash;$199 is the typical industry range)</li>
+              <li><strong className="text-gray-900">Cost:</strong> $115/year or $129 one-time at PawTenant ($99&ndash;$199 is the typical industry range)</li>
               <li><strong className="text-gray-900">What protects you:</strong> a signed letter from a state-licensed provider — never a registry, certificate, or ID card</li>
               <li><strong className="text-gray-900">Housing:</strong> under the FHA a landlord must <em>consider</em> a valid accommodation request; an approved ESA is generally exempt from pet fees (state law varies)</li>
               <li><strong className="text-gray-900">Airlines:</strong> ESA letters no longer cover air travel (DOT 2021 rule) — that is the PSD route</li>
@@ -534,7 +534,7 @@ export default function BlogHowToGetEsaLetterOnlinePage() {
           <Para>
             Legitimate ESA letters from licensed providers typically range from about $99 to $199 for a
             standard one-year letter; some providers offer lower renewal pricing. At PawTenant, an ESA
-            letter is $109 per year or $129 one-time — see{" "}
+            letter is $115 per year or $129 one-time — see{" "}
             <Link to="/esa-letter-cost" className={inlineLink}>ESA letter cost</Link> for what&apos;s
             included.
           </Para>

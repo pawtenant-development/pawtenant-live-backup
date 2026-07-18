@@ -50,6 +50,7 @@ const TestimonialsSection = lazy(
 );
 const TopStatesSection = lazy(() => import("./components/TopStatesSection"));
 const ResourcesSection = lazy(() => import("./components/ResourcesSection"));
+const HomePricingSection = lazy(() => import("./components/HomePricingSection"));
 const FAQSection = lazy(() => import("./components/FAQSection"));
 const CTASection = lazy(() => import("./components/CTASection"));
 const SharedFooter = lazy(
@@ -293,6 +294,11 @@ export default function Home() {
           {/* Guide cards — SEO internal links + imagery. */}
           <Suspense fallback={<SectionFallback />}>
             <ResourcesSection />
+          </Suspense>
+
+          {/* Transparent 3-card ESA pricing + payment trust strip. */}
+          <Suspense fallback={<SectionFallback />}>
+            <HomePricingSection />
           </Suspense>
 
           {/* HUD strip + FAQ (FAQPage schema). */}

@@ -553,7 +553,7 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
             <div className="bg-[#e8f0f9] rounded-lg p-3 border border-[#dbe4f0] relative">
               <span className="absolute -top-2 left-3 bg-[#3b6ea5] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
               <p className="text-xs font-bold text-[#1e3a5f] mb-0.5">Annual Subscription</p>
-              <p className="text-xl font-extrabold text-[#3b6ea5]">$109<span className="text-sm font-semibold">/yr</span></p>
+              <p className="text-xl font-extrabold text-[#3b6ea5]">$115<span className="text-sm font-semibold">/yr</span></p>
               <p className="text-xs text-[#3b6ea5] mt-0.5">Auto-renews · Full ADA coverage</p>
             </div>
           </div>
@@ -585,7 +585,7 @@ function RenewCard({ order, userEmail }: { order: Order; userEmail: string }) {
           <div className="bg-[#ffffff] rounded-lg p-3 border border-[#dbe4f0] relative">
             <span className="absolute -top-2 left-3 bg-[#3b6ea5] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full whitespace-nowrap">BEST VALUE</span>
             <p className="text-xs font-bold text-[#B45309] mb-0.5">Subscribe &amp; Save</p>
-            <p className="text-xl font-extrabold text-[#3b6ea5]">$109<span className="text-sm font-semibold">/yr</span></p>
+            <p className="text-xl font-extrabold text-[#3b6ea5]">$115<span className="text-sm font-semibold">/yr</span></p>
             <p className="text-xs text-[#1e3a5f] mt-0.5">Auto-renews · Never lose coverage</p>
           </div>
         </div>

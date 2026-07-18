@@ -38,7 +38,8 @@
   "name": "react",
   "private": true,
   "scripts": {
-    "build": "vite build && node scripts/prerender-seo.mjs && node scripts/check-attribution-parity.mjs --warn-only && node scripts/verify-attribution-hygiene.mjs --warn-only && node scripts/check-refund-consumer-guard.mjs --warn-only",
+    "build": "vite build && node scripts/prerender-seo.mjs && node scripts/check-attribution-parity.mjs --warn-only && node scripts/verify-attribution-hygiene.mjs --warn-only && node scripts/check-refund-consumer-guard.mjs --warn-only && node scripts/check-pricing-parity.mjs && node scripts/check-pricing-guards.mjs",
+    "check:pricing": "node scripts/check-pricing-parity.mjs && node scripts/check-pricing-guards.mjs",
     "check:attribution": "node scripts/check-attribution-parity.mjs",
     "check:refund-consumers": "node scripts/check-refund-consumer-guard.mjs",
     "test:refund-classification": "node scripts/test-refund-classification.mjs",

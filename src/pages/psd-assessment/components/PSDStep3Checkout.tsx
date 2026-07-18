@@ -9,8 +9,9 @@ import type { PSDStep1Data } from "./PSDStep1";
 import KlarnaPaymentTab from "../../assessment/components/KlarnaPaymentTab";
 import StripePaymentForm from "../../assessment/components/StripePaymentForm";
 import StripeCardForm from "../../assessment/components/StripeCardForm";
-import { getPackageTotal, isRaBundle } from "@/config/pricing";
+import { getPackageTotal, getPackageRenewal, isRaBundle } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
+import SubscriptionRenewalNotice from "../../../components/feature/SubscriptionRenewalNotice";
 // ── 2026-05-21 PSD-STEP3-ESA-PARITY ─────────────────────────────────────────
 // Reuse the polished trust/reassurance helpers ESA Step 3 mounts in its left
 // column. These are intentionally pure presentational + brand-agnostic (they
@@ -77,7 +78,7 @@ type PayTabType = "card" | "klarna";
 const PSD_ONETIME_DELIVERY = "24h";
 
 function getPSDPlanPrice(key: PSDPlan, petCount: number, packageKey: PackageKey = "psd_standard"): number {
-  // Standard: 1 dog $129 one-time / $109 annual; 2 or 3 dogs $149 / $129 — fixed
+  // Standard: 1 dog $129 one-time / $115 first year; 2 or 3 dogs $149 / $135 — fixed
   // totals. RA bundle (psd_ra_bundle): flat $179 one-time / $159 annual (1–3 dogs).
   // Mirrors create-payment-intent amount logic.
   return getPackageTotal(packageKey, key === "subscription" ? "annual" : "one_time", petCount);
@@ -221,6 +222,8 @@ function CouponRow({ basePrice, onDiscountChange }: CouponRowProps) {
 
 interface SecurePaymentCardProps {
   totalPrice: number;
+  /** Year-two+ renewal total for a subscription (for the renewal disclosure). */
+  renewalPrice: number;
   clientSecret: string | null;
   onPaymentSuccess: (paymentIntentId: string) => void;
   selectedPlan: PSDPlan;
@@ -237,6 +240,7 @@ interface SecurePaymentCardProps {
 
 function SecurePaymentCard({
   totalPrice,
+  renewalPrice,
   clientSecret,
   onPaymentSuccess,
   selectedPlan,
@@ -285,10 +289,11 @@ function SecurePaymentCard({
     onDiscountChange(discount, code);
   };
 
+  // Coupons apply to one-time purchases only — subscriptions reject public coupons.
   const couponSlot = useMemo(() => (
-    <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={handleDiscountChange} />
+    isSubscription ? null : <CouponRow basePrice={priceBeforeDiscount} onDiscountChange={handleDiscountChange} />
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [priceBeforeDiscount]);
+  ), [priceBeforeDiscount, isSubscription]);
 
   const deliverySpeed = PSD_ONETIME_DELIVERY;
 
@@ -376,15 +381,12 @@ function SecurePaymentCard({
       {activeTab === "card" && (
         <>
           {isSubscription && (
-            <div className="mx-4 sm:mx-5 mt-4 mb-1 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center gap-3">
-              <div className="w-7 h-7 flex items-center justify-center bg-emerald-100 rounded-lg flex-shrink-0">
-                <i className="ri-refresh-line text-emerald-600 text-sm"></i>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-extrabold text-emerald-900 leading-snug">Annual Subscription</p>
-                <p className="text-[10px] text-emerald-700 mt-0.5">Billed yearly · Cancel anytime from your portal</p>
-              </div>
-            </div>
+            <SubscriptionRenewalNotice
+              firstYearPrice={totalPrice}
+              renewalPrice={renewalPrice}
+              tone="emerald"
+              className="mx-4 sm:mx-5 mt-4 mb-1"
+            />
           )}
 
           {/* ── SUBSCRIPTION: use StripeCardForm with lazy backend call ── */}
@@ -590,6 +592,15 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
   const subscriptionIdRef = useRef<string | null>(null);
   const paymentCompletedRef = useRef(false);
 
+  // Public coupons never apply to subscriptions — clear any applied one-time
+  // coupon when the annual plan is selected so it can't leak into a subscription.
+  useEffect(() => {
+    if (selectedPlan === "subscription") {
+      setCouponCode("");
+      setCouponDiscount(0);
+    }
+  }, [selectedPlan]);
+
   // Mirror of ESA Step 3's scrollToPayment — used by the sticky mobile bottom
   // bar to jump the customer to the payment surface.
   const scrollToPayment = () => {
@@ -599,6 +610,8 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
   };
 
   const planBasePrice = getPSDPlanPrice(selectedPlan, step2.pets.length, selectedPackage);
+  // Year-two renewal price for the subscription disclosure (combo stays flat).
+  const renewalPrice = getPackageRenewal(selectedPackage, step2.pets.length);
   const displayBasePriceDollars = resolvedBasePriceCents != null
     ? Math.round(resolvedBasePriceCents / 100)
     : planBasePrice;
@@ -971,7 +984,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                   </p>
                   <p className="text-[11px] text-slate-500 mt-1.5">
                     {selectedPlan === "subscription"
-                      ? "Annual renewal · cancel anytime"
+                      ? "Automatic annual renewal · cancel anytime"
                       : "One-time · no recurring charges"}
                   </p>
                 </div>
@@ -986,7 +999,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                     <span className="text-lg font-bold">.00</span>
                   </span>
                   {selectedPlan === "subscription" && (
-                    <p className="text-[10px] text-slate-500 mt-1.5">per year</p>
+                    <p className="text-[10px] text-slate-500 mt-1.5">first year · then ${renewalPrice}/yr</p>
                   )}
                 </div>
               </div>
@@ -1206,6 +1219,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
 
             <SecurePaymentCard
               totalPrice={displayPrice}
+              renewalPrice={renewalPrice}
               clientSecret={clientSecret}
               onPaymentSuccess={handlePaymentSuccess}
               selectedPlan={selectedPlan}
@@ -1493,7 +1507,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1">
                       {selectedPlan === "subscription"
-                        ? "Annual renewal · cancel anytime"
+                        ? `First year · renews at $${renewalPrice}/yr next year · cancel anytime`
                         : "One-time · no recurring charges"}
                     </p>
                   </div>

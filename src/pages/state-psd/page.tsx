@@ -77,10 +77,10 @@ const pricingPlans = [
   {
     name: "PSD Annual",
     speed: "Per year — renews automatically",
-    price: "$109",
+    price: "$115",
     priceKey: "psd_annual",
     priceSuffix: "/yr",
-    note: "$129/year total for 2–3 dogs",
+    note: "$135/year total for 2–3 dogs",
     annualPill: true,
     highlight: false,
     features: [

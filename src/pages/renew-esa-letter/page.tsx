@@ -9,9 +9,9 @@ import { useAttributionParams } from "@/hooks/useAttributionParams";
 const renewalPlans = [
   {
     name: "1 Pet",
-    oneTime: "$110",
-    annual: "$99",
-    annualSavings: "Save $11/yr",
+    oneTime: "$129",
+    annual: "$100",
+    annualSavings: "Save $29/yr",
     pets: "Renew for 1 emotional support animal",
     popular: false,
     features: [
@@ -30,9 +30,9 @@ const renewalPlans = [
   },
   {
     name: "2 Pets",
-    oneTime: "$135",
-    annual: "$119",
-    annualSavings: "Save $16/yr",
+    oneTime: "$149",
+    annual: "$115",
+    annualSavings: "Save $34/yr",
     pets: "Renew for up to 2 emotional support animals",
     popular: true,
     features: [
@@ -52,9 +52,9 @@ const renewalPlans = [
   },
   {
     name: "3 Pets",
-    oneTime: "$160",
-    annual: "$139",
-    annualSavings: "Save $21/yr",
+    oneTime: "$149",
+    annual: "$115",
+    annualSavings: "Save $34/yr",
     pets: "Renew for up to 3 emotional support animals",
     popular: false,
     features: [
@@ -161,7 +161,7 @@ const serviceSchema = JSON.stringify({
   "offers": [
     { "@type": "Offer", "name": "1 Pet Renewal", "price": "100", "priceCurrency": "USD" },
     { "@type": "Offer", "name": "2 Pets Renewal", "price": "115", "priceCurrency": "USD" },
-    { "@type": "Offer", "name": "3 Pets Renewal", "price": "135", "priceCurrency": "USD" },
+    { "@type": "Offer", "name": "3 Pets Renewal", "price": "115", "priceCurrency": "USD" },
   ],
   "url": "https://pawtenant.com/renew-esa-letter",
 });
@@ -586,7 +586,7 @@ export default function RenewESALetterPage() {
               >
                 Annual Subscription
                 {billingCycle !== "annual" && (
-                  <span className="bg-orange-100 text-orange-600 text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Save up to 13%</span>
+                  <span className="bg-orange-100 text-orange-600 text-xs px-2.5 py-1 rounded-full whitespace-nowrap">Save up to 23%</span>
                 )}
               </button>
             </div>
@@ -598,7 +598,7 @@ export default function RenewESALetterPage() {
                   <i className="ri-price-tag-3-fill text-green-600 text-base"></i>
                 </div>
                 <span className="text-green-700 text-xs font-semibold">
-                  You&apos;re saving vs. one-time — <strong>$11–$21/yr</strong> depending on your plan. Plus auto-renewal so you never lose protection.
+                  You&apos;re saving vs. one-time — <strong>$29–$34/yr</strong> depending on your plan. Plus auto-renewal so you never lose protection.
                 </span>
               </div>
             ) : (
@@ -607,7 +607,7 @@ export default function RenewESALetterPage() {
                   <i className="ri-loop-right-line text-orange-500 text-base"></i>
                 </div>
                 <span className="text-orange-700 text-xs font-semibold">
-                  Switch to Annual and save <strong>$11–$21/yr</strong> — plus never worry about your letter expiring again.
+                  Switch to Annual and save <strong>$29–$34/yr</strong> — plus never worry about your letter expiring again.
                 </span>
                 <span className="text-orange-500 text-xs font-bold underline whitespace-nowrap">Switch →</span>
               </div>

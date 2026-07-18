@@ -12,8 +12,9 @@ import StripeCardForm from "./StripeCardForm";
 import type { SubscriptionParams } from "./StripeCardForm";
 import KlarnaPaymentTab from "./KlarnaPaymentTab";
 import StateComplianceBanner, { isComplianceState } from "./StateComplianceBanner";
-import { getEsaOneTimeTotal, getEsaAnnualTotal, getBundleOneTimeTotal, getBundleAnnualTotal, isRaBundle } from "@/config/pricing";
+import { getEsaOneTimeTotal, getEsaAnnualTotal, getEsaRenewalTotal, getBundleOneTimeTotal, getBundleAnnualTotal, getBundleRenewalTotal, isRaBundle } from "@/config/pricing";
 import Hud2026UpdateBanner from "../../../components/feature/Hud2026UpdateBanner";
+import SubscriptionRenewalNotice from "../../../components/feature/SubscriptionRenewalNotice";
 import { Link } from "react-router-dom";
 import CompactWhatHappensNext from "./step3/CompactWhatHappensNext";
 import RefundReassurance from "./step3/RefundReassurance";
@@ -430,6 +431,8 @@ type PayTabType = "card" | "klarna";
 
 interface SecurePaymentCardProps {
   totalPrice: number;
+  /** Year-two+ renewal total for a subscription (for the renewal disclosure). */
+  renewalPrice?: number;
   stripeClientSecret?: string;
   stripeSecretLoading?: boolean;
   stripeSecretError?: string;
@@ -459,6 +462,7 @@ interface SecurePaymentCardProps {
 
 function SecurePaymentCard({
   totalPrice,
+  renewalPrice,
   stripeClientSecret,
   stripeSecretLoading,
   stripeSecretError,
@@ -510,7 +514,8 @@ function SecurePaymentCard({
     }
   }, [isSubscription, stripeClientSecret]);
 
-  const couponSlot = (
+  // Coupons apply to one-time purchases only — subscriptions reject public coupons.
+  const couponSlot = isSubscription ? null : (
     <CouponRow
       basePrice={priceBeforeDiscount}
       appliedCoupon={appliedCoupon}
@@ -598,25 +603,12 @@ function SecurePaymentCard({
       {activeTab === "card" && (
         <>
           {isSubscription && (
-            <div
-              className="mx-4 sm:mx-5 mt-4 mb-1 rounded-xl px-4 py-3 flex items-center gap-3 border"
-              style={{
-                backgroundColor: ACTION_ORANGE_SOFT,
-                borderColor: ACTION_ORANGE_BORDER,
-              }}
-            >
-              <div className="w-7 h-7 flex items-center justify-center bg-white rounded-lg flex-shrink-0 ring-1 ring-orange-200">
-                <i className="ri-refresh-line text-sm" style={{ color: ACTION_ORANGE_DARK }}></i>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold leading-snug" style={{ color: ACTION_ORANGE_DARK }}>
-                  Annual Subscription
-                </p>
-                <p className="text-[11px] text-slate-600 mt-0.5">
-                  Billed yearly · Cancel anytime from your portal
-                </p>
-              </div>
-            </div>
+            <SubscriptionRenewalNotice
+              firstYearPrice={totalPrice}
+              renewalPrice={renewalPrice ?? totalPrice}
+              tone="orange"
+              className="mx-4 sm:mx-5 mt-4 mb-1"
+            />
           )}
 
           {isSubscription ? (
@@ -762,6 +754,7 @@ interface MobileSummarySheetProps {
   couponDiscount: number;
   selectedPlan: PlanType;
   basePrice: number;
+  renewalPrice: number;
   onCTA: () => void;
 }
 
@@ -773,6 +766,7 @@ function MobileSummarySheet({
   couponDiscount,
   selectedPlan,
   basePrice,
+  renewalPrice,
   onCTA,
 }: MobileSummarySheetProps) {
   return (
@@ -897,7 +891,7 @@ function MobileSummarySheet({
                   </p>
                   <p className="text-[11px] text-slate-500 mt-1">
                     {selectedPlan === "subscription"
-                      ? "Annual renewal · cancel anytime"
+                      ? `First year · renews at $${renewalPrice}/yr next year · cancel anytime`
                       : "One-time · no recurring charges"}
                   </p>
                 </div>
@@ -1051,6 +1045,8 @@ export default function Step3Checkout({
     ? getBundleOneTimeTotal()
     : hasQuotedBase ? (quotedBasePrice as number) : getOneTimePrice(resolvedPetCount);
   const subPrice = isBundle ? getBundleAnnualTotal() : getAnnualSubPrice(resolvedPetCount);
+  // Year-two renewal price (combo is flat; standard drops to the renewal tier).
+  const renewalPrice = isBundle ? getBundleRenewalTotal() : getEsaRenewalTotal(resolvedPetCount);
   const selectedPlan = data.plan ?? "one-time";
   const priceBeforeDiscount =
     selectedPlan === "subscription" ? subPrice : basePrice;
@@ -1094,6 +1090,7 @@ export default function Step3Checkout({
 
   const paymentCardProps: SecurePaymentCardProps = {
     totalPrice,
+    renewalPrice,
     stripeClientSecret,
     stripeSecretLoading,
     stripeSecretError,
@@ -1288,7 +1285,7 @@ export default function Step3Checkout({
                   </p>
                   <p className="text-[11px] text-slate-500 mt-1.5">
                     {selectedPlan === "subscription"
-                      ? "Annual renewal · cancel anytime"
+                      ? `First year · renews at $${renewalPrice}/yr next year · cancel anytime`
                       : "One-time · no recurring charges"}
                   </p>
                 </div>
@@ -1303,7 +1300,7 @@ export default function Step3Checkout({
                     <span className="text-lg font-bold">.00</span>
                   </span>
                   {selectedPlan === "subscription" && (
-                    <p className="text-[10px] text-slate-500 mt-1.5">per year</p>
+                    <p className="text-[10px] text-slate-500 mt-1.5">first year</p>
                   )}
                 </div>
               </div>
@@ -1359,7 +1356,13 @@ export default function Step3Checkout({
                   whileHover={{ y: -1 }}
                   whileTap={{ scale: 0.992 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  onClick={() => onChange({ ...data, plan: "subscription" })}
+                  onClick={() => {
+                    // Public coupons don't apply to subscriptions — clear any applied
+                    // one-time coupon so its state can't leak into the annual plan.
+                    setLocalCoupon(null);
+                    onCouponApplied?.(null);
+                    onChange({ ...data, plan: "subscription" });
+                  }}
                   className={`relative w-full text-left rounded-xl px-4 py-3.5 transition-all cursor-pointer border-2 ${
                     selectedPlan === "subscription"
                       ? ""
@@ -1412,6 +1415,9 @@ export default function Step3Checkout({
                       <span className="text-base font-extrabold text-slate-900">
                         ${subPrice}
                         <span className="text-xs font-bold">.00</span>
+                      </span>
+                      <span className="block text-[9px] text-slate-500 mt-0.5 whitespace-nowrap">
+                        first year, then ${renewalPrice}/yr
                       </span>
                     </div>
                   </div>
@@ -1786,6 +1792,7 @@ export default function Step3Checkout({
         couponDiscount={couponDiscount}
         selectedPlan={selectedPlan}
         basePrice={basePrice}
+        renewalPrice={renewalPrice}
         onCTA={scrollToPayment}
       />
 

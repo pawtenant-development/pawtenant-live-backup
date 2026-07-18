@@ -158,7 +158,7 @@ function BlogSidebar({ selectedCategory, onCategoryChange }: { selectedCategory:
         </div>
         <h3 className="font-bold text-sm mb-2 leading-snug">Get Your ESA Letter in 24 Hours</h3>
         <p className="text-xs text-white/85 leading-relaxed mb-4">
-          Licensed therapists, FHA-compliant letters, and a 100% money-back guarantee. Starting at $109/year.
+          Licensed therapists, FHA-compliant letters, and a 100% money-back guarantee. Starting at $115/year.
         </p>
         <Link
           to="/assessment"
@@ -470,7 +470,7 @@ export default function BlogPage() {
             to="/assessment"
             className="whitespace-nowrap inline-block px-8 py-3.5 bg-orange-500 text-white font-semibold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
           >
-            Get My ESA Letter — Starting at $109
+            Get My ESA Letter — Starting at $115
           </Link>
         </div>
       </section>
