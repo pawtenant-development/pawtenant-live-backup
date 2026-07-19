@@ -93,6 +93,14 @@ export interface Order {
   fraud_warning_at?: string | null;
   subscription_status?: string | null;
   letter_type?: string | null;
+  // Package / RA-bundle identity (PACKAGE-RA-LETTER-BUNDLE-001) — read by the
+  // Admin Orders package chips + filters (ORDERS-RA-COMBO-CHIP-FILTER-001).
+  // Classification is explicit-fields-only; NEVER inferred from price.
+  package_key?: string | null;
+  package_display_name?: string | null;
+  includes_reasonable_accommodation_letter?: boolean | null;
+  additional_documentation_required?: boolean | null;
+  additional_documentation_status?: string | null;
   payment_failure_reason?: string | null;
   payment_failed_at?: string | null;
   seq_30min_sent_at?: string | null;

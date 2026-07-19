@@ -1,6 +1,8 @@
 // OrderCard — Mobile card + Desktop table row (expandable)
 import { useState, useCallback } from "react";
 import OrderNotesPanel from "./OrderNotesPanel";
+// Package + RA-status chips (ORDERS-RA-COMBO-CHIP-FILTER-001).
+import PackageChips from "./PackageChips";
 import { supabase } from "@/lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
 import { isRefundedBucket } from "@/lib/orderClassification";
@@ -29,6 +31,9 @@ export interface OrderCardProps {
   onOpenAssessmentIntake: (order: Order) => void;
   onToggleOptOut?: (order: Order) => void;
   coveredStates: Set<string>; duplicateEmailSet: Set<string>;
+  /** orders.id set with a PAID standalone Additional-Documentation add-on
+   *  request — drives the "RA Add-on" package chip. */
+  raAddonOrderIds: Set<string>;
   US_STATES: { name: string; abbr: string }[];
 }
 
@@ -242,11 +247,13 @@ export default function OrderCard({
   recoveryMsg, onOpenRecovery, onSendRecoveryDirect, sendingRecoveryDirect, unreadCommsMap, noteCount, adminProfile,
   onOpenDetail, onOpenStatusLog, onOpenAssessmentIntake,
   onToggleOptOut,
-  coveredStates, duplicateEmailSet, US_STATES,
+  coveredStates, duplicateEmailSet, raAddonOrderIds, US_STATES,
 }: OrderCardProps) {
   const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
   const initials = fullName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
   const isPSD = isPSDOrder(order);
+  // Paid standalone RA add-on present? Drives the "RA Add-on" package chip.
+  const hasPaidAddon = raAddonOrderIds.has(order.id);
   const isPriority = isPriorityOrder(order);
   const displayStatus = getOrderDisplayStatus(order);
   const lastActivity = getLastActivity(order);
@@ -526,8 +533,7 @@ export default function OrderCard({
             </div>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-gray-400">{stateName}</span>
-              {isPSD ? <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-extrabold">PSD</span>
-                     : <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded text-[10px] font-extrabold">ESA</span>}
+              <PackageChips order={order} hasPaidAddon={hasPaidAddon} size="sm" />
               {isPriority && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#3b6ea5] text-white rounded text-[10px] font-extrabold"><i className="ri-vip-crown-2-line" style={{ fontSize: "8px" }}></i>P</span>}
               {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold">DUP</span>}
               {acqClassification && (() => {
@@ -610,8 +616,7 @@ export default function OrderCard({
               </div>
               <p className="text-[10px] text-gray-400 truncate mt-0.5 max-w-[180px]">{order.email}</p>
               <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                {isPSD ? <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">PSD</span>
-                       : <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#e8f0f9] text-[#3b6ea5] rounded">ESA</span>}
+                <PackageChips order={order} hasPaidAddon={hasPaidAddon} size="xs" />
                 {isPriority && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#3b6ea5] text-white rounded">VIP</span>}
                 {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">DUP</span>}
                 {acqClassification && (() => {

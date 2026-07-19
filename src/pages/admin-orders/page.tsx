@@ -60,6 +60,9 @@ import type {
   DoctorContact,
   AttributionSnapshot,
 } from "./types";
+// Package/RA classification for the Orders list chips + filters
+// (ORDERS-RA-COMBO-CHIP-FILTER-001). Explicit-fields-only; never price.
+import { classifyOrderPackage, matchesPackageFilter, type PackageFilterKey } from "./orderPackage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Order / DoctorProfile / DoctorContact / AttributionSnapshot are now
@@ -396,6 +399,12 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   // Hidden source filter — only settable from dashboard, not shown in filter UI
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  // Package / RA filter (ORDERS-RA-COMBO-CHIP-FILTER-001).
+  const [packageFilter, setPackageFilter] = useState<PackageFilterKey>("all");
+  // Order IDs (orders.id) with a PAID standalone Additional-Documentation add-on
+  // request. Fetched from order_additional_documentation_requests — a child
+  // table, NOT joined into the list query. Drives the "RA Add-on" category.
+  const [raAddonOrderIds, setRaAddonOrderIds] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(50);
 
   // ── Advanced filters ──
@@ -740,7 +749,7 @@ export default function AdminOrdersPage() {
       // gclid,fbclid,first_touch_json,last_touch_json). If a 400 returns under
       // load, drop ONLY first_touch_json,last_touch_json — the five flat
       // utm/click-id columns MUST stay (paid-signal for the pill hierarchy).
-      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,refund_status,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,first_touch_json,last_touch_json";
+      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,refund_status,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,package_key,package_display_name,includes_reasonable_accommodation_letter,additional_documentation_required,additional_documentation_status,first_touch_json,last_touch_json";
 
       // LIVE-ADMIN-ORDERS-EMPTY 2026-07-13: page the orders read newest-first.
       // At ~1300+ orders the previous single unbounded select of every column
@@ -975,6 +984,25 @@ export default function AdminOrdersPage() {
     };
     fetchUnread();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminProfile]);
+
+  // ── Fetch PAID standalone Additional-Documentation add-on requests ──────────
+  // ORDERS-RA-COMBO-CHIP-FILTER-001. A standalone RA add-on is a paid child row
+  // in order_additional_documentation_requests referencing the parent order — it
+  // is NEVER a package_key and never a separate order. This set of parent order
+  // ids drives the "RA Add-on" chip + filter. Read-only; no PII surfaced.
+  useEffect(() => {
+    if (!adminProfile) return;
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from("order_additional_documentation_requests")
+        .select("order_id, status")
+        .eq("status", "paid");
+      if (!alive || !data) return;
+      setRaAddonOrderIds(new Set(data.map((r) => r.order_id as string).filter(Boolean)));
+    })();
+    return () => { alive = false; };
   }, [adminProfile]);
 
   // ── Open order detail and mark communications as read ─────────────────────
@@ -1426,6 +1454,14 @@ export default function AdminOrdersPage() {
         matchSource = label === sourceFilter;
       }
     }
+    // Package / RA filter (ORDERS-RA-COMBO-CHIP-FILTER-001). Classified from
+    // explicit saved identity fields + the paid standalone add-on overlay —
+    // never price. Unknown records never leak into the ESA/PSD filters.
+    const matchPackage = packageFilter === "all" ||
+      matchesPackageFilter(
+        classifyOrderPackage(o, { hasPaidStandaloneAddon: raAddonOrderIds.has(o.id) }),
+        packageFilter,
+      );
     const q = search.toLowerCase();
     const matchSearch = !q ||
       o.confirmation_id.toLowerCase().includes(q) ||
@@ -1435,7 +1471,7 @@ export default function AdminOrdersPage() {
       (o.doctor_name ?? "").toLowerCase().includes(q) ||
       (o.phone ?? "").includes(q) ||
       (o.ghl_contact_id ?? "").toLowerCase().includes(q);
-    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateFrom && matchDateTo && matchSearch && matchDuplicates && matchNonGhl && matchSource;
+    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateFrom && matchDateTo && matchSearch && matchDuplicates && matchNonGhl && matchSource && matchPackage;
   }).filter((o) => {
     if (!hideRecentFollowup) return true;
     if (!o.sent_followup_at) return true;
@@ -1491,7 +1527,7 @@ export default function AdminOrdersPage() {
   ].filter(Boolean).length;
 
   // Reset pagination when filters/search change
-  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateFrom, dateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter]);
+  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateFrom, dateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter, packageFilter]);
 
   const clearAdvancedFilters = () => {
     setStateFilterAdv("all");
@@ -2177,6 +2213,28 @@ export default function AdminOrdersPage() {
                   </button>
                 ))}
               </div>
+              {/* Package / RA filter pills (ORDERS-RA-COMBO-CHIP-FILTER-001) —
+                  classify by explicit saved package identity, never price. */}
+              <div className="flex items-center gap-1 px-3 pt-2 pb-2 border-b border-gray-100 overflow-x-auto scrollbar-none" style={{ scrollbarWidth: "none" }}>
+                <span className="flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider pr-1">
+                  <i className="ri-price-tag-3-line text-xs"></i>Package
+                </span>
+                {[
+                  { value: "all", label: "All" },
+                  { value: "esa", label: "ESA" },
+                  { value: "psd", label: "PSD" },
+                  { value: "esa_ra", label: "ESA + RA" },
+                  { value: "psd_ra", label: "PSD + RA" },
+                  { value: "all_ra", label: "All RA" },
+                  { value: "ra_addon", label: "RA Add-on" },
+                ].map((opt) => (
+                  <button key={opt.value} type="button" onClick={() => setPackageFilter(opt.value as PackageFilterKey)}
+                    className={`whitespace-nowrap flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${packageFilter === opt.value ? "bg-[#3b6ea5] text-white" : "text-gray-500 hover:text-[#3b6ea5] hover:bg-gray-50"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
               {/* Bottom row: search + tools — stacks on mobile */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5">
                 {/* Search row */}
@@ -2609,6 +2667,7 @@ export default function AdminOrdersPage() {
                     onToggleOptOut: handleToggleOptOut,
                     coveredStates,
                     duplicateEmailSet,
+                    raAddonOrderIds,
                     US_STATES,
                   });
 
