@@ -14,6 +14,7 @@
 import { motion } from "framer-motion";
 import { getPackageTotal, isRaBundle } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
+import { packageOffer } from "@/lib/packageOffer";
 
 type Accent = "esa" | "psd";
 
@@ -102,11 +103,13 @@ export default function PackageSelectionStep({
           recommended: false,
           badge: null,
           features: [
-            "Provider-reviewed PSD documentation where eligible",
-            "Support for eligible psychiatric service dog situations",
-            "Housing and travel context support where applicable",
+            "Licensed provider evaluation",
+            "Official PSD letter PDF if you qualify",
+            "Housing and travel documentation",
+            "Secure online assessment and document delivery",
+            "Letter verification support when requested",
             "HIPAA-conscious, secure process",
-            "Refund if you don't qualify",
+            "Fast digital delivery after provider approval",
           ],
         },
         {
@@ -118,12 +121,13 @@ export default function PackageSelectionStep({
           recommended: true,
           badge: "Best for housing accommodation requests",
           features: [
-            "Everything in Standard PSD",
-            "Reasonable Accommodation request support",
-            "Upload a landlord / property-manager form in your portal if needed",
-            "Priority support",
-            "Clear steps for landlord submission",
-            "Supports your request — does not create service-dog status",
+            "Everything included in Standard PSD",
+            "Reasonable Accommodation letter included",
+            "Support for landlord or property-manager requests",
+            "Upload property forms through your customer portal",
+            "Provider review of submitted accommodation forms",
+            "Clear documentation and submission guidance",
+            "Priority support for accommodation requests",
           ],
         },
       ]
@@ -140,8 +144,10 @@ export default function PackageSelectionStep({
             "Licensed provider evaluation",
             "Official ESA letter PDF if you qualify",
             "Landlord-ready housing documentation",
+            "Secure online assessment and document delivery",
+            "Letter verification support for landlords or property managers",
             "HIPAA-conscious, secure process",
-            "Refund if you don't qualify",
+            "Fast digital delivery after provider approval",
           ],
         },
         {
@@ -153,12 +159,13 @@ export default function PackageSelectionStep({
           recommended: true,
           badge: "Best for landlord / property-manager requests",
           features: [
-            "Everything in Standard ESA",
-            "Reasonable Accommodation request support",
-            "Helps prepare for landlord / property-manager forms",
-            "Upload a landlord / property form in your portal if needed",
-            "Priority support",
-            "Clear steps for landlord submission",
+            "Everything included in Standard ESA",
+            "Reasonable Accommodation letter included",
+            "Support for landlord or property-manager requests",
+            "Upload property forms through your customer portal",
+            "Provider review of submitted accommodation forms",
+            "Clear documentation and submission guidance",
+            "Priority support for accommodation requests",
           ],
         },
       ];
@@ -182,6 +189,9 @@ export default function PackageSelectionStep({
       <div className="grid sm:grid-cols-2 gap-4 sm:gap-5 items-stretch">
         {cards.map((c) => {
           const active = selectedPackage === c.key;
+          // Presentation-only offer values (compare-at, $30 badge, Klarna 4-pay).
+          // Derived from the canonical payable one-time price; never enter checkout.
+          const offer = packageOffer(c.oneTime);
           return (
             <motion.div
               key={c.key}
@@ -202,25 +212,46 @@ export default function PackageSelectionStep({
                 </div>
               )}
               <div className="p-5 sm:p-6 flex flex-col flex-1">
-                <h3 className="text-base font-extrabold text-slate-900 pr-24 leading-tight">{c.title}</h3>
-                <p className="text-xs text-slate-500 mt-1 leading-snug">{c.tagline}</p>
-                {c.badge && (
-                  <span className="inline-block mt-2 self-start text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: theme.soft, color: theme.text }}>
-                    {c.badge}
-                  </span>
-                )}
-
-                {/* Prominent ONE-TIME price only. The subscription/annual price chip
-                    was removed — the one-time vs annual billing choice is made at
-                    checkout (see the note under the cards). Value comes from the
-                    shared getPackageTotal helper (never hardcoded, never inferred).
-                    RA-PROVIDER-DOCUMENT-WORKFLOW-RELEASE-BLOCKERS-001. */}
-                <div className="mt-4 mb-4 flex items-baseline gap-2">
-                  <span className="text-[34px] leading-none font-extrabold tracking-tight text-slate-900">${c.oneTime}</span>
-                  <span className="text-xs font-semibold text-slate-500">one-time</span>
+                {/* Shared, equal-height header so BOTH price rows start at the exact
+                    same vertical position regardless of title wrap or the presence
+                    of the "Best for…" chip. Title / tagline / chip each reserve a
+                    fixed min-height; the Standard card renders an empty (a11y) chip
+                    spacer in the same slot the Combo chip occupies.
+                    ASSESSMENT-PACKAGE-CARD-VISUAL-ALIGNMENT-001. */}
+                <h3 className="text-base font-extrabold text-slate-900 pr-24 leading-tight min-h-[2.5rem]">{c.title}</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-snug min-h-[2.25rem]">{c.tagline}</p>
+                <div className="mt-2 min-h-[1.5rem] flex items-start">
+                  {c.badge ? (
+                    <span className="inline-block self-start text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: theme.soft, color: theme.text }}>
+                      {c.badge}
+                    </span>
+                  ) : (
+                    <span className="sr-only">No additional label</span>
+                  )}
                 </div>
 
-                <ul className="space-y-2 mb-6 flex-1">
+                {/* One-time OFFER price row. The bold payable price is the REAL
+                    one-time total from the shared getPackageTotal helper (never
+                    hardcoded, never inferred). The crossed-out compare-at price and
+                    the "$30 OFF" badge are PRESENTATION-ONLY (packageOffer) — they
+                    never enter checkout, because onSelect passes only the package
+                    KEY and the server re-computes the charge from pricing.ts.
+                    ASSESSMENT-PACKAGE-CARD-OFFER-PRESENTATION-001. */}
+                <div className="mt-4 mb-3">
+                  <div className="flex items-baseline flex-wrap gap-x-2.5 gap-y-1.5">
+                    <span className="text-[34px] leading-none font-extrabold tracking-tight text-slate-900">${offer.payablePrice}</span>
+                    <span className="text-lg font-semibold text-slate-400 line-through decoration-slate-300">${offer.compareAtPrice}</span>
+                    <span
+                      className="inline-flex items-center whitespace-nowrap text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: "#FEF3C7", color: "#B45309" }}
+                    >
+                      ${offer.savings} OFF
+                    </span>
+                  </div>
+                  <span className="block text-xs font-semibold text-slate-500 mt-1.5">one-time</span>
+                </div>
+
+                <ul className="space-y-2 mb-4 flex-1">
                   {c.features.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-[13px] text-slate-700 leading-snug">
                       <i className="ri-check-line text-sm mt-0.5 flex-shrink-0" style={{ color: theme.solid }}></i>
@@ -228,6 +259,32 @@ export default function PackageSelectionStep({
                     </li>
                   ))}
                 </ul>
+
+                {/* Refund reassurance box — approved wording, shown on every card.
+                    Deliberately NOT a guaranteed-approval / guaranteed-qualification
+                    / guaranteed-landlord-acceptance claim. */}
+                <div
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 mb-2.5"
+                  style={{ backgroundColor: theme.soft, border: `1px solid ${theme.softBorder}` }}
+                >
+                  <i className="ri-shield-check-line text-sm flex-shrink-0" style={{ color: theme.solid }}></i>
+                  <span className="text-xs font-semibold" style={{ color: theme.text }}>
+                    Full refund if you don&apos;t qualify.
+                  </span>
+                </div>
+
+                {/* Klarna / installment message — the installment is derived from the
+                    payable one-time price (offer.klarnaInstallment), NEVER the
+                    crossed-out compare-at price. Eligibility is not guaranteed. */}
+                <div className="flex items-start gap-2 mb-4">
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-[#ffb3c7] text-[#17120e] text-[9px] font-extrabold tracking-tight flex-shrink-0 mt-0.5">
+                    Klarna
+                  </span>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Interest-free payment plans available at checkout, subject to eligibility. Choose Klarna to pay in 4 installments starting at{" "}
+                    <span className="font-bold text-slate-700">${offer.klarnaInstallment}</span>.
+                  </p>
+                </div>
 
                 <button
                   type="button"
@@ -247,11 +304,15 @@ export default function PackageSelectionStep({
         })}
       </div>
 
-      {/* Billing note — the one-time vs annual choice is made at checkout, so no
-          annual price is shown on the cards. RA-PROVIDER-DOCUMENT-WORKFLOW-RELEASE-BLOCKERS-001. */}
-      <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs font-semibold text-slate-500">
-        <i className="ri-information-line"></i>
-        Choose one-time or annual billing at checkout.
+      {/* Billing note — clarifies that the bold price is the ONE-TIME total, that
+          annual billing is chosen at checkout, and that the crossed-out price is a
+          comparison to our regular one-time rate (NOT an annual renewal).
+          ASSESSMENT-PACKAGE-CARD-OFFER-PRESENTATION-001. */}
+      <p className="mt-4 flex items-start justify-center gap-1.5 text-center text-xs font-semibold text-slate-500 max-w-md mx-auto leading-relaxed">
+        <i className="ri-information-line mt-0.5 flex-shrink-0"></i>
+        <span>
+          The bold price is your one-time total. Choose one-time or annual billing at checkout — the crossed-out price is our regular one-time rate, not an annual renewal.
+        </span>
       </p>
 
       <p className="text-center text-[11px] text-slate-400 mt-5 max-w-xl mx-auto leading-relaxed">
