@@ -6,7 +6,8 @@ import { getStateBySlug, usStates } from "../../mocks/states";
 import { getStateBlogEntry } from "../../mocks/stateBlogMap";
 import { blogPosts } from "../../mocks/blogPosts";
 import PrivacySafeVerificationNote from "../../components/feature/PrivacySafeVerificationNote";
-import EsaPricingMini from "@/components/feature/EsaPricingMini";
+import PlanPricingSection from "@/components/feature/PlanPricingSection";
+import { buildEsaPlanCards, ESA_PLAN_COPY } from "@/data/planPricingCards";
 import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 
@@ -996,11 +997,19 @@ export default function StateESAPage() {
         </div>
       </section>
 
-      {/* ESA pricing snapshot + PSD awareness — added in the mobile
-          cleanup pass. Surfaces clear pricing and a short PSD-vs-ESA
-          comparison before the FAQ so visitors can make a faster
-          decision without reading every section first. */}
-      <EsaPricingMini premium className="bg-white border-t border-slate-100" />
+      {/* ESA pricing — mirrors the homepage ESA pricing exactly (same shared
+          cards + PlanPricingSection + PaymentTrustStrip), differing only in the
+          CTA source (state + ref). No Reasonable Accommodation card here — the
+          RA bundle lives only in the assessment package-selection step. */}
+      <PlanPricingSection
+        theme="esa"
+        eyebrow={ESA_PLAN_COPY.eyebrow}
+        heading={ESA_PLAN_COPY.heading}
+        subheading={ESA_PLAN_COPY.subheading}
+        cards={buildEsaPlanCards(`/assessment?state=${stateData.abbreviation}&ref=state-page`)}
+        footnote={ESA_PLAN_COPY.footnote}
+        className="bg-white border-t border-slate-100"
+      />
       <EsaVsPsdCard className="bg-[#fafbfb]" />
 
       {/* FAQ — per-state items first (most state-relevant on top), then
