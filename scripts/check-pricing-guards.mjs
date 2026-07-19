@@ -169,8 +169,30 @@ async function main() {
   // ── testCheckout bypass must stay DEV-gated (never production-reachable) ──
   need(assess, "src/pages/assessment/page.tsx", /import\.meta\.env\.DEV\s*&&\s*[\s\S]{0,120}testCheckout/, "testCheckout must be gated behind import.meta.env.DEV");
 
+  // ── One-time PaymentIntent minter must hard-code plan:"one-time" (never step3.plan) ──
+  // fetchClientSecret is the SOLE live one-time PI minter; its clientSecret feeds only the
+  // one-time StripePaymentForm (the subscription path mints its own PI at pay time via
+  // subscriptionParams/StripeCardForm). A stale `step3.plan` closure here mints a SUBSCRIPTION
+  // PaymentIntent and writes its annual amount into quotedBasePriceDollars, collapsing the
+  // one-time price onto the subscription price when toggling Subscribe→One-time
+  // (P0 CHECKOUT-PRICING-STABILITY-001 / LIVE-CHECKOUT-TOGGLE-PARITY-HOTFIX-008).
+  {
+    const af = "src/pages/assessment/page.tsx";
+    if (assess == null) problems.push(`${af} — MISSING`);
+    else {
+      // Isolate the fetchClientSecret create-payment-intent body: the block bounded by
+      // `state: s2.state,` and `packageKey: pkg,` (both unique to that one call).
+      const body = assess.match(/state:\s*s2\.state,([\s\S]{0,1200}?)packageKey:\s*pkg,/);
+      if (!body) problems.push(`${af} — could not locate the fetchClientSecret create-payment-intent body (state→packageKey block)`);
+      else {
+        if (!/plan:\s*["']one-time["']/.test(body[1])) problems.push(`${af} — one-time PaymentIntent minter must hard-code plan:"one-time" in the create-payment-intent body`);
+        if (/plan:\s*step3\.plan/.test(body[1])) problems.push(`${af} — one-time PaymentIntent minter must NOT send the dynamic plan:step3.plan (stale closure collapses one-time onto the subscription price)`);
+      }
+    }
+  }
+
   if (problems.length === 0) {
-    console.log(`${TAG} OK — consultation & sub-coupons rejected; no old/LIVE price IDs; schedule wired (2-phase/release/idempotent); provisioning env-secret + service-role gated; no plaintext/burned secret; coupon hidden + renewal disclosed on subscription; testCheckout DEV-gated.`);
+    console.log(`${TAG} OK — consultation & sub-coupons rejected; no old/LIVE price IDs; schedule wired (2-phase/release/idempotent); provisioning env-secret + service-role gated; no plaintext/burned secret; coupon hidden + renewal disclosed on subscription; testCheckout DEV-gated; one-time PI minter hard-codes plan:one-time.`);
     return;
   }
   console.error(`${TAG} FAIL — ${problems.length} problem(s):`);

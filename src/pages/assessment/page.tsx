@@ -850,7 +850,17 @@ export default function AssessmentPage() {
             firstName: s2.firstName,
             lastName: s2.lastName,
             state: s2.state,
-            plan: step3.plan,
+            // fetchClientSecret mints the ONE-TIME PaymentIntent only — the
+            // subscription plan mints its own PI at pay time via
+            // subscriptionParams / StripeCardForm, and stripeClientSecret is
+            // consumed only by the one-time StripePaymentForm. Hard-code the
+            // plan so this call can never read a stale `step3.plan` closure:
+            // switching Subscribe→One-time called fetchClientSecret right after
+            // setStep3(next), so `step3.plan` was still "subscription", which
+            // minted a subscription PI and wrote its annual amount into
+            // quotedBasePriceDollars — collapsing the one-time price onto the
+            // subscription price (P0 CHECKOUT-PRICING-STABILITY-001).
+            plan: "one-time",
             packageKey: pkg,
             couponCode: coupon?.code ?? "",
             // ── Phase 1: minimal attribution into Stripe metadata ─────────
