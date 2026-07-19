@@ -429,7 +429,7 @@ function getStateTheme(abbreviation: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const whyPawtenant = [
-  { title: "Experienced Professionals You Can Trust", desc: "Our licensed team knows state and has years of experience providing ESA letters that meet all legal standards.", icon: "ri-shield-check-line" },
+  { title: "Experienced Professionals You Can Trust", desc: "Our licensed team knows the laws in every state and has years of experience providing ESA letters that meet all legal standards.", icon: "ri-shield-check-line" },
   { title: "A Support Team That Cares", desc: "We are here to help you every step of the way from setting up your appointment to making sure your ESA letter is legally valid.", icon: "ri-heart-line" },
   { title: "Available Across the State", desc: "No matter where you are in the state, we have licensed professionals ready to assist in your area.", icon: "ri-map-pin-line" },
   { title: "Honest and Lawful Process", desc: "All evaluations follow all legal rules. We only issue ESA letters after a proper mental health review — no shortcuts.", icon: "ri-scales-line" },

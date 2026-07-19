@@ -136,7 +136,10 @@ export default function ESALetterCostPage() {
 
   return (
     <main className="pb-24 md:pb-0">
-      <title>Affordable ESA Letter | Legitimate &amp; Fast | PawTenant</title>
+      {/* The page title is owned by seoConfig["/esa-letter-cost"] + SEOManager
+          (single source) so the prerendered raw title and the runtime title
+          agree. Do not reintroduce a hardcoded title element here — it caused
+          raw/rendered title drift (AI-SEO-MACHINE-FACTS-SCHEMA-HYGIENE-001). */}
       <meta name="keywords" content="affordable ESA letter, ESA letter cost, legitimate ESA letter, ESA letter price, cheap ESA letter" />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         "@context": "https://schema.org",

@@ -13,11 +13,16 @@
 
 ## Overview
 
-- Service: ESA letters and PSD letters from providers licensed in the customer's state
+- Service: ESA letters and PSD letters from providers licensed in the customer's state; an optional ESA/PSD + Reasonable Accommodation (RA) combo adds help with a separate landlord/HOA accommodation form
 - Use case: housing accommodation requests under the federal Fair Housing Act (FHA)
-- Pricing: ESA letter $99/year (annual subscription) or $110 one-time
+- Pricing — ESA or PSD letter, one animal: $129 one-time, or $115 the first subscription year then $100/year starting in year two
+- Pricing — ESA or PSD letter, two or three animals: $149 one-time, or $135 the first subscription year then $115/year starting in year two
+- Pricing — ESA/PSD + Reasonable Accommodation combo: $179 one-time, or $159/year (the same $159 on renewal)
+- Qualification: a letter is issued only after a licensed provider evaluates the customer and finds it clinically appropriate; buying does not guarantee a letter or landlord approval
+- Delivery timing: documentation is typically delivered within 24 hours after a qualifying evaluation is completed (conditional, not guaranteed)
 - Trust: licensed-provider review, HIPAA-conscious intake, refund if you don't qualify, and a unique Verification ID landlords can confirm
 - Contact: phone (409) 965-5885, email hello@pawtenant.com
+- Canonical site: https://pawtenant.com (non-www)
 
 ## Core service pages
 

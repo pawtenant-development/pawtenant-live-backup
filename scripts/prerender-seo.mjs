@@ -133,13 +133,37 @@ async function pathExists(p) {
   }
 }
 
+// ── Schema hygiene: strip homepage-only structured data on inner routes ─────
+// The built index.html <head> carries FOUR static JSON-LD blocks: Organization
+// + WebSite (truly global, correct on every page) and a homepage-specific
+// WebPage ("… ESA Letter Service", url = homepage) + a homepage ESA Service
+// ($129 Offer). Copied verbatim onto every inner route, the WebPage/Service made
+// each page claim the homepage identity and a $129 ESA offer (wrong on PSD /
+// blog / legal / verification pages) and duplicated the WebPage entity once a
+// route injects its own at runtime. This removes ONLY the WebPage and Service
+// blocks; Organization + WebSite stay. The homepage keeps its own corrected
+// WebPage + Service via writeHomeRoute (which does NOT call this). Route-specific
+// WebPage/FAQPage/Article schema is injected at runtime by the page components.
+// AI-SEO-MACHINE-FACTS-SCHEMA-HYGIENE-001.
+function stripHomepageOnlySchema(html) {
+  return html.replace(
+    /[ \t]*(?:<!--[^\n]*?-->[ \t]*\n[ \t]*)?<script type="application\/ld\+json">([\s\S]*?)<\/script>\n?/gi,
+    (block, body) =>
+      /"@type"\s*:\s*"(?:WebPage|Service)"/.test(body) ? "" : block
+  );
+}
+
 async function writeRoute(template, routePath, meta, canonicalOverride) {
   const canonical = canonicalOverride ?? buildCanonical(routePath);
-  const html = rewriteHead(template, {
+  const rewritten = rewriteHead(template, {
     title: meta.title,
     description: meta.description,
     canonical,
   });
+  // Inner routes must NOT inherit the homepage-only WebPage/Service/$129 Offer.
+  // The homepage ("/") is written by writeHomeRoute and keeps its own corrected
+  // blocks, so never strip when routePath === "/".
+  const html = routePath === "/" ? rewritten : stripHomepageOnlySchema(rewritten);
 
   let target;
   if (routePath === "/") {
@@ -370,7 +394,10 @@ async function writeHomeRoute(template) {
 const APP_BOOT_SHELL = `<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fafaf9;font-family:'Nunito',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"><style>@keyframes pt-boot-spin{to{transform:rotate(360deg)}}</style><div style="display:flex;flex-direction:column;align-items:center;gap:14px"><div style="width:34px;height:34px;border:3px solid #fed7aa;border-top-color:#f97316;border-radius:9999px;animation:pt-boot-spin .7s linear infinite"></div><div style="font-size:13px;font-weight:600;color:#78716c">Loading…</div></div></div>`;
 
 async function writeAppShell(template) {
-  const html = template.replace(
+  // Strip homepage-only WebPage/Service so the SPA fallback (served for fileless
+  // routes) does not advertise the homepage identity + $129 ESA offer either.
+  // Organization + WebSite stay. AI-SEO-MACHINE-FACTS-SCHEMA-HYGIENE-001.
+  const html = stripHomepageOnlySchema(template).replace(
     '<div id="root"></div>',
     `<div id="root">${APP_BOOT_SHELL}</div>`
   );
