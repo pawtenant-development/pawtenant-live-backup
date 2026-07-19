@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { completeAdditionalDocPayment } from "../_shared/completeAdditionalDocPayment.ts";
 import { attachRenewalSchedule } from "../_shared/subscriptionSchedule.ts";
+import { authenticateStripeWebhook } from "./verifyStripeSignature.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -160,18 +161,30 @@ Deno.serve(async (req: Request) => {
 
   // @ts-ignore
   const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
+  // Read the raw request body EXACTLY ONCE and pass it UNTOUCHED to Stripe's
+  // signature verification (constructEventAsync). Any re-serialization would
+  // break the HMAC.
   const rawBody = await req.text();
-  const sigHeader = req.headers.get("stripe-signature") ?? "";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let event: any;
-  if (webhookSecret && sigHeader) {
-    try { event = await stripe.webhooks.constructEventAsync(rawBody, sigHeader, webhookSecret); }
-    catch (err) { console.error("[stripe-webhook] Signature verification failed:", err); return json({ error: "Webhook signature mismatch" }, 400); }
-  } else {
-    try { event = JSON.parse(rawBody); if (!webhookSecret) console.warn("[stripe-webhook] STRIPE_WEBHOOK_SECRET not set — skipping signature check"); }
-    catch { return json({ error: "Invalid JSON body" }, 400); }
+  // ── FAIL CLOSED (STRIPE-WEBHOOK-SIGNATURE-FAIL-CLOSED-001) ──────────────────
+  // Reject every request unless the secret is configured, the Stripe-Signature
+  // header is present, and Stripe's official verification succeeds. There is NO
+  // unsigned-JSON fallback: an unsigned or unverified request is never parsed or
+  // dispatched. Decision logic lives in the pure, unit-tested authenticateStripeWebhook.
+  const auth = await authenticateStripeWebhook({
+    rawBody,
+    sigHeader: req.headers.get("stripe-signature"),
+    webhookSecret,
+    verify: (body, sig, secret) => stripe.webhooks.constructEventAsync(body, sig, secret),
+  });
+  if (!auth.ok) {
+    if (auth.reason === "missing_secret") console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET not set — refusing request (fail closed)");
+    else if (auth.reason === "invalid_signature") console.error("[stripe-webhook] Signature verification failed — rejecting request");
+    else console.warn("[stripe-webhook] Request missing Stripe-Signature — rejecting");
+    return json({ error: auth.error }, auth.status);
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const event: any = auth.event;
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
