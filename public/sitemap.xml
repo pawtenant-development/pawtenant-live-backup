@@ -157,18 +157,23 @@
   <!-- ═══════════════════════════════════════ -->
   <!-- COLLEGE POLICY PAGES                   -->
   <!-- ═══════════════════════════════════════ -->
-  <url><loc>https://pawtenant.com/college-pet-policy/mit</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/harvard-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/stanford-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/university-of-california-berkeley</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/university-of-texas-austin</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/new-york-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/columbia-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/university-of-florida</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/university-of-michigan</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/ohio-state-university</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/ucla</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
-  <url><loc>https://pawtenant.com/college-pet-policy/university-of-chicago</loc><lastmod>2026-03-01</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <!-- College pet-policy pages — slugs MUST match src/mocks/colleges.ts
+       (enforced by scripts/check-route-status.mjs). Corrected 2026-07-20
+       (AI-SEO-SOFT-404-ROUTE-STATUS-LIVE-ROLLOUT-001): removed 11 sitemap URLs
+       for college pages that were never built (soft-404) and listed the 12
+       real pages. -->
+  <url><loc>https://pawtenant.com/college-pet-policy/unc-chapel-hill</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/georgetown</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/emory</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/vanderbilt</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/carnegie-mellon</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/rice</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/dartmouth</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/brown</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/cornell</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/johns-hopkins</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/nyu</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/college-pet-policy/ucla</loc><lastmod>2026-07-20</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
 
   <!-- ═══════════════════════════════════════ -->
   <!-- BLOG POSTS                             -->
