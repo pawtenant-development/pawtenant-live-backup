@@ -1,4 +1,4 @@
-// AdditionalDocInvoiceModal — admin tool to send a tracked $40 "Additional
+// AdditionalDocInvoiceModal — admin tool to send a tracked $50 "Additional
 // Documentation" invoice tied to an existing order. Self-contained so the
 // merge-frozen OrderDetailModal only needs a one-line mount + a menu item.
 //
@@ -6,6 +6,7 @@
 // Payment completion is handled by stripe-webhook (marks paid + reopens order).
 import { useState, useEffect, useCallback } from "react";
 import { getAdminUserToken } from "../../../lib/supabaseClient";
+import { ADDITIONAL_DOC_PRICING } from "../../../config/pricing";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
@@ -159,7 +160,7 @@ export default function AdditionalDocInvoiceModal({ order, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Amount</p>
-              <p className="text-2xl font-extrabold text-gray-900">$40.00</p>
+              <p className="text-2xl font-extrabold text-gray-900">${ADDITIONAL_DOC_PRICING.addon}.00</p>
             </div>
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Customer</p>
@@ -168,7 +169,7 @@ export default function AdditionalDocInvoiceModal({ order, onClose }: Props) {
           </div>
 
           <p className="text-xs text-gray-500 leading-relaxed">
-            Sends the customer a secure $40 payment link for provider completion of additional
+            Sends the customer a secure ${ADDITIONAL_DOC_PRICING.addon} payment link for provider completion of additional
             documentation/forms. After payment, the order is automatically placed back
             <span className="font-semibold"> under review</span> for provider review. No new ESA/PSD order is created.
           </p>
@@ -208,14 +209,14 @@ export default function AdditionalDocInvoiceModal({ order, onClose }: Props) {
                   {r.status === "paid" && (
                     confirmingRefund === r.id ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-gray-500">Refund $40?</span>
+                        <span className="text-[11px] text-gray-500">Refund ${ADDITIONAL_DOC_PRICING.addon}?</span>
                         <button type="button" onClick={() => handleRefund(r.id)} disabled={busyRow === r.id} className="text-[11px] font-bold text-rose-600 hover:text-rose-700 disabled:opacity-50">
                           {busyRow === r.id ? "Refunding…" : "Confirm"}
                         </button>
                         <button type="button" onClick={() => setConfirmingRefund(null)} className="text-[11px] font-semibold text-gray-400 hover:text-gray-600">No</button>
                       </div>
                     ) : (
-                      <button type="button" onClick={() => setConfirmingRefund(r.id)} className="text-[11px] font-semibold text-rose-600 hover:text-rose-700" title="Refunds only the $40 add-on; original order untouched">
+                      <button type="button" onClick={() => setConfirmingRefund(r.id)} className="text-[11px] font-semibold text-rose-600 hover:text-rose-700" title={`Refunds only the $${ADDITIONAL_DOC_PRICING.addon} add-on; original order untouched`}>
                         Refund
                       </button>
                     )
@@ -291,7 +292,7 @@ export default function AdditionalDocInvoiceModal({ order, onClose }: Props) {
               className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
               title={hasPending ? "A pending invoice already exists — cancel it first" : undefined}
             >
-              {submitting ? <><i className="ri-loader-4-line animate-spin"></i> Sending…</> : <><i className="ri-mail-send-line"></i> Send $40 Invoice</>}
+              {submitting ? <><i className="ri-loader-4-line animate-spin"></i> Sending…</> : <><i className="ri-mail-send-line"></i> Send ${ADDITIONAL_DOC_PRICING.addon} Invoice</>}
             </button>
           )}
         </div>

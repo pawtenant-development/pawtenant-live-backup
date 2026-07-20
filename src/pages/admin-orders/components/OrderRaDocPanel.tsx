@@ -8,7 +8,7 @@
 // frozen modal's order query selected. Entitlement is read from authoritative
 // metadata only (never inferred from price).
 //
-// Shows: request source (Combo included vs $70 add-on), request date, upload
+// Shows: request source (Combo included vs $50 add-on), request date, upload
 // status, uploaded filename + date, and a signed View/Download action (reuses
 // the modal's existing openDocumentSignedUrl via the onOpenFile prop).
 

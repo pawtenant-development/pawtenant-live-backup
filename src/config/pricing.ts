@@ -92,7 +92,7 @@ export const RENEWAL_PRICING = {
  * subscription change.
  */
 export const ADDITIONAL_DOC_PRICING = {
-  addon: 70,
+  addon: 50,
 } as const;
 
 export const BUNDLE_PRICING = {

@@ -3451,7 +3451,7 @@ export default function OrderDetailModal({
                           >
                             <i className="ri-file-add-line"></i>
                             <span className="flex-1 text-left">Send Additional Documentation Invoice</span>
-                            <span className="text-[10px] text-gray-400 font-normal normal-case">$40</span>
+                            <span className="text-[10px] text-gray-400 font-normal normal-case">$50</span>
                           </button>
                         )}
                       </>

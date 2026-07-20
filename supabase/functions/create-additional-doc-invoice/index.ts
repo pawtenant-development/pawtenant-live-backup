@@ -41,6 +41,7 @@ const CORS = {
 // Server-authoritative — the client never supplies the amount (customer-portal AND admin
 // invoice both charge this single constant). Historical rows keep their own amount_cents.
 const ADDON_AMOUNT_CENTS = 5000; // $50 (was $70, was $40)
+const ADDON_AMOUNT_DOLLARS = Math.round(ADDON_AMOUNT_CENTS / 100); // display only
 const COMPANY_NAME = "PawTenant";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
@@ -74,11 +75,11 @@ function buildInvoiceEmailHtml(opts: {
     </td></tr>
     <tr><td style="padding:28px 32px 8px;">
       <p style="margin:0 0 16px;font-size:14px;color:#374151;line-height:1.7;">Hi <strong>${opts.firstName || "there"}</strong>, additional documentation has been requested for your housing accommodation file (order <strong>${opts.confirmationId}</strong>).</p>
-      <p style="margin:0 0 16px;font-size:14px;color:#374151;line-height:1.7;">Completing additional documentation or forms is a <strong>$40</strong> service. Provider review is required. To continue, please complete your secure payment below.</p>
+      <p style="margin:0 0 16px;font-size:14px;color:#374151;line-height:1.7;">Completing additional documentation or forms is a <strong>$${ADDON_AMOUNT_DOLLARS}</strong> service. Provider review is required. To continue, please complete your secure payment below.</p>
     </td></tr>
     ${note}
     <tr><td style="padding:8px 32px 4px;" align="center">
-      <a href="${opts.payUrl}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Pay $40 Securely &rarr;</a>
+      <a href="${opts.payUrl}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Pay $${ADDON_AMOUNT_DOLLARS} Securely &rarr;</a>
     </td></tr>
     <tr><td style="padding:18px 32px 4px;">
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;">
@@ -327,7 +328,7 @@ Deno.serve(async (req) => {
   }
 
   // ── REFUND ADD-ON ONLY (admin) ─────────────────────────────────────────────
-  // Refunds ONLY the $40 additional-documentation payment. Does NOT cancel or
+  // Refunds ONLY the $50 additional-documentation payment. Does NOT cancel or
   // refund the original ESA/PSD order, and does NOT change the parent order
   // status. Idempotent (refunded short-circuits; only a paid row is refundable).
   if (action === "refund") {
@@ -546,7 +547,7 @@ Deno.serve(async (req) => {
       action: "additional_documentation_invoice_sent",
       object_type: "order",
       object_id: orderRow.confirmation_id,
-      description: `Additional documentation invoice ($40) sent to ${orderEmail}${isAdmin && adminName ? ` by ${adminName}` : " (customer request)"}. Awaiting payment.`,
+      description: `Additional documentation invoice ($${ADDON_AMOUNT_DOLLARS}) sent to ${orderEmail}${isAdmin && adminName ? ` by ${adminName}` : " (customer request)"}. Awaiting payment.`,
       metadata: {
         request_id: requestId,
         order_id: orderRow.id,

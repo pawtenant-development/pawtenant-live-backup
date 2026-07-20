@@ -172,7 +172,7 @@ export default function ProviderOrderDetail({
   const [uploadedDocs, setUploadedDocs] = useState<OrderDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
-  // Additional Documentation ($40 add-on) requests for this order. The provider
+  // Additional Documentation ($50 add-on) requests for this order. The provider
   // can read these via RLS (assigned-doctor SELECT policy). A paid request means
   // the customer paid for extra documentation and the case needs provider action.
   const [addonRequests, setAddonRequests] = useState<Array<{ id: string; status: string; amount_cents: number; created_at: string; paid_at: string | null }>>([]);
@@ -495,7 +495,7 @@ export default function ProviderOrderDetail({
 
   // Shared "completed Housing form" block — the dedicated upload action (distinct
   // from the ESA/PSD letter submission) plus a read-only list of completed forms.
-  // Rendered inside both the paid $70 add-on section and the Combo RA section.
+  // Rendered inside both the paid $50 add-on section and the Combo RA section.
   const renderHousingCompletion = () => {
     if (readOnly && housingCompletedDocs.length === 0) return null;
     return (
@@ -787,7 +787,7 @@ export default function ProviderOrderDetail({
                 );
               })()}
 
-              {/* ── Additional Documentation (paid $40 add-on) ── */}
+              {/* ── Additional Documentation (paid $50 add-on) ── */}
               {(() => {
                 const paid = addonRequests.find((r) => r.status === "paid");
                 const pending = addonRequests.find((r) => r.status === "pending");

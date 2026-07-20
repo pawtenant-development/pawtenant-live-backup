@@ -1,5 +1,5 @@
 // completeAdditionalDocPayment — single source of truth for finalizing a paid
-// "Additional Documentation" ($40) add-on. Called by BOTH:
+// "Additional Documentation" ($50) add-on. Called by BOTH:
 //   - stripe-webhook (when the Stripe event is delivered), and
 //   - create-additional-doc-invoice "reconcile"/"list" (self-heal when the
 //     webhook is not subscribed/delivered — same pattern as check-payment-status).
@@ -59,7 +59,7 @@ async function getAdminNotifRecipients(notificationKey: string): Promise<{ enabl
 }
 
 function buildAddonReceiptHtml(opts: { firstName: string; confirmationId: string; amountFormatted: string }): string {
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:560px;width:100%;"><tr><td style="background:#0f172a;padding:26px 32px;text-align:center;"><img src="${LOGO_URL}" width="140" alt="${COMPANY_NAME}" style="display:block;margin:0 auto 12px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.12);color:#94a3b8;padding:4px 14px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">PAYMENT RECEIVED</div><p style="margin:0;font-size:34px;font-weight:900;color:#ffffff;">${opts.amountFormatted}</p><p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">Additional Documentation</p></td></tr><tr><td style="padding:26px 32px;"><p style="margin:0 0 16px;font-size:14px;color:#374151;line-height:1.7;">Hi <strong>${opts.firstName || "there"}</strong>, we received your $40 payment for additional documentation on order <strong>${opts.confirmationId}</strong>. Your order has been placed back <strong>under review</strong> and a provider will review the request.</p><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin-bottom:8px;"><p style="margin:0;font-size:13px;color:#475569;line-height:1.7;"><strong>Next step:</strong> please reply to this email and attach the specific form you need completed, or upload it in your <a href="${PORTAL_URL}" style="color:#1a5c4f;">customer portal</a>. Provider review is based on a clinical assessment of your file; we cannot guarantee third-party acceptance of any document.</p></div></td></tr><tr><td style="padding:14px 32px;text-align:center;border-top:1px solid #f1f5f9;background:#f8fafc;"><p style="margin:0;font-size:11px;color:#9ca3af;">${COMPANY_NAME} &middot; <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p></td></tr></table></td></tr></table></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:560px;width:100%;"><tr><td style="background:#0f172a;padding:26px 32px;text-align:center;"><img src="${LOGO_URL}" width="140" alt="${COMPANY_NAME}" style="display:block;margin:0 auto 12px;height:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.12);color:#94a3b8;padding:4px 14px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">PAYMENT RECEIVED</div><p style="margin:0;font-size:34px;font-weight:900;color:#ffffff;">${opts.amountFormatted}</p><p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">Additional Documentation</p></td></tr><tr><td style="padding:26px 32px;"><p style="margin:0 0 16px;font-size:14px;color:#374151;line-height:1.7;">Hi <strong>${opts.firstName || "there"}</strong>, we received your ${opts.amountFormatted} payment for additional documentation on order <strong>${opts.confirmationId}</strong>. Your order has been placed back <strong>under review</strong> and a provider will review the request.</p><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin-bottom:8px;"><p style="margin:0;font-size:13px;color:#475569;line-height:1.7;"><strong>Next step:</strong> please reply to this email and attach the specific form you need completed, or upload it in your <a href="${PORTAL_URL}" style="color:#1a5c4f;">customer portal</a>. Provider review is based on a clinical assessment of your file; we cannot guarantee third-party acceptance of any document.</p></div></td></tr><tr><td style="padding:14px 32px;text-align:center;border-top:1px solid #f1f5f9;background:#f8fafc;"><p style="margin:0;font-size:11px;color:#9ca3af;">${COMPANY_NAME} &middot; <a href="https://${COMPANY_DOMAIN}" style="color:#1a5c4f;text-decoration:none;">${COMPANY_DOMAIN}</a></p></td></tr></table></td></tr></table></body></html>`;
 }
 
 function buildAddonAdminHtml(opts: { confirmationId: string; email: string; amountFormatted: string; timestamp: string }): string {
@@ -108,7 +108,7 @@ export async function completeAdditionalDocPayment(
   }
 
   const nowIso = new Date().toISOString();
-  const amountCents = opts.amountCents ?? (reqRow.amount_cents as number) ?? 4000;
+  const amountCents = opts.amountCents ?? (reqRow.amount_cents as number) ?? 5000;
   const amountFormatted = `$${(amountCents / 100).toFixed(2)}`;
 
   await supabase.from("order_additional_documentation_requests").update({
@@ -260,7 +260,7 @@ export async function ensureAddonEarning(
       .filter((p) => !!p && String(p).trim())
       .join(" ")
       .trim() || null;
-    const addonCharge = Math.round(((req.amount_cents as number | null) ?? 4000) / 100);
+    const addonCharge = Math.round(((req.amount_cents as number | null) ?? 5000) / 100);
 
     const { error: insertErr } = await supabase.from("doctor_earnings").insert({
       doctor_user_id: doctorUserId,

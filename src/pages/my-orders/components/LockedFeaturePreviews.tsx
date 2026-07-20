@@ -3,7 +3,7 @@
 //
 // Each card is understandable but inert: a lock icon, a short "when it becomes
 // available" line, and NO active form fields, NO upload button, NO provider
-// identity, NO document links, NO $70 add-on action, NO false progress. This is
+// identity, NO document links, NO $50 add-on action, NO false progress. This is
 // the trust-building preview of what the paid portal unlocks — it never grants
 // pre-payment access to provider workflows, uploads, contact-time controls, or
 // delivered documents.

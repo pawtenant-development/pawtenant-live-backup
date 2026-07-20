@@ -369,7 +369,7 @@ function OrderCard({
       <LetterDeliveryCard order={order} />
 
       {/* Housing Accommodation workflow: combo (included) upload, OR the standard
-          $70 add-on (mutually exclusive). The completed form itself is a My
+          $50 add-on (mutually exclusive). The completed form itself is a My
           Documents deliverable, not duplicated here. */}
       {showRaDocumentUpload(order) && <RaDocumentUpload order={order} />}
       {!showRaDocumentUpload(order) && canRequestAdditionalDoc(order) && (

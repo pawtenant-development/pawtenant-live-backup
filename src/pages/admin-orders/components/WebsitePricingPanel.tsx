@@ -72,7 +72,7 @@ const CANONICAL_CENTS: Record<string, number> = {
   psd_annual:               PSD_PRICING.annual * 100,                // 11500 (first year)
   psd_annual_multi:         PSD_PRICING.annualMultiDogTotal * 100,   // 13500 (first year)
   renewal_annual:           RENEWAL_PRICING.single * 100,            // 10000 (single-tier renewal)
-  additional_documentation: ADDITIONAL_DOC_PRICING.addon * 100,      // 7000
+  additional_documentation: ADDITIONAL_DOC_PRICING.addon * 100,      // 5000
 };
 
 // Full canonical structure, read-only reference. First-year and renewal are

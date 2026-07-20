@@ -19,7 +19,7 @@ interface PaymentAttempt {
   created_at: string;
 }
 
-// Additional Documentation ($40 add-on) payment — lives in its own table
+// Additional Documentation ($50 add-on) payment — lives in its own table
 // (order_additional_documentation_requests), NOT in payment_attempts, so it
 // is fetched separately via the create-additional-doc-invoice edge function.
 interface AddonRequest {
@@ -256,7 +256,7 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
     loadAttempts();
   }, [loadAttempts, order.refund_amount, order.refunded_at]);
 
-  // Additional Documentation ($40) payments live in a separate table; pull them
+  // Additional Documentation ($50) payments live in a separate table; pull them
   // via the edge function (admin session token) so the Payments tab shows the
   // full financial picture, not just the base order payment. Fails soft.
   const loadAddons = useCallback(async () => {
@@ -399,7 +399,7 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
         variant="full"
       />
 
-      {/* Additional Documentation ($40 add-on) payments */}
+      {/* Additional Documentation ($50 add-on) payments */}
       {addonRequests.length > 0 && (
         <div className="bg-white rounded-xl border border-sky-200 overflow-hidden">
           <div className="px-4 py-3 bg-sky-50 border-b border-sky-100 flex items-center gap-2">

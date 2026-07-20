@@ -5,7 +5,7 @@
 // includes_reasonable_accommodation_letter=true). Reuses the EXISTING
 // `customer-upload-document` edge function (private `letters` bucket →
 // order_documents, doc_type=customer_upload, customer_visible=true) and the
-// same auth/ownership rules as the $40 add-on flow — no parallel upload system.
+// same auth/ownership rules as the $50 add-on flow — no parallel upload system.
 //
 // Upload is OPTIONAL: only needed when the customer has an external landlord /
 // property-manager / HOA / tenant-association form for the provider to complete.
