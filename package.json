@@ -39,7 +39,7 @@
   "name": "react",
   "private": true,
   "scripts": {
-    "build": "vite build && node scripts/prerender-seo.mjs && node scripts/prerender-full-body-spike.mjs && node scripts/check-full-body-prerender.mjs && node scripts/check-machine-facts.mjs && node scripts/check-route-status.mjs && node scripts/check-attribution-parity.mjs --warn-only && node scripts/verify-attribution-hygiene.mjs --warn-only && node scripts/check-refund-consumer-guard.mjs --warn-only && node scripts/check-pricing-parity.mjs && node scripts/check-pricing-guards.mjs && node scripts/check-addon-price-contract.mjs && node scripts/check-package-card-offer.mjs && node scripts/check-state-pricing-cards.mjs && node scripts/check-funnel-flow.mjs && node scripts/test-order-package-classification.mjs",
+    "build": "vite build && node scripts/prerender-seo.mjs && node scripts/prerender-full-body-spike.mjs && node scripts/check-full-body-prerender.mjs && node scripts/check-machine-facts.mjs && node scripts/check-route-status.mjs && node scripts/check-attribution-parity.mjs --warn-only && node scripts/verify-attribution-hygiene.mjs --warn-only && node scripts/check-refund-consumer-guard.mjs --warn-only && node scripts/check-pricing-parity.mjs && node scripts/check-pricing-guards.mjs && node scripts/check-addon-price-contract.mjs && node scripts/check-addon-eligibility.mjs && node scripts/check-package-card-offer.mjs && node scripts/check-state-pricing-cards.mjs && node scripts/check-funnel-flow.mjs && node scripts/test-order-package-classification.mjs",
     "check:pricing": "node scripts/check-pricing-parity.mjs && node scripts/check-pricing-guards.mjs",
     "check:machine-facts": "node scripts/check-machine-facts.mjs",
     "prerender:full-body": "node scripts/prerender-full-body-spike.mjs",
@@ -50,6 +50,8 @@
     "test:funnel-flow": "node scripts/check-funnel-flow.mjs --self-test",
     "check:addon-price": "node scripts/check-addon-price-contract.mjs",
     "test:addon-price": "node scripts/check-addon-price-contract.mjs --self-test",
+    "check:addon-eligibility": "node scripts/check-addon-eligibility.mjs",
+    "test:addon-eligibility": "node scripts/check-addon-eligibility.mjs --self-test",
     "check:package-card-offer": "node scripts/check-package-card-offer.mjs",
     "check:state-pricing": "node scripts/check-state-pricing-cards.mjs",
     "check:attribution": "node scripts/check-attribution-parity.mjs",

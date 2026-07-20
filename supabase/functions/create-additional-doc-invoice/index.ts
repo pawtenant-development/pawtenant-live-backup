@@ -160,7 +160,7 @@ Deno.serve(async (req) => {
   }
 
   // ── Resolve the parent order ─────────────────────────────────────────────
-  let orderQuery = admin.from("orders").select("id, confirmation_id, email, first_name, status, doctor_status").limit(1);
+  let orderQuery = admin.from("orders").select("id, confirmation_id, email, first_name, status, doctor_status, payment_intent_id, paid_at, package_key, includes_reasonable_accommodation_letter").limit(1);
   if (body.orderId) orderQuery = orderQuery.eq("id", body.orderId);
   else if (body.confirmationId) orderQuery = orderQuery.eq("confirmation_id", body.confirmationId);
   else return json(400, { ok: false, error: "orderId or confirmationId required" });
@@ -171,6 +171,8 @@ Deno.serve(async (req) => {
   const orderRow = order as {
     id: string; confirmation_id: string | null; email: string | null;
     first_name: string | null; status: string | null; doctor_status: string | null;
+    payment_intent_id: string | null; paid_at: string | null;
+    package_key: string | null; includes_reasonable_accommodation_letter: boolean | null;
   };
   const orderEmail = (orderRow.email ?? "").toLowerCase();
 
@@ -403,6 +405,64 @@ Deno.serve(async (req) => {
   if (!stripeKey) return json(500, { ok: false, error: "Stripe not configured" });
   if (!orderEmail) return json(400, { ok: false, error: "Order has no email on file" });
 
+  // Base-consultation payment gate — the $50 Additional Documentation add-on can
+  // only be created once the BASE order is actually paid. Key ONLY on canonical
+  // payment fields (payment_intent_id / paid_at) — NOT status — so a synthetic or
+  // mis-advanced 'under-review' order that was never paid is still rejected.
+  // Applies to BOTH the customer AND admin create paths (no admin override).
+  const baseIsPaid = !!orderRow.payment_intent_id || !!orderRow.paid_at;
+  if (!baseIsPaid) {
+    return json(409, {
+      ok: false,
+      error: "Additional Documentation is unavailable until the consultation booking is paid.",
+      code: "base_order_unpaid",
+      orderStatus: orderRow.status ?? "unknown",
+    });
+  }
+  if (orderRow.status === "refunded" || orderRow.status === "cancelled") {
+    return json(409, {
+      ok: false,
+      error: "Additional Documentation is unavailable for a refunded or cancelled order.",
+      code: "base_order_reversed",
+      orderStatus: orderRow.status ?? "unknown",
+    });
+  }
+
+  // Bundle / RA-entitlement exclusion — an order that already includes the
+  // Reasonable Accommodation service must NOT be charged again for the standalone
+  // add-on (entitlement + payment integrity). No admin override; a different
+  // document product must use its own contract. Uses the explicit entitlement /
+  // package fields, never price.
+  const raIncluded = orderRow.includes_reasonable_accommodation_letter === true
+    || orderRow.package_key === "esa_ra_bundle" || orderRow.package_key === "psd_ra_bundle";
+  if (raIncluded) {
+    return json(409, {
+      ok: false,
+      error: "This order already includes Reasonable Accommodation documentation.",
+      code: "ra_already_included",
+    });
+  }
+
+  // One standalone add-on per order — a base order may have only ONE successfully
+  // purchased standalone add-on. A PAID request means the service is already owned
+  // (paid → the order is reopened / under provider review / completed). A prior
+  // refunded / cancelled / failed-unpaid request does NOT block a retry (a refund
+  // means the provider could not complete the service). Applies to BOTH paths.
+  const { data: ownedReq } = await admin
+    .from("order_additional_documentation_requests")
+    .select("id, status")
+    .eq("order_id", orderRow.id)
+    .eq("status", "paid")
+    .limit(1)
+    .maybeSingle();
+  if (ownedReq) {
+    return json(409, {
+      ok: false,
+      error: "Additional Documentation has already been purchased for this order.",
+      code: "addon_already_owned",
+    });
+  }
+
   // Duplicate guard: refuse a second PENDING invoice for the same order.
   const { data: existingPending } = await admin
     .from("order_additional_documentation_requests")
@@ -440,6 +500,13 @@ Deno.serve(async (req) => {
     .select()
     .maybeSingle();
   if (insertErr || !inserted) {
+    // A concurrent create raced us to the single-active-request slot (partial
+    // unique index uq_addon_doc_active_per_order on order_id where status in
+    // pending/paid). Treat the race as a duplicate, not a 500 — no Stripe session
+    // has been created yet, so no double charge is possible.
+    if ((insertErr as { code?: string } | null)?.code === "23505") {
+      return json(409, { ok: false, error: "A request for this order is already in progress.", code: "addon_already_active" });
+    }
     return json(500, { ok: false, error: `Could not create request: ${insertErr?.message ?? "unknown"}` });
   }
   const request = inserted as { id: string; confirmation_id: string | null };
