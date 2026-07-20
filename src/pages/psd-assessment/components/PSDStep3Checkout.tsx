@@ -11,7 +11,8 @@ import StripePaymentForm from "../../assessment/components/StripePaymentForm";
 import StripeCardForm from "../../assessment/components/StripeCardForm";
 import { getPackageTotal, getPackageRenewal, isRaBundle } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
-import { trackCheckoutViewed } from "@/lib/trackEvent";
+import { trackCheckoutViewed, trackPlanChanged } from "@/lib/trackEvent";
+import { flowVersionProp } from "@/config/flowVersion";
 import SubscriptionRenewalNotice from "../../../components/feature/SubscriptionRenewalNotice";
 // ── 2026-05-21 PSD-STEP3-ESA-PARITY ─────────────────────────────────────────
 // Reuse the polished trust/reassurance helpers ESA Step 3 mounts in its left
@@ -569,11 +570,14 @@ interface PSDStep3CheckoutProps {
   packageKey?: string;
   /** Return to the dedicated package-selection step. */
   onChangePackage?: () => void;
+  /** Restored billing plan on resume (POST-OTP-DIRECT-CHECKOUT-001) — keeps a
+   *  resumed annual customer on annual instead of reverting to one-time. */
+  initialPlan?: PSDPlan;
 }
 
-export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack, packageKey, onChangePackage }: PSDStep3CheckoutProps) {
+export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack, packageKey, onChangePackage, initialPlan }: PSDStep3CheckoutProps) {
   const navigate = useNavigate();
-  const [selectedPlan, setSelectedPlan] = useState<PSDPlan>("onetime");
+  const [selectedPlan, setSelectedPlan] = useState<PSDPlan>(initialPlan ?? "onetime");
   // RA bundle selection (PACKAGE-RA-LETTER-BUNDLE-001): psd_standard | psd_ra_bundle.
   // Package is now chosen on the dedicated package step and passed in as a prop.
   const selectedPackage: PackageKey = (packageKey as PackageKey) ?? "psd_standard";
@@ -597,8 +601,16 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
 
   // Funnel: PSD checkout surface rendered. Once per order per page load.
   useEffect(() => {
-    if (confirmationId) trackCheckoutViewed(confirmationId, { funnel_type: "psd" });
+    if (confirmationId) trackCheckoutViewed(confirmationId, { funnel_type: "psd", flow_version: flowVersionProp() });
   }, [confirmationId]);
+
+  // Funnel: fire plan_changed on a real one-time ↔ annual toggle (skip the
+  // initial mount value so a resumed annual default doesn't count as a change).
+  const planInitRef = useRef(true);
+  useEffect(() => {
+    if (planInitRef.current) { planInitRef.current = false; return; }
+    try { trackPlanChanged(confirmationId, selectedPlan === "subscription" ? "annual" : "one-time", { flow_version: flowVersionProp() }); } catch { /* analytics never blocks */ }
+  }, [selectedPlan, confirmationId]);
 
   // Public coupons never apply to subscriptions — clear any applied one-time
   // coupon when the annual plan is selected so it can't leak into a subscription.
@@ -1043,6 +1055,26 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Relocated from AssuranceScreen (POST-OTP-DIRECT-CHECKOUT-001):
+                minimal trust reassurance for the direct-to-checkout flow. Compact,
+                NOT a full interstitial. */}
+            <div className="mb-3 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5">
+              <ul className="space-y-1.5 text-[11px] text-gray-600 leading-relaxed">
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-user-heart-line text-[#1e3a5f] mt-0.5"></i>
+                  <span>Reviewed by a licensed provider — approval isn&apos;t automatic; issued only if clinically appropriate.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-refund-2-line text-[#1e3a5f] mt-0.5"></i>
+                  <span>Refunded if a provider determines you don&apos;t qualify — never charged for a letter you can&apos;t use.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-lock-2-line text-[#1e3a5f] mt-0.5"></i>
+                  <span>Private &amp; encrypted — used only for your evaluation, never sold.</span>
+                </li>
+              </ul>
             </div>
 
             {/* ── Plan card ── */}

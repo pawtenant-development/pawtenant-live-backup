@@ -453,6 +453,78 @@ export function trackPaymentFailed(
   );
 }
 
+// ── Post-OTP direct-checkout funnel helpers (POST-OTP-DIRECT-CHECKOUT-001) ───
+//
+// Privacy contract: these record ONLY confirmation_id, letter_type, coarse
+// enums (destination / package_key / plan / category) and flow_version. They
+// MUST NEVER receive an OTP code, email, phone, medical answer, or card data.
+// All use fire() (record_event) — repeatable or per-session-deduped — so NO
+// new one-time-index / DB migration is required.
+
+/** Safe, non-PII OTP send-failure categories. */
+export type OtpSendFailureCategory = "network" | "rate_limited" | "server_error" | "unknown";
+/** Safe, non-PII OTP verify-failure categories. */
+export type OtpVerifyFailureCategory = "wrong_code" | "expired" | "rate_limited" | "network" | "unknown";
+
+/** otp_screen_viewed — the OTP screen actually rendered. Deduped per order per session. */
+export function trackOtpScreenViewed(confirmationId: string, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  if (!confirmationId) return;
+  fire("otp_screen_viewed", getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }), confirmationId);
+}
+
+/** otp_send_succeeded — server accepted + dispatched a code (not a cooldown reply). Repeatable. */
+export function trackOtpSendSucceeded(confirmationId: string, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  fire("otp_send_succeeded", getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }));
+}
+
+/** otp_send_failed — the send call errored. Records only a safe category. Repeatable. */
+export function trackOtpSendFailed(confirmationId: string, category: OtpSendFailureCategory, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  fire("otp_send_failed", getEnrichedProps({ confirmation_id: confirmationId, category, letter_type: letterType, ...(extra ?? {}) }));
+}
+
+/** otp_entry_started — the customer began typing the code. Deduped per order per session. */
+export function trackOtpEntryStarted(confirmationId: string, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  if (!confirmationId) return;
+  fire("otp_entry_started", getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }), confirmationId);
+}
+
+/** otp_resend_requested — customer requested a new code (post-cooldown). Repeatable. */
+export function trackOtpResendRequested(confirmationId: string, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  fire("otp_resend_requested", getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }));
+}
+
+/** otp_verify_failed — an entered code failed. Records only a safe category, NEVER the code. Repeatable. */
+export function trackOtpVerifyFailed(confirmationId: string, category: OtpVerifyFailureCategory, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  fire("otp_verify_failed", getEnrichedProps({ confirmation_id: confirmationId, category, letter_type: letterType, ...(extra ?? {}) }));
+}
+
+/** post_otp_destination — where the verified customer was routed (pay in the direct flow). Deduped per order per session. */
+export function trackPostOtpDestination(confirmationId: string, destination: "pay" | "assurance" | "package", flowVersion: string, extra?: Record<string, unknown>): void {
+  if (!confirmationId) return;
+  fire("post_otp_destination", getEnrichedProps({ confirmation_id: confirmationId, destination, flow_version: flowVersion, ...(extra ?? {}) }), confirmationId);
+}
+
+/** package_change_opened — the customer opened the package comparison from checkout. Repeatable. */
+export function trackPackageChangeOpened(confirmationId: string, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  fire("package_change_opened", getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }));
+}
+
+/** package_screen_viewed — the package comparison rendered. Deduped per order per session. */
+export function trackPackageScreenViewed(confirmationId: string, letterType: "esa" | "psd", extra?: Record<string, unknown>): void {
+  if (!confirmationId) return;
+  fire("package_screen_viewed", getEnrichedProps({ confirmation_id: confirmationId, letter_type: letterType, ...(extra ?? {}) }), confirmationId);
+}
+
+/** package_selected — a package card was chosen. Records the package_key only. Repeatable. */
+export function trackPackageSelected(confirmationId: string, packageKey: string, extra?: Record<string, unknown>): void {
+  fire("package_selected", getEnrichedProps({ confirmation_id: confirmationId, package_key: packageKey, ...(extra ?? {}) }));
+}
+
+/** plan_changed — one-time ↔ annual toggle. Records the plan label only. Repeatable. */
+export function trackPlanChanged(confirmationId: string, plan: "one-time" | "annual", extra?: Record<string, unknown>): void {
+  fire("plan_changed", getEnrichedProps({ confirmation_id: confirmationId, plan, ...(extra ?? {}) }));
+}
+
 // ── Recovery funnel helpers ──────────────────────────────────────────────────
 
 // Active recovery stages currently wired in the backend

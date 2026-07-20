@@ -21,6 +21,7 @@ import RefundReassurance from "./step3/RefundReassurance";
 import SupportCard from "./step3/SupportCard";
 import { US_STATES } from "../../../lib/usStates";
 import { trackCheckoutViewed } from "@/lib/trackEvent";
+import { flowVersionProp } from "@/config/flowVersion";
 
 // ─── Module-level Stripe constants ───────────────────────────────────────────
 const stripePromise = loadStripe(
@@ -960,10 +961,12 @@ export default function Step3Checkout({
     title: string;
   } | null>(null);
 
-  // Funnel: the checkout surface actually rendered. Fired once per order per
-  // page load (deduped in the helper by confirmation_id).
+  // Funnel: the checkout surface actually rendered (pay gate active + order
+  // summary + payment UI present). This component mounts ONLY at the pay gate,
+  // so mount == checkout rendered. Fired once per order per page load (deduped in
+  // the helper by confirmation_id); a fresh page load re-fires as "viewed again".
   useEffect(() => {
-    if (confirmationId) trackCheckoutViewed(confirmationId, { funnel_type: "esa" });
+    if (confirmationId) trackCheckoutViewed(confirmationId, { funnel_type: "esa", flow_version: flowVersionProp() });
   }, [confirmationId]);
 
   const [localCoupon, setLocalCoupon] = useState<{
@@ -1343,6 +1346,26 @@ export default function Step3Checkout({
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Relocated from AssuranceScreen (POST-OTP-DIRECT-CHECKOUT-001):
+                minimal trust reassurance so the direct-to-checkout flow keeps the
+                key expectations. Kept compact — NOT a full interstitial. */}
+            <div className="mb-3 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5">
+              <ul className="space-y-1.5 text-[11px] text-gray-600 leading-relaxed">
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-user-heart-line text-[#1A5C4F] mt-0.5"></i>
+                  <span>Reviewed by a licensed provider — approval isn&apos;t automatic; issued only if clinically appropriate.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-refund-2-line text-[#1A5C4F] mt-0.5"></i>
+                  <span>Refunded if a provider determines you don&apos;t qualify — never charged for a letter you can&apos;t use.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <i className="ri-lock-2-line text-[#1A5C4F] mt-0.5"></i>
+                  <span>Private &amp; encrypted — used only for your evaluation, never sold.</span>
+                </li>
+              </ul>
             </div>
 
             {/* ── Plan Toggle ── */}

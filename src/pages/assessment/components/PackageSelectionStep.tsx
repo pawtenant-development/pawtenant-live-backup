@@ -11,10 +11,13 @@
 // PawTenant-branded (own palette). Compliance-safe: no guaranteed approval, no
 // service-dog-status, no registry/certification/vest, no "legit(imate)".
 
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { getPackageTotal, isRaBundle } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
 import { packageOffer } from "@/lib/packageOffer";
+import { trackPackageScreenViewed } from "@/lib/trackEvent";
+import { flowVersionProp } from "@/config/flowVersion";
 
 type Accent = "esa" | "psd";
 
@@ -27,6 +30,8 @@ interface PackageSelectionStepProps {
   selectedPackage: PackageKey;
   onSelect: (packageKey: PackageKey) => void;
   onBack: () => void;
+  /** For package_screen_viewed analytics (POST-OTP-DIRECT-CHECKOUT-001). */
+  confirmationId?: string;
 }
 
 // Brand palette per product. ESA = calm teal/emerald; PSD = deep blue.
@@ -85,12 +90,18 @@ export default function PackageSelectionStep({
   selectedPackage,
   onSelect,
   onBack,
+  confirmationId,
 }: PackageSelectionStepProps) {
   const theme = THEME[accent ?? letterType];
   const n = Math.max(1, Math.min(3, petCount));
   const noun = letterType === "psd" ? (n === 1 ? "dog" : "dogs") : (n === 1 ? "pet" : "pets");
   const stdKey: PackageKey = letterType === "psd" ? "psd_standard" : "esa_standard";
   const bundleKey: PackageKey = letterType === "psd" ? "psd_ra_bundle" : "esa_ra_bundle";
+
+  // Funnel: the package comparison actually rendered. Deduped per order per session.
+  useEffect(() => {
+    if (confirmationId) trackPackageScreenViewed(confirmationId, letterType, { flow_version: flowVersionProp() });
+  }, [confirmationId, letterType]);
 
   const cards: CardModel[] = letterType === "psd"
     ? [

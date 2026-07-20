@@ -17,6 +17,7 @@ import AssuranceScreen from "./components/AssuranceScreen";
 import PackageSelectionStep from "./components/PackageSelectionStep";
 import type { StateAcknowledgment } from "./components/StateAcknowledgmentModal";
 import { nextBookingGate } from "@/lib/bookingProgress";
+import { isDirectCheckout, flowVersionProp } from "@/config/flowVersion";
 
 
 import { getDoctorsForState, ALL_STATES } from "../../mocks/doctors";
@@ -37,7 +38,7 @@ import {
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
 import { getEsaOneTimeTotal, getEsaAnnualTotal, getPackageTotal } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
-import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
+import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged, trackPostOtpDestination, trackPlanChanged, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
 
 // Lazy-loaded Step 3 checkout (payment) — split into its own bundle chunk.
 const Step3Checkout = lazy(() => import("./components/Step3Checkout"));
@@ -395,6 +396,10 @@ export default function AssessmentPage() {
   // `?step1=v1` is the emergency kill switch back to the legacy long-form
   // render — any other value (or no param) resolves to V2.
   const useStep1V2 = (searchParams.get("step1") ?? "").toLowerCase() !== "v1";
+  // POST-OTP-DIRECT-CHECKOUT-001: verified customers land on Secure Checkout
+  // directly (AssuranceScreen + PackageSelectionStep no longer auto-shown; the
+  // package screen stays reachable via the checkout "Change package" control).
+  const directCheckout = isDirectCheckout();
 
   // ── Referral + traffic source tracking ───────────────────────────────────
   // ?ref= accepts ANY value — ?ref=fb-june-promo, ?ref=google-brand, etc.
@@ -687,6 +692,11 @@ export default function AssessmentPage() {
         if (savedPackageKey === "esa_ra_bundle" || savedPackageKey === "esa_standard") {
           setSelectedPackage(savedPackageKey);
         }
+        // Restore the saved billing plan so a resumed ANNUAL lead stays annual
+        // (previously always reverted to one-time). billing_plan: "annual" | "one_time".
+        const savedBillingPlan = typeof data.billing_plan === "string" ? data.billing_plan : null;
+        if (savedBillingPlan === "annual") setStep3((s) => ({ ...s, plan: "subscription" }));
+        else if (savedBillingPlan === "one_time") setStep3((s) => ({ ...s, plan: "one-time" }));
         const nextGate = nextBookingGate({
           confirmation_id: resumeConfirmationId,
           letter_type: (data.letter_type as string) ?? "esa",
@@ -716,10 +726,13 @@ export default function AssessmentPage() {
         } else if (alreadyAuthed) {
           setOtpVerified(true);
           verifiedEmailRef.current = orderEmail;
-          setCheckoutGate(nextGate);
+          // Direct-checkout: an authenticated resume is never forced through the
+          // package screen — land on pay with the restored package/plan.
+          const landGate = directCheckout ? "pay" : nextGate;
+          setCheckoutGate(landGate);
           setCurrentStep(3);
           window.scrollTo({ top: 0, behavior: "smooth" });
-          if (nextGate === "pay") fetchClientSecret(loadedStep2, resumeConfirmationId);
+          if (landGate === "pay") fetchClientSecret(loadedStep2, resumeConfirmationId);
         } else {
           setOtpVerified(false);
           verifiedEmailRef.current = "";
@@ -943,11 +956,18 @@ export default function AssessmentPage() {
   const handleOtpVerified = () => {
     setOtpVerified(true);
     verifiedEmailRef.current = step2.email.trim().toLowerCase();
-    // Route to the resolved next step: first-time → assurance; resume → package/pay.
-    const target = postOtpGateRef.current;
+    // Direct-checkout flow → straight to the pay surface (Assurance + Package are
+    // no longer mandatory; the package screen stays reachable via "Change package").
+    // Legacy → the resume-resolved gate (assurance / package / pay).
+    const target = directCheckout ? "pay" : postOtpGateRef.current;
     postOtpGateRef.current = "assurance";
+    // Reuse the one-time PaymentIntent already minted on Step 2 → 3; mint only if
+    // it is missing (e.g. eager mint failed) so we never duplicate an identical PI.
+    if (target === "pay" && !stripeClientSecret) {
+      fetchClientSecret(step2, confirmationId.current, appliedCoupon, selectedPackage);
+    }
     setCheckoutGate(target);
-    if (target === "pay") fetchClientSecret(step2, confirmationId.current, appliedCoupon, selectedPackage);
+    trackPostOtpDestination(confirmationId.current, target, flowVersionProp());
     window.scrollTo(0, 0);
   };
 
@@ -965,7 +985,7 @@ export default function AssessmentPage() {
       const needOtp =
         !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
       if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
-      else setCheckoutGate("package");
+      else setCheckoutGate(directCheckout ? "pay" : "package");
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
       // Save lead FIRST and await it — saveLeadToSupabase may rewrite
@@ -1033,6 +1053,8 @@ export default function AssessmentPage() {
   // Dedicated package step → advance to checkout with the chosen package (mints the
   // one-time PI for it; annual mints its own PI at pay time from subscriptionParams).
   const handlePackageSelect = (pkg: string) => {
+    const next = (pkg === "esa_ra_bundle" ? "esa_ra_bundle" : "esa_standard");
+    trackPackageSelected(confirmationId.current, next, { flow_version: flowVersionProp() });
     handlePackageChange(pkg);
     setCheckoutGate("pay");
     window.scrollTo(0, 0);
@@ -1042,6 +1064,9 @@ export default function AssessmentPage() {
   // the currently selected package (its amount may be stale from a prior mint).
   const handleStep3Change = (next: Step3Data) => {
     const switchingToOneTime = next.plan !== "subscription" && step3.plan === "subscription";
+    if (next.plan !== step3.plan) {
+      trackPlanChanged(confirmationId.current, next.plan === "subscription" ? "annual" : "one-time", { flow_version: flowVersionProp() });
+    }
     setStep3(next);
     if (switchingToOneTime) {
       fetchClientSecret(step2, confirmationId.current, appliedCoupon, selectedPackage);
@@ -1814,7 +1839,8 @@ export default function AssessmentPage() {
                   petCount={step2.pets.length}
                   selectedPackage={selectedPackage}
                   onSelect={handlePackageSelect}
-                  onBack={() => setCheckoutGate("assurance")}
+                  onBack={() => setCheckoutGate(directCheckout ? "pay" : "assurance")}
+                  confirmationId={confirmationId.current}
                 />
               )}
               {currentStep === 3 && checkoutGate === "pay" && (
@@ -1826,7 +1852,7 @@ export default function AssessmentPage() {
                     onChange={handleStep3Change}
                     packageKey={selectedPackage}
                     onPackageChange={handlePackageChange}
-                    onChangePackage={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
+                    onChangePackage={() => { trackPackageChangeOpened(confirmationId.current, "esa"); setCheckoutGate("package"); window.scrollTo(0, 0); }}
                     onSubmit={handleSubmit}
                     onBack={goBack}
                     submitting={submitting}

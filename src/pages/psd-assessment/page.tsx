@@ -12,12 +12,13 @@ import AssuranceScreen from "../assessment/components/AssuranceScreen";
 import PackageSelectionStep from "../assessment/components/PackageSelectionStep";
 import { supabase } from "../../lib/supabaseClient";
 import { nextBookingGate } from "@/lib/bookingProgress";
+import { isDirectCheckout, flowVersionProp } from "@/config/flowVersion";
 import type { PackageKey } from "@/config/pricing";
 import type { StateAcknowledgment } from "../assessment/components/StateAcknowledgmentModal";
 import { getPsdOneTimeTotal } from "@/config/pricing";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
 import { logAudit, loggedFetch } from "@/lib/auditLogger";
-import { trackAssessmentSubmitted } from "@/lib/trackEvent";
+import { trackAssessmentSubmitted, trackPostOtpDestination, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
 import {
   buildAttributionJson,
   getAttribution,
@@ -96,6 +97,8 @@ export default function PSDAssessmentPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const resumeConfirmationId = searchParams.get("resume") ?? "";
+  // POST-OTP-DIRECT-CHECKOUT-001: verified customers land on checkout directly.
+  const directCheckout = isDirectCheckout();
 
   // ?ref= captures any value: ?ref=fb-psd-promo, ?ref=tiktok-ad1, etc.
   // Fires "Assessment Started" event to GHL + Google Sheets on mount.
@@ -117,6 +120,9 @@ export default function PSDAssessmentPage() {
         ? "psd_ra_bundle" : "psd_standard";
     } catch { return "psd_standard"; }
   });
+  // Restored billing plan on resume (POST-OTP-DIRECT-CHECKOUT-001) — passed to
+  // PSDStep3Checkout so a resumed annual customer stays annual.
+  const [resumedPlan, setResumedPlan] = useState<"onetime" | "subscription" | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
   const verifiedEmailRef = useRef("");
   // Post-OTP routing target: first-time → "assurance"; resume → "package"/"pay".
@@ -265,6 +271,10 @@ export default function PSDAssessmentPage() {
         if (savedPackageKey === "psd_ra_bundle" || savedPackageKey === "psd_standard") {
           setSelectedPackage(savedPackageKey);
         }
+        // Restore the saved billing plan so a resumed ANNUAL lead stays annual.
+        const savedBillingPlan = typeof data.billing_plan === "string" ? data.billing_plan : null;
+        if (savedBillingPlan === "annual") setResumedPlan("subscription");
+        else if (savedBillingPlan === "one_time") setResumedPlan("onetime");
         const nextGate = nextBookingGate({
           confirmation_id: resumeConfirmationId,
           letter_type: (data.letter_type as string) ?? "psd",
@@ -286,7 +296,7 @@ export default function PSDAssessmentPage() {
         if (alreadyAuthed) {
           setOtpVerified(true);
           verifiedEmailRef.current = orderEmail;
-          setCheckoutGate(nextGate);
+          setCheckoutGate(directCheckout ? "pay" : nextGate);
         } else {
           setOtpVerified(false);
           verifiedEmailRef.current = "";
@@ -480,9 +490,12 @@ export default function PSDAssessmentPage() {
   const handleOtpVerified = () => {
     setOtpVerified(true);
     verifiedEmailRef.current = step2.email.trim().toLowerCase();
-    const target = postOtpGateRef.current;
+    // Direct-checkout → straight to pay (Assurance + Package no longer mandatory;
+    // the package screen stays reachable via "Change package"). Legacy → resolved gate.
+    const target = directCheckout ? "pay" : postOtpGateRef.current;
     postOtpGateRef.current = "assurance";
     setCheckoutGate(target);
+    trackPostOtpDestination(confirmationId, target, flowVersionProp());
     window.scrollTo(0, 0);
   };
 
@@ -490,14 +503,16 @@ export default function PSDAssessmentPage() {
     await saveLeadToSupabase(step2);
     const needOtp = !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
     if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
-    else setCheckoutGate("package");
+    else setCheckoutGate(directCheckout ? "pay" : "package");
     setStep(3);
   };
 
   // Dedicated PSD package step → advance to checkout with the chosen package.
   // PSDStep3Checkout re-mints the PI when selectedPackage changes.
   const handlePackageSelect = (pkg: string) => {
-    setSelectedPackage((pkg === "psd_ra_bundle" ? "psd_ra_bundle" : "psd_standard") as PackageKey);
+    const next = (pkg === "psd_ra_bundle" ? "psd_ra_bundle" : "psd_standard") as PackageKey;
+    trackPackageSelected(confirmationId, next, { flow_version: flowVersionProp() });
+    setSelectedPackage(next);
     setCheckoutGate("pay");
     window.scrollTo(0, 0);
   };
@@ -675,7 +690,8 @@ export default function PSDAssessmentPage() {
                   petCount={step2.pets.length}
                   selectedPackage={selectedPackage}
                   onSelect={handlePackageSelect}
-                  onBack={() => setCheckoutGate("assurance")}
+                  onBack={() => setCheckoutGate(directCheckout ? "pay" : "assurance")}
+                  confirmationId={confirmationId}
                 />
               )}
               {step === 3 && checkoutGate === "pay" && (
@@ -685,7 +701,8 @@ export default function PSDAssessmentPage() {
                     step2={step2}
                     confirmationId={confirmationId}
                     packageKey={selectedPackage}
-                    onChangePackage={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
+                    onChangePackage={() => { trackPackageChangeOpened(confirmationId, "psd"); setCheckoutGate("package"); window.scrollTo(0, 0); }}
+                    initialPlan={resumedPlan ?? undefined}
                     onBack={() => setStep(2)}
                   />
                 </Suspense>
