@@ -372,6 +372,11 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <p className="text-sm font-bold text-gray-900">{earning.patient_name ?? "—"}</p>
                           <span className="text-xs text-gray-400 font-mono">{earning.confirmation_id ?? "—"}</span>
+                          {earning.earning_type === "ra_completion" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 border border-violet-200 rounded-full text-[10px] font-extrabold text-violet-700">
+                              <i className="ri-home-4-line"></i>Reasonable Accommodation
+                            </span>
+                          )}
                           {earning.earning_type === "additional_documentation" && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-100 border border-sky-200 rounded-full text-[10px] font-extrabold text-sky-700">
                               <i className="ri-file-add-line"></i>Additional Documentation

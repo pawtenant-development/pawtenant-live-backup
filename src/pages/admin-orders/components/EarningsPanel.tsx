@@ -19,6 +19,7 @@ interface Earning {
   notes: string | null;
   payment_reference: string | null;
   created_at: string;
+  earning_type?: string | null;
 }
 
 interface DoctorProfile {
@@ -33,6 +34,22 @@ const STATUS_STYLES: Record<string, string> = {
   paid: "bg-[#e8f5f1] text-[#3b6ea5] border-[#b8cce4]",
   cancelled: "bg-red-100 text-red-600 border-red-200",
 };
+
+// Ledger component label — one row per component (base + RA-completion + add-on)
+// is intentional so each keeps independent pending/paid audit history. The badge
+// keeps the components readable so two rows for one order never read as duplicates.
+const EARNING_TYPE_META: Record<string, { label: string; icon: string; cls: string }> = {
+  base: { label: "Base order", icon: "ri-briefcase-line", cls: "bg-gray-100 text-gray-600 border-gray-200" },
+  ra_completion: { label: "RA completion", icon: "ri-home-4-line", cls: "bg-violet-100 text-violet-700 border-violet-200" },
+  additional_documentation: { label: "Additional Doc", icon: "ri-file-add-line", cls: "bg-sky-100 text-sky-700 border-sky-200" },
+};
+
+// A "case" is a distinct completed order, not a ledger row — an order with a base
+// + RA-completion component is ONE case, never two. Manual rows (no order link)
+// each count once via their id.
+function distinctCaseCount(list: Earning[]): number {
+  return new Set(list.map((e) => e.confirmation_id ?? e.order_id ?? e.id)).size;
+}
 
 const LAST_REMINDER_KEY = "pawtenant_last_payout_reminder";
 
@@ -56,6 +73,7 @@ function EarningRow({
   const [markingPaid, setMarkingPaid] = useState(false);
   const [showPayConfirm, setShowPayConfirm] = useState(false);
   const [payRef, setPayRef] = useState("");
+  const typeMeta = EARNING_TYPE_META[earning.earning_type ?? "base"] ?? EARNING_TYPE_META.base;
 
   const handleSave = async () => {
     setSaving(true);
@@ -123,6 +141,9 @@ function EarningRow({
               <p className="text-xs text-gray-400">{earning.doctor_email ?? ""}</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${typeMeta.cls}`}>
+                <i className={typeMeta.icon} style={{ fontSize: "10px" }}></i>{typeMeta.label}
+              </span>
               {orderRefunded && (
                 <span
                   title="The customer was refunded AFTER the letter was issued. The provider's earnings are PROTECTED and should still be paid."
@@ -306,10 +327,11 @@ function EarningRow({
 }
 
 function exportToCSV(rows: Earning[], filename: string) {
-  const headers = ["Confirmation ID", "Provider", "Patient Name", "State", "Order Amount", "Provider Amount", "Status", "Paid Date", "Payment Reference", "Notes"];
+  const headers = ["Confirmation ID", "Component", "Provider", "Patient Name", "State", "Order Amount", "Provider Amount", "Status", "Paid Date", "Payment Reference", "Notes"];
   const escape = (v: string | number | null) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csvRows = rows.map((e) => [
     e.confirmation_id,
+    (EARNING_TYPE_META[e.earning_type ?? "base"] ?? EARNING_TYPE_META.base).label,
     e.doctor_name,
     e.patient_name,
     e.patient_state,
@@ -555,7 +577,7 @@ export default function EarningsPanel() {
       {!loading && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
           {[
-            { label: "Total Cases", value: earnings.length, icon: "ri-file-list-3-line", color: "text-gray-700" },
+            { label: "Total Cases", value: distinctCaseCount(earnings), icon: "ri-file-list-3-line", color: "text-gray-700" },
             { label: "Pending Payout", value: `$${totalPending}`, subtext: `${pendingCount} case${pendingCount !== 1 ? "s" : ""}`, icon: "ri-time-line", color: "text-amber-600" },
             { label: "Total Paid Out", value: `$${totalPaid}`, icon: "ri-checkbox-circle-fill", color: "text-[#3b6ea5]" },
             { label: "Amount Unset", value: unsetCount, subtext: unsetCount > 0 ? "Need attention" : "All set", icon: "ri-alert-line", color: unsetCount > 0 ? "text-orange-500" : "text-gray-400" },
@@ -793,7 +815,9 @@ export default function EarningsPanel() {
                     <div key={doc.user_id} className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-100">
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-gray-900 truncate">{doc.full_name}</p>
-                        <p className="text-xs text-gray-400">{docEarnings.length} case{docEarnings.length !== 1 ? "s" : ""}</p>
+                        {(() => { const c = distinctCaseCount(docEarnings); return (
+                          <p className="text-xs text-gray-400">{c} case{c !== 1 ? "s" : ""}</p>
+                        ); })()}
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">

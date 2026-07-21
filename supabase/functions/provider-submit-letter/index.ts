@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts";
+import { ensureRaCompletionEarning } from "../_shared/raCompletionEarning.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -561,6 +562,16 @@ Deno.serve(async (req: Request) => {
         description: `Completed Housing Accommodation form uploaded for order ${confirmationId} — no verification ID, no footer, base letter untouched.`,
         metadata: { order_id: order.id, confirmation_id: confirmationId, document_id: documentId, doc_type: "housing_completed", uploaded_by: profile.full_name },
       });
+
+      // Provider RA-completion payout (combo orders). Idempotent + gated inside
+      // the helper (combo + completed + base paid + provider). Non-critical: a
+      // failure here must never fail the provider's submission — the backfill /
+      // a later completion event heals it. See PROVIDER-EARNINGS-RA-DOUBLE-PAYOUT-001.
+      try {
+        await ensureRaCompletionEarning(supabase, order.id as string);
+      } catch (earnErr) {
+        console.error("[provider-submit-letter] RA-completion earning error (non-fatal):", earnErr);
+      }
 
       notifyAdminLetterSubmitted({
         confirmationId, providerName: profile.full_name,

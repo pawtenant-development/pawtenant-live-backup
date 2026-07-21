@@ -459,14 +459,21 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
         </div>
       )}
 
-      {/* Provider earnings for this order (base + add-on payout) */}
+      {/* Provider earnings for this order (base + RA-completion + add-on payout) */}
       {providerEarnings.length > 0 && (() => {
         const num = (v: number | null) => (typeof v === "number" ? v : 0);
+        // Three distinct ledger components. RA-completion (combo orders) and
+        // Additional Documentation (paid standalone add-on) each equal the
+        // provider's standard rate; the rest is the base order payout (legacy
+        // rows have null/other earning_type → treated as base).
         const addonRows = providerEarnings.filter((e) => e.earning_type === "additional_documentation");
-        const baseRows = providerEarnings.filter((e) => e.earning_type !== "additional_documentation");
+        const raRows = providerEarnings.filter((e) => e.earning_type === "ra_completion");
+        const baseRows = providerEarnings.filter((e) => e.earning_type !== "additional_documentation" && e.earning_type !== "ra_completion");
         const baseTotal = baseRows.reduce((s, e) => s + num(e.doctor_amount), 0);
+        const raTotal = raRows.reduce((s, e) => s + num(e.doctor_amount), 0);
         const addonTotal = addonRows.reduce((s, e) => s + num(e.doctor_amount), 0);
         const anyUnsetBase = baseRows.some((e) => e.doctor_amount == null);
+        const anyUnsetRa = raRows.some((e) => e.doctor_amount == null);
         const anyUnsetAddon = addonRows.some((e) => e.doctor_amount == null);
         return (
           <div className="bg-white rounded-xl border border-violet-200 overflow-hidden">
@@ -484,6 +491,12 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
                 <span className="text-xs text-gray-600 flex items-center gap-1.5"><i className="ri-briefcase-line text-gray-400"></i>Base order payout</span>
                 <span className="text-sm font-bold text-gray-900">{baseRows.length === 0 ? "—" : anyUnsetBase && baseTotal === 0 ? "Rate not set" : `$${baseTotal}`}</span>
               </div>
+              {raRows.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600 flex items-center gap-1.5"><i className="ri-home-4-line text-violet-500"></i>RA completion payout{raRows.length > 1 ? ` ×${raRows.length}` : ""}</span>
+                  <span className="text-sm font-bold text-violet-700">{anyUnsetRa && raTotal === 0 ? "Rate not set" : `+$${raTotal}`}</span>
+                </div>
+              )}
               {addonRows.length > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-600 flex items-center gap-1.5"><i className="ri-file-add-line text-sky-500"></i>Additional Documentation payout{addonRows.length > 1 ? ` ×${addonRows.length}` : ""}</span>
@@ -492,7 +505,7 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
               )}
               <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                 <span className="text-xs font-bold text-gray-700">Total provider earning</span>
-                <span className="text-base font-extrabold text-violet-700">${baseTotal + addonTotal}</span>
+                <span className="text-base font-extrabold text-violet-700">${baseTotal + raTotal + addonTotal}</span>
               </div>
               <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
                 Recorded in the provider earnings ledger (doctor_earnings). Manage / mark paid in the Providers earnings panel.
