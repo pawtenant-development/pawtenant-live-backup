@@ -20,8 +20,21 @@ export const KB_SERVICE_FACTS: readonly string[] = [
   "Every request is reviewed by a licensed provider. Approval is not automatic.",
   "Turnaround: most APPROVED letters are delivered within 24 hours, and many the same day, depending on provider review and the information the customer submitted. State this as typical, never as a guaranteed time, and never guarantee approval.",
   "A same-day PDF may be available after provider approval — never promise unconditional same-day delivery.",
-  "If a customer does not qualify after provider review, they are refunded according to our policy.",
+  "If a licensed provider determines a customer does not qualify (ESA or PSD), the order is refunded in full according to our policy.",
   "Letters are delivered digitally through the customer portal (My Orders).",
+];
+
+// ── A2. Refund & housing-denial facts (accuracy guardrails; the AI still does NOT
+// approve/deny refunds — actual money-back requests stay draft/escalate per
+// policy.ts NEVER_AUTO_SEND). REFUND-POLICY-RUNTIME-CLEANUP-001.
+export const KB_REFUND_FACTS: readonly string[] = [
+  "Provider non-qualification is refunded IN FULL — this applies to BOTH ESA and PSD orders. Never say PSD orders are non-refundable.",
+  "Approved refunds are issued promptly; the credit typically takes about 5–10 business days to appear, depending on the bank or payment provider. Never say 3–5 days.",
+  "A landlord's denial does NOT automatically qualify for a refund. Housing-denial refund requests are reviewed by the support team under PawTenant's Refund Policy. PawTenant reviews refund eligibility only — never tell a customer that PawTenant determined the landlord broke the law or how HUD would rule.",
+  "A HUD or state/local fair-housing complaint reference is OPTIONAL — never tell a customer a HUD complaint is required.",
+  "If a standalone Additional-Documentation / Reasonable-Accommodation add-on is not approved by the reviewing provider, that add-on is refunded in full; the base ESA/PSD service stays completed.",
+  "PawTenant does NOT automatically keep a fee on refunds. Certain discretionary partial or goodwill refunds after substantial work may retain up to $40, but guaranteed full-refund cases never do. Never present $40 as automatic or applied to every refund.",
+  "For any actual money-back request, keep your reply brief and accurate and route it to the support team — never approve, promise, or deny a refund yourself.",
 ];
 
 // ── B. Pricing (mirrors LIVE public pricing, launched 2026-07-04) ─────────────
@@ -64,6 +77,7 @@ export const KB_LINKS = {
   verify_tool: "https://pawtenant.com/verify",
   pricing_info: "https://pawtenant.com/esa-letter-cost",
   contact: "https://pawtenant.com/contact-us",
+  refund_policy: "https://pawtenant.com/refund-policy",
 } as const;
 
 export const KB_LINK_INTENTS: readonly { intent: string; url: string }[] = [
@@ -73,6 +87,7 @@ export const KB_LINK_INTENTS: readonly { intent: string; url: string }[] = [
   { intent: "Verify a specific letter right now (has a letter ID)", url: KB_LINKS.verify_tool },
   { intent: "Pricing details / cost breakdown page", url: KB_LINKS.pricing_info },
   { intent: "Talk to a human / contact support", url: KB_LINKS.contact },
+  { intent: "Refund policy / how refunds work / refund timing", url: KB_LINKS.refund_policy },
   { intent: "General website", url: KB_LINKS.homepage },
 ];
 
@@ -190,6 +205,9 @@ export function buildKnowledgePromptSection(): string {
 # Knowledge Base (the ONLY facts, links and discount you may use)
 Facts:
 ${KB_SERVICE_FACTS.map((f) => `- ${f}`).join("\n")}
+
+# Refunds & housing-denial (accuracy guardrails — you still do NOT approve, promise, or deny refunds; route actual money-back requests to the team with needs_admin_review=true, and never contradict these facts)
+${KB_REFUND_FACTS.map((f) => `- ${f}`).join("\n")}
 
 # Website links — share ONLY these exact URLs, only when useful or asked
 ${KB_LINK_INTENTS.map((l) => `- ${l.intent}: ${l.url}`).join("\n")}
