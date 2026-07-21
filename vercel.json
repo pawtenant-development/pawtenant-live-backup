@@ -202,7 +202,11 @@
       "has": [{ "type": "query", "key": "page_id", "value": "586" }],
       "destination": "/",
       "permanent": true
-    }
+    },
+    { "source": "/doctors/robert-staaf-c9240",      "destination": "/doctors/robert-staaf",      "permanent": true },
+    { "source": "/doctors/michelle-lafferty-ff1309", "destination": "/doctors/michelle-lafferty", "permanent": true },
+    { "source": "/doctors/lytara-garcia-5a39d",      "destination": "/doctors/lytara-garcia",      "permanent": true },
+    { "source": "/doctors/stephanie-white-0fd45",    "destination": "/doctors/stephanie-white",    "permanent": true }
   ],
   "rewrites": [
     { "source": "/((?!category|tag|product|cartflows_step|cartflows_flow|author|feed|comments|wp-admin|wp-content|wp-includes|wp-json|wp-login|xmlrpc|2019|2020|2021|2022|2023|2024).*)", "destination": "/app" }

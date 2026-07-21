@@ -18,6 +18,7 @@ import {
   BLOG_SLUGS,
   BLOG_STATE_SLUGS,
   COLLEGE_SLUGS,
+  DOCTOR_SLUGS,
   PASS_THROUGH_PREFIXES,
   GONE_SEGMENTS,
 } from "../generated/routeManifest";
@@ -28,6 +29,7 @@ const PSD = new Set(PSD_STATES);
 const BLOG = new Set(BLOG_SLUGS);
 const BLOG_STATE = new Set(BLOG_STATE_SLUGS);
 const COLLEGE = new Set(COLLEGE_SLUGS);
+const DOCTORS = new Set(DOCTOR_SLUGS);
 const GONE = new Set(GONE_SEGMENTS);
 
 export type RouteStatus = "valid" | "gone" | "notfound";
@@ -95,6 +97,11 @@ export function classifyRoute(pathname: string): RouteStatus {
       segs.length === 2 &&
       COLLEGE.has(segs[1])
     )
+      return "valid";
+    // Fail-closed provider profiles: only the curated approved slugs are valid.
+    // Unknown/excluded/alias/DB-only /doctors/* -> notfound (real 404).
+    // AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001.
+    if (segs[0] === "doctors" && segs.length === 2 && DOCTORS.has(segs[1]))
       return "valid";
 
     return "notfound";

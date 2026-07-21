@@ -39,6 +39,10 @@ import StateESAPage from "@/pages/state-esa/page";
 import ESALetterForApartmentsPage from "@/pages/esa-letter-for-apartments/page";
 import BlogEsaLetterRequirementsPage from "@/pages/blog-esa-letter-requirements/page";
 import ExploreStatesPage from "@/pages/explore-states/page";
+import DoctorProfilePage from "@/pages/doctor-profile/page";
+import OurProvidersPage from "@/pages/our-providers/page";
+import { PUBLIC_PROVIDERS, getPublicProvider } from "@/data/publicProviders";
+import { buildProviderJsonLd, buildOurProvidersJsonLd, stringifyJsonLd } from "@/lib/providerJsonLd";
 
 // Route pattern → component. Patterns mirror src/router/config.tsx exactly so a
 // StaticRouter at each approved location matches the same component (and, for
@@ -51,6 +55,8 @@ const ROUTE_ELEMENTS: { path: string; element: React.ReactNode }[] = [
   { path: "/esa-letter-for-apartments", element: <ESALetterForApartmentsPage /> },
   { path: "/blog/esa-letter-requirements", element: <BlogEsaLetterRequirementsPage /> },
   { path: "/explore-esa-letters-all-states", element: <ExploreStatesPage /> },
+  { path: "/our-providers", element: <OurProvidersPage /> },
+  { path: "/doctors/:id", element: <DoctorProfilePage /> },
 ];
 
 // The exact set of routes this entry can render (state routes expand to the 3
@@ -65,6 +71,15 @@ export const SPIKE_ROUTES: string[] = [
   "/esa-letter-for-apartments",
   "/blog/esa-letter-requirements",
   "/explore-esa-letters-all-states",
+  "/our-providers",
+  "/doctors/robert-staaf",
+  "/doctors/michelle-lafferty",
+  "/doctors/lytara-garcia",
+  "/doctors/stephanie-white",
+  "/doctors/eve-rosno",
+  "/doctors/henry-smith",
+  "/doctors/chad-cunningham",
+  "/doctors/karla-delgado",
 ];
 
 // Route → the page.tsx source key in the Vite manifest, so the generator can
@@ -83,6 +98,15 @@ export const ROUTE_SOURCE: Record<string, string> = {
   "/esa-letter-for-apartments": "src/pages/esa-letter-for-apartments/page.tsx",
   "/blog/esa-letter-requirements": "src/pages/blog-esa-letter-requirements/page.tsx",
   "/explore-esa-letters-all-states": "src/pages/explore-states/page.tsx",
+  "/our-providers": "src/pages/our-providers/page.tsx",
+  "/doctors/robert-staaf": "src/pages/doctor-profile/page.tsx",
+  "/doctors/michelle-lafferty": "src/pages/doctor-profile/page.tsx",
+  "/doctors/lytara-garcia": "src/pages/doctor-profile/page.tsx",
+  "/doctors/stephanie-white": "src/pages/doctor-profile/page.tsx",
+  "/doctors/eve-rosno": "src/pages/doctor-profile/page.tsx",
+  "/doctors/henry-smith": "src/pages/doctor-profile/page.tsx",
+  "/doctors/chad-cunningham": "src/pages/doctor-profile/page.tsx",
+  "/doctors/karla-delgado": "src/pages/doctor-profile/page.tsx",
 };
 
 /**
@@ -100,4 +124,24 @@ export function renderRoute(routePath: string): string {
       </Routes>
     </StaticRouter>,
   );
+}
+
+/**
+ * Build the <head> JSON-LD <script> string for a provider route so the raw HTML
+ * carries provider schema exactly once. Effects never run under
+ * renderToStaticMarkup and the body's JSON-LD is stripped by the generator, so
+ * scripts/prerender-full-body-spike.mjs injects this into <head> instead.
+ * Returns null for any non-provider route. `<` is escaped so the JSON can never
+ * terminate the surrounding <script>. AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001.
+ */
+export function getRouteHeadJsonLd(routePath: string): string | null {
+  const wrap = (graph: Record<string, unknown>) =>
+    `<script type="application/ld+json">${stringifyJsonLd(graph).replace(/</g, "\\u003c")}</script>`;
+  if (routePath === "/our-providers") return wrap(buildOurProvidersJsonLd(PUBLIC_PROVIDERS));
+  const m = routePath.match(/^\/doctors\/([a-z0-9-]+)$/);
+  if (m) {
+    const provider = getPublicProvider(m[1]);
+    if (provider) return wrap(buildProviderJsonLd(provider));
+  }
+  return null;
 }

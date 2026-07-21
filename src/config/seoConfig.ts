@@ -63,6 +63,54 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Estimate how monthly pet rent and one-time pet fees can add up over 1, 2, and 5 years. See potential savings if your ESA housing accommodation request is approved.",
   },
+  // ── Provider directory + curated provider profiles ─────────────────────────
+  // AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001. Unique title/description
+  // per provider; verified facts only; no approximate state counts; no "Dr.".
+  "/our-providers": {
+    title: "Our Providers | Licensed ESA Evaluation Professionals | PawTenant",
+    description:
+      "Meet PawTenant's licensed mental health providers. Each conducts individual telehealth evaluations, including emotional support animal (ESA) assessments, in the states where they are licensed.",
+  },
+  "/doctors/robert-staaf": {
+    title: "Robert Staaf, LCSW | ESA Evaluations | PawTenant",
+    description:
+      "Robert Staaf is a Licensed Clinical Social Worker (LCSW) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
+  "/doctors/michelle-lafferty": {
+    title: "Michelle Lafferty, LCSW | ESA Evaluations | PawTenant",
+    description:
+      "Michelle Lafferty is a Licensed Clinical Social Worker (LCSW) providing individual telehealth ESA evaluations through PawTenant.",
+  },
+  "/doctors/lytara-garcia": {
+    title: "Lytara Garcia, LCSW | ESA Evaluations | PawTenant",
+    description:
+      "Lytara Garcia is a Licensed Clinical Social Worker (LCSW) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
+  "/doctors/stephanie-white": {
+    title: "Stephanie White, LCSW | ESA Evaluations | PawTenant",
+    description:
+      "Stephanie White is a Licensed Clinical Social Worker (LCSW) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
+  "/doctors/eve-rosno": {
+    title: "Eve Rosno, Licensed Psychologist | ESA Evaluations | PawTenant",
+    description:
+      "Eve Rosno is a licensed psychologist providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
+  "/doctors/henry-smith": {
+    title: "Henry Smith, LCSW | ESA Evaluations | PawTenant",
+    description:
+      "Henry Smith is a Licensed Clinical Social Worker (LCSW) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
+  "/doctors/chad-cunningham": {
+    title: "Chad Cunningham, LPC | ESA Evaluations | PawTenant",
+    description:
+      "Chad Cunningham is a Licensed Professional Counselor (LPC) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
+  "/doctors/karla-delgado": {
+    title: "Karla Delgado, LMFT | ESA Evaluations | PawTenant",
+    description:
+      "Karla Delgado is a Licensed Marriage and Family Therapist (LMFT) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
   "/explore-esa-letters-all-states": {
     title: "ESA Letter by State | All 50 US States | PawTenant",
     description:

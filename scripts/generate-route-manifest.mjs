@@ -17,10 +17,14 @@
 //   - src/mocks/colleges.ts      → /college-pet-policy/<slug> valid slugs (12).
 //
 // Dynamic collections whose valid set is Supabase-backed and cannot be enumerated
-// at build time (/doctors/:id, /verify/:letterId) + the tracking bridge (/r/:stage)
-// are PASS-THROUGH prefixes — always treated valid so real (DB-driven) provider /
-// verification pages never 404. Unknown ids there stay a client-rendered 200 (a
-// documented residual — see the task card).
+// at build time (/verify/:letterId) + the tracking bridge (/r/:stage) are
+// PASS-THROUGH prefixes — always treated valid. Unknown ids there stay a
+// client-rendered 200 (a documented residual — see the task card).
+//
+// /doctors/<slug> is the EXCEPTION: it is fail-closed. Only the eight curated
+// approved provider slugs (src/data/publicProviders.ts) are valid; every other
+// /doctors/* URL (unknown, excluded, alias, DB-only) classifies notfound -> real
+// HTTP 404. AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001.
 //
 // Run: npm run gen:routes   (also runs at the start of `npm run build`)
 
@@ -34,7 +38,9 @@ const uniqSort = (a) => [...new Set(a)].sort();
 
 // ── Curated, hand-maintained lists (kept next to their evidence) ─────────────
 // Dynamic / Supabase-backed / tracking route prefixes → always valid (pass-through).
-const PASS_THROUGH_PREFIXES = ["/doctors/", "/verify/", "/r/"];
+// NOTE: /doctors/ is deliberately NOT here — provider profiles are fail-closed and
+// enumerated via DOCTOR_SLUGS below (see header).
+const PASS_THROUGH_PREFIXES = ["/verify/", "/r/"];
 
 // Retired WordPress / WooCommerce infrastructure — permanently gone → HTTP 410.
 // Matched on the FIRST path segment. None of these collide with a real route.
@@ -99,6 +105,15 @@ export async function buildManifestSource() {
     )].map((m) => m[1])
   );
 
+  // 5) /doctors/<slug> — EXACTLY the eight curated public providers. Fail-closed:
+  // any /doctors/* slug not in this set classifies notfound (real 404). The
+  // anchored `slug:` pattern skips the `dbSlug:` field on the next line.
+  const doctorSlugs = new Set(
+    [...(await rd("src/data/publicProviders.ts")).matchAll(
+      /^\s*slug:\s*['"]([a-z0-9-]+)['"]/gm
+    )].map((m) => m[1])
+  );
+
   // /psd-letter/<slug> valid set = all 51 ESA slugs (matches prerender + seoConfig
   // buildPSDEntry, which write/emit prerendered <head> for all 51). The page body
   // only has content for 10; the other 41 rendering a thin body is a state-page
@@ -119,6 +134,7 @@ export async function buildManifestSource() {
     BLOG_SLUGS: uniqSort([...blogSlugs]),
     BLOG_STATE_SLUGS: uniqSort([...blogStateSlugs]),
     COLLEGE_SLUGS: uniqSort([...collegeSlugs]),
+    DOCTOR_SLUGS: uniqSort([...doctorSlugs]),
     PASS_THROUGH_PREFIXES,
     GONE_SEGMENTS,
   };

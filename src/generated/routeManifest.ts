@@ -143,6 +143,7 @@ export const EXACT_PATHS: readonly string[] = [
   "/my-orders",
   "/new-york-esa-letter-for-apartments",
   "/no-risk-guarantee",
+  "/our-providers",
   "/pet-rent-savings-calculator",
   "/privacy-policy",
   "/provider-login",
@@ -448,8 +449,18 @@ export const COLLEGE_SLUGS: readonly string[] = [
   "vanderbilt"
 ];
 
+export const DOCTOR_SLUGS: readonly string[] = [
+  "chad-cunningham",
+  "eve-rosno",
+  "henry-smith",
+  "karla-delgado",
+  "lytara-garcia",
+  "michelle-lafferty",
+  "robert-staaf",
+  "stephanie-white"
+];
+
 export const PASS_THROUGH_PREFIXES: readonly string[] = [
-  "/doctors/",
   "/verify/",
   "/r/"
 ];

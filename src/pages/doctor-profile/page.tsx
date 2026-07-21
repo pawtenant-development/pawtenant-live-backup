@@ -1,13 +1,15 @@
 import { useParams, Link } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
-import { DOCTORS, ALL_STATES } from "../../mocks/doctors";
-import type { Doctor } from "../../mocks/doctors";
-import { supabase } from "../../lib/supabaseClient";
-import { mapApprovedToDoctor } from "../../hooks/useDynamicDoctors";
-
-const stateMap = Object.fromEntries(ALL_STATES.map((s) => [s.code, s.name]));
+import ProviderJsonLd from "../../components/feature/ProviderJsonLd";
+import { getPublicProvider } from "../../data/publicProviders";
+import { buildProviderJsonLd, stateName } from "../../lib/providerJsonLd";
+import {
+  isTestProviderEnv,
+  fetchLiveProviderStatus,
+  isProviderPubliclyVisible,
+} from "../../lib/providerVisibility";
 
 interface NpiVerifyResult {
   status: "idle" | "loading" | "verified" | "not_found" | "error";
@@ -17,86 +19,59 @@ interface NpiVerifyResult {
   npiNumber?: string;
 }
 
+/** Injects a noindex robots meta while mounted (removed on unmount). */
+function Noindex() {
+  useEffect(() => {
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "robots");
+    meta.setAttribute("content", "noindex, follow");
+    meta.setAttribute("data-provider-noindex", "true");
+    document.head.appendChild(meta);
+    return () => {
+      document.head.querySelectorAll("meta[data-provider-noindex]").forEach((m) => m.remove());
+    };
+  }, []);
+  return null;
+}
+
 export default function DoctorProfilePage() {
   const { id } = useParams<{ id: string }>();
-  const staticDoctor = DOCTORS.find((d) => d.id === id) ?? null;
-  const [doctor, setDoctor] = useState<Doctor | null>(staticDoctor);
-  const [loading, setLoading] = useState(!staticDoctor);
-  const [notFound, setNotFound] = useState(false);
-  const [npiNumber, setNpiNumber] = useState<string | null>(null);
+  const provider = getPublicProvider(id);
+  // Production fail-closed gate: true once the LIVE status says this curated
+  // provider is no longer active+published. Never set in TEST.
+  const [hidden, setHidden] = useState(false);
   const [npiVerify, setNpiVerify] = useState<NpiVerifyResult>({ status: "idle" });
   const [showVerifyPanel, setShowVerifyPanel] = useState(false);
-  const [stateLicenseNumbers, setStateLicenseNumbers] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
-    if (staticDoctor) {
-      setDoctor(staticDoctor);
-      if (staticDoctor.npi_number) setNpiNumber(staticDoctor.npi_number);
-      // Use stateLicenses from mock data if available
-      if (staticDoctor.stateLicenses && Object.keys(staticDoctor.stateLicenses).length > 0) {
-        setStateLicenseNumbers(staticDoctor.stateLicenses);
-      }
-      setLoading(false);
-      // Also try to fetch from DB to get latest license numbers
-      const fetchDbLicenses = async () => {
-        const { data: profileData } = await supabase
-          .from("doctor_profiles")
-          .select("npi_number, state_license_numbers")
-          .ilike("email", staticDoctor.email)
-          .maybeSingle();
-        if (profileData?.npi_number) setNpiNumber(profileData.npi_number as string);
-        if (profileData?.state_license_numbers && Object.keys(profileData.state_license_numbers as Record<string, string>).length > 0) {
-          setStateLicenseNumbers(profileData.state_license_numbers as Record<string, string>);
-        }
-      };
-      fetchDbLicenses();
-      return;
-    }
+    setHidden(false);
+    // Allowlist miss -> nothing to gate (renders 404 below).
+    if (!provider) return;
+    // TEST renders deterministically from the snapshot; skip the live gate.
+    if (isTestProviderEnv()) return;
     let cancelled = false;
-    const load = async () => {
-      setLoading(true);
-      const { data } = await supabase
-        .from("approved_providers")
-        .select("*")
-        .eq("slug", id ?? "")
-        .eq("is_active", true)
-        .maybeSingle();
+    (async () => {
+      const status = await fetchLiveProviderStatus(provider.dbSlug);
       if (cancelled) return;
-      if (data) {
-        const mapped = mapApprovedToDoctor(data);
-        setDoctor(mapped);
-        // Fetch NPI and state licenses from doctor_profiles using email
-        if (data.email) {
-          const { data: profileData } = await supabase
-            .from("doctor_profiles")
-            .select("npi_number, state_license_numbers")
-            .ilike("email", data.email)
-            .maybeSingle();
-          if (profileData?.npi_number) setNpiNumber(profileData.npi_number as string);
-          if (profileData?.state_license_numbers) {
-            setStateLicenseNumbers(profileData.state_license_numbers as Record<string, string>);
-          }
-        }
-      } else {
-        setNotFound(true);
-      }
-      setLoading(false);
+      if (!isProviderPubliclyVisible(provider, status)) setHidden(true);
+    })();
+    return () => {
+      cancelled = true;
     };
-    load();
-    return () => { cancelled = true; };
-  }, [id]);
+  }, [provider]);
 
   const handleVerifyLicense = async () => {
-    if (!npiNumber) return;
+    const npi = provider?.npi;
+    if (!npi) return;
     setShowVerifyPanel(true);
-    setNpiVerify({ status: "loading", npiNumber });
+    setNpiVerify({ status: "loading", npiNumber: npi });
     try {
       const res = await fetch(
-        `https://npiregistry.cms.hhs.gov/api/?number=${encodeURIComponent(npiNumber)}&version=2.1`,
-        { headers: { Accept: "application/json" } }
+        `https://npiregistry.cms.hhs.gov/api/?number=${encodeURIComponent(npi)}&version=2.1`,
+        { headers: { Accept: "application/json" } },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         result_count: number;
         results?: Array<{
           basic?: { first_name?: string; last_name?: string; name?: string; credential?: string; status?: string };
@@ -104,7 +79,7 @@ export default function DoctorProfilePage() {
         }>;
       };
       if (!data.result_count || !data.results?.length) {
-        setNpiVerify({ status: "not_found", npiNumber });
+        setNpiVerify({ status: "not_found", npiNumber: npi });
         return;
       }
       const result = data.results[0];
@@ -114,38 +89,26 @@ export default function DoctorProfilePage() {
         .filter((t) => t.state)
         .map((t) => t.state as string)
         .filter((v, i, a) => a.indexOf(v) === i);
-      setNpiVerify({
-        status: "verified",
-        name: fullName,
-        credential: basic.credential ?? "",
-        states,
-        npiNumber,
-      });
+      setNpiVerify({ status: "verified", name: fullName, credential: basic.credential ?? "", states, npiNumber: npi });
     } catch {
-      setNpiVerify({ status: "error", npiNumber });
+      setNpiVerify({ status: "error", npiNumber: npi });
     }
   };
 
-  if (loading) {
+  // Fail-closed: not a curated provider, or LIVE status revoked -> privacy-safe
+  // 404/noindex. (Unknown/excluded /doctors/* also return a real HTTP 404 at the
+  // edge via middleware.ts; this covers client-side navigation.)
+  if (!provider || hidden) {
     return (
       <>
-        <SharedNavbar />
-        <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4]">
-          <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
-        </div>
-        <SharedFooter />
-      </>
-    );
-  }
-
-  if (notFound || !doctor) {
-    return (
-      <>
+        <Noindex />
         <SharedNavbar />
         <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4]">
           <div className="text-center">
             <p className="text-2xl font-bold text-gray-800 mb-3">Provider not found</p>
-            <Link to="/" className="text-orange-500 hover:underline text-sm">Back to Home</Link>
+            <Link to="/our-providers" className="text-orange-500 hover:underline text-sm">
+              View our providers
+            </Link>
           </div>
         </div>
         <SharedFooter />
@@ -153,15 +116,17 @@ export default function DoctorProfilePage() {
     );
   }
 
-  const stateNames = doctor.states.map((code) => stateMap[code] || code);
-
-  // Build license entries: only states that have a license number
-  const licenseEntries = stateLicenseNumbers
-    ? Object.entries(stateLicenseNumbers).filter(([, v]) => v && v.trim() !== "")
-    : [];
+  const stateNames = provider.states.map(stateName);
+  const initials = provider.name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <>
+      <ProviderJsonLd graph={buildProviderJsonLd(provider)} />
       <SharedNavbar />
 
       <div className="bg-[#f8f7f4] pt-32 pb-10 px-6">
@@ -169,9 +134,9 @@ export default function DoctorProfilePage() {
           <nav className="flex items-center gap-2 text-sm text-gray-500 mb-6">
             <Link to="/" className="hover:text-orange-500 transition-colors cursor-pointer">Home</Link>
             <i className="ri-arrow-right-s-line text-gray-400"></i>
-            <span className="text-gray-400">Our Providers</span>
+            <Link to="/our-providers" className="hover:text-orange-500 transition-colors cursor-pointer">Our Providers</Link>
             <i className="ri-arrow-right-s-line text-gray-400"></i>
-            <span className="text-gray-800 font-medium">{doctor.name}</span>
+            <span className="text-gray-800 font-medium">{provider.name}</span>
           </nav>
         </div>
       </div>
@@ -181,29 +146,26 @@ export default function DoctorProfilePage() {
           <div className="bg-white rounded-2xl overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center gap-5 p-8 md:p-10 pb-6 border-b border-gray-100">
               <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-orange-100 flex-shrink-0 bg-orange-50 flex items-center justify-center">
-                {doctor.image ? (
-                  <img src={doctor.image} alt={doctor.name} className="w-full h-full object-cover object-top"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                {provider.image ? (
+                  <img
+                    src={provider.image}
+                    alt={provider.name}
+                    className="w-full h-full object-cover object-top"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
                   />
                 ) : (
-                  <span className="text-2xl font-extrabold text-orange-400 select-none">
-                    {doctor.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
-                  </span>
+                  <span className="text-2xl font-extrabold text-orange-400 select-none">{initials}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <a href={doctor.verificationUrl} target="_blank" rel="nofollow noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 text-xs font-semibold hover:bg-green-100 transition-colors cursor-pointer">
-                    <i className="ri-shield-check-line text-green-500"></i>
-                    Verified Medical Professional
-                    <i className="ri-external-link-line text-green-400 text-xs ml-0.5"></i>
-                  </a>
-                  {(npiNumber || doctor.npi_number) && (
+                  {provider.npi && (
                     <>
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e8f0f9] border border-[#b8cce4] text-[#2c5282] text-xs font-semibold">
                         <i className="ri-medal-line text-[#2c5282]"></i>
-                        NPI Verified{(npiNumber || doctor.npi_number) ? ` · #${npiNumber || doctor.npi_number}` : ""}
+                        NPI Verified · #{provider.npi}
                       </span>
                       <button
                         type="button"
@@ -221,21 +183,14 @@ export default function DoctorProfilePage() {
                       </button>
                     </>
                   )}
-                  {licenseEntries.length > 0 && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold">
-                      <i className="ri-file-list-3-line text-orange-500"></i>
-                      {licenseEntries.length} State License{licenseEntries.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
                 </div>
                 <h1 className="text-2xl font-extrabold text-gray-900 leading-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
-                  {doctor.name}, {doctor.title}
+                  {provider.name}, {provider.title}
                 </h1>
-                <p className="text-orange-500 font-semibold text-sm mt-0.5">{doctor.role}</p>
+                <p className="text-orange-500 font-semibold text-sm mt-0.5">{provider.role}</p>
               </div>
             </div>
 
-            {/* NPI Verification Result Panel */}
             {showVerifyPanel && npiVerify.status !== "idle" && (
               <div className="mx-8 md:mx-10 mt-5">
                 {npiVerify.status === "loading" && (
@@ -313,7 +268,7 @@ export default function DoctorProfilePage() {
             )}
 
             <div className="p-8 md:p-10 pt-7">
-              <p className="text-gray-600 text-sm leading-relaxed mb-7">{doctor.bio}</p>
+              <p className="text-gray-600 text-sm leading-relaxed mb-7">{provider.bio}</p>
 
               <div className="mb-6">
                 <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2.5">Licensed In</p>
@@ -327,7 +282,7 @@ export default function DoctorProfilePage() {
               <div className="mb-7">
                 <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2.5">Highlights</p>
                 <div className="flex flex-wrap gap-2">
-                  {doctor.highlights.map((h) => (
+                  {provider.highlights.map((h) => (
                     <span key={h} className="px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-semibold">{h}</span>
                   ))}
                 </div>
@@ -340,7 +295,7 @@ export default function DoctorProfilePage() {
               </div>
 
               <div className="flex items-center gap-3 flex-wrap">
-                <Link to={`/assessment?doctor=${doctor.id}`}
+                <Link to={`/assessment?doctor=${provider.slug}`}
                   className="whitespace-nowrap px-7 py-3 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-gray-700 transition-colors cursor-pointer">
                   Book Consultation
                 </Link>
@@ -355,50 +310,26 @@ export default function DoctorProfilePage() {
           <div id="state-availability" className="mt-10 bg-white rounded-2xl p-8">
             <h2 className="text-xl font-bold text-gray-900 mb-2" style={{ fontFamily: "'Playfair Display', serif" }}>State Availability</h2>
             <p className="text-gray-500 text-sm mb-6">
-              {doctor.name} is currently licensed and available to conduct ESA evaluations in the following states.
+              {provider.name} is currently licensed and available to conduct ESA evaluations in the following states.
             </p>
             {stateNames.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {stateNames.map((name) => {
-                  const code = doctor.states[stateNames.indexOf(name)];
-                  const licenseNum = stateLicenseNumbers?.[code] ?? null;
-                  return (
-                    <div key={name} className={`flex flex-col gap-1 px-4 py-3 rounded-xl border ${licenseNum ? "bg-[#f8fffe] border-[#d0ede7]" : "bg-[#f8f7f4] border-gray-100"}`}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-                          <i className="ri-map-pin-2-line text-orange-400 text-sm"></i>
-                        </div>
-                        <span className="text-gray-700 text-sm font-medium">{name}</span>
-                      </div>
-                      {licenseNum && (
-                        <div className="flex items-center gap-1.5 pl-6">
-                          <i className="ri-file-list-3-line text-[#2c5282] text-xs flex-shrink-0"></i>
-                          <span className="text-xs font-mono text-[#2c5282] font-semibold">{licenseNum}</span>
-                        </div>
-                      )}
+                {stateNames.map((name) => (
+                  <div key={name} className="flex items-center gap-2 px-4 py-3 rounded-xl border bg-[#f8f7f4] border-gray-100">
+                    <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                      <i className="ri-map-pin-2-line text-orange-400 text-sm"></i>
                     </div>
-                  );
-                })}
+                    <span className="text-gray-700 text-sm font-medium">{name}</span>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="text-gray-400 text-sm">State availability will be updated shortly.</p>
             )}
-
-            {/* License verification note */}
-            {licenseEntries.length > 0 && (
-              <div className="mt-6 flex items-start gap-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3">
-                <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <i className="ri-shield-check-line text-[#2c5282] text-sm"></i>
-                </div>
-                <p className="text-xs text-[#2c5282]/80 leading-relaxed">
-                  License numbers are provided for verification purposes. Landlords and housing providers can use these numbers to independently verify licensure through each state&apos;s licensing board.
-                </p>
-              </div>
-            )}
           </div>
 
           <div className="mt-8 text-center">
-            <Link to="/" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-orange-500 transition-colors cursor-pointer">
+            <Link to="/our-providers" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-orange-500 transition-colors cursor-pointer">
               <i className="ri-arrow-left-line"></i>Back to all providers
             </Link>
           </div>

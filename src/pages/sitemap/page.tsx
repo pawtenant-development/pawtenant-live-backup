@@ -19,6 +19,21 @@ const siteStructure = [
     ]
   },
   {
+    title: "Our Providers",
+    color: "orange",
+    links: [
+      { label: "Our Providers", href: "/our-providers" },
+      { label: "Robert Staaf, LCSW", href: "/doctors/robert-staaf" },
+      { label: "Michelle Lafferty, LCSW", href: "/doctors/michelle-lafferty" },
+      { label: "Lytara Garcia, LCSW", href: "/doctors/lytara-garcia" },
+      { label: "Stephanie White, LCSW", href: "/doctors/stephanie-white" },
+      { label: "Eve Rosno, Licensed Psychologist", href: "/doctors/eve-rosno" },
+      { label: "Henry Smith, LCSW", href: "/doctors/henry-smith" },
+      { label: "Chad Cunningham, LPC", href: "/doctors/chad-cunningham" },
+      { label: "Karla Delgado, LMFT", href: "/doctors/karla-delgado" }
+    ]
+  },
+  {
     title: "ESA Letters by State",
     color: "teal",
     links: [

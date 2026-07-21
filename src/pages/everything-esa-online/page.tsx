@@ -944,17 +944,17 @@ export default function EverythingEsaOnlinePage() {
                     </div>
                   </div>
 
-                  {/* Data rows */}
+                  {/* Data rows — illustrative sample only (not a real letter, provider, or license) */}
                   <div className="px-5 py-4 space-y-3.5">
                     <div>
-                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Verification ID</p>
-                      <p className="text-[15px] font-mono font-bold text-slate-900 tracking-wider">ESA-CA-7K3N9P</p>
+                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Sample Verification ID</p>
+                      <p className="text-[15px] font-mono font-bold text-slate-900 tracking-wider">ESA-SAMPLE-0000</p>
                     </div>
                     <div className="h-px bg-slate-100"></div>
                     <div>
-                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Issued By</p>
-                      <p className="text-sm font-semibold text-slate-900 leading-tight">Dr. M. Reeves, LMFT</p>
-                      <p className="text-[11.5px] text-slate-500 mt-0.5">License #MFC-104821 · California · Dated within 12 months</p>
+                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Example Provider</p>
+                      <p className="text-sm font-semibold text-slate-900 leading-tight">Sample licensed provider</p>
+                      <p className="text-[11.5px] text-slate-500 mt-0.5">Illustrative verification example — not a real provider or license.</p>
                     </div>
                   </div>
 

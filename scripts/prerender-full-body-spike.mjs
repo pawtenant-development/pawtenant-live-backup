@@ -121,7 +121,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { renderRoute, SPIKE_ROUTES, ROUTE_SOURCE } = mod;
+  const { renderRoute, SPIKE_ROUTES, ROUTE_SOURCE, getRouteHeadJsonLd } = mod;
   if (typeof renderRoute !== "function" || !Array.isArray(SPIKE_ROUTES)) {
     await server.close();
     console.error("[prerender-full-body] FATAL: entry did not export renderRoute/SPIKE_ROUTES.");
@@ -170,6 +170,16 @@ async function main() {
     // lazy route module is ready when createRoot() mounts (no spinner gap).
     const preloads = await buildRouteModulePreloads(manifest, ROUTE_SOURCE?.[route]);
     if (preloads) html = html.replace(/<\/head>/i, `    ${preloads}\n  </head>`);
+
+    // Inject provider structured data into <head> (ProfilePage/Person/Breadcrumb
+    // for /doctors/<slug>; CollectionPage/ItemList for /our-providers). Emitted
+    // here — not in JSX — because the body's JSON-LD is stripped by cleanSsrBody,
+    // so the head is the single authoritative copy in the raw HTML.
+    // AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001.
+    if (typeof getRouteHeadJsonLd === "function") {
+      const headLd = getRouteHeadJsonLd(route);
+      if (headLd) html = html.replace(/<\/head>/i, `    ${headLd}\n  </head>`);
+    }
 
     await writeFile(file, html, "utf8");
     written.push({ route, bytes: Buffer.byteLength(body, "utf8") });

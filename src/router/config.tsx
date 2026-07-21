@@ -35,6 +35,7 @@ const BlogPostPage = lazy(() => import("../pages/blog-post/page"));
 const SitemapPage = lazy(() => import("../pages/sitemap/page"));
 const ContactUsPage = lazy(() => import("../pages/contact-us/page"));
 const DoctorProfilePage = lazy(() => import("../pages/doctor-profile/page"));
+const OurProvidersPage = lazy(() => import("../pages/our-providers/page"));
 const RenewESALetterPage = lazy(() => import("../pages/renew-esa-letter/page"));
 const JoinOurNetworkPage = lazy(() => import("../pages/join-our-network/page"));
 const AssessmentThankYouPage = lazy(() => import("../pages/assessment-thankyou/page"));
@@ -337,6 +338,7 @@ const routes: RouteObject[] = [
   // Consultation Slot Recovery Funnel — noindex (set per-page). Captures
   // a preferred consultation window into public.consultation_requests.
   { path: "/consultation-request", element: <P C={ConsultationRequestPage} /> },
+  { path: "/our-providers", element: <P C={OurProvidersPage} /> },
   { path: "/doctors/:id", element: <P C={DoctorProfilePage} /> },
   { path: "/renew-esa-letter", element: <P C={RenewESALetterPage} /> },
   { path: "/join-our-network", element: <P C={JoinOurNetworkPage} /> },

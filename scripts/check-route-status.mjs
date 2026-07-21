@@ -104,8 +104,16 @@ async function main() {
     "/reset-password",
     "/verify",
     "/verify/abc123",
+    "/our-providers",
+    // Fail-closed provider profiles: ONLY the eight curated approved slugs are valid.
     "/doctors/robert-staaf",
-    "/doctors/any-supabase-provider-id",
+    "/doctors/michelle-lafferty",
+    "/doctors/lytara-garcia",
+    "/doctors/stephanie-white",
+    "/doctors/eve-rosno",
+    "/doctors/henry-smith",
+    "/doctors/chad-cunningham",
+    "/doctors/karla-delgado",
     "/r/step1",
     "/esa-letter-housing",
     "/meta-esa-letter",
@@ -124,6 +132,13 @@ async function main() {
     "/blog/state/atlantis",
     "/college-pet-policy/hogwarts",
     "/esa-letter/california/extra",
+    // Fail-closed provider profiles: unknown, excluded (Edna), alias -hex, and
+    // DB-only provider URLs must all 404 at the edge.
+    "/doctors/any-supabase-provider-id",
+    "/doctors/edna-kwan",
+    "/doctors/edna-kwan-78e66",
+    "/doctors/robert-staaf-c9240",
+    "/doctors/jessica-bailey-12034d",
   ]) {
     check(`unknown route is 404: ${p}`, isNotFound(p));
   }

@@ -163,6 +163,57 @@ const SPIKE = [
     mustLink: ["/esa-letter/california"],
     mustText: ["Explore ESA Letter"],
   },
+  // ── Provider directory + curated provider profiles ─────────────────────────
+  // AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001. Exactly 8 provider routes
+  // prerendered + the /our-providers directory.
+  {
+    path: "/our-providers", file: "our-providers/index.html",
+    titleHas: "Our Providers",
+    h1Has: "Our Providers",
+    minText: 1500,
+    mustLink: ["/doctors/eve-rosno", "/doctors/robert-staaf"],
+    mustText: ["Our Providers", "Eve Rosno"],
+  },
+  {
+    path: "/doctors/robert-staaf", file: "doctors/robert-staaf/index.html",
+    titleHas: "Robert Staaf", h1Has: "Robert Staaf", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Robert Staaf"],
+  },
+  {
+    path: "/doctors/michelle-lafferty", file: "doctors/michelle-lafferty/index.html",
+    titleHas: "Michelle Lafferty", h1Has: "Michelle Lafferty", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Michelle Lafferty"],
+  },
+  {
+    path: "/doctors/lytara-garcia", file: "doctors/lytara-garcia/index.html",
+    titleHas: "Lytara Garcia", h1Has: "Lytara Garcia", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Lytara Garcia"],
+  },
+  {
+    path: "/doctors/stephanie-white", file: "doctors/stephanie-white/index.html",
+    titleHas: "Stephanie White", h1Has: "Stephanie White", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Stephanie White"],
+  },
+  {
+    path: "/doctors/eve-rosno", file: "doctors/eve-rosno/index.html",
+    titleHas: "Eve Rosno", h1Has: "Eve Rosno", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Eve Rosno"],
+  },
+  {
+    path: "/doctors/henry-smith", file: "doctors/henry-smith/index.html",
+    titleHas: "Henry Smith", h1Has: "Henry Smith", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Henry Smith"],
+  },
+  {
+    path: "/doctors/chad-cunningham", file: "doctors/chad-cunningham/index.html",
+    titleHas: "Chad Cunningham", h1Has: "Chad Cunningham", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Chad Cunningham"],
+  },
+  {
+    path: "/doctors/karla-delgado", file: "doctors/karla-delgado/index.html",
+    titleHas: "Karla Delgado", h1Has: "Karla Delgado", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Karla Delgado"],
+  },
 ];
 
 const CANON = (p) => `https://pawtenant.com${p === "/" ? "/" : p}`;

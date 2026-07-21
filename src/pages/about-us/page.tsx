@@ -314,9 +314,14 @@ export default function AboutUsPage() {
           </div>
           <div className="text-center mt-10">
             <p className="text-gray-500 text-sm mb-4">PawTenant&apos;s network includes licensed professionals across all 50 states. These are just a few of our featured providers.</p>
-            <Link to="/join-our-network" className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 border border-orange-300 text-orange-600 font-semibold text-sm rounded-md hover:bg-orange-50 transition-colors cursor-pointer">
-              Are you a licensed LMHP? Join our network
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link to="/our-providers" className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white font-semibold text-sm rounded-md hover:bg-gray-700 transition-colors cursor-pointer">
+                Meet all our providers
+              </Link>
+              <Link to="/join-our-network" className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 border border-orange-300 text-orange-600 font-semibold text-sm rounded-md hover:bg-orange-50 transition-colors cursor-pointer">
+                Are you a licensed LMHP? Join our network
+              </Link>
+            </div>
           </div>
         </div>
       </section>

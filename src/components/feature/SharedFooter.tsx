@@ -43,6 +43,7 @@ const footerCols = [
     title: "Company",
     links: [
       { label: "About Us", href: "/about-us" },
+      { label: "Our Providers", href: "/our-providers" },
       { label: "Join Our Network", href: "/join-our-network" },
       { label: "FAQs", href: "/faqs" },
       { label: "Contact Us", href: "/contact-us" },

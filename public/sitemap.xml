@@ -34,6 +34,19 @@
   <url><loc>https://pawtenant.com/terms-of-use</loc><lastmod>2026-01-01</lastmod><priority>0.3</priority><changefreq>yearly</changefreq></url>
 
   <!-- ═══════════════════════════════════════ -->
+  <!-- PROVIDERS (curated approved 8 + directory) -->
+  <!-- ═══════════════════════════════════════ -->
+  <url><loc>https://pawtenant.com/our-providers</loc><lastmod>2026-07-21</lastmod><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/robert-staaf</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/michelle-lafferty</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/lytara-garcia</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/stephanie-white</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/eve-rosno</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/henry-smith</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/chad-cunningham</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/doctors/karla-delgado</loc><lastmod>2026-07-21</lastmod><priority>0.6</priority><changefreq>monthly</changefreq></url>
+
+  <!-- ═══════════════════════════════════════ -->
   <!-- ESA LAWS / COMPLIANCE CONTENT PAGES     -->
   <!-- ═══════════════════════════════════════ -->
   <url><loc>https://pawtenant.com/esa-laws</loc><lastmod>2026-05-31</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
