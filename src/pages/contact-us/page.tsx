@@ -231,7 +231,7 @@ export default function ContactUsPage() {
                   },
                   {
                     q: "What is your refund policy?",
-                    a: "We offer a 100% money-back guarantee. If you don't qualify or your landlord unlawfully denies your letter, you're covered."
+                    a: "If a licensed provider determines you don't qualify, you're refunded in full. Housing-denial refund requests are reviewed under our Refund Policy."
                   },
                   {
                     q: "Can I get a letter if I'm already in a dispute with my landlord?",

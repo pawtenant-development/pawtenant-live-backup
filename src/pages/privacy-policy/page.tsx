@@ -123,6 +123,7 @@ export default function PrivacyPolicyPage() {
                       { label: "Photographs:", desc: "If you apply for a Pawtenant scholarship." },
                       { label: "Health Information:", desc: "Mental health details submitted through ESA or PSD service questionnaires." },
                       { label: "Animal & Housing Details:", desc: "Information about your emotional support or service animal and your housing situation that you provide to support a documentation or reasonable-accommodation request." },
+                      { label: "Refund-Review Evidence:", desc: "If you request a refund, information you submit to support your claim — such as landlord or property-manager denial letters, emails, or notices; resident-portal messages or screenshots; lease notices; accommodation-request records; a HUD or state/local fair-housing complaint reference; and related correspondence. Please redact any third-party personal information you do not need to share before uploading." },
                       { label: "Demographic Data:", desc: "Age, gender, race, or ethnicity when requested by your mental health provider." },
                       { label: "Employment and Educational Information:", desc: "When relevant for scholarships or ESA/PSD services." },
                     ].map((item) => (
@@ -199,6 +200,7 @@ export default function PrivacyPolicyPage() {
                   {[
                     { label: "Deliver our Services:", desc: "Facilitate your communication with mental health professionals, manage accounts, process purchases, and send important notices." },
                     { label: "Respond to you:", desc: "Address your inquiries, support requests, and feedback." },
+                    { label: "Review refunds and disputes:", desc: "Review and decide refund requests under our Refund Policy, verify submitted documentation (reviewed by authorized PawTenant personnel and the service providers that host it), and handle payment disputes, fraud prevention, and related compliance." },
                     { label: "Improve and maintain our Services:", desc: "Diagnose technical problems, monitor system performance, and expand our Services through analysis of consumer behavior and marketing efforts." },
                     { label: "Market our Services:", desc: "Develop and administer promotional campaigns and personalize the marketing messages and content you see." },
                     { label: "Meet legal obligations:", desc: "Fulfill legal requirements, enforce our terms, prevent fraud, and protect rights, property, and safety." },
@@ -267,6 +269,10 @@ export default function PrivacyPolicyPage() {
                   <li className="flex items-start gap-2">
                     <i className="ri-checkbox-blank-circle-fill text-orange-400 text-[6px] mt-2 flex-shrink-0"></i>
                     <span>After services end, we may retain information for legal, regulatory, or business obligations (for example, for tax purposes or fraud prevention).</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <i className="ri-checkbox-blank-circle-fill text-orange-400 text-[6px] mt-2 flex-shrink-0"></i>
+                    <span>Refund-review evidence you submit is kept only as long as needed to resolve your request and to meet legal, tax, and fraud-prevention obligations, then deleted or de-identified. You may request deletion as described in "Your Privacy Options" and the California section below (subject to legal exceptions).</span>
                   </li>
                 </ul>
               </div>

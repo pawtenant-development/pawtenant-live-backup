@@ -273,7 +273,7 @@ export default function ESALetterCostPage() {
           </p>
           <div className="flex items-center justify-center gap-2 mt-6 text-[13px] sm:text-sm text-gray-500 text-center">
             <i className="ri-refresh-line text-orange-500"></i>
-            100% refund if your letter doesn't work
+            100% refund if you don't qualify after the clinical review
           </div>
           <p className="text-center text-[12px] text-gray-400 mt-3 max-w-md mx-auto leading-relaxed">
             Klarna available at checkout. Subject to eligibility and{" "}

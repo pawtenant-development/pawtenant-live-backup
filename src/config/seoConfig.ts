@@ -309,9 +309,9 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Meet the network of licensed mental health providers at PawTenant. We prioritize clinical integrity and legal compliance to ensure your ESA is 100% valid in USA.",
   },
   "/no-risk-guarantee": {
-    title: "PawTenant No-Risk Guarantee | 100% Money-Back ESA Letter Promise",
+    title: "PawTenant No-Risk Guarantee | ESA Letter Refund",
     description:
-      "PawTenant's 100% money-back guarantee on every ESA letter. If you don't qualify or your landlord unlawfully denies your letter, you get a full refund — no questions asked.",
+      "If a licensed provider determines you don't qualify, you get a full refund. Housing-denial refund requests are reviewed under PawTenant's Refund Policy.",
   },
   "/faqs": {
     title: "ESA FAQs 2026: Emotional Support Animal Questions Answered | PawTenant",
@@ -494,7 +494,7 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
   "/renew-esa-letter": {
     title: "Renew Your ESA Letter in 2026 — Fast & FHA-Compliant | PawTenant",
     description:
-      "ESA letters expire after 12 months. Renew your emotional support animal letter with a licensed therapist in 2026. Same-day delivery, 100% money-back guarantee. From $115.",
+      "ESA letters expire after 12 months. Renew your emotional support animal letter with a licensed therapist in 2026. Fast delivery and a refund if you don't qualify. From $115.",
   },
   "/join-our-network": {
     title: "Join PawTenant's Licensed Provider Network | PawTenant",
@@ -535,6 +535,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     title: "Terms of Use | PawTenant",
     description:
       "PawTenant's terms of use. Understand the terms and conditions that apply when using our ESA letter services and website.",
+  },
+  "/refund-policy": {
+    title: "Refund Policy | PawTenant",
+    description:
+      "PawTenant's Refund Policy: a full refund if a licensed provider determines you don't qualify, plus an evidence-based review for housing-denial claims. Read the full terms.",
   },
 };
 

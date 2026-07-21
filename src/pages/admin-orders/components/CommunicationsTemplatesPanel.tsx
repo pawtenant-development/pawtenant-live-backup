@@ -257,6 +257,30 @@ Thank you for trusting PawTenant with your ESA needs.`,
     ctaLabel: "Claim My Offer",
     ctaUrl: "https://pawtenant.com/assessment",
   },
+  {
+    // Post-request template — sent AFTER a customer requests a housing-denial
+    // refund review. Evidence is case-specific, HUD reference optional, and the
+    // review is refund-eligibility only (never a legal determination). Detailed
+    // rules live at /refund-policy. REFUND-POLICY-HOUSING-DENIAL-IMPLEMENTATION-001.
+    id: "housing_denial_evidence_request",
+    label: "Housing-Denial Evidence Request",
+    group: "Transactional",
+    subject: "Your PawTenant refund request — what we need",
+    body: `Hi {name},
+
+Thanks for reaching out. To review your request under our Refund Policy, please share whatever you have — no single item is required, and we review each case individually:
+
+- The written denial or message from your landlord or property manager (letter, email, or portal screenshot)
+- Confirmation you submitted your accommodation request and your PawTenant letter
+- Any message asking you for additional documents
+- If you filed one, your HUD or state/local fair-housing complaint reference (optional)
+
+If the denial was only verbal, or no final decision has been made yet, just tell us and we'll help you document it. Please redact any third-party details you don't need to share.
+
+This is not legal advice, and reviewing your claim is not a legal determination about your landlord. Full terms are in our Refund Policy.`,
+    ctaLabel: "View the Refund Policy",
+    ctaUrl: "https://pawtenant.com/refund-policy",
+  },
 ];
 
 // EMAIL-LETTER-DELIVERY-TEMPLATE-HUB (2026-05-19): the Letter Delivery
@@ -398,7 +422,7 @@ const DEFAULT_SMS_TEMPLATES: SmsTemplate[] = [
   { id: "sms_consultation_booked", label: "Consultation Booked",    group: "Lead Recovery",  body: "Hi {name}, your provider consultation with PawTenant is confirmed! Complete your payment to lock in your spot: pawtenant.com/assessment?resume={order_id}" },
   { id: "sms_need_more_info",      label: "Need More Info",          group: "Transactional", body: "Hi {name}, we need a bit more information to complete your ESA assessment. Please reply here or call us and we'll get you sorted quickly!" },
   { id: "sms_follow_up",           label: "Follow Up",              group: "General",        body: "Hi {name}, just checking in on your ESA order. Is there anything we can help you with?" },
-  { id: "sms_refund_processed",    label: "Refund Processed",       group: "Transactional", body: "Hi {name}, your refund has been processed and should appear in your account within 3-5 business days. Thank you for your patience." },
+  { id: "sms_refund_processed",    label: "Refund Processed",       group: "Transactional", body: "Hi {name}, your refund has been processed. Depending on your bank or payment provider, the credit may take approximately 5-10 business days to appear. Thank you for your patience." },
 ];
 
 // ── Merge-tag legend dataset ────────────────────────────────────────────────

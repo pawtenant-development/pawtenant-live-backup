@@ -164,6 +164,7 @@ export const EXACT_PATHS: readonly string[] = [
   "/psd-letter-requirements",
   "/psd-letter-texas",
   "/psychiatric-service-dog-letter-online",
+  "/refund-policy",
   "/renew-esa-letter",
   "/reset-password",
   "/resource-center",

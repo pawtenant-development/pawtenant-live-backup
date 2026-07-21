@@ -151,6 +151,7 @@ const siteStructure = [
       { label: "Contact Us", href: "/#contact-form" },
       { label: "Privacy Policy", href: "/privacy-policy" },
       { label: "Terms of Use", href: "/terms-of-use" },
+      { label: "Refund Policy", href: "/refund-policy" },
       { label: "Sitemap", href: "/sitemap" }
     ]
   }

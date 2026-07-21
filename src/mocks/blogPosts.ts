@@ -109,7 +109,7 @@ export const blogPosts: BlogPost[] = [
       },
       {
         heading: "How PawTenant Can Help",
-        content: "Getting an ESA letter through PawTenant is simple and fast. Our network of licensed mental health professionals is experienced in writing university-compliant ESA letters. The process is fully online, typically completed the same day, and backed by our 100% money-back guarantee. If your university doesn't accept our letter for any reason, we'll refund you — no questions asked."
+        content: "Getting an ESA letter through PawTenant is simple and fast. Our network of licensed mental health professionals is experienced in writing university-compliant ESA letters. The process is fully online and typically completed the same day. If a licensed provider determines you don't qualify, you're refunded in full, and any other refund request is reviewed under our Refund Policy."
       }
     ],
     tags: ["ESA in dorms", "college ESA", "emotional support animal dorm", "university housing ESA", "dorm pets"],

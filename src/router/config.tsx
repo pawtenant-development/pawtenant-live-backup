@@ -23,6 +23,7 @@ const ServiceDogsPage = lazy(() => import("../pages/service-dogs/page"));
 const HowToGetPSDLetterPage = lazy(() => import("../pages/how-to-get-psd-letter/page"));
 const PrivacyPolicyPage = lazy(() => import("../pages/privacy-policy/page"));
 const TermsOfUsePage = lazy(() => import("../pages/terms-of-use/page"));
+const RefundPolicyPage = lazy(() => import("../pages/refund-policy/page"));
 const AboutUsPage = lazy(() => import("../pages/about-us/page"));
 const NoRiskGuaranteePage = lazy(() => import("../pages/no-risk-guarantee/page"));
 const FAQsPage = lazy(() => import("../pages/faqs/page"));
@@ -298,6 +299,7 @@ const routes: RouteObject[] = [
   { path: "/how-to-get-psd-letter", element: <P C={HowToGetPSDLetterPage} /> },
   { path: "/privacy-policy", element: <P C={PrivacyPolicyPage} /> },
   { path: "/terms-of-use", element: <P C={TermsOfUsePage} /> },
+  { path: "/refund-policy", element: <P C={RefundPolicyPage} /> },
   { path: "/about-us", element: <P C={AboutUsPage} /> },
   { path: "/no-risk-guarantee", element: <P C={NoRiskGuaranteePage} /> },
   { path: "/faqs", element: <P C={FAQsPage} /> },

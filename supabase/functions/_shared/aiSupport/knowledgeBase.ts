@@ -121,6 +121,28 @@ export const KB_SNIPPETS = {
     "Thanks for reaching out. Refund and payment questions are reviewed by our team against our policy — I've flagged your message so a team member can follow up with you directly.",
 } as const;
 
+// ── H. Housing-denial refund evidence (INTERNAL support/refund-review reference) ─
+// For the support/finance team AFTER a customer has requested a housing-denial
+// refund review. This is deliberately NOT wired into buildKnowledgePromptSection
+// and must NOT be volunteered proactively or shown before a review is requested.
+// Evidence is case-specific — no single item is required or automatically
+// sufficient. A HUD/agency reference is optional (only when filed). PawTenant
+// reviews only whether its own Refund Policy applies and never determines
+// whether a law was violated. Full rules: https://pawtenant.com/refund-policy
+export const KB_HOUSING_DENIAL_EVIDENCE_EXAMPLES: readonly string[] = [
+  "A written denial from the landlord or property manager (letter, notice, or email).",
+  "A resident-portal message or screenshot showing the refusal.",
+  "A lease-enforcement communication or formal notice.",
+  "A written reason the accommodation was refused.",
+  "Confirmation the customer submitted their accommodation request and PawTenant letter.",
+  "A message requesting additional documentation.",
+  "If filed, a HUD or state/local fair-housing complaint reference (optional, where available — never the sole required proof).",
+  "Attorney or fair-housing-organization correspondence.",
+];
+
+export const KB_HOUSING_DENIAL_EVIDENCE_NOTE =
+  "Examples of evidence PawTenant may consider — case-specific, and no single item guarantees approval. PawTenant may request additional information reasonably necessary to verify the accommodation request, the housing provider's response, and eligibility under the Refund Policy. This is a refund-eligibility review, not a legal determination about the landlord.";
+
 // ── Price-objection detection (metadata only — never a policy gate relaxer) ──
 // Used by the inbound functions to tag events/notifications so the admin UI
 // can show "Price Objection" / "Discount Offered" chips, and to ENFORCE the

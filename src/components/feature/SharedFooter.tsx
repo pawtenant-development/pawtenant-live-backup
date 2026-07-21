@@ -49,6 +49,7 @@ const footerCols = [
       { label: "Contact Us", href: "/contact-us" },
       { label: "Privacy Policy", href: "/privacy-policy" },
       { label: "Terms of Use", href: "/terms-of-use" },
+      { label: "Refund Policy", href: "/refund-policy" },
     ],
   },
 ];

@@ -138,7 +138,7 @@ const whyItems = [
   },
   {
     title: "100% Money-Back Guarantee",
-    desc: "Your satisfaction is guaranteed. If your legitimate ESA letter doesn't work for any reason, we will give you a full refund.",
+    desc: "If a licensed provider determines you don't qualify, we give you a full refund. Housing-denial refund requests are reviewed under our Refund Policy.",
     icon: "ri-refund-2-line",
   },
 ];

@@ -1367,7 +1367,7 @@ export default function MyOrdersPage() {
             <div className="grid sm:grid-cols-2 gap-3 mb-3">
               {[
                 { icon: "ri-calendar-check-line", title: "Two Consultations Required", desc: "Your evaluation will involve an initial consultation followed by a follow-up after the 30-day period." },
-                { icon: "ri-shield-check-line", title: "Still Fully Guaranteed", desc: "Our 100% money-back guarantee still applies if you don't qualify or your landlord rejects your letter after a HUD complaint." },
+                { icon: "ri-shield-check-line", title: "Your Refund Guarantee", desc: "If you don't qualify, you're refunded in full. Housing-denial refund requests are reviewed under our Refund Policy." },
                 { icon: "ri-file-text-line", title: "Legally Compliant Letter", desc: "Your ESA letter will be fully compliant with AB 468, making it recognized by California landlords and housing providers." },
                 { icon: "ri-time-line", title: "Plan Ahead", desc: "Because of this requirement, California residents should plan for a 30+ day timeline from initial consultation to letter issuance." },
               ].map((item) => (

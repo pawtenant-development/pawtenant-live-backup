@@ -88,7 +88,7 @@ export default function TermsOfUsePage() {
             Terms of Use
           </h1>
           <p className="text-sm text-gray-500">
-            <strong>Pawtenant (HyperSpace Solutions LLC)</strong> &nbsp;·&nbsp; Last Updated: <strong>September 18, 2024</strong>
+            <strong>Pawtenant (HyperSpace Solutions LLC)</strong> &nbsp;·&nbsp; Last Updated: <strong>July 22, 2026</strong>
           </p>
           <div className="mt-5 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 max-w-3xl">
             <p className="text-sm text-amber-800 leading-relaxed">
@@ -158,21 +158,18 @@ export default function TermsOfUsePage() {
             <div>
               <SectionHeading id="refund" title="Refund and Cancellation Policy" />
               <div className="text-gray-600 text-sm leading-relaxed space-y-3">
-                <p>Pawtenant's refund and cancellation terms help ensure that our team of licensed health care professionals ("LHCPs") can dedicate their time effectively to those who need assistance.</p>
-                <p>Once you place your order, if you request a refund before signing the LHCP consent form, a <strong>$30 administrative fee</strong> will be deducted. After signing the consent form, your order becomes <strong>non-refundable</strong>, unless:</p>
-                <ol className="space-y-1.5 list-decimal list-inside pl-2">
-                  <li>You are found ineligible for an ESA letter following your consultation with a licensed mental health professional.</li>
-                  <li>Your landlord rejects your ESA letter, and you file a complaint with HUD.</li>
-                </ol>
-                <p><strong>Express consultation</strong> fees are <strong>non-refundable</strong>, because these cases are immediately prioritized once you submit your request. After placing your express order, you must submit your consent form within <strong>24 hours</strong> to your LHCP.</p>
-                <p>We do not offer refunds for additional services such as extra document orders or ESA letter amendments, unless those documents are rejected by the relevant authority, and you have filed a formal complaint.</p>
+                <p>Refund eligibility is governed by our <Link to="/refund-policy" className="text-orange-500 hover:underline">Refund Policy</Link>, which is the complete source of truth for refunds. In summary:</p>
+                <ul className="space-y-1.5 list-disc list-inside pl-2">
+                  <li>You receive a <strong>full refund</strong> if a licensed provider determines you do not qualify — this applies to both ESA and PSD orders.</li>
+                  <li>Claimed housing-denial refunds are subject to an <strong>evidence-based review</strong> under the Refund Policy. A landlord's denial does not automatically qualify for a refund, and PawTenant reviews only whether its own guarantee applies; it does not make legal determinations.</li>
+                  <li>Certain <strong>discretionary</strong> refunds requested after substantial professional work has been completed may be reduced by up to <strong>$40</strong> as a professional evaluation and administrative services fee, as described in the Refund Policy. This fee never applies to a full-refund category.</li>
+                  <li>Subscriptions and add-ons follow the terms stated in the Refund Policy.</li>
+                </ul>
+                <p>You agree to provide accurate information, to submit your accommodation request and PawTenant letter to your housing provider, not to alter or misuse any document, and to cooperate with any refund review, which may include verification of documents and communications. Any discretionary refund is a one-time courtesy and creates no future entitlement. Nothing in these Terms or the Refund Policy limits rights available under applicable law or applicable card-network rules.</p>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                   <p className="text-xs text-amber-800 font-bold mb-1">ARKANSAS, CALIFORNIA, IOWA, LOUISIANA, and MONTANA Residents Notice</p>
-                  <p className="text-xs text-amber-800">Beginning January 1, 2022, state law AB 468 requires individuals seeking ESA letters for dogs to have a client-provider relationship lasting at least <strong>30 days</strong> before documentation can be issued. This process will involve two consultations. The 100% money-back guarantee still applies if you fail to qualify or your landlord rejects your ESA letter after a HUD complaint.</p>
+                  <p className="text-xs text-amber-800">Beginning January 1, 2022, state law AB 468 requires individuals seeking ESA letters for dogs to have a client-provider relationship lasting at least <strong>30 days</strong> before documentation can be issued. This process will involve two consultations. Refund eligibility in these cases is governed by our <Link to="/refund-policy" className="text-orange-500 hover:underline">Refund Policy</Link>.</p>
                 </div>
-                <p>Ultimately, acceptance of your ESA letter lies with your landlord or airline. Some landlords may unlawfully deny ESA accommodations, and airlines are not legally required to accept emotional support animals anymore.</p>
-                <p>If your ESA request is wrongly rejected, you must file a complaint and share the complaint number with us to qualify for a full refund. However, if the denial is for a valid reason (such as damage, threats, or health risks), we reserve the right to deduct an administrative fee of up to <strong>$30</strong>.</p>
-                <p>For PSD letters, you must self-certify that your animal is fully trained and meets ADA and FHA standards. Refunds for PSD letters are <strong>never issued</strong>.</p>
               </div>
             </div>
 
