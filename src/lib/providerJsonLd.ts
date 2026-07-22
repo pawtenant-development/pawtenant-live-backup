@@ -64,7 +64,10 @@ function breadcrumbNode(p: PublicProvider) {
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Home", item: `${BASE_URL}/` },
       { "@type": "ListItem", position: 2, name: "Our Providers", item: `${BASE_URL}/our-providers` },
-      { "@type": "ListItem", position: 3, name: p.name },
+      // Final (current-page) breadcrumb: item is optional per Google, but we set it to
+      // this page's own canonical URL for consistency with the rest of the site and to
+      // clear the GSC "Missing field item" report. (SEO-BREADCRUMB-MISSING-ITEM-…-001)
+      { "@type": "ListItem", position: 3, name: p.name, item: url },
     ],
   };
 }
@@ -118,7 +121,9 @@ export function buildOurProvidersJsonLd(providers: readonly PublicProvider[]): R
         "@id": `${url}#breadcrumb`,
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: `${BASE_URL}/` },
-          { "@type": "ListItem", position: 2, name: "Our Providers" },
+          // Final (current-page) breadcrumb: item set to this page's own canonical URL
+          // for site-wide consistency and to clear the GSC "Missing field item" report.
+          { "@type": "ListItem", position: 2, name: "Our Providers", item: url },
         ],
       },
     ],
