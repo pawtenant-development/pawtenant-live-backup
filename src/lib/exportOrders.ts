@@ -97,13 +97,19 @@ function documentStatus(o: ExportableOrder): string {
   return "Pending";
 }
 
-// Derived: gross minus refund (operational net; Stripe-fee net + provider payout
-// live in the Accounts / Payments export, not on the order record).
-function netAfterRefund(o: ExportableOrder): string {
+// Derived: gross minus refund (operational net). Returned UNROUNDED so the
+// provider-deduction column can subtract from the raw value and format once.
+function netAfterRefundNum(o: ExportableOrder): number | null {
   const price = typeof o.price === "number" ? o.price : parseFloat(str(o.price));
-  if (isNaN(price)) return "";
+  if (isNaN(price)) return null;
   const refund = typeof o.refund_amount === "number" ? o.refund_amount : parseFloat(str(o.refund_amount));
-  const net = price - (isNaN(refund) ? 0 : refund);
+  return price - (isNaN(refund) ? 0 : refund);
+}
+
+// Existing "Net After Refund (USD)" column — unchanged output.
+function netAfterRefund(o: ExportableOrder): string {
+  const net = netAfterRefundNum(o);
+  if (net === null) return "";
   return (Math.round(net * 100) / 100).toFixed(2);
 }
 
@@ -116,8 +122,14 @@ function addons(o: ExportableOrder): string {
   return str(v);
 }
 
+// Per-export context passed to every column getter. Carries the canonical
+// provider payment per order (already gated + summed; see providerPaymentExport.ts).
+interface ExportCtx {
+  providerPayment: (o: ExportableOrder) => number;
+}
+
 // label : value accessor. Order here is the column order in the CSV.
-const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder) => unknown }[] = [
+const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder, ctx: ExportCtx) => unknown }[] = [
   { label: "First Name", get: (o) => o.first_name },
   { label: "Last Name", get: (o) => o.last_name },
   { label: "Full Name", get: (o) => `${str(o.first_name)} ${str(o.last_name)}`.trim() },
@@ -140,6 +152,23 @@ const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder) => unknown }[] 
   { label: "Stripe Payment Intent", get: (o) => o.payment_intent_id },
   { label: "Refund Amount (USD)", get: (o) => o.refund_amount },
   { label: "Net After Refund (USD)", get: (o) => netAfterRefund(o) },
+  // ── Provider payout retained for the order + resulting business net.
+  // Provider Payment = SUM of valid (non-cancelled) doctor_earnings components on a
+  // COMPLETED order (doctor_status='patient_notified'); stays retained when the
+  // customer later refunds, and is 0 when refunded/closed before completion or still
+  // under review. Never derived from price or a rate. Net After Provider Deduction =
+  // Net After Refund − Provider Payment (may be negative on a completed-then-refunded
+  // order — intentionally not clamped to zero). Bare 2-dp numbers so Excel keeps them
+  // numeric; 0 is written as "0.00", never blank.
+  { label: "Provider Payment", get: (o, ctx) => ctx.providerPayment(o).toFixed(2) },
+  {
+    label: "Net After Provider Deduction",
+    get: (o, ctx) => {
+      const net = netAfterRefundNum(o);
+      if (net === null) return ""; // gross unknown → cannot compute (matches Net After Refund)
+      return (net - ctx.providerPayment(o)).toFixed(2);
+    },
+  },
   { label: "Coupon Code", get: (o) => o.coupon_code },
   { label: "Coupon Discount (USD)", get: (o) => o.coupon_discount },
   { label: "Refund / Dispute", get: (o) => refundDisputeStatus(o) },
@@ -199,10 +228,18 @@ const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder) => unknown }[] 
   { label: "Last Activity", get: (o) => fmtDate(o.last_contacted_at) },
 ];
 
-export function exportOrdersToCSV(orders: ExportableOrder[], filenamePrefix = "orders"): void {
+export function exportOrdersToCSV(
+  orders: ExportableOrder[],
+  filenamePrefix = "orders",
+  // Canonical provider payment per order.id (gated + summed). Absent/unknown → 0.
+  providerPaymentByOrderId?: Map<string, number>,
+): void {
+  const ctx: ExportCtx = {
+    providerPayment: (o) => providerPaymentByOrderId?.get(str(o.id)) ?? 0,
+  };
   const headers = EXPORT_COLUMNS.map((c) => csvEscape(c.label)).join(",");
   const rows = orders.map((o) =>
-    EXPORT_COLUMNS.map((c) => csvEscape(c.get(o))).join(",")
+    EXPORT_COLUMNS.map((c) => csvEscape(c.get(o, ctx))).join(",")
   );
   const csv = [headers, ...rows].join("\r\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

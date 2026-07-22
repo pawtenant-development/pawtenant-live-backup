@@ -30,6 +30,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import AnalyticsTab from "./components/AnalyticsTab";
 import IncomingCallBanner from "./components/IncomingCallBanner";
 import { exportOrdersToCSV, type ExportableOrder } from "../../lib/exportOrders";
+import { fetchProviderPaymentsForExport } from "../../lib/providerPaymentExport";
 import { exportMetaAudienceToCSV, type MetaAudienceOrder, type MetaAudienceMode } from "../../lib/exportMetaAudience";
 import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
@@ -499,6 +500,8 @@ export default function AdminOrdersPage() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [showNonGhlOnly, setShowNonGhlOnly] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState(""); // export error surface (avoids silent bad CSV)
   // Meta Custom Audience export (identifiers-only, paid clients) — see lib/exportMetaAudience.ts
   const [audienceExporting, setAudienceExporting] = useState(false);
   const [audienceMsg, setAudienceMsg] = useState("");
@@ -3049,17 +3052,36 @@ export default function AdminOrdersPage() {
                     </button>
                   ) : null;
                 })()}
-                {/* Export the currently SELECTED orders (loaded rows) as a rich CSV */}
+                {/* Export the SELECTED orders (stable confirmation-id selection) as a
+                    rich CSV, enriched with the canonical provider payment per order.
+                    Fetches provider earnings first; on failure the export is cancelled
+                    rather than emitting a misleading all-zero provider column. */}
                 <button
                   type="button"
-                  onClick={() => {
+                  disabled={exporting}
+                  onClick={async () => {
                     const selected = orders.filter((o) => selectedOrders.has(o.confirmation_id));
-                    exportOrdersToCSV(selected as unknown as ExportableOrder[], "pawtenant-orders-export-selected");
+                    if (selected.length === 0) return;
+                    setExporting(true);
+                    setExportMsg("");
+                    try {
+                      const providerPayments = await fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]);
+                      exportOrdersToCSV(selected as unknown as ExportableOrder[], "pawtenant-orders-export-selected", providerPayments);
+                    } catch (e) {
+                      console.error("[exportSelected] failed", e);
+                      setExportMsg("Export cancelled — provider earnings could not be loaded. Please retry.");
+                    } finally {
+                      setExporting(false);
+                    }
                   }}
-                  className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <i className="ri-download-2-line"></i>Export Selected CSV
+                  <i className={exporting ? "ri-loader-4-line animate-spin" : "ri-download-2-line"}></i>
+                  {exporting ? "Exporting…" : "Export Selected CSV"}
                 </button>
+                {exportMsg ? (
+                  <span className="self-center text-xs font-semibold text-red-600">{exportMsg}</span>
+                ) : null}
                 {/* ── Bulk GHL Sync — beside Stop Sequence ── */}
                 {!bulkGhlSyncDone ? (
                   <button
