@@ -212,6 +212,7 @@ async function main() {
     "src/components/feature/PsdPricingSection.tsx",
     "src/pages/state-esa/page.tsx",
     "src/pages/state-psd/page.tsx",
+    "src/pages/lp-esa-housing/page.tsx",
   ]);
   for (const rel of files) {
     const norm = rel.replace(/\\/g, "/");

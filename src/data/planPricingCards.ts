@@ -95,11 +95,16 @@ export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
       price: getEsaOneTimeTotal(2), // $149 one-time fixed total
       priceSuffix: "one-time · fixed total",
       subNote: `Prefer annual for multiple pets? $${getEsaAnnualTotal(2)} first year, then $${getEsaRenewalTotal(2)}/year.`, // $135 → $115
+      // Superset of the single-pet ESA Letter card (all six of its benefits) PLUS
+      // the multi-pet coverage line, so the higher tier visibly offers MORE.
       features: [
-        "One evaluation covering up to 3 animals*",
+        "Licensed provider evaluation",
+        "Covers up to 3 animals on one letter*",
         "Signed, FHA-compliant ESA letter",
+        "Typically delivered within 24 hours",
         "Unique letter verification ID",
         "Landlord verification support",
+        "Full refund if you don't qualify",
       ],
       ctaLabel: "Start Multi-Pet",
       ctaHref,

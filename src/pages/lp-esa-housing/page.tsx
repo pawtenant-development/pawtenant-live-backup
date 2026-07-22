@@ -1,15 +1,39 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
 import Hud2026UpdateBanner from "@/components/feature/Hud2026UpdateBanner";
+import MobileStickyApplyCTA from "@/components/feature/MobileStickyApplyCTA";
+import PlanPricingSection from "@/components/feature/PlanPricingSection";
+import TestimonialsSection from "@/pages/home/components/TestimonialsSection";
+import { ESA_PLAN_COPY, buildEsaPlanCards } from "@/data/planPricingCards";
+import { useAttributionParams } from "@/hooks/useAttributionParams";
+
+// ============================================================================
+// /esa-letter-housing — Revision 3 challenger
+// (ESA-HOUSING-LANDING-PAGE-REVISION-3-TEST-IMPLEMENTATION-001)
+//
+// Paid-search landing page. Kept noindex,nofollow (unchanged). Homepage visual
+// system: warm cream grounds, Source Serif headings, orange CTA, green trust
+// accent. Pricing is ESA-only and reuses the shared PlanPricingSection +
+// buildEsaPlanCards (src/config/pricing.ts single source of truth) so it can
+// never drift from the homepage — NO PSD price on this page. Reviews reuse the
+// homepage TestimonialsSection (real 4.9 / 15,000+ / 50-states + 3 reviews).
+// Verification is a NON-networked native sample-data preview (no /verify API
+// call, no customer data). Verification ID format matches the real product
+// (ESA-XX-XXXXXXX); the previous stale letter-ID format in the FAQ copy is
+// corrected here to match src/pages/verify.
+// ============================================================================
 
 const LP_TITLE = "Get an ESA Letter for Housing — Reviewed by Licensed Providers | PawTenant";
-const LP_DESC = "Verified with a unique ID your landlord can confirm in seconds. Reviewed by licensed mental health providers. Refund if you don't qualify.";
+const LP_DESC =
+  "Verified with a unique ID your landlord can confirm in seconds. Reviewed by licensed mental health providers. Refund if you don't qualify.";
 
-const ASSESSMENT_HREF = "/assessment";
-const PSD_ASSESSMENT_HREF = "/psd-assessment";
+const FONT_DISPLAY = { fontFamily: '"Source Serif 4", Georgia, "Times New Roman", serif' } as const;
+const WRAP = "max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8";
 
+// Curated public providers shown on this page (names + public credential +
+// approved marketing headshot only — no private email / NPI / internal id).
 const PROVIDERS = [
   {
     name: "Stephanie White",
@@ -31,11 +55,28 @@ const PROVIDERS = [
   },
 ];
 
-// FAQ list expanded for Google Ads keyword coverage. Each entry naturally
-// surfaces a high-intent query (legitimacy, online evaluations, dog
-// breeds, doctor/practitioner review, landlord verification, housing
-// laws, how letters work, PSD vs ESA, qualification). Wording stays
-// human and compliance-safe — no overclaim, no keyword stuffing.
+const COVERAGE_STATES = [
+  "California", "Texas", "Florida", "New York", "Illinois", "Pennsylvania",
+  "Virginia", "North Carolina", "Georgia", "Arizona", "Ohio", "Michigan",
+  "Washington", "Massachusetts", "Colorado",
+];
+
+// Non-networked sample fixture for the verification preview. Synthetic only —
+// matches the site's own sample-letter placeholder identity. NO real customer
+// or provider private data. Format matches the real product (ESA-XX-XXXXXXX).
+const VERIFY_SAMPLE = {
+  id: "ESA-CA-8F3K92",
+  type: "Emotional Support Animal (ESA)",
+  state: "California",
+  issued: "April 10, 2026",
+  expires: "April 10, 2027",
+  provider: "Dr. Amelia Hart, LPC-S",
+  npi: "1234567890",
+  license: "LPC-204817-CA",
+} as const;
+
+// FAQ list expanded for Google Ads keyword coverage. Wording stays human and
+// compliance-safe. Verification-ID format corrected to the real ESA-XX-XXXXXXX.
 const FAQ_ITEMS = [
   {
     q: "Are online ESA letters legit?",
@@ -67,7 +108,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How does landlord verification work?",
-    a: "Every document carries a unique Verification ID (format PT-YYYY-XXXXXX). Your landlord enters the ID at pawtenant.com/verify and the page confirms the document is authentic and the provider is actively licensed — without showing any diagnosis or clinical detail. The provider's license can also be independently confirmed on the public NPPES NPI registry.",
+    a: "Every document carries a unique Verification ID (format ESA-XX-XXXXXXX). Your landlord enters the ID at pawtenant.com/verify and the page confirms the document is authentic and the provider is actively licensed — without showing any diagnosis or clinical detail. The provider's license can also be independently confirmed on the public NPPES NPI registry.",
   },
   {
     q: "How fast is the process?",
@@ -99,11 +140,37 @@ const FAQ_ITEMS = [
   },
 ];
 
+// ── small presentational helpers ────────────────────────────────────────────
+function Check({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+function Dash({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+function Eyebrow({ children }: { children: ReactNode }) {
+  return (
+    <span className="block text-[13px] font-extrabold tracking-[0.07em] uppercase text-[#3F7061] mb-3">
+      {children}
+    </span>
+  );
+}
+
 export default function LpEsaHousingPage() {
   // Mobile-only: show first 4 FAQs initially, rest behind "Show more questions".
-  // All FAQ items stay in the DOM regardless (display:none only) so SEO/schema
-  // and desktop layout are unchanged.
   const [showAllMobile, setShowAllMobile] = useState(false);
+  // Verification preview: result is visible by default (design review) and the
+  // "Verify" button re-affirms it with a brief highlight — no network call.
+  const [verifyPulse, setVerifyPulse] = useState(false);
+  const { withAttribution } = useAttributionParams();
+  const CTA_HREF = withAttribution("/assessment");
 
   // Set <title>, meta description, and noindex per page-load. Restore on unmount.
   useEffect(() => {
@@ -137,1471 +204,688 @@ export default function LpEsaHousingPage() {
   }, []);
 
   return (
-    <main className="bg-[#FAFAFA] text-slate-900 antialiased">
-      {/* ─────────── 0. Site-wide navbar (matches main site) ─────────── */}
+    <main className="bg-[#FDFBF7] text-[#4A443C] antialiased">
       <SharedNavbar />
 
-      {/* ─────────── 1. HERO (visible warm photo on LEFT half) ─────────── */}
-      <section className="relative bg-white border-b border-slate-200 overflow-hidden">
-        {/* Lifestyle photo — desktop: left 60%; mobile: full width behind the stacked content */}
-        {/* Desktop: left 60% bg */}
+      {/* ─────────── 1. HERO — full-bleed image, centered content ───────────
+          Mobile (≤768px) mirrors the homepage hero verbatim: same Pomeranian LCP
+          image (already preloaded in index.html → used, not a stale preload, and
+          no 2nd fetch), same 55%/35% focal, same gray-900 vertical scrim + bottom
+          band, full 100svh box. Desktop (≥769px) keeps the approved ESA housing
+          hero image, brand-ink scrim, 62%/42% focal and 648px box — unchanged.
+          One media-gated <picture> so only the matching variant downloads. */}
+      <section className="relative min-h-[100svh] md:min-h-[648px] flex items-center overflow-hidden isolate">
+        <picture>
+          {/* Mobile ≤768px — homepage hero image (visual parity with "/") */}
+          <source media="(max-width: 768px)" srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp" type="image/webp" />
+          {/* Desktop ≥769px — approved ESA housing hero image (unchanged) */}
+          <source media="(min-width: 769px)" srcSet="/assets/lifestyle/esa-housing-hero-owner-dog.webp" type="image/webp" />
+          <img
+            src="/assets/lifestyle/esa-housing-hero-owner-dog.jpg"
+            alt="Renter relaxing at home with her emotional support dog in a bright apartment"
+            className="absolute inset-0 -z-20 w-full h-full object-cover object-[55%_35%] md:object-[62%_42%] opacity-80 md:opacity-100"
+            fetchPriority="high"
+            loading="eager"
+            decoding="async"
+            width={1600}
+            height={900}
+          />
+        </picture>
+        {/* Mobile scrim — homepage treatment (symmetric gray-900 gradient + bottom band) */}
+        <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-gray-900/70 via-gray-900/60 to-gray-900/75 md:hidden" />
+        <div aria-hidden className="absolute inset-x-0 bottom-0 -z-10 h-40 bg-gradient-to-t from-gray-900/70 to-transparent md:hidden" />
+        {/* Desktop scrim — approved ESA brand-ink gradient (unchanged) */}
         <div
           aria-hidden
-          className="hidden md:block pointer-events-none absolute inset-y-0 left-0"
-          style={{
-            width: "60%",
-            backgroundImage: "url('/assets/lifestyle/woman-telehealth-with-dog.jpg')",
-            backgroundSize: "cover",
-            backgroundPosition: "center 35%",
-            opacity: 0.55,
-          }}
+          className="absolute inset-0 -z-10 hidden md:block"
+          style={{ background: "linear-gradient(180deg, rgba(28,24,20,0.72) 0%, rgba(28,24,20,0.58) 45%, rgba(28,24,20,0.74) 100%)" }}
         />
-        {/* Mobile: different image where the subject (woman + dog) is
-            center-framed so it survives the narrow portrait crop. The
-            previous desktop composition put both subjects at the left/right
-            edges and only the white wall showed through on mobile. Same
-            opacity (0.55) and same white-wash gradient overlay below keep
-            the visual treatment + contrast consistent with desktop. */}
-        <div
-          aria-hidden
-          className="md:hidden pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage: "url('/assets/blog/fp-woman-dog-floor.jpg')",
-            backgroundSize: "cover",
-            backgroundPosition: "center 40%",
-            opacity: 0.55,
-          }}
-        />
-        {/* Desktop right-edge fade — wash strength reduced so the left-half
-            image reads more confidently while the right column stays clean
-            white behind the letter preview card. */}
-        <div
-          aria-hidden
-          className="hidden md:block pointer-events-none absolute inset-y-0 left-0"
-          style={{
-            width: "75%",
-            background:
-              "linear-gradient(90deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.10) 30%, rgba(255,255,255,0.40) 65%, #FFFFFF 100%)",
-          }}
-        />
-        {/* Mobile vertical white wash — wash strength reduced at the top
-            and middle so the woman + dog photo reads more confidently
-            behind the hero text; bottom keeps a strong fade so the letter
-            preview card sits on a clean white background. */}
-        <div
-          aria-hidden
-          className="md:hidden pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.40) 0%, rgba(255,255,255,0.25) 35%, rgba(255,255,255,0.45) 70%, #FFFFFF 100%)",
-          }}
-        />
-        {/* Soft top + bottom fade to white so the section blends with adjacent sections */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-12"
-          style={{ background: "linear-gradient(180deg, #FFFFFF 0%, transparent 100%)" }}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-20"
-          style={{ background: "linear-gradient(0deg, #FFFFFF 0%, transparent 100%)" }}
-        />
-
-        {/* SharedNavbar is fixed top-0 with h-16 (64px) on mobile and
-            sm:h-20 (80px) on tablet+. Hero top padding clears the navbar
-            plus ~32px breathing room so the green pill never sits under
-            the navbar. min-h-[100svh] makes the hero feel like a proper
-            poster/cover area so the next section doesn't peek at the fold
-            on initial load. items-center vertically centers the
-            text+letter-preview row inside the hero cover. */}
-        <div className="relative max-w-6xl mx-auto px-5 pt-24 md:pt-28 pb-16 md:pb-24 min-h-[100svh] grid md:grid-cols-12 gap-10 md:gap-14 items-start md:items-center">
-          <div className="md:col-span-7 lg:col-span-7">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full mb-5 shadow-[0_1px_3px_rgba(16,185,129,0.10)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              Housing-related ESA documentation
-            </span>
-            <h1 className="text-[28px] sm:text-[32px] md:text-[40px] lg:text-[44px] leading-[1.12] font-bold tracking-tight text-slate-900 mb-4">
-              Get an ESA Letter for Housing — Reviewed by Licensed Providers
+        <div className={`${WRAP} py-14 md:py-16 w-full`}>
+          <div className="max-w-[600px] mx-auto text-center text-white">
+            {/* Only "ESA Letter" wears the homepage hero orange (text-orange-400); the
+                rest of the headline stays white. Exactly one H1, wording unchanged. */}
+            <h1 className="text-white text-[32px] leading-[1.14] sm:text-[40px] lg:text-[46px] lg:leading-[1.12] font-semibold mb-4" style={FONT_DISPLAY}>
+              Get an <span className="text-orange-400">ESA Letter</span> for Housing — Reviewed by Licensed Providers
             </h1>
-            <p className="text-[16px] md:text-[17px] leading-relaxed text-slate-600 mb-7 max-w-xl">
-              Verified with a unique ID your landlord can confirm in seconds.
+            <p className="text-white/90 text-[16.5px] md:text-lg leading-relaxed mx-auto mb-5 md:mb-7 max-w-[48ch]">
+              Complete a confidential 5-minute assessment. A licensed provider in your state reviews it.<span className="hidden md:inline"> Your documentation carries a unique ID your landlord can confirm in seconds.</span>
             </p>
-
-            <Link
-              to={ASSESSMENT_HREF}
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[15px] md:text-[16px] px-7 py-4 rounded-md transition w-full sm:w-auto shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-            >
-              Start the assessment
-              <span aria-hidden>→</span>
-            </Link>
-
-            {/* Klarna availability badge — sits directly under the CTA so the
-                payment-method signal occupies the highest-hierarchy slot.
-                Trust bullets row follows beneath, then the refund line.
-                Matches the Meta LP hero order: CTA → Klarna → trust → refund.
-                Uses `flex w-fit` (block-level, content-width) instead of
-                `inline-flex` so the badge always wraps to a new line below
-                the CTA on desktop — `inline-flex` would let it sit beside
-                the CTA when the text column has horizontal room. */}
-            <div className="mt-3 flex w-fit items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-full bg-white border border-[#FFA8CD] shadow-[0_2px_8px_rgba(255,168,205,0.30)]">
-              <span
-                aria-hidden
-                className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[#FFA8CD] text-[#1A0A12] font-extrabold text-[11px] leading-none tracking-tight flex-shrink-0"
+            {/* Mobile-only price teaser — homepage installment anchor style. The full
+                Klarna/payment detail stays in the pricing section + the desktop line. */}
+            <p className="md:hidden text-gray-100 text-[17px] sm:text-lg mb-7">
+              Start for as low as{" "}
+              <strong className="text-white font-bold text-[21px] sm:text-[23px]" style={FONT_DISPLAY}>$32.25</strong>
+            </p>
+            <div className="flex flex-col items-center gap-3.5">
+              <a
+                href={CTA_HREF}
+                className="w-full max-w-[340px] sm:w-auto inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[17px] px-9 py-4 rounded-md shadow-lg shadow-orange-500/30 transition-colors"
               >
-                K.
+                Check If You Qualify
+              </a>
+              {/* Desktop-only: verification link (mobile keeps a single dominant CTA) */}
+              <a href="#verification" className="hidden md:inline-flex text-white/90 hover:text-white text-[14.5px] font-bold underline underline-offset-[3px]">
+                See how landlord verification works →
+              </a>
+            </div>
+            <div className="mt-6 flex flex-col items-center gap-2.5">
+              {/* Refund reassurance — mobile uses the homepage emerald status icon
+                  (ri-checkbox-circle-fill / text-emerald-300); desktop keeps its
+                  existing sage check so the approved desktop hero is unchanged. */}
+              <span className="inline-flex items-center gap-1.5 md:gap-2 text-[14px] font-medium text-white/90">
+                <i className="ri-checkbox-circle-fill text-emerald-300 md:hidden" aria-hidden></i>
+                <Check className="hidden md:inline-block w-4 h-4 text-[#8FBCAB]" />
+                Full refund if you don't qualify after review.
               </span>
-              <div className="text-left leading-tight">
-                <div className="text-[11.5px] font-semibold text-slate-900">
-                  <span className="text-[#7A3F5F]">Klarna</span> available at checkout
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  Subject to eligibility and Klarna payment terms
-                </div>
-              </div>
+              {/* Desktop-only: Klarna belongs with pricing/payment, not the mobile hero */}
+              <span className="hidden md:inline-flex items-center gap-2 text-[14px] font-medium text-white/90">
+                <span aria-hidden className="inline-flex items-center justify-center w-[21px] h-[21px] rounded-[5px] bg-[#FFB3C7] text-[#17120F] font-extrabold text-[11.5px]">K.</span>
+                Start for as low as $32.25 with Klarna
+              </span>
             </div>
-
-            {/* Trust pills — compact single-line row (was 3 stacked
-                bullets pre-cleanup-2026-05-24). Same 3 trust signals,
-                much calmer visual weight. */}
-            <div className="flex flex-wrap gap-1.5 mt-5">
-              {[
-                { label: "Licensed clinicians" },
-                { label: "FHA-aligned" },
-                { label: "Verification ID" },
-              ].map((t) => (
-                <span
-                  key={t.label}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11.5px] font-semibold"
-                >
-                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
-                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </span>
-                  {t.label}
-                </span>
-              ))}
+            {/* Mobile-only coverage pill — homepage style. Compact reassurance inside
+                the hero; the four-item trust strip stays below the hero, unchanged. */}
+            <div className="md:hidden inline-flex items-center gap-2.5 bg-white/10 border border-white/20 backdrop-blur-sm px-4 py-2.5 rounded-full mt-7">
+              <i className="ri-map-2-line text-orange-400" aria-hidden></i>
+              <span className="text-white text-xs font-semibold whitespace-nowrap">Serving all 50 US states</span>
             </div>
-
-            {/* Refund trust line — sits below the trust pills as the
-                final reassurance under the CTA stack. */}
-            <div className="text-[12.5px] text-slate-500 mt-4 flex items-center gap-2">
-              <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]" aria-hidden>✓</span>
-              If you don't qualify after review, your payment is refunded.
-            </div>
-
-          </div>
-
-          {/* Letter preview card */}
-          <div className="md:col-span-5 lg:col-span-5">
-            <LetterPreviewCard />
           </div>
         </div>
       </section>
 
-      {/* ─────────── 2. TRUST STRIP ─────────── */}
-      <section className="bg-slate-50 border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-7 md:py-8 grid sm:grid-cols-3 gap-5 sm:gap-8">
-          <TrustChip
-            label="Licensed providers"
-            detail="Reviewed by clinicians licensed in your state"
-            tone="green"
-            icon="shield"
-          />
-          <TrustChip
-            label="NPI verifiable"
-            detail="Provider license confirmable on NPPES"
-            tone="green"
-            icon="badge"
-          />
-          <TrustChip
-            label="Refund if not qualified"
-            detail="No charge if a provider doesn't approve"
-            tone="green"
-            icon="refund"
-          />
+      {/* ─────────── 2. TRUST STRIP (below hero) ─────────── */}
+      {/* Rating/count mirror the homepage TestimonialsSection stats (approved,
+          already-published: 4.9 · 15,000+ · 50 states). */}
+      <div className="bg-[#F7F2E9] border-b border-[#EAE3D7]">
+        <div className={`${WRAP} grid grid-cols-2 gap-x-3.5 gap-y-0 py-5 lg:grid-cols-4 lg:gap-0 lg:py-[22px]`}>
+          {[
+            { icon: <StarSolid />, b: "4.9 rating", s: "15,000+ pet owners" },
+            { icon: <ShieldStroke />, b: "Licensed clinicians", s: "Reviewed in your state" },
+            { icon: <RefundStroke />, b: "Refund if not qualified", s: "Full refund if you don't qualify after review" },
+            { icon: <BadgeStroke />, b: "Verification ID", s: "On every letter issued" },
+          ].map((t) => (
+            <div key={t.b} className="flex items-center gap-3 px-1.5 py-3 lg:justify-center lg:px-2.5 lg:py-1.5">
+              <span className="flex-none w-[42px] h-[42px] rounded-xl bg-white border border-[#EAE3D7] flex items-center justify-center text-[#3F7061]">
+                {t.icon}
+              </span>
+              <span>
+                <span className="block text-[14.5px] font-bold text-[#231F1A] leading-tight">{t.b}</span>
+                <span className="block text-[12.5px] text-[#6E675C] leading-snug mt-0.5">{t.s}</span>
+              </span>
+            </div>
+          ))}
         </div>
-      </section>
+      </div>
 
-      {/* ─────────── 3. LANDLORD PROBLEM ─────────── */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
-          {/* Top: heading + intro (centered, narrow) */}
-          <div className="max-w-2xl mb-10 md:mb-12">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
+      {/* ─────────── 3. HOUSING PROBLEMS + FHA RIGHTS ─────────── */}
+      <section className="bg-[#FDFBF7] py-14 md:py-20">
+        <div className={`${WRAP} grid grid-cols-1 md:grid-cols-[1.05fr_.95fr] gap-8 md:gap-14 items-stretch`}>
+          <div className="flex flex-col">
+            <h2 className="text-[#231F1A] text-[27px] md:text-[34px] leading-[1.16] font-semibold" style={FONT_DISPLAY}>
               No-pet buildings. Pet rent. Breed restrictions.
             </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
+            <p className="text-[#4A443C] text-[16px] md:text-[18px] leading-relaxed mt-3.5">
               The Fair Housing Act may protect your right to live with an Emotional Support Animal — even in buildings with strict pet policies.
             </p>
-          </div>
-
-          {/* Equal-height grid: image col + 4-card col.
-              The image container uses `relative` and the <img> uses
-              `absolute inset-0` so the image truly fills whatever height
-              the grid row stretches to. Without absolute positioning the
-              image only took its intrinsic-aspect height and left empty
-              space below itself on desktop. Now image height matches the
-              4-card column height exactly. */}
-          <div className="grid md:grid-cols-12 gap-6 md:gap-8 items-stretch">
-            {/* Image container — explicit min-heights at each breakpoint
-                drive the grid-row height upward, and the cards column
-                stretches to match via `items-stretch` on the grid. Without
-                a generous min-height the 2x2 cards column is naturally
-                only ~250px tall, so the image looked under-sized.
-                md:min-h-[460px] gives a stronger visual presence that
-                roughly matches the image used in section 3b below. */}
-            <div className="md:col-span-5 relative overflow-hidden rounded-2xl border border-slate-200 min-h-[360px] md:min-h-[460px]">
-              <img
-                src="/assets/lifestyle/woman-with-dog-new-apartment.jpg"
-                alt="Tenant moving into a new apartment with an emotional support dog"
-                width={1600}
-                height={1067}
-                loading="lazy"
-                decoding="async"
-                className="absolute inset-0 w-full h-full object-cover"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 sm:gap-x-8 mt-6">
+              {[
+                { t: "No-pet buildings", d: "Many leases ban pets. A reasonable accommodation request changes that conversation.", icon: <HomeStroke /> },
+                { t: "Pet rent and deposits", d: "Tenants with qualifying ESA documentation are typically not charged pet deposits or monthly pet fees.", icon: <CoinStroke /> },
+                { t: "Breed and weight rules", d: "Generally don't apply to qualified Emotional Support Animals under FHA accommodations.", icon: <PawStroke className="w-[19px] h-[19px]" /> },
+                { t: "Lease violation risk", d: "An unauthorized pet can trigger eviction. Documentation gives you a lawful, documented accommodation.", icon: <AlertStroke /> },
+              ].map((f) => (
+                <div key={f.t} className="flex gap-3.5 py-4 border-t border-[#EAE3D7]">
+                  <span className="flex-none w-10 h-10 rounded-[10px] bg-[#FFF4EB] text-[#EA580C] flex items-center justify-center">
+                    {f.icon}
+                  </span>
+                  <div>
+                    <div className="text-[15.5px] font-bold text-[#231F1A] mb-1">{f.t}</div>
+                    <p className="text-[14px] leading-snug text-[#4A443C]">{f.d}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="md:col-span-7 grid sm:grid-cols-2 gap-4 content-stretch">
-              <ProblemCard
-                title="No-pet buildings"
-                body="Many leases ban pets. A reasonable accommodation request changes that conversation."
-              />
-              <ProblemCard
-                title="Pet rent and deposits"
-                body="Tenants with qualifying ESA documentation are typically not charged pet deposits or monthly pet fees."
-              />
-              <ProblemCard
-                title="Breed and weight rules"
-                body="Generally don't apply to qualified Emotional Support Animals under FHA accommodations."
-              />
-              <ProblemCard
-                title="Lease violation risk"
-                body="An unauthorized pet can trigger eviction. Documentation gives you a lawful, documented accommodation."
-              />
+            <div className="mt-6 rounded-r-xl border-l-[3px] border-[#3F7061] bg-[#EDF3F0] px-5 py-5">
+              <div className="text-[15px] font-bold text-[#15433C] mb-2.5">Your rights under the federal Fair Housing Act</div>
+              <ul className="grid gap-2">
+                {[
+                  "Landlords covered by the FHA must consider reasonable accommodation requests — including in no-pet buildings.",
+                  "A qualifying ESA is not treated as a pet, so pet rent, pet deposits, and breed-based fees typically don't apply.",
+                  "A landlord may ask for the ESA letter itself — but cannot demand a diagnosis or your medical history.",
+                ].map((r) => (
+                  <li key={r} className="flex gap-2.5 text-[14px] leading-snug text-[#4A443C]">
+                    <Check className="w-3.5 h-3.5 mt-1 flex-none text-[#3F7061]" /> <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-
-          {/* Centered CTA at end of Landlord Problem section */}
-          <div className="mt-10 md:mt-12 flex justify-center">
-            <Link
-              to={ASSESSMENT_HREF}
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-            >
-              Start the assessment
-              <span aria-hidden>→</span>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ─────────── 3b. ESA HOUSING RIGHTS — FHA-protected rights with a
-          warm emotional image alongside the section header. Image on the
-          right on desktop, stacks below text on mobile. Image chosen for
-          emotional resonance (person hugging their dog, big smile, real
-          not AI) — paired with the legally framed copy so the section
-          reads as "here's the law AND here's why it matters". 4-card grid
-          below spans the full width. */}
-      <section className="bg-[#FFFBF5] border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
-          <div className="grid md:grid-cols-12 gap-8 md:gap-12 items-center mb-10 md:mb-12">
-            <div className="md:col-span-6 text-center md:text-left">
-              <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                Fair Housing Act protections
+            <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5">
+              <a href={CTA_HREF} className="inline-flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[16px] px-7 py-4 rounded-md shadow-lg shadow-orange-500/25 transition-colors">
+                Check If You Qualify
+              </a>
+              <span className="text-[13.5px] text-[#4A443C] inline-flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-[#3F7061]" /> About 5 minutes · refund if you don't qualify
               </span>
-              <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-                ESA housing rights you can rely on.
-              </h2>
-              <p className="text-[15px] md:text-[16px] text-slate-600 leading-relaxed max-w-xl mx-auto md:mx-0">
-                When clinically appropriate, ESA documentation supports your right to request a reasonable accommodation under the federal Fair Housing Act — even in no-pet buildings. This is about keeping the bond with the animal who supports you, in the home you choose.
-              </p>
             </div>
-            <div className="md:col-span-6">
-              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
+          </div>
+          <div className="flex flex-col">
+            <div className="relative rounded-2xl overflow-hidden border border-[#EAE3D7] min-h-[280px] md:h-full md:min-h-0 grow">
+              <picture>
+                <source srcSet="/assets/lifestyle/esa-housing-couple-moving-in.webp" type="image/webp" />
                 <img
-                  src="/assets/blog/fp-curly-woman-fun-dog.jpg"
-                  alt="Person at home embracing their emotional support dog — warm housing scene"
-                  width={1200}
-                  height={800}
+                  src="/assets/lifestyle/esa-housing-couple-moving-in.jpg"
+                  alt="A couple moving into a bright new apartment, greeting their dog among moving boxes"
+                  className="w-full h-full object-cover aspect-[4/3] md:aspect-auto"
                   loading="lazy"
                   decoding="async"
-                  className="w-full h-auto block aspect-[4/3] md:aspect-[5/4] object-cover object-center"
+                  width={928}
+                  height={1152}
                 />
-              </div>
+              </picture>
             </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              {
-                title: "Federal Fair Housing Act protection",
-                body: "Landlords subject to the federal Fair Housing Act must consider reasonable accommodation requests for tenants with a qualifying emotional support animal — applying to apartments, condos, and many HOA communities.",
-              },
-              {
-                title: "Even in no-pet buildings",
-                body: "A qualifying ESA is not treated as a pet under FHA, so a no-pets clause is not, on its own, a valid reason to deny housing. Reasonable accommodation may apply even in strict no-pet apartments.",
-              },
-              {
-                title: "No pet rent or pet deposits",
-                body: "Tenants with valid ESA documentation are typically not charged pet rent, pet deposits, or breed-based fees on covered rental units. Protections are about equal access — not extra costs.",
-              },
-              {
-                title: "Documentation, not medical records",
-                body: "A landlord may ask for the ESA letter itself, but cannot demand a specific diagnosis or your full medical history. PawTenant ESA documentation protects your medical privacy.",
-              },
-            ].map((c) => (
-              <div key={c.title} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-emerald-300 transition">
-                <span className="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center mb-3 shadow-[0_2px_6px_rgba(16,185,129,0.25)]">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z" />
-                  </svg>
-                </span>
-                <div className="text-[14.5px] md:text-[15px] font-bold text-slate-900 mb-2 leading-snug">{c.title}</div>
-                <p className="text-[13px] text-slate-600 leading-relaxed">{c.body}</p>
-              </div>
-            ))}
+            <p className="flex items-center gap-2.5 text-[13px] font-semibold text-[#4A443C] pt-3">
+              <HomeStroke className="w-[17px] h-[17px] text-[#3F7061]" /> Move in together — with documentation your landlord can check.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* ─────────── 4. VERIFICATION (subtle blue-gray for trust theme) ─────────── */}
-      <section className="bg-[#EEF2F7] border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
-          <div className="max-w-3xl mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              Landlord verification
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              Your landlord can verify the documentation in under 60 seconds.
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed mb-4">
-              Every document carries a unique <span className="font-medium text-slate-900">Verification ID</span> that confirms authenticity without exposing any clinical detail. Your landlord enters the ID at <span className="font-mono text-[#0E2A47]">pawtenant.com/verify</span> and the verification page returns the result instantly.
-            </p>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              Landlord verification is one of the strongest trust signals a housing accommodation request can carry. The reviewing provider's full credentials — name, license number, NPI — are printed on the document and independently checkable through the public NPPES NPI registry. Your privacy is protected: only authenticity is confirmed, never diagnosis or treatment.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
-            {/* Steps */}
-            <div className="space-y-5">
-              <VerifyStep n={1} title="Landlord enters the Verification ID" tone="navy">
-                Format <span className="font-mono text-[#0E2A47]">PT-YYYY-XXXXXX</span>, printed on every document.
-              </VerifyStep>
-              <VerifyStep n={2} title="Verification page returns the result" tone="green">
-                Confirms the document is authentic and the provider is actively licensed.
-              </VerifyStep>
-              <VerifyStep n={3} title="Privacy-safe by design" tone="navy">
-                No diagnosis, no treatment history, no clinical detail disclosed.
-              </VerifyStep>
-            </div>
-
-            {/* Verify mock — cropped real screenshot */}
-            <VerifyMock />
-          </div>
-
-          {/* Inline CTA below verification card */}
-          <div className="mt-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="text-[13.5px] text-slate-600 leading-relaxed">
-              Ready to start? Get your verifiable ESA documentation in about five minutes.
-            </div>
-            <Link
-              to={ASSESSMENT_HREF}
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[13.5px] px-5 py-2.5 rounded-md transition flex-shrink-0 shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-            >
-              Start the assessment
-              <span aria-hidden>→</span>
-            </Link>
-          </div>
-
-          {/* Privacy-split callout — answers two specific landlord-facing
-              questions: "what does verification confirm?" vs "what stays
-              private?". Designed to neutralize fake-letter concerns AND
-              reassure tenants that their clinical detail is never exposed
-              during the verification flow. Two-column at md+, stacks on
-              mobile. */}
-          <div className="mt-12 pt-10 border-t border-slate-200 grid md:grid-cols-2 gap-5">
-            <div className="bg-white border border-emerald-200 rounded-xl p-5 md:p-6 shadow-[0_2px_8px_rgba(16,185,129,0.06)]">
-              <div className="flex items-center gap-2.5 mb-3">
-                <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_2px_6px_rgba(16,185,129,0.30)]">
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </span>
-                <div className="text-[14px] font-bold text-slate-900">What landlords can verify</div>
-              </div>
-              <ul className="space-y-2 text-[12.5px] text-slate-600 leading-relaxed">
-                <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>The Verification ID is real and active</span></li>
-                <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>The provider holds an active mental health license in your state</span></li>
-                <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>Provider name, license number, and NPI shown</span></li>
-                <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>Letter type, state, issue and expiration dates</span></li>
-              </ul>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl p-5 md:p-6">
-              <div className="flex items-center gap-2.5 mb-3">
-                <span className="w-9 h-9 rounded-full bg-[#0E2A47] text-white flex items-center justify-center flex-shrink-0 shadow-[0_2px_6px_rgba(14,42,71,0.25)]">
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                </span>
-                <div className="text-[14px] font-bold text-slate-900">What stays private</div>
-              </div>
-              <ul className="space-y-2 text-[12.5px] text-slate-600 leading-relaxed">
-                <li className="flex items-start gap-2"><span className="text-slate-400 font-bold flex-shrink-0">—</span><span>Your diagnosis or any clinical detail</span></li>
-                <li className="flex items-start gap-2"><span className="text-slate-400 font-bold flex-shrink-0">—</span><span>Your assessment responses or treatment history</span></li>
-                <li className="flex items-start gap-2"><span className="text-slate-400 font-bold flex-shrink-0">—</span><span>Provider notes or recommendations</span></li>
-                <li className="flex items-start gap-2"><span className="text-slate-400 font-bold flex-shrink-0">—</span><span>Anything beyond what's needed to confirm authenticity</span></li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Bottom legal/trust strip */}
-          <div className="mt-8 pt-6 border-t border-slate-200 grid sm:grid-cols-3 gap-4">
-            <SmallTrust label="License verifiable" detail="on NPPES NPI registry" tone="green" />
-            <SmallTrust label="License # printed" detail="on every document" tone="green" />
-            <SmallTrust label="HIPAA-aligned" detail="data handling" tone="green" />
-          </div>
-        </div>
-      </section>
-
-      {/* ─────────── 4b. STATE RELEVANCE — "Valid in all 50 states" ─────────── */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-20">
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              Nationwide coverage
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              ESA Letter Support Across All 50 States
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              Our licensed providers can evaluate your situation and provide ESA documentation when clinically appropriate — in compliance with Fair Housing guidelines.
-            </p>
-          </div>
-
-          {/* Expanded state grid — 15 highest-intent states for Google Ads
-              targeting. Includes all 10 user-specified examples plus Ohio,
-              Michigan, Washington, Massachusetts, Colorado for stronger
-              national-coverage perception without showing all 50. Stronger
-              hover treatment + focus-visible ring for keyboard nav. */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 max-w-4xl mx-auto mb-7">
-            {[
-              { name: "California", slug: "california" },
-              { name: "Texas", slug: "texas" },
-              { name: "Florida", slug: "florida" },
-              { name: "New York", slug: "new-york" },
-              { name: "Illinois", slug: "illinois" },
-              { name: "Pennsylvania", slug: "pennsylvania" },
-              { name: "Virginia", slug: "virginia" },
-              { name: "North Carolina", slug: "north-carolina" },
-              { name: "Georgia", slug: "georgia" },
-              { name: "Arizona", slug: "arizona" },
-              { name: "Ohio", slug: "ohio" },
-              { name: "Michigan", slug: "michigan" },
-              { name: "Washington", slug: "washington" },
-              { name: "Massachusetts", slug: "massachusetts" },
-              { name: "Colorado", slug: "colorado" },
-            ].map((s) => (
-              <Link
-                key={s.slug}
-                to={`/esa-letter/${s.slug}`}
-                className="group flex items-center justify-center gap-2 px-3 py-3 rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-[#0E2A47] hover:shadow-[0_4px_12px_rgba(16,185,129,0.15)] transition text-[13.5px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
-              >
-                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_1px_3px_rgba(16,185,129,0.35)] transition group-hover:scale-110">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </span>
-                <span>{s.name}</span>
-              </Link>
-            ))}
-          </div>
-
-          <p className="text-center text-[12.5px] text-slate-500 leading-relaxed max-w-xl mx-auto mb-8">
-            Requirements may vary slightly by state, but ESA housing rights are federally protected under the Fair Housing Act.
-          </p>
-
-          <div className="flex justify-center">
-            <Link
-              to={ASSESSMENT_HREF}
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-            >
-              Start the assessment
-              <span aria-hidden>→</span>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Section 4c removed — its 4 trust booster cards duplicated the
-          main Verification section (4), the new privacy-split callout, and
-          the Why-PawTenant comparison table. The strongest unique points
-          (Licensed providers, License printed, Verification ID, HIPAA-
-          aligned) already appear in section 2 (Trust Strip) and the
-          privacy-split panel inside section 4. */}
-
-      {/* ─────────── 5. PROVIDER REVIEW ─────────── */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
-          <span className="inline-block text-[11px] tracking-[0.08em] uppercase text-[#0E2A47] bg-slate-100 px-2.5 py-1 rounded-full mb-3">
-            Licensed professional review
-          </span>
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18] max-w-2xl">
-            Reviewed by a licensed mental health provider in your state.
+      {/* ─────────── 4. PROCESS (centered) ─────────── */}
+      <section className="bg-[#F7F2E9] py-14 md:py-20">
+        <div className={`${WRAP} text-center`}>
+          <h2 className="text-[#231F1A] text-[27px] md:text-[34px] font-semibold" style={FONT_DISPLAY}>
+            A simple, three-step process.
           </h2>
-          <p className="text-[14px] text-slate-600 leading-relaxed mb-7 max-w-2xl">
-            Each assessment is reviewed by an actively licensed mental health professional in the state where you live. We do not auto-approve.
-          </p>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {PROVIDERS.map((p) => (
-              <ProviderCard key={p.name} {...p} />
+          <div className="relative mt-9 mx-auto max-w-[340px] md:max-w-none flex flex-col items-center md:grid md:grid-cols-3 md:gap-6">
+            {/* DESKTOP-ONLY horizontal connector, drawn through the circle centers
+                (top:22px) between the first and last circle. On mobile the
+                connector is an in-flow segment rendered after each step's text
+                (below) so the line never crosses any title/description. */}
+            <span aria-hidden className="hidden md:block absolute z-0 bg-[#DCD2C0] left-[16.66%] right-[16.66%] top-[22px] h-0.5" />
+            {[
+              { n: 1, t: "Complete the assessment", d: "A confidential clinical questionnaire. About 5 minutes." },
+              { n: 2, t: "Licensed professional review", d: "A provider licensed in your state reviews and evaluates. Typically within 24 hours." },
+              { n: 3, t: "Documentation issued", d: "If you qualify, you receive housing-related documentation. If not, your payment is refunded." },
+            ].map((s, i) => (
+              <div key={s.n} className="relative z-10 flex flex-col items-center w-full px-2 pt-2.5 md:py-2.5">
+                <span className="flex-none w-11 h-11 rounded-full bg-[#231F1A] text-white text-[17px] font-bold flex items-center justify-center ring-[6px] ring-[#F7F2E9] md:mb-4">
+                  {s.n}
+                </span>
+                <h3 className="text-[18px] font-semibold text-[#231F1A] mt-3.5 md:mt-0 mb-1.5" style={FONT_DISPLAY}>{s.t}</h3>
+                <p className="text-[14.5px] leading-snug text-[#4A443C] max-w-[30ch]">{s.d}</p>
+                {/* mobile-only connector: sits in normal flow, in the empty space
+                    below the text and above the next circle — never behind text */}
+                {i < 2 && <span aria-hidden className="md:hidden w-0.5 h-7 bg-[#DCD2C0] mt-4" />}
+              </div>
             ))}
           </div>
-
-          <div className="mt-6 text-[12px] text-slate-500 italic">
-            Provider availability depends on the states where each clinician is currently licensed. Provider matching happens during assessment.
+          <div className="mt-10 flex flex-col items-center gap-3">
+            <a href={CTA_HREF} className="w-full max-w-[340px] sm:w-auto inline-flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[16px] px-7 py-4 rounded-md shadow-lg shadow-orange-500/25 transition-colors">
+              Check If You Qualify
+            </a>
+            <span className="text-[13.5px] text-[#6E675C]">Secure PDF delivery — typically within 24 hours of review</span>
           </div>
         </div>
       </section>
 
-      {/* ─────────── 6. HOW IT WORKS ─────────── */}
-      <section className="bg-slate-50 border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-24 grid md:grid-cols-12 gap-8 md:gap-10 items-center">
-          <div className="md:col-span-6 md:order-2 overflow-hidden rounded-xl border border-slate-200">
-            <img
-              src="/assets/testimonials/couple-with-dog-home.jpg"
-              alt="Couple at home embracing their emotional support dog — the bond an ESA letter is designed to protect"
-              width={1280}
-              height={960}
-              loading="lazy"
-              decoding="async"
-              className="w-full h-auto object-cover aspect-[4/3] object-center"
-            />
-          </div>
-
-          <div className="md:col-span-6 md:order-1">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-6 md:mb-8 leading-[1.18]">
-              A simple, three-step process.
+      {/* ─────────── 5. WHAT YOU RECEIVE (centered, balanced) ─────────── */}
+      <section className="bg-[#FDFBF7] py-14 md:py-20">
+        <div className={WRAP}>
+          <div className="max-w-[680px] mx-auto text-center mb-10">
+            <Eyebrow>What's included</Eyebrow>
+            <h2 className="text-[#231F1A] text-[27px] md:text-[34px] font-semibold mb-3" style={FONT_DISPLAY}>
+              Everything your housing request needs.
             </h2>
-
-            <ol className="space-y-5">
-              <Step n={1} title="Complete the assessment">
-                A confidential clinical questionnaire. About 5 minutes.
-              </Step>
-              <Step n={2} title="Licensed professional review">
-                A provider licensed in your state reviews and evaluates. Typically within 24 hours.
-              </Step>
-              <Step n={3} title="Documentation issued">
-                If you qualify, you receive housing-related documentation. If not, your payment is refunded.
-              </Step>
-            </ol>
-
-            {/* Step CTA */}
-            <div className="mt-8">
-              <Link
-                to={ASSESSMENT_HREF}
-                className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] md:text-[15px] px-6 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-              >
-                Start the assessment
-                <span aria-hidden>→</span>
-              </Link>
-              <div className="text-[12px] text-slate-500 mt-2.5">
-                About 5 minutes · Refund if you don't qualify after review.
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─────────── 6b. ASSESSMENT UI PREVIEW — REMOVED 2026-05-19
-          Phase 1 mobile-first cleanup. The video clip section was adding
-          cognitive load without lift in the landing flow. Component file
-          and assets are kept on disk (still used by /how-to-get-esa). */}
-
-      {/* ─────────── 7. PRICING — ESA + PSD side-by-side, Klarna chips.
-          ESA Letter is recommended for the Google Ads housing audience.
-          PSD Letter is the alternative for users with trained psychiatric
-          service dogs. Both reviewed by a Licensed Mental Health
-          Practitioner. Klarna brand pink (#FFA8CD) used inside each card +
-          a branded Klarna trust panel below. */}
-      <section className="bg-slate-50 border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-5 py-16 md:py-24">
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              Refund if you don't qualify
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 leading-[1.18] mb-3">
-              Pick the right letter for you.
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              Both options reviewed by a Licensed Mental Health Practitioner. If you do not qualify after review, your payment is refunded.
+            <p className="text-[#4A443C] text-[16px] md:text-[18px] leading-relaxed">
+              If a licensed provider approves your assessment, your documentation arrives ready to hand to your landlord.
             </p>
           </div>
-
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8 mb-6">
-            {/* ESA Letter card — recommended for the housing-focused Google audience */}
-            <div className="relative bg-white border-2 border-[#0E2A47] rounded-2xl p-7 md:p-8 shadow-[0_8px_24px_rgba(15,23,42,0.08)] flex flex-col">
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] font-medium bg-emerald-600 text-white px-3 py-1 rounded-full shadow-sm">
-                <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                Recommended for housing
-              </span>
-
-              <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-2">ESA Letter — one-time</div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <div className="text-4xl md:text-5xl font-medium tracking-tight text-slate-900">$129</div>
-                <div className="text-xs text-slate-500">for 1 pet · valid 1 year</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 md:gap-x-9 lg:gap-x-10">
+            {[
+              { b: "Licensed provider evaluation", d: "Reviewed by a Licensed Mental Health Practitioner in your state — never auto-approved." },
+              { b: "Signed, FHA-compliant ESA letter", d: "Housing-focused language written for reasonable accommodation requests." },
+              { b: "Credentials printed on the letter", d: "Provider name, license number, and NPI — independently checkable on NPPES." },
+              { b: "Unique letter verification ID", d: "Your landlord confirms it at pawtenant.com/verify in seconds." },
+              { b: "Secure PDF delivery", d: "Typically within 24 hours of provider review." },
+              { b: "Full refund if you don't qualify", d: "If a provider doesn't approve after clinical review, your payment is refunded." },
+            ].map((r) => (
+              <div key={r.b} className="flex gap-3 py-4 border-t border-[#EAE3D7]">
+                <Check className="w-[17px] h-[17px] mt-0.5 flex-none text-[#3F7061]" />
+                <div>
+                  <div className="text-[15px] font-bold text-[#231F1A] mb-0.5">{r.b}</div>
+                  <p className="text-[13.5px] leading-snug text-[#4A443C]">{r.d}</p>
+                </div>
               </div>
-              <div className="text-xs text-slate-500 mb-3">
-                2 or 3 pets covered at a <span className="text-slate-900 font-medium">fixed $149 total</span> · up to 3 pets per document
-              </div>
-
-              {/* Klarna chip — Klarna brand pink */}
-              <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
-                <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                <span className="text-[10px] text-slate-700">Available at checkout</span>
-              </div>
-
-              <ul className="grid gap-3 mb-7 border-t border-slate-100 pt-5">
-                <PriceFeat>Reviewed by a Licensed Mental Health Practitioner in your state</PriceFeat>
-                <PriceFeat>FHA-aligned housing-related ESA documentation</PriceFeat>
-                <PriceFeat>Provider's credentials, license #, and NPI printed on the document</PriceFeat>
-                <PriceFeat>Unique Verification ID with landlord verification support</PriceFeat>
-                <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
-                <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
-                <PriceFeat>Covers 2 or 3 pets at a fixed $149 total</PriceFeat>
-                <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
-              </ul>
-
-              <Link
-                to={ASSESSMENT_HREF}
-                className="mt-auto block w-full text-center bg-orange-500 hover:bg-orange-600 text-white font-medium text-[15px] px-5 py-3.5 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-              >
-                Start the ESA assessment →
-              </Link>
-              <div className="text-center text-[11px] text-slate-500 mt-3">
-                For renters seeking housing accommodation under the Fair Housing Act.
-              </div>
-            </div>
-
-            {/* PSD Letter card — alternative for trained psychiatric service dogs */}
-            <div className="relative bg-white border border-slate-200 rounded-2xl p-7 md:p-8 shadow-[0_2px_8px_rgba(15,23,42,0.05)] flex flex-col">
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] font-medium bg-slate-700 text-white px-3 py-1 rounded-full shadow-sm">
-                <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                For trained service dogs
-              </span>
-
-              <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-2">PSD Letter — one-time</div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <div className="text-4xl md:text-5xl font-medium tracking-tight text-slate-900">From&nbsp;$129</div>
-              </div>
-              <div className="text-xs text-slate-500 mb-3">
-                Flat price · <span className="text-slate-900 font-medium">covers up to 3 trained psychiatric service dogs</span>
-              </div>
-
-              {/* Klarna chip — Klarna brand pink */}
-              <div className="inline-flex items-center gap-2 mb-5 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
-                <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                <span className="text-[10px] text-slate-700">Available at checkout</span>
-              </div>
-
-              <ul className="grid gap-3 mb-7 border-t border-slate-100 pt-5">
-                <PriceFeat>Reviewed by a Licensed Mental Health Practitioner</PriceFeat>
-                <PriceFeat>Psychiatric Service Dog (PSD) letter for trained service dogs</PriceFeat>
-                <PriceFeat>Supports housing accommodation requests under FHA</PriceFeat>
-                <PriceFeat>Eligible for air-travel documentation (DOT Service Animal form)</PriceFeat>
-                <PriceFeat>Provider's credentials, license #, and NPI printed on the document</PriceFeat>
-                <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
-                <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
-                <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
-              </ul>
-
-              <Link
-                to={PSD_ASSESSMENT_HREF}
-                className="mt-auto block w-full text-center bg-[#0E2A47] hover:bg-[#091B30] text-white font-medium text-[15px] px-5 py-3.5 rounded-md transition shadow-[0_2px_6px_rgba(14,42,71,0.25)]"
-              >
-                Start the PSD assessment →
-              </Link>
-              <div className="text-center text-[11px] text-slate-500 mt-3">
-                For handlers of trained psychiatric service dogs.
-              </div>
-            </div>
+            ))}
           </div>
+        </div>
+      </section>
 
-          {/* Klarna trust panel — Klarna brand pink */}
-          <div className="mt-2 max-w-2xl mx-auto bg-gradient-to-br from-[#FFF5FA] to-[#FFE9F1] border border-[#FFA8CD] rounded-xl p-5 flex items-start gap-3 shadow-[0_2px_12px_rgba(255,168,205,0.20)]">
-            <span
-              aria-hidden
-              className="w-10 h-10 rounded-lg bg-[#FFA8CD] text-[#1A0A12] flex items-center justify-center flex-shrink-0 font-black text-lg leading-none tracking-tight shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
-            >
-              K.
+      {/* ─────────── 6. SAMPLE LETTER — what the Verification ID is + where it appears ─────────── */}
+      <section className="bg-[#F7F2E9] py-14 md:py-20">
+        <div className={`${WRAP} grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-14 items-center`}>
+          <div className="rounded-2xl border border-[#EAE3D7] p-7 sm:p-10 flex justify-center" style={{ background: "linear-gradient(165deg,#F7F2E9,#EFE7D8)" }}>
+            <figure className="m-0 w-[min(400px,100%)] bg-white border border-[#EFE9DD] rounded-lg shadow-[0_14px_40px_rgba(35,31,26,0.13)] p-3.5">
+              <img
+                src="/images/checkout/esa-sample-letter.svg"
+                alt="Sample PawTenant ESA letter showing the verification ID, provider credentials, and housing-accommodation language. Names and details are placeholders."
+                className="w-full"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+          </div>
+          <div>
+            <h2 className="text-[#231F1A] text-[27px] md:text-[34px] font-semibold" style={FONT_DISPLAY}>
+              Every letter carries a Verification ID.
+            </h2>
+            <p className="text-[#4A443C] text-[16px] md:text-[18px] leading-relaxed mt-3.5 mb-6">
+              The reviewing provider's full credentials — name, license number, NPI — are printed on the document and independently checkable through the public NPPES NPI registry.
+            </p>
+            <ul className="grid gap-2.5 mb-6">
+              {[
+                "Unique Verification ID printed in the letter header",
+                "Provider name, license number, and NPI on the document",
+                "Housing-accommodation language aligned with FHA standards",
+                "Your privacy protected — authenticity is confirmed, never diagnosis",
+              ].map((x) => (
+                <li key={x} className="flex gap-2.5 text-[15px] leading-snug text-[#4A443C]"><Check className="w-4 h-4 mt-0.5 flex-none text-[#3F7061]" /> <span>{x}</span></li>
+              ))}
+            </ul>
+            <p className="text-[12.5px] text-[#6E675C] mb-6">Sample template · placeholder names · individual letters vary based on the provider's clinical review.</p>
+            <a href={CTA_HREF} className="inline-flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[16px] px-7 py-4 rounded-md shadow-lg shadow-orange-500/25 transition-colors">
+              Check If You Qualify
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ─────────── 7. VERIFICATION (input + result — native, sample data) ─────────── */}
+      <section id="verification" className="bg-[#FDFBF7] py-14 md:py-20 scroll-mt-20">
+        <div className={WRAP}>
+          <div className="max-w-[680px] mx-auto text-center mb-5">
+            <Eyebrow>Landlord verification</Eyebrow>
+            <h2 className="text-[#231F1A] text-[27px] md:text-[34px] font-semibold mb-3" style={FONT_DISPLAY}>
+              Your landlord can verify the letter in under 60 seconds.
+            </h2>
+            <p className="text-[#4A443C] text-[16px] md:text-[18px] leading-relaxed">
+              Every letter carries a unique Verification ID. Your landlord enters it at pawtenant.com/verify — here's the exact experience they see, from entry to verified result.
+            </p>
+          </div>
+          <div className="text-center">
+            <span className="inline-flex items-center gap-2 text-[11.5px] font-bold tracking-[0.05em] uppercase text-[#6E675C] bg-white border border-[#EAE3D7] rounded-full px-3.5 py-1.5 mb-6">
+              Interactive preview · sample data only
             </span>
-            <div className="min-w-0">
-              <div className="text-[14px] font-semibold text-slate-900 leading-snug mb-1">
-                Pay with <span className="text-[#B8527F]">Klarna</span> at checkout.
-              </div>
-              <div className="text-[12.5px] text-slate-600 leading-relaxed">
-                Subject to eligibility and{" "}
-                <a
-                  href="https://www.klarna.com/us/terms-of-use/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:text-slate-800"
+          </div>
+          <div className="max-w-[1000px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-7 items-start">
+            {/* INPUT */}
+            <div>
+              <p className="flex items-center justify-center gap-2 text-[11.5px] font-bold tracking-[0.06em] uppercase text-[#6E675C] mb-3">
+                <span className="w-5 h-5 rounded-full bg-[#231F1A] text-white text-[11px] font-bold flex items-center justify-center">1</span>
+                Landlord enters the ID
+              </p>
+              <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-7 shadow-[0_6px_22px_rgba(35,31,26,0.06)]">
+                <h3 className="font-sans text-[18px] font-extrabold text-[#111827] mb-2">Letter Verification</h3>
+                <p className="text-[13px] leading-snug text-[#6B7280] mb-[18px]">
+                  This page verifies the authenticity and status of a Pawtenant-issued verification ID. Enter the ID exactly as it appears on the letter.
+                </p>
+                <label htmlFor="lp-verify-id" className="block text-[11px] font-bold tracking-[0.1em] uppercase text-[#9CA3AF] mb-2">Verification ID</label>
+                <input
+                  id="lp-verify-id"
+                  type="text"
+                  defaultValue={VERIFY_SAMPLE.id}
+                  spellCheck={false}
+                  autoComplete="off"
+                  readOnly
+                  aria-describedby="lp-verify-help"
+                  className="w-full font-mono text-[16px] tracking-[0.8px] uppercase text-[#111827] bg-white border border-[#E5E7EB] rounded-xl px-4 py-3.5"
+                />
+                <p id="lp-verify-help" className="text-[12px] text-[#9CA3AF] mt-2 mb-[18px]">Format: ESA-XX-XXXXXXX or PSD-XX-XXXXXXX</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerifyPulse(true);
+                    window.setTimeout(() => setVerifyPulse(false), 1400);
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-[14px] rounded-xl px-6 py-3.5 transition-colors"
                 >
-                  Klarna payment terms
-                </a>
-                . Eligibility is determined by Klarna — approval is not guaranteed.
+                  Verify Letter ID
+                </button>
+                <p className="flex gap-1.5 text-[11.5px] leading-snug text-[#9CA3AF] mt-[18px]">
+                  <LockStroke className="w-[13px] h-[13px] mt-0.5 flex-none" />
+                  This verification confirms the authenticity of the letter ID only. No patient health information, diagnosis, or personal details are displayed on this page.
+                </p>
+              </div>
+            </div>
+            {/* RESULT */}
+            <div>
+              <p className="flex items-center justify-center gap-2 text-[11.5px] font-bold tracking-[0.06em] uppercase text-[#6E675C] mb-3">
+                <span className="w-5 h-5 rounded-full bg-[#231F1A] text-white text-[11px] font-bold flex items-center justify-center">2</span>
+                The verified result appears <span className="normal-case tracking-normal font-semibold text-[#6E675C]">— sample data</span>
+              </p>
+              <div
+                className={`bg-white border border-[#A7F3D0] rounded-2xl overflow-hidden shadow-[0_6px_22px_rgba(5,150,105,0.09)] transition-shadow ${verifyPulse ? "ring-4 ring-emerald-500/20" : ""}`}
+                aria-live="polite"
+              >
+                <div className="text-center px-6 pt-[22px] pb-1.5">
+                  <span className="w-[52px] h-[52px] rounded-[15px] bg-[#D1FAE5] text-[#059669] flex items-center justify-center mx-auto mb-3">
+                    <ShieldCheck />
+                  </span>
+                  <h3 className="font-sans text-[20px] font-extrabold text-[#111827] mb-1.5">Letter Verified</h3>
+                  <p className="text-[13px] text-[#6B7280]">This Pawtenant-issued letter ID is authentic and currently valid.</p>
+                </div>
+                <div className="bg-[#ECFDF5] border-y border-[#D1FAE5] mt-4 px-[22px] py-3 flex items-center justify-between gap-2.5">
+                  <span className="flex items-center gap-2 text-[11px] font-bold tracking-[0.08em] uppercase text-[#047857]">
+                    <FileCheck /> Verification Result
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[12.5px] font-bold bg-[#D1FAE5] text-[#047857] border border-[#A7F3D0]">
+                    <ShieldCheck className="w-[13px] h-[13px]" /> Valid
+                  </span>
+                </div>
+                <div className="px-[22px] py-[18px] grid gap-3.5">
+                  <Field label="Verification ID" value={VERIFY_SAMPLE.id} mono />
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <Field label="Letter Type" value={VERIFY_SAMPLE.type} />
+                    <Field label="State" value={VERIFY_SAMPLE.state} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <Field label="Issue Date" value={VERIFY_SAMPLE.issued} />
+                    <Field label="Expiration Date" value={VERIFY_SAMPLE.expires} />
+                  </div>
+                  <Field label="Issuing Provider" value={VERIFY_SAMPLE.provider} />
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <Field label="NPI Number" value={VERIFY_SAMPLE.npi} mono />
+                    <Field label="State License (CA)" value={VERIFY_SAMPLE.license} mono />
+                  </div>
+                </div>
+                <div className="border-t border-[#F3F4F6] bg-[#F9FAFB] px-[22px] py-3">
+                  <p className="flex gap-1.5 text-[11.5px] leading-snug text-[#9CA3AF]">
+                    <LockStroke className="w-[13px] h-[13px] mt-0.5 flex-none" />
+                    This verification confirms the authenticity of the letter ID only. No patient health information is displayed.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-
-          {/* Subscription teaser — now a clickable Link to the assessment
-              flow (was a static div, didn't navigate). Whole card is the
-              tap target; arrow affordance on the right hints at the action. */}
-          <Link
-            to={`${ASSESSMENT_HREF}?plan=subscription`}
-            className="group mt-6 max-w-2xl mx-auto bg-white border border-slate-200 rounded-xl p-5 flex items-start gap-4 shadow-[0_2px_6px_rgba(15,23,42,0.04)] hover:border-[#0E2A47]/40 hover:shadow-[0_4px_12px_rgba(15,23,42,0.08)] transition cursor-pointer"
-          >
-            <span className="w-10 h-10 rounded-full bg-[#0E2A47]/5 border border-[#0E2A47]/20 text-[#0E2A47] flex items-center justify-center flex-shrink-0">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M21 12a9 9 0 1 1-3-6.7" />
-                <path d="M21 4v5h-5" />
-              </svg>
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-0.5">
-                <div className="text-[13.5px] font-medium text-slate-900">Prefer annual renewal?</div>
-                <span className="text-[9.5px] uppercase tracking-wider text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">Optional</span>
+          {/* what can be verified / what stays private */}
+          <div className="max-w-[1000px] mx-auto mt-9 grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-12">
+            <div>
+              <div className="flex items-center gap-2.5 text-[14.5px] font-bold text-[#231F1A] mb-2.5">
+                <Check className="w-4 h-4 text-[#3F7061]" /> What landlords can verify
               </div>
-              <div className="text-[12px] text-slate-600 leading-relaxed">
-                <span className="font-medium text-slate-900">$115/year</span> for 1 pet · <span className="font-medium text-slate-900">$135/year</span> fixed total for 2 or 3 pets · cancel anytime
-              </div>
+              <ul className="grid gap-2">
+                {[
+                  "The Verification ID is real and active",
+                  "The provider holds an active mental health license in your state",
+                  "Provider name, license number, and NPI shown",
+                  "Letter type, state, issue and expiration dates",
+                ].map((x) => (
+                  <li key={x} className="flex gap-2.5 text-[13.5px] leading-snug text-[#4A443C]"><Check className="w-3.5 h-3.5 mt-0.5 flex-none text-[#3F7061]" /> <span>{x}</span></li>
+                ))}
+              </ul>
             </div>
-            <span
-              aria-hidden
-              className="self-center text-[#0E2A47] text-[18px] leading-none group-hover:translate-x-0.5 transition-transform flex-shrink-0"
-            >
-              →
-            </span>
-          </Link>
+            <div>
+              <div className="flex items-center gap-2.5 text-[14.5px] font-bold text-[#231F1A] mb-2.5">
+                <LockStroke className="w-4 h-4 text-[#3F7061]" /> What stays private
+              </div>
+              <ul className="grid gap-2">
+                {[
+                  "Your diagnosis or any clinical detail",
+                  "Your assessment responses or treatment history",
+                  "Provider notes or recommendations",
+                  "Anything beyond what's needed to confirm authenticity",
+                ].map((x) => (
+                  <li key={x} className="flex gap-2.5 text-[13.5px] leading-snug text-[#4A443C]"><Dash className="w-3.5 h-3.5 mt-0.5 flex-none text-[#6E675C]" /> <span>{x}</span></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="max-w-[820px] mx-auto mt-6 text-center text-[13px] text-[#6E675C]">
+            Provider licenses are also independently verifiable on the public NPPES NPI registry · HIPAA-aligned data handling
+          </p>
         </div>
       </section>
 
-      {/* ─────────── 7b. ESA vs PSD — quick comparison so users pick the
-          right path (especially after seeing both pricing cards above).
-          Two-column comparison on desktop, stacks on mobile. Each column
-          lists 4 distinguishing features. Each column also has a "Best for"
-          line + a CTA to the right assessment flow. No keyword stuffing —
-          targets the high-intent 'ESA vs PSD' Google query naturally. */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
-          <div className="text-center max-w-2xl mx-auto mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              ESA vs PSD
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              ESA Letter vs Psychiatric Service Dog Letter — which fits?
+      {/* ─────────── 8. ESA PRICING (shared source — no PSD price) ─────────── */}
+      <PlanPricingSection
+        theme="esa"
+        id="pricing"
+        className="bg-[#FDF8F3]"
+        eyebrow={ESA_PLAN_COPY.eyebrow}
+        heading={ESA_PLAN_COPY.heading}
+        subheading={ESA_PLAN_COPY.subheading}
+        footnote={ESA_PLAN_COPY.footnote}
+        cards={buildEsaPlanCards("/assessment")}
+      />
+
+      {/* ─────────── 9. PROVIDERS + COVERAGE ─────────── */}
+      <section className="bg-[#FDFBF7] py-14 md:py-20">
+        <div className={WRAP}>
+          <div className="max-w-[680px] mx-auto text-center mb-8">
+            <Eyebrow>Licensed professional review</Eyebrow>
+            <h2 className="text-[#231F1A] text-[27px] md:text-[34px] font-semibold mb-3" style={FONT_DISPLAY}>
+              Reviewed by a licensed mental health provider in your state.
             </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed">
-              Both are issued by a Licensed Mental Health Practitioner. The difference is whether your animal has been trained to perform specific tasks for a psychiatric disability — and what protections you actually need.
+            <p className="text-[#4A443C] text-[16px] md:text-[18px] leading-relaxed">
+              Each assessment is reviewed by an actively licensed mental health professional in the state where you live. We do not auto-approve.
             </p>
           </div>
-
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8">
-            {/* ESA column */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 md:p-7 flex flex-col">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-[0_2px_6px_rgba(16,185,129,0.25)]">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V9.5z" />
-                  </svg>
-                </span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+            {PROVIDERS.map((p) => (
+              <div key={p.name} className="flex gap-4 bg-white border border-[#EAE3D7] rounded-2xl p-[22px]">
+                <img src={p.photo} alt={`${p.name}, ${p.credential}`} loading="lazy" decoding="async" width={58} height={58} className="flex-none w-[58px] h-[58px] rounded-full object-cover ring-1 ring-[#EAE3D7]" />
                 <div>
-                  <div className="text-[10px] tracking-[0.14em] uppercase text-emerald-700 font-bold mb-0.5">For housing</div>
-                  <div className="text-[18px] font-bold text-slate-900 leading-tight">ESA Letter</div>
+                  <div className="text-[15.5px] font-bold text-[#231F1A] leading-tight">{p.name}</div>
+                  <div className="text-[12.5px] font-medium text-[#6E675C] mt-0.5 mb-2">{p.credential}</div>
+                  <p className="text-[13.5px] leading-snug text-[#4A443C] mb-2.5">{p.bio}</p>
+                  <div className="flex flex-wrap gap-3.5 text-[12px] font-bold text-[#15433C]">
+                    <span className="inline-flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> NPI verifiable</span>
+                    <span>Active license</span>
+                  </div>
                 </div>
               </div>
-              <p className="text-[13px] text-slate-600 leading-relaxed mb-4">
-                <span className="font-medium text-slate-900">Best for:</span> renters who need a housing accommodation under the Fair Housing Act. No specialized training required — comfort and presence is the role.
-              </p>
-              <ul className="space-y-2.5 mb-6 border-t border-slate-200 pt-4">
-                {[
-                  "Reviewed by a Licensed Mental Health Practitioner",
-                  "Housing-focused (Fair Housing Act reasonable accommodation)",
-                  "No specialized task training required",
-                  "Does NOT grant ADA public access or airline travel",
-                ].map((feat) => (
-                  <li key={feat} className="flex gap-2 items-start text-[12.5px] text-slate-700 leading-relaxed">
-                    <span className="text-emerald-600 font-medium flex-shrink-0">✓</span>
-                    <span>{feat}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to={ASSESSMENT_HREF}
-                className="mt-auto block w-full text-center bg-orange-500 hover:bg-orange-600 text-white font-medium text-[14px] px-5 py-3 rounded-md transition shadow-[0_2px_6px_rgba(249,115,22,0.25)]"
-              >
-                Start the ESA assessment →
-              </Link>
-            </div>
+            ))}
+          </div>
+          <p className="text-center text-[13.5px] text-[#6E675C] mt-6">
+            Provider availability depends on the states where each clinician is currently licensed. Provider matching happens during assessment.{" "}
+            <Link to="/our-providers" className="font-bold text-[#3F7061] hover:underline">See all our providers →</Link>
+          </p>
 
-            {/* PSD column */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 md:p-7 flex flex-col">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="w-11 h-11 rounded-xl bg-[#0E2A47] text-white flex items-center justify-center shadow-[0_2px_6px_rgba(14,42,71,0.25)]">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <path d="m9 12 2 2 4-4" />
-                  </svg>
-                </span>
-                <div>
-                  <div className="text-[10px] tracking-[0.14em] uppercase text-[#0E2A47] font-bold mb-0.5">For housing + travel</div>
-                  <div className="text-[18px] font-bold text-slate-900 leading-tight">PSD Letter</div>
-                </div>
-              </div>
-              <p className="text-[13px] text-slate-600 leading-relaxed mb-4">
-                <span className="font-medium text-slate-900">Best for:</span> handlers of a dog trained to perform specific psychiatric tasks. Supports both housing accommodation AND airline travel (DOT Service Animal form).
-              </p>
-              <ul className="space-y-2.5 mb-6 border-t border-slate-200 pt-4">
-                {[
-                  "Reviewed by a Licensed Mental Health Practitioner",
-                  "Supports housing accommodation requests under FHA",
-                  "Eligible for air travel (DOT Service Animal form)",
-                  "Requires a trained psychiatric service dog (specific tasks)",
-                ].map((feat) => (
-                  <li key={feat} className="flex gap-2 items-start text-[12.5px] text-slate-700 leading-relaxed">
-                    <span className="text-emerald-600 font-medium flex-shrink-0">✓</span>
-                    <span>{feat}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to={PSD_ASSESSMENT_HREF}
-                className="mt-auto block w-full text-center bg-[#0E2A47] hover:bg-[#091B30] text-white font-medium text-[14px] px-5 py-3 rounded-md transition shadow-[0_2px_6px_rgba(14,42,71,0.25)]"
-              >
-                Start the PSD assessment →
-              </Link>
+          <div className="mt-11 pt-9 border-t border-[#EAE3D7] text-center">
+            <h3 className="text-[20px] font-semibold text-[#231F1A] mb-2" style={FONT_DISPLAY}>ESA Letter Support Across All 50 States</h3>
+            <p className="max-w-[64ch] mx-auto text-[14px] text-[#4A443C] mb-[18px]">
+              Our licensed providers can evaluate your situation and provide ESA documentation when clinically appropriate — in compliance with Fair Housing guidelines. Requirements may vary slightly by state, but ESA housing rights are federally protected under the Fair Housing Act.
+            </p>
+            <div className="flex flex-wrap gap-2 justify-center max-w-[820px] mx-auto">
+              {COVERAGE_STATES.map((s) => (
+                <span key={s} className="text-[13px] text-[#4A443C] bg-white border border-[#EAE3D7] rounded-full px-3 py-2">{s}</span>
+              ))}
+              <span className="text-[13px] font-bold text-[#15433C] bg-[#EDF3F0] border border-[#CFE0D8] rounded-full px-3 py-2">+ 35 more states</span>
             </div>
           </div>
-
-          <p className="mt-8 text-center text-[12.5px] text-slate-500 max-w-2xl mx-auto leading-relaxed">
-            Not sure which fits? An ESA letter covers most housing situations. PSD documentation only applies when you have a trained service dog AND need public access or airline support.
-          </p>
         </div>
       </section>
 
-      {/* ─────────── 8. QUALIFICATION (white — breaks up slate run) ─────────── */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-16 md:py-24">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-2 leading-[1.18] text-center">
-            Not everyone qualifies — and that's the point.
-          </h2>
-          <p className="text-[14px] text-slate-600 leading-relaxed mb-7 text-center max-w-2xl mx-auto">
-            An ESA letter is clinical documentation, not a product. Issuing one without justification undermines the system — and gets letters rejected by landlords.
-          </p>
-
-          <div className="grid md:grid-cols-3 gap-3">
-            <ProblemCard
-              title="What providers evaluate"
-              body="Current symptoms, life impact, treatment context, and whether an Emotional Support Animal supports your wellbeing."
-            />
-            <ProblemCard
-              title="Common reasons people don't qualify"
-              body="Symptoms don't meet clinical thresholds, or the assessment indicates a different course of care."
-            />
-            <ProblemCard
-              title="What happens if you don't qualify"
-              body="Full refund, plus the provider's note on what additional context might support a future request."
-            />
+      {/* ─────────── 10. QUALIFICATION (text + provider image) ─────────── */}
+      <section className="bg-[#F7F2E9] py-14 md:py-20">
+        <div className={`${WRAP} grid grid-cols-1 md:grid-cols-[1.05fr_.95fr] gap-8 md:gap-14 items-stretch`}>
+          <div className="flex flex-col">
+            <h2 className="text-[#231F1A] text-[27px] md:text-[34px] leading-[1.16] font-semibold" style={FONT_DISPLAY}>
+              Not everyone qualifies — and that's the point.
+            </h2>
+            <p className="text-[#4A443C] text-[16px] md:text-[18px] leading-relaxed mt-3.5">
+              An ESA letter is clinical documentation, not a product. Issuing one without justification undermines the system — and gets letters rejected by landlords.
+            </p>
+            <p className="text-[14px] leading-relaxed text-[#4A443C] mt-4">
+              Our process is designed to be compliant, not automatic — which helps landlords take the documentation seriously. A licensed provider decides whether an Emotional Support Animal is clinically appropriate for you.
+            </p>
+            <ul className="grid grid-cols-1 mt-[22px]">
+              {[
+                { b: "What providers evaluate", d: "Current symptoms, life impact, treatment context, and whether an Emotional Support Animal supports your wellbeing." },
+                { b: "Common reasons people don't qualify", d: "Symptoms don't meet clinical thresholds, or the assessment indicates a different course of care." },
+                { b: "What happens if you don't qualify", d: "Full refund, plus the provider's note on what additional context might support a future request." },
+              ].map((q) => (
+                <li key={q.b} className="flex gap-3.5 py-4 border-t border-[#EAE3D7]">
+                  <Check className="w-[17px] h-[17px] mt-0.5 flex-none text-[#3F7061]" />
+                  <div>
+                    <div className="text-[15px] font-bold text-[#231F1A] mb-0.5">{q.b}</div>
+                    <p className="text-[13.5px] leading-snug text-[#4A443C]">{q.d}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
+          <div className="relative rounded-2xl overflow-hidden border border-[#EAE3D7] min-h-[300px] md:h-full md:min-h-0 order-first md:order-none">
+            <picture>
+              <source srcSet="/assets/lifestyle/esa-housing-provider-review.webp" type="image/webp" />
+              <img
+                src="/assets/lifestyle/esa-housing-provider-review.jpg"
+                alt="A licensed mental health professional reviewing an assessment on a laptop in a calm home office"
+                className="w-full h-full object-cover aspect-[4/3] md:aspect-auto"
+                loading="lazy"
+                decoding="async"
+                width={900}
+                height={1117}
+              />
+            </picture>
+          </div>
+        </div>
+      </section>
 
-          {/* Balanced reassurance — keeps clinical integrity but doesn't demotivate */}
-          <div className="mt-8 max-w-3xl mx-auto bg-white border border-emerald-200 rounded-xl p-5 md:p-6 flex items-start gap-4">
-            <span className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                <path d="m9 12 2 2 4-4" />
-              </svg>
+      {/* ─────────── 11. REVIEWS (reused homepage source) ─────────── */}
+      <TestimonialsSection />
+
+      {/* ─────────── 12. PSD INFORMATIONAL (no price) ─────────── */}
+      <section className="bg-[#F7F2E9] py-12">
+        <div className={WRAP}>
+          <div className="bg-white border border-[#EAE3D7] rounded-2xl px-6 py-7 sm:px-9 sm:py-8 grid gap-5 text-center md:grid-cols-[auto_1fr_auto] md:items-center md:gap-7 md:text-left">
+            <span className="w-[52px] h-[52px] rounded-2xl bg-[#EDF3F0] text-[#3F7061] flex items-center justify-center mx-auto">
+              <PawStroke />
             </span>
-            <div className="min-w-0">
-              <div className="text-[14px] font-medium text-slate-900 mb-1">
-                Most customers complete the process successfully.
-              </div>
-              <p className="text-[13px] text-slate-600 leading-relaxed">
-                Most customers who complete the assessment and provide accurate information are successfully reviewed for housing-related documentation when clinically appropriate. Our process is designed to be compliant, not automatic — which helps landlords take the documentation seriously.
+            <div>
+              <h3 className="text-[19px] font-semibold text-[#231F1A] mb-1.5" style={FONT_DISPLAY}>Do you have a trained Psychiatric Service Dog instead?</h3>
+              <p className="text-[14.5px] leading-relaxed text-[#4A443C] max-w-[60ch] mx-auto md:mx-0">
+                A PSD is a dog individually trained to perform specific tasks for a psychiatric disability — a different documentation path from an ESA letter. If that's your situation, the PSD route also supports air-travel documentation.
               </p>
             </div>
-          </div>
-
-          {/* Strong CTA — high-intent section */}
-          <div className="mt-10 max-w-3xl mx-auto text-center">
-            <Link
-              to={ASSESSMENT_HREF}
-              className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[15px] md:text-[16px] px-8 py-4 rounded-md transition shadow-[0_4px_12px_rgba(249,115,22,0.3)]"
-            >
-              Start the assessment
-              <span aria-hidden>→</span>
+            <Link to="/how-to-get-psd-letter" className="inline-flex items-center justify-center gap-2 font-bold text-[15px] text-[#231F1A] border border-[#EAE3D7] rounded-md px-6 py-3.5 hover:border-[#3F7061] hover:text-[#3F7061] transition-colors">
+              Explore the PSD path →
             </Link>
-            <div className="text-[12.5px] text-slate-500 mt-3 flex items-center justify-center gap-2">
-              <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]" aria-hidden>✓</span>
-              If you don't qualify after review, your payment is refunded.
-            </div>
           </div>
         </div>
       </section>
 
-      {/* ─────────── 9. WHY PAWTENANT (key differentiator — strengthened) ─────────── */}
-      <section className="bg-gradient-to-b from-slate-50 to-[#EEF2F7] border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-20 md:py-28">
-          <div className="text-center mb-10 md:mb-12">
-            <span className="inline-flex items-center gap-2 text-[11px] tracking-[0.08em] uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              Key differentiators
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-3 leading-[1.18]">
-              What sets PawTenant apart.
-            </h2>
-            <p className="text-[15px] text-slate-600 leading-relaxed max-w-2xl mx-auto">
-              How we compare to typical online ESA letter services.
-            </p>
-          </div>
-
-          {(() => {
-            const rows: Array<{
-              feature: string;
-              us?: boolean;
-              usText?: string;
-              them: string;
-              done?: true;
-            }> = [
-              { feature: "Unique Verification ID landlords can confirm", us: true, done: true, them: "Rare or absent" },
-              { feature: "Real provider names + license # + NPI on letter", us: true, done: true, them: "Often hidden" },
-              { feature: "Reviewed by clinician licensed in your state", us: true, done: true, them: "Sometimes" },
-              { feature: "Refund if you don't qualify after review", us: true, done: true, them: "Sometimes" },
-              { feature: "Auto-approval / 24-hour 'guaranteed'", us: false, usText: "No — clinical review only", them: "Common" },
-              { feature: "Housing-specific documentation language", us: true, done: true, them: "Generic templates" },
-            ];
-            return (
-              <>
-                {/* Desktop / tablet — comparison table */}
-                <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="text-left text-[11px] uppercase tracking-wider text-slate-500 font-semibold px-5 py-4">Feature</th>
-                        <th className="text-center text-[11px] uppercase tracking-wider text-[#0E2A47] font-semibold px-5 py-4">PawTenant</th>
-                        <th className="text-center text-[11px] uppercase tracking-wider text-slate-500 font-semibold px-5 py-4">Typical online services</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => (
-                        <CompareRow
-                          key={r.feature}
-                          feature={r.feature}
-                          us={r.us}
-                          usText={r.usText}
-                          them={r.them}
-                          done={r.done}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile — stacked comparison cards. PawTenant side always
-                    renders as green check (rows are framed as positives for
-                    us by design). Competitor side always renders as red X. */}
-                <div className="md:hidden space-y-4">
-                  {rows.map((r) => {
-                    const usIsYes = r.done === true || r.us === true;
-                    return (
-                      <div
-                        key={r.feature}
-                        className="bg-white rounded-2xl border border-slate-200 shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden"
-                      >
-                        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
-                          <p className="text-[13px] font-semibold text-slate-900 leading-snug">{r.feature}</p>
-                        </div>
-                        <div className="divide-y divide-slate-100">
-                          <div className="flex items-start gap-3 px-5 py-3">
-                            <span className="text-[10px] font-bold tracking-[0.12em] uppercase text-[#0E2A47] w-[88px] flex-shrink-0 pt-1">
-                              PawTenant
-                            </span>
-                            <span className="flex items-start gap-2 min-w-0">
-                              <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_2px_6px_rgba(16,185,129,0.40)] ring-2 ring-emerald-50">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              </span>
-                              <span className="text-[13px] leading-snug text-emerald-700 font-semibold mt-0.5">
-                                {r.usText ?? (usIsYes ? "Yes" : "No")}
-                              </span>
-                            </span>
-                          </div>
-                          <div className="flex items-start gap-3 px-5 py-3">
-                            <span className="text-[10px] font-bold tracking-[0.12em] uppercase text-slate-500 w-[88px] flex-shrink-0 pt-1">
-                              Typical
-                            </span>
-                            <span className="flex items-start gap-2 min-w-0">
-                              <span className="w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_2px_6px_rgba(244,63,94,0.40)] ring-2 ring-rose-50">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                  <line x1="6" y1="6" x2="18" y2="18" />
-                                  <line x1="18" y1="6" x2="6" y2="18" />
-                                </svg>
-                              </span>
-                              <span className="text-[13px] text-slate-600 leading-snug mt-0.5">{r.them}</span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      </section>
-
-      {/* ─────────── 10. FAQ (white) ─────────── */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-3xl mx-auto px-5 py-16 md:py-24">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-6 leading-[1.18] text-center">
+      {/* ─────────── 13. FAQ ─────────── */}
+      <section className="bg-[#FDFBF7] py-14 md:py-20">
+        <div className={WRAP}>
+          <h2 className="text-[#231F1A] text-[27px] md:text-[34px] font-semibold text-center mb-9" style={FONT_DISPLAY}>
             Common questions.
           </h2>
-          <div className="space-y-2">
+          <div className="max-w-[800px] mx-auto">
             {FAQ_ITEMS.map((item, i) => (
-              <div
+              <details
                 key={item.q}
-                className={i >= 4 && !showAllMobile ? "hidden sm:block" : ""}
+                open={i === 0}
+                className={`border-b border-[#EAE3D7] ${i === 0 ? "border-t" : ""} ${i >= 4 && !showAllMobile ? "hidden sm:block" : ""}`}
               >
-                <FAQItem q={item.q} a={item.a} defaultOpen={i === 0} />
-              </div>
+                <summary className="list-none cursor-pointer flex justify-between gap-4 items-center text-[15.5px] font-bold text-[#231F1A] py-[18px] min-h-[44px] [&::-webkit-details-marker]:hidden">
+                  <span>{item.q}</span>
+                  <span aria-hidden className="flex-none w-[26px] h-[26px] rounded-full border border-[#EAE3D7] bg-white flex items-center justify-center text-[#4A443C] text-[15px]">＋</span>
+                </summary>
+                <div className="text-[14.5px] leading-relaxed text-[#4A443C] max-w-[70ch] pb-5 pr-8">{item.a}</div>
+              </details>
             ))}
           </div>
           {!showAllMobile && FAQ_ITEMS.length > 4 && (
-            <div className="sm:hidden pt-4 text-center">
+            <div className="sm:hidden text-center mt-5">
               <button
                 type="button"
                 onClick={() => setShowAllMobile(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-[14px] font-bold text-[#3F7061] border border-[#EAE3D7] rounded-full px-5 py-2.5"
               >
                 Show more questions
-                <i className="ri-arrow-down-s-line"></i>
               </button>
             </div>
           )}
         </div>
       </section>
 
-      {/* ─────────── 11. FINAL CTA (dark navy, premium) ─────────── */}
-      <section className="relative bg-gradient-to-b from-[#0E2A47] to-[#091B30] text-white overflow-hidden">
-        {/* Subtle decorative radial light */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.05]"
-          style={{
-            background:
-              "radial-gradient(circle at 50% 0%, #ffffff 0%, transparent 60%)",
-          }}
-        />
-        <div className="relative max-w-3xl mx-auto px-5 py-20 md:py-28 text-center">
-          <h2 className="text-2xl md:text-[28px] font-bold tracking-tight leading-tight mb-3">
+      {/* ─────────── 14. FINAL CTA ─────────── */}
+      <section className="bg-[#231F1A] text-[#D8D2C8]">
+        <div className={`${WRAP} max-w-[720px] text-center py-16 md:py-20`}>
+          <h2 className="text-white text-[27px] md:text-[34px] font-semibold mb-3.5" style={FONT_DISPLAY}>
             Start your assessment in about five minutes.
           </h2>
-          <p className="text-[14px] text-slate-300 leading-relaxed mb-6 max-w-xl mx-auto">
+          <p className="max-w-[52ch] mx-auto text-[16px] leading-relaxed mb-7">
             Reviewed by a licensed mental health provider in your state. Documentation issued only if you qualify. Unique Verification ID on every document.
           </p>
-          <Link
-            to={ASSESSMENT_HREF}
-            className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-medium text-[15px] md:text-[16px] px-8 py-4 rounded-md transition w-full sm:w-auto shadow-[0_4px_16px_rgba(249,115,22,0.35)]"
-          >
-            Start the assessment
-            <span aria-hidden>→</span>
-          </Link>
-          <div className="mt-9 grid sm:grid-cols-3 gap-4 text-left max-w-xl mx-auto">
-            <FinalTrust>Refund if you don't qualify after review</FinalTrust>
-            <FinalTrust>Verification ID on every document</FinalTrust>
-            <FinalTrust>License # and NPI on every document</FinalTrust>
+          <a href={CTA_HREF} className="w-full max-w-[340px] sm:w-auto inline-flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[17px] px-9 py-4 rounded-md shadow-lg shadow-orange-500/30 transition-colors">
+            Check If You Qualify
+          </a>
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2.5 mt-6 text-[13px] font-medium text-[#B4AC9F]">
+            {["Refund if you don't qualify after review", "Verification ID on every document", "License # and NPI on every document"].map((x) => (
+              <span key={x} className="inline-flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#8FBCAB]" /> {x}</span>
+            ))}
           </div>
         </div>
       </section>
 
       <Hud2026UpdateBanner className="border-t border-gray-100" />
-
-      {/* Site-wide footer (matches main site) */}
       <SharedFooter />
+
+      {/* Mobile-only sticky Apply CTA — homepage parity. Fades in after the hero
+          scrolls out (md:hidden bottom bar); attribution-safe href. */}
+      <MobileStickyApplyCTA
+        showAfterPx={500}
+        to={CTA_HREF}
+        label="Check If You Qualify"
+        icon="ri-checkbox-circle-line"
+      />
     </main>
   );
 }
 
-/* ────────────────────────── Sub-components (file-local) ────────────────────────── */
-
-function LetterPreviewCard() {
-  // Real letter preview: PawTenant ESA sample (SVG) inside a browser-chrome card.
+// ── verification field ──────────────────────────────────────────────────────
+function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden">
-      {/* Browser chrome */}
-      <div className="flex items-center justify-between bg-slate-50 px-3 py-2 border-b border-slate-200">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-slate-300" />
-          <span className="w-2 h-2 rounded-full bg-slate-300" />
-          <span className="w-2 h-2 rounded-full bg-slate-300" />
-        </div>
-        <div className="font-mono text-[10px] text-slate-500">esa-letter-sample.pdf</div>
-        <div className="w-8" />
-      </div>
-
-      {/* SVG sample letter */}
-      <div className="bg-white p-3 md:p-4">
-        <img
-          src="/images/checkout/esa-sample-letter.svg"
-          alt="Sample PawTenant ESA letter showing the verification ID, provider credentials, and housing-accommodation language. Names and details are placeholders."
-          width={800}
-          height={1035}
-          loading="lazy"
-          decoding="async"
-          className="w-full h-auto block"
-        />
-      </div>
-
-      {/* Verification badge under preview — reinforces ID concept */}
-      <div className="bg-emerald-50 border-t border-emerald-200 px-4 py-3 flex items-center gap-3">
-        <span className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            <path d="m9 12 2 2 4-4" />
-          </svg>
-        </span>
-        <div className="min-w-0">
-          <div className="text-[12px] font-medium text-emerald-900 leading-tight">Every letter carries a Verification ID</div>
-          <div className="text-[11px] text-emerald-800/80 leading-snug font-mono">pawtenant.com/verify · landlords confirm in seconds</div>
-        </div>
-      </div>
-
-      <div className="text-center text-[10px] text-slate-400 py-2 px-3 bg-white border-t border-slate-100">
-        Sample template · placeholder names · housing-accommodation language only.
-      </div>
+    <div>
+      <p className="text-[11.5px] font-medium text-[#9CA3AF] mb-1">{label}</p>
+      <p className={`text-[13.5px] font-bold text-[#111827] leading-snug ${mono ? "font-mono tracking-[0.04em]" : ""}`}>{value}</p>
     </div>
   );
 }
 
-function TrustChip({
-  label,
-  detail,
-  tone = "navy",
-  icon = "shield",
-}: {
-  label: string;
-  detail: string;
-  tone?: "navy" | "green";
-  icon?: "shield" | "badge" | "refund";
-}) {
-  // Bolder filled iconography — emerald or navy fill with white glyph, soft
-  // brand-tinted shadow. Reads as "verified trust" rather than the prior
-  // outlined chip, without taking more vertical space.
-  const fillClasses =
-    tone === "green"
-      ? "bg-emerald-600 text-white shadow-[0_2px_6px_rgba(16,185,129,0.30)]"
-      : "bg-[#0E2A47] text-white shadow-[0_2px_6px_rgba(14,42,71,0.30)]";
-
-  return (
-    <div className="flex items-start gap-3">
-      <span className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${fillClasses}`}>
-        {icon === "shield" && (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            <path d="m9 12 2 2 4-4" />
-          </svg>
-        )}
-        {icon === "badge" && (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <circle cx="12" cy="8" r="6" />
-            <path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5" />
-          </svg>
-        )}
-        {icon === "refund" && (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M3 12a9 9 0 1 0 3-6.7" />
-            <path d="M3 4v5h5" />
-          </svg>
-        )}
-      </span>
-      <div className="min-w-0">
-        <div className="text-[13.5px] font-semibold text-slate-900">{label}</div>
-        <div className="text-[12px] text-slate-500 leading-snug">{detail}</div>
-      </div>
-    </div>
-  );
+// ── inline SVG icons (always render — no icon-font subset dependency) ─────────
+function StarSolid() {
+  return <svg width="19" height="19" viewBox="0 0 24 24" fill="#FBBF24" aria-hidden><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01L12 2z" /></svg>;
 }
-
-function ProblemCard({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4">
-      <div className="text-[14px] font-medium text-slate-900 mb-1">{title}</div>
-      <div className="text-[12px] text-slate-500 leading-relaxed">{body}</div>
-    </div>
-  );
+function ShieldStroke() {
+  return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
 }
-
-function VerifyStep({
-  n,
-  title,
-  children,
-  tone = "navy",
-}: {
-  n: number;
-  title: string;
-  children: React.ReactNode;
-  tone?: "navy" | "green";
-}) {
-  const bubble = tone === "green" ? "bg-emerald-600" : "bg-[#0E2A47]";
-  return (
-    <div className="flex gap-3.5 items-start">
-      <div className={`w-9 h-9 rounded-full ${bubble} text-white flex items-center justify-center text-[14px] font-medium flex-shrink-0`}>{n}</div>
-      <div>
-        <div className="text-[14.5px] font-medium text-slate-900 mb-1">{title}</div>
-        <div className="text-[13px] text-slate-600 leading-relaxed">{children}</div>
-      </div>
-    </div>
-  );
+function RefundStroke() {
+  return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 12a9 9 0 1 0 9-9" /><path d="M3 5v4h4" /><path d="M12 7v5l3 2" /></svg>;
 }
-
-function VerifyMock() {
-  // Cropped real /verify result screen. Privacy-safe: no diagnosis or clinical info is shown.
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
-      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-slate-300" />
-          <span className="w-2 h-2 rounded-full bg-slate-300" />
-          <span className="w-2 h-2 rounded-full bg-slate-300" />
-        </div>
-        <div className="font-mono text-[10px] text-slate-500">pawtenant.com/verify</div>
-        <div className="w-6" />
-      </div>
-
-      <img
-        src="/assets/ui/verification-cropped.png"
-        alt="PawTenant verification result confirming a letter ID is authentic. Shows letter type, state, issue and expiration dates, issuing provider, NPI, and license. No patient health information is displayed."
-        width={820}
-        height={1110}
-        loading="lazy"
-        decoding="async"
-        className="w-full h-auto block"
-      />
-
-      <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-start gap-2.5">
-        <span className="w-6 h-6 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </span>
-        <div className="text-[11.5px] text-slate-600 leading-relaxed">
-          Verification confirms <span className="text-slate-900 font-medium">authenticity only</span>. No patient health information is displayed.
-        </div>
-      </div>
-    </div>
-  );
+function BadgeStroke() {
+  return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 15h4M7 11h10" /></svg>;
 }
-
-function SmallTrust({
-  label,
-  detail,
-  tone = "navy",
-}: {
-  label: string;
-  detail: string;
-  tone?: "navy" | "green";
-}) {
-  // Upgraded from a dot-in-box to a filled emerald (or navy) badge with a
-  // white check glyph and a soft brand-tinted shadow — matches the bolder
-  // TrustChip visual system used in the section 2 trust strip, so the
-  // bottom verification strip reads with the same confidence.
-  const fill =
-    tone === "green"
-      ? "bg-emerald-600 text-white shadow-[0_2px_4px_rgba(16,185,129,0.30)]"
-      : "bg-[#0E2A47] text-white shadow-[0_2px_4px_rgba(14,42,71,0.25)]";
-
-  return (
-    <div className="flex items-start gap-2.5">
-      <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${fill}`}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      </span>
-      <div className="text-[12.5px] text-slate-600 leading-snug">
-        <span className="text-slate-900 font-semibold">{label}</span> <span className="text-slate-500">{detail}</span>
-      </div>
-    </div>
-  );
+function HomeStroke({ className = "w-[19px] h-[19px]" }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 21h18M5 21V7l7-4 7 4v14" /><path d="M9 21v-6h6v6" /></svg>;
 }
-
-function ProviderCard({ name, credential, photo, bio }: { name: string; credential: string; photo: string; bio: string }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const initials = name.split(" ").map((n) => n[0]).slice(0, 2).join("");
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col">
-      <div className="flex items-center gap-3 mb-3">
-        {imgFailed ? (
-          <div className="w-14 h-14 rounded-full bg-slate-100 text-[#0E2A47] flex items-center justify-center text-[15px] font-medium tracking-wide flex-shrink-0">
-            {initials}
-          </div>
-        ) : (
-          <img
-            src={photo}
-            alt={`${name}, ${credential}`}
-            width={56}
-            height={56}
-            loading="lazy"
-            decoding="async"
-            onError={() => setImgFailed(true)}
-            className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-slate-100"
-          />
-        )}
-        <div className="min-w-0">
-          <div className="text-[14px] font-medium text-slate-900 leading-tight">{name}</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">{credential}</div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 border border-slate-300 bg-white rounded-full text-[10px] text-[#0E2A47] font-medium">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0E2A47" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            <path d="m9 12 2 2 4-4" />
-          </svg>
-          NPI verifiable
-        </span>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full text-[10px] text-emerald-800 font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-          Active license
-        </span>
-      </div>
-
-      <div className="text-[12px] text-slate-600 leading-relaxed border-t border-slate-100 pt-3">{bio}</div>
-    </div>
-  );
+function CoinStroke({ className = "w-[19px] h-[19px]" }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9" /><path d="M12 7v10M9.5 9.5h3.75a1.75 1.75 0 0 1 0 3.5h-2.5a1.75 1.75 0 0 0 0 3.5H14.5" /></svg>;
 }
-
-function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
-  return (
-    <li className="flex gap-3 items-start">
-      <div className="w-9 h-9 rounded-full bg-[#0E2A47] text-white flex items-center justify-center text-[14px] font-medium flex-shrink-0">{n}</div>
-      <div>
-        <div className="text-[14px] font-medium text-slate-900 mb-1">{title}</div>
-        <div className="text-[13px] text-slate-500 leading-relaxed">{children}</div>
-      </div>
-    </li>
-  );
+function AlertStroke({ className = "w-[19px] h-[19px]" }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg>;
 }
-
-function PriceFeat({ children }: { children: React.ReactNode }) {
-  return (
-    <li className="flex gap-2 items-start text-[12.5px] text-slate-700 leading-relaxed">
-      <span className="text-emerald-600 font-medium flex-shrink-0">✓</span>
-      <span>{children}</span>
-    </li>
-  );
+function LockStroke({ className = "w-4 h-4" }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="11" width="18" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>;
 }
-
-function CompareRow({
-  feature,
-  us,
-  usText,
-  them,
-  done,
-}: {
-  feature: string;
-  us?: boolean;
-  usText?: string;
-  them: string;
-  done?: true;
-}) {
-  // PawTenant side ALWAYS reads as positive (green check) because every row
-  // is framed as a thing-we-do-well — even rows where the literal answer is
-  // "No" (e.g., "Auto-approval / 24-hour guaranteed") are positives because
-  // we INTENTIONALLY don't do them. Competitor side ALWAYS reads as
-  // negative (red X) for the same reason — competitor anti-patterns.
-  // Badges sized up (w-7 h-7) + bolder shadow for clearer scan at a glance.
-  const usIsYes = done === true || us === true || us === undefined;
-  return (
-    <tr className="border-t border-slate-100 hover:bg-slate-50/50 transition">
-      <td className="px-5 py-4 text-[13.5px] text-slate-800 font-semibold">{feature}</td>
-      <td className="px-5 py-4 text-center">
-        <span className="inline-flex items-center gap-2.5 text-emerald-700 text-[13.5px] font-semibold">
-          <span className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_2px_6px_rgba(16,185,129,0.40)] ring-2 ring-emerald-50">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </span>
-          {usText ?? (usIsYes ? "Yes" : "No")}
-        </span>
-      </td>
-      <td className="px-5 py-4 text-center text-[13px] text-slate-600">
-        <span className="inline-flex items-center gap-2.5">
-          <span className="w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center flex-shrink-0 shadow-[0_2px_6px_rgba(244,63,94,0.40)] ring-2 ring-rose-50">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="6" y1="6" x2="18" y2="18" />
-              <line x1="18" y1="6" x2="6" y2="18" />
-            </svg>
-          </span>
-          {them}
-        </span>
-      </td>
-    </tr>
-  );
+function ShieldCheck({ className = "w-6 h-6" }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></svg>;
 }
-
-function FAQItem({ q, a, defaultOpen }: { q: string; a: string; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(!!defaultOpen);
-  // First-open FAQ gets a soft trust accent (slate-100 navy tint when open).
-  const accent = defaultOpen
-    ? open
-      ? "bg-[#0E2A47]/[0.03] border-[#0E2A47]/30"
-      : "bg-white border-[#0E2A47]/30"
-    : "bg-white border-slate-200";
-  const iconColor = open ? "text-emerald-600" : "text-[#0E2A47]";
-
-  return (
-    <details
-      open={open}
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
-      className={`group rounded-lg px-4 py-3 border transition-colors ${accent}`}
-    >
-      <summary className="flex items-center justify-between gap-3 cursor-pointer list-none">
-        <span className="text-[13px] font-medium text-slate-900 leading-snug">{q}</span>
-        <span
-          aria-hidden
-          className={`text-[18px] leading-none flex-shrink-0 transition-transform duration-200 ${iconColor} ${open ? "rotate-45" : ""}`}
-        >
-          +
-        </span>
-      </summary>
-      <div className="text-[12.5px] text-slate-600 leading-relaxed mt-3 pt-3 border-t border-slate-100">{a}</div>
-    </details>
-  );
+function FileCheck() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="4" y="3" width="16" height="18" rx="2" /><path d="m8.5 12.5 2.5 2.5 4.5-5" /></svg>;
 }
-
-function FinalTrust({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2.5 text-[12.5px] text-slate-300 leading-relaxed">
-      <span className="w-5 h-5 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      </span>
-      <span>{children}</span>
-    </div>
-  );
+function PawStroke({ className }: { className?: string }) {
+  return <svg className={className} width={className ? undefined : 24} height={className ? undefined : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 5.1a4 4 0 0 1 2 0M7.7 7.6c-1.1 1.1-1.4 3.6-3 4.4-1.3.7-1.9 2-1.4 3.2.7 1.6 3 1.8 4.6 1.2M16.3 7.6c1.1 1.1 1.4 3.6 3 4.4 1.3.7 1.9 2 1.4 3.2-.7 1.6-3 1.8-4.6 1.2M12 10c-2.6 0-5 3.2-5 6 0 1.9 1.3 3 3 3 .9 0 1.4-.4 2-.4s1.1.4 2 .4c1.7 0 3-1.1 3-3 0-2.8-2.4-6-5-6z" /></svg>;
 }
