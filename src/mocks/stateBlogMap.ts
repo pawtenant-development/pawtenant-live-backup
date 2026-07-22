@@ -473,6 +473,23 @@ export const STATE_BLOG_MAP: StateBlogEntry[] = [
   },
 ];
 
+/**
+ * SEO title/description for a /blog/state/<slug> page. SINGLE SOURCE OF TRUTH for
+ * the meta formula — consumed by the runtime page (blog-state/page.tsx) AND the
+ * build-time prerender (scripts/prerender-seo.mjs) so the raw <head> and the
+ * hydrated <head> can never disagree. Keep the canonical as the self-referencing
+ * /blog/state/<slug> URL (SEO-STATE-CANONICAL-REDIRECT-BATCH-001).
+ */
+export function buildStateBlogSEO(entry: StateBlogEntry): {
+  title: string;
+  description: string;
+} {
+  return {
+    title: `${entry.stateName} ESA Housing Rights Blog 2026 | PawTenant`,
+    description: `All ESA housing rights guides for ${entry.stateName} renters in 2026. ${entry.descriptor}. Written by licensed professionals at PawTenant.`,
+  };
+}
+
 /** Lookup a state entry by its slug */
 export function getStateBlogEntry(stateSlug: string): StateBlogEntry | undefined {
   return STATE_BLOG_MAP.find((e) => e.stateSlug === stateSlug);

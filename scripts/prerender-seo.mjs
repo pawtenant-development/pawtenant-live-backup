@@ -24,6 +24,7 @@ const ROOT = resolve(__dirname, "..");
 const OUT_DIR = join(ROOT, "out");
 const TEMPLATE_PATH = join(OUT_DIR, "index.html");
 const SEO_CONFIG_PATH = resolve(ROOT, "src/config/seoConfig.ts");
+const STATE_BLOG_MAP_PATH = resolve(ROOT, "src/mocks/stateBlogMap.ts");
 
 // ── Load seoConfig.ts at runtime via jiti ───────────────────────────────────
 const jiti = createJiti(import.meta.url, { interopDefault: true });
@@ -40,6 +41,23 @@ const {
 if (!BASE_URL || !CORE_PAGE_META || !ESA_STATE_META || !getSEO) {
   console.error(
     "[prerender-seo] ERROR: seoConfig.ts did not export the expected symbols."
+  );
+  process.exit(1);
+}
+
+// ── Load state-blog map (for /blog/state/<slug> self-canonical prerender) ────
+// SEO-STATE-CANONICAL-REDIRECT-BATCH-001. These 51 routes were previously
+// fileless, so a crawler saw out/app.html — which carries the HOMEPAGE
+// canonical. Prerender a head-only file per state (same pattern as the 48
+// non-spike ESA state pages) so the raw <head> self-canonicalizes instead of
+// leaking the homepage canonical. Meta comes from the same buildStateBlogSEO
+// helper the runtime page uses, so head values match exactly.
+const stateBlogModule = await jiti.import(STATE_BLOG_MAP_PATH);
+const { STATE_BLOG_MAP, buildStateBlogSEO } = stateBlogModule;
+
+if (!Array.isArray(STATE_BLOG_MAP) || typeof buildStateBlogSEO !== "function") {
+  console.error(
+    "[prerender-seo] ERROR: stateBlogMap.ts did not export STATE_BLOG_MAP + buildStateBlogSEO."
   );
   process.exit(1);
 }
@@ -471,6 +489,23 @@ async function main() {
       written.push(target);
     } catch (err) {
       errors.push({ route: legacyPath, error: String(err) });
+    }
+  }
+
+  // 4b) Per-state ESA blog cluster → /blog/state/<slug>, sourced from
+  //     STATE_BLOG_MAP (51). Head-only prerender with a SELF-referencing
+  //     canonical so crawlers no longer see the homepage canonical from the
+  //     app-shell fallback. #root stays empty; React renders the full page on
+  //     mount (identical pattern to the 48 non-spike ESA state pages).
+  //     SEO-STATE-CANONICAL-REDIRECT-BATCH-001.
+  for (const entry of STATE_BLOG_MAP) {
+    const routePath = `/blog/state/${entry.stateSlug}`;
+    const { title, description } = buildStateBlogSEO(entry);
+    try {
+      const target = await writeRoute(template, routePath, { title, description });
+      written.push(target);
+    } catch (err) {
+      errors.push({ route: routePath, error: String(err) });
     }
   }
 

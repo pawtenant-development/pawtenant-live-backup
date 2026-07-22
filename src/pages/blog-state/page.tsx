@@ -5,7 +5,7 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import { blogPosts, BlogPost } from "../../mocks/blogPosts";
 import { blogPostsExtended } from "../../mocks/blogPostsExtended";
 import { blogPostsExtended2 } from "../../mocks/blogPostsExtended2";
-import { STATE_BLOG_MAP, getStateBlogEntry } from "../../mocks/stateBlogMap";
+import { STATE_BLOG_MAP, getStateBlogEntry, buildStateBlogSEO } from "../../mocks/stateBlogMap";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 
 const allBlogPosts: BlogPost[] = [...blogPostsExtended2, ...blogPostsExtended, ...blogPosts] as BlogPost[];
@@ -71,8 +71,12 @@ export default function BlogStatePage() {
   }, [entry]);
 
   const canonicalUrl = `https://pawtenant.com/blog/state/${stateSlug}`;
-  const pageTitle = entry ? `${entry.stateName} ESA Housing Rights Blog 2026 | PawTenant` : "ESA Blog | PawTenant";
-  const pageDesc = entry ? `All ESA housing rights guides for ${entry.stateName} renters in 2026. ${entry.descriptor}. Written by licensed professionals at PawTenant.` : "";
+  // Meta title/description come from the shared source of truth so the runtime
+  // <head> matches the build-time prerendered <head> exactly (no canonical/title
+  // drift). SEO-STATE-CANONICAL-REDIRECT-BATCH-001.
+  const seo = entry ? buildStateBlogSEO(entry) : null;
+  const pageTitle = seo ? seo.title : "ESA Blog | PawTenant";
+  const pageDesc = seo ? seo.description : "";
 
   const itemListSchema = entry
     ? JSON.stringify({
