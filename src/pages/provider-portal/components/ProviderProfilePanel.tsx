@@ -24,6 +24,8 @@ import ProviderApplicationSnapshotCard from "./ProviderApplicationSnapshotCard";
 interface Props {
   userId: string;
   providerName: string;
+  /** Admin preview — disables the bio edit (read-only). */
+  readOnly?: boolean;
 }
 
 interface ProfileData {
@@ -51,7 +53,7 @@ interface ApplicationData {
   status: string | null;
 }
 
-export default function ProviderProfilePanel({ userId, providerName }: Props) {
+export default function ProviderProfilePanel({ userId, providerName, readOnly = false }: Props) {
   const [data, setData] = useState<ProfileData | null>(null);
   const [application, setApplication] = useState<ApplicationData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,6 +102,7 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
   }, [userId]);
 
   const handleSave = async () => {
+    if (readOnly) return; // Admin preview — never write the provider's bio
     if (saving) return;
     const trimmed = bio.trim();
     if (trimmed.length > 1000) {
@@ -228,8 +231,9 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
           value={bio}
           onChange={(e) => { setBio(e.target.value); setError(""); setSaved(false); }}
           rows={7}
+          readOnly={readOnly}
           placeholder="e.g. I am a Licensed Clinical Social Worker with over 10 years of experience specializing in anxiety, depression, and ESA evaluations..."
-          className={`w-full px-4 py-3 border rounded-xl text-sm text-gray-800 focus:outline-none resize-none leading-relaxed ${isOver ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-[#2c5282]"}`}
+          className={`w-full px-4 py-3 border rounded-xl text-sm text-gray-800 focus:outline-none resize-none leading-relaxed ${isOver ? "border-red-300 focus:border-red-400" : "border-gray-200 focus:border-[#2c5282]"} ${readOnly ? "bg-gray-50 cursor-not-allowed" : ""}`}
         />
 
         {error && (
@@ -250,11 +254,14 @@ export default function ProviderProfilePanel({ userId, providerName }: Props) {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || isOver}
-            className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#2c5282] text-white text-sm font-bold rounded-xl hover:bg-[#1e3a5f] disabled:opacity-50 cursor-pointer transition-colors"
+            disabled={saving || isOver || readOnly}
+            title={readOnly ? "Admin preview — action disabled" : undefined}
+            className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-[#2c5282] text-white text-sm font-bold rounded-xl hover:bg-[#1e3a5f] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
             {saving ? (
               <><i className="ri-loader-4-line animate-spin"></i>Saving...</>
+            ) : readOnly ? (
+              <><i className="ri-lock-line"></i>Admin preview</>
             ) : (
               <><i className="ri-save-line"></i>Save Bio</>
             )}

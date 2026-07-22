@@ -3181,6 +3181,34 @@ export default function OrderDetailModal({
                 <i className="ri-eye-line text-sm"></i>
                 <span className="hidden sm:inline">Customer View</span>
               </button>
+              {/* Preview as Provider (ADMIN-PROVIDER-PORTAL-PREVIEW-001). Read-only
+                  "view as provider" — opens the REAL provider portal scoped to the
+                  assigned provider, with this order pre-selected, so staff can
+                  verify exactly what the provider sees. Pairs with Customer View;
+                  hidden on mobile (reachable via the More menu). Only enabled when
+                  a provider is assigned. */}
+              {order.doctor_user_id ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `/admin/provider-preview?provider=${encodeURIComponent(order.doctor_user_id!)}&order=${encodeURIComponent(order.confirmation_id)}`;
+                    window.open(url, "_blank", "noopener");
+                  }}
+                  title={`Preview the provider portal as ${order.doctor_name ?? "the assigned provider"}`}
+                  className="hidden sm:flex whitespace-nowrap items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors cursor-pointer"
+                >
+                  <i className="ri-user-heart-line text-sm"></i>
+                  <span className="hidden sm:inline">Provider View</span>
+                </button>
+              ) : (
+                <span
+                  title="No provider assigned to this order yet"
+                  className="hidden sm:flex whitespace-nowrap items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed"
+                >
+                  <i className="ri-user-unfollow-line text-sm"></i>
+                  <span className="hidden sm:inline">No Provider</span>
+                </span>
+              )}
               {/* OPS-ORDER-MODAL-V2-LAYOUT: secondary header actions consolidated
                   into a single "More" dropdown so the header reads as Customer
                   View + More + utility cluster instead of a 5-button row.
@@ -3324,9 +3352,9 @@ export default function OrderDetailModal({
                         </button>
                       </>
                     )}
-                    {(order.doctor_email || order.doctor_user_id) && (
+                    {order.doctor_user_id && (
                       <a
-                        href={`/provider-portal?order=${order.confirmation_id}`}
+                        href={`/admin/provider-preview?provider=${encodeURIComponent(order.doctor_user_id)}&order=${encodeURIComponent(order.confirmation_id)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         role="menuitem"
@@ -3334,7 +3362,7 @@ export default function OrderDetailModal({
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[#3b6ea5] hover:bg-[#e8f0f9] cursor-pointer transition-colors"
                       >
                         <i className="ri-user-heart-line"></i>
-                        <span className="flex-1 text-left">Open Provider View</span>
+                        <span className="flex-1 text-left">Preview as Provider</span>
                         <i className="ri-external-link-line text-[10px] text-gray-400"></i>
                       </a>
                     )}

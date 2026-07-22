@@ -37,6 +37,8 @@ type ApplicationLicenseMap = Record<string, { credential: string; license_number
 interface ProviderLicensePanelProps {
   userId: string;
   providerName: string;
+  /** Admin preview — disables every license edit (read-only). */
+  readOnly?: boolean;
 }
 
 const US_STATES: { name: string; abbr: string }[] = [
@@ -61,7 +63,7 @@ const US_STATES: { name: string; abbr: string }[] = [
 
 const STATE_ABBR_MAP = Object.fromEntries(US_STATES.map((s) => [s.abbr, s.name]));
 
-export default function ProviderLicensePanel({ userId, providerName }: ProviderLicensePanelProps) {
+export default function ProviderLicensePanel({ userId, providerName, readOnly = false }: ProviderLicensePanelProps) {
   const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -165,6 +167,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
 
   // ── Save NPI ──
   const handleSaveNpi = async () => {
+    if (readOnly) { showToast("Admin preview — action disabled.", false); return; }
     if (!profile) return;
     setSavingNpi(true);
     const newNpi = npiInput.trim() || null;
@@ -185,6 +188,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
   // canonical code. If a legacy full-name key exists for the same state, drop
   // it so we don't end up with both "VA" and "Virginia" in the JSON.
   const handleSaveLicense = async (stateAbbr: string) => {
+    if (readOnly) { showToast("Admin preview — action disabled.", false); return; }
     if (!profile) return;
     setSavingLicense(true);
     const targetCode = normalizeStateToCode(stateAbbr) ?? stateAbbr.toUpperCase();
@@ -212,6 +216,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
   // (array). Dedupe the array against any legacy full-name entry for the
   // same state (e.g. existing ["Virginia"] + adding "VA" → ["VA"]).
   const handleAddState = async () => {
+    if (readOnly) { showToast("Admin preview — action disabled.", false); return; }
     if (!profile || !addStateAbbr || !addLicenseNum.trim()) return;
     setAddingState(true);
     // addStateAbbr might come from a code dropdown but we normalize defensively.
@@ -259,6 +264,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
   // The remaining array is re-canonicalized to codes so the persisted shape
   // is consistent regardless of what was there before.
   const handleRemoveState = async (stateAbbr: string) => {
+    if (readOnly) { showToast("Admin preview — action disabled.", false); return; }
     if (!profile) return;
     setRemovingState(true);
     const targetCode = normalizeStateToCode(stateAbbr) ?? stateAbbr.toUpperCase();
@@ -370,6 +376,14 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
         </div>
       )}
 
+      {/* Admin-preview read-only notice */}
+      {readOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <i className="ri-lock-line text-amber-600 text-sm flex-shrink-0"></i>
+          <p className="text-xs font-semibold text-amber-800">Admin preview — license editing is disabled. This is a read-only view of what the provider sees.</p>
+        </div>
+      )}
+
       {/* Info banner */}
       <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-3">
         <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -387,7 +401,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
             <p className="text-sm font-extrabold text-gray-900">NPI Number</p>
             <p className="text-xs text-gray-400 mt-0.5">National Provider Identifier — 10-digit unique ID</p>
           </div>
-          {!editingNpi && (
+          {!editingNpi && !readOnly && (
             <button type="button" onClick={() => { setEditingNpi(true); setNpiInput(profile.npi_number ?? ""); }}
               className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 border border-[#b8cce4] text-[#2c5282] bg-[#e8f0f9] text-xs font-bold rounded-lg hover:bg-[#dce8f5] cursor-pointer transition-colors">
               <i className="ri-pencil-line"></i>Edit
@@ -451,13 +465,15 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
             <p className="text-sm font-extrabold text-gray-900">State License Numbers</p>
             <p className="text-xs text-gray-400 mt-0.5">{licenseRows.length} state{licenseRows.length !== 1 ? "s" : ""} with license numbers on file</p>
           </div>
-          <button
-            type="button"
-            onClick={() => { setShowAddState(true); setAddStateAbbr(""); setAddLicenseNum(""); }}
-            className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#2c5282] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] cursor-pointer transition-colors"
-          >
-            <i className="ri-add-line"></i>Add State
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => { setShowAddState(true); setAddStateAbbr(""); setAddLicenseNum(""); }}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#2c5282] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] cursor-pointer transition-colors"
+            >
+              <i className="ri-add-line"></i>Add State
+            </button>
+          )}
         </div>
 
         {/* Add State Form */}
@@ -587,7 +603,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
                         <p className="text-xs font-mono text-gray-500 mt-0.5">{licenseNum}</p>
                       )}
                     </div>
-                    {!isEditing && (
+                    {!isEditing && !readOnly && (
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button
                           type="button"
@@ -694,7 +710,7 @@ export default function ProviderLicensePanel({ userId, providerName }: ProviderL
                               <p className="text-xs text-amber-600 mt-0.5">No license number on file</p>
                             )}
                           </div>
-                          {!isEditing && !isConfirmingRemove && (
+                          {!isEditing && !isConfirmingRemove && !readOnly && (
                             <div className="flex items-center gap-1.5 flex-shrink-0">
                               <button
                                 type="button"

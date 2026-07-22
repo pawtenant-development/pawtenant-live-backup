@@ -131,9 +131,33 @@ function providerOrderRank(order: Order): number {
   return PROVIDER_STATUS_PRIORITY[order.doctor_status ?? "pending_review"] ?? 4;
 }
 
-export default function ProviderPortalPage() {
+// ─── Admin "Preview as Provider" context (ADMIN-PROVIDER-PORTAL-PREVIEW-001) ──
+// Supplied ONLY by the admin preview wrapper (AdminProviderPreview). When set,
+// the portal renders read-only, scoped to a TARGET provider, with a persistent
+// admin banner. Normal provider usage passes NO previewContext and is completely
+// unaffected (the route element renders <ProviderPortalPage /> with no props).
+export interface ProviderPreviewContext {
+  /** Target provider's stable internal id — doctor_profiles.user_id. NEVER email. */
+  providerUserId: string;
+  providerName: string;
+  providerEmail?: string | null;
+  /** Always true in V1 — the entire preview is read-only. */
+  readOnly: true;
+  /** Return to the Admin Portal. */
+  onExitToAdmin: () => void;
+  /** Optional provider switcher (switch preview target where safe). */
+  switchProviders?: { user_id: string; full_name: string }[];
+  onSwitchProvider?: (userId: string) => void;
+  /** Set when a ?order= was requested that is NOT assigned to this provider. */
+  orderMismatch?: { confirmationId: string } | null;
+}
+
+export default function ProviderPortalPage({ previewContext }: { previewContext?: ProviderPreviewContext } = {}) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  // Admin preview mode — derived once. readOnly gates every write path below.
+  const previewMode = !!previewContext;
+  const readOnly = previewMode;
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<DoctorProfile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -163,6 +187,29 @@ export default function ProviderPortalPage() {
 
   // Auth check
   useEffect(() => {
+    // ── Admin preview branch ──────────────────────────────────────────────
+    // Do NOT run the provider-self auth flow. Load the TARGET provider's
+    // profile so every provider-scoped query (all keyed on profile.user_id)
+    // shows exactly what that provider sees. FAIL CLOSED if the target is
+    // missing — never fall back to the admin's own provider context. All write
+    // side-effects (login redirect, inactive sign-out, onboarding gate,
+    // mark_provider_portal_access) are deliberately skipped here.
+    if (previewContext) {
+      let cancelled = false;
+      (async () => {
+        const { data: target } = await supabase
+          .from("doctor_profiles")
+          .select("user_id, full_name, email, title, licensed_states, photo_url, is_active, is_admin, provider_onboarding_seen_at")
+          .eq("user_id", previewContext.providerUserId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (!target) { setProfile(null); setLoading(false); return; }
+        setProfile(target as DoctorProfile);
+        setLoading(false);
+      })();
+      return () => { cancelled = true; };
+    }
+
     const auth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -215,7 +262,7 @@ export default function ProviderPortalPage() {
       }
     };
     auth();
-  }, [navigate]);
+  }, [navigate, previewContext]);
 
   const loadOrders = useCallback(async (showSpinner = true) => {
     if (!profile) return;
@@ -410,6 +457,7 @@ export default function ProviderPortalPage() {
   }, [orders, searchParams]);
 
   const markNotificationsRead = async () => {
+    if (readOnly) return; // Admin preview — never mutate the provider's notifications
     if (!profile) return;
     const unread = notifications.filter((n) => !n.is_read);
     if (unread.length === 0) return;
@@ -422,6 +470,7 @@ export default function ProviderPortalPage() {
   };
 
   const handleSignOut = async () => {
+    if (readOnly) return; // Admin preview — must never sign out the viewing admin
     await supabase.auth.signOut();
     navigate("/provider-login");
   };
@@ -431,6 +480,7 @@ export default function ProviderPortalPage() {
   // localStorage is the fallback if the write fails.
   const dismissOnboardingGuide = useCallback(async () => {
     setShowOnboardingGuide(false);
+    if (readOnly) return; // Admin preview — no writes; just close the guide
     if (profile) {
       try { window.localStorage.setItem(`pt_provider_guide_seen_${profile.user_id}`, "1"); } catch { /* ignore */ }
       setProfile((prev) => prev && !prev.provider_onboarding_seen_at
@@ -442,7 +492,7 @@ export default function ProviderPortalPage() {
         console.warn("[provider-portal] mark_provider_onboarding_seen failed:", e);
       }
     }
-  }, [profile]);
+  }, [profile, readOnly]);
 
   const handleOrderUpdated = (updated: Partial<Order> & { id: string }) => {
     setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
@@ -451,12 +501,13 @@ export default function ProviderPortalPage() {
 
   const handleOpenOrder = (order: Order) => {
     setSelectedOrder(order);
-    setSearchParams({ order: order.confirmation_id });
+    // Preserve any other params (e.g. ?provider= in admin preview) — only touch order.
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set("order", order.confirmation_id); return p; });
   };
 
   const handleCloseOrder = () => {
     setSelectedOrder(null);
-    setSearchParams({});
+    setSearchParams((prev) => { const p = new URLSearchParams(prev); p.delete("order"); return p; });
   };
 
   const filtered = orders.filter((o) => {
@@ -499,8 +550,46 @@ export default function ProviderPortalPage() {
 
   return (
     <div className="min-h-screen bg-[#f8f7f4]">
+      {/* ── Admin Preview banner (persistent) — ADMIN-PROVIDER-PORTAL-PREVIEW-001 ── */}
+      {previewMode && previewContext && (
+        <div className="sticky top-0 z-[60] bg-amber-500 text-white h-12 flex items-center">
+          <div className="max-w-6xl mx-auto w-full px-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 flex items-center justify-center bg-white/20 rounded-lg flex-shrink-0">
+                <i className="ri-eye-line text-white text-sm"></i>
+              </div>
+              <p className="text-xs sm:text-sm font-extrabold truncate">
+                Admin Preview — Provider Portal
+                <span className="hidden sm:inline font-semibold text-white/85"> · Viewing as {previewContext.providerName}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {previewContext.switchProviders && previewContext.switchProviders.length > 0 && previewContext.onSwitchProvider && (
+                <select
+                  value={previewContext.providerUserId}
+                  onChange={(e) => previewContext.onSwitchProvider?.(e.target.value)}
+                  title="Switch preview to another provider"
+                  className="hidden sm:block max-w-[180px] bg-white/20 text-white text-xs font-bold rounded-lg px-2 py-1.5 border border-white/30 focus:outline-none cursor-pointer"
+                >
+                  {previewContext.switchProviders.map((p) => (
+                    <option key={p.user_id} value={p.user_id} className="text-gray-900">{p.full_name}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={previewContext.onExitToAdmin}
+                className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                <i className="ri-arrow-left-line"></i><span className="hidden sm:inline">Back to Admin Portal</span><span className="sm:hidden">Back</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky top-0 z-50">
+      <nav className={`bg-white border-b border-gray-100 px-6 h-16 flex items-center justify-between sticky ${previewMode ? "top-12" : "top-0"} z-50`}>
         <div className="flex items-center gap-3">
           <Link to="/" className="cursor-pointer">
             <img
@@ -610,10 +699,16 @@ export default function ProviderPortalPage() {
                     className="whitespace-nowrap w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors font-semibold">
                     <i className="ri-questionnaire-line text-[#2c5282]"></i>View Portal Guide
                   </button>
-                  <button type="button" onClick={handleSignOut}
-                    className="whitespace-nowrap w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 cursor-pointer transition-colors font-semibold">
-                    <i className="ri-logout-box-line"></i>Sign Out
-                  </button>
+                  {readOnly ? (
+                    <div className="whitespace-nowrap w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-400 font-semibold cursor-not-allowed" title="Admin preview — action disabled">
+                      <i className="ri-logout-box-line"></i>Sign Out<span className="ml-auto text-[10px] font-bold text-amber-600">Preview</span>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={handleSignOut}
+                      className="whitespace-nowrap w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 cursor-pointer transition-colors font-semibold">
+                      <i className="ri-logout-box-line"></i>Sign Out
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -658,6 +753,17 @@ export default function ProviderPortalPage() {
       )}
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        {/* Admin-preview order mismatch warning — the requested order is NOT
+            assigned to this provider, so it does not appear in their portal. */}
+        {previewMode && previewContext?.orderMismatch && (
+          <div className="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3">
+            <i className="ri-error-warning-line text-amber-600 text-lg flex-shrink-0 mt-0.5"></i>
+            <p className="text-sm text-amber-800">
+              <span className="font-bold">Order {previewContext.orderMismatch.confirmationId} is not assigned to this provider.</span>{" "}
+              It will not appear in their cases below — this is exactly what the provider sees.
+            </p>
+          </div>
+        )}
         {/* Welcome header */}
         <div className="mb-6">
           <p className="text-xs text-[#2c5282] font-bold uppercase tracking-widest mb-1">Welcome back</p>
@@ -854,17 +960,17 @@ export default function ProviderPortalPage() {
 
         {/* ── EARNINGS TAB ── */}
         {activeTab === "earnings" && profile && (
-          <ProviderEarnings userId={profile.user_id} />
+          <ProviderEarnings userId={profile.user_id} readOnly={readOnly} />
         )}
 
         {/* ── LICENSE TAB ── */}
         {activeTab === "license" && profile && (
-          <ProviderLicensePanel userId={profile.user_id} providerName={profile.full_name} />
+          <ProviderLicensePanel userId={profile.user_id} providerName={profile.full_name} readOnly={readOnly} />
         )}
 
         {/* ── PROFILE TAB ── */}
         {activeTab === "profile" && profile && (
-          <ProviderProfilePanel userId={profile.user_id} providerName={profile.full_name} />
+          <ProviderProfilePanel userId={profile.user_id} providerName={profile.full_name} readOnly={readOnly} />
         )}
       </div>
 
@@ -884,6 +990,7 @@ export default function ProviderPortalPage() {
           providerName={profile.full_name}
           onClose={handleCloseOrder}
           onOrderUpdated={handleOrderUpdated}
+          readOnly={readOnly}
         />
       )}
     </div>

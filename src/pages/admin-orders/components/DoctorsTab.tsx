@@ -710,6 +710,19 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
                     </button>
                   )}
 
+                  {/* Preview Portal — read-only admin "view as provider" (opens
+                      the real provider portal scoped to this provider). Only for
+                      providers with a portal account (a doctor_profiles.user_id). */}
+                  {doc.profile?.user_id && (
+                    <button type="button"
+                      onClick={() => window.open(`/admin/provider-preview?provider=${encodeURIComponent(doc.profile!.user_id)}`, "_blank", "noopener")}
+                      title={`Preview the provider portal as ${doc.name}`}
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 cursor-pointer transition-colors flex-shrink-0">
+                      <i className="ri-eye-line text-sm"></i>
+                      <span className="hidden sm:inline">Preview Portal</span>
+                    </button>
+                  )}
+
                   {/* Manage button */}
                   <button type="button" onClick={() => setSelectedDoc(isSelected ? null : doc)}
                     className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border cursor-pointer transition-colors flex-shrink-0 ${isSelected ? "bg-[#3b6ea5] border-[#3b6ea5] text-white" : "border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"}`}>

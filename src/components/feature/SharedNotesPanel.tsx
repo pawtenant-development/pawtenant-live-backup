@@ -19,6 +19,9 @@ interface SharedNotesPanelProps {
   currentUserId: string;
   currentUserName: string;
   currentUserRole: "admin" | "provider";
+  /** Admin preview — show the thread but disable sending/deleting. Defaults to
+      false, so all existing (real admin/provider) usages are unaffected. */
+  readOnly?: boolean;
 }
 
 function formatTime(ts: string) {
@@ -37,6 +40,7 @@ export default function SharedNotesPanel({
   currentUserId,
   currentUserName,
   currentUserRole,
+  readOnly = false,
 }: SharedNotesPanelProps) {
   const [notes, setNotes] = useState<SharedNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +109,7 @@ export default function SharedNotesPanel({
   }, [orderId, scrollToBottom]);
 
   const handleSend = async () => {
+    if (readOnly) return; // Admin preview — never post a note as the provider
     const text = noteText.trim();
     if (!text) return;
     setSaving(true);
@@ -127,6 +132,7 @@ export default function SharedNotesPanel({
   };
 
   const handleDelete = async (noteId: string) => {
+    if (readOnly) return; // Admin preview — never delete the provider's notes
     await supabase.from("shared_order_notes").delete().eq("id", noteId);
   };
 
@@ -230,7 +236,7 @@ export default function SharedNotesPanel({
                       </div>
 
                       {/* Delete button (own notes only, hover reveal) */}
-                      {isMine && (
+                      {isMine && !readOnly && (
                         <button
                           type="button"
                           onClick={() => handleDelete(note.id)}
@@ -254,6 +260,13 @@ export default function SharedNotesPanel({
 
       {/* Input area */}
       <div className="border-t border-gray-100 bg-gray-50/40 px-6 py-4">
+        {readOnly && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200">
+            <i className="ri-lock-line text-amber-600 text-sm flex-shrink-0"></i>
+            <span className="text-xs font-semibold text-amber-800">Admin preview — sending notes is disabled.</span>
+          </div>
+        )}
+        {!readOnly && (<>
         {saveError && (
           <p className="text-xs text-red-500 flex items-center gap-1 mb-2">
             <i className="ri-error-warning-line"></i>{saveError}
@@ -295,6 +308,7 @@ export default function SharedNotesPanel({
           </button>
         </div>
         <p className="text-xs text-gray-400 mt-1 text-right">{noteText.length}/1000</p>
+        </>)}
       </div>
     </div>
   );

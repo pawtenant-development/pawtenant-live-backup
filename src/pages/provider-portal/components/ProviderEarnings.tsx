@@ -35,6 +35,10 @@ interface Earning {
 
 interface ProviderEarningsProps {
   userId: string;
+  /** Admin preview flag. ProviderEarnings is inherently read-only (no write
+      paths — "mark paid" lives in the admin EarningsPanel), so this is accepted
+      for API parity with the other portal panels and needs no extra gating. */
+  readOnly?: boolean;
 }
 
 const STATUS_STYLE: Record<string, string> = {

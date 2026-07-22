@@ -208,6 +208,7 @@ export default function ProviderOrderDetail({
   }, [loadDocs, loadAddonRequests]);
 
   const handleMarkInReview = async () => {
+    if (readOnly) return; // Admin preview — never change the order's status
     setMarkingInReview(true);
     setInReviewMsg(null);
     try {
@@ -242,6 +243,7 @@ export default function ProviderOrderDetail({
   };
 
   const handleRejectOrder = async () => {
+    if (readOnly) return; // Admin preview — never reject on the provider's behalf
     if (rejectionReason.trim().length < 5) {
       setRejectMsg({ ok: false, text: "Please provide a reason (at least 5 characters)." });
       return;
@@ -345,6 +347,7 @@ export default function ProviderOrderDetail({
 
   // ── Submit all queued items ─────────────────────────────────────────────────
   const handleSubmitQueue = async () => {
+    if (readOnly) return; // Admin preview — never submit letters / documents
     if (fileQueue.length === 0) return;
     setSubmittingQueue(true);
     setQueueMsg(null);
@@ -435,6 +438,7 @@ export default function ProviderOrderDetail({
   // add-on workflow complete, and — critically — mints NO verification ID, injects
   // NO footer, and does NOT complete the ESA/PSD letter lifecycle.
   const handleUploadHousingForm = async () => {
+    if (readOnly) return; // Admin preview — never upload the completed housing form
     if (!housingFile) return;
     setHousingUploading(true);
     setHousingMsg(null);
@@ -1580,6 +1584,7 @@ export default function ProviderOrderDetail({
               currentUserId={providerUserId}
               currentUserName={providerName}
               currentUserRole="provider"
+              readOnly={readOnly}
             />
           )}
         </div>
