@@ -465,6 +465,22 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Psychiatric service dog housing rights explained for renters: Fair Housing Act protections, what a landlord can ask, no pet fees for assistance animals, and how to request.",
   },
+  // ── PSD/ESA condition content cluster — anxiety/depression qualification ─────
+  "/blog/can-anxiety-qualify-you-for-a-psd": {
+    title: "Can Anxiety Qualify You for a Psychiatric Service Dog?",
+    description:
+      "Anxiety can qualify you for a psychiatric service dog — but only if it rises to a disability and a dog is individually trained to perform tasks. How PSDs differ from ESAs, plus the ADA, housing, and air-travel rules.",
+  },
+  "/blog/can-depression-qualify-psychiatric-service-dog": {
+    title: "Can Depression Qualify You for a Psychiatric Service Dog?",
+    description:
+      "Depression can qualify you for a psychiatric service dog when it rises to a disability and a dog is individually trained to perform tasks. Trained-task examples, the ADA standard, documentation, housing, and travel.",
+  },
+  "/blog/can-depression-qualify-you-for-an-esa": {
+    title: "Can Depression Qualify You for an ESA?",
+    description:
+      "Depression can qualify you for an emotional support animal when a licensed professional confirms it substantially limits a major life activity. Qualifying symptoms, ESA letter requirements, ESA vs service animal, and HUD's May 2026 change.",
+  },
   // ── Travel-anxiety / major-event ESA content cluster ───────────────────────
   "/travel-anxiety-esa-letter": {
     title: "ESA Letters for Travel Anxiety & Temporary Housing | PawTenant",

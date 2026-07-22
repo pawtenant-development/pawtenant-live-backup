@@ -673,5 +673,75 @@ export const blogPostsVerification = [
     ],
     tags: ["texas service animal laws", "HB 4164", "misrepresentation penalty", "ESA vs service dog"],
     relatedSlugs: [],
+  },
+
+  // ── PSD/ESA condition content cluster ──────────────────────────────────────
+  // Listing cards for the anxiety/depression qualification articles. The static
+  // routes in router/config.tsx outrank /blog/:slug, so a card click renders the
+  // dedicated page — the single section below is a summary fallback only. These
+  // also keep blog sitemap parity (check-sitemap-parity.mjs) green and register
+  // the slugs in BLOG_SLUGS (SEO-PSD-ESA-CONDITION-ARTICLE-BATCH-001).
+  {
+    slug: "can-anxiety-qualify-you-for-a-psd",
+    title: "Can Anxiety Qualify You for a Psychiatric Service Dog?",
+    metaTitle: "Can Anxiety Qualify You for a Psychiatric Service Dog?",
+    metaDesc: "Anxiety can qualify you for a psychiatric service dog — but only if it rises to a disability and a dog is individually trained to perform tasks. How PSDs differ from ESAs, plus the ADA, housing, and air-travel rules.",
+    category: "Psychiatric Service Dogs",
+    date: "July 22, 2026",
+    readTime: "9 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/service-dogs/handler-working-with-dog.jpg",
+    excerpt: "Severe anxiety can qualify you for a psychiatric service dog, but two things must be true: the anxiety must rise to a disability that substantially limits a major life activity, and a dog must be individually trained to perform specific tasks. Task training — not a letter — is what creates ADA service-animal status.",
+    sections: [
+      {
+        heading: "When anxiety qualifies for a PSD",
+        content: "Anxiety qualifies for a psychiatric service dog only when it rises to the level of a disability that substantially limits a major life activity, and a dog is individually trained to perform specific tasks — such as deep pressure therapy during a panic attack or interrupting a compulsion. Task training, not a letter, registry, vest, or certificate, is what creates service-animal status under the ADA; a diagnosis alone points to an emotional support animal. Under the ADA a business may ask only two questions and cannot require a PSD letter for public access, and a licensed provider decides whether an animal-related recommendation is appropriate.",
+      },
+    ],
+    tags: ["can anxiety qualify you for a psychiatric service dog", "psychiatric service dog for anxiety", "PSD for anxiety", "anxiety service dog tasks"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "can-depression-qualify-psychiatric-service-dog",
+    title: "Can Depression Qualify You for a Psychiatric Service Dog?",
+    metaTitle: "Can Depression Qualify You for a Psychiatric Service Dog?",
+    metaDesc: "Depression can qualify you for a psychiatric service dog when it rises to a disability and a dog is individually trained to perform tasks. Trained-task examples, the ADA standard, documentation, housing, and travel.",
+    category: "Psychiatric Service Dogs",
+    date: "July 22, 2026",
+    readTime: "9 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/psd/man-working-holding-dog.jpg",
+    excerpt: "Depression can qualify you for a psychiatric service dog when it is a disabling impairment that substantially limits a major life activity and a dog is individually trained to perform specific tasks. Trained tasks — not a purchased letter — create service-animal status; a PSD letter documents clinical need and helps most in housing.",
+    sections: [
+      {
+        heading: "When depression qualifies for a PSD",
+        content: "Depression qualifies for a psychiatric service dog only when it rises to a disabling impairment that substantially limits a major life activity — work, sleep, concentration, or self-care — and a dog is individually trained to perform tasks that help with those symptoms. Task training, not a letter, is what creates ADA service-animal status; a PSD letter documents clinical need and is useful in context-specific requests like a housing reasonable accommodation. Major depressive disorder, bipolar depression, and treatment-resistant depression can meet the threshold when a licensed provider confirms the level of impairment.",
+      },
+    ],
+    tags: ["can depression qualify you for a psychiatric service dog", "psychiatric service dog for depression", "PSD for depression", "PSD trained tasks"],
+    relatedSlugs: [],
+  },
+  {
+    slug: "can-depression-qualify-you-for-an-esa",
+    title: "Can Depression Qualify You for an ESA?",
+    metaTitle: "Can Depression Qualify You for an ESA?",
+    metaDesc: "Depression can qualify you for an emotional support animal when a licensed professional confirms it substantially limits a major life activity. Qualifying symptoms, ESA letter requirements, ESA vs service animal, and HUD's May 2026 change.",
+    category: "Mental Health",
+    date: "July 22, 2026",
+    readTime: "9 min read",
+    author: "PawTenant Editorial",
+    authorTitle: "Reviewed for accuracy",
+    image: "/assets/lifestyle/esa-owner-hugging-dog-home.jpg",
+    excerpt: "Depression can qualify you for an emotional support animal when a licensed mental health professional confirms it substantially limits a major life activity and an ESA is clinically appropriate. Qualification depends on a genuine evaluation and a valid letter — not a diagnosis label or an online quiz — and HUD's May 2026 guidance reshaped federal housing enforcement.",
+    sections: [
+      {
+        heading: "When depression qualifies for an ESA",
+        content: "Depression qualifies for an emotional support animal when a licensed mental health professional diagnoses it as an impairment that substantially limits a major life activity — such as sleeping, concentrating, working, or maintaining relationships — and determines an ESA is an appropriate part of your care. It is not automatic: qualification depends on a genuine clinical evaluation and a valid letter, not a diagnosis label alone. On May 22, 2026, HUD's FHEO issued enforcement guidance centering federal enforcement on individually trained animals; the Fair Housing Act statute is unchanged, private lawsuits remain available, and state and local ESA protections are unaffected.",
+      },
+    ],
+    tags: ["can depression qualify you for an esa", "emotional support animal for depression", "esa letter depression", "esa vs service animal"],
+    relatedSlugs: [],
   }
 ];

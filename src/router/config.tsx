@@ -150,6 +150,10 @@ const BlogHowToTrainPsdTasksPage = lazy(() => import("../pages/blog-how-to-train
 // Texas ESA/PSD content cluster — /states/texas-esa-psd-guide + Texas penalties blog (indexable, in sitemap).
 const TexasEsaPsdGuidePage = lazy(() => import("../pages/states-texas-esa-psd-guide/page"));
 const BlogTexasServiceAnimalPenaltiesPage = lazy(() => import("../pages/blog-texas-service-animal-laws-penalties/page"));
+// PSD/ESA condition content cluster — anxiety/depression qualification (indexable, in sitemap).
+const BlogCanAnxietyQualifyPsdPage = lazy(() => import("../pages/blog-can-anxiety-qualify-you-for-a-psd/page"));
+const BlogCanDepressionQualifyPsdPage = lazy(() => import("../pages/blog-can-depression-qualify-psychiatric-service-dog/page"));
+const BlogCanDepressionQualifyEsaPage = lazy(() => import("../pages/blog-can-depression-qualify-you-for-an-esa/page"));
 
 // Minimal page-level loading fallback
 function PageLoader() {
@@ -334,6 +338,10 @@ const routes: RouteObject[] = [
   { path: "/blog/how-to-train-psychiatric-service-dog-tasks", element: <P C={BlogHowToTrainPsdTasksPage} /> },
   // Texas ESA/PSD cluster — Texas service-animal penalties blog (static segment outranks /blog/:slug).
   { path: "/blog/texas-service-animal-laws-penalties", element: <P C={BlogTexasServiceAnimalPenaltiesPage} /> },
+  // PSD/ESA condition content cluster — anxiety/depression qualification (static segments outrank /blog/:slug).
+  { path: "/blog/can-anxiety-qualify-you-for-a-psd", element: <P C={BlogCanAnxietyQualifyPsdPage} /> },
+  { path: "/blog/can-depression-qualify-psychiatric-service-dog", element: <P C={BlogCanDepressionQualifyPsdPage} /> },
+  { path: "/blog/can-depression-qualify-you-for-an-esa", element: <P C={BlogCanDepressionQualifyEsaPage} /> },
   { path: "/blog/:slug", element: <P C={BlogPostPage} /> },
   { path: "/sitemap", element: <P C={SitemapPage} /> },
   { path: "/contact-us", element: <P C={ContactUsPage} /> },

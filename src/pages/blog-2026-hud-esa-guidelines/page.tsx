@@ -486,10 +486,22 @@ export default function Blog2026HudEsaGuidelinesPage() {
           <Para>
             A PSD is a dog individually trained to perform specific tasks that mitigate the symptoms
             of a mental health disability. It is a recognized category of service animal — not a
-            marketing label. Commonly associated conditions include PTSD, major depressive disorder,
-            generalized anxiety disorder, bipolar disorder, OCD, and other diagnoses that
-            substantially limit major life activities. Whether any individual qualifies is a
-            clinical and legal question — there is no automatic qualification. You can read more in
+            marketing label. Commonly associated conditions include PTSD,{" "}
+            <Link to="/blog/can-depression-qualify-psychiatric-service-dog" className={inlineLink}>
+              major depressive disorder
+            </Link>
+            ,{" "}
+            <Link to="/blog/can-anxiety-qualify-you-for-a-psd" className={inlineLink}>
+              generalized anxiety disorder
+            </Link>
+            , bipolar disorder, OCD, and other diagnoses that substantially limit major life
+            activities. Whether any individual qualifies is a clinical and legal question — there is
+            no automatic qualification, and where comfort rather than a trained task is what helps,
+            an{" "}
+            <Link to="/blog/can-depression-qualify-you-for-an-esa" className={inlineLink}>
+              emotional support animal
+            </Link>{" "}
+            may fit instead. You can read more in
             our{" "}
             <Link to="/how-to-get-psd-letter" className={inlineLink}>
               psychiatric service dog letter

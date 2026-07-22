@@ -125,6 +125,9 @@ const siteStructure = [
     color: "amber",
     links: [
       { label: "All Blog Articles", href: "/blog" },
+      { label: "Can Anxiety Qualify You for a PSD?", href: "/blog/can-anxiety-qualify-you-for-a-psd" },
+      { label: "Can Depression Qualify You for a PSD?", href: "/blog/can-depression-qualify-psychiatric-service-dog" },
+      { label: "Can Depression Qualify You for an ESA?", href: "/blog/can-depression-qualify-you-for-an-esa" },
       { label: "How to Get an ESA Letter Online (2026)", href: "/blog/how-to-get-an-esa-letter-online" },
       { label: "What Is an ESA Letter? 2026 Guide", href: "/blog/what-is-an-esa-letter" },
       { label: "ESA Letter Requirements (2026)", href: "/blog/esa-letter-requirements" },

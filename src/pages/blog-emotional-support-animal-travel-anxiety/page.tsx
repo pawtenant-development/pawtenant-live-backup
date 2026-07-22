@@ -296,7 +296,11 @@ export default function BlogESATravelAnxietyPage() {
           <Para>
             What an ESA letter <em>does</em> do is support a reasonable-accommodation request in
             covered housing under the federal Fair Housing Act — documentation from a licensed
-            provider who evaluated you. If you&apos;re relocating or staying somewhere new, our guide
+            provider who evaluated you. Whether a condition like{" "}
+            <Link to="/blog/can-depression-qualify-you-for-an-esa" className={inlineLink}>
+              depression qualifies you for an ESA
+            </Link>{" "}
+            in the first place is a separate clinical question. If you&apos;re relocating or staying somewhere new, our guide
             to{" "}
             <Link to="/blog/temporary-housing-emotional-support-animal" className={inlineLink}>
               ESAs in temporary and extended-stay housing
@@ -312,7 +316,12 @@ export default function BlogESATravelAnxietyPage() {
             <Link to="/how-to-get-psd-letter" className={inlineLink}>psychiatric service dog (PSD)</Link>{" "}
             is different: it relates to a psychiatric disability and to a dog individually trained to
             perform disability-related tasks — and it is never an automatic pass to flights, events,
-            or public venues. PawTenant can help you explore ESA and PSD-related support options
+            or public venues. Whether{" "}
+            <Link to="/blog/can-anxiety-qualify-you-for-a-psd" className={inlineLink}>anxiety</Link>{" "}
+            or{" "}
+            <Link to="/blog/can-depression-qualify-psychiatric-service-dog" className={inlineLink}>depression</Link>{" "}
+            can qualify you for a PSD depends on whether the condition rises to a disability and the
+            dog is individually task-trained. PawTenant can help you explore ESA and PSD-related support options
             through a licensed provider evaluation and understand which path may fit your situation.
             No outcome is guaranteed.
           </Para>
