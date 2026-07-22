@@ -393,16 +393,6 @@ export default function AdminOrdersPage() {
   // Monotonic sequence so a slower, older orders fetch can never overwrite a
   // newer one (boot + 30s auto-refresh + manual Refresh can overlap).
   const loadSeqRef = useRef(0);
-  // ADMIN-ORDERS-DATASET-STABILITY-LIVE-001 — dataset stability guards.
-  // ordersReadyRef mirrors ordersReady for reads inside the stable
-  // loadOrderData callback (keeps it dependency-free). ordersReady flips true
-  // only once the FIRST complete snapshot has committed, gating full-scope
-  // counts (total, Dupes, No-GHL) so a partial page-1 count is never shown as
-  // final. ordersRefreshing drives a subtle "Refreshing" chip while a completed
-  // list is rebuilt in the background — the list is never cleared or reset.
-  const ordersReadyRef = useRef(false);
-  const [ordersReady, setOrdersReady] = useState(false);
-  const [ordersRefreshing, setOrdersRefreshing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSyncMsg, setRefreshSyncMsg] = useState("");
   const [search, setSearch] = useState("");
@@ -751,12 +741,6 @@ export default function AdminOrdersPage() {
     // before its query actually finished.
     const seq = ++loadSeqRef.current;
     const isLatest = () => seq === loadSeqRef.current;
-    // ADMIN-ORDERS-DATASET-STABILITY-LIVE-001: a completed snapshot already on
-    // screen means this cycle is a background refresh — keep it (and its counts)
-    // visible until the new snapshot commits atomically, and skip the fast
-    // page-1 paint (which would reset a completed list back to 250).
-    const hadSnapshot = ordersReadyRef.current;
-    if (isLatest()) setOrdersRefreshing(true);
 
     try {
       // ── PRIMARY: orders ────────────────────────────────────────────────
@@ -778,9 +762,6 @@ export default function AdminOrdersPage() {
       // unblocks the loader, the rest backfill silently. Columns are unchanged,
       // so every downstream consumer receives the same fields as before.
       const ORDERS_PAGE_SIZE = 250;
-      // Runaway backstop for the pagination loop (250 * 400 = 100k rows) — far
-      // above any real table size; the loop normally stops on the first short page.
-      const ORDERS_MAX_PAGES = 400;
       const fetchOrdersPage = (from: number) =>
         supabase
           .from("orders")
@@ -812,84 +793,48 @@ export default function AdminOrdersPage() {
         })();
       };
 
-      // Assemble the full snapshot in a LOCAL accumulator (deduped by order id
-      // after every page), sort once, then commit rows + all derived counts
-      // together in ONE atomic swap that only lands if this is still the latest
-      // cycle. Page 1 still paints instantly on the very first load; a routine
-      // background refresh keeps the previous completed list + counts visible
-      // and never resets a completed dataset back to page 1 (250).
-      const acc: Order[] = [];
-      const seen = new Set<string>();
-      const appendChunk = (chunk: Order[]) => {
-        for (const o of chunk) {
-          if (o && o.id && !seen.has(o.id)) { seen.add(o.id); acc.push(o); }
-        }
-      };
-      const commitSnapshot = () => {
-        // Sort exactly once, after the full snapshot is assembled + deduplicated.
-        const snapshot = acc.slice().sort((a, b) => {
-          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-          if (tA === tB) return (b.id ?? "").localeCompare(a.id ?? "");
-          return tB - tA;
-        });
-        ordersReadyRef.current = true;
-        setOrders(snapshot);
-        setOrdersReady(true);
-        setOrdersError(false);
-        setLastSyncedAt(new Date());
-        setOrdersRefreshing(false);
-        // Note counts for the completed snapshot — chunked (≤250 ids/request so
-        // the URI never overflows) and cycle-guarded inside loadNoteCounts.
-        for (let i = 0; i < snapshot.length; i += ORDERS_PAGE_SIZE) {
-          loadNoteCounts(snapshot.slice(i, i + ORDERS_PAGE_SIZE));
-        }
-      };
-
       const firstPage = await fetchOrdersPage(0);
-      if (!isLatest()) return;
       if (!firstPage.error) {
-        appendChunk((firstPage.data as Order[]) ?? []);
-        const firstLen = ((firstPage.data as Order[]) ?? []).length;
-        // First load ONLY: paint page 1 immediately so rows appear fast (counts
-        // stay gated). On a refresh (hadSnapshot) the completed list stays put.
-        if (!hadSnapshot && isLatest()) {
-          setOrders(acc.slice());
+        let accumulated = (firstPage.data as Order[]) ?? [];
+        // Sequence guard: a stale older fetch must never overwrite a newer one.
+        if (isLatest()) {
+          setOrders(accumulated);
           setOrdersError(false);
         }
-        if (firstLen < ORDERS_PAGE_SIZE) {
-          if (isLatest()) commitSnapshot();
-        } else {
-          // Backfill pages 2..N in the background into the local accumulator,
-          // then commit once. A newer cycle invalidates this loop immediately,
-          // so stale pages can never append twice or overwrite newer state.
+        loadNoteCounts(accumulated);
+
+        // Backfill the remaining pages in the background — never blocks the
+        // loader. The sequence guard stops this loop the moment a newer load
+        // (boot re-run, 30s auto-refresh or manual refresh) supersedes it.
+        if (accumulated.length === ORDERS_PAGE_SIZE) {
           void (async () => {
-            for (let from = ORDERS_PAGE_SIZE, guard = 0; guard < ORDERS_MAX_PAGES; guard++, from += ORDERS_PAGE_SIZE) {
+            for (let from = ORDERS_PAGE_SIZE, guard = 0; guard < 200; guard++, from += ORDERS_PAGE_SIZE) {
               if (!isLatest()) return;
               const pageRes = await fetchOrdersPage(from);
-              if (!isLatest()) return;
               if (pageRes.error) {
                 console.error("[admin-orders] orders page fetch failed:", pageRes.error);
-                if (isLatest()) setOrdersRefreshing(false);
                 return;
               }
               const chunk = (pageRes.data as Order[]) ?? [];
-              appendChunk(chunk);
-              if (chunk.length < ORDERS_PAGE_SIZE) break;
+              if (!isLatest()) return;
+              if (chunk.length > 0) {
+                accumulated = accumulated.concat(chunk);
+                setOrders(accumulated.slice());
+                loadNoteCounts(chunk);
+              }
+              if (chunk.length < ORDERS_PAGE_SIZE) return;
             }
-            if (isLatest()) commitSnapshot();
           })();
         }
       } else {
-        // Do NOT clear existing orders on failure. Flag it only when nothing is
-        // on screen yet, so the Orders tab shows a retry affordance instead of a
-        // misleading empty state; the 30s auto-refresh keeps retrying.
+        // Do NOT clear existing orders on failure. Flag it so the Orders tab
+        // shows a retry affordance instead of a misleading empty state; the
+        // 30s auto-refresh keeps retrying.
         console.error("[admin-orders] orders query failed:", firstPage.error);
-        if (isLatest()) {
-          if (!hadSnapshot) setOrdersError(true);
-          setOrdersRefreshing(false);
-        }
+        if (isLatest()) setOrdersError(true);
       }
+
+      setLastSyncedAt(new Date());
 
       // ── SECONDARY: provider rosters (fire-and-forget, never blocks loader) ─
       void (async () => {
@@ -917,10 +862,7 @@ export default function AdminOrdersPage() {
       })();
     } catch (outerErr) {
       console.error("[admin-orders] loadOrderData failed:", outerErr);
-      if (isLatest()) {
-        if (!ordersReadyRef.current) setOrdersError(true);
-        setOrdersRefreshing(false);
-      }
+      if (isLatest()) setOrdersError(true);
     }
   }, []);
 
@@ -2333,7 +2275,7 @@ export default function AdminOrdersPage() {
                     className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showDuplicatesOnly ? "bg-amber-500 text-white border-amber-500" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
                   >
                     <i className="ri-error-warning-line"></i>
-                    <span className="hidden sm:inline">Dupes</span>{ordersReady ? (duplicateCount > 0 ? ` (${duplicateCount})` : "") : " (…)"}
+                    <span className="hidden sm:inline">Dupes</span>{duplicateCount > 0 ? ` (${duplicateCount})` : ""}
                   </button>
                   {(() => {
                     const nonGhlCount = orders.filter((o) => !o.ghl_synced_at).length;
@@ -2345,7 +2287,7 @@ export default function AdminOrdersPage() {
                         className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showNonGhlOnly ? "bg-amber-600 text-white border-amber-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
                       >
                         <i className="ri-radar-line"></i>
-                        <span className="hidden sm:inline">No GHL</span>{ordersReady ? (nonGhlCount > 0 ? ` (${nonGhlCount})` : "") : " (…)"}
+                        <span className="hidden sm:inline">No GHL</span>{nonGhlCount > 0 ? ` (${nonGhlCount})` : ""}
                       </button>
                     );
                   })()}
@@ -2376,11 +2318,7 @@ export default function AdminOrdersPage() {
             )}
 
             {/* ── Sequence quick-filter chip bar (always visible on orders tab) ── */}
-            {/* ADMIN-ORDERS-DATASET-STABILITY-LIVE-001: gate the Sequence Stage
-                chips (All Leads + per-stage counts) on ordersReady so they only
-                render from the completed snapshot — never a partial page-1 count,
-                and never blinking during a background refresh. */}
-            {ordersReady && (() => {
+            {!loading && (() => {
               const leads = orders.filter((o) => !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead"));
               const counts = {
                 all: leads.length,
@@ -2564,14 +2502,12 @@ export default function AdminOrdersPage() {
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
-                  {ordersReady
-                    ? <>Showing <strong>{filtered.length}</strong> of <strong>{orders.length}</strong> orders</>
-                    : <>Loading full order set…</>}
+                  Showing <strong>{filtered.length}</strong> of <strong>{orders.length}</strong> orders
                 </p>
               </div>
             )}
 
-            {loading && orders.length === 0 ? (
+            {loading ? (
               <div className="flex items-center justify-center py-24">
                 <div className="text-center">
                   <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
@@ -2653,23 +2589,10 @@ export default function AdminOrdersPage() {
                     >
                       <i className="ri-add-line"></i>+ Refunded
                     </button>
-                    {ordersReady ? (
-                      <>
-                        <span className="font-semibold text-gray-700">{filtered.length}</span>
-                        <span>of</span>
-                        <span className="font-semibold text-gray-700">{orders.length}</span>
-                        <span>orders</span>
-                        {ordersRefreshing && (
-                          <span className="inline-flex items-center gap-1 text-[#3b6ea5]" title="Refreshing order data — the list stays live while it updates">
-                            <i className="ri-loader-4-line animate-spin"></i>Refreshing
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="inline-flex items-center gap-1">
-                        <i className="ri-loader-4-line animate-spin"></i>Loading totals…
-                      </span>
-                    )}
+                    <span className="font-semibold text-gray-700">{filtered.length}</span>
+                    <span>of</span>
+                    <span className="font-semibold text-gray-700">{orders.length}</span>
+                    <span>orders</span>
                     {activeFilterCount > 0 && (
                       <button
                         type="button"
