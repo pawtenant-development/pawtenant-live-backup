@@ -9,6 +9,7 @@ import ApprovalRequestModal from "./ApprovalRequestModal";
 import PaymentsAccountsPanel from "./PaymentsAccountsPanel";
 import ChannelContributionPanel from "./ChannelContributionPanel";
 import MarketingSpendPanel from "./MarketingSpendPanel";
+import MarketingROIHealthPanel from "./MarketingROIHealthPanel";
 import {
   fetchChargePayouts, resolutionToClassification, payoutLabel,
   type ChargePayoutResolution, type PayoutClassification,
@@ -556,6 +557,12 @@ export default function PaymentsTab() {
                 businessNet={businessNetTotal}
                 rangeLabel={rangeLabel}
                 canSync={canManageBooks}
+              />
+              {/* Marketing ROI / attribution audit + per-platform sync health. */}
+              <MarketingROIHealthPanel
+                from={customFrom || new Date().toISOString().slice(0, 10)}
+                to={customTo || new Date().toISOString().slice(0, 10)}
+                rangeLabel={rangeLabel}
               />
             </>
           )}
