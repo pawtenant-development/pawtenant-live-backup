@@ -58,5 +58,13 @@ Attribution quality: **84.25% attributed** (verified 239 + strong 130), **15.75%
 - Lint: clean. Full `npm run build`: pass (guard wired in; no regressions).
 - Tab reorder is `useState`-only (no inner-subtab URL contract to preserve); refresh lands on the valid default; the accounts/payments views already share range state, so Payments & Refunds and Reconciliation Tool remain fully functional.
 
-## 7. Rollback
-Revert the two LIVE commits to return to `3913bc3`; drop `public.get_channel_contribution_orders(date,date)` to remove the RPC (additive/read-only — safe to leave or drop).
+## 7. Marketing ROI & Sync Health (owner scope addendum)
+The TEST-only `Marketing ROI & Sync Health` section was missing from LIVE and was ported in this same rollout, mounted beneath `Marketing Spend & ROI` (MarketingSpendPanel) in the Accounts view.
+
+- **Frontend:** `MarketingROIHealthPanel.tsx` ported **verbatim** from approved TEST — the only diff (CRLF-normalized) is one mandatory icon-subset swap `ri-microsoft-fill → ri-microsoft-line` (`ri-microsoft-fill` is absent from LIVE's committed remixicon subset; all other glyphs present). The 1 pre-existing `react-hooks/exhaustive-deps` warning is identical on TEST and does not gate the build (`npm run build` runs no lint).
+- **Backend:** applied RPC `get_marketing_roi_health(date,date)` to LIVE via migration `20260617120000_add_get_marketing_roi_health.sql` — `security definer`, `is_accounts_admin()` gate (verified: unauthenticated → 42501), `grant … to authenticated`; read-only aggregate. Deps verified on LIVE: `marketing_ad_spend_daily`, `marketing_ad_spend_sync_runs` (all columns), `orders.created_at`; `msclkid` read via `attribution_json` (JSON-only, as on TEST).
+- **Behavior preserved:** revenue/orders from PawTenant order data; spend from synced platform data (never platform conversion value); Google + Meta synced spend reduce Operating Net; **Microsoft stays `Pending OAuth`, $0 spend, excluded from Operating Net** (never fabricated); manual `Sync now` unchanged, no new cron; no credential/campaign/bid/budget/keyword/conversion-action changes.
+- **LIVE data (all-time):** Google Ads spend $11,562 / 163 paid / $18,047 rev; Meta $3,956 / 37 / $3,596; Microsoft $0 / 0 / $0 (Pending OAuth); platform revenues reconcile to total gross ($18,047 + $3,596 + $0 + $24,287 other = $45,930). (This panel's simpler google/meta/microsoft/other classification is independent of the Channel Contribution taxonomy — each reconciles to its own totals.)
+
+## 8. Rollback
+Revert the LIVE commits to return to `3913bc3`; drop `public.get_channel_contribution_orders(date,date)` and `public.get_marketing_roi_health(date,date)` to remove the RPCs (both additive/read-only — safe to leave or drop).
