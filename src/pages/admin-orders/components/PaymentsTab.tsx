@@ -7,6 +7,7 @@ import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 import PaymentsAccountsPanel from "./PaymentsAccountsPanel";
+import ChannelContributionPanel from "./ChannelContributionPanel";
 import MarketingSpendPanel from "./MarketingSpendPanel";
 import {
   fetchChargePayouts, resolutionToClassification, payoutLabel,
@@ -188,7 +189,7 @@ function downloadCSV(
 }
 
 export default function PaymentsTab() {
-  const [activeView, setActiveView] = useState<ActiveView>("payments");
+  const [activeView, setActiveView] = useState<ActiveView>("accounts");
   const [period, setPeriod] = useState<Period>("30d");
   // Custom date range (overrides preset when active)
   const [customActive, setCustomActive] = useState(false);
@@ -469,6 +470,10 @@ export default function PaymentsTab() {
     <div>
       {/* View switcher */}
       <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-5 w-fit">
+        <button type="button" onClick={() => setActiveView("accounts")}
+          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "accounts" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+          <i className="ri-line-chart-line"></i>Accounts
+        </button>
         <button type="button" onClick={() => setActiveView("payments")}
           className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "payments" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-bank-card-line"></i>Payments &amp; Refunds
@@ -476,10 +481,6 @@ export default function PaymentsTab() {
         <button type="button" onClick={() => setActiveView("reconciliation")}
           className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "reconciliation" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-link-m"></i>Reconciliation Tool
-        </button>
-        <button type="button" onClick={() => setActiveView("accounts")}
-          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "accounts" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
-          <i className="ri-line-chart-line"></i>Accounts
         </button>
       </div>
 
@@ -540,6 +541,13 @@ export default function PaymentsTab() {
                 resolutionMap={resolutionMap}
                 canManageBooks={canManageBooks}
                 onOpenMonth={openAccountsMonth}
+              />
+              {/* Channel Contribution — paid-order contribution by acquisition channel.
+                  Drilldown of the paid-order totals; canonical per-order money basis. */}
+              <ChannelContributionPanel
+                from={customFrom || new Date().toISOString().slice(0, 10)}
+                to={customTo || new Date().toISOString().slice(0, 10)}
+                rangeLabel={rangeLabel}
               />
               {/* Marketing spend / ROI layer — separate from Business Net. */}
               <MarketingSpendPanel
