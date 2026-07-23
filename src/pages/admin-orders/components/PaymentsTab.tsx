@@ -286,7 +286,11 @@ export default function PaymentsTab() {
     setTimeout(() => setBulkDeletePayMsg(""), 8000);
   };
 
+  // Monotonic request sequence: a superseded (stale) response can never
+  // overwrite a newer selected range (LIVE-ACCOUNTS-DATE-RANGE-ALIGNMENT-001).
+  const fetchSeq = useRef(0);
   const fetchData = useCallback(async (qs: string) => {
+    const seq = ++fetchSeq.current;
     setLoading(true);
     setError("");
     try {
@@ -296,19 +300,27 @@ export default function PaymentsTab() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const result = await res.json() as PaymentData & { ok: boolean; error?: string };
+      if (seq !== fetchSeq.current) return; // superseded by a newer request — ignore
       if (!result.ok) throw new Error(result.error ?? "Failed to load payment data");
       setData(result);
     } catch (err: unknown) {
+      if (seq !== fetchSeq.current) return; // stale error — ignore
       setError(err instanceof Error ? err.message : "Failed to load payments");
+    } finally {
+      if (seq === fetchSeq.current) setLoading(false);
     }
-    setLoading(false);
   }, [supabaseUrl]);
 
-  // Preset-driven load (skips when a custom range is active)
+  // Preset-driven load for Payments / Reconciliation (skips when a custom range
+  // is active). The Accounts view owns its range via applyAccountsPreset, so we
+  // must NOT fire a period fetch here for Accounts — on initial load that raced
+  // the Accounts current-month fetch and left the summary on a stale 30d range
+  // while the controls showed Current Month (LIVE-ACCOUNTS-DATE-RANGE-ALIGNMENT-001).
   useEffect(() => {
+    if (activeView === "accounts") return;
     if (customActive) return;
     fetchData(`period=${period}`);
-  }, [fetchData, period, customActive]);
+  }, [fetchData, period, customActive, activeView]);
 
   const applyCustomRange = () => {
     if (!customFrom) return;
