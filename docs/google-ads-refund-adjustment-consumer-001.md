@@ -163,6 +163,26 @@ Example proposed payload (built, never sent):
   per original conversion, so concurrent producers cannot double-queue.
 - No PII, no email, no phone, no medical data, no raw click IDs.
 
+**Grant hardening (caught by the Supabase security advisor after rollout).**
+Supabase default privileges grant `EXECUTE` on new public functions to
+`anon`/`authenticated` as *explicit role grants*, and `REVOKE ... FROM public`
+does **not** undo an explicit role grant. The candidate RPC — which returns
+confirmation IDs and Stripe payment-intent IDs — was therefore still callable by
+any signed-in user. Fixed in
+`20260726130000_google_ads_refund_adjustment_harden_grants.sql` by revoking from
+`authenticated` explicitly, and pinned by guard checks S35–S36.
+
+Verified on LIVE with the role actually enforced (`set local role authenticated`),
+not with service-role SQL:
+
+| Check | Result |
+|---|---|
+| `authenticated` can call candidates RPC | **false** |
+| `authenticated` can call status RPC | true *(admin-gated internally, aggregates only)* |
+| `authenticated` insert / update / delete | **false** |
+| `anon` select | **false** |
+| **Rows visible to a non-admin session** | **0** |
+
 **Backfill idempotency proven:** re-running the deterministic backfill inserted
 **0** rows (21 rows, 21 distinct keys).
 

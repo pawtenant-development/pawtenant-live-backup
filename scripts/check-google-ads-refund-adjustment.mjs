@@ -52,6 +52,7 @@ const PATHS = {
   consumer: "supabase/functions/google-ads-refund-adjustments/index.ts",
   migration: "supabase/migrations/20260726120000_google_ads_refund_adjustment_shadow_ledger.sql",
   migration2: "supabase/migrations/20260726123000_google_ads_refund_adjustment_charge_basis.sql",
+  migration3: "supabase/migrations/20260726130000_google_ads_refund_adjustment_harden_grants.sql",
   webhook: "supabase/functions/stripe-webhook/index.ts",
   createRefund: "supabase/functions/create-refund/index.ts",
   uploader: "supabase/functions/sync-google-ads-conversions/index.ts",
@@ -304,6 +305,18 @@ function runStaticChecks(files) {
   check("S32", /Math\.min\(trueRetainedRevenue, originalValue\)/.test(coreCode), "the adjusted value must be capped at the original uploaded value (never invent revenue)");
   check("S33", /SKIPPED_NO_EFFECTIVE_REDUCTION/.test(coreCode), "overcharge corrections must be skipped, not restated");
   check("S34", /charge_basis_known/.test(stripComments(files.migration + (files.migration2 ?? ""))), "the ledger must record whether the charge basis was proven");
+
+  // Supabase default privileges re-grant EXECUTE to `authenticated` on new public
+  // functions, and REVOKE ... FROM public does NOT undo an explicit role grant.
+  // The candidate RPC returns order + payment-intent identifiers, so it must be
+  // revoked from `authenticated` EXPLICITLY.
+  const grants = stripComments(files.migration3 ?? "");
+  check("S35",
+    /revoke\s+all\s+on\s+function\s+public\.get_google_ads_refund_adjustment_candidates\(integer\)\s*\n?\s*from[^;]*authenticated/i.test(grants),
+    "the candidate RPC must be revoked from `authenticated` explicitly (it exposes order + payment-intent identifiers)");
+  check("S36",
+    /alter\s+function\s+public\.tg_google_ads_conv_adj_touch\(\)\s+set\s+search_path/i.test(grants),
+    "the trigger function must pin search_path");
 
   // Migration: RLS, fail-closed writes, value constraints, idempotency.
   check("S19", /enable row level security/i.test(migration) && /force row level security/i.test(migration), "the ledger must enable AND force RLS");
