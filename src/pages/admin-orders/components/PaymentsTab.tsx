@@ -7,6 +7,7 @@ import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 import PaymentsAccountsPanel from "./PaymentsAccountsPanel";
+import AccountsReconciliationBridge from "./AccountsReconciliationBridge";
 import ChannelContributionPanel from "./ChannelContributionPanel";
 import MarketingSpendPanel from "./MarketingSpendPanel";
 import MarketingROIHealthPanel from "./MarketingROIHealthPanel";
@@ -554,6 +555,17 @@ export default function PaymentsTab() {
                 resolutionMap={resolutionMap}
                 canManageBooks={canManageBooks}
                 onOpenMonth={openAccountsMonth}
+              />
+              {/* Stripe ↔ Orders reconciliation — itemized bridge between the
+                  Stripe cash-basis cards above and the order-basis Channel
+                  Contribution below (LIVE-ACCOUNTS-FINANCIAL-RECONCILIATION-UX-001). */}
+              <AccountsReconciliationBridge
+                from={customFrom || new Date().toISOString().slice(0, 10)}
+                to={customTo || new Date().toISOString().slice(0, 10)}
+                rangeLabel={rangeLabel}
+                summary={data?.summary}
+                charges={data?.charges}
+                resolutionMap={resolutionMap}
               />
               {/* Channel Contribution — paid-order contribution by acquisition channel.
                   Drilldown of the paid-order totals; canonical per-order money basis. */}

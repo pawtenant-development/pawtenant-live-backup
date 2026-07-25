@@ -87,7 +87,8 @@ export default function ChannelContributionPanel({ from, to, rangeLabel }: {
           <p className="text-xs text-gray-500 mt-0.5 max-w-2xl">
             Paid-order contribution by acquisition channel for <span className="font-semibold text-[#3b6ea5]">{rangeLabel}</span>.
             A drilldown of the paid-order totals — every paid order is counted in exactly one channel. Canonical per-order
-            figures (same model as Admin Orders); may differ slightly from the Stripe cash-basis cards above.
+            figures (same model as Admin Orders); differs from the Stripe cash-basis cards above by the itemized
+            amounts in the Stripe ↔ Orders Reconciliation bridge.
           </p>
         </div>
         {result && (
