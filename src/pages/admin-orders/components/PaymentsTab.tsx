@@ -6,11 +6,15 @@ import { can } from "../../../lib/adminPermissions";
 import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
-import PaymentsAccountsPanel from "./PaymentsAccountsPanel";
-import AccountsReconciliationBridge from "./AccountsReconciliationBridge";
-import ChannelContributionPanel from "./ChannelContributionPanel";
+import PaymentsAccountsPanel, { DEFAULT_PKR_PER_USD, type CompanyTotals } from "./PaymentsAccountsPanel";
+import AccountsReconciliationBridge, { type BridgeResult } from "./AccountsReconciliationBridge";
+import ChannelContributionPanel, { type ChannelTotalsResult } from "./ChannelContributionPanel";
 import MarketingSpendPanel from "./MarketingSpendPanel";
 import MarketingROIHealthPanel from "./MarketingROIHealthPanel";
+import AccountsHeader from "./AccountsHeader";
+import AccountsSectionNav, { ACCOUNTS_SECTIONS, sectionId, type AccountsSection } from "./AccountsSectionNav";
+import AccountsReconciliationView from "./AccountsReconciliationView";
+import { resolveReconciliationStatus, type DataSourceRow } from "../../../lib/accountsFinancialFlow";
 import {
   fetchChargePayouts, resolutionToClassification, payoutLabel,
   type ChargePayoutResolution, type PayoutClassification,
@@ -212,6 +216,21 @@ export default function PaymentsTab() {
   const [orderMap, setOrderMap] = useState<Record<string, string>>({});
   const [resolutionMap, setResolutionMap] = useState<Record<string, ChargePayoutResolution>>({});
 
+  // ── Accounts workspace shell state ───────────────────────────────────────
+  // The header, the in-page nav and the Reconciliation section all read these,
+  // so every Accounts figure on screen traces back to ONE computation.
+  const [fxRate, setFxRate] = useState<number>(DEFAULT_PKR_PER_USD);
+  const [companyTotals, setCompanyTotals] = useState<CompanyTotals | null>(null);
+  const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
+  const [channelResult, setChannelResult] = useState<ChannelTotalsResult | null>(null);
+  const [exportFn, setExportFn] = useState<(() => void) | null>(null);
+  const [activeAccountsSection, setActiveAccountsSection] = useState<AccountsSection>("overview");
+  const [refreshedAtMs, setRefreshedAtMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  // Stable identity — a new function each render would re-fire the child effect.
+  const handleExportReady = useCallback((fn: () => void) => setExportFn(() => fn), []);
+
   // ── Bulk delete for payments (owner/admin only) ──
   const [selectedChargeIds, setSelectedChargeIds] = useState<Set<string>>(new Set());
   const [showBulkDeletePayments, setShowBulkDeletePayments] = useState(false);
@@ -304,6 +323,7 @@ export default function PaymentsTab() {
       if (seq !== fetchSeq.current) return; // superseded by a newer request — ignore
       if (!result.ok) throw new Error(result.error ?? "Failed to load payment data");
       setData(result);
+      setRefreshedAtMs(Date.now());
     } catch (err: unknown) {
       if (seq !== fetchSeq.current) return; // stale error — ignore
       setError(err instanceof Error ? err.message : "Failed to load payments");
@@ -384,6 +404,39 @@ export default function PaymentsTab() {
       applyAccountsPreset("current_month");
     }
   }, [activeView, applyAccountsPreset]);
+
+  // Keep the header's "last refreshed" relative time honest without re-fetching.
+  useEffect(() => {
+    if (activeView !== "accounts") return;
+    const t = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [activeView]);
+
+  // Scroll-spy so the in-page nav reflects where the operator actually is.
+  useEffect(() => {
+    if (activeView !== "accounts" || loading) return;
+    const els = ACCOUNTS_SECTIONS
+      .map((s) => document.getElementById(sectionId(s.key)))
+      .filter((el): el is HTMLElement => !!el);
+    if (els.length === 0) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (!visible) return;
+        const key = ACCOUNTS_SECTIONS.find((s) => sectionId(s.key) === visible.target.id)?.key;
+        if (key) setActiveAccountsSection(key);
+      },
+      { rootMargin: "-80px 0px -60% 0px", threshold: 0 },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [activeView, loading]);
+
+  const scrollToSection = useCallback((s: AccountsSection) => {
+    setActiveAccountsSection(s);
+    document.getElementById(sectionId(s))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   // Cross-reference payment_intent_id → confirmation_id (Order ID chip + refund modal).
   useEffect(() => {
@@ -474,6 +527,58 @@ export default function PaymentsTab() {
     return matchSearch && matchStatus;
   }) ?? [];
 
+  // ── Accounts reconciliation verdict ──────────────────────────────────────
+  // Evidence-driven, never decorative: "Balanced" requires the Stripe↔Orders
+  // bridge to have explained every residual AND the channel partition to tie
+  // to the order basis. Anything unresolved reads Updating / Needs Review.
+  const accountsFrom = customFrom || new Date().toISOString().slice(0, 10);
+  const accountsTo = customTo || new Date().toISOString().slice(0, 10);
+
+  const orderBasis = bridgeResult?.orderBasis ?? null;
+  const channelTotals = channelResult?.totals ?? null;
+
+  const reconVerdict = resolveReconciliationStatus({
+    loading: loading || (bridgeResult?.loading ?? true) || (channelResult?.loading ?? true),
+    hasError: !!error || !!bridgeResult?.error || !!channelResult?.error,
+    bridgeFullyExplained: bridgeResult?.fullyExplained ?? null,
+    channelPartitionBalanced: channelResult?.partitionBalanced ?? null,
+    channelVsOrderBasisOrderDelta:
+      orderBasis?.paidOrders != null && channelTotals?.paidOrders != null
+        ? channelTotals.paidOrders - orderBasis.paidOrders : null,
+    channelVsOrderBasisNetDeltaUsd:
+      orderBasis?.net != null && channelTotals?.net != null
+        ? channelTotals.net - orderBasis.net : null,
+    spendSyncStale: companyTotals?.spendSyncStale ?? false,
+  });
+
+  const dataSourceRows: DataSourceRow[] = [
+    { name: "Stripe", health: error ? "error" : data ? "ok" : "pending",
+      detail: error ? "Payment history failed to load." : `${data?.summary.charge_count ?? 0} charges, ${data?.summary.refund_count ?? 0} refunds in range.` },
+    { name: "Orders database", health: bridgeResult?.error ? "error" : orderBasis ? "ok" : "pending",
+      detail: bridgeResult?.error ? bridgeResult.error : `${orderBasis?.paidOrders ?? 0} paid orders in range.` },
+    { name: "Provider earnings", health: orderBasis?.provider != null ? "ok" : "pending",
+      detail: "Completed-order earnings only; pending work is not deducted." },
+    { name: "Google Ads spend", health: (companyTotals?.googleAdsSpend ?? 0) > 0 ? "ok" : "pending",
+      detail: (companyTotals?.googleAdsSpend ?? 0) > 0 ? "Auto-synced for the selected range." : "No synced spend for this range yet." },
+    { name: "Meta Ads spend", health: companyTotals?.metaConnected ? "ok" : "not_connected",
+      detail: companyTotals?.metaConnected ? "Auto-synced for the selected range." : "Token not configured — spend stays $0 and is never estimated." },
+    { name: "Microsoft Ads", health: "not_connected",
+      detail: "Pending OAuth. No spend is imported or fabricated for this platform." },
+    { name: "Salary & company expenses", health: "manual",
+      detail: "Payroll estimates plus manually entered expenses; PKR converted at the header rate." },
+  ];
+
+  const unclassifiedRows = [
+    { label: "Unattributed paid orders", count: channelResult?.unknownOrders ?? null,
+      note: "Counted in Unknown — never dropped." },
+    { label: "Payments without an order row", count: bridgeResult?.addonCount ?? null,
+      note: "Additional-document payments." },
+    { label: "Completed orders missing a payout", count: providerMissingCount,
+      note: "Business Net is not reduced for these." },
+    { label: "Charges on duplicate chains", count: duplicateChainCount,
+      note: "Possible over-charges to review." },
+  ];
+
   const feesEstimated = data?.summary.fees_include_estimates ?? false;
   const totalFees = data?.summary.total_fees ?? 0;
   const netAfterFees = data?.summary.net_after_fees ?? (data ? data.summary.net_revenue : 0);
@@ -504,6 +609,21 @@ export default function PaymentsTab() {
       {/* Accounts / P&L view */}
       {activeView === "accounts" && (
         <>
+          {/* Global Accounts header — one period, one status, one FX rate, one export. */}
+          <AccountsHeader
+            rangeLabel={rangeLabel}
+            from={accountsFrom}
+            to={accountsTo}
+            refreshedAtMs={refreshedAtMs}
+            nowMs={nowMs}
+            status={reconVerdict.status}
+            statusReasons={reconVerdict.reasons}
+            fxRate={fxRate}
+            onFxRateChange={setFxRate}
+            onExport={exportFn ?? undefined}
+            onOpenReconciliation={() => scrollToSection("reconciliation")}
+          />
+
           {/* Monthly books date-range controls (defaults to current month) */}
           <div className="mb-4 bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-3">
             <div className="flex items-center gap-2 flex-wrap">
@@ -538,12 +658,22 @@ export default function PaymentsTab() {
             </div>
           </div>
 
+          {/* In-page section jump-list. Deliberately subordinate to the page tabs. */}
+          <AccountsSectionNav
+            active={activeAccountsSection}
+            onNavigate={scrollToSection}
+            attention={{ reconciliation: reconVerdict.status === "needs_review" || reconVerdict.status === "data_source_error" }}
+          />
+
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <div className="text-center"><i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i><p className="text-sm text-gray-500">Loading accounts…</p></div>
             </div>
           ) : (
             <>
+              {/* Overview + Expenses live inside the panel; Channels + Marketing
+                  are composed into its middle slot so the section nav order and
+                  the DOM order are the same. */}
               <PaymentsAccountsPanel
                 period={period}
                 customActive={customActive}
@@ -555,39 +685,85 @@ export default function PaymentsTab() {
                 resolutionMap={resolutionMap}
                 canManageBooks={canManageBooks}
                 onOpenMonth={openAccountsMonth}
+                fxRate={fxRate}
+                reconStatus={reconVerdict.status}
+                onTotals={setCompanyTotals}
+                onExportReady={handleExportReady}
+                middleSlot={
+                  <>
+                    {/* Stripe ↔ Orders reconciliation — itemized bridge between the
+                        Stripe cash-basis figures and the order-basis Channel
+                        Contribution (LIVE-ACCOUNTS-FINANCIAL-RECONCILIATION-UX-001). */}
+                    <AccountsReconciliationBridge
+                      from={accountsFrom}
+                      to={accountsTo}
+                      rangeLabel={rangeLabel}
+                      summary={data?.summary}
+                      charges={data?.charges}
+                      resolutionMap={resolutionMap}
+                      onResult={setBridgeResult}
+                    />
+                    {/* Channel Contribution — paid-order contribution by acquisition
+                        channel. Drilldown of the paid-order totals; order-basis money. */}
+                    <div id={sectionId("channels")} className="scroll-mt-4">
+                      <ChannelContributionPanel
+                        from={accountsFrom}
+                        to={accountsTo}
+                        rangeLabel={rangeLabel}
+                        onTotals={setChannelResult}
+                      />
+                    </div>
+                    {/* Marketing — spend truth from the ad platforms, revenue truth
+                        from PawTenant paid orders. */}
+                    <div id={sectionId("marketing")} className="scroll-mt-4">
+                      <MarketingSpendPanel
+                        from={accountsFrom}
+                        to={accountsTo}
+                        businessNet={businessNetTotal}
+                        rangeLabel={rangeLabel}
+                        canSync={canManageBooks}
+                      />
+                      <MarketingROIHealthPanel
+                        from={accountsFrom}
+                        to={accountsTo}
+                        rangeLabel={rangeLabel}
+                      />
+                    </div>
+                  </>
+                }
               />
-              {/* Stripe ↔ Orders reconciliation — itemized bridge between the
-                  Stripe cash-basis cards above and the order-basis Channel
-                  Contribution below (LIVE-ACCOUNTS-FINANCIAL-RECONCILIATION-UX-001). */}
-              <AccountsReconciliationBridge
-                from={customFrom || new Date().toISOString().slice(0, 10)}
-                to={customTo || new Date().toISOString().slice(0, 10)}
-                rangeLabel={rangeLabel}
-                summary={data?.summary}
-                charges={data?.charges}
-                resolutionMap={resolutionMap}
-              />
-              {/* Channel Contribution — paid-order contribution by acquisition channel.
-                  Drilldown of the paid-order totals; canonical per-order money basis. */}
-              <ChannelContributionPanel
-                from={customFrom || new Date().toISOString().slice(0, 10)}
-                to={customTo || new Date().toISOString().slice(0, 10)}
-                rangeLabel={rangeLabel}
-              />
-              {/* Marketing spend / ROI layer — separate from Business Net. */}
-              <MarketingSpendPanel
-                from={customFrom || new Date().toISOString().slice(0, 10)}
-                to={customTo || new Date().toISOString().slice(0, 10)}
-                businessNet={businessNetTotal}
-                rangeLabel={rangeLabel}
-                canSync={canManageBooks}
-              />
-              {/* Marketing ROI / attribution audit + per-platform sync health. */}
-              <MarketingROIHealthPanel
-                from={customFrom || new Date().toISOString().slice(0, 10)}
-                to={customTo || new Date().toISOString().slice(0, 10)}
-                rangeLabel={rangeLabel}
-              />
+
+              {/* Reconciliation — company vs channel deltas, data-source health and
+                  unclassified counts. Deltas are shown as they are, never hidden. */}
+              <div id={sectionId("reconciliation")} className="scroll-mt-4 mt-4">
+                <AccountsReconciliationView
+                  rangeLabel={rangeLabel}
+                  stripeBasis={{
+                    paidOrders: companyTotals?.paidOrders ?? null,
+                    gross: companyTotals?.grossCharged ?? null,
+                    refunds: companyTotals?.refunds ?? null,
+                    net: companyTotals?.netRevenue ?? null,
+                    provider: companyTotals?.providerPayments ?? null,
+                  }}
+                  orderBasis={{
+                    paidOrders: orderBasis?.paidOrders ?? null,
+                    gross: orderBasis?.gross ?? null,
+                    refunds: orderBasis?.refunds ?? null,
+                    net: orderBasis?.net ?? null,
+                    provider: orderBasis?.provider ?? null,
+                  }}
+                  channelTotals={{
+                    paidOrders: channelTotals?.paidOrders ?? null,
+                    gross: channelTotals?.gross ?? null,
+                    refunds: channelTotals?.refunds ?? null,
+                    net: channelTotals?.net ?? null,
+                    provider: channelTotals?.provider ?? null,
+                  }}
+                  bridgeFullyExplained={bridgeResult?.fullyExplained ?? null}
+                  sources={dataSourceRows}
+                  unclassified={unclassifiedRows}
+                />
+              </div>
             </>
           )}
         </>

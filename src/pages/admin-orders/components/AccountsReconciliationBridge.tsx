@@ -27,6 +27,25 @@ interface ChargeLike {
   amount_refunded: number;
 }
 
+/** What the bridge learned, lifted up so the Accounts header + Reconciliation
+ *  section can use the SAME canonical numbers instead of recomputing them. */
+export interface BridgeResult {
+  loading: boolean;
+  error: string;
+  /** null until the bridge has both the Stripe dataset and the RPC payload. */
+  fullyExplained: boolean | null;
+  /** Order-basis totals straight from get_accounts_reconciliation. */
+  orderBasis: {
+    paidOrders: number | null;
+    gross: number | null;
+    refunds: number | null;
+    net: number | null;
+    provider: number | null;
+  } | null;
+  /** Count of add-on document payments in range (charges with no order row). */
+  addonCount: number | null;
+}
+
 interface Props {
   from: string;
   to: string;
@@ -34,6 +53,8 @@ interface Props {
   summary: { total_revenue: number; total_refunded: number; charge_count?: number } | undefined;
   charges: ChargeLike[] | undefined;
   resolutionMap: Record<string, ChargePayoutResolution>;
+  /** Reports the bridge verdict + order-basis totals to the Accounts shell. */
+  onResult?: (r: BridgeResult) => void;
 }
 
 const fmtUsd = (n: number) =>
@@ -41,7 +62,7 @@ const fmtUsd = (n: number) =>
 const fmtSigned = (n: number) =>
   `${n < 0 ? "−" : "+"}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function AccountsReconciliationBridge({ from, to, rangeLabel, summary, charges, resolutionMap }: Props) {
+export default function AccountsReconciliationBridge({ from, to, rangeLabel, summary, charges, resolutionMap, onResult }: Props) {
   const [rpc, setRpc] = useState<ReconRpcPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -75,6 +96,28 @@ export default function AccountsReconciliationBridge({ from, to, rangeLabel, sum
       rpc,
     });
   }, [rpc, summary, charges, resolutionMap]);
+
+  // Lift the verdict + order-basis totals so the header badge and the
+  // Reconciliation section read the SAME numbers this panel renders.
+  useEffect(() => {
+    if (!onResult) return;
+    const ob = rpc?.order_basis;
+    onResult({
+      loading,
+      error,
+      fullyExplained: recon ? recon.fullyExplained : null,
+      orderBasis: ob
+        ? {
+            paidOrders: ob.paid_orders ?? null,
+            gross: ob.gross_usd ?? null,
+            refunds: ob.refund_usd ?? null,
+            net: ob.net_usd ?? null,
+            provider: ob.provider_usd ?? null,
+          }
+        : null,
+      addonCount: rpc?.addon_payments ? rpc.addon_payments.length : null,
+    });
+  }, [onResult, loading, error, recon, rpc]);
 
   return (
     <div className="mt-4 bg-white border border-gray-200 rounded-xl p-4">

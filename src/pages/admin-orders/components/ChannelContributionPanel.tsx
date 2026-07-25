@@ -39,10 +39,31 @@ const fmtPct = (frac: number | null | undefined) => (frac == null ? "—" : `${(
 
 const signCls = (n: number) => (n < 0 ? "text-rose-600" : "text-gray-900");
 
-export default function ChannelContributionPanel({ from, to, rangeLabel }: {
+/** Channel totals lifted to the Accounts shell for the Reconciliation section. */
+export interface ChannelTotalsResult {
+  loading: boolean;
+  error: string;
+  totals: {
+    paidOrders: number | null;
+    gross: number | null;
+    refunds: number | null;
+    net: number | null;
+    provider: number | null;
+  } | null;
+  /** Σ categories === grand total (the partition is internally consistent). */
+  partitionBalanced: boolean | null;
+  /** Rows the RPC returned vs rows the classifier placed — must be equal. */
+  rowsReturned: number | null;
+  rowsClassified: number | null;
+  /** Paid orders that landed in Unknown / Unattributed. */
+  unknownOrders: number | null;
+}
+
+export default function ChannelContributionPanel({ from, to, rangeLabel, onTotals }: {
   from: string;
   to: string;
   rangeLabel: string;
+  onTotals?: (r: ChannelTotalsResult) => void;
 }) {
   const [raw, setRaw] = useState<ChannelRpcResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +92,36 @@ export default function ChannelContributionPanel({ from, to, rangeLabel }: {
     return aggregateChannelContribution(raw.orders ?? [], { googleAdsSpendUsd: raw.google_ads_spend_usd });
   }, [raw]);
 
+  // Unknown is the reconciliation catch-all — surfaced explicitly so an
+  // unattributed paid order is never silently dropped from the view.
+  const unknownOrders = useMemo(
+    () => result?.categories.find((c) => c.category === "unknown")?.paidOrders ?? null,
+    [result],
+  );
+
+  // Lift totals so the Reconciliation section can compare them against the
+  // order basis using the SAME numbers this table renders.
+  useEffect(() => {
+    if (!onTotals) return;
+    onTotals({
+      loading,
+      error,
+      totals: result
+        ? {
+            paidOrders: result.total.paidOrders,
+            gross: result.total.grossCharged,
+            refunds: result.total.refunds,
+            net: result.total.netRevenue,
+            provider: result.total.providerPayments,
+          }
+        : null,
+      partitionBalanced: result ? result.reconciliation.balanced : null,
+      rowsReturned: raw?.orders ? raw.orders.length : null,
+      rowsClassified: result ? result.total.paidOrders : null,
+      unknownOrders,
+    });
+  }, [onTotals, loading, error, result, raw, unknownOrders]);
+
   const toggle = (c: ChannelCategory) => setExpanded((e) => ({ ...e, [c]: !e[c] }));
   const allExpanded = result ? Object.values(expanded).every(Boolean) : false;
   const setAll = (v: boolean) =>
@@ -86,9 +137,16 @@ export default function ChannelContributionPanel({ from, to, rangeLabel }: {
           </h3>
           <p className="text-xs text-gray-500 mt-0.5 max-w-2xl">
             Paid-order contribution by acquisition channel for <span className="font-semibold text-[#3b6ea5]">{rangeLabel}</span>.
-            A drilldown of the paid-order totals — every paid order is counted in exactly one channel. Canonical per-order
-            figures (same model as Admin Orders); differs from the Stripe cash-basis cards above by the itemized
-            amounts in the Stripe ↔ Orders Reconciliation bridge.
+          </p>
+          {/* Explicit basis statement — §14 of the Accounts contract. */}
+          <p className="text-[11px] text-gray-500 mt-1.5 max-w-2xl bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-2 leading-relaxed">
+            <i className="ri-information-line mr-1 text-[#3b6ea5]"></i>
+            This view uses the <span className="font-semibold">same paid-order universe</span> as the order basis in the
+            Reconciliation section — every paid order appears in exactly one channel, including Unknown.
+            <span className="block mt-1">
+              Stripe fees are <span className="font-semibold">not</span> shown by channel, because actual order-level Stripe
+              fees are not available. Channel figures therefore stop <em>before</em> Stripe fees and are never profit.
+            </span>
           </p>
         </div>
         {result && (
@@ -124,9 +182,9 @@ export default function ChannelContributionPanel({ from, to, rangeLabel }: {
               { label: "Paid Orders", value: fmtInt(result.total.paidOrders), color: "text-gray-800", icon: "ri-shopping-bag-3-line", sub: "in range" },
               { label: "Net Revenue", value: fmtUsd(result.total.netRevenue), color: "text-emerald-600", icon: "ri-money-dollar-circle-line", sub: "gross − refunds" },
               { label: "Provider Payments", value: fmtUsd(result.total.providerPayments), color: "text-amber-600", icon: "ri-stethoscope-line", sub: "completed only" },
-              { label: "Contribution", value: fmtUsd(result.total.contributionBeforeStripeAndSpend), color: signCls(result.total.contributionBeforeStripeAndSpend), icon: "ri-scales-3-line", sub: "before fees & spend" },
+              { label: "Before Stripe & Ad Spend", value: fmtUsd(result.total.contributionBeforeStripeAndSpend), color: signCls(result.total.contributionBeforeStripeAndSpend), icon: "ri-scales-3-line", sub: "net − provider" },
               { label: "Ad Spend", value: fmtUsd(result.total.adSpend), color: "text-rose-500", icon: "ri-megaphone-line", sub: "Google Ads (synced)" },
-              { label: "After Ad Spend", value: fmtUsd(result.total.netAfterAdSpendBeforeStripe), color: signCls(result.total.netAfterAdSpendBeforeStripe), icon: "ri-funds-line", sub: "before Stripe fees" },
+              { label: "After Ad Spend, Before Stripe", value: fmtUsd(result.total.netAfterAdSpendBeforeStripe), color: signCls(result.total.netAfterAdSpendBeforeStripe), icon: "ri-funds-line", sub: "not profit" },
             ].map((s) => (
               <div key={s.label} className="bg-gray-50 rounded-xl border border-gray-200 p-2.5">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -139,14 +197,41 @@ export default function ChannelContributionPanel({ from, to, rangeLabel }: {
             ))}
           </div>
 
-          {/* Reconciliation warning (should never fire — partition is exact) */}
-          {!result.reconciliation.balanced && (
-            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800">
-              <i className="ri-error-warning-line mr-1"></i>
-              Channel totals do not reconcile to the paid-order total — gross Δ {fmtUsd(result.reconciliation.grossDelta)},
-              orders Δ {result.reconciliation.paidOrdersDelta}. Figures may be incomplete.
-            </div>
-          )}
+          {/* Reconciliation bar — states plainly whether every paid order the RPC
+              returned was classified and whether the partition sums to the total.
+              A failure is shown in amber and never hidden. */}
+          {(() => {
+            const returned = raw?.orders?.length ?? 0;
+            const classified = result.total.paidOrders;
+            const allClassified = returned === classified;
+            const ok = allClassified && result.reconciliation.balanced;
+            return (
+              <div className={`mb-3 px-3 py-2 rounded-lg border text-[11px] ${ok
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-amber-50 border-amber-200 text-amber-800"}`}>
+                <div className="flex items-center gap-x-3 gap-y-1 flex-wrap font-semibold">
+                  <span className="inline-flex items-center gap-1">
+                    <i className={ok ? "ri-checkbox-circle-line" : "ri-error-warning-line"}></i>
+                    {classified} of {returned} paid order{returned === 1 ? "" : "s"} classified
+                  </span>
+                  {ok ? (
+                    <>
+                      <span><i className="ri-check-line mr-0.5"></i>Gross reconciled</span>
+                      <span><i className="ri-check-line mr-0.5"></i>Refunds reconciled</span>
+                      <span><i className="ri-check-line mr-0.5"></i>Provider payments reconciled</span>
+                    </>
+                  ) : (
+                    <>
+                      {!allClassified && <span>{returned - classified} order(s) missing from the channel view</span>}
+                      {result.reconciliation.grossDelta > 0.01 && <span>Gross Δ {fmtUsd(result.reconciliation.grossDelta)}</span>}
+                      {result.reconciliation.refundsDelta > 0.01 && <span>Refunds Δ {fmtUsd(result.reconciliation.refundsDelta)}</span>}
+                      {result.reconciliation.providerDelta > 0.01 && <span>Provider Δ {fmtUsd(result.reconciliation.providerDelta)}</span>}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Contribution table — scrolls inside its own container (no page overflow) */}
           <div className="overflow-x-auto -mx-1 px-1">
@@ -159,9 +244,9 @@ export default function ChannelContributionPanel({ from, to, rangeLabel }: {
                   <Th align="right">Refunds</Th>
                   <Th align="right">Net Revenue</Th>
                   <Th align="right">Provider</Th>
-                  <Th align="right">Contribution</Th>
+                  <Th align="right" title="Net revenue − provider payments. Stripe fees are NOT deducted here.">Before Stripe &amp; Ad Spend</Th>
                   <Th align="right">Ad Spend</Th>
-                  <Th align="right">After Spend</Th>
+                  <Th align="right" title="Before Stripe &amp; Ad Spend − ad spend. Still before Stripe fees — not profit.">After Ad Spend</Th>
                   <Th align="right">AOV</Th>
                   <Th align="right">Refund %</Th>
                   <Th align="right">Margin %</Th>
@@ -244,10 +329,11 @@ export default function ChannelContributionPanel({ from, to, rangeLabel }: {
   );
 }
 
-function Th({ children, align, sticky }: { children: ReactNode; align: "left" | "right"; sticky?: boolean }) {
+function Th({ children, align, sticky, title }: { children: ReactNode; align: "left" | "right"; sticky?: boolean; title?: string }) {
   return (
     <th
-      className={`${align === "right" ? "text-right" : "text-left"} font-bold uppercase tracking-wider text-[10px] px-2.5 py-2 border-b border-gray-200 whitespace-nowrap ${sticky ? "sticky left-0 bg-white z-10" : ""}`}
+      title={title}
+      className={`${align === "right" ? "text-right" : "text-left"} font-bold uppercase tracking-wider text-[10px] px-2.5 py-2 border-b border-gray-200 whitespace-nowrap ${sticky ? "sticky left-0 bg-white z-10" : ""} ${title ? "cursor-help" : ""}`}
     >
       {children}
     </th>
