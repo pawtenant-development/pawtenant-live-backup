@@ -224,7 +224,9 @@ function runStatic() {
   assert(/sticky left-0/.test(panel), "channel column should be sticky when the table is wide", F);
 
   // Mounted in PaymentsTab Accounts view.
-  assert(/import ChannelContributionPanel from ["']\.\/ChannelContributionPanel["']/.test(tab), "PaymentsTab must import ChannelContributionPanel", F);
+  // Default import required; a named type import alongside it is allowed (the
+  // Accounts shell imports ChannelTotalsResult to lift the totals upward).
+  assert(/import ChannelContributionPanel(?:,\s*\{[^}]*\})? from ["']\.\/ChannelContributionPanel["']/.test(tab), "PaymentsTab must import ChannelContributionPanel", F);
   assert(/<ChannelContributionPanel\b/.test(tab), "PaymentsTab must mount <ChannelContributionPanel>", F);
 
   // Migration — secured, canonical money, PII-safe, no coupon double-deduct, no fee.

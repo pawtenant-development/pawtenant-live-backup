@@ -47,12 +47,24 @@ const CHECKS = [
   ['"Reset to Current Month" uses the canonical resolver',
     (s) => /applyAccountsPreset\("current_month"\)[\s\S]{0,300}Reset to Current Month/.test(s)],
   ["preset buttons use the canonical resolver", (s) => /onClick=\{\(\) => applyAccountsPreset\(b\.key\)\}/.test(s)],
+  // The Accounts range is resolved ONCE into accountsFrom/accountsTo and every
+  // section is handed that same pair — strictly stronger than each panel
+  // re-deriving `customFrom || today` inline, which is what this used to allow.
+  ["accounts range resolved once into canonical from/to",
+    (s) => /const accountsFrom = customFrom \|\| new Date\(\)\.toISOString\(\)\.slice\(0, 10\);/.test(s)
+        && /const accountsTo = customTo \|\| new Date\(\)\.toISOString\(\)\.slice\(0, 10\);/.test(s)],
   ["Channel Contribution receives canonical from/to",
-    (s) => /<ChannelContributionPanel[\s\S]{0,160}from=\{customFrom[\s\S]{0,80}to=\{customTo/.test(s)],
+    (s) => /<ChannelContributionPanel[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
   ["Marketing ROI Health receives canonical from/to",
-    (s) => /<MarketingROIHealthPanel[\s\S]{0,160}from=\{customFrom[\s\S]{0,80}to=\{customTo/.test(s)],
+    (s) => /<MarketingROIHealthPanel[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
   ["Marketing Spend receives canonical from/to",
-    (s) => /<MarketingSpendPanel[\s\S]{0,200}from=\{customFrom[\s\S]{0,80}to=\{customTo/.test(s)],
+    (s) => /<MarketingSpendPanel[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
+  ["Stripe↔Orders bridge receives canonical from/to",
+    (s) => /<AccountsReconciliationBridge[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
+  ["Accounts header shows the canonical from/to",
+    (s) => /<AccountsHeader[\s\S]{0,300}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
+  ["no Accounts panel re-derives its own date range",
+    (s) => !/(from|to)=\{(customFrom|customTo) \|\| new Date\(\)/.test(s)],
   ["fix does not force a page reload", (s) => !/location\.reload\s*\(/.test(s)],
 ];
 
