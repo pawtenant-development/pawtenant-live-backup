@@ -32,6 +32,9 @@ const F_LIB = join(ROOT, "src", "lib", "accountsReconciliation.ts");
 const F_PANEL = join(ROOT, "src", "pages", "admin-orders", "components", "AccountsReconciliationBridge.tsx");
 const F_TAB = join(ROOT, "src", "pages", "admin-orders", "components", "PaymentsTab.tsx");
 const F_MIG = join(ROOT, "supabase", "migrations", "20260725120000_add_get_accounts_reconciliation.sql");
+// The optimized (canonical, deployed) definition — the timeout fix. The guard
+// proves the query STAYS bounded: join-based, no correlated per-row subqueries.
+const F_MIG2 = join(ROOT, "supabase", "migrations", "20260725190000_optimize_get_accounts_reconciliation.sql");
 
 const RED = "\x1b[31m", GREEN = "\x1b[32m", YELLOW = "\x1b[33m", RESET = "\x1b[0m";
 
@@ -179,13 +182,20 @@ function runStatic() {
   if (/0\.029|estimateFee/.test(panel)) F.push("[static] panel must never estimate Stripe fees");
   if (/never hidden|never hides|surfaced/i.test(lib) === false) F.push("[static] lib contract comment lost");
 
-  // PaymentsTab: bridge mounted BETWEEN the accounts panel and channel panel.
+  // PaymentsTab layout (correction addendum §4 + §8): the accounts panel
+  // (Overview + Expenses) renders first, Channel Contribution follows in its
+  // middle slot, and the bridge is Level 2 INSIDE the Reconciliation section
+  // (mounted via the reconciliation view's bridgeSlot).
   const iAccounts = tab.indexOf("<PaymentsAccountsPanel");
   const iBridge = tab.indexOf("<AccountsReconciliationBridge");
   const iChannel = tab.indexOf("<ChannelContributionPanel");
+  const iReconView = tab.indexOf("<AccountsReconciliationView");
   if (iBridge === -1) F.push("[static] PaymentsTab must mount AccountsReconciliationBridge");
-  else if (!(iAccounts !== -1 && iChannel !== -1 && iAccounts < iBridge && iBridge < iChannel))
-    F.push("[static] bridge must sit between PaymentsAccountsPanel and ChannelContributionPanel");
+  else if (!(iAccounts !== -1 && iChannel !== -1 && iReconView !== -1
+      && iAccounts < iChannel && iChannel < iReconView && iReconView < iBridge))
+    F.push("[static] bridge must be Level 2 of the Reconciliation section: PaymentsAccountsPanel → ChannelContributionPanel → AccountsReconciliationView(bridgeSlot)");
+  if (!/bridgeSlot=\{\s*<AccountsReconciliationBridge/.test(tab))
+    F.push("[static] the bridge must be passed to AccountsReconciliationView via bridgeSlot");
   for (const prop of ["summary={data?.summary}", "charges={data?.charges}", "resolutionMap={resolutionMap}"])
     if (!tab.includes(prop)) F.push(`[static] PaymentsTab must pass ${prop} to the bridge`);
 
@@ -198,6 +208,28 @@ function runStatic() {
   if (/\b(update|delete|insert)\s+/i.test(mig.replace(/--.*$/gm, ""))) F.push("[static] migration must be read-only (no writes)");
   if (!/order_additional_documentation_requests/.test(mig)) F.push("[static] migration must cover add-on payments");
   if (!/patient_notified/.test(mig)) F.push("[static] migration must keep the completed-only provider rule");
+
+  // ── Optimized migration (timeout fix) — the query must STAY bounded ──────
+  // Root cause of "canceling statement due to statement timeout" was the
+  // correlated-subquery earnings attribution re-executed per paid order and
+  // per aggregate (8,007 ms for July 2026 on LIVE). These checks are the
+  // deterministic proof that shape cannot silently return.
+  const mig2 = readFileSync(F_MIG2, "utf8");
+  const mig2Code = mig2.replace(/--.*$/gm, "");
+  if (!/left join paid/i.test(mig2Code)) F.push("[static] optimized migration must attribute earnings via hash LEFT JOINs, not correlated subqueries");
+  if (!/as materialized/i.test(mig2Code)) F.push("[static] optimized migration must materialize its CTEs so the planner cannot inline them into per-row subplans");
+  if (/\(select\s+p\d?\.?\w*\s+from\s+paid/i.test(mig2Code)) F.push("[static] correlated per-row subquery against the paid CTE has returned — this is the exact timeout shape");
+  if (/select\s+o\.\*/i.test(mig2Code)) F.push("[static] optimized migration must project only the needed order columns, never o.* (width blowup)");
+  if (!/coalesce\(pr\.provider_usd,\s*0\)/i.test(mig2Code)) F.push("[static] provider totals must come from the joined prov CTE, not a per-order subquery");
+  // Same security / money-model / PII posture as the original definition.
+  if (!/is_accounts_admin\(\)/.test(mig2)) F.push("[static] optimized migration must gate on is_accounts_admin()");
+  if (!/security definer/i.test(mig2)) F.push("[static] optimized migration must be security definer");
+  if (!/stable/i.test(mig2)) F.push("[static] optimized migration must be stable (read-only)");
+  if (!/grant execute on function public\.get_accounts_reconciliation/i.test(mig2)) F.push("[static] optimized migration must grant execute to authenticated");
+  if (/customer_email|customer_name|\bo\.email\b|first_name|last_name/i.test(mig2)) F.push("[static] optimized migration must not project PII columns");
+  if (/\b(update|delete|insert)\s+/i.test(mig2Code)) F.push("[static] optimized migration must be read-only (no writes)");
+  if (!/order_additional_documentation_requests/.test(mig2)) F.push("[static] optimized migration must keep the add-on payments feed");
+  if (!/patient_notified/.test(mig2)) F.push("[static] optimized migration must keep the completed-only provider rule");
 
   return F;
 }

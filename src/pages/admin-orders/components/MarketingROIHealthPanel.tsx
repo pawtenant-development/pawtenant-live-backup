@@ -1,17 +1,24 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 
-// ── Marketing ROI / Attribution Audit + Sync Health ─────────────────────────
-// Read-only, admin-gated. Reads get_marketing_roi_health(p_from, p_to) which
-// aggregates synced ad spend (USD, FX 1 USD = 280 PKR) and PawTenant order
-// attribution per platform (Google / Meta / Microsoft). It NEVER writes and is
-// independent of the Accounts Books P&L — it only reports.
+// ── Marketing ROI & Sync Health (consolidated) ──────────────────────────────
+// THE one marketing section in Accounts (correction addendum §6) — the former
+// separate "Marketing Spend & ROI" cards were a near-duplicate of this panel
+// and were merged here. Reads get_marketing_roi_health(p_from, p_to) ONCE per
+// range (no second spend RPC for presentation), which aggregates synced ad
+// spend (USD) and PawTenant order attribution per platform (Google / Meta /
+// Microsoft). It NEVER writes and never changes Operating Net — spend is
+// deducted exactly once, in the Company Expenses ledger.
 //
 // Honest states:
 //   • Google — connected once spend syncs land.
 //   • Meta   — "Permission error" until a Meta ads_read token is configured.
 //   • Microsoft — "Pending OAuth" (spend sync not implemented yet); attributed
-//     orders/revenue from msclkid still display, spend stays $0.
+//     orders/revenue from msclkid still display, spend stays $0 — never estimated.
+//
+// The "Sync now" button calls the SAME shared manual sync flow as the header's
+// Sync Ads quick action (one implementation lifted to PaymentsTab — no
+// duplicate sync path, no cron, no campaign or budget mutation).
 
 type Connection = "connected" | "permission_error" | "pending_oauth" | "last_sync_failed" | "no_data";
 
@@ -41,6 +48,16 @@ interface RoiHealth {
   currency: string;
   fx_pkr_per_usd: number;
   platforms: PlatformRow[];
+}
+
+/** Sync facts lifted to the Accounts shell (header quick action + status). */
+export interface MarketingHealthResult {
+  loading: boolean;
+  error: string;
+  /** Most recent successful platform sync across Google + Meta. */
+  lastSyncedAt: string | null;
+  /** True when any spend platform reports an error state. */
+  anySyncError: boolean;
 }
 
 const fmtUsd = (n: number | null | undefined) =>
@@ -80,14 +97,29 @@ function CONNECTION_NOTE(p: PlatformRow): string {
   }
 }
 
-export default function MarketingROIHealthPanel({ from, to, rangeLabel }: {
+export default function MarketingROIHealthPanel({
+  from, to, rangeLabel,
+  canSync = false, syncing = false, syncMsg = "", syncMsgTone = "ok", onSyncNow,
+  reloadSignal = 0, onHealth,
+}: {
   from: string;
   to: string;
   rangeLabel: string;
+  canSync?: boolean;
+  /** Shared sync state (owned by PaymentsTab — same flow as the header action). */
+  syncing?: boolean;
+  syncMsg?: string;
+  syncMsgTone?: "ok" | "err";
+  onSyncNow?: () => void;
+  /** Bumped after a successful sync so this panel re-reads fresh spend. */
+  reloadSignal?: number;
+  onHealth?: (r: MarketingHealthResult) => void;
 }) {
   const [data, setData] = useState<RoiHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // §7: blended summary always visible; per-platform cards are the detail layer.
+  const [showPlatforms, setShowPlatforms] = useState(false);
 
   const load = useCallback(async () => {
     if (!from || !to) return;
@@ -101,12 +133,19 @@ export default function MarketingROIHealthPanel({ from, to, rangeLabel }: {
 
   useEffect(() => { void load(); }, [load]);
 
-  const platforms = data?.platforms ?? [];
+  // Refresh after a successful shared sync (skip the initial 0).
+  useEffect(() => {
+    if (reloadSignal > 0) void load();
+  }, [reloadSignal, load]);
+
+  const platforms = useMemo(() => data?.platforms ?? [], [data]);
+
+  // Spend-truth platforms (Google + Meta); Microsoft has no spend sync yet.
+  const spendPlatforms = useMemo(() => platforms.filter((p) => p.platform !== "microsoft_ads"), [platforms]);
 
   // Blended totals — spend / Operating-Net impact exclude Microsoft (no spend
   // sync). Revenue + paid orders include every attributed platform.
   const totals = useMemo(() => {
-    const spendPlatforms = platforms.filter((p) => p.platform !== "microsoft_ads");
     const spend = spendPlatforms.reduce((s, p) => s + (p.spend_usd || 0), 0);
     const revenue = platforms.reduce((s, p) => s + (p.revenue_usd || 0), 0);
     const spendRevenue = spendPlatforms.reduce((s, p) => s + (p.revenue_usd || 0), 0);
@@ -122,21 +161,62 @@ export default function MarketingROIHealthPanel({ from, to, rangeLabel }: {
       roi: spend > 0 ? ((spendRevenue - spend) / spend) * 100 : null,
       netImpact,
     };
-  }, [platforms]);
+  }, [platforms, spendPlatforms]);
+
+  // Sync health rollup for the header chip + lifted result.
+  const lastSyncedAt = useMemo(() => {
+    const times = spendPlatforms.map((p) => p.last_synced_at).filter((t): t is string => !!t).sort();
+    return times.length > 0 ? times[times.length - 1] : null;
+  }, [spendPlatforms]);
+  const anySyncError = useMemo(
+    () => spendPlatforms.some((p) => p.connection === "permission_error" || p.connection === "last_sync_failed"),
+    [spendPlatforms],
+  );
+
+  useEffect(() => {
+    if (!onHealth) return;
+    onHealth({ loading, error, lastSyncedAt, anySyncError });
+  }, [onHealth, loading, error, lastSyncedAt, anySyncError]);
+
+  const healthChip = anySyncError
+    ? { label: "Sync error", cls: "bg-rose-50 text-rose-700 border-rose-200", icon: "ri-error-warning-line" }
+    : lastSyncedAt
+      ? { label: "Healthy", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: "ri-checkbox-circle-line" }
+      : { label: "No sync yet", cls: "bg-gray-50 text-gray-600 border-gray-200", icon: "ri-time-line" };
 
   return (
     <div className="mt-4 bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-extrabold text-gray-900 flex items-center gap-2">
             <i className="ri-radar-line text-[#3b6ea5]"></i>Marketing ROI &amp; Sync Health
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Spend, attribution &amp; ROI per ad platform for <span className="font-semibold text-[#3b6ea5]">{rangeLabel}</span>.
-            Spend converted at a fixed {data?.fx_pkr_per_usd ?? 280} PKR/USD. Audit-only — never changes Accounts Books.
+            Ad platforms are the spend truth; PawTenant paid orders are the revenue truth — for{" "}
+            <span className="font-semibold text-[#3b6ea5]">{rangeLabel}</span>. Spend converted at a fixed{" "}
+            {data?.fx_pkr_per_usd ?? 280} PKR/USD. Spend is deducted from Operating Net once, in Company Expenses — never twice.
           </p>
         </div>
+        <div className="shrink-0 flex items-center gap-2 flex-wrap">
+          {/* Sync Health + Last Sync — §6 summary requirements */}
+          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${healthChip.cls}`}>
+            <i className={healthChip.icon}></i>{healthChip.label}
+          </span>
+          <span className="text-[11px] text-gray-400 tabular-nums">Last sync: {fmtTime(lastSyncedAt)}</span>
+          {canSync && onSyncNow && (
+            <button type="button" onClick={onSyncNow} disabled={syncing || !from || !to}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors">
+              <i className={`ri-refresh-line ${syncing ? "animate-spin" : ""}`}></i>{syncing ? "Syncing…" : "Sync now"}
+            </button>
+          )}
+        </div>
       </div>
+
+      {syncMsg && (
+        <div className={`mb-3 px-3 py-2 rounded-lg text-xs break-words border ${
+          syncMsgTone === "err" ? "bg-rose-50 border-rose-200 text-rose-700" : "bg-blue-50 border-blue-200 text-blue-800"
+        }`}>{syncMsg}</div>
+      )}
 
       {loading ? (
         <div className="py-8 text-center text-xs text-gray-500"><i className="ri-loader-4-line animate-spin text-xl block mb-2 text-[#3b6ea5]"></i>Loading marketing ROI…</div>
@@ -146,11 +226,12 @@ export default function MarketingROIHealthPanel({ from, to, rangeLabel }: {
         </div>
       ) : (
         <>
-          {/* Blended summary */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          {/* Blended summary — always visible */}
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
             {[
               { label: "Total Ad Spend", value: fmtUsd(totals.spend), color: "text-rose-500", icon: "ri-megaphone-line", sub: "Google + Meta (USD)" },
-              { label: "Attributed Revenue", value: fmtUsd(totals.revenue), color: "text-emerald-600", icon: "ri-money-dollar-circle-line", sub: `${fmtNum(totals.paid)} paid orders` },
+              { label: "Attributed Paid Orders", value: fmtNum(totals.paid), color: "text-gray-800", icon: "ri-shopping-bag-3-line", sub: "all platforms" },
+              { label: "Attributed Revenue", value: fmtUsd(totals.revenue), color: "text-emerald-600", icon: "ri-money-dollar-circle-line", sub: "PawTenant paid orders" },
               { label: "Blended CPA", value: fmtUsd(totals.cpa), color: "text-gray-800", icon: "ri-price-tag-3-line", sub: "Spend ÷ paid orders" },
               { label: "Blended ROAS", value: fmtRoas(totals.roas), color: "text-[#3b6ea5]", icon: "ri-line-chart-line", sub: "Revenue ÷ spend" },
               { label: "ROI", value: fmtRoi(totals.roi), color: (totals.roi ?? 0) >= 0 ? "text-emerald-600" : "text-rose-600", icon: "ri-funds-line", sub: "(Rev − spend) ÷ spend" },
@@ -167,8 +248,21 @@ export default function MarketingROIHealthPanel({ from, to, rangeLabel }: {
             ))}
           </div>
 
-          {/* Per-platform cards */}
-          <div className="space-y-3">
+          {/* Per-platform detail — collapsible (§7) */}
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setShowPlatforms((s) => !s)}
+              aria-expanded={showPlatforms}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer"
+            >
+              <i className={showPlatforms ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}></i>
+              {showPlatforms ? "Hide platform detail" : "Show platform detail (Google · Meta · Microsoft)"}
+            </button>
+          </div>
+
+          {showPlatforms && (
+          <div className="space-y-3 mt-3">
             {platforms.map((p) => {
               const pv = PLATFORM_VISUAL[p.platform] ?? { icon: "ri-global-line", color: "text-gray-500" };
               const cv = CONNECTION_VISUAL[p.connection] ?? CONNECTION_VISUAL.no_data;
@@ -215,6 +309,13 @@ export default function MarketingROIHealthPanel({ from, to, rangeLabel }: {
               );
             })}
           </div>
+          )}
+
+          {totals.spend === 0 && (
+            <p className="text-[11px] text-gray-400 mt-2">
+              No spend stored for this range yet. Spend appears after a successful sync. Cost-per-order uses PawTenant paid orders (not platform-reported conversions).
+            </p>
+          )}
 
           <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
             Attribution uses canonical order signals (attribution channel, UTM source, gclid / fbclid / msclkid). “Orders” counts leads created in range;

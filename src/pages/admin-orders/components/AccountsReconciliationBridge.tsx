@@ -44,6 +44,9 @@ export interface BridgeResult {
   } | null;
   /** Count of add-on document payments in range (charges with no order row). */
   addonCount: number | null;
+  /** Gross USD of those add-on payments — the "unallocated additional-
+   *  documentation revenue" the channel view must never absorb. */
+  addonGrossUsd: number | null;
 }
 
 interface Props {
@@ -116,6 +119,9 @@ export default function AccountsReconciliationBridge({ from, to, rangeLabel, sum
           }
         : null,
       addonCount: rpc?.addon_payments ? rpc.addon_payments.length : null,
+      addonGrossUsd: rpc?.addon_payments
+        ? Math.round(rpc.addon_payments.reduce((s, a) => s + (a.amount_usd || 0), 0) * 100) / 100
+        : null,
     });
   }, [onResult, loading, error, recon, rpc]);
 
@@ -196,6 +202,34 @@ export default function AccountsReconciliationBridge({ from, to, rangeLabel, sum
               ok={Math.abs(recon.provider.residualUsd) <= 0.01}
             />
           </div>
+
+          {/* Additional-documentation payments — audited cause of the cash-vs-order
+              gap (correction addendum §3). These are real Stripe payments with
+              their own payment intent and NO primary order row, so they are
+              included in the Stripe cash basis but excluded from the order /
+              channel universe. They carry no valid acquisition attribution and
+              are NEVER forced into a channel or hidden inside Unknown — they
+              stay a truthful, separate reconciliation category. */}
+          {rpc && rpc.addon_payments && rpc.addon_payments.length > 0 && (
+            <div className="mt-2.5 px-3 py-2.5 bg-[#eef4fa] border border-[#d6e4f0] rounded-xl">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-bold text-[#3b6ea5]">
+                  <i className="ri-file-add-line mr-1"></i>
+                  Unallocated additional-documentation revenue — {rangeLabel}
+                </span>
+                <span className="text-xs font-extrabold text-[#3b6ea5] tabular-nums">
+                  {rpc.addon_payments.length} payment{rpc.addon_payments.length === 1 ? "" : "s"} · {fmtUsd(rpc.addon_payments.reduce((s, a) => s + (a.amount_usd || 0), 0))}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">
+                Counted in the Stripe cash basis above; excluded from the paid-order universe that Channel
+                Contribution uses. Reconciliation effect: the gross bridge subtracts this amount on the way
+                from Stripe gross to order-basis gross. Not attributed to any acquisition channel — there is
+                no valid attribution signal for an add-on purchase, so it is reported here instead of
+                being mixed into Unknown orders.
+              </p>
+            </div>
+          )}
 
           {/* Bridge detail */}
           {showDetail && (

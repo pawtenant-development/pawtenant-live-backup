@@ -353,7 +353,12 @@ export const RECONCILIATION_STATUS_META: Record<
   ReconciliationStatus,
   { label: string; tone: "ok" | "warn" | "bad" | "muted"; icon: string }
 > = {
-  balanced:          { label: "Balanced",          tone: "ok",    icon: "ri-checkbox-circle-line" },
+  // Deliberately NOT labelled "Balanced": the Stripe cash basis and the order
+  // basis legitimately differ (add-on payments, refund timing), so the global
+  // badge says the differences are explained. "Balanced" is reserved for
+  // exact-equality comparisons (Order Basis = Channel Total) inside the
+  // Reconciliation section (correction addendum §8).
+  balanced:          { label: "Reconciled",        tone: "ok",    icon: "ri-checkbox-circle-line" },
   updating:          { label: "Updating",          tone: "muted", icon: "ri-loader-4-line" },
   needs_review:      { label: "Needs Review",      tone: "warn",  icon: "ri-error-warning-line" },
   sync_pending:      { label: "Sync Pending",      tone: "warn",  icon: "ri-time-line" },

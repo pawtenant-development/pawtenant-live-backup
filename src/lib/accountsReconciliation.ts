@@ -248,7 +248,7 @@ export function buildAccountsReconciliation(input: BuildReconciliationInput): Ac
   const grossLines: BridgeLine[] = [
     {
       key: "addons",
-      label: "Additional-document payments (no order row)",
+      label: "Additional-documentation payments without a primary order row",
       amountUsd: -addonUsd,
       count: addonCharges.length,
       items: addonCharges.map((x) => ({

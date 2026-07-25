@@ -57,8 +57,10 @@ const CHECKS = [
     (s) => /<ChannelContributionPanel[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
   ["Marketing ROI Health receives canonical from/to",
     (s) => /<MarketingROIHealthPanel[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
-  ["Marketing Spend receives canonical from/to",
-    (s) => /<MarketingSpendPanel[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
+  // The former separate Marketing Spend panel was consolidated into Marketing
+  // ROI & Sync Health (correction addendum §6) — it must NOT come back.
+  ["no duplicate Marketing Spend panel is mounted",
+    (s) => !/<MarketingSpendPanel\b/.test(s)],
   ["Stripe↔Orders bridge receives canonical from/to",
     (s) => /<AccountsReconciliationBridge[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
   ["Accounts header shows the canonical from/to",

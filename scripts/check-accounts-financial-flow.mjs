@@ -39,6 +39,8 @@ const F_NAV      = join(C, "AccountsSectionNav.tsx");
 const F_FLOW     = join(C, "FinancialBridgeFlow.tsx");
 const F_DRAWER   = join(C, "MetricCalculationDrawer.tsx");
 const F_RECONVW  = join(C, "AccountsReconciliationView.tsx");
+const F_COLLAPSE = join(C, "AccountsCollapsibleSection.tsx");
+const F_ROI      = join(C, "MarketingROIHealthPanel.tsx");
 const F_CHANLIB  = join(ROOT, "src", "lib", "channelContribution.ts");
 
 const RED = "\x1b[31m", GREEN = "\x1b[32m", YELLOW = "\x1b[33m", RESET = "\x1b[0m";
@@ -226,6 +228,8 @@ function runStatic() {
   const flow = read(F_FLOW);
   const drawer = read(F_DRAWER);
   const reconvw = read(F_RECONVW);
+  const collapse = read(F_COLLAPSE);
+  const roi = read(F_ROI);
   const chanlib = read(F_CHANLIB);
   const lib = read(F_LIB);
 
@@ -279,6 +283,26 @@ function runStatic() {
   // Marketing spend must not be double counted or fabricated.
   need(panel, "PaymentsAccountsPanel", /duplicateMarketingRisk/, "the duplicate marketing-spend warning must remain");
   need(tab, "PaymentsTab", /Microsoft Ads[\s\S]{0,200}not_connected/, "Microsoft Ads must report not-connected rather than a fabricated spend");
+
+  // ── Correction addendum §4–§7 invariants ──────────────────────────────────
+  // §6: exactly ONE marketing section — the old Marketing Spend panel must not return.
+  forbid(tab, "PaymentsTab", /<MarketingSpendPanel\b/, "the duplicate Marketing Spend panel was consolidated into Marketing ROI & Sync Health and must not be re-mounted");
+  need(roi, "MarketingROIHealthPanel", /get_marketing_roi_health/, "the consolidated marketing section must read the ONE roi-health RPC");
+  forbid(roi, "MarketingROIHealthPanel", /get_marketing_spend_summary/, "the consolidated marketing section must not double-fetch the spend-summary RPC");
+  need(roi, "MarketingROIHealthPanel", /onSyncNow/, "the consolidated marketing section must use the SHARED sync handler (no duplicate sync implementation)");
+  forbid(roi, "MarketingROIHealthPanel", /functions\/v1\/sync-marketing-spend/, "the sync fetch lives once in PaymentsTab — the panel must not carry its own copy");
+  // §5: ONE shared sync flow, guarded against concurrent duplicates.
+  need(tab, "PaymentsTab", /sync-marketing-spend/, "the shared manual sync flow must call the existing protected edge fn");
+  need(tab, "PaymentsTab", /if \(adsSyncing[\s\S]{0,60}return;/, "the shared sync must refuse to start while a sync is already running");
+  need(tab, "PaymentsTab", /onSyncAds=/, "the Accounts header must expose the Sync Ads quick action");
+  need(tab, "PaymentsTab", /onAddExpense=/, "the Accounts header must expose the Add Expense quick action");
+  need(header, "AccountsHeader", /Sync Ads/, "the header must render the Sync Ads quick action");
+  need(header, "AccountsHeader", /Add Expense/, "the header must render the Add Expense quick action");
+  // §7: accessible collapsible sections; reconciliation auto-opens on attention.
+  need(collapse, "AccountsCollapsibleSection", /aria-expanded=\{open\}/, "collapsible sections must expose aria-expanded");
+  need(collapse, "AccountsCollapsibleSection", /aria-controls=/, "collapsible sections must wire aria-controls");
+  need(collapse, "AccountsCollapsibleSection", /<button/, "the collapse toggle must be a real button (keyboard support)");
+  need(tab, "PaymentsTab", /reconNeedsAttention\) setReconOpen\(true\)/, "Reconciliation must auto-expand when evidence needs attention");
 
   // Reconciliation view honesty + no PII.
   need(reconvw, "AccountsReconciliationView", /Order basis vs Channel Contribution/, "the same-basis comparison must be shown separately");

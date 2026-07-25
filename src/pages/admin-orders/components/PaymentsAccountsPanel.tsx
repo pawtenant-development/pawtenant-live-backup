@@ -16,6 +16,7 @@ import PayrollArchivePanel from "./PayrollArchivePanel";
 import CompensationAdjustmentsCard from "./CompensationAdjustmentsCard";
 import FinancialBridgeFlow from "./FinancialBridgeFlow";
 import MetricCalculationDrawer from "./MetricCalculationDrawer";
+import AccountsCollapsibleSection from "./AccountsCollapsibleSection";
 import { sectionId } from "./AccountsSectionNav";
 
 // Minimal shapes mirrored from PaymentsTab (avoids cross-file type coupling).
@@ -62,13 +63,18 @@ interface Props {
   /** Hands the CSV export up so the global header can trigger it. */
   onExportReady?: (fn: () => void) => void;
   /**
-   * Sections rendered BETWEEN the Overview bridge and Expenses & Books, so the
-   * in-page nav order (Overview → Channels → Marketing → Expenses →
+   * Sections rendered BETWEEN Expenses & P&L and the Monthly Books Summary, so
+   * the in-page nav order (Overview → Expenses → Channels → Marketing →
    * Reconciliation) matches the real DOM order and "jump to section" lands
-   * where the label says it will. Composition slot — this panel owns no logic
-   * for whatever is passed in.
+   * where the label says it will (correction addendum §4 — Company Expenses
+   * and Operating Net stay near the top). Composition slot — this panel owns
+   * no logic for whatever is passed in.
    */
   middleSlot?: ReactNode;
+  /** Bumped after a successful ad sync → re-read expenses + synced spend. */
+  reloadSignal?: number;
+  /** Bumped by the header's Add Expense quick action → open the form here. */
+  openExpenseSignal?: number;
 }
 
 /** Canonical company figures, computed once here and reused everywhere else. */
@@ -97,7 +103,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export default function PaymentsAccountsPanel({
   period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap, canManageBooks = false, onOpenMonth,
-  fxRate, reconStatus, onTotals, onExportReady, middleSlot,
+  fxRate, reconStatus, onTotals, onExportReady, middleSlot, reloadSignal = 0, openExpenseSignal = 0,
 }: Props) {
   const range = useMemo(
     () => resolveRange(period, customActive, customFrom, customTo),
@@ -114,6 +120,9 @@ export default function PaymentsAccountsPanel({
   const [err, setErr] = useState("");
   // Which financial-flow step the calculation drawer is showing (null = closed).
   const [drawerStep, setDrawerStep] = useState<FlowStep | null>(null);
+  // §7 collapse state — Overview and Expenses & P&L are open by default.
+  const [overviewOpen, setOverviewOpen] = useState(true);
+  const [expensesOpen, setExpensesOpen] = useState(true);
 
   // Add-expense form
   const [showForm, setShowForm] = useState(false);
@@ -156,6 +165,12 @@ export default function PaymentsAccountsPanel({
 
   useEffect(() => { load(); }, [load]);
 
+  // Refresh after a successful ad sync so the auto-synced spend rows,
+  // Total Expenses and Operating Net reflect the new figures (skip initial 0).
+  useEffect(() => {
+    if (reloadSignal > 0) void load();
+  }, [reloadSignal, load]);
+
   // Reload this panel AND signal the Monthly Books Summary to rebuild, so an
   // expense change here is immediately reflected in the summary row for the month.
   const refreshAll = useCallback(async () => {
@@ -165,6 +180,17 @@ export default function PaymentsAccountsPanel({
 
   const isClosed = !!closedPeriod;
   const canEdit = canManageBooks && !isClosed; // gate add/edit/delete (RLS also enforces)
+
+  // Header "Add Expense" quick action: expand the section and open the form.
+  // The ref makes each signal fire exactly once even if canEdit later changes.
+  const openReqRef = useRef(0);
+  useEffect(() => {
+    if (openExpenseSignal > 0 && openExpenseSignal !== openReqRef.current) {
+      openReqRef.current = openExpenseSignal;
+      setExpensesOpen(true);
+      if (canManageBooks && !isClosed) setShowForm(true);
+    }
+  }, [openExpenseSignal, canManageBooks, isClosed]);
 
   // Default the Add-Expense date inside the selected range: today if today is in
   // range, otherwise the range end (so prior-month books don't default to today).
@@ -401,26 +427,44 @@ export default function PaymentsAccountsPanel({
         </div>
       )}
 
-      {/* ── OVERVIEW: the financial bridge ─────────────────────────────────── */}
-      <div id={sectionId("overview")} className="scroll-mt-4">
-        <FinancialBridgeFlow
-          steps={companyFlow.steps}
-          activeKey={drawerStep?.key ?? null}
-          onSelect={setDrawerStep}
-        />
-      </div>
+      {/* ── OVERVIEW: the financial bridge (open by default, §7) ───────────── */}
+      <AccountsCollapsibleSection
+        id={sectionId("overview")}
+        title="Financial Overview"
+        icon="ri-flow-chart"
+        subtitle="How the money flows — every step subtracts from the one before it"
+        open={overviewOpen}
+        onToggle={() => setOverviewOpen((s) => !s)}
+        summary={
+          <span className={`text-sm font-extrabold tabular-nums ${companyFlow.operatingNetUsd >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+            Operating Net {fmtUSD2(companyFlow.operatingNetUsd)}
+          </span>
+        }
+      >
+        <div className="pt-3">
+          <FinancialBridgeFlow
+            steps={companyFlow.steps}
+            activeKey={drawerStep?.key ?? null}
+            onSelect={setDrawerStep}
+          />
+        </div>
+      </AccountsCollapsibleSection>
 
-      {/* Channel Contribution + Marketing render here so the section nav order
-          matches the DOM order (see the middleSlot prop docs). */}
-      {middleSlot}
-
-      {/* ── EXPENSES & BOOKS ───────────────────────────────────────────────── */}
-      <div id={sectionId("expenses")} className="scroll-mt-4 mb-1">
-        <h3 className="text-sm font-extrabold text-gray-900 flex items-center gap-2 mb-2">
-          <i className="ri-wallet-3-line text-[#3b6ea5]"></i>Expenses &amp; Books
-        </h3>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-start">
+      {/* ── COMPANY EXPENSES & ESTIMATED P&L (near the top, §4; open, §7) ──── */}
+      <AccountsCollapsibleSection
+        id={sectionId("expenses")}
+        title="Company Expenses & Estimated P&L"
+        icon="ri-wallet-3-line"
+        subtitle="Add Expense · salary estimate · ad spend · subscriptions · Operating Net"
+        open={expensesOpen}
+        onToggle={() => setExpensesOpen((s) => !s)}
+        summary={
+          <span className="text-xs font-bold text-gray-600 tabular-nums whitespace-nowrap">
+            Expenses −{fmtUSD2(totalExpenses)} · <span className={operatingNet >= 0 ? "text-emerald-600" : "text-rose-600"}>Net {fmtUSD2(operatingNet)}</span>
+          </span>
+        }
+      >
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-start pt-3">
         {/* Expense ledger */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex items-center justify-between p-3 border-b border-gray-100 bg-gray-50 flex-wrap gap-2">
@@ -699,8 +743,14 @@ export default function PaymentsAccountsPanel({
           </p>
         </div>
       </div>
+      </AccountsCollapsibleSection>
 
-      {/* Previous months' books (collapsible) */}
+      {/* Channel Contribution + Marketing render here so the section nav order
+          (Overview → Expenses → Channels → Marketing) matches the DOM order
+          (see the middleSlot prop docs). */}
+      {middleSlot}
+
+      {/* Previous months' books (collapsible, closed by default) */}
       <MonthlyBooksSummary fxRate={fxRate} canManage={canManageBooks} onOpenMonth={onOpenMonth} onBooksChanged={load} reloadSignal={booksReloadSignal} />
 
       {/* Per-employee payroll archive — frozen monthly snapshots (survive offboarding) */}

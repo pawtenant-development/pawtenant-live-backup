@@ -12,11 +12,13 @@ export type AccountsSection =
   | "expenses"
   | "reconciliation";
 
+// Order mirrors the page order (correction addendum §4): Overview →
+// Expenses & P&L → Channel Contribution → Marketing → Reconciliation.
 export const ACCOUNTS_SECTIONS: { key: AccountsSection; label: string; icon: string }[] = [
   { key: "overview",       label: "Overview",            icon: "ri-dashboard-line" },
+  { key: "expenses",       label: "Expenses & P&L",      icon: "ri-wallet-3-line" },
   { key: "channels",       label: "Channel Contribution", icon: "ri-pie-chart-line" },
   { key: "marketing",      label: "Marketing",           icon: "ri-megaphone-line" },
-  { key: "expenses",       label: "Expenses & Books",    icon: "ri-wallet-3-line" },
   { key: "reconciliation", label: "Reconciliation",      icon: "ri-scales-3-line" },
 ];
 

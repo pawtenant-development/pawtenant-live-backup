@@ -7,12 +7,16 @@ import {
 // ── Accounts › Global header ────────────────────────────────────────────────
 // One header for the whole Accounts workspace: which books period is open, the
 // exact From/To dates every section below is using, how fresh the data is, the
-// honest reconciliation status, the PKR→USD rate applied to salary figures, and
-// the export action.
+// honest reconciliation status, and the top-level quick actions (correction
+// addendum §5): Sync Ads · Add Expense · Export · PKR→USD rate.
 //
 // The status badge is EVIDENCE-DRIVEN (resolveReconciliationStatus) — it reads
-// "Balanced" only when the Stripe↔Orders bridge has explained every residual.
+// "Reconciled" only when the Stripe↔Orders bridge has explained every residual.
 // It must never be decorated green while deltas are unexplained.
+//
+// Sync Ads triggers the SAME manual sync flow as the Marketing section (one
+// implementation, lifted to PaymentsTab) — no duplicate sync path, no cron,
+// no campaign/budget mutation. The button disables while a sync is running.
 
 interface Props {
   rangeLabel: string;
@@ -26,11 +30,29 @@ interface Props {
   onFxRateChange: (rate: number) => void;
   onExport?: () => void;
   onOpenReconciliation?: () => void;
+  /** Shared manual ad-spend sync (same handler as the Marketing section). */
+  onSyncAds?: () => void;
+  adsSyncing?: boolean;
+  /** ISO time of the most recent successful platform sync (from ROI health). */
+  adsLastSyncedAt?: string | null;
+  /** One-line sync outcome (success or error), shown under the actions. */
+  adsSyncNote?: string;
+  adsSyncNoteTone?: "ok" | "err";
+  /** Scrolls to Company Expenses and opens the Add Expense form. */
+  onAddExpense?: () => void;
 }
+
+const fmtSyncTime = (iso: string | null | undefined) => {
+  if (!iso) return "never";
+  try { return new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }); }
+  catch { return iso; }
+};
 
 export default function AccountsHeader({
   rangeLabel, from, to, refreshedAtMs, nowMs, status, statusReasons,
   fxRate, onFxRateChange, onExport, onOpenReconciliation,
+  onSyncAds, adsSyncing = false, adsLastSyncedAt, adsSyncNote, adsSyncNoteTone,
+  onAddExpense,
 }: Props) {
   const meta = RECONCILIATION_STATUS_META[status];
   const toneCls =
@@ -62,14 +84,14 @@ export default function AccountsHeader({
           </p>
         </div>
 
-        {/* Full width on phones so the badge / FX / export wrap instead of
+        {/* Full width on phones so the badge / actions wrap instead of
             clipping past the viewport edge at 360–375px. */}
-        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto sm:shrink-0">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto sm:shrink-0 sm:justify-end">
           <button
             type="button"
             onClick={onOpenReconciliation}
             disabled={!onOpenReconciliation}
-            title={statusReasons.length > 0 ? statusReasons.join(" ") : "All Accounts totals reconcile for this range"}
+            title={statusReasons.length > 0 ? statusReasons.join(" ") : "All Accounts totals reconcile for this range; cash-vs-order differences are itemized and explained."}
             className={`inline-flex items-center gap-1.5 text-xs font-bold rounded-full px-3 py-1.5 border transition-colors ${toneCls} ${
               onOpenReconciliation ? "cursor-pointer hover:brightness-95" : "cursor-default"
             }`}
@@ -81,6 +103,35 @@ export default function AccountsHeader({
             )}
           </button>
 
+          {/* Quick actions — §5. Sync Ads reuses the ONE shared sync flow. */}
+          {onSyncAds && (
+            <button
+              type="button"
+              onClick={onSyncAds}
+              disabled={adsSyncing}
+              title={`Sync Google & Meta ad spend for the selected range. Last successful sync: ${fmtSyncTime(adsLastSyncedAt)}.`}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white rounded-xl text-xs font-bold hover:bg-[#2d5a8e] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            >
+              <i className={`ri-refresh-line ${adsSyncing ? "animate-spin" : ""}`}></i>
+              {adsSyncing ? "Syncing…" : "Sync Ads"}
+            </button>
+          )}
+          {onAddExpense && (
+            <button
+              type="button"
+              onClick={onAddExpense}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors"
+            >
+              <i className="ri-add-line text-[#3b6ea5]"></i>Add Expense
+            </button>
+          )}
+          {onExport && (
+            <button type="button" onClick={onExport}
+              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+              <i className="ri-file-excel-2-line text-emerald-600"></i>Export
+            </button>
+          )}
+
           <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-1.5">
             <span className="text-xs font-bold text-gray-500 whitespace-nowrap" title="Rate used to convert PKR salary figures to USD">
               PKR → USD
@@ -91,15 +142,25 @@ export default function AccountsHeader({
               className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:border-[#3b6ea5]"
             />
           </div>
-
-          {onExport && (
-            <button type="button" onClick={onExport}
-              className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
-              <i className="ri-file-excel-2-line text-emerald-600"></i>Export
-            </button>
-          )}
         </div>
       </div>
+
+      {/* Sync outcome + freshness — progress and success/error are shown, never guessed. */}
+      {(adsSyncNote || onSyncAds) && (
+        <div className="mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap justify-end">
+          {onSyncAds && (
+            <span className="text-[11px] text-gray-400">
+              <i className="ri-megaphone-line mr-1"></i>Ad spend last synced: {fmtSyncTime(adsLastSyncedAt)}
+            </span>
+          )}
+          {adsSyncNote && (
+            <span className={`text-[11px] font-semibold ${adsSyncNoteTone === "err" ? "text-rose-600" : "text-emerald-700"}`}>
+              <i className={`${adsSyncNoteTone === "err" ? "ri-error-warning-line" : "ri-checkbox-circle-line"} mr-1`}></i>
+              {adsSyncNote}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Honest disclosure — never hide a reconciliation problem behind a badge. */}
       {needsAttention && statusReasons.length > 0 && (

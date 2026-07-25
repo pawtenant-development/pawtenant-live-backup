@@ -59,15 +59,19 @@ export interface ChannelTotalsResult {
   unknownOrders: number | null;
 }
 
-export default function ChannelContributionPanel({ from, to, rangeLabel, onTotals }: {
+export default function ChannelContributionPanel({ from, to, rangeLabel, onTotals, reloadSignal = 0 }: {
   from: string;
   to: string;
   rangeLabel: string;
   onTotals?: (r: ChannelTotalsResult) => void;
+  /** Bumped after a successful ad-spend sync so the synced-spend column refreshes. */
+  reloadSignal?: number;
 }) {
   const [raw, setRaw] = useState<ChannelRpcResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // §7: compact summary always visible; the wide per-channel table is detail.
+  const [showTable, setShowTable] = useState(false);
   const [expanded, setExpanded] = useState<Record<ChannelCategory, boolean>>({
     paid_media: true,
     organic: true,
@@ -86,6 +90,11 @@ export default function ChannelContributionPanel({ from, to, rangeLabel, onTotal
   }, [from, to]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Re-fetch when an ad sync completes (skip the initial 0 — load() already ran).
+  useEffect(() => {
+    if (reloadSignal > 0) void load();
+  }, [reloadSignal, load]);
 
   const result: ChannelContributionResult | null = useMemo(() => {
     if (!raw) return null;
@@ -150,14 +159,27 @@ export default function ChannelContributionPanel({ from, to, rangeLabel, onTotal
           </p>
         </div>
         {result && (
-          <button
-            type="button"
-            onClick={() => setAll(!allExpanded)}
-            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50"
-          >
-            <i className={allExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}></i>
-            {allExpanded ? "Collapse all" : "Expand all"}
-          </button>
+          <div className="shrink-0 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowTable((s) => !s)}
+              aria-expanded={showTable}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer"
+            >
+              <i className={showTable ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}></i>
+              {showTable ? "Hide channel table" : "Show channel table"}
+            </button>
+            {showTable && (
+              <button
+                type="button"
+                onClick={() => setAll(!allExpanded)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                <i className={allExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}></i>
+                {allExpanded ? "Collapse all" : "Expand all"}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -233,7 +255,9 @@ export default function ChannelContributionPanel({ from, to, rangeLabel, onTotal
             );
           })()}
 
-          {/* Contribution table — scrolls inside its own container (no page overflow) */}
+          {/* Contribution table — detail layer (§7), scrolls inside its own
+              container (no page overflow). Totals above stay visible either way. */}
+          {showTable && (<>
           <div className="overflow-x-auto -mx-1 px-1">
             <table className="w-full min-w-[860px] text-xs border-separate border-spacing-0">
               <thead>
@@ -323,6 +347,7 @@ export default function ChannelContributionPanel({ from, to, rangeLabel, onTotal
             <p><i className="ri-information-line mr-1"></i>Channel-level Stripe fees are pending actual order-level reconciliation — contribution is shown <em>before</em> Stripe fees and is not profit.</p>
             <p><i className="ri-money-dollar-circle-line mr-1"></i>Gross = order price, Net = gross − refunds, Provider = completed-order provider payments. Refund % = refunds ÷ gross. Ad spend is synced Google Ads cost (PKR→USD @ {raw?.fx_pkr_per_usd ?? 280}); Organic, Organic AI &amp; Unknown carry no ad spend.</p>
           </div>
+          </>)}
         </>
       )}
     </div>
