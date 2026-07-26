@@ -304,6 +304,84 @@ export. Their *logic* assertions were untouched and pass in full.
 
 ---
 
+## 8b. Post-deploy hardening — Supabase grants & search_path
+
+The security advisor was run after Phase A–E (standing rule: every new Supabase
+function/table). It confirmed the known Supabase landmine: default privileges
+GRANT EXECUTE on new public functions to `anon` and `authenticated` as EXPLICIT
+role grants, and `revoke ... from public` does not undo them. Two new SECURITY
+DEFINER trigger functions were reachable via `/rest/v1/rpc/`.
+
+Applied `lifecycle_harden_grants_and_search_path`:
+
+| Function | anon | authenticated | search_path |
+|---|---|---|---|
+| `orders_lifecycle_before_write()` | revoked | revoked | pinned |
+| `orders_lifecycle_after_write()` | revoked | revoked | pinned |
+| `addon_request_paid_lifecycle()` | revoked | revoked | pinned |
+| `order_payment_state(orders)` | revoked | revoked | pinned |
+| `order_workflow_state(orders)` | revoked | revoked | pinned |
+| `detect_order_lifecycle_events(orders,orders)` | revoked | **retained** | pinned |
+| `order_lifecycle_event_rank(text)` | revoked | **retained** | pinned |
+| `admin_correct_order_first_paid_at(...)` | revoked | retained (by design) | pinned |
+| `get_order_lifecycle_events(uuid)` | revoked | retained (by design) | pinned |
+
+`detect_…` and `…_rank` MUST keep `authenticated` EXECUTE: the BEFORE trigger is
+SECURITY INVOKER and calls them as the writing role, so revoking would break admin
+order updates. Revoking the trigger functions is safe because PostgreSQL checks
+EXECUTE on a trigger function at CREATE TRIGGER time, not at fire time.
+
+Verified with `has_function_privilege`: **`anon` = false on all nine.** The full
+15-scenario transactional battery was re-run after the revokes — all PASS.
+
+## 8c. Authenticated production QA (`https://pawtenant.com`)
+
+| Check | Result |
+|---|---|
+| Admin Orders loads full dataset | PASS — settles at 1,621 |
+| Default basis = Latest activity | PASS (`localStorage.adminOrdersDateBasis = "activity"`) |
+| Four Date Basis options present | PASS — Latest activity / Created date / First paid date / Completed date |
+| Date Basis switching | PASS — Completed date activates, persists (`"completed"`), triggers one re-page |
+| **Exactly four KPI cards** | PASS — grid is `lg:grid-cols-4`, 4 children: Lead (Unpaid) 1161, Paid (Unassigned) 0, Under Review 4, Completed 441 |
+| **No Payment Failed KPI card** | PASS |
+| Payment Failed status filter | PASS — 29 rows, server-faceted |
+| Counts reconcile with "X of Y" | PASS at steady state — `1621 of 1621`, `Showing 50 of 1621` |
+| Column header renamed | PASS — "Last Contact" present, "Last Activity" absent |
+| No bare creation date under Order ID | PASS |
+| Order ID visible exactly once (<640px) | PASS — 50 visible ID nodes for 50 rows, no duplicate |
+| Horizontal overflow (<640px) | PASS — `scrollWidth == clientWidth` |
+| Console errors | **PASS — zero** |
+| Failed RPCs / partial-dataset stall | none observed |
+| Overview has NO lifecycle panel | PASS — 0 occurrences |
+| Google Ads ledger after rollout | PASS — still exactly 1 uploaded / 6 dry_run_ready |
+| Order/paid counts after rollout | PASS — 1,621 / 459, 0 invariant violations, 0 synthetic events, 0 test leakage |
+
+### Defect found by QA and fixed
+
+Production QA caught a transient the port introduced: LIVE pages the dataset in
+progressively, so the server-authoritative filtered total was published against a
+still-growing `orders.length`, rendering `1621 of 250` → `1621 of 500` before
+settling correctly at `1621 of 1621`. Fixed in `ea76ce2`: while the loaded set is
+catching up, both halves of the readout come from the same client snapshot; the
+server total takes over once the dataset is complete.
+
+### QA NOT completed
+
+* **Responsive matrix at 1024 / 768 / 440 / 390 / 375 / 360.** Chrome page zoom for
+  the origin was changed to ~317% by a tooling call during QA (`innerWidth` 484 vs
+  `outerWidth` 1536) and the keyboard zoom reset is blocked in this environment, so
+  `resize_window` could not produce the target viewports. Only the `<640px` branch
+  was measured (at 484px) plus the full-width desktop layout captured before the
+  zoom changed. **Reset with `Ctrl+0` on pawtenant.com before re-testing.**
+* **Payments-tab lifecycle panel not browser-confirmed.** The modal could not be
+  driven reliably at the zoomed viewport. It is code-verified (`PaymentHistoryTab`
+  mounts `<OrderLifecyclePanel>` unconditionally, and the panel always renders its
+  "Lifecycle & Payment" heading) and guard-verified (two passing assertions:
+  "Payments tab mounts the lifecycle panel", "Payments tab reuses the SHARED panel
+  component"), but not visually confirmed on production.
+* **CSV export not exercised on production** (basis-aware filename + Date Basis
+  column are guard-verified only).
+
 ## 9. Known limitations
 
 **L1 — Accounts revenue window still keys on `paid_at` + `orders.price`.**
