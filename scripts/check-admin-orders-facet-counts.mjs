@@ -125,7 +125,14 @@ function runStatic(fail) {
 
   // page.tsx wiring
   if (!/fetchOrderFacetCounts\(/.test(page)) fail("[page] must call fetchOrderFacetCounts");
-  if (!/facetCounts\.buckets\.(lead_unpaid|completed)/.test(page)) fail("[page] KPI cards must read facetCounts.buckets");
+  // ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001 — this guard previously
+  // required the KPI cards to READ facetCounts.buckets. That was the regression:
+  // the upper banner is a CURRENT-MONTH universe and must never be narrowed by
+  // the active list filters. Facet counts now serve the LIST only. The banner's
+  // own contract is enforced by check-admin-orders-monthly-kpis.mjs; here we
+  // assert the inverse, so the two universes can never be re-merged.
+  if (/value:\s*facetCounts\.buckets\./.test(page))
+    fail("[page] a KPI card reads facetCounts.buckets — the banner is monthly, not filter-faceted");
   if (/kpiCounts\./.test(page)) fail("[page] old kpiCounts must be fully removed");
   if (/value: .*orders\.filter\(isPaidUnassigned\)/.test(page)) fail("[page] KPI values must NOT fall back to loaded-row counts");
   if (!/filteredTotalDisplay/.test(page)) fail("[page] 'X of Y' total must use the server-authoritative filteredTotalDisplay");

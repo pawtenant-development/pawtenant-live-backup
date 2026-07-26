@@ -44,6 +44,14 @@ import {
 import { exportOrdersToCSV, type ExportableOrder } from "../../lib/exportOrders";
 import { fetchProviderPaymentsForExport } from "../../lib/providerPaymentExport";
 import { fetchOrderFacetCounts, filteredTotalFor, type FacetCounts } from "./orderFacetCounts";
+// ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001 — the upper banner is a
+// CURRENT-MONTH summary and is deliberately a DIFFERENT universe from the
+// filter-aware list counts above. Never merge the two.
+import {
+  fetchAdminOrdersMonthlyKpis,
+  formatMonthlyPeriodLabel,
+  type AdminOrdersMonthlyKpis,
+} from "../../lib/adminOrdersMonthlyKpis";
 import { exportMetaAudienceToCSV, type MetaAudienceOrder, type MetaAudienceMode } from "../../lib/exportMetaAudience";
 import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
@@ -462,6 +470,28 @@ export default function AdminOrdersPage() {
     blockedClientFilters: [],
     error: false,
   });
+
+  // ── Upper banner — CURRENT MONTH (America/New_York) ────────────────────────
+  // ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001. Server-authoritative
+  // aggregate from get_admin_orders_monthly_kpis(). Its effect intentionally has
+  // NO filter/basis/pagination dependencies — the banner answers "what happened
+  // this month?" and must stay perfectly still while the operator searches,
+  // switches status/package/sequence filters, flips Date Basis or pages the list.
+  // Reloaded only on mount and on an explicit Refresh.
+  const [monthlyKpis, setMonthlyKpis] = useState<AdminOrdersMonthlyKpis | null>(null);
+  const [monthlyKpisLoading, setMonthlyKpisLoading] = useState(true);
+  const [monthlyKpiReloadToken, setMonthlyKpiReloadToken] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    setMonthlyKpisLoading(true);
+    void (async () => {
+      const k = await fetchAdminOrdersMonthlyKpis();
+      if (cancelled) return;
+      setMonthlyKpis(k);
+      setMonthlyKpisLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [monthlyKpiReloadToken]);
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
@@ -913,6 +943,9 @@ export default function AdminOrdersPage() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     setRefreshSyncMsg("");
+    // The monthly banner is deliberately inert to filters, so an explicit
+    // Refresh is the operator's way to re-pull it.
+    setMonthlyKpiReloadToken((t) => t + 1);
     try {
       // Step 1 — call Stripe sync to fix any orders missing payment_intent_id
       const syncRes = await fetch(`${supabaseUrl}/functions/v1/sync-unpaid-orders`, {
@@ -2142,39 +2175,53 @@ export default function AdminOrdersPage() {
           <>
             {!loading && (
               <>
-              {facetCounts.blockedClientFilters.length > 0 && (
-                <div className="mb-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  KPI counts are hidden while the {facetCounts.blockedClientFilters.join(" + ")} filter{facetCounts.blockedClientFilters.length > 1 ? "s are" : " is"} active — {facetCounts.blockedClientFilters.length > 1 ? "they" : "it"} can&apos;t be applied server-side yet, so the counts would not reconcile with the list. Clear to restore filter-aware counts.
-                </div>
-              )}
+              {/* ── CURRENT-MONTH banner label ────────────────────────────────
+                  ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001 §2: the operator
+                  must never have to infer whether these are monthly or all-time,
+                  so the active period is stated next to the numbers. */}
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5 px-0.5">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">This month</span>
+                {monthlyKpis && (
+                  <span className="text-[11px] font-semibold text-gray-500">· {formatMonthlyPeriodLabel(monthlyKpis)}</span>
+                )}
+                <i
+                  className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
+                  tabIndex={0}
+                  role="img"
+                  aria-label="These four cards count the current Eastern calendar month only. They are not affected by search, status, package or sequence filters, Date Basis, or pagination — the list below is."
+                  title="Current Eastern calendar month only. Unaffected by search, filters, Date Basis and pagination — those narrow the list below, not these cards."
+                ></i>
+              </div>
               {/* EXACTLY four permanent workflow cards — see §15. 1 col on phones,
-                  2 on small tablets, 4 from lg up so nothing is ever clipped. */}
+                  2 on small tablets, 4 from lg up so nothing is ever clipped.
+                  Values are MONTHLY and server-authoritative — never facet counts,
+                  never derived from the rows currently loaded. */}
               <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
                   {
                     label: "Lead (Unpaid)",
-                    value: facetCounts.buckets.lead_unpaid,
+                    value: monthlyKpis?.leadUnpaid ?? null,
                     icon: "ri-user-follow-line",
                     color: "text-amber-600",
                     filter: "lead_unpaid",
                   },
                   {
                     label: "Paid (Unassigned)",
-                    value: facetCounts.buckets.paid_unassigned,
+                    value: monthlyKpis?.paidUnassigned ?? null,
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
                     filter: "paid_unassigned",
                   },
                   {
                     label: "Under Review",
-                    value: facetCounts.buckets.under_review,
+                    value: monthlyKpis?.underReview ?? null,
                     icon: "ri-time-line",
                     color: "text-violet-600",
                     filter: "under_review",
                   },
                   {
                     label: "Completed",
-                    value: facetCounts.buckets.completed,
+                    value: monthlyKpis?.completed ?? null,
                     icon: "ri-checkbox-circle-line",
                     color: "text-emerald-600",
                     filter: "completed",
@@ -2199,7 +2246,14 @@ export default function AdminOrdersPage() {
                       <p className="text-[10px] text-gray-500 font-medium leading-none truncate">
                         {s.label}
                       </p>
-                      <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value == null ? "—" : s.value}</p>
+                      {/* Contained skeleton while the monthly aggregate loads —
+                          never a stale all-time number standing in for a
+                          monthly one. "—" means the aggregate genuinely failed. */}
+                      {monthlyKpisLoading ? (
+                        <span className="mt-1 block h-5 w-10 rounded bg-slate-200 animate-pulse" aria-label={`${s.label} loading`}></span>
+                      ) : (
+                        <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value == null ? "—" : s.value}</p>
+                      )}
                     </div>
                   </button>
                 ))}
@@ -2663,6 +2717,17 @@ export default function AdminOrdersPage() {
                     )}
                   </div>
                 </div>
+
+                {/* ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001 §5 — this notice
+                    belongs to the LIST total, not the banner. The four cards above
+                    are monthly and server-authoritative, so a client-only filter
+                    can no longer make them unavailable; what it does affect is the
+                    filter-aware "X of Y" below. */}
+                {facetCounts.blockedClientFilters.length > 0 && (
+                  <div className="mb-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    The filtered total falls back to the loaded rows while the {facetCounts.blockedClientFilters.join(" + ")} filter{facetCounts.blockedClientFilters.length > 1 ? "s are" : " is"} active — {facetCounts.blockedClientFilters.length > 1 ? "they" : "it"} can&apos;t be applied server-side yet. The four monthly cards above are unaffected.
+                  </div>
+                )}
 
                 {/* ── Date basis — ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001 §4
                     The label and the four options are enough. The behaviour is
