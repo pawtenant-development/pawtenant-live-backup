@@ -176,6 +176,9 @@ async function uploadConversionToGoogleAds(payload: ConversionPayload, accessTok
   try {
     const res = await fetch(url, { method: "POST", headers: buildRequestHeaders(accessToken), body: JSON.stringify(requestBody) });
     const rawText = await res.text();
+    // Google returns its trace id in this header — recorded as upload provenance
+    // so a later adjustment can be tied back to the exact original request.
+    diagnostics.requestId = res.headers.get("request-id") ?? res.headers.get("x-request-id") ?? null;
 
     if (rawText.trim().startsWith("<")) {
       return { success: false, error: `Google Ads API returned HTML (${res.status}) — URL may be wrong`, diagnostics };
@@ -471,6 +474,37 @@ async function processOrder(
     }
     await supabase.from("orders").update(updatePayload).eq("id", order.id);
 
+    // ── GOOGLE-ADS-REFUND-ADJUSTMENT-CANARY-READINESS-001 ────────────────────
+    // Immutable provenance of what was ACTUALLY sent to Google. Without this the
+    // uploaded value is unrecoverable (orders.price is mutable), which makes a
+    // refund RESTATEMENT impossible to compute honestly. Append-only: a retry
+    // cannot create a second successful row (unique partial index), and the
+    // insert is best-effort so it can never break an upload that already
+    // succeeded at Google.
+    try {
+      await supabase.from("google_ads_conversion_uploads").insert({
+        order_id: order.id,
+        order_transaction_id: order.confirmation_id,
+        conversion_action_id: GOOGLE_ADS_CONVERSION_ACTION_ID ?? "",
+        uploaded_value: price,
+        currency_code: "USD",
+        conversion_date_time: resolvedPaidAt,
+        attribution_method: uploadMethod,
+        google_ads_api_version: GOOGLE_ADS_API_VERSION,
+        google_request_id: (result.diagnostics?.requestId as string | null) ?? null,
+        uploaded_at: now,
+        upload_status: "success",
+        // Safe summary only — never the raw Google payload, never click IDs.
+        response_summary_safe: {
+          match_quality: matchQuality,
+          timestamp_source: tsResult.source,
+          google_tag_fired: order.google_tag_fired ?? false,
+          is_backfill_replay: isBackfillReplay,
+        },
+        idempotency_key: `${order.confirmation_id}:${GOOGLE_ADS_CONVERSION_ACTION_ID ?? ""}:success`,
+      });
+    } catch { /* non-critical: provenance must never fail a completed upload */ }
+
     try {
       await supabase.from("audit_logs").insert({
         action: "google_ads_conversion_uploaded",
@@ -478,7 +512,10 @@ async function processOrder(
         object_id: order.confirmation_id,
         actor_name: "system",
         actor_role: "automation",
-        details: {
+        // NOTE: this column is `metadata`. It was previously written as `details`
+        // — a column audit_logs does not have — so every insert failed silently
+        // inside the empty catch below (1 audit row for 404 uploads at LIVE).
+        metadata: {
           confirmation_id: order.confirmation_id, upload_method: uploadMethod, match_quality: matchQuality,
           price, paid_at_original: order.paid_at, conversion_date_time_sent: resolvedPaidAt,
           timestamp_source: tsResult.source, timestamp_warning: timestampWarning ?? null,
@@ -496,7 +533,8 @@ async function processOrder(
       await supabase.from("audit_logs").insert({
         action: "google_ads_conversion_failed", object_type: "order", object_id: order.confirmation_id,
         actor_name: "system", actor_role: "automation",
-        details: { confirmation_id: order.confirmation_id, upload_method: uploadMethod, error: result.error, paid_at_original: order.paid_at, conversion_date_time_sent: resolvedPaidAt, diagnostics: result.diagnostics, attempted_at: now },
+        // `metadata`, not `details` — see the note on the success path above.
+        metadata: { confirmation_id: order.confirmation_id, upload_method: uploadMethod, error: result.error, paid_at_original: order.paid_at, conversion_date_time_sent: resolvedPaidAt, diagnostics: result.diagnostics, attempted_at: now },
       });
     } catch { /* non-critical */ }
     return { confirmationId: order.confirmation_id, method: uploadMethod, quality: matchQuality, success: false, skipped: false, error: result.error, diagnostics: result.diagnostics };
@@ -510,7 +548,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const body = await req.json().catch(() => ({})) as {
-      mode?: "backfill" | "single" | "retry_failed" | "test_auth" | "test_upload" | "retry_gclid_upgraded" | "list_conversion_actions";
+      mode?: "backfill" | "single" | "retry_failed" | "test_auth" | "test_upload" | "retry_gclid_upgraded" | "list_conversion_actions" | "inspect_conversion_action";
       confirmationId?: string;
       dryRun?: boolean;
       forceUpload?: boolean;
@@ -533,6 +571,63 @@ serve(async (req) => {
       if (!tokenResult.token) return json({ ok: false, error: `OAuth failed: ${tokenResult.error}` }, 500);
       const result = await listConversionActions(tokenResult.token);
       return json({ ok: result.success, mode: "list_conversion_actions", ...result });
+    }
+
+    // ── Inspect the configured conversion action (READ-ONLY) ─────────────────
+    // GOOGLE-ADS-REFUND-ADJUSTMENT-CANARY-READINESS-001. Canary prerequisites
+    // require proof that the Backend Purchase action accepts UPLOADED values
+    // rather than overriding them with a default (adjustment error 10
+    // CANNOT_RESTATE_CONVERSION_ACTION_THAT_ALWAYS_USES_DEFAULT_CONVERSION_VALUE)
+    // and that it is Primary for bidding. Pure GAQL SELECT — no mutation.
+    if (mode === "inspect_conversion_action") {
+      const tokenResult = await getAccessToken();
+      if (!tokenResult.token) return json({ ok: false, error: `OAuth failed: ${tokenResult.error}` }, 500);
+      const customerId = (GOOGLE_ADS_CUSTOMER_ID ?? "").replace(/[-\s]/g, "");
+      const actionId = GOOGLE_ADS_CONVERSION_ACTION_ID ?? "";
+      const query = `
+        SELECT
+          conversion_action.id,
+          conversion_action.name,
+          conversion_action.type,
+          conversion_action.status,
+          conversion_action.category,
+          conversion_action.primary_for_goal,
+          conversion_action.counting_type,
+          conversion_action.value_settings.default_value,
+          conversion_action.value_settings.default_currency_code,
+          conversion_action.value_settings.always_use_default_value,
+          conversion_action.include_in_conversions_metric,
+          conversion_action.click_through_lookback_window_days
+        FROM conversion_action
+        WHERE conversion_action.id = ${actionId}
+      `;
+      try {
+        const res = await fetch(
+          `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${customerId}/googleAds:searchStream`,
+          { method: "POST", headers: buildRequestHeaders(tokenResult.token), body: JSON.stringify({ query }) },
+        );
+        const rawText = await res.text();
+        if (!res.ok) return json({ ok: false, mode, error: `API ${res.status}: ${rawText.slice(0, 600)}` }, 500);
+        const batches = JSON.parse(rawText) as Array<{ results?: Array<{ conversionAction?: Record<string, unknown> }> }>;
+        const ca = batches?.[0]?.results?.[0]?.conversionAction ?? null;
+        const vs = (ca?.valueSettings ?? {}) as Record<string, unknown>;
+        return json({
+          ok: true, mode, apiVersion: GOOGLE_ADS_API_VERSION, customerId, actionId,
+          action: ca,
+          canary_checks: {
+            // A RETRACTION carries no value, so alwaysUseDefaultValue cannot block it;
+            // it WOULD block a RESTATEMENT (error 10).
+            always_use_default_value: vs.alwaysUseDefaultValue === true,
+            uploaded_values_accepted: vs.alwaysUseDefaultValue !== true,
+            primary_for_goal: ca?.primaryForGoal ?? null,
+            counting_type: ca?.countingType ?? null,
+            status: ca?.status ?? null,
+            type: ca?.type ?? null,
+          },
+        });
+      } catch (err) {
+        return json({ ok: false, mode, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
     }
 
     // ── Test auth ─────────────────────────────────────────────────────────────
