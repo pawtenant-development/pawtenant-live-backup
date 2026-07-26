@@ -42,6 +42,8 @@ import {
   ADJUSTMENT_WINDOW_DAYS,
   MIN_CONVERSION_AGE_HOURS,
   shortFingerprint,
+  applyLedgerOutcome,
+  isDurableLedgerOutcome,
 } from "../_shared/googleAdsRefundAdjustment.mjs";
 
 const CORS = {
@@ -402,7 +404,15 @@ Deno.serve(async (req: Request) => {
         last_attempt_at: new Date().toISOString(),
         attempt_count: (Number(row.attempt_count) || 0) + 1,
         google_request_id: result.requestId,
-        google_response_summary: { real_upload: { http_status: result.httpStatus, request_id: result.requestId } },
+        // Google's jobId is acceptance evidence — persist it, don't drop it.
+        google_job_id: (bodyObj.jobId as string | null) ?? null,
+        google_response_summary: {
+          real_upload: {
+            http_status: result.httpStatus,
+            request_id: result.requestId,
+            job_id: bodyObj.jobId ?? null,
+          },
+        },
       }).eq("id", adjustmentId);
     }
 
@@ -439,7 +449,15 @@ Deno.serve(async (req: Request) => {
     if (mode === "reconcile") {
       const { data, error } = await supabase.rpc("get_google_ads_refund_adjustment_status");
       if (error) return json({ ok: false, mode, error: error.message, safety }, 500);
-      return json({ ok: true, mode, ledger: data, safety });
+      const { data: disc, error: dErr } = await supabase.rpc("get_google_ads_adjustment_discrepancies");
+      if (dErr) return json({ ok: false, mode, error: dErr.message, safety }, 500);
+      return json({
+        ok: true, mode, ledger: data, discrepancies: disc,
+        // Read-only by construction: reconcile never reopens an uploaded row and
+        // never contacts Google.
+        google_calls: 0,
+        safety,
+      });
     }
 
     if (!GOOGLE_ADS_CONVERSION_ACTION_ID) {
@@ -475,13 +493,37 @@ Deno.serve(async (req: Request) => {
       return { ...c, _row: r };
     });
 
-    const summary = summarizeCandidates(candidates);
-    const report = candidates.map((c) => toSafeReportRow(c));
+    // ── LEDGER IS THE SOURCE OF TRUTH AFTER INGESTION ──────────────────────
+    // The classifier has no memory — an order whose conversion was ALREADY
+    // retracted still re-derives as a perfect candidate. Overlay the durable
+    // ledger outcome so a finished adjustment can never be reported as
+    // actionable, and its value can never re-enter the proposed total.
+    const txIds = candidates.map((c) => c.orderTransactionId).filter(Boolean);
+    const { data: ledgerRows } = txIds.length
+      ? await supabase
+          .from("google_ads_conversion_adjustments")
+          .select("original_order_or_transaction_id, status, uploaded_at, google_request_id, google_job_id, attempt_count")
+          .in("original_order_or_transaction_id", txIds)
+      : { data: [] as Array<Record<string, unknown>> };
+
+    // Prefer the durable row when an order has several historical rows.
+    const ledgerByTx = new Map<string, Record<string, unknown>>();
+    for (const lr of (ledgerRows ?? []) as Array<Record<string, unknown>>) {
+      const key = String(lr.original_order_or_transaction_id);
+      const prev = ledgerByTx.get(key);
+      if (!prev || (!isDurableLedgerOutcome(prev) && isDurableLedgerOutcome(lr))) ledgerByTx.set(key, lr);
+    }
+
+    const reconciled = candidates.map((c) =>
+      ({ ...applyLedgerOutcome(c, ledgerByTx.get(c.orderTransactionId)), _row: c._row }));
+
+    const summary = summarizeCandidates(reconciled);
+    const report = reconciled.map((c) => toSafeReportRow(c));
 
     // Proposed payloads are BUILT so the owner can inspect exactly what a future
     // canary would send — and are returned as data, never posted anywhere.
     const proposedPayloads = body.includePayloads === true
-      ? candidates
+      ? reconciled
           .filter((c) => c.status === STATUS.DRY_RUN_READY)
           .map((c) => buildAdjustmentPayload(c, { customerId: GOOGLE_ADS_CUSTOMER_ID || "REDACTED" }))
       : undefined;
@@ -489,10 +531,20 @@ Deno.serve(async (req: Request) => {
     // ── ingest: persist/refresh shadow ledger rows. DB ONLY. ────────────────
     let ingested = 0;
     let superseded = 0;
+    let protectedRows = 0;
     if (mode === "ingest") {
-      for (const c of candidates) {
+      for (const c of reconciled) {
         const row = c._row as CandidateRow;
         const isReady = c.status === STATUS.DRY_RUN_READY;
+
+        // ── NEVER downgrade a finished adjustment ──────────────────────────
+        // Skip entirely: no upsert, so uploaded_at, the Google identifiers, the
+        // attempt count and the accepted response evidence are all untouchable
+        // from this path. (A DB trigger enforces the same rule independently.)
+        if (isDurableLedgerOutcome(ledgerByTx.get(c.orderTransactionId))) {
+          protectedRows++;
+          continue;
+        }
 
         // Blocked/skipped candidates still get a durable row so the owner can
         // see WHY nothing will be sent — but with a deterministic key so repeat
@@ -566,6 +618,7 @@ Deno.serve(async (req: Request) => {
       proposed_payloads: proposedPayloads,
       ingested: mode === "ingest" ? ingested : undefined,
       superseded: mode === "ingest" ? superseded : undefined,
+      protected_from_downgrade: mode === "ingest" ? protectedRows : undefined,
       safety,
       note:
         "SHADOW MODE — no conversion adjustment was uploaded. This build contains no Google Ads mutation path. " +

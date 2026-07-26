@@ -128,6 +128,59 @@ export const STATUS = {
 export const READY_STATUSES = new Set([STATUS.DRY_RUN_READY]);
 
 /**
+ * DURABLE LEDGER OUTCOMES — the ledger is the source of truth after ingestion.
+ *
+ * The orders/refund classifier re-derives candidates from source data every run,
+ * so it has no memory: an order whose conversion has ALREADY been retracted still
+ * looks like a perfect candidate. Without this, the dry run reported the accepted
+ * canary as actionable (7 ready / $779 instead of 6 / $680) and an ingest could
+ * upsert a completed row back to `dry_run_ready`.
+ *
+ * A row in any of these states — or with `uploaded_at` set, or carrying accepted
+ * Google identifiers — is FINISHED. The classifier may discover new candidates,
+ * but it must never override a durable outcome.
+ */
+export const DURABLE_LEDGER_STATUSES = new Set([
+  STATUS.UPLOADED,
+  STATUS.SUPERSEDED,
+  STATUS.TERMINAL_ERROR,
+]);
+
+/**
+ * True when a ledger row records a completed//terminal outcome that must survive
+ * any re-classification.
+ */
+export function isDurableLedgerOutcome(ledgerRow) {
+  if (!ledgerRow) return false;
+  if (ledgerRow.uploaded_at) return true;
+  if (ledgerRow.google_request_id || ledgerRow.google_job_id) return true;
+  return DURABLE_LEDGER_STATUSES.has(String(ledgerRow.status ?? ""));
+}
+
+/**
+ * Overlay the durable ledger outcome onto a freshly classified candidate.
+ *
+ * Returns the candidate unchanged when the ledger has nothing durable to say, so
+ * genuinely pending/new candidates keep their computed classification (including
+ * a legitimately changed cumulative refund).
+ */
+export function applyLedgerOutcome(candidate, ledgerRow) {
+  if (!isDurableLedgerOutcome(ledgerRow)) return candidate;
+  return {
+    ...candidate,
+    status: String(ledgerRow.status ?? STATUS.UPLOADED),
+    // A finished adjustment is not actionable: it proposes nothing.
+    adjustmentType: null,
+    ledgerUploadedAt: ledgerRow.uploaded_at ?? null,
+    ledgerGoogleRequestId: ledgerRow.google_request_id ?? null,
+    ledgerGoogleJobId: ledgerRow.google_job_id ?? null,
+    blockedReason: ledgerRow.uploaded_at
+      ? "already adjusted at Google — durable ledger outcome"
+      : `durable ledger outcome: ${ledgerRow.status}`,
+  };
+}
+
+/**
  * Google error codes that are permanent for a given (conversion, adjustment)
  * pair — retrying the identical payload can never succeed.
  * Source: conversion_adjustment_upload_error.proto (see header).
@@ -455,7 +508,12 @@ export function summarizeCandidates(candidates) {
     skipped_no_successful_refund: by(STATUS.SKIPPED_NO_SUCCESSFUL_REFUND),
     skipped_not_google_attributed: by(STATUS.SKIPPED_NOT_GOOGLE_ATTRIBUTED),
     skipped_no_effective_reduction: by(STATUS.SKIPPED_NO_EFFECTIVE_REDUCTION),
+    // Reported SEPARATELY from ready — never folded into the actionable counts.
     already_uploaded: by(STATUS.UPLOADED),
+    already_uploaded_value: roundMoney(
+      candidates.filter((c) => c.status === STATUS.UPLOADED)
+        .reduce((s, c) => s + (c.originalValue ?? 0), 0),
+    ),
     retryable: by(STATUS.RETRYABLE_ERROR),
     terminal: by(STATUS.TERMINAL_ERROR),
     superseded: by(STATUS.SUPERSEDED),
@@ -491,5 +549,10 @@ export function toSafeReportRow(c) {
         : c.conversionAgeDays === null ? "unknown" : "in_window",
     value_provenance_weak: c.valueProvenanceWeak === true,
     idempotency_fingerprint: c.idempotencyFingerprint ?? null,
+    // Durable ledger evidence — present only on finished rows. Safe identifiers
+    // (Google trace ids), never PII.
+    ledger_uploaded_at: c.ledgerUploadedAt ?? null,
+    ledger_google_request_id: c.ledgerGoogleRequestId ?? null,
+    ledger_google_job_id: c.ledgerGoogleJobId ?? null,
   };
 }
