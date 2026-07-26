@@ -272,17 +272,64 @@ function runStaticChecks(files) {
   const webhookCode = stripComments(webhook);
   const refundCode = stripComments(createRefund);
 
-  // The single most important control: the shipped consumer has no upload path.
-  check("S01", !/googleads\.googleapis\.com/.test(consumerCode), "consumer must contain NO Google Ads API endpoint");
-  check("S02", !/uploadConversionAdjustments/.test(consumerCode), "consumer must not construct an uploadConversionAdjustments request");
-  check("S03", !/fetch\s*\(/.test(consumerCode), "consumer must make no outbound HTTP call at all");
-  check("S04", /mutation_path_present_in_build:\s*false/.test(consumer), "consumer must declare mutation_path_present_in_build: false");
+  // ── POSTURE CHANGE (CANARY-EXECUTION-PREP-001) ────────────────────────────
+  // A protected single-item mutation path now EXISTS, so "absence of code" is no
+  // longer the control. The controls are now: exactly one operation, dual flags
+  // plus an exact allow-list id, and validate-only as the fail-closed default.
+  check("S01", /uploadConversionAdjustments/.test(consumerCode),
+    "the adjustment endpoint must be the ConversionAdjustmentUploadService upload method");
+  check("S02", (consumerCode.match(/googleads\.googleapis\.com/g) ?? []).length === 1,
+    "there must be exactly ONE Google Ads endpoint in the consumer (no second/batch path)");
+  check("S03", !/uploadClickConversions|:mutate|campaignBudget|conversionAction:mutate/i.test(consumerCode),
+    "the consumer must reach no endpoint other than conversion-adjustment upload");
+  check("S04", /protected_canary_path_present:\s*true/.test(consumer) && /batch_path_present:\s*false/.test(consumer),
+    "consumer must declare the protected canary path present and NO batch path");
+
+  // Exactly one operation, structurally enforced.
+  check("S46", /const CANARY_MAX_OPERATIONS = 1/.test(consumerCode),
+    "the per-request operation cap must be hard-wired to 1");
+  check("S47", /operations\.length !== CANARY_MAX_OPERATIONS/.test(consumerCode) && /refusing to send/.test(consumerCode),
+    "the sender must assert exactly one operation immediately before the request");
+  check("S48", /conversionAdjustments: operations/.test(consumerCode),
+    "the request body must carry the single-element operations array");
+
+  // Dual flags + allow-list, all fail-closed on the exact string "true".
+  check("S49", /GOOGLE_ADS_REFUND_ADJUSTMENTS_ENABLED"\s*\)\s*===\s*"true"/.test(consumerCode) &&
+               /GOOGLE_ADS_REFUND_CANARY_ENABLED"\s*\)\s*===\s*"true"/.test(consumerCode),
+    "BOTH kill switches must require the exact string 'true'");
+  check("S50", /if \(!MUTATIONS_ENABLED\) blockers\.push/.test(consumerCode) &&
+               /if \(!CANARY_ENABLED\) blockers\.push/.test(consumerCode) &&
+               /CANARY_ADJUSTMENT_ID !== adjustmentId/.test(consumerCode),
+    "a real mutation must be blocked unless both flags are true AND the allow-list id matches exactly");
+  check("S51", /const wantsRealMutation = body\.validateOnly === false/.test(consumerCode),
+    "only an explicit `validateOnly: false` may request a real mutation (missing input must validate, not mutate)");
+  check("S52", /const validateOnly = !wantsRealMutation/.test(consumerCode),
+    "validateOnly must be derived so the request is validate-only unless every condition held");
+  check("S53", /partialFailure: true/.test(consumerCode), "partialFailure must be true");
+  check("S54", /adjustmentType: ADJUSTMENT_TYPE\.RETRACTION/.test(consumerCode) &&
+               !/restatementValue/.test(consumerCode.replace(/\/\/.*$/gm, "")),
+    "the canary payload must be RETRACTION with no restatementValue");
+  check("S55", !/gclidDateTimePair|userIdentifiers/.test(consumerCode),
+    "the canary payload must not set gclidDateTimePair or userIdentifiers");
+  check("S56", /mode === "single" \|\| mode === "batch"/.test(consumerCode) && /501/.test(consumerCode),
+    "legacy single and batch modes must stay permanently refused");
+  // Ledger safety: a validate-only run must never mark the row uploaded.
+  check("S57", /if \(validateOnly\) \{[\s\S]{0,400}last_validation/.test(consumerCode),
+    "a validate-only run must write only a validation record");
+  check("S58", /\} else if \(accepted\) \{[\s\S]{0,200}status: "uploaded"/.test(consumerCode),
+    "uploaded status may be written ONLY on a real, accepted send");
+  check("S59", /ledger_marked_uploaded: !validateOnly && accepted/.test(consumerCode),
+    "the response must report ledger_marked_uploaded derived from a real accepted send");
+  check("S60", /v24|GOOGLE_ADS_API_VERSION/.test(consumerCode),
+    "the adjustment must use the configured Google Ads API version");
 
   // Kill switch + dry-run default + fail-closed mutation modes.
   check("S05", /GOOGLE_ADS_REFUND_ADJUSTMENTS_ENABLED"\s*\)\s*===\s*"true"/.test(consumer), "kill switch must require the exact string 'true' (fail closed)");
   check("S06", /body\.mode\s*\?\?\s*"dry_run"/.test(consumer), "dry_run must be the default mode");
   check("S07", /mode === "single" \|\| mode === "batch"/.test(consumer) && /501/.test(consumer), "single/batch mutation modes must fail closed with 501");
-  check("S08", /mutation_calls_sent/.test(consumer) && /const MUTATION_CALLS_SENT = 0/.test(consumer), "consumer must report mutation_calls_sent = 0");
+  check("S08", /mutation_calls_sent: realMutationCallsSent/.test(consumerCode) &&
+               /if \(validateOnly\) validateOnlyCallsSent\+\+; else realMutationCallsSent\+\+/.test(consumerCode),
+    "the consumer must count REAL mutations separately from validate-only calls and report the real count");
 
   // Backend Purchase only — never the Secondary dynamic actions.
   check("S09", /GOOGLE_ADS_CONVERSION_ACTION_ID/.test(consumer), "consumer must read the Backend Purchase action from the same env var as the uploader");
@@ -378,9 +425,22 @@ function runSelfTest(files) {
   const mutate = (key, fn) => ({ ...files, [key]: fn(files[key]) });
 
   const cases = [
-    ["S01", mutate("consumer", (s) => s + "\nfetch('https://googleads.googleapis.com/v21/x');")],
-    ["S02", mutate("consumer", (s) => s + "\nconst u = client.uploadConversionAdjustments(req);")],
+    ["S01", mutate("consumer", (s) => s.replace(/uploadConversionAdjustments/g, "uploadSomethingElse"))],
+    ["S02", mutate("consumer", (s) => s + "\nawait fetch('https://googleads.googleapis.com/v24/second:batch');")],
+    ["S03", mutate("consumer", (s) => s + "\nawait fetch(u + ':mutate');")],
     ["S05", mutate("consumer", (s) => s.replace(/=== "true"/, '!== "false"'))],
+    // Canary-specific controls.
+    ["S46", mutate("consumer", (s) => s.replace(/const CANARY_MAX_OPERATIONS = 1/, "const CANARY_MAX_OPERATIONS = 50"))],
+    ["S47", mutate("consumer", (s) => s.replace(/operations\.length !== CANARY_MAX_OPERATIONS/, "false"))],
+    ["S48", mutate("consumer", (s) => s.replace(/conversionAdjustments: operations/, "conversionAdjustments: [adjustment, adjustment]"))],
+    ["S50", mutate("consumer", (s) => s.replace(/if \(!CANARY_ENABLED\) blockers\.push/, "if (false) blockers.push"))],
+    ["S51", mutate("consumer", (s) => s.replace(/const wantsRealMutation = body\.validateOnly === false/, "const wantsRealMutation = body.validateOnly !== true"))],
+    ["S52", mutate("consumer", (s) => s.replace(/const validateOnly = !wantsRealMutation/, "const validateOnly = false"))],
+    ["S53", mutate("consumer", (s) => s.replace(/partialFailure: true/, "partialFailure: false"))],
+    ["S54", mutate("consumer", (s) => s.replace(/orderId: row\.original_order_or_transaction_id,/, "orderId: row.original_order_or_transaction_id, restatementValue: { adjustedValue: 1 },"))],
+    ["S55", mutate("consumer", (s) => s.replace(/orderId: row\.original_order_or_transaction_id,/, "gclidDateTimePair: { gclid: 'x' },"))],
+    ["S58", mutate("consumer", (s) => s.replace(/\} else if \(accepted\) \{/, "} else if (true) {").replace(/if \(validateOnly\) \{/, "if (false) {"))],
+    ["S59", mutate("consumer", (s) => s.replace(/ledger_marked_uploaded: !validateOnly && accepted/, "ledger_marked_uploaded: true"))],
     ["S06", mutate("consumer", (s) => s.replace(/body\.mode \?\? "dry_run"/, 'body.mode ?? "batch"'))],
     ["S07", mutate("consumer", (s) => s.replace(/mode === "single" \|\| mode === "batch"/, "false"))],
     ["S12", mutate("webhook", (s) => s + "\nfetch('https://googleads.googleapis.com/');")],
@@ -457,4 +517,4 @@ if (failures.length) {
   process.exit(warnOnly ? 0 : 1);
 }
 console.log(`${TAG} OK — ${passes.length} checks passed (behaviour matrix + zero-mutation safety contract).`);
-console.log(`${TAG} shadow mode: mutation path absent from build, kill switch fail-closed, dry-run default, no cron.`);
+console.log(`${TAG} protected canary: exactly 1 operation, dual fail-closed flags + exact allow-list id, validate-only default, RETRACTION only, no batch, no cron.`);
