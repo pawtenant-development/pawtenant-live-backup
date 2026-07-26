@@ -39,6 +39,8 @@ import {
   MAX_BATCH_SIZE,
   MAX_ATTEMPTS,
   GOOGLE_MAX_ADJUSTMENTS_PER_REQUEST,
+  applyLedgerOutcome,
+  isDurableLedgerOutcome,
 } from "../supabase/functions/_shared/googleAdsRefundAdjustment.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +56,7 @@ const PATHS = {
   migration2: "supabase/migrations/20260726123000_google_ads_refund_adjustment_charge_basis.sql",
   migration3: "supabase/migrations/20260726130000_google_ads_refund_adjustment_harden_grants.sql",
   migration4: "supabase/migrations/20260726150000_google_ads_conversion_upload_provenance.sql",
+  migration5: "supabase/migrations/20260726190000_google_ads_adjustment_uploaded_immutability.sql",
   webhook: "supabase/functions/stripe-webhook/index.ts",
   createRefund: "supabase/functions/create-refund/index.ts",
   uploader: "supabase/functions/sync-google-ads-conversions/index.ts",
@@ -252,6 +255,61 @@ function runBehaviourMatrix() {
   const row = JSON.stringify(toSafeReportRow(B));
   check("T50", !row.includes("PT-TESTORDER"), "report rows must mask the order reference");
   check("T51", !/gclid|email|phone|@/i.test(row), "report rows must contain no click IDs, email or phone");
+
+  // ── LEDGER RECONCILIATION (LEDGER-RECONCILIATION-FIX-001) ─────────────────
+  // The classifier has no memory: an order whose conversion was already
+  // retracted still re-derives as a perfect candidate. The ledger must win.
+  const uploadedLedger = {
+    status: "uploaded", uploaded_at: "2026-07-26T01:10:39.844Z",
+    google_request_id: "req123", google_job_id: "job456", attempt_count: 1,
+  };
+  const readyAgain = classify({ refundStatus: "full", cumulativeRefund: 129 });
+  check("T61", readyAgain.status === STATUS.DRY_RUN_READY, "sanity: the raw classifier still calls the retracted order ready");
+
+  const overlaid = applyLedgerOutcome(readyAgain, uploadedLedger);
+  check("T62", overlaid.status === STATUS.UPLOADED, `an uploaded ledger row must override the classifier (got ${overlaid.status})`);
+  check("T63", overlaid.adjustmentType === null, "an already-adjusted candidate must propose no adjustment type");
+  check("T64", overlaid.ledgerGoogleJobId === "job456" && overlaid.ledgerUploadedAt, "the durable ledger evidence must be carried onto the candidate");
+
+  // Ready count and proposed value must both exclude it; uploaded reported apart.
+  const mixed = summarizeCandidates([
+    overlaid,
+    classify({ orderTransactionId: "PT-A", refundStatus: "full", cumulativeRefund: 129 }),
+    classify({ orderTransactionId: "PT-B", refundStatus: "full", cumulativeRefund: 129 }),
+  ]);
+  check("T65", mixed.dry_run_ready === 2, `uploaded rows must be excluded from the ready count (got ${mixed.dry_run_ready})`);
+  check("T66", mixed.already_uploaded === 1, `uploaded count must be reported separately (got ${mixed.already_uploaded})`);
+  check("T67", mixed.total_original_uploaded_value === 258, `proposed value must exclude the uploaded adjustment (got ${mixed.total_original_uploaded_value})`);
+  check("T68", mixed.already_uploaded_value === 129, `uploaded value must be reported separately (got ${mixed.already_uploaded_value})`);
+  check("T69", mixed.proposed_retraction_count === 2, "an already-adjusted conversion must not be proposed again");
+
+  // Durability detection covers every completion signal, not just status.
+  check("T70", isDurableLedgerOutcome({ status: "dry_run_ready", uploaded_at: "2026-07-26T00:00:00Z" }), "uploaded_at alone must mark a row durable");
+  check("T71", isDurableLedgerOutcome({ status: "dry_run_ready", google_request_id: "r" }), "an accepted Google request id must mark a row durable");
+  check("T72", isDurableLedgerOutcome({ status: "superseded" }), "superseded must be durable — never reopened");
+  check("T73", isDurableLedgerOutcome({ status: "terminal_error" }), "terminal_error must be durable — never silently reopened");
+  check("T74", !isDurableLedgerOutcome({ status: "dry_run_ready" }), "a genuinely pending row must NOT be treated as durable");
+  check("T75", !isDurableLedgerOutcome(null) && !isDurableLedgerOutcome(undefined), "a candidate with no ledger row must stay classifier-driven");
+
+  // A pending row may still legitimately change (e.g. a further partial refund).
+  const pendingUpdated = applyLedgerOutcome(
+    classify({ refundStatus: "partial", chargedAmount: 129, cumulativeRefund: 40 }),
+    { status: "dry_run_ready", uploaded_at: null },
+  );
+  check("T76", pendingUpdated.status === STATUS.DRY_RUN_READY && pendingUpdated.retainedValue === 89,
+    "a pending ledger row must not suppress a recomputed pending candidate");
+
+  // Expected LIVE shape after the accepted canary: 1 uploaded, 6 ready.
+  const liveShape = summarizeCandidates([
+    overlaid,
+    ...Array.from({ length: 6 }, (_, i) => classify({ orderTransactionId: `PT-R${i}`, refundStatus: "full", cumulativeRefund: 129 })),
+  ]);
+  check("T77", liveShape.already_uploaded === 1 && liveShape.dry_run_ready === 6,
+    `expected LIVE shape 1 uploaded / 6 ready (got ${liveShape.already_uploaded}/${liveShape.dry_run_ready})`);
+
+  const overlaidRow = JSON.stringify(toSafeReportRow(overlaid));
+  check("T78", !overlaidRow.includes("PT-TESTORDER") && !/@|gclid/i.test(overlaidRow),
+    "a reconciled report row must stay PII-safe");
 }
 
 // ── STATIC SAFETY CONTRACT ───────────────────────────────────────────────────
@@ -399,6 +457,50 @@ function runStaticChecks(files) {
   check("S45", /upload_status: "success"/.test(up) && /uploaded_value: price/.test(up),
     "the provenance record must capture the exact uploaded value");
 
+  // ── LEDGER RECONCILIATION (LEDGER-RECONCILIATION-FIX-001) ─────────────────
+  check("S61", /DURABLE_LEDGER_STATUSES/.test(coreCode) &&
+               /STATUS\.UPLOADED,[\s\S]{0,60}STATUS\.SUPERSEDED,[\s\S]{0,60}STATUS\.TERMINAL_ERROR/.test(coreCode),
+    "uploaded / superseded / terminal outcomes must all be treated as durable");
+  check("S62", /if \(ledgerRow\.uploaded_at\) return true/.test(coreCode),
+    "uploaded_at alone must mark a ledger row durable");
+  // Scoped to applyLedgerOutcome's body — `adjustmentType: null` also appears in
+  // the base classifier, so an unscoped match would pass even if the overlay
+  // stopped clearing it.
+  const overlayFn = (coreCode.match(/export function applyLedgerOutcome[\s\S]*?\n\}/) ?? [""])[0];
+  check("S63", /adjustmentType: null/.test(overlayFn),
+    "a durable ledger outcome must clear the proposed adjustment type");
+  check("S64", /already_uploaded_value/.test(coreCode),
+    "uploaded value must be summarised separately from the proposed value");
+  // The dry run must overlay the ledger BEFORE summarising/reporting.
+  check("S65", /const reconciled = candidates\.map\(\(c\) =>[\s\S]{0,120}applyLedgerOutcome/.test(consumerCode),
+    "the consumer must overlay durable ledger outcomes onto classified candidates");
+  check("S66", /summarizeCandidates\(reconciled\)/.test(consumerCode) && !/summarizeCandidates\(candidates\)/.test(consumerCode),
+    "the summary must be built from the RECONCILED candidates, never the raw classifier output");
+  check("S67", /for \(const c of reconciled\)/.test(consumerCode),
+    "ingest must iterate the reconciled candidates");
+  check("S68", /if \(isDurableLedgerOutcome\(ledgerByTx\.get\(c\.orderTransactionId\)\)\) \{[\s\S]{0,160}continue;/.test(consumerCode),
+    "ingest must SKIP durable rows entirely — never upsert over a completed adjustment");
+  // Database invariant.
+  const imm = stripComments(files.migration5 ?? "");
+  check("S69", /accepted adjustment % cannot change status/.test(files.migration5 ?? ""),
+    "a DB trigger must block status changes on an accepted adjustment");
+  check("S70", /new\.uploaded_at\s+is distinct from old\.uploaded_at/.test(imm) &&
+               /new\.google_request_id\s+is distinct from old\.google_request_id/.test(imm) &&
+               /new\.google_job_id\s+is distinct from old\.google_job_id/.test(imm) &&
+               /new\.attempt_count\s+is distinct from old\.attempt_count/.test(imm),
+    "uploaded_at, both Google identifiers and the attempt count must be immutable once accepted");
+  check("S71", /before update or delete on public\.google_ads_conversion_adjustments/i.test(imm),
+    "the accepted-row trigger must fire on UPDATE and DELETE");
+  check("S72", /if\s+not\s+was_accepted\s+then[\s\S]{0,80}?return\s+new;/.test(imm),
+    "pending rows must remain freely updatable");
+  check("S73", /get_google_ads_adjustment_discrepancies/.test(imm),
+    "a read-only discrepancy report is required for reconcile");
+  check("S74", /google_calls: 0/.test(consumerCode),
+    "reconcile must declare zero Google calls");
+  check("S75", !/uploadConversionAdjustments/.test(
+      (consumerCode.match(/if \(mode === "ingest"\)[\s\S]*?\n    \}/) ?? [""])[0]),
+    "the ingest path must contain no Google adjustment call");
+
   // Migration: RLS, fail-closed writes, value constraints, idempotency.
   check("S19", /enable row level security/i.test(migration) && /force row level security/i.test(migration), "the ledger must enable AND force RLS");
   check("S20", /for select to authenticated/i.test(migration) && !/for (insert|update|delete) to authenticated/i.test(migration), "browser clients must have no write policy on the ledger");
@@ -455,6 +557,17 @@ function runSelfTest(files) {
     ["S42", mutate("migration4", (s) => s.replace(/u\.uploaded_value,/, "coalesce(u.uploaded_value, o.price),"))],
     ["S43", mutate("uploader", (s) => s.replace(/from\("google_ads_conversion_uploads"\)\s*\.insert\(/, 'from("nope").insert('))],
     ["S44", mutate("uploader", (s) => s.replace(/^(\s*)metadata: \{/m, "$1details: {"))],
+    // Ledger-reconciliation negative controls: each plants a defect that would
+    // let a completed adjustment come back to life.
+    ["S61", mutate("core", (s) => s.replace(/STATUS\.SUPERSEDED,/, ""))],
+    ["S62", mutate("core", (s) => s.replace(/if \(ledgerRow\.uploaded_at\) return true;/, ""))],
+    ["S63", mutate("core", (s) => s.replace(/(export function applyLedgerOutcome[\s\S]*?)adjustmentType: null,/, "$1adjustmentType: candidate.adjustmentType,"))],
+    ["S64", mutate("core", (s) => s.replace(/already_uploaded_value/g, "unused_value"))],
+    ["S66", mutate("consumer", (s) => s.replace(/summarizeCandidates\(reconciled\)/, "summarizeCandidates(candidates)"))],
+    ["S68", mutate("consumer", (s) => s.replace(/if \(isDurableLedgerOutcome\(ledgerByTx\.get\(c\.orderTransactionId\)\)\) \{/, "if (false) {"))],
+    ["S69", mutate("migration5", (s) => s.replace(/accepted adjustment % cannot change status/, "ok"))],
+    ["S70", mutate("migration5", (s) => s.replace(/new\.google_job_id\s+is distinct from old\.google_job_id/, "false"))],
+    ["S72", mutate("migration5", (s) => s.replace(/if\s+not\s+was_accepted\s+then[\s\S]{0,80}?return\s+new;/, "if false then"))],
   ];
 
   for (const [id, broken] of cases) {
