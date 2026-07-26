@@ -1532,7 +1532,16 @@ export default function AdminOrdersPage() {
   // source / package / duplicates), or hideRecentFollowup narrows the list further.
   const clientOnlyCountActive = facetCounts.blockedClientFilters.length > 0 || hideRecentFollowup;
   const serverFilteredTotal = clientOnlyCountActive ? null : filteredTotalFor(statusFilter, facetCounts);
-  const filteredTotalDisplay = serverFilteredTotal ?? filtered.length;
+  // LIVE pages the dataset in progressively, so the server-authoritative total is
+  // known BEFORE every row has arrived. Publishing it against a still-growing
+  // `orders.length` would render nonsense mid-load ("1621 of 250"). While the
+  // loaded set is still catching up, stay on the client-side count so both halves
+  // of "X of Y" come from the same snapshot; the server total takes over the moment
+  // the dataset is complete, which is when reconciliation actually matters.
+  const datasetStillLoading = serverFilteredTotal != null && orders.length < serverFilteredTotal;
+  const filteredTotalDisplay = (clientOnlyCountActive || datasetStillLoading)
+    ? filtered.length
+    : (serverFilteredTotal ?? filtered.length);
 
   // Meta Custom Audience export — identifiers-only, paid clients.
   // LIVE adaptation: the orders list query loads the full matching set into
