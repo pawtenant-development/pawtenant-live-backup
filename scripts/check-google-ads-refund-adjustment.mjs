@@ -53,6 +53,7 @@ const PATHS = {
   migration: "supabase/migrations/20260726120000_google_ads_refund_adjustment_shadow_ledger.sql",
   migration2: "supabase/migrations/20260726123000_google_ads_refund_adjustment_charge_basis.sql",
   migration3: "supabase/migrations/20260726130000_google_ads_refund_adjustment_harden_grants.sql",
+  migration4: "supabase/migrations/20260726150000_google_ads_conversion_upload_provenance.sql",
   webhook: "supabase/functions/stripe-webhook/index.ts",
   createRefund: "supabase/functions/create-refund/index.ts",
   uploader: "supabase/functions/sync-google-ads-conversions/index.ts",
@@ -318,6 +319,39 @@ function runStaticChecks(files) {
     /alter\s+function\s+public\.tg_google_ads_conv_adj_touch\(\)\s+set\s+search_path/i.test(grants),
     "the trigger function must pin search_path");
 
+  // ── Original-upload provenance (CANARY-READINESS-001) ─────────────────────
+  // An adjustment must be computed against what was ACTUALLY sent to Google, so
+  // the record of a successful upload has to be permanent.
+  const prov = stripComments(files.migration4 ?? "");
+  check("S37", /create table if not exists public\.google_ads_conversion_uploads/.test(prov),
+    "an immutable original-upload provenance table is required");
+  check("S38", /successful upload provenance is immutable \(update blocked\)/.test(files.migration4 ?? "") &&
+               /successful upload provenance is immutable \(delete blocked\)/.test(files.migration4 ?? ""),
+    "successful upload provenance must be immutable against BOTH update and delete");
+  check("S39", /before update or delete on public\.google_ads_conversion_uploads/i.test(prov),
+    "the immutability trigger must fire on update AND delete");
+  check("S40", /create unique index if not exists gac_uploads_success_uidx[\s\S]*?where upload_status = 'success'/i.test(prov),
+    "a retry must not be able to create a second successful upload record");
+  check("S41", /enable row level security/i.test(prov) && /force row level security/i.test(prov) &&
+               !/for (insert|update|delete) to authenticated/i.test(prov),
+    "the provenance table must enable+force RLS and grant browser clients no write policy");
+  // Historical conversions must never be assigned a guessed uploaded value: the
+  // classifier reads uploaded_value ONLY from the provenance table, so a
+  // 'reconstructed' row returns NULL rather than orders.price.
+  check("S42", /when u\.id is not null then 'proven'/.test(prov) &&
+               /when o\.google_ads_uploaded_at is not null then 'reconstructed'/.test(prov) &&
+               /u\.uploaded_value,/.test(prov) && !/o\.price/.test(prov),
+    "provenance classification must never fall back to the mutable orders.price for a value");
+
+  // The uploader must persist provenance and must not reintroduce the audit bug.
+  const up = stripComments(files.uploader);
+  check("S43", /from\("google_ads_conversion_uploads"\)\s*\.insert\(/.test(up),
+    "the uploader must record immutable provenance on a successful upload");
+  check("S44", !/^\s*details:\s*\{/m.test(up),
+    "the uploader must not write audit_logs.details (a column that does not exist) — use metadata");
+  check("S45", /upload_status: "success"/.test(up) && /uploaded_value: price/.test(up),
+    "the provenance record must capture the exact uploaded value");
+
   // Migration: RLS, fail-closed writes, value constraints, idempotency.
   check("S19", /enable row level security/i.test(migration) && /force row level security/i.test(migration), "the ledger must enable AND force RLS");
   check("S20", /for select to authenticated/i.test(migration) && !/for (insert|update|delete) to authenticated/i.test(migration), "browser clients must have no write policy on the ledger");
@@ -355,6 +389,12 @@ function runSelfTest(files) {
     ["S22", mutate("migration", (s) => s.replace(/retained_value >= 0/, "true"))],
     ["S24", mutate("migration", (s) => s.replace(/create unique index if not exists google_ads_conv_adj_idempotency_uidx/, "-- removed"))],
     ["S26", mutate("migration", (s) => s + "\nselect cron.schedule('x','* * * * *','select 1');")],
+    ["S38", mutate("migration4", (s) => s.replace(/successful upload provenance is immutable \(delete blocked\)/, "ok"))],
+    ["S39", mutate("migration4", (s) => s.replace(/before update or delete on public\.google_ads_conversion_uploads/i, "before update on public.google_ads_conversion_uploads"))],
+    ["S40", mutate("migration4", (s) => s.replace(/create unique index if not exists gac_uploads_success_uidx/, "create index if not exists gac_uploads_success_uidx"))],
+    ["S42", mutate("migration4", (s) => s.replace(/u\.uploaded_value,/, "coalesce(u.uploaded_value, o.price),"))],
+    ["S43", mutate("uploader", (s) => s.replace(/from\("google_ads_conversion_uploads"\)\s*\.insert\(/, 'from("nope").insert('))],
+    ["S44", mutate("uploader", (s) => s.replace(/^(\s*)metadata: \{/m, "$1details: {"))],
   ];
 
   for (const [id, broken] of cases) {
