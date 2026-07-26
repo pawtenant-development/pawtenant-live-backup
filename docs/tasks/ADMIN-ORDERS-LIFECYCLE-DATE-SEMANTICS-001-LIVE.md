@@ -365,7 +365,30 @@ settling correctly at `1621 of 1621`. Fixed in `ea76ce2`: while the loaded set i
 catching up, both halves of the readout come from the same client snapshot; the
 server total takes over once the dataset is complete.
 
-### QA NOT completed
+### QA closed by ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001 (`60bf61e`)
+
+All three items below were completed in the follow-up session. The Chrome page
+zoom that blocked them reset itself, and exact viewports were obtained with the
+same-origin sized-iframe technique (Chrome cannot resize the window below the
+display width; an iframe's own viewport drives the media queries).
+
+| Item | Result |
+|---|---|
+| Responsive 1440/1280/1024/768/440/390/375/360 | **PASS** — 4 cards, correct values, period label visible, no horizontal overflow, no clipped cards at every width. Grid 4 cols ≥1024 → 2 at 768 → 1 at ≤440. |
+| Order ID exactly once | **PASS** — 50 visible ID nodes / 50 distinct rows, first ID occurring once, at 1440, 1280, 768 and 440. All three mutually-exclusive gates covered (`sm:hidden` <640 via 440, `hidden sm:flex` 640–1023 via 768, `hidden lg:flex` ≥1024 via 1280/1440). |
+| Payments-tab lifecycle panel | **PASS** — exactly ONE "Lifecycle & Payment" panel, rendering Payment status / Workflow status / Latest activity / Latest activity at / Created / First paid / Last payment / First completed / Last completed. Unavailable dates hidden. Positioned BEFORE the attempt history. |
+| Overview lifecycle panel | **PASS** — zero panels. |
+| CSV export | **PASS** — 73 headers, trailing column `Date Basis` carrying the ACTIVE basis ("Completed date" when exported under that basis), plus `Provider Payment` and `Net After Provider Deduction`. One selected order → one data row, no duplicates. Row contents were never read or recorded. |
+| Console errors | **PASS** — zero. |
+
+Note on LIVE first paint: the Orders list first page transfers a large payload
+(assessment_answers, email_log, first/last touch JSON) and was measured at
+5–16 s per page over 7 pages during QA, so the shell can sit on "Loading all
+orders…" for ~20 s before the banner appears. The DB side is not the constraint
+— the same list query plans at **1.4 ms** using `orders_last_meaningful_activity_idx`.
+This is a pre-existing payload/network characteristic, not a regression.
+
+### QA NOT completed (superseded — see above)
 
 * **Responsive matrix at 1024 / 768 / 440 / 390 / 375 / 360.** Chrome page zoom for
   the origin was changed to ~317% by a tooling call during QA (`innerWidth` 484 vs
