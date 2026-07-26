@@ -121,7 +121,18 @@ export interface Order {
   utm_content?: string | null;
   gclid?: string | null;
   fbclid?: string | null;
+  // ── ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 ──────────────────────────
+  // paid_at = canonical FIRST successful payment (immutable, DB-enforced).
+  // See src/lib/orderLifecycle.ts for the full contract.
   paid_at?: string | null;
+  last_payment_at?: string | null;
+  first_completed_at?: string | null;
+  last_completed_at?: string | null;
+  last_reopened_at?: string | null;
+  last_meaningful_activity_at?: string | null;
+  last_meaningful_activity_type?: string | null;
+  official_letter_reopened_at?: string | null;
+  official_letter_final_completed_at?: string | null;
   coupon_code?: string | null;
   coupon_discount?: number | null;
   // Legacy-resume pricing (2026-07): how the checkout amount was chosen.
