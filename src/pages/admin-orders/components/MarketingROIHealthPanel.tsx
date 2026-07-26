@@ -197,7 +197,12 @@ export default function MarketingROIHealthPanel({
             {data?.fx_pkr_per_usd ?? 280} PKR/USD. Spend is deducted from Operating Net once, in Company Expenses — never twice.
           </p>
         </div>
-        <div className="shrink-0 flex items-center gap-2 flex-wrap">
+        {/* No `shrink-0`: it pinned this group to its 353px intrinsic width
+            inside a ~286px column at 360px, so flex-wrap could never engage and
+            the "Sync now" button was cut off past the viewport edge (an
+            ancestor clips overflow, so it was unreachable, not just off-screen).
+            Letting the group shrink lets its own flex-wrap do the work. */}
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Sync Health + Last Sync — §6 summary requirements */}
           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${healthChip.cls}`}>
             <i className={healthChip.icon}></i>{healthChip.label}

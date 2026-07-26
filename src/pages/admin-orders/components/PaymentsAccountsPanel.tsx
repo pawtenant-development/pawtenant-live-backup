@@ -458,9 +458,14 @@ export default function PaymentsAccountsPanel({
         subtitle="Add Expense · salary estimate · ad spend · subscriptions · Operating Net"
         open={expensesOpen}
         onToggle={() => setExpensesOpen((s) => !s)}
+        // No `whitespace-nowrap` on the outer span: below ~440px this line is
+        // wider than the header slot and an ancestor clips overflow, so pinning
+        // it to one line cut the Operating Net figure off screen. Letting it
+        // wrap (while keeping "Net $x" itself unbreakable) keeps Operating Net
+        // readable at every width.
         summary={
-          <span className="text-xs font-bold text-gray-600 tabular-nums whitespace-nowrap">
-            Expenses −{fmtUSD2(totalExpenses)} · <span className={operatingNet >= 0 ? "text-emerald-600" : "text-rose-600"}>Net {fmtUSD2(operatingNet)}</span>
+          <span className="text-xs font-bold text-gray-600 tabular-nums">
+            Expenses −{fmtUSD2(totalExpenses)} · <span className={`${operatingNet >= 0 ? "text-emerald-600" : "text-rose-600"} whitespace-nowrap`}>Net {fmtUSD2(operatingNet)}</span>
           </span>
         }
       >

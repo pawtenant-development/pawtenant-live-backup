@@ -709,18 +709,22 @@ export default function PaymentsTab() {
 
   return (
     <div>
-      {/* View switcher */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-5 w-fit">
+      {/* View switcher. `max-w-full overflow-x-auto` + `shrink-0` tabs: below
+          ~440px the three labels are wider than the viewport, and an ancestor
+          clips overflow, so without this the "Reconciliation Tool" tab was cut
+          off with no way to reach it. Same scroll-in-its-own-container pattern
+          the section nav and wide tables already use. */}
+      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-5 w-fit max-w-full overflow-x-auto">
         <button type="button" onClick={() => setActiveView("accounts")}
-          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "accounts" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+          className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "accounts" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-line-chart-line"></i>Accounts
         </button>
         <button type="button" onClick={() => setActiveView("payments")}
-          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "payments" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+          className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "payments" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-bank-card-line"></i>Payments &amp; Refunds
         </button>
         <button type="button" onClick={() => setActiveView("reconciliation")}
-          className={`whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "reconciliation" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
+          className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${activeView === "reconciliation" ? "bg-white text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>
           <i className="ri-link-m"></i>Reconciliation Tool
         </button>
       </div>
