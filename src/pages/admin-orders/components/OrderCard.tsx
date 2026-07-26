@@ -6,6 +6,9 @@ import PackageChips from "./PackageChips";
 import { supabase } from "@/lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
 import { isRefundedBucket } from "@/lib/orderClassification";
+// ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001 — the list shows ONE workflow
+// badge plus an exceptional payment chip. Full lifecycle detail is in the modal.
+import { exceptionalPaymentChip, primaryBadgeTitle } from "@/lib/orderLifecycle";
 // Canonical types — see ../types.ts. Re-exported below for back-compat
 // with any existing `import { Order, DoctorContact } from "./OrderCard"`.
 import type { Order, DoctorContact } from "../types";
@@ -531,6 +534,20 @@ export default function OrderCard({
               <p className="text-sm font-bold text-gray-900 truncate group-hover:text-[#3b6ea5] transition-colors">{fullName}</p>
               {unreadComms > 0 && <span className="flex-shrink-0 inline-flex items-center justify-center min-w-[16px] h-4 px-1 bg-orange-500 text-white text-[9px] font-extrabold rounded-full">{unreadComms}</span>}
             </div>
+            {/* ADMIN-ORDERS-LIFECYCLE-UI-FINAL-CORRECTIONS-001 — Order ID on phones.
+                The ≥sm identity block is `hidden sm:flex`, so below 640px the Order
+                ID was invisible. `sm:hidden` here means it renders ONLY below 640px
+                and can never duplicate the ≥sm one. Order ID only — no date, no
+                lifecycle text. Reuses the existing copy-order-ID action. */}
+            <button
+              type="button"
+              onClick={handleCopyOrderId}
+              title={copied ? "Copied" : `Copy ${order.confirmation_id}`}
+              className="sm:hidden mt-0.5 inline-flex items-center gap-1 text-[10px] font-mono text-gray-400 hover:text-[#3b6ea5] cursor-pointer transition-colors max-w-full"
+            >
+              <span className="truncate">{order.confirmation_id}</span>
+              <i className={`${copied ? "ri-checkbox-circle-fill text-emerald-500" : "ri-file-copy-line"} flex-shrink-0`} style={{ fontSize: "9px" }}></i>
+            </button>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-gray-400">{stateName}</span>
               <PackageChips order={order} hasPaidAddon={hasPaidAddon} size="sm" />
@@ -554,8 +571,11 @@ export default function OrderCard({
             </div>
           </div>
           <div className="hidden sm:flex flex-col items-end text-right flex-shrink-0">
+            {/* ADMIN-ORDERS-LIFECYCLE-UI-FINAL-CORRECTIONS-001 §3 — Order ID only.
+                The bare unlabelled creation date is removed; the active Date Basis
+                and the day-group heading already carry the date context, and the
+                full dates live in Order Details → Payments → Lifecycle & Payment. */}
             <p className="text-[11px] font-mono text-gray-500">{order.confirmation_id}</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">{fmtDate(order.created_at)}</p>
             <div className={`flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${lastActivity.bgColor} ${lastActivity.color}`} title={lastActivity.fullLabel}>
               <i className={`${lastActivity.icon}`} style={{ fontSize: "9px" }}></i><span>{lastActivity.label}</span>
             </div>
@@ -566,6 +586,21 @@ export default function OrderCard({
                 {hasPaymentFailure && <i className="ri-bank-card-line text-[10px]"></i>}
                 {displayStatus.label}
               </span>
+              {/* ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001 §9 — mobile uses the
+                  SAME compact contract as desktop: the status badge above, plus an
+                  exceptional payment chip only when it adds operational meaning.
+                  Lifecycle dates live in the Order Details modal. */}
+              {(() => {
+                const chip = exceptionalPaymentChip(order, displayStatus.label);
+                return chip ? (
+                  <span
+                    className={`whitespace-nowrap inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-md ${chip.className}`}
+                    title={chip.title}
+                  >
+                    {chip.label}
+                  </span>
+                ) : null;
+              })()}
               {hasPaymentFailure && (
                 <>
                   <p className="text-[9px] font-semibold text-red-500 leading-tight text-right max-w-[130px] truncate" title={order.payment_failure_reason ?? ""}>
@@ -639,8 +674,8 @@ export default function OrderCard({
 
           {/* Order ID + Date — w-[140px] */}
           <div className="w-[140px] flex-shrink-0 pr-4">
+            {/* §3 — Order ID only; no bare creation date. */}
             <p className="text-[11px] font-mono text-gray-600 font-semibold truncate">{order.confirmation_id}</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">{fmtDate(order.created_at)}</p>
           </div>
 
           {/* State — w-[80px] (includes pet count) */}
@@ -677,12 +712,32 @@ export default function OrderCard({
             )}
           </div>
 
-          {/* Status — w-[150px] */}
+          {/* Status — w-[150px]
+              ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001: ONE primary workflow
+              badge, plus a second chip ONLY for an exceptional payment state the
+              badge does not already say. No payment/workflow restatement, no
+              activity text, no created/first-paid dates — the list is already
+              ordered and day-grouped by the active Date Basis, and every
+              lifecycle date lives in the Order Details modal. */}
           <div className="w-[150px] flex-shrink-0 pr-4">
-            <span className={`whitespace-nowrap inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${displayStatus.color}`}>
+            <span
+              className={`whitespace-nowrap inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${displayStatus.color}`}
+              title={primaryBadgeTitle(order)}
+            >
               {hasPaymentFailure && <i className="ri-bank-card-line text-[10px]"></i>}
               {displayStatus.label}
             </span>
+            {(() => {
+              const chip = exceptionalPaymentChip(order, displayStatus.label);
+              return chip ? (
+                <span
+                  className={`mt-1 whitespace-nowrap inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded-md ${chip.className}`}
+                  title={chip.title}
+                >
+                  {chip.label}
+                </span>
+              ) : null;
+            })()}
             {hasPaymentFailure && (
               <div className="mt-1 space-y-0.5">
                 <p className="text-[9px] font-semibold text-red-500 leading-tight truncate max-w-[130px]" title={order.payment_failure_reason ?? ""}>

@@ -29,8 +29,21 @@ import AssessmentIntakeModal from "./components/AssessmentIntakeModal";
 import AdminDashboard from "./components/AdminDashboard";
 import AnalyticsTab from "./components/AnalyticsTab";
 import IncomingCallBanner from "./components/IncomingCallBanner";
+// ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — canonical lifecycle date model.
+import {
+  orderComparator,
+  orderGroupingIso,
+  matchesBasisDateRange,
+  isOrderDateBasis,
+  ORDER_DATE_BASES,
+  ORDER_DATE_BASIS_LABEL,
+  ORDER_DATE_BASIS_HINT,
+  ORDER_DATE_BASIS_COLUMN,
+  type OrderDateBasis,
+} from "../../lib/orderLifecycle";
 import { exportOrdersToCSV, type ExportableOrder } from "../../lib/exportOrders";
 import { fetchProviderPaymentsForExport } from "../../lib/providerPaymentExport";
+import { fetchOrderFacetCounts, filteredTotalFor, type FacetCounts } from "./orderFacetCounts";
 import { exportMetaAudienceToCSV, type MetaAudienceOrder, type MetaAudienceMode } from "../../lib/exportMetaAudience";
 import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
@@ -398,6 +411,23 @@ export default function AdminOrdersPage() {
   const [refreshSyncMsg, setRefreshSyncMsg] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — ONE date basis drives the list
+  // sort, the day ribbons, the From/To filter AND the KPI cards. Sorting by
+  // latest activity while silently filtering by created_at is the exact
+  // ambiguity this removes. Default "activity", so a June lead that pays in July
+  // surfaces the moment the payment webhook lands; "created" keeps acquisition
+  // cohort work available. Persisted per operator.
+  const [dateBasis, setDateBasis] = useState<OrderDateBasis>(() => {
+    try {
+      const saved = localStorage.getItem("adminOrdersDateBasis");
+      return isOrderDateBasis(saved) ? saved : "activity";
+    } catch { return "activity"; }
+  });
+  const dateBasisRef = useRef<OrderDateBasis>(dateBasis);
+  useEffect(() => {
+    dateBasisRef.current = dateBasis;
+    try { localStorage.setItem("adminOrdersDateBasis", dateBasis); } catch { /* private mode */ }
+  }, [dateBasis]);
   // Hidden source filter — only settable from dashboard, not shown in filter UI
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   // Package / RA filter (ORDERS-RA-COMBO-CHIP-FILTER-001).
@@ -419,87 +449,49 @@ export default function AdminOrdersPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  // ── Orders KPI card counts (server-side, full DB) ─────────────────────────
-  // Lead (Unpaid) + Completed default to the current PKT business month and
-  // follow the custom date range when one is set. Paid (Unassigned), Under
-  // Review and Payment Failed are actionable backlog → always all-time. HEAD
-  // count queries only; the order list below is unaffected and still shows
-  // every order it already loads (scrolling/search unchanged).
-  const [kpiCounts, setKpiCounts] = useState<{
-    leadUnpaid: number | null;
-    paidUnassigned: number | null;
-    underReview: number | null;
-    completed: number | null;
-    paymentFailed: number | null;
-  }>({ leadUnpaid: null, paidUnassigned: null, underReview: null, completed: null, paymentFailed: null });
-
-  useEffect(() => {
-    let cancelled = false;
-    // Debounced so realtime order bursts collapse into one refresh.
-    const t = window.setTimeout(async () => {
-      const PKT_MS = 5 * 3600_000; // PKT is UTC+5, no DST
-      let fromIso: string;
-      let toIso: string | null = null;
-      if (dateFrom || dateTo) {
-        fromIso = dateFrom ? new Date(`${dateFrom}T00:00:00+05:00`).toISOString() : new Date(0).toISOString();
-        toIso = dateTo ? new Date(`${dateTo}T23:59:59.999+05:00`).toISOString() : null;
-      } else {
-        const pkt = new Date(Date.now() + PKT_MS);
-        fromIso = new Date(Date.UTC(pkt.getUTCFullYear(), pkt.getUTCMonth(), 1) - PKT_MS).toISOString();
-      }
-      const head = { count: "exact" as const, head: true };
-
-      let leadQ = supabase.from("orders").select("id", head)
-        .neq("status", "cancelled")
-        .or("payment_intent_id.is.null,status.eq.lead")
-        .or("historical_import.is.null,historical_import.eq.false")
-        .or("source_system.is.null,source_system.neq.wordpress_legacy")
-        .gte("created_at", fromIso);
-      if (toIso) leadQ = leadQ.lte("created_at", toIso);
-
-      // Completed = patient notified inside the window; rows without a
-      // notification timestamp fall back to created_at.
-      const cTo = toIso ?? new Date(Date.now() + 86_400_000).toISOString();
-      const completedQ = supabase.from("orders").select("id", head)
-        .eq("doctor_status", "patient_notified")
-        .or(`and(patient_notification_sent_at.gte.${fromIso},patient_notification_sent_at.lte.${cTo}),and(patient_notification_sent_at.is.null,created_at.gte.${fromIso},created_at.lte.${cTo})`);
-
-      const paidUnassignedQ = supabase.from("orders").select("id", head)
-        .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
-        .or(EXCLUDE_FULL_REFUND_OR).or(EXCLUDE_REFUNDED_AT_OR)
-        .not("payment_intent_id", "is", null)
-        .is("doctor_email", null).is("doctor_user_id", null)
-        .or("doctor_status.is.null,doctor_status.neq.patient_notified");
-
-      const underReviewQ = supabase.from("orders").select("id", head)
-        .neq("status", "cancelled").neq("status", "refunded").neq("status", "lead")
-        .or(EXCLUDE_FULL_REFUND_OR).or(EXCLUDE_REFUNDED_AT_OR)
-        .not("payment_intent_id", "is", null)
-        .or("doctor_email.not.is.null,doctor_user_id.not.is.null")
-        .or("doctor_status.is.null,doctor_status.neq.patient_notified");
-
-      const paymentFailedQ = supabase.from("orders").select("id", head)
-        .not("payment_failure_reason", "is", null)
-        .or("status.eq.lead,payment_intent_id.is.null");
-
-      const [lead, paid, review, comp, failed] = await Promise.all([
-        leadQ, paidUnassignedQ, underReviewQ, completedQ, paymentFailedQ,
-      ]);
-      if (cancelled) return;
-      setKpiCounts({
-        leadUnpaid: lead.error ? null : (lead.count ?? null),
-        paidUnassigned: paid.error ? null : (paid.count ?? null),
-        underReview: review.error ? null : (review.count ?? null),
-        completed: comp.error ? null : (comp.count ?? null),
-        paymentFailed: failed.error ? null : (failed.count ?? null),
-      });
-    }, 800);
-    return () => { cancelled = true; window.clearTimeout(t); };
-  }, [dateFrom, dateTo, orders]);
+  // ── Orders KPI card counts — server-side FACETED over the active filter set ──
+  // ADMIN-ORDERS-FILTER-COUNT-PARTIAL-REFUND-STRIPE-ACCOUNTING-001: the KPI row is
+  // filter-aware. Counts come from narrow COUNT(head) queries that apply the SAME
+  // non-status filters as the list and facet by lifecycle bucket, so every card
+  // reconciles with the filtered "X of Y" total (see orderFacetCounts.ts). The
+  // effect lives below, after the remaining filter states are declared. Does NOT
+  // touch the loader/pagination/polling.
+  const [facetCounts, setFacetCounts] = useState<FacetCounts>({
+    universeTotal: null,
+    buckets: { lead_unpaid: null, paid_unassigned: null, under_review: null, completed: null, refunded: null, disputed: null, cancelled: null, payment_failed: null, archived: null },
+    blockedClientFilters: [],
+    error: false,
+  });
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [showNonGhlOnly, setShowNonGhlOnly] = useState(false);
+
+  // Faceted KPI/count recompute — reacts to every active NON-STATUS filter
+  // (statusFilter is deliberately excluded so the cards keep faceting one universe
+  // when the user switches status tabs). Debounced; narrow COUNT queries only;
+  // the loader/pagination/polling is untouched.
+  useEffect(() => {
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      const fc = await fetchOrderFacetCounts({
+        dateBasis, dateFrom, dateTo,
+        payment: paymentFilter,
+        state: stateFilterAdv,
+        referredBy: referredByFilter,
+        assignedProvider: doctorFilter,
+        requestedProvider: selectedProviderFilter,
+        sequence: sequenceFilter,
+        search,
+        nonGhl: showNonGhlOnly,
+        source: sourceFilter ?? undefined,
+        packageFilter,
+        duplicatesOnly: showDuplicatesOnly,
+      });
+      if (!cancelled) setFacetCounts(fc);
+    }, 500);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [dateBasis, dateFrom, dateTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, search, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly]);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState(""); // export error surface (avoids silent bad CSV)
   // Meta Custom Audience export (identifiers-only, paid clients) — see lib/exportMetaAudience.ts
@@ -752,7 +744,14 @@ export default function AdminOrdersPage() {
       // gclid,fbclid,first_touch_json,last_touch_json). If a 400 returns under
       // load, drop ONLY first_touch_json,last_touch_json — the five flat
       // utm/click-id columns MUST stay (paid-signal for the pill hierarchy).
-      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,refund_status,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,package_key,package_display_name,includes_reasonable_accommodation_letter,additional_documentation_required,additional_documentation_status,first_touch_json,last_touch_json";
+      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,refund_status,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,package_key,package_display_name,includes_reasonable_accommodation_letter,additional_documentation_required,additional_documentation_status,first_touch_json,last_touch_json" +
+        // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — canonical lifecycle dates.
+        // last_meaningful_activity_at is the DEFAULT sort key; the rest drive the
+        // payment-vs-workflow split and the immutable/latest date pairs. See
+        // src/lib/orderLifecycle.ts.
+        ",last_meaningful_activity_at,last_meaningful_activity_type,last_payment_at" +
+        ",first_completed_at,last_completed_at,last_reopened_at" +
+        ",official_letter_reopened_at,official_letter_final_completed_at";
 
       // LIVE-ADMIN-ORDERS-EMPTY 2026-07-13: page the orders read newest-first.
       // At ~1300+ orders the previous single unbounded select of every column
@@ -765,12 +764,31 @@ export default function AdminOrdersPage() {
       // unblocks the loader, the rest backfill silently. Columns are unchanged,
       // so every downstream consumer receives the same fields as before.
       const ORDERS_PAGE_SIZE = 250;
+      // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — server page ordering matches
+      // the ACTIVE sort basis so page N always contains the rows the client would
+      // place at position N; pagination and the rendered list can never disagree.
+      // Read through the ref so the loader callback identity (and therefore the
+      // existing LIVE paging/refresh architecture) is unchanged by a basis flip.
+      // §12 deterministic ordering: <basis> DESC, created_at DESC, id DESC — the
+      // two tie-breakers are what keep paging stable, because without them two
+      // rows sharing a timestamp can swap between pages and produce a duplicate
+      // on one page and a missing row on the next.
+      const basis = dateBasisRef.current;
       const fetchOrdersPage = (from: number) =>
-        supabase
-          .from("orders")
-          .select(ORDERS_SELECT)
-          .order("created_at", { ascending: false })
-          .range(from, from + ORDERS_PAGE_SIZE - 1);
+        basis === "created"
+          ? supabase
+              .from("orders")
+              .select(ORDERS_SELECT)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, from + ORDERS_PAGE_SIZE - 1)
+          : supabase
+              .from("orders")
+              .select(ORDERS_SELECT)
+              .order(ORDER_DATE_BASIS_COLUMN[basis], { ascending: false, nullsFirst: false })
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, from + ORDERS_PAGE_SIZE - 1);
 
       // Note counts for a batch of loaded ids — SECONDARY, non-blocking.
       // Chunked by page so the id list never overflows the request URI (the
@@ -880,6 +898,17 @@ export default function AdminOrdersPage() {
     }, 30000);
     return () => clearInterval(interval);
   }, [loadOrderData]);
+
+  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — a basis change alters the SERVER
+  // page order, so re-page once. The already-loaded snapshot re-sorts client-side
+  // immediately (no blank list), and the loader's own monotonic sequence guard
+  // (loadSeqRef) invalidates any in-flight pages from the previous basis. Skips
+  // the first run so mount still loads exactly once.
+  const basisBootRef = useRef(true);
+  useEffect(() => {
+    if (basisBootRef.current) { basisBootRef.current = false; return; }
+    void loadOrderData();
+  }, [dateBasis, loadOrderData]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1434,8 +1463,11 @@ export default function AdminOrdersPage() {
         matchSequence = isLead && !!o.followup_opt_out;
       }
     }
-    const matchDateFrom = !dateFrom || new Date(o.created_at) >= new Date(dateFrom);
-    const matchDateTo = !dateTo || new Date(o.created_at) <= new Date(dateTo + "T23:59:59");
+    // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the From/To bounds apply to the
+    // ACTIVE date basis, never silently to created_at while the list is sorted by
+    // activity. Same helper the server facet counts mirror, so rows and card
+    // counts always measure the same date.
+    const matchDateBasis = matchesBasisDateRange(o, dateBasis, dateFrom, dateTo);
     const matchDuplicates = !showDuplicatesOnly || duplicateContactSet.has(o.email.toLowerCase()) || (!!o.phone && duplicateContactSet.has(o.phone.replace(/\D/g, "")));
     const matchNonGhl = !showNonGhlOnly || !o.ghl_synced_at;
     let matchSource = true;
@@ -1474,26 +1506,33 @@ export default function AdminOrdersPage() {
       (o.doctor_name ?? "").toLowerCase().includes(q) ||
       (o.phone ?? "").includes(q) ||
       (o.ghl_contact_id ?? "").toLowerCase().includes(q);
-    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateFrom && matchDateTo && matchSearch && matchDuplicates && matchNonGhl && matchSource && matchPackage;
+    return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateBasis && matchSearch && matchDuplicates && matchNonGhl && matchSource && matchPackage;
   }).filter((o) => {
     if (!hideRecentFollowup) return true;
     if (!o.sent_followup_at) return true;
     const age = Date.now() - new Date(o.sent_followup_at).getTime();
     return age > 7 * 24 * 60 * 60 * 1000;
+  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the DISPLAY sort. Uses the same
+  // canonical comparator as the server page ordering, so flipping the basis
+  // re-orders instantly without waiting for the refetch. `desc` is newest-first
+  // on the ACTIVE basis.
   }).sort((a, b) => {
-    const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-    if (tA === tB) {
-      return sortOrder === "desc"
-        ? (b.id ?? "").localeCompare(a.id ?? "")
-        : (a.id ?? "").localeCompare(b.id ?? "");
-    }
-    return sortOrder === "desc" ? tB - tA : tA - tB;
+    const cmp = orderComparator(dateBasis)(a, b);
+    return sortOrder === "desc" ? cmp : -cmp;
   });
 
   // ── Pagination: slice filtered to visibleCount ───────────────────────────
   const visibleOrders = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
+
+  // ADMIN-ORDERS-FILTER-COUNT-* — the filtered "X of Y" X comes from the SAME
+  // server universe the KPI cards facet, so a card and the list total can never
+  // disagree. Falls back to the client-side filtered length only when the server
+  // count is unavailable: still loading, a client-only filter is active (traffic
+  // source / package / duplicates), or hideRecentFollowup narrows the list further.
+  const clientOnlyCountActive = facetCounts.blockedClientFilters.length > 0 || hideRecentFollowup;
+  const serverFilteredTotal = clientOnlyCountActive ? null : filteredTotalFor(statusFilter, facetCounts);
+  const filteredTotalDisplay = serverFilteredTotal ?? filtered.length;
 
   // Meta Custom Audience export — identifiers-only, paid clients.
   // LIVE adaptation: the orders list query loads the full matching set into
@@ -1530,7 +1569,7 @@ export default function AdminOrdersPage() {
   ].filter(Boolean).length;
 
   // Reset pagination when filters/search change
-  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateFrom, dateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter, packageFilter]);
+  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateBasis, dateFrom, dateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter, packageFilter]);
 
   const clearAdvancedFilters = () => {
     setStateFilterAdv("all");
@@ -2093,48 +2132,50 @@ export default function AdminOrdersPage() {
         ) : activeTab === "orders" && (
           <>
             {!loading && (
-              <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:divide-x sm:divide-slate-100 overflow-hidden">
+              <>
+              {facetCounts.blockedClientFilters.length > 0 && (
+                <div className="mb-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  KPI counts are hidden while the {facetCounts.blockedClientFilters.join(" + ")} filter{facetCounts.blockedClientFilters.length > 1 ? "s are" : " is"} active — {facetCounts.blockedClientFilters.length > 1 ? "they" : "it"} can&apos;t be applied server-side yet, so the counts would not reconcile with the list. Clear to restore filter-aware counts.
+                </div>
+              )}
+              {/* EXACTLY four permanent workflow cards — see §15. 1 col on phones,
+                  2 on small tablets, 4 from lg up so nothing is ever clipped. */}
+              <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
                   {
                     label: "Lead (Unpaid)",
-                    value: kpiCounts.leadUnpaid ?? orders.filter((o) => o.status !== "cancelled" && !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead")).length,
-                    sub: dateFrom || dateTo ? "Selected range" : "This month",
+                    value: facetCounts.buckets.lead_unpaid,
                     icon: "ri-user-follow-line",
                     color: "text-amber-600",
                     filter: "lead_unpaid",
                   },
                   {
                     label: "Paid (Unassigned)",
-                    value: kpiCounts.paidUnassigned ?? orders.filter(isPaidUnassigned).length,
-                    sub: "Open backlog",
+                    value: facetCounts.buckets.paid_unassigned,
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
                     filter: "paid_unassigned",
                   },
                   {
                     label: "Under Review",
-                    value: kpiCounts.underReview ?? orders.filter(isUnderReview).length,
-                    sub: "Open backlog",
+                    value: facetCounts.buckets.under_review,
                     icon: "ri-time-line",
                     color: "text-violet-600",
                     filter: "under_review",
                   },
                   {
                     label: "Completed",
-                    value: kpiCounts.completed ?? orders.filter((o) => o.doctor_status === "patient_notified").length,
-                    sub: dateFrom || dateTo ? "Selected range" : "This month",
+                    value: facetCounts.buckets.completed,
                     icon: "ri-checkbox-circle-line",
                     color: "text-emerald-600",
                     filter: "completed",
                   },
-                  {
-                    label: "Payment Failed",
-                    value: kpiCounts.paymentFailed ?? orders.filter((o) => !!(o.payment_failure_reason) && (o.status === "lead" || !o.payment_intent_id)).length,
-                    sub: "All-time",
-                    icon: "ri-bank-card-line",
-                    color: "text-red-500",
-                    filter: "payment_failed",
-                  },
+                  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 §15 — the permanent
+                  // banner is EXACTLY the four approved workflow cards. "Payment
+                  // Failed" was a pre-existing fifth card and is NOT one of the
+                  // four; it survives as a status-filter tab and in Order Details.
+                  // Do not re-add it, nor cards for Reopened / Refunded /
+                  // Cancelled / Disputed.
                 ].map((s) => (
                   <button
                     key={s.label}
@@ -2147,13 +2188,19 @@ export default function AdminOrdersPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-gray-500 font-medium leading-none truncate">
-                        {s.label}{s.sub ? <span className="text-gray-400 font-normal"> · {s.sub}</span> : null}
+                        {s.label}
                       </p>
-                      <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value}</p>
+                      <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value == null ? "—" : s.value}</p>
                     </div>
                   </button>
                 ))}
               </div>
+              {/* ADMIN-ORDERS-LIFECYCLE-UI-FINAL-CORRECTIONS-001 §2 — the four
+                  workflow cards stand alone. NO standalone "Payment Failed"
+                  summary chip and no explanatory paragraph beneath them; failed
+                  payments remain reachable through the existing "Payment Failed"
+                  status-filter tab and Order Details. */}
+              </>
             )}
 
             {/* Source filter banner — only visible when redirected from dashboard */}
@@ -2485,13 +2532,13 @@ export default function AdminOrdersPage() {
                   </div>
                   {/* Date From */}
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 mb-1.5">From Date</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5" title={ORDER_DATE_BASIS_HINT[dateBasis]}>From — {ORDER_DATE_BASIS_LABEL[dateBasis]}</label>
                     <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer" />
                   </div>
                   {/* Date To */}
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 mb-1.5">To Date</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5" title={ORDER_DATE_BASIS_HINT[dateBasis]}>To — {ORDER_DATE_BASIS_LABEL[dateBasis]}</label>
                     <div className="flex items-center gap-2">
                       <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
                         className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer" />
@@ -2505,7 +2552,7 @@ export default function AdminOrdersPage() {
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 mt-2">
-                  Showing <strong>{filtered.length}</strong> of <strong>{orders.length}</strong> orders
+                  Showing <strong>{filteredTotalDisplay}</strong> of <strong>{orders.length}</strong> orders
                 </p>
               </div>
             )}
@@ -2592,7 +2639,7 @@ export default function AdminOrdersPage() {
                     >
                       <i className="ri-add-line"></i>+ Refunded
                     </button>
-                    <span className="font-semibold text-gray-700">{filtered.length}</span>
+                    <span className="font-semibold text-gray-700">{filteredTotalDisplay}</span>
                     <span>of</span>
                     <span className="font-semibold text-gray-700">{orders.length}</span>
                     <span>orders</span>
@@ -2606,6 +2653,38 @@ export default function AdminOrdersPage() {
                       </button>
                     )}
                   </div>
+                </div>
+
+                {/* ── Date basis — ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001 §4
+                    The label and the four options are enough. The behaviour is
+                    explained by an accessible info tooltip, never by an
+                    always-visible paragraph. Semantics are unchanged. */}
+                <div className="flex flex-wrap items-center gap-2 mb-3 px-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Date basis</span>
+                  <div className="inline-flex flex-wrap bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                    {ORDER_DATE_BASES.map((b) => (
+                      <button
+                        key={b}
+                        type="button"
+                        onClick={() => setDateBasis(b)}
+                        title={ORDER_DATE_BASIS_HINT[b]}
+                        className={`whitespace-nowrap px-3 py-1 rounded-md text-xs font-bold cursor-pointer transition-colors ${
+                          dateBasis === b
+                            ? "bg-white text-[#1a5c4f] shadow-sm"
+                            : "text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {ORDER_DATE_BASIS_LABEL[b]}
+                      </button>
+                    ))}
+                  </div>
+                  <i
+                    className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
+                    tabIndex={0}
+                    role="img"
+                    aria-label={`Date basis: ${ORDER_DATE_BASIS_LABEL[dateBasis]}. Sorting, day groups, the From/To range and the four cards all use it. ${ORDER_DATE_BASIS_HINT[dateBasis]}`}
+                    title={`Sorting, day groups, the From/To range and the four cards all use ${ORDER_DATE_BASIS_LABEL[dateBasis]} — ${ORDER_DATE_BASIS_HINT[dateBasis]}`}
+                  ></i>
                 </div>
 
                 {/* ── DESKTOP: bordered table with header ─────────────────── */}
@@ -2628,14 +2707,18 @@ export default function AdminOrdersPage() {
                   };
 
                   // Build grouped structure: [{dateKey, dateLabel, orders[]}]
+                  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the day ribbons
+                  // MUST group by the SAME date the list is sorted on, otherwise a
+                  // list ordered by latest activity would emit one ribbon per row.
                   const groups: { dateKey: string; dateLabel: string; orders: Order[] }[] = [];
                   visibleOrders.forEach((order) => {
-                    const dk = getDateKey(order.created_at);
+                    const groupIso = orderGroupingIso(order, dateBasis) ?? order.created_at;
+                    const dk = getDateKey(groupIso);
                     const last = groups[groups.length - 1];
                     if (last && last.dateKey === dk) {
                       last.orders.push(order);
                     } else {
-                      groups.push({ dateKey: dk, dateLabel: getDateLabel(order.created_at), orders: [order] });
+                      groups.push({ dateKey: dk, dateLabel: getDateLabel(groupIso), orders: [order] });
                     }
                   });
 
@@ -2697,7 +2780,9 @@ export default function AdminOrdersPage() {
                               <div className="flex-1 min-w-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Name</div>
                               <div className="w-[140px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Order ID</div>
                               <div className="w-[80px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">State</div>
-                              <div className="w-[120px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Activity</div>
+                              {/* Communication recency — distinct from the LIFECYCLE
+                                  activity shown in the Status column. */}
+                              <div className="w-[120px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Contact</div>
                               <div className="w-[150px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</div>
                               <div className="w-[100px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sequence</div>
                               <div className="w-[110px] flex-shrink-0 pr-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Provider</div>
@@ -2745,7 +2830,7 @@ export default function AdminOrdersPage() {
                 {hasMore && (
                   <div className="flex flex-col items-center gap-2 pt-4 pb-2">
                     <p className="text-xs text-gray-400">
-                      Showing <strong className="text-gray-700">{visibleOrders.length}</strong> of <strong className="text-gray-700">{filtered.length}</strong> orders
+                      Showing <strong className="text-gray-700">{visibleOrders.length}</strong> of <strong className="text-gray-700">{filteredTotalDisplay}</strong> orders
                     </p>
                     <button
                       type="button"
@@ -3060,13 +3145,26 @@ export default function AdminOrdersPage() {
                   type="button"
                   disabled={exporting}
                   onClick={async () => {
-                    const selected = orders.filter((o) => selectedOrders.has(o.confirmation_id));
+                    // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 §CSV — the export
+                    // carries the SAME date basis as the visible list: the rows are
+                    // ordered by the canonical basis comparator, the filename names
+                    // the basis, and every row is stamped with the Date Basis column
+                    // so a downstream reader can never mistake which date the export
+                    // was ordered on.
+                    const selected = orders
+                      .filter((o) => selectedOrders.has(o.confirmation_id))
+                      .sort(orderComparator(dateBasis));
                     if (selected.length === 0) return;
                     setExporting(true);
                     setExportMsg("");
                     try {
                       const providerPayments = await fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]);
-                      exportOrdersToCSV(selected as unknown as ExportableOrder[], "pawtenant-orders-export-selected", providerPayments);
+                      exportOrdersToCSV(
+                        selected as unknown as ExportableOrder[],
+                        `pawtenant-orders-export-selected-${dateBasis}`,
+                        providerPayments,
+                        ORDER_DATE_BASIS_LABEL[dateBasis],
+                      );
                     } catch (e) {
                       console.error("[exportSelected] failed", e);
                       setExportMsg("Export cancelled — provider earnings could not be loaded. Please retry.");

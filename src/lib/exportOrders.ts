@@ -233,13 +233,23 @@ export function exportOrdersToCSV(
   filenamePrefix = "orders",
   // Canonical provider payment per order.id (gated + summed). Absent/unknown → 0.
   providerPaymentByOrderId?: Map<string, number>,
+  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the Admin Orders date basis this
+  // export was FILTERED and ORDERED on ("Latest activity" | "Created date" |
+  // "First paid date" | "Completed date"). Appended as a trailing column so a
+  // downstream reader can never mistake which date universe the file represents.
+  // Omitted → the column is not emitted at all, so every existing caller
+  // (including the Meta-audience path) keeps its exact current header set.
+  dateBasisLabel?: string,
 ): void {
   const ctx: ExportCtx = {
     providerPayment: (o) => providerPaymentByOrderId?.get(str(o.id)) ?? 0,
   };
-  const headers = EXPORT_COLUMNS.map((c) => csvEscape(c.label)).join(",");
+  const columns = dateBasisLabel
+    ? [...EXPORT_COLUMNS, { label: "Date Basis", get: () => dateBasisLabel }]
+    : EXPORT_COLUMNS;
+  const headers = columns.map((c) => csvEscape(c.label)).join(",");
   const rows = orders.map((o) =>
-    EXPORT_COLUMNS.map((c) => csvEscape(c.get(o, ctx))).join(",")
+    columns.map((c) => csvEscape(c.get(o, ctx))).join(",")
   );
   const csv = [headers, ...rows].join("\r\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

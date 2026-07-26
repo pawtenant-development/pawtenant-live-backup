@@ -46,6 +46,10 @@ interface ProviderEarningRow {
 // Canonical Order — see ../types.ts
 import type { Order } from "../types";
 import OrderDiscountBreakdown from "./OrderDiscountBreakdown";
+// ADMIN-ORDERS-LIFECYCLE-UI-FINAL-CORRECTIONS-001 — the single lifecycle panel
+// lives HERE (Payments tab), not in the Overview sidebar. Mounted in this
+// non-frozen child so the merge-frozen OrderDetailModal needs no addition.
+import OrderLifecyclePanel, { type OrderLifecyclePanelProps } from "./OrderLifecyclePanel";
 
 interface PaymentHistoryTabProps {
   order: Order;
@@ -544,6 +548,10 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
           </div>
         </div>
       )}
+
+      {/* Lifecycle & Payment — after the payment summary, before the attempt log
+          and technical metadata. Single mount: never also rendered in Overview. */}
+      <OrderLifecyclePanel order={order as unknown as OrderLifecyclePanelProps["order"]} fmt={fmt} />
 
       {/* Payment attempts log */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
