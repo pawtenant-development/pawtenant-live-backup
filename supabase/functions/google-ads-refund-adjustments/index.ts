@@ -98,7 +98,33 @@ Deno.serve(async (req: Request) => {
   const bearer = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
   if (!bearer) return json({ ok: false, error: "Unauthorized" }, 401);
 
+  // 1. Fast path: the caller presented exactly the injected service-role key.
   let authorized = bearer === SERVICE_KEY;
+  let actor = authorized ? "service_role_env" : "unknown";
+
+  // 2. Capability probe. String equality against SUPABASE_SERVICE_ROLE_KEY is
+  //    brittle: this project has BOTH the legacy service-role JWT and the newer
+  //    sb_secret_* key, and the value injected into the function does not always
+  //    match the credential a legitimate server caller presents (verified at
+  //    LIVE — a valid service-role JWT that bypasses RLS on PostgREST was still
+  //    rejected here). So instead of comparing secrets, PROVE the capability:
+  //    get_google_ads_refund_adjustment_candidates is granted to service_role
+  //    ONLY (revoked from public/anon/authenticated), so being able to execute
+  //    it with the caller's own credential IS service-role authorization.
+  //    This widens nothing — it authorizes exactly the callers a correct string
+  //    comparison would have authorized.
+  if (!authorized) {
+    try {
+      const callerClient = createClient(SUPABASE_URL, bearer, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { error: probeErr } = await callerClient
+        .rpc("get_google_ads_refund_adjustment_candidates", { p_limit: 1 });
+      if (!probeErr) { authorized = true; actor = "service_role_capability"; }
+    } catch { /* not a service-role credential — fall through */ }
+  }
+
+  // 3. Authenticated admin user.
   if (!authorized) {
     const { data: { user } } = await supabase.auth.getUser(bearer);
     if (!user) return json({ ok: false, error: "Unauthorized" }, 401);
@@ -106,6 +132,7 @@ Deno.serve(async (req: Request) => {
       .from("doctor_profiles").select("is_admin, role").eq("user_id", user.id).maybeSingle();
     authorized = profile?.is_admin === true ||
       ["owner", "admin_manager", "finance", "admin"].includes((profile?.role as string) ?? "");
+    if (authorized) actor = "admin_user";
   }
   if (!authorized) return json({ ok: false, error: "Access denied — admin only" }, 403);
 
@@ -120,6 +147,7 @@ Deno.serve(async (req: Request) => {
   const limit = resolveBatchSize(body.limit);
 
   const safety = {
+    authorized_as: actor,
     shadow_mode: true,
     mutations_enabled: MUTATIONS_ENABLED,
     kill_switch_env: "GOOGLE_ADS_REFUND_ADJUSTMENTS_ENABLED",
