@@ -18,6 +18,12 @@ interface VerifyResult {
   provider_npi?: string | null;
   provider_license?: string | null;
   provider_state_licenses?: Record<string, string> | null;
+  // ORDER-ENTITLEMENT-DOCUMENT-FOUNDATION-CLOSURE-001 §12: additive version
+  // fields. The newer verification ID is deliberately NOT returned by the RPC,
+  // so a superseded letter can never be used to discover the newer one.
+  document_version?: number;
+  has_newer_version?: boolean;
+  superseded_at?: string | null;
   message?: string;
 }
 
@@ -178,6 +184,23 @@ export default function VerifyResultPage() {
                     This Pawtenant-issued letter ID is authentic and currently valid.
                   </p>
                 </div>
+
+                {/* ORDER-ENTITLEMENT-DOCUMENT-FOUNDATION-CLOSURE-001 §12:
+                    a NEWER approved version of this document exists. This ID is
+                    still authentic and still resolves to the document it was
+                    issued for — it is never repointed. The newer verification ID
+                    is deliberately not shown; the holder must supply it. */}
+                {result.has_newer_version && (
+                  <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2.5">
+                    <i className="ri-information-line text-amber-600 text-base flex-shrink-0 mt-0.5"></i>
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      <span className="font-bold">A newer approved version of this document exists.</span>{" "}
+                      This verification ID remains authentic and refers to the version it was issued for
+                      {result.superseded_at ? ` (replaced ${result.superseded_at})` : ""}. Ask the holder for
+                      their current document if you need the latest version.
+                    </p>
+                  </div>
+                )}
 
                 {/* Result card */}
                 <div className="bg-white rounded-2xl border border-emerald-200 overflow-hidden">

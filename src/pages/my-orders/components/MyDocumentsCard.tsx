@@ -22,6 +22,7 @@ import {
   type CustomerDeliverable,
 } from "@/lib/customerDocuments";
 import { openSecureDocument, downloadSecureDocument } from "@/lib/openSecureDocument";
+import MyDocumentVersionHistory from "./MyDocumentVersionHistory";
 
 type RowBusy = "view" | "download" | null;
 
@@ -126,11 +127,17 @@ export default function MyDocumentsCard({ order }: { order: ResolverOrder }) {
           </p>
         </div>
       ) : (
-        <ul className="space-y-2.5">
-          {deliverables.map((doc, i) => (
-            <DeliverableRow key={doc.id ?? `legacy-${doc.kind}-${i}`} doc={doc} />
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-2.5">
+            {deliverables.map((doc, i) => (
+              <DeliverableRow key={doc.id ?? `legacy-${doc.kind}-${i}`} doc={doc} />
+            ))}
+          </ul>
+          {/* ORDER-ENTITLEMENT-DOCUMENT-FOUNDATION-CLOSURE-001 §11: collapsed
+              superseded-version history. Renders nothing when the order has
+              never been revised, so legacy orders are untouched. */}
+          <MyDocumentVersionHistory confirmationId={order.confirmation_id} />
+        </>
       )}
     </CustomerPortalSection>
   );

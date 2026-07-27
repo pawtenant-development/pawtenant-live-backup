@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import ContactSupportWidget from "./components/ContactSupportWidget";
 import AdditionalDocRequest, { canRequestAdditionalDoc } from "./components/AdditionalDocRequest";
+import AdditionalPetRequest from "./components/AdditionalPetRequest";
 import RaDocumentUpload, { showRaDocumentUpload } from "./components/RaDocumentUpload";
 import OrderOverviewCard from "./components/OrderOverviewCard";
 import LetterDeliveryCard from "./components/LetterDeliveryCard";
@@ -208,11 +209,13 @@ function OrderCard({
   order,
   onContactSupport,
   addonSuccessOrder,
+  addPetSuccessOrder,
   layout = "two-col",
 }: {
   order: Order;
   onContactSupport: () => void;
   addonSuccessOrder?: string | null;
+  addPetSuccessOrder?: string | null;
   // "two-col" = dedicated right-hand Documents column (single-order view).
   // "single" = stacked one column (used beside the multi-order switcher rail),
   // Documents still surfacing right after the Housing workflow.
@@ -381,6 +384,18 @@ function OrderCard({
           }
         />
       )}
+
+      {/* Additional Pet (ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §7).
+          The component self-gates on the SERVER quote — it renders nothing until
+          the server has ruled on eligibility, so no client-side price or
+          eligibility guess is ever shown. */}
+      <AdditionalPetRequest
+        order={order}
+        highlightSuccess={
+          !!addPetSuccessOrder &&
+          addPetSuccessOrder.toUpperCase() === (order.confirmation_id ?? "").toUpperCase()
+        }
+      />
 
       {order.doctor_status === "patient_notified" && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2">
@@ -614,6 +629,11 @@ export default function MyOrdersPage() {
   const addonParam = searchParams.get("addon");
   const addonSuccessOrder = addonParam === "success" ? searchParams.get("order") : null;
   const addonCancelledOrder = addonParam === "cancelled" ? searchParams.get("order") : null;
+  // Additional Pet checkout return: ?addpet=success|cancelled&order=CID. The
+  // return itself confers NOTHING — it only re-runs the server quote so a
+  // just-completed payment is reflected without waiting on the webhook.
+  const addPetParam = searchParams.get("addpet");
+  const addPetSuccessOrder = addPetParam === "success" ? searchParams.get("order") : null;
   const [addonBannerDismissed, setAddonBannerDismissed] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isAdminPreview, setIsAdminPreview] = useState(false);
@@ -1273,6 +1293,7 @@ export default function MyOrdersPage() {
                       order={selectedOrder}
                       onContactSupport={() => setSupportOpen(true)}
                       addonSuccessOrder={addonSuccessOrder}
+                      addPetSuccessOrder={addPetSuccessOrder}
                       layout={filteredOrders.length > 1 ? "single" : "two-col"}
                     />
                   </>

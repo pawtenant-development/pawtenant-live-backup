@@ -15,6 +15,8 @@ import {
 } from "../../admin-orders/components/assessmentUtils";
 import PSDAssessmentView from "../../admin-orders/components/PSDAssessmentView";
 
+import ProviderAdditionalPetReview from "./ProviderAdditionalPetReview";
+
 interface Order {
   id: string;
   confirmation_id: string;
@@ -1269,6 +1271,12 @@ export default function ProviderOrderDetail({
                         </div>
                       ) : <p className="text-sm text-gray-400">No pet information recorded.</p>}
                     </div>
+
+                    {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §9: Additional
+                        Pet review, directly beneath the pets it extends. Renders
+                        nothing unless a request is awaiting or has been decided.
+                        Reads only the provider-safe projection — no financial field. */}
+                    <ProviderAdditionalPetReview orderId={order.id} />
 
                     {/* Questionnaire */}
                     <div>
