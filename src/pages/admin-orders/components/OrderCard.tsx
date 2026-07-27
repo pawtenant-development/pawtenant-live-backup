@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import OrderNotesPanel from "./OrderNotesPanel";
 // Package + RA-status chips (ORDERS-RA-COMBO-CHIP-FILTER-001).
 import PackageChips from "./PackageChips";
+import { AdditionalPetListChip } from "./OrderAdditionalPetPanel";
 import { supabase } from "@/lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
 import { isRefundedBucket } from "@/lib/orderClassification";
@@ -37,6 +38,10 @@ export interface OrderCardProps {
   /** orders.id set with a PAID standalone Additional-Documentation add-on
    *  request — drives the "RA Add-on" package chip. */
   raAddonOrderIds: Set<string>;
+  /** ORDER-ADDITIONAL-PET-FINAL-TEST-CLOSURE-001 §1 — Additional Pet request
+   *  status for THIS order, or null when it has none. Status only: the list
+   *  never receives an amount, Stripe id or refund value. */
+  additionalPetStatus?: string | null;
   US_STATES: { name: string; abbr: string }[];
 }
 
@@ -250,7 +255,7 @@ export default function OrderCard({
   recoveryMsg, onOpenRecovery, onSendRecoveryDirect, sendingRecoveryDirect, unreadCommsMap, noteCount, adminProfile,
   onOpenDetail, onOpenStatusLog, onOpenAssessmentIntake,
   onToggleOptOut,
-  coveredStates, duplicateEmailSet, raAddonOrderIds, US_STATES,
+  coveredStates, duplicateEmailSet, raAddonOrderIds, additionalPetStatus, US_STATES,
 }: OrderCardProps) {
   const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || order.email;
   const initials = fullName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
@@ -551,6 +556,7 @@ export default function OrderCard({
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-gray-400">{stateName}</span>
               <PackageChips order={order} hasPaidAddon={hasPaidAddon} size="sm" />
+              <AdditionalPetListChip status={additionalPetStatus} size="sm" />
               {isPriority && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-[#3b6ea5] text-white rounded text-[10px] font-extrabold"><i className="ri-vip-crown-2-line" style={{ fontSize: "8px" }}></i>P</span>}
               {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold">DUP</span>}
               {acqClassification && (() => {
@@ -652,6 +658,7 @@ export default function OrderCard({
               <p className="text-[10px] text-gray-400 truncate mt-0.5 max-w-[180px]">{order.email}</p>
               <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                 <PackageChips order={order} hasPaidAddon={hasPaidAddon} size="xs" />
+              <AdditionalPetListChip status={additionalPetStatus} size="xs" />
                 {isPriority && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-[#3b6ea5] text-white rounded">VIP</span>}
                 {duplicateEmailSet.has(order.email.toLowerCase()) && <span className="text-[9px] font-extrabold px-1 py-0.5 bg-amber-100 text-amber-700 rounded">DUP</span>}
                 {acqClassification && (() => {

@@ -444,6 +444,12 @@ export default function AdminOrdersPage() {
   // request. Fetched from order_additional_documentation_requests — a child
   // table, NOT joined into the list query. Drives the "RA Add-on" category.
   const [raAddonOrderIds, setRaAddonOrderIds] = useState<Set<string>>(new Set());
+  // ORDER-ADDITIONAL-PET-FINAL-TEST-CLOSURE-001 §1 — order_id → Additional Pet
+  // request status, for the Orders-list chip. Same shape as raAddonOrderIds: a
+  // child-table fetch that is deliberately NOT joined into the list query, so
+  // the dataset-stability contract (ADMIN-ORDERS-DATASET-FLICKER-P0-001) is
+  // untouched and the list can never flicker or re-sort because of it.
+  const [additionalPetStatusById, setAdditionalPetStatusById] = useState<Map<string, string>>(new Map());
   const [visibleCount, setVisibleCount] = useState(50);
 
   // ── Advanced filters ──
@@ -1066,6 +1072,29 @@ export default function AdminOrdersPage() {
         .eq("status", "paid");
       if (!alive || !data) return;
       setRaAddonOrderIds(new Set(data.map((r) => r.order_id as string).filter(Boolean)));
+    })();
+    return () => { alive = false; };
+  }, [adminProfile]);
+
+  // ORDER-ADDITIONAL-PET-FINAL-TEST-CLOSURE-001 §1 — Additional Pet chip source.
+  // Selects ONLY (order_id, status, created_at): no amount, no Stripe id, no
+  // refund value, so nothing financial can reach the list. Newest row wins when
+  // an order has had more than one request over time.
+  useEffect(() => {
+    if (!adminProfile) return;
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from("order_additional_pet_requests")
+        .select("order_id, status, created_at")
+        .order("created_at", { ascending: true });
+      if (!alive || !data) return;
+      const m = new Map<string, string>();
+      for (const r of data) {
+        const oid = r.order_id as string | null;
+        if (oid) m.set(oid, r.status as string);
+      }
+      setAdditionalPetStatusById(m);
     })();
     return () => { alive = false; };
   }, [adminProfile]);
@@ -2828,6 +2857,7 @@ export default function AdminOrdersPage() {
                     coveredStates,
                     duplicateEmailSet,
                     raAddonOrderIds,
+                    additionalPetStatus: additionalPetStatusById.get(order.id) ?? null,
                     US_STATES,
                   });
 

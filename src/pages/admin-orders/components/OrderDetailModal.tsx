@@ -34,7 +34,9 @@ import RefundModal from "./RefundModal";
 // mounts — admin Housing Accommodation overview status + Documents panel
 // (self-contained children). Approved edit type: additive component mount.
 import OrderRaOverviewStatus from "./OrderRaOverviewStatus";
+import OrderAdditionalPetPanel from "./OrderAdditionalPetPanel";
 import OrderRaDocPanel from "./OrderRaDocPanel";
+import OrderDocumentVersionsPanel from "./OrderDocumentVersionsPanel";
 import { canDelete } from "../../../lib/adminPermissions";
 // ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
 // reads the same canonical classifier the order list pill (OrderCard) and
@@ -3694,6 +3696,13 @@ export default function OrderDetailModal({
                 anonKey={anonKey}
                 onOrderUpdated={onOrderUpdated}
               />
+
+              {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §8: the Additional
+                  Pet add-on is a SEPARATE transaction and is deliberately not
+                  merged into the original order price above. */}
+              <div className="mt-3">
+                <OrderAdditionalPetPanel orderId={order.id} variant="payments" />
+              </div>
             </div>
           )}
 
@@ -3775,6 +3784,11 @@ export default function OrderDetailModal({
                 onContactCustomer={() => setSection("comms")}
                 onOpenFile={(id) => openDocumentSignedUrl(id, false)}
               />
+
+              {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §8: isolated,
+                  self-contained read-only Additional Pet summary. Renders
+                  nothing when the order has no request. */}
+              <OrderAdditionalPetPanel orderId={initialOrder.id} variant="overview" />
 
               {/* OPS-PAYMENTS-TAB-REPAIR-TOOLS: compact unpaid/unlinked
                   warning. The full repair panel (Stripe ID input + Link
@@ -5067,6 +5081,18 @@ export default function OrderDetailModal({
                   mount — admin Housing Accommodation Documents panel (source, upload
                   status, uploaded file + signed-URL open). Self-contained child. */}
               <OrderRaDocPanel orderId={initialOrder.id} onOpenFile={(id) => openDocumentSignedUrl(id, false)} />
+
+              {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §8: revision
+                  history with DISTINCT verification IDs per version. */}
+              <div className="mt-3">
+                <OrderAdditionalPetPanel orderId={initialOrder.id} variant="documents" />
+              </div>
+
+              {/* ORDER-ENTITLEMENT-DOCUMENT-FOUNDATION-CLOSURE-001 §10: isolated
+                  mount — READ-ONLY document version history (active first, then
+                  superseded). Renders nothing for pre-versioning orders, so the
+                  legacy document display is untouched. Self-contained child. */}
+              <OrderDocumentVersionsPanel orderId={initialOrder.id} onOpenFile={(id) => openDocumentSignedUrl(id, false)} />
 
               {/* Action bar */}
               <div className="flex items-center justify-between flex-wrap gap-3">
