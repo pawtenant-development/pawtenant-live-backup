@@ -22,6 +22,12 @@ interface SharedNotesPanelProps {
   /** Admin preview — show the thread but disable sending/deleting. Defaults to
       false, so all existing (real admin/provider) usages are unaffected. */
   readOnly?: boolean;
+  /** Provider-safe mode. When true the thread is loaded through the
+      server-enforced projection `get_shared_order_notes_for_provider` instead of
+      selecting the raw table, so a reassigned provider never receives a prior
+      provider's rejection reason/comments/identity in the response payload.
+      Admin usage leaves this false and keeps the complete audit record. */
+  providerSafe?: boolean;
 }
 
 function formatTime(ts: string) {
@@ -41,6 +47,7 @@ export default function SharedNotesPanel({
   currentUserName,
   currentUserRole,
   readOnly = false,
+  providerSafe = false,
 }: SharedNotesPanelProps) {
   const [notes, setNotes] = useState<SharedNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,17 +61,35 @@ export default function SharedNotesPanel({
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
   }, []);
 
+  // Second-layer defensive filter. The server (RLS + the provider-safe RPC) is
+  // the enforcement boundary; this only guarantees that nothing outside the
+  // provider-safe contract can reach client state via the realtime channel.
+  const isProviderVisible = useCallback(
+    (n: SharedNote) => n.author_role === "admin" || n.author_id === currentUserId,
+    [currentUserId]
+  );
+
   const loadNotes = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("shared_order_notes")
-      .select("*")
-      .eq("order_id", orderId)
-      .order("created_at", { ascending: true });
-    setNotes((data as SharedNote[]) ?? []);
+    if (providerSafe) {
+      // Server-enforced projection: prior-provider rejection notes are excluded
+      // in the database, so they never appear in the network response at all.
+      const { data } = await supabase.rpc("get_shared_order_notes_for_provider", {
+        p_order_id: orderId,
+        p_provider_user_id: currentUserId,
+      });
+      setNotes(((data as SharedNote[]) ?? []).filter(isProviderVisible));
+    } else {
+      const { data } = await supabase
+        .from("shared_order_notes")
+        .select("*")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: true });
+      setNotes((data as SharedNote[]) ?? []);
+    }
     setLoading(false);
     scrollToBottom();
-  }, [orderId, scrollToBottom]);
+  }, [orderId, scrollToBottom, providerSafe, currentUserId, isProviderVisible]);
 
   useEffect(() => {
     loadNotes();
@@ -84,6 +109,10 @@ export default function SharedNotesPanel({
         },
         (payload) => {
           const newNote = payload.new as SharedNote;
+          // In provider-safe mode the admin-preview session is an ADMIN session,
+          // so realtime would otherwise deliver rows the previewed provider must
+          // not see. Apply the same contract the RPC enforces.
+          if (providerSafe && !isProviderVisible(newNote)) return;
           setNotes((prev) => {
             if (prev.some((n) => n.id === newNote.id)) return prev;
             return [...prev, newNote];
@@ -106,7 +135,7 @@ export default function SharedNotesPanel({
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [orderId, scrollToBottom]);
+  }, [orderId, scrollToBottom, providerSafe, isProviderVisible]);
 
   const handleSend = async () => {
     if (readOnly) return; // Admin preview — never post a note as the provider

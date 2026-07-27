@@ -1593,6 +1593,7 @@ export default function ProviderOrderDetail({
               currentUserName={providerName}
               currentUserRole="provider"
               readOnly={readOnly}
+              providerSafe
             />
           )}
         </div>
