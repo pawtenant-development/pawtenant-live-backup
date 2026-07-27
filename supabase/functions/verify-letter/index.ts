@@ -51,6 +51,15 @@ const PUBLIC_ALLOWED_FIELDS = new Set([
   "provider_license",
   "provider_state_licenses",
   "message",
+  // ORDER-ENTITLEMENT-DOCUMENT-FOUNDATION-CLOSURE-001 §12: document-version
+  // state. All non-PII — a version number, a lifecycle label, a boolean and a
+  // date. The NEWER verification ID is deliberately absent: verify_letter_id
+  // does not return it, so a superseded ID can never be used to discover the
+  // current one.
+  "document_version",
+  "document_state",
+  "has_newer_version",
+  "superseded_at",
 ]);
 
 type PublicVerifyResult = {
@@ -67,6 +76,10 @@ type PublicVerifyResult = {
   provider_license?: string | null;
   provider_state_licenses?: Record<string, string> | null;
   message?: string;
+  document_version?: number;
+  document_state?: "active" | "superseded" | "revoked" | "expired";
+  has_newer_version?: boolean;
+  superseded_at?: string | null;
 };
 
 /**

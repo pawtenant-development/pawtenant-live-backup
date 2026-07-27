@@ -3,6 +3,7 @@ import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { completeAdditionalDocPayment } from "../_shared/completeAdditionalDocPayment.ts";
+import { completeAdditionalPetPayment } from "../_shared/completeAdditionalPetPayment.ts";
 import { attachRenewalSchedule } from "../_shared/subscriptionSchedule.ts";
 import { authenticateStripeWebhook } from "./verifyStripeSignature.ts";
 
@@ -315,6 +316,28 @@ Deno.serve(async (req: Request) => {
     return json(result);
   }
 
+  // ── Additional Pet ($20 package-tier upgrade) payment handler ─────────────
+  // ORDER-ADDITIONAL-PET-UPGRADE-PHASE-B-001 §12. Routed EARLY on
+  // metadata.type === "additional_pet", exactly like the additional-documentation
+  // add-on above, so it can never fall through into parent-order processing.
+  //
+  // The shared module verifies the amount ($20.00) and currency (USD) BEFORE
+  // marking the request paid, marks it paid exactly once, and moves it to
+  // PROVIDER REVIEW — payment is never approval. It creates no order row, so the
+  // Google Ads / Meta uploaders (which read `orders` only) never see it.
+  async function handleAdditionalPetPayment(opts: {
+    requestId?: string | null;
+    parentOrderId?: string | null;
+    sessionId?: string | null;
+    piId?: string | null;
+    amountCents?: number | null;
+    currency?: string | null;
+    eventId?: string | null;
+  }): Promise<Response> {
+    const result = await completeAdditionalPetPayment(supabase, { ...opts, source: "webhook" });
+    return json(result);
+  }
+
   async function appendEmailLog(confirmationId: string, entries: EmailLogEntry[]) {
     try {
       const { data } = await supabase.from("orders").select("email_log").eq("confirmation_id", confirmationId).maybeSingle();
@@ -542,6 +565,18 @@ Deno.serve(async (req: Request) => {
         parentOrderId: pi.metadata.parent_order_id,
         piId: pi.id,
         amountCents: pi.amount_received ?? pi.amount ?? null,
+        eventId: event.id,
+      });
+    }
+
+    // Additional Pet upgrade — route EARLY, never touch parent order flow.
+    if (pi.metadata?.type === "additional_pet") {
+      return await handleAdditionalPetPayment({
+        requestId: pi.metadata.request_id,
+        parentOrderId: pi.metadata.parent_order_id,
+        piId: pi.id,
+        amountCents: pi.amount_received ?? pi.amount ?? null,
+        currency: pi.currency ?? null,
         eventId: event.id,
       });
     }
@@ -813,6 +848,20 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Additional Pet upgrade — route EARLY, never touch parent order flow.
+    if (session.metadata?.type === "additional_pet") {
+      if (session.payment_status !== "paid") return json({ ok: true, additionalPet: true, deferred: true });
+      return await handleAdditionalPetPayment({
+        requestId: session.metadata.request_id,
+        parentOrderId: session.metadata.parent_order_id,
+        sessionId: session.id,
+        piId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        amountCents: session.amount_total ?? null,
+        currency: session.currency ?? null,
+        eventId: event.id,
+      });
+    }
+
     const cid = session.metadata?.confirmation_id;
     const emailFromMeta = session.metadata?.email ?? session.customer_email;
     if (session.payment_status !== "paid") return json({ ok: true, deferred: true, confirmationId: cid });
@@ -882,6 +931,19 @@ Deno.serve(async (req: Request) => {
         sessionId: session.id,
         piId: typeof session.payment_intent === "string" ? session.payment_intent : null,
         amountCents: session.amount_total ?? null,
+        eventId: event.id,
+      });
+    }
+
+    // Additional Pet upgrade — route EARLY (covers any async method).
+    if (session.metadata?.type === "additional_pet") {
+      return await handleAdditionalPetPayment({
+        requestId: session.metadata.request_id,
+        parentOrderId: session.metadata.parent_order_id,
+        sessionId: session.id,
+        piId: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        amountCents: session.amount_total ?? null,
+        currency: session.currency ?? null,
         eventId: event.id,
       });
     }

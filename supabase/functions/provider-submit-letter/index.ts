@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts";
 import { ensureRaCompletionEarning } from "../_shared/raCompletionEarning.ts";
+import { evaluateNotificationSuppression, suppressForFixtureOrder } from "../_shared/testNotificationSuppression.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -161,7 +162,6 @@ async function generateVerificationId(
     return null;
   }
 }
-
 async function injectPdfVerification(
   supabase: ReturnType<typeof createClient>,
   opts: {
@@ -298,6 +298,17 @@ async function notifyAdminLetterSubmitted(opts: {
   providerNote?: string | null; customerEmail: string; customerFirstName: string; customerLastName: string;
 }): Promise<void> {
   try {
+    // DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §10: a TEST fixture
+    // submission must never page real staff. Gated on the FIXTURE ORDER's
+    // recipient (not the staff address) and fail-closed, so ordinary orders
+    // still notify admins exactly as before. Checked here so BOTH call sites
+    // (housing completion + letter submitted) are covered by one gate.
+    if (suppressForFixtureOrder(opts.customerEmail)) {
+      console.warn(
+        `[notifySuppressed] admin alert SUPPRESSED for TEST fixture order ${opts.confirmationId} — no email sent`,
+      );
+      return;
+    }
     const recipRes = await fetch(`${SUPABASE_URL}/functions/v1/get-admin-notif-recipients`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
@@ -614,11 +625,136 @@ Deno.serve(async (req: Request) => {
 
     let resolvedLetterId: string | null = (order.letter_id as string | null) ?? null;
 
-    if (state && state.length === 2) {
+    // DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §7:
+    // Decide FIRST LETTER vs REVISION entirely server-side. No request field,
+    // no client flag, no query parameter takes part in this — the signal is
+    // simply whether an ACTIVE approved version already exists for this
+    // (order, doc_type). If it does, this submission is version 2+ and must
+    // mint its OWN verification ID rather than reuse the original.
+    let isRevision = false;
+    let nextVersionNumber = 1;
+    if (storedDocType.endsWith("_letter")) {
+      const { data: activeVersion } = await supabase
+        .from("order_document_versions")
+        .select("id, version")
+        .eq("order_id", order.id)
+        .eq("doc_type", storedDocType)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (activeVersion?.id) {
+        isRevision = true;
+        nextVersionNumber = Number(activeVersion.version ?? 1) + 1;
+      }
+    }
+
+    // FIRST LETTER only: unchanged behaviour, including its deliberate reuse of
+    // an already-issued ID for this order.
+    //
+    // A REVISION does NOT mint its ID here. Minting before the version row is
+    // deduplicated means N concurrent revisions mint N IDs while correctly
+    // converging on ONE version — leaving publicly-resolvable orphans. The
+    // revision ID is instead minted atomically per-version by
+    // ensure_revision_verification_id() AFTER create_document_version()
+    // (DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §8).
+    if (state && state.length === 2 && !isRevision) {
       const generatedId = await generateVerificationId(
         supabase, order.id, confirmationId, state, letterType, user.id
       );
       if (generatedId) resolvedLetterId = generatedId;
+    }
+
+    // REVISION: create the version row FIRST (idempotent, deduplicated by the
+    // target-version key) and mint its ID atomically from that row, so the
+    // footer below is stamped with the revision's OWN new ID rather than the
+    // original letter's. Concurrent submissions converge on one version AND one
+    // ID. The version stays inactive until generation succeeds.
+    let revisionVersionId: string | null = null;
+    // ORDER-ADDITIONAL-PET-UPGRADE-PHASE-B-001 §16: if this revision is being
+    // issued because an Additional Pet request was APPROVED, the new version
+    // must carry an immutable snapshot of the pets it covers — the original
+    // approved pets PLUS the newly approved one. Read-only here; the request is
+    // linked to the version after activation succeeds.
+    let addPetRequest: Record<string, unknown> | null = null;
+    let addPetSnapshot: Record<string, unknown> | null = null;
+    if (isRevision) {
+      try {
+        const { data: apr } = await supabase
+          .from("order_additional_pet_requests")
+          .select("*")
+          .eq("order_id", order.id)
+          .eq("status", "approved_pending_document")
+          .order("provider_decision_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (apr) {
+          addPetRequest = apr as Record<string, unknown>;
+          const { data: st } = await supabase.rpc("additional_pet_effective_state", { p_order_id: order.id });
+          const originals = ((st as { original_pets?: unknown[] } | null)?.original_pets ?? []) as unknown[];
+          addPetSnapshot = {
+            pets: [...originals, apr.new_pet],
+            source: "additional_pet_approval",
+            additional_pet_request_id: apr.id,
+            total_pets: originals.length + 1,
+          };
+        }
+      } catch (err) {
+        console.warn("[addPet] snapshot lookup failed:", err instanceof Error ? err.message : String(err));
+      }
+    }
+    if (isRevision && documentId && state && state.length === 2) {
+      try {
+        const revProviderId = await resolveProfileId(supabase, user.id);
+
+        // ORDER-ADDITIONAL-PET-FINAL-TEST-CLOSURE-001 §6 — revision idempotency.
+        //
+        // The key used to be `revision:{order}:{docType}:v{nextVersionNumber}`.
+        // That made CONCURRENT duplicates converge (they all read the same active
+        // version, so they all computed the same target number) but left a
+        // SEQUENTIAL retry broken: once the first call had activated v2, a
+        // retried or replayed submission of the SAME file recomputed the target
+        // as v3, so it minted a spurious extra version AND an extra publicly
+        // resolvable verification ID — silently superseding the revision it was
+        // only meant to repeat. Measured on TEST: a replay produced v3 with a
+        // third ID and demoted the Additional Pet revision.
+        //
+        // Keying on the SOURCE FILE fixes both cases at once: concurrent callers
+        // submitting one file still converge, and a sequential retry of that same
+        // file returns the SAME version instead of creating another. A genuinely
+        // new letter has a different file and correctly becomes a new version.
+        const revisionSource = documentUrl || `doc:${documentId}`;
+        const { data: revVersion, error: revErr } = await supabase.rpc("create_document_version", {
+          p_order_id: order.id,
+          p_doc_type: storedDocType,
+          p_idempotency_key: `revision:${order.id}:${storedDocType}:${revisionSource}`,
+          p_letter_id: null,
+          p_provider_id: revProviderId,
+          p_revision_reason: addPetRequest
+            ? `additional pet approved — version ${nextVersionNumber}`
+            : `provider revision — version ${nextVersionNumber}`,
+          p_pet_snapshot: addPetSnapshot,
+          p_order_document_id: documentId,
+          p_file_url: documentUrl,
+          p_storage_path: null,
+        });
+        if (revErr) {
+          console.error("[revision] create_document_version failed:", revErr.message);
+        } else if (revVersion?.id) {
+          revisionVersionId = revVersion.id as string;
+          const { data: mintedId, error: mintErr } = await supabase.rpc(
+            "ensure_revision_verification_id",
+            {
+              p_version_id: revisionVersionId,
+              p_state: state,
+              p_letter_type: letterType,
+              p_provider_id: revProviderId,
+            },
+          );
+          if (mintErr) console.error("[revision] mint failed:", mintErr.message);
+          else if (mintedId) resolvedLetterId = mintedId as string;
+        }
+      } catch (err) {
+        console.error("[revision] unexpected error:", err instanceof Error ? err.message : err);
+      }
     }
 
     let pdfInjectionResult: { ok: boolean; processedUrl?: string; error?: string } = { ok: false };
@@ -642,14 +778,161 @@ Deno.serve(async (req: Request) => {
         .eq("id", order.id);
     }
 
-    const notifyRes = await fetch(`${SUPABASE_URL}/functions/v1/notify-patient-letter`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-      body: JSON.stringify({ confirmationId, doctorMessage: providerNote?.trim() || null }),
-    });
+    // ORDER-ENTITLEMENT-AND-DOCUMENT-VERSIONING-FOUNDATION-001 · Phase D
+    //
+    // Register this letter as a document VERSION so revision history exists from
+    // the first letter onward. For the ordinary first-letter path this simply
+    // records version 1 — the customer-visible behaviour above is unchanged.
+    //
+    // BEST EFFORT BY DESIGN: the letter is already delivered and orders/documents
+    // are already written by this point. A failure here must never fail a
+    // provider submission, so everything is swallowed and logged.
+    //
+    // Idempotency key:
+    //   • FIRST LETTER — (order, document). A retry or double-click reuses the
+    //     same uploaded document row, so it returns the SAME version.
+    //   • REVISION — (order, doc_type, target version). A replayed revision
+    //     uploads a NEW document row, so a document-derived key would create a
+    //     second version. Keying on the TARGET VERSION instead makes a replayed
+    //     or concurrent revision converge on one row
+    //     (DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §9).
+    try {
+      // Use the SAME doc_type the document row was stored under. Housing
+      // completions are not letters and are deliberately not versioned here.
+      const versionDocType = storedDocType;
+      const finalUrl = pdfInjectionResult.processedUrl || documentUrl;
 
-    let notifyResult: { ok?: boolean; error?: string } = {};
-    try { notifyResult = JSON.parse(await notifyRes.text()); } catch { /* ignore */ }
+      if (isRevision) {
+        // The revision's version row and ID were created above (before footer
+        // injection, so the stamp carries the revision's own ID). Only the
+        // activation remains — and only now that generation has succeeded.
+        if (revisionVersionId) {
+          const { error: activateErr } = await supabase.rpc("activate_document_version", {
+            p_version_id: revisionVersionId,
+          });
+          if (activateErr) {
+            console.error("[revision] activate failed:", activateErr.message);
+          } else {
+            // orders.letter_id is a COMPATIBILITY CACHE of the ACTIVE document's
+            // verification ID (the same role orders.signed_letter_url plays for
+            // the file). It must follow the newly-active revision, or the
+            // customer portal keeps labelling the current letter with the
+            // SUPERSEDED id. Updated only AFTER activation succeeds. The v1
+            // verification ROW is untouched and still resolves to v1.
+            if (resolvedLetterId) {
+              await supabase.from("orders")
+                .update({ letter_id: resolvedLetterId })
+                .eq("id", order.id);
+            }
+            console.info(`[revision] v${nextVersionNumber} active for ${confirmationId} (letter_id=${resolvedLetterId})`);
+
+            // ORDER-ADDITIONAL-PET-UPGRADE-PHASE-B-001 §16: the revised document
+            // now exists and is active, so the approved Additional Pet request is
+            // COMPLETE. Linked only after activation succeeded — a failed
+            // generation must leave the request at approved_pending_document so
+            // it can be safely retried without minting a second version or ID.
+            if (addPetRequest) {
+              try {
+                await supabase.from("order_additional_pet_requests").update({
+                  status: "completed",
+                  document_version_id: revisionVersionId,
+                  letter_id: resolvedLetterId,
+                }).eq("id", addPetRequest.id as string)
+                  .eq("status", "approved_pending_document");
+                await supabase.from("order_additional_pet_request_events").insert({
+                  request_id: addPetRequest.id as string,
+                  order_id: order.id,
+                  event_type: "revision_issued",
+                  from_status: "approved_pending_document",
+                  to_status: "completed",
+                  actor_role: "system",
+                  detail: {
+                    document_version_id: revisionVersionId,
+                    version: nextVersionNumber,
+                    new_letter_id: resolvedLetterId,
+                  },
+                });
+                console.info(`[addPet] request ${addPetRequest.id} completed — v${nextVersionNumber}, new letter_id=${resolvedLetterId}`);
+              } catch (err) {
+                console.error("[addPet] completion link failed:", err instanceof Error ? err.message : String(err));
+              }
+            }
+          }
+        }
+      } else if (documentId && finalUrl && versionDocType.endsWith("_letter")) {
+        const versionProviderId = await resolveProfileId(supabase, user.id);
+        const { data: createdVersion, error: versionErr } = await supabase.rpc(
+          "create_document_version",
+          {
+            p_order_id: order.id,
+            p_doc_type: versionDocType,
+            p_idempotency_key: `submit:${order.id}:${documentId}`,
+            p_letter_id: resolvedLetterId,
+            p_provider_id: versionProviderId,
+            p_revision_reason: "provider letter submission",
+            p_pet_snapshot: null,
+            p_order_document_id: documentId,
+            p_file_url: finalUrl,
+            p_storage_path: null,
+          },
+        );
+
+        if (versionErr) {
+          console.error("[documentVersion] create failed:", versionErr.message);
+        } else if (createdVersion?.id) {
+          // Only now — the file exists and is stamped — may this become the
+          // active customer-facing version. Any previous version is superseded
+          // WITHOUT its file or verification ID being touched.
+          const { error: activateErr } = await supabase.rpc(
+            "activate_document_version",
+            { p_version_id: createdVersion.id },
+          );
+          if (activateErr) {
+            console.error("[documentVersion] activate failed:", activateErr.message);
+          } else {
+            console.info(
+              `[documentVersion] order ${confirmationId} → version ${createdVersion.version} active (letter_id=${resolvedLetterId ?? "none"})`,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[documentVersion] unexpected error:", err instanceof Error ? err.message : err);
+    }
+
+    // DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §10: TEST-ONLY external
+    // notification suppression. FAIL-CLOSED and OFF by default — it engages only
+    // when an explicit secret, the TEST project ref AND a reserved
+    // non-deliverable recipient TLD all agree. Nothing a customer, provider or
+    // browser can set takes part in the decision. A suppressed run is recorded
+    // honestly as suppressed; success is never fabricated.
+    const suppression = evaluateNotificationSuppression(order.email as string | null);
+
+    let notifyResult: { ok?: boolean; error?: string; suppressed?: boolean } = {};
+    if (suppression.suppressed) {
+      console.warn(
+        `[notifySuppressed] order=${confirmationId} — ${suppression.reason} — NO external email sent`,
+      );
+      notifyResult = { ok: false, suppressed: true, error: "suppressed_test_fixture" };
+      await supabase.from("audit_logs").insert({
+        actor_name: "System", actor_role: "system",
+        object_type: "notification", object_id: confirmationId,
+        action: "notification_suppressed_test_fixture",
+        description: `External customer notification SUPPRESSED for TEST fixture order ${confirmationId}. No email was sent.`,
+        metadata: {
+          order_id: order.id, confirmation_id: confirmationId,
+          suppressed: true, delivered: false, reason: suppression.reason,
+          checks: suppression.checks, timestamp: new Date().toISOString(),
+        },
+      });
+    } else {
+      const notifyRes = await fetch(`${SUPABASE_URL}/functions/v1/notify-patient-letter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ confirmationId, doctorMessage: providerNote?.trim() || null }),
+      });
+      try { notifyResult = JSON.parse(await notifyRes.text()); } catch { /* ignore */ }
+    }
 
     await supabase.from("doctor_notifications").insert({
       doctor_user_id: user.id, title: "Order Completed",
