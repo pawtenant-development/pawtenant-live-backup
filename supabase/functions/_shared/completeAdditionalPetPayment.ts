@@ -27,8 +27,21 @@ const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 const PORTAL_URL = "https://pawtenant.com/my-orders";
 
-/** The server contract. A paid Additional Pet upgrade is EXACTLY this. */
-export const ADDITIONAL_PET_UPGRADE_CENTS = 2000;
+/**
+ * The CURRENT paid Additional Pet price, for NEW quotes only.
+ *
+ * PRICING CHANGE 2026-07-28: $20 -> $30. This constant is a fallback for the
+ * rare path that has no server quote to hand; the authoritative current price
+ * is `additional_pet_current_price()` in the database, and the authoritative
+ * price for an EXISTING request is that request's own immutable `amount_cents`.
+ *
+ * NEVER validate a payment against this constant. A request quoted at $20
+ * before the change is still payable at $20, so the expected amount must come
+ * from the request row (see verifyAgainstQuote below). Comparing against the
+ * global price is exactly how a grandfathered checkout would get wrongly
+ * rejected — or silently re-priced.
+ */
+export const ADDITIONAL_PET_UPGRADE_CENTS = 3000;
 export const ADDITIONAL_PET_CURRENCY = "usd";
 
 async function sendViaResend(opts: { to: string; subject: string; html: string }): Promise<{ sent: boolean; error?: string; resendId?: string | null }> {
@@ -87,7 +100,7 @@ function buildPaidReceiptHtml(opts: { firstName: string; confirmationId: string;
 export interface CompleteAddPetResult {
   ok: boolean;
   additionalPet: true;
-  status: "completed" | "idempotent" | "no_request_row" | "amount_mismatch";
+  status: "completed" | "idempotent" | "no_request_row" | "amount_mismatch" | "order_locked";
   requestId?: string;
   confirmationId?: string;
 }
@@ -131,18 +144,121 @@ export async function completeAdditionalPetPayment(
     return { ok: true, additionalPet: true, status: "idempotent", requestId: reqId, confirmationId: confId };
   }
 
+  // ── ADDITIONAL-PET-...-GATING-002: completed-order race guard ─────────────
+  // The payment may have been STARTED while the order was still open and only
+  // now be settling, after the provider finalised the evaluation and issued the
+  // letter. Re-check the authoritative lock at FULFILMENT time — the state at
+  // checkout-creation time is not good enough.
+  //
+  // If the order has since locked we deliberately do NOT touch it: the request
+  // is parked in `refund_pending` with the real Stripe evidence recorded so an
+  // admin can reconcile the money. We never mutate the completed order, never
+  // issue a document, and never create a provider earning.
+  // NOTE: deliberately NOT named `parentOrderId` — that identifier is already
+  // declared later in this same function scope, and a duplicate `const` is a
+  // parse-time SyntaxError that takes the whole edge function down with
+  // BOOT_ERROR (it did: stripe-webhook, create-additional-pet-request and
+  // provider-additional-pet-decision all 503'd until this was renamed).
+  const raceOrderId = (reqRow.order_id as string) ?? opts.parentOrderId ?? null;
+  if (raceOrderId) {
+    const { data: lock } = await supabase.rpc("additional_pet_order_locked", { p_order_id: raceOrderId });
+    if (lock && (lock as { locked?: boolean }).locked) {
+      const lockReason = (lock as { reason?: string }).reason ?? "unknown";
+
+      // IDEMPOTENT REPLAY OF THE RACE ITSELF.
+      //
+      // The `paid_at` short-circuit above cannot cover this branch, because the
+      // race deliberately never sets paid_at — the money was received but not
+      // applied. Stripe delivers ~3 events per payment (payment_intent.succeeded
+      // plus two checkout.session.*), and `reconcilePending` re-drives this same
+      // path on EVERY quote for a row with paid_at null + a paid session. So
+      // without this guard the exception is re-recorded over and over: measured
+      // on TEST, one payment produced THREE identical `payment_after_order_locked`
+      // events and THREE identical audit rows, and every subsequent portal load
+      // would have added more.
+      //
+      // `refund_pending` with paid_at still null is reached only by this branch
+      // (a provider-rejection refund sets paid_at first, so it short-circuits
+      // earlier), which makes it a safe idempotency key.
+      if (reqRow.status === "refund_pending") {
+        return {
+          ok: true, additionalPet: true, status: "order_locked_already_recorded",
+          requestId: reqId, confirmationId: confId,
+        };
+      }
+
+      console.error(`[addPet:${source}] COMPLETED-ORDER RACE req=${reqId} order=${raceOrderId} lock=${lockReason} — payment NOT applied`);
+      try {
+        await supabase.from("order_additional_pet_requests").update({
+          status: "refund_pending",
+          stripe_payment_intent_id: opts.piId ?? (reqRow.stripe_payment_intent_id as string | null),
+          manual_review_reason:
+            `Payment settled after the order was completed/locked (${lockReason}). Money received but NOT applied — the completed evaluation was left untouched. Admin reconciliation required.`,
+        }).eq("id", reqId).is("paid_at", null);
+        await supabase.from("order_additional_pet_request_events").insert({
+          request_id: reqId, order_id: raceOrderId,
+          event_type: "payment_after_order_locked",
+          to_status: "refund_pending", actor_role: "system",
+          detail: {
+            lock_reason: lockReason,
+            received_cents: opts.amountCents ?? null,
+            received_currency: opts.currency ?? null,
+            stripe_event_id: opts.eventId ?? null,
+            source,
+          },
+        });
+        await supabase.from("audit_logs").insert({
+          action: "additional_pet_payment_after_order_locked",
+          object_type: "order", object_id: confId,
+          description:
+            `Additional Pet payment settled AFTER the order was completed/locked (${lockReason}). Payment held for reconciliation; the completed order, its documents and its verification ID were NOT modified.`,
+          metadata: {
+            request_id: reqId, order_id: raceOrderId, lock_reason: lockReason,
+            received_cents: opts.amountCents ?? null, stripe_event_id: opts.eventId ?? null, source,
+          },
+        });
+      } catch (e) {
+        console.error(`[addPet:${source}] failed to record completed-order race`, e instanceof Error ? e.message : String(e));
+      }
+      return { ok: true, additionalPet: true, status: "order_locked", requestId: reqId, confirmationId: confId };
+    }
+  }
+
   // ── Verify the money BEFORE marking anything paid ─────────────────────────
   // A $0 (included) request must never carry a Stripe payment at all, and a
-  // paid upgrade must be EXACTLY $20.00 USD. Anything else is held for manual
-  // review with the real Stripe evidence recorded — never silently accepted.
+  // paid upgrade must match THE PRICE THAT REQUEST WAS QUOTED — not the current
+  // global price. Anything else is held for manual review with the real Stripe
+  // evidence recorded, never silently accepted.
+  //
+  // PRICING CHANGE 2026-07-28: this used to compare against the global
+  // ADDITIONAL_PET_UPGRADE_CENTS. After $20 -> $30 that would have rejected
+  // every legitimately grandfathered $20 payment as an amount mismatch. The
+  // request's `amount_cents` is immutable (tg_addpet_immutable) and is validated
+  // against a known price version on write (tg_addpet_price_version_valid), so
+  // it is the correct and safe expectation.
   const expectedCents = (reqRow.amount_cents as number) ?? 0;
   const gotCents = opts.amountCents ?? null;
   const gotCurrency = (opts.currency ?? ADDITIONAL_PET_CURRENCY).toLowerCase();
   const outcome = reqRow.pricing_outcome as string;
 
+  // Defence in depth: the quoted amount must still correspond to a real price
+  // version, so a row tampered with out-of-band cannot authorise a payment.
+  let quoteIsKnownPrice = false;
+  try {
+    const { data: pv } = await supabase
+      .from("additional_pet_price_versions")
+      .select("pricing_version, amount_cents")
+      .eq("amount_cents", expectedCents)
+      .limit(1);
+    quoteIsKnownPrice = Array.isArray(pv) && pv.length > 0;
+  } catch {
+    quoteIsKnownPrice = false;
+  }
+
   const amountOk = outcome === "paid_upgrade"
-    && expectedCents === ADDITIONAL_PET_UPGRADE_CENTS
-    && gotCents === ADDITIONAL_PET_UPGRADE_CENTS;
+    && expectedCents > 0
+    && quoteIsKnownPrice
+    && gotCents === expectedCents;
   const currencyOk = gotCurrency === ADDITIONAL_PET_CURRENCY;
 
   if (!amountOk || !currencyOk) {
@@ -178,7 +294,9 @@ export async function completeAdditionalPetPayment(
   const baseIsPaid = !!(parent?.payment_intent_id) || !!(parent?.paid_at);
 
   const nowIso = new Date().toISOString();
-  const amountFormatted = `$${(ADDITIONAL_PET_UPGRADE_CENTS / 100).toFixed(2)}`;
+  // The amount the customer ACTUALLY paid for THIS request (a grandfathered
+  // request shows $20 even though the current price is $30).
+  const amountFormatted = `$${(expectedCents / 100).toFixed(2)}`;
 
   // Mark paid exactly once. `.is("paid_at", null)` makes a racing duplicate
   // webhook a no-op rather than a second transition.

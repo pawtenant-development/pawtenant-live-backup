@@ -32,7 +32,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   completeAdditionalPetPayment,
   sendAdditionalPetEmail,
-  ADDITIONAL_PET_UPGRADE_CENTS,
 } from "../_shared/completeAdditionalPetPayment.ts";
 
 const CORS = {
@@ -223,6 +222,20 @@ Deno.serve(async (req) => {
   // ── UPDATE PET (draft / clarification only) ───────────────────────────────
   if (action === "update_pet") {
     if (!body.requestId) return json(400, { ok: false, error: "requestId required" });
+
+    // ADDITIONAL-PET-...-GATING-002: the pet snapshot feeds the document
+    // revision, so it is frozen once the evaluation is completed / a document
+    // has been issued. (`cancel` is deliberately still allowed.)
+    {
+      const { data: lock } = await admin.rpc("additional_pet_order_locked", { p_order_id: o.id });
+      if (lock && (lock as { locked?: boolean }).locked) {
+        return json(409, {
+          ok: false, code: "order_completed",
+          lockReason: (lock as { reason?: string }).reason ?? null,
+          error: "Additional pets cannot be added after the evaluation is completed. The customer must start a new evaluation with all pets included.",
+        });
+      }
+    }
     const { data: row } = await admin.from("order_additional_pet_requests")
       .select("*").eq("id", body.requestId).eq("order_id", o.id).maybeSingle();
     if (!row) return json(404, { ok: false, error: "Request not found" });
@@ -267,6 +280,21 @@ Deno.serve(async (req) => {
   // ── RESUME ────────────────────────────────────────────────────────────────
   if (action === "resume") {
     if (!stripe) return json(500, { ok: false, error: "Stripe not configured" });
+
+    // ADDITIONAL-PET-...-GATING-002: a resume must re-check the authoritative
+    // lock at MUTATION time. The request may have been created while the order
+    // was open; if the evaluation has since been completed or a document
+    // issued, we must not hand back a checkout URL or fulfil anything.
+    {
+      const { data: lock } = await admin.rpc("additional_pet_order_locked", { p_order_id: o.id });
+      if (lock && (lock as { locked?: boolean }).locked) {
+        return json(409, {
+          ok: false, code: "order_completed",
+          lockReason: (lock as { reason?: string }).reason ?? null,
+          error: "Additional pets cannot be added after the evaluation is completed. The customer must start a new evaluation with all pets included.",
+        });
+      }
+    }
     const { data: pending } = await admin.from("order_additional_pet_requests")
       .select("*").eq("order_id", o.id).is("paid_at", null)
       .eq("pricing_outcome", "paid_upgrade")
@@ -274,7 +302,18 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (!pending) return json(409, { ok: false, error: "No pending payment to resume" });
 
-    const pr = pending as { id: string; stripe_checkout_session_id: string | null };
+    const pr = pending as {
+      id: string; stripe_checkout_session_id: string | null;
+      amount_cents: number; pricing_version: string | null;
+    };
+    // GRANDFATHERING (pricing change 2026-07-28). A resume MUST re-use the price
+    // this request was QUOTED at. Rebuilding the session from the current global
+    // price would silently charge a $20 customer $30 — and the payment would
+    // then fail verification against the row's own immutable amount anyway.
+    const resumeCents = pr.amount_cents;
+    if (!resumeCents || resumeCents <= 0) {
+      return json(500, { ok: false, error: "Existing request has no quoted amount to resume." });
+    }
     if (pr.stripe_checkout_session_id) {
       try {
         const s = await stripe.checkout.sessions.retrieve(pr.stripe_checkout_session_id);
@@ -300,12 +339,14 @@ Deno.serve(async (req) => {
       target_pet_count: String((pending as { target_pet_count: number }).target_pet_count),
       service_type: (pending as { service_type: string }).service_type,
       idempotency_key: (pending as { idempotency_key: string | null }).idempotency_key ?? "",
+      pricing_version: pr.pricing_version ?? "",
+      quoted_amount_cents: String(resumeCents),
     };
     let session;
     try {
       session = await stripe.checkout.sessions.create({
         mode: "payment", payment_method_types: ["card"], customer_email: orderEmail,
-        line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: ADDITIONAL_PET_UPGRADE_CENTS,
+        line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: resumeCents,
           product_data: { name: "Additional Pet — Multi-Pet Package Upgrade", description: `Add-on for order ${o.confirmation_id ?? ""}`.trim() } } }],
         submit_type: "pay",
         // ORDER-ADDITIONAL-PET-FINAL-TEST-CLOSURE-001 §2 — see the CREATE path
@@ -335,6 +376,7 @@ Deno.serve(async (req) => {
 
   const pr = pricing as {
     eligible: boolean; outcome: string; code: string; amount_cents: number;
+    pricing_version?: string | null; currency?: string;
     current_pet_count?: number; target_pet_count?: number; prior_pet_tier?: string;
     service_type?: string; entitlement_snapshot_id?: string; message?: string;
     active_request_id?: string; manual_review_reason?: string;
@@ -365,12 +407,37 @@ Deno.serve(async (req) => {
     return json(409, { ok: false, error: "That pet is already covered by this order.", code: "duplicate_pet" });
   }
 
+  // SERVER-QUOTED price. The amount and its version label come from the engine's
+  // quote for THIS request, never from a module constant — that is what lets a
+  // $20 request created before 2026-07-28 coexist with $30 requests created
+  // after it. The browser supplies neither.
   const isPaid = pr.outcome === "paid_upgrade";
-  const amountCents = isPaid ? ADDITIONAL_PET_UPGRADE_CENTS : 0;
+  const amountCents = isPaid ? (pr.amount_cents ?? 0) : 0;
+  const pricingVersion = isPaid ? (pr.pricing_version ?? null) : null;
+  if (isPaid && (!amountCents || !pricingVersion)) {
+    return json(500, { ok: false, error: "Server did not return a priced quote for this upgrade." });
+  }
 
   // Idempotency key is derived from the ORDER + TARGET COUNT, so a double click,
   // a refresh or two open tabs converge on ONE request rather than two.
-  const idemKey = `addpet:${o.id}:v${pr.target_pet_count ?? 0}`;
+  // Replacement linkage. If an earlier request was closed without being paid
+  // (expired checkout, cancelled, rejected) this new one supersedes it. The old
+  // row is NEVER mutated or re-priced — it keeps its own amount and version as
+  // audit evidence — so the link is the only thing that ties the two together.
+  const { data: superseded } = await admin.from("order_additional_pet_requests")
+    .select("id").eq("order_id", o.id)
+    .in("status", ["cancelled", "rejected", "refunded"])
+    .is("paid_at", null)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const replacedRequestId = (superseded as { id?: string } | null)?.id ?? null;
+
+  // Idempotency key: derived from the ORDER + TARGET COUNT so a double click, a
+  // refresh or two open tabs converge on ONE request rather than two.
+  // `idempotency_key` is UNIQUE table-wide, so a replacement for the same order
+  // and target count would collide with the row it replaces and be rejected —
+  // the chain is therefore qualified by the superseded request.
+  const idemKey = `addpet:${o.id}:v${pr.target_pet_count ?? 0}`
+    + (replacedRequestId ? `:r${replacedRequestId.slice(0, 8)}` : "");
 
   const { data: inserted, error: insErr } = await admin
     .from("order_additional_pet_requests")
@@ -386,11 +453,13 @@ Deno.serve(async (req) => {
       new_pet: pet,
       pricing_outcome: pr.outcome,
       amount_cents: amountCents,
+      pricing_version: pricingVersion,
       currency: "usd",
       // $0 requests need no payment step at all — straight to provider review.
       status: isPaid ? "payment_required" : "pending_provider_review",
       assigned_provider_user_id: o.doctor_user_id,
       idempotency_key: idemKey,
+      replaced_request_id: replacedRequestId,
       created_by: isAdmin ? "admin" : "customer",
     })
     .select().maybeSingle();
@@ -464,6 +533,10 @@ Deno.serve(async (req) => {
     target_pet_count: String(pr.target_pet_count ?? ""),
     service_type: serviceType,
     idempotency_key: idemKey,
+    // Which price rule this checkout was created under, so a Stripe-side audit
+    // can tell a grandfathered $20 session from a current $30 one.
+    pricing_version: pricingVersion ?? "",
+    quoted_amount_cents: String(amountCents),
   };
 
   let session;
@@ -471,7 +544,7 @@ Deno.serve(async (req) => {
     session = await stripe.checkout.sessions.create({
       mode: "payment", payment_method_types: ["card"], customer_email: orderEmail,
       line_items: [{ quantity: 1, price_data: { currency: "usd",
-        unit_amount: ADDITIONAL_PET_UPGRADE_CENTS,
+        unit_amount: amountCents,
         product_data: {
           name: "Additional Pet — Multi-Pet Package Upgrade",
           description: `Upgrade for order ${o.confirmation_id ?? ""} — covers up to 3 pets`.trim(),
@@ -512,15 +585,17 @@ Deno.serve(async (req) => {
     await admin.from("audit_logs").insert({
       action: "additional_pet_checkout_created",
       object_type: "order", object_id: o.confirmation_id,
-      description: `Additional Pet upgrade checkout created ($${(ADDITIONAL_PET_UPGRADE_CENTS / 100).toFixed(2)} package-tier upgrade, single -> multi). Awaiting payment.`,
-      metadata: { request_id: requestId, order_id: o.id, amount_cents: ADDITIONAL_PET_UPGRADE_CENTS,
+      description: `Additional Pet upgrade checkout created ($${(amountCents / 100).toFixed(2)} package-tier upgrade, single -> multi, price ${pricingVersion}). Awaiting payment.`,
+      metadata: { request_id: requestId, order_id: o.id, amount_cents: amountCents,
+                  pricing_version: pricingVersion,
                   stripe_checkout_session_id: session.id, target_pet_count: pr.target_pet_count },
     });
   } catch { /* non-critical */ }
 
   return json(200, {
     ok: true, requestId, checkoutUrl: session.url, sessionId: session.id,
-    amountCents: ADDITIONAL_PET_UPGRADE_CENTS,
+    amountCents,
+    pricingVersion,
     request: { ...request, stripe_checkout_session_id: session.id, status: "checkout_created" },
   });
 });
