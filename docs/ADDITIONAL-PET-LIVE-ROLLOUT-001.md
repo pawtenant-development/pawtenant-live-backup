@@ -158,12 +158,35 @@ Provider-headshot privacy guard and public-conversion guard both still green.
 **`repair_order_entitlement_snapshots()` was NOT run.** It is defined but never auto-invoked.
 
 Dry run on LIVE: **229 of 464** snapshots would be rewritten. Projected policy distribution
-231→**398** supported, 233→**66** manual review. **But** only **6 unlocked orders** could change
-customer-visible behaviour (all 6 flip `manual_review_required` → `supported`); the other 223 are
-completion-locked and never reach the entitlement branch, because the lock is evaluated first.
+231→**398** supported, 233→**66** manual review.
 
-Running it is a mass mutation of real customer entitlement records, which sits outside this
-rollout's authorisation. Left for an explicit owner decision.
+### 🔴 The repair would change customer-visible behaviour for **ZERO** orders
+
+A first pass filtered on `locked = false` + `manual_review_required` and found 6 candidates. That
+filter was **wrong** — it ignored the `base_order_reversed` gate. The resolver's order is:
+
+```
+1 not-found → 2 unpaid → 3 REVERSED → 4 completion lock → 5 service
+→ 6 active request → 7 pet ceiling → 8 admin override → 9 ENTITLEMENT (reads the snapshot)
+```
+
+All **6** candidates (`PT-MPNI2THL`, `PT-MPOS9JYY`, `PT-MPV93MJ0`, `PT-MQ2OB1KJ`, `PT-MRGR9PZC`,
+`PT-MROZD5BT`) are `status` refunded/cancelled with `refund_status='full'`, so they stop at
+**gate 3** and never reach gate 9. Repairing their snapshots is invisible.
+
+Confirmed from the other direction: only **3** paid LIVE orders reach the entitlement gate at all —
+`already_covered` (supported, unchanged), `tier_upgrade_required` (supported, unchanged), and
+`entitlement_snapshot_missing`.
+
+🔑 **The one order that *would* benefit cannot be fixed by the repair.** `PT-PSDAEUFNWO1`
+(`psd_standard`, $129, processing) has **no snapshot row at all**; the classifier would rate it
+`supported / single` (a $30 paid upgrade). `repair_order_entitlement_snapshots` only `UPDATE`s
+rows joined from `order_entitlement_snapshots`, so a missing row is untouched. Fixing it requires
+a snapshot **INSERT** (backfill), which is a different operation from the repair.
+
+**Decision: the repair was NOT run** — neither the broad 229 nor a scoped 6. Running it would have
+mutated 6 refunded customers' records for no benefit. **Measure impact at the gate the value is
+actually read, not at the row count.**
 
 ---
 
