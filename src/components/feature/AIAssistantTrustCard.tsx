@@ -35,7 +35,7 @@
  *   - Soft "may be a good option" / "helps explain" framing only.
  */
 
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { trackCtaClick, trackEvent } from "@/lib/trackEvent";
 
@@ -166,7 +166,7 @@ interface AIPlatform {
   /** Button text, e.g. "Ask ChatGPT" / "Open Gemini". */
   label: string;
   /** Inline brand mark component. */
-  Mark: () => JSX.Element;
+  Mark: () => ReactElement;
   /** Brand accent colour for the icon glyph. */
   accent: string;
   /** Soft brand-tinted chip background behind the icon. */
@@ -367,22 +367,27 @@ export default function AIAssistantTrustCard({
   return (
     <section className={`py-12 sm:py-16 ${className || "bg-[#fafafa]"}`}>
       <div className="max-w-3xl mx-auto px-5 sm:px-6">
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white via-[#f1faf9] to-[#fff4ec] p-6 sm:p-9 shadow-[0_20px_50px_-28px_rgba(15,44,51,0.35)] ring-1 ring-teal-100/80">
-          {/* Soft, light decorative accents (clipped by overflow-hidden) */}
-          <div className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-teal-200/30 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-orange-200/25 blur-3xl" />
-
+        {/* LIVE-PUBLIC-PAGES-...-001 design refinement: the pastel teal/orange
+            gradient and the two blurred colour blobs read as toy-like next to
+            the rest of the site. Replaced with a flat white surface, one
+            restrained neutral border, and a neutral eyebrow, so hierarchy comes
+            from type and spacing rather than colour wash. Behaviour, prompts,
+            links, analytics and compliance copy are untouched. */}
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white p-6 sm:p-9 shadow-[0_12px_40px_-28px_rgba(15,23,42,0.30)] ring-1 ring-gray-200">
           <div className="relative">
             {/* Eyebrow */}
-            <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 ring-1 ring-teal-100 mb-4">
-              <i className="ri-robot-line text-teal-600 text-sm" aria-hidden="true"></i>
-              <span className="text-[11px] font-bold uppercase tracking-widest text-teal-700">
+            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200 mb-4">
+              <i className="ri-sparkling-2-line text-slate-600 text-sm" aria-hidden="true"></i>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-slate-600">
                 Ask an AI assistant
               </span>
             </div>
 
             {/* Headline + subtext */}
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight mb-2.5">
+            <h2
+              className="text-2xl sm:text-3xl font-semibold text-[#231F1A] leading-tight mb-2.5"
+              style={{ fontFamily: '"Source Serif 4", Georgia, "Times New Roman", serif' }}
+            >
               {heading}
             </h2>
             <p className="text-gray-600 text-sm sm:text-[15px] leading-relaxed max-w-xl mb-6">

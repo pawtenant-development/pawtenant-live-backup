@@ -51,6 +51,10 @@ const TestimonialsSection = lazy(
 const TopStatesSection = lazy(() => import("./components/TopStatesSection"));
 const ResourcesSection = lazy(() => import("./components/ResourcesSection"));
 const HomePricingSection = lazy(() => import("./components/HomePricingSection"));
+// LIVE-PUBLIC-PAGES-...-001 — the "Having a hard time deciding?" AI assistant
+// panel already shipped on six inner pages but had never been mounted on the
+// homepage. Lazy like every other below-fold section so homepage LCP is unaffected.
+const AIAssistantTrustCard = lazy(() => import("@/components/feature/AIAssistantTrustCard"));
 const FAQSection = lazy(() => import("./components/FAQSection"));
 const CTASection = lazy(() => import("./components/CTASection"));
 const SharedFooter = lazy(
@@ -299,6 +303,23 @@ export default function Home() {
           {/* Transparent 3-card ESA pricing + payment trust strip. */}
           <Suspense fallback={<SectionFallback />}>
             <HomePricingSection />
+          </Suspense>
+
+          {/* "Having a hard time deciding?" — hands the CURRENT page to ChatGPT,
+              Claude, Perplexity or Gemini with a compliant prompt, then routes
+              into the evaluation. Placed after pricing (the visitor has now seen
+              the plans and may want a second opinion) and before the FAQ. */}
+          <Suspense fallback={<SectionFallback />}>
+            <AIAssistantTrustCard
+              pageUrl="/"
+              topic="ESA letters"
+              serviceType="esa"
+              ctaHref="/assessment"
+              ctaLabel="Start ESA Evaluation"
+              heading="Having a hard time deciding?"
+              subcopy="Hand this page to an AI assistant and ask it to summarise what PawTenant offers and whether it fits your situation. An assistant can explain the page — only a licensed provider can determine whether you qualify."
+              className="bg-white border-t border-gray-100"
+            />
           </Suspense>
 
           {/* HUD strip + FAQ (FAQPage schema). */}
