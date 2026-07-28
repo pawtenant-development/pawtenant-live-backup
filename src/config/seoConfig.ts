@@ -76,11 +76,18 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Robert Staaf is a Licensed Clinical Social Worker (LCSW) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
   },
-  "/doctors/michelle-lafferty": {
-    title: "Michelle Lafferty, LCSW | ESA Evaluations | PawTenant",
-    description:
-      "Michelle Lafferty is a Licensed Clinical Social Worker (LCSW) providing individual telehealth ESA evaluations through PawTenant.",
-  },
+  // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001 — /doctors/michelle-lafferty has NO
+  // SEO entry while Admin has this provider inactive + unpublished.
+  //
+  // With an entry here, prerender-seo.mjs emitted a static shell whose raw HTML
+  // said "index, follow" and whose <title>/<description> named her, even though
+  // the body renders a privacy-safe not-found. That advertised an unpublished
+  // provider to crawlers and leaked her name into the tab title.
+  //
+  // The ROUTE still resolves (classifier keeps all eight slugs) and renders
+  // not-found + noindex. To re-publish: flip her status in Admin, re-verify
+  // snapshotActive/snapshotPublished in src/data/publicProviders.ts, and restore
+  // a title/description entry here.
   "/doctors/lytara-garcia": {
     title: "Lytara Garcia, LCSW | ESA Evaluations | PawTenant",
     description:

@@ -166,7 +166,11 @@ async function run() {
 
   // A) Builder fixtures ------------------------------------------------------
   const pj = await jiti.import(resolve(ROOT, "src/lib/providerJsonLd.ts"));
-  const providers = (await jiti.import(resolve(ROOT, "src/data/publicProviders.ts"))).PUBLIC_PROVIDERS;
+  // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001: only PUBLISHED providers are
+  // prerendered as indexable pages, so only those can be expected to ship a
+  // BreadcrumbList in raw HTML. An unpublished provider's route renders a
+  // privacy-safe not-found and intentionally emits no profile breadcrumb.
+  const providers = (await jiti.import(resolve(ROOT, "src/data/publicProviders.ts"))).PUBLISHED_PROVIDERS;
   const seo = await jiti.import(resolve(ROOT, "src/lib/seoSchema.ts"));
 
   const profileGraph = pj.buildProviderJsonLd(providers[0]);

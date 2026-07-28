@@ -44,24 +44,30 @@ export default function DoctorProfilePage() {
   // for every visitor, the gate failed closed, and EVERY /doctors/<slug> page
   // rendered "Provider not found" in production. It now reads the public-safe
   // RPC, which evaluates the same gate server side.
-  const [hidden, setHidden] = useState(false);
+  // Seeded from the verified snapshot status so the SEO PRERENDER (which runs
+  // no effects) already hides an unpublished provider. Seeding this `false`
+  // meant /doctors/<unpublished> was prerendered as a full, "index, follow"
+  // profile — the crawler-visible half of the leak this task closes.
+  const [hidden, setHidden] = useState(() =>
+    provider ? provider.snapshotPublished !== true : false,
+  );
   const [photo, setPhoto] = useState<string | null>(provider?.image ?? null);
   const [npiVerify, setNpiVerify] = useState<NpiVerifyResult>({ status: "idle" });
   const [showVerifyPanel, setShowVerifyPanel] = useState(false);
 
   useEffect(() => {
-    setHidden(false);
     // Allowlist miss -> nothing to gate (renders 404 below).
     if (!provider) return;
+    // Re-seed from the snapshot, then let the live directory decide.
+    setHidden(provider.snapshotPublished !== true);
     setPhoto(provider.image ?? null);
     let cancelled = false;
     (async () => {
       const dir = await fetchPublicProviderDirectory();
       if (cancelled) return;
-      if (!isVisibleInDirectory(provider.dbSlug, provider.snapshotPublished, dir)) {
-        setHidden(true);
-        return;
-      }
+      const visible = isVisibleInDirectory(provider.dbSlug, provider.snapshotPublished, dir);
+      setHidden(!visible);
+      if (!visible) return;
       setPhoto(resolveProviderPhoto(provider.dbSlug, provider.image, dir));
     })();
     return () => {

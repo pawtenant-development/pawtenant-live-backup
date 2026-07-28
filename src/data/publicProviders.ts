@@ -212,6 +212,28 @@ export const PUBLIC_PROVIDERS: readonly PublicProvider[] = [
 // the prerender entry, sitemaps, and the entity guard.
 export const CURATED_PROVIDER_SLUGS: readonly string[] = PUBLIC_PROVIDERS.map((p) => p.slug);
 
+// LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001.
+// The subset whose LAST-VERIFIED admin status is active + published.
+//
+// CURATED_PROVIDER_SLUGS still enumerates all eight for the ROUTE CLASSIFIER, so
+// /doctors/<unpublished> stays a known route that renders a privacy-safe
+// not-found with noindex (rather than becoming a hard 404 that would have to be
+// re-added when the owner re-publishes them).
+//
+// PUBLISHED_PROVIDER_SLUGS is what may be ADVERTISED — prerendered as indexable
+// HTML, listed in the sitemaps, and emitted in directory schema. Without this
+// split an unpublished provider's full profile is still prerendered with
+// "index, follow" and still listed in sitemap.xml, which is exactly the leak
+// this task exists to close.
+export const PUBLISHED_PROVIDER_SLUGS: readonly string[] = PUBLIC_PROVIDERS
+  .filter((p) => p.snapshotActive === true && p.snapshotPublished === true)
+  .map((p) => p.slug);
+
+/** Curated providers whose last-verified admin status is active + published. */
+export const PUBLISHED_PROVIDERS: readonly PublicProvider[] = PUBLIC_PROVIDERS.filter(
+  (p) => p.snapshotActive === true && p.snapshotPublished === true,
+);
+
 // NOTE: the former HOMEPAGE_PROVIDER_SLUGS hardcoded four-name strip was removed
 // by LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001. The homepage now derives both its
 // cards and its canonical name links from the live-gated visible set, so an

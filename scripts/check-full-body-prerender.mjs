@@ -179,11 +179,13 @@ const SPIKE = [
     titleHas: "Robert Staaf", h1Has: "Robert Staaf", minText: 400,
     mustLink: ["/assessment", "/our-providers"], mustText: ["Robert Staaf"],
   },
-  {
-    path: "/doctors/michelle-lafferty", file: "doctors/michelle-lafferty/index.html",
-    titleHas: "Michelle Lafferty", h1Has: "Michelle Lafferty", minText: 400,
-    mustLink: ["/assessment", "/our-providers"], mustText: ["Michelle Lafferty"],
-  },
+  // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001: /doctors/michelle-lafferty is no
+  // longer prerendered or listed in the sitemap. Admin has this provider
+  // inactive + unpublished, so advertising a full indexable profile for her was
+  // the crawler-visible half of the visibility leak this task closed. The ROUTE
+  // still exists and resolves to a privacy-safe not-found with noindex; it is
+  // simply not an indexable, advertised page. If the owner re-publishes her in
+  // Admin, re-verify the snapshot status and restore an entry here.
   {
     path: "/doctors/lytara-garcia", file: "doctors/lytara-garcia/index.html",
     titleHas: "Lytara Garcia", h1Has: "Lytara Garcia", minText: 400,

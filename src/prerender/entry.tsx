@@ -41,7 +41,7 @@ import BlogEsaLetterRequirementsPage from "@/pages/blog-esa-letter-requirements/
 import ExploreStatesPage from "@/pages/explore-states/page";
 import DoctorProfilePage from "@/pages/doctor-profile/page";
 import OurProvidersPage from "@/pages/our-providers/page";
-import { PUBLIC_PROVIDERS, getPublicProvider } from "@/data/publicProviders";
+import { PUBLISHED_PROVIDERS, getPublicProvider } from "@/data/publicProviders";
 import { buildProviderJsonLd, buildOurProvidersJsonLd, stringifyJsonLd } from "@/lib/providerJsonLd";
 
 // Route pattern → component. Patterns mirror src/router/config.tsx exactly so a
@@ -73,7 +73,6 @@ export const SPIKE_ROUTES: string[] = [
   "/explore-esa-letters-all-states",
   "/our-providers",
   "/doctors/robert-staaf",
-  "/doctors/michelle-lafferty",
   "/doctors/lytara-garcia",
   "/doctors/stephanie-white",
   "/doctors/eve-rosno",
@@ -100,7 +99,6 @@ export const ROUTE_SOURCE: Record<string, string> = {
   "/explore-esa-letters-all-states": "src/pages/explore-states/page.tsx",
   "/our-providers": "src/pages/our-providers/page.tsx",
   "/doctors/robert-staaf": "src/pages/doctor-profile/page.tsx",
-  "/doctors/michelle-lafferty": "src/pages/doctor-profile/page.tsx",
   "/doctors/lytara-garcia": "src/pages/doctor-profile/page.tsx",
   "/doctors/stephanie-white": "src/pages/doctor-profile/page.tsx",
   "/doctors/eve-rosno": "src/pages/doctor-profile/page.tsx",
@@ -137,7 +135,9 @@ export function renderRoute(routePath: string): string {
 export function getRouteHeadJsonLd(routePath: string): string | null {
   const wrap = (graph: Record<string, unknown>) =>
     `<script type="application/ld+json">${stringifyJsonLd(graph).replace(/</g, "\\u003c")}</script>`;
-  if (routePath === "/our-providers") return wrap(buildOurProvidersJsonLd(PUBLIC_PROVIDERS));
+  // Directory schema advertises only providers Admin has published, matching
+  // what the page actually renders.
+  if (routePath === "/our-providers") return wrap(buildOurProvidersJsonLd(PUBLISHED_PROVIDERS));
   const m = routePath.match(/^\/doctors\/([a-z0-9-]+)$/);
   if (m) {
     const provider = getPublicProvider(m[1]);

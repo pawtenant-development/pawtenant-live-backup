@@ -62,6 +62,13 @@ async function main(selfTest) {
   const providers = data.PUBLIC_PROVIDERS;
   const slugs = data.CURATED_PROVIDER_SLUGS;
   const excluded = data.EXCLUDED_PROVIDER_SLUGS;
+  // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001: what may be ADVERTISED (prerendered
+  // as indexable HTML, listed in sitemaps, emitted in directory schema) is the
+  // PUBLISHED subset, not all eight. The route classifier still enumerates all
+  // eight so an unpublished profile is a known route rendering noindex +
+  // not-found rather than a hard 404.
+  const PUBLISHED = [...data.PUBLISHED_PROVIDER_SLUGS];
+  const UNPUBLISHED = APPROVED.filter((s) => !PUBLISHED.includes(s));
 
   check("exactly 8 curated providers", Array.isArray(providers) && providers.length === 8);
   check("curated slugs == approved 8", sameSet([...slugs], APPROVED));
@@ -78,7 +85,13 @@ async function main(selfTest) {
     check(`${ctx}: no "Dr." honorific`, !hasDrHonorific(`${p.name} ${p.role} ${p.title} ${p.bio}`));
     check(`${ctx}: no "Legitimate"`, !hasLegit(`${p.title} ${p.role} ${p.bio}`));
     check(`${ctx}: role is not Physician`, !/physician/i.test(p.role));
-    check(`${ctx}: snapshot active+published`, p.snapshotActive === true && p.snapshotPublished === true);
+    // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001: the snapshot status is a
+    // TRANSCRIPTION of the authoritative admin record, not an assertion that
+    // every curated provider is live. It may legitimately be false (e.g. a
+    // provider the owner has deactivated). What must hold is that it is a real
+    // boolean — visibility itself is decided by get_public_provider_directory().
+    check(`${ctx}: snapshot status is boolean`,
+      typeof p.snapshotActive === "boolean" && typeof p.snapshotPublished === "boolean");
     if (NEW.includes(p.slug)) check(`${ctx}: new provider uses initials (no image)`, p.image === null);
     else check(`${ctx}: flagship uses repo asset`, typeof p.image === "string" && p.image.startsWith("/assets/providers/"));
   }
@@ -118,8 +131,12 @@ async function main(selfTest) {
   const seo = await jiti.import(resolve(ROOT, "src/config/seoConfig.ts"));
   const meta = seo.CORE_PAGE_META;
   check("/our-providers has SEO entry", !!meta["/our-providers"]);
-  const provRoutes = APPROVED.map((s) => `/doctors/${s}`);
-  check("all 8 profiles have SEO entries", provRoutes.every((r) => meta[r] && meta[r].title && meta[r].description));
+  // Only PUBLISHED providers may carry an SEO entry — an entry produces a
+  // prerendered, indexable shell naming that provider.
+  const provRoutes = PUBLISHED.map((s) => `/doctors/${s}`);
+  check("all published profiles have SEO entries", provRoutes.every((r) => meta[r] && meta[r].title && meta[r].description));
+  check("unpublished profiles have NO SEO entry",
+    UNPUBLISHED.every((s) => !meta[`/doctors/${s}`]));
   const titles = provRoutes.map((r) => meta[r]?.title ?? "");
   const descs = provRoutes.map((r) => meta[r]?.description ?? "");
   check("provider titles are unique", allUnique(titles));
@@ -131,14 +148,16 @@ async function main(selfTest) {
   const xml = await rd("public/sitemap.xml");
   const xmlDoctors = doctorLocsIn(xml);
   check("sitemap has /our-providers", xml.includes("/our-providers</loc>"));
-  check("sitemap has all 8 approved profiles", APPROVED.every((s) => xmlDoctors.includes(s)));
-  check("sitemap /doctors set == approved 8 (no extras)", sameSet(xmlDoctors, APPROVED));
+  check("sitemap has every PUBLISHED profile", PUBLISHED.every((s) => xmlDoctors.includes(s)));
+  check("sitemap /doctors set == published set (no extras)", sameSet(xmlDoctors, PUBLISHED));
+  check("sitemap omits unpublished profiles", !UNPUBLISHED.some((s) => xmlDoctors.includes(s)));
   check("sitemap excludes Edna", !EXCLUDED.some((s) => xml.includes(`/doctors/${s}`)));
   check("sitemap excludes aliases", !ALIASES.some((s) => xml.includes(`/doctors/${s}`)));
 
   // ── 6) HTML sitemap page ───────────────────────────────────────────────────
   const htmlSitemap = await rd("src/pages/sitemap/page.tsx");
-  check("HTML sitemap links all 8 profiles", APPROVED.every((s) => htmlSitemap.includes(`/doctors/${s}`)));
+  check("HTML sitemap links every PUBLISHED profile", PUBLISHED.every((s) => htmlSitemap.includes(`/doctors/${s}`)) || /PUBLISHED_PROVIDERS/.test(htmlSitemap));
+  check("HTML sitemap is derived, not a hardcoded provider list", /PUBLISHED_PROVIDERS/.test(htmlSitemap));
   check("HTML sitemap links /our-providers", htmlSitemap.includes("/our-providers"));
   check("HTML sitemap excludes Edna", !EXCLUDED.some((s) => htmlSitemap.includes(`/doctors/${s}`)));
 
@@ -146,7 +165,8 @@ async function main(selfTest) {
   const entry = await rd("src/prerender/entry.tsx");
   const spikeBlock = (entry.match(/SPIKE_ROUTES[^=]*=\s*\[([\s\S]*?)\];/) || [])[1] || "";
   const spikeDoctors = [...spikeBlock.matchAll(/\/doctors\/([a-z0-9-]+)/g)].map((m) => m[1]);
-  check("exactly 8 provider routes prerendered", spikeDoctors.length === 8 && sameSet(spikeDoctors, APPROVED));
+  check("prerendered provider routes == published set", sameSet(spikeDoctors, PUBLISHED));
+  check("unpublished providers are NOT prerendered as indexable", !UNPUBLISHED.some((s) => spikeDoctors.includes(s)));
   check("prerender includes /our-providers", spikeBlock.includes('"/our-providers"'));
   check("prerender excludes Edna + aliases",
     ![...EXCLUDED, ...ALIASES].some((s) => spikeBlock.includes(`/doctors/${s}`)));
@@ -174,18 +194,43 @@ async function main(selfTest) {
   const profileSrc = await rd("src/pages/doctor-profile/page.tsx");
   check("profile imports getPublicProvider", /getPublicProvider/.test(profileSrc) && /data\/publicProviders/.test(profileSrc));
   check("profile does NOT read the mock DOCTORS array", !/\bDOCTORS\b/.test(profileSrc) && !/mocks\/doctors/.test(profileSrc));
-  check("profile applies the fail-closed live gate", /fetchLiveProviderStatus|isProviderPubliclyVisible/.test(profileSrc));
+  check("profile applies the live directory gate",
+    /isVisibleInDirectory/.test(profileSrc) && /publicProviderDirectory/.test(profileSrc));
 
-  // ── 11) Fail-closed adapter is env-separated (TEST fallback can't run in LIVE)
-  const vis = await rd("src/lib/providerVisibility.ts");
-  check("adapter defines TEST ref", /TEST_SUPABASE_REF\s*=\s*"opudhofjbydrljgleofq"/.test(vis));
-  check("isTestProviderEnv defaults to production (false)", /catch\s*\{\s*return false;/.test(vis));
-  // The snapshot-status branch must be reachable ONLY inside isTestProviderEnv().
-  const visBody = vis.replace(/\/\/[^\n]*/g, "");
-  check("snapshot fallback gated by isTestProviderEnv()",
-    /if\s*\(\s*isTestProviderEnv\(\)\s*\)\s*\{[\s\S]*?snapshotActive[\s\S]*?snapshotPublished/.test(visBody));
-  check("production path fails closed on missing status",
-    /liveStatus\.found\s*!==\s*true\)\s*return false/.test(visBody));
+  // ── 11) Public provider directory: public-safe projection + data-driven gate
+  const dirSrc = await rd("src/lib/publicProviderDirectory.ts");
+  check("directory calls the public-safe RPC",
+    /rpc\(\s*"get_public_provider_directory"\s*\)/.test(dirSrc));
+  // The projection type must not carry private provider fields.
+  check("directory record exposes no private fields",
+    !/email|phone|per_order_rate|license_number|availability_status/.test(
+      dirSrc.slice(dirSrc.indexOf("export interface PublicProviderRecord"), dirSrc.indexOf("export interface PublicProviderDirectory"))));
+  // A network failure must NOT blank the section — it keeps the verified seed.
+  check("directory distinguishes failure from empty", /failed:\s*true/.test(dirSrc));
+  check("visibility falls back to the verified snapshot seed",
+    /if\s*\(!dir\.loaded\s*\|\|\s*dir\.failed\)\s*return snapshotPublished/.test(dirSrc));
+  check("visibility otherwise requires a live directory row",
+    /return dir\.byDbSlug\.has\(/.test(dirSrc));
+  check("photo precedence is live-then-snapshot", /resolveProviderPhoto/.test(dirSrc));
+
+  // The gate must be DATA-DRIVEN. No provider name / email may appear as a
+  // hide rule anywhere in the public provider path (the Michelle regression).
+  const providerPathFiles = [
+    "src/lib/publicProviderDirectory.ts",
+    "src/pages/home/components/DoctorsSection.tsx",
+    "src/pages/our-providers/page.tsx",
+    "src/pages/doctor-profile/page.tsx",
+  ];
+  for (const f of providerPathFiles) {
+    const src = (await rd(f)).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*/g, "");
+    check(`${f}: no name-specific provider exclusion`,
+      !/michelle|lafferty/i.test(src) && !/HIDDEN_PROVIDER|hiddenProviders|BLOCKED_PROVIDER/i.test(src));
+    check(`${f}: no hardcoded provider photo URL`,
+      !/provider-headshots/.test(src));
+  }
+  // The homepage must not reintroduce a hardcoded name array for its strip.
+  const docSec = await rd("src/pages/home/components/DoctorsSection.tsx");
+  check("homepage strip is not a hardcoded slug list", !/HOMEPAGE_PROVIDER_SLUGS/.test(docSec));
 
   // ── 12) Fabricated "Dr. M. Reeves" sample identity absent ──────────────────
   const everything = await rd("src/pages/everything-esa-online/page.tsx");

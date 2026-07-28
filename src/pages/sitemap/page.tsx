@@ -1,3 +1,4 @@
+import { PUBLISHED_PROVIDERS } from "../../data/publicProviders";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
@@ -23,14 +24,13 @@ const siteStructure = [
     color: "orange",
     links: [
       { label: "Our Providers", href: "/our-providers" },
-      { label: "Robert Staaf, LCSW", href: "/doctors/robert-staaf" },
-      { label: "Michelle Lafferty, LCSW", href: "/doctors/michelle-lafferty" },
-      { label: "Lytara Garcia, LCSW", href: "/doctors/lytara-garcia" },
-      { label: "Stephanie White, LCSW", href: "/doctors/stephanie-white" },
-      { label: "Eve Rosno, Licensed Psychologist", href: "/doctors/eve-rosno" },
-      { label: "Henry Smith, LCSW", href: "/doctors/henry-smith" },
-      { label: "Chad Cunningham, LPC", href: "/doctors/chad-cunningham" },
-      { label: "Karla Delgado, LMFT", href: "/doctors/karla-delgado" }
+      // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001: derived from PUBLISHED_PROVIDERS
+      // instead of a hardcoded list, so an unpublished provider cannot linger
+      // here as a stale link to a page that now renders not-found + noindex.
+      ...PUBLISHED_PROVIDERS.map((p) => ({
+        label: `${p.name}, ${p.title}`,
+        href: `/doctors/${p.slug}`,
+      })),
     ]
   },
   {
