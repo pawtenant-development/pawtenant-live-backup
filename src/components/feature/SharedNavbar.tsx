@@ -34,8 +34,16 @@ const navGroups: NavGroup[] = [
       },
       {
         title: "Guides & Help",
+        // LIVE-PUBLIC-PAGES-...-001 — owner decision: "ESA Letter for Landlords"
+        // (/esa-letter-for-landlord) is REMOVED from the public navigation. The
+        // route and page are unchanged and still reachable from contextual
+        // in-page links, Guides/related-content cards, the sitemap and search;
+        // it is not redirected or de-indexed. "ESA Letters for Apartments"
+        // (/esa-letter-for-apartments) takes its place here — the single general
+        // ESA apartment page (the CA/TX/FL/NY variants are state-scoped and
+        // /psd-letter-for-apartments is a different product).
         items: [
-          { label: "ESA Letter for Landlords", href: "/esa-letter-for-landlord", desc: "Share your letter the right way" },
+          { label: "ESA Letters for Apartments", href: "/esa-letter-for-apartments", desc: "Renting an apartment with an ESA" },
           { label: "Landlord Denied Your ESA?", href: "/landlord-denied-esa-letter", desc: "Your rights and next steps" },
           { label: "Best Online ESA Letter Services", href: "/best-online-esa-letter-service", desc: "How to choose a trusted provider" },
           { label: "ESA Travel & Housing Support", href: "/travel-anxiety-esa-letter", desc: "Travel anxiety & temporary stays" },
