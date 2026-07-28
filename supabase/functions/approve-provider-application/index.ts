@@ -135,8 +135,13 @@ async function generateUniqueSlug(
 async function publishHeadshot(
   adminClient: ReturnType<typeof createClient>,
   headshotValue: string | null,
-  email: string,
+  /** Internal UUID used to namespace the object key. NEVER an email or name. */
+  providerId: string,
 ): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(providerId)) {
+    console.warn("[approve-provider-application] publishHeadshot: non-UUID provider id refused");
+    return null;
+  }
   const v = (headshotValue ?? "").trim();
   if (!v) return null;
 
@@ -169,11 +174,16 @@ async function publishHeadshot(
       return null;
     }
 
+    // PROVIDER-HEADSHOT-OBJECT-KEY-DEIDENTIFICATION-001: the destination key was
+    // `${email.replace(/[^a-z0-9]/gi,"_")}.${ext}`, which published the
+    // provider's email address in a PUBLIC bucket path. It is now
+    // <provider_uuid>/<version_uuid>.<ext> — no PII, and versioned so a
+    // replacement never depends on cache invalidation.
     const rawExt = (path.split(".").pop() ?? "").toLowerCase();
-    const ext = /^[a-z0-9]{1,5}$/.test(rawExt)
+    const ext = /^(jpg|jpeg|png|webp|gif)$/.test(rawExt)
       ? (rawExt === "jpeg" ? "jpg" : rawExt)
       : "jpg";
-    const destPath = `${email.replace(/[^a-z0-9]/gi, "_")}.${ext}`;
+    const destPath = `${providerId.toLowerCase()}/${crypto.randomUUID()}.${ext}`;
     // provider-headshots rejects the non-standard "image/jpg" alias.
     const blobType = (blob.type ?? "").toLowerCase();
     const contentType =
@@ -187,7 +197,13 @@ async function publishHeadshot(
 
     const { error: upErr } = await adminClient.storage
       .from("provider-headshots")
-      .upload(destPath, await blob.arrayBuffer(), { contentType, upsert: true });
+      // upsert:false — destPath carries a fresh version uuid so it cannot
+      // collide, and we must never silently overwrite an existing object.
+      .upload(destPath, await blob.arrayBuffer(), {
+        contentType,
+        upsert: false,
+        cacheControl: "31536000",
+      });
     if (upErr) {
       console.warn(
         `[approve-provider-application] headshot publish failed (${destPath}):`,
@@ -649,7 +665,9 @@ Deno.serve(async (req) => {
     // headshot value is a private provider-uploads reference (see
     // publishHeadshot above). Null when there is no headshot or the copy
     // failed; admin can set a photo later from the provider drawer.
-    const publicHeadshotUrl = await publishHeadshot(adminClient, headshotUrl, appEmail);
+    // Namespaced by the application UUID — a non-PII internal identifier that
+    // already exists at this point (the doctor_profiles row is created below).
+    const publicHeadshotUrl = await publishHeadshot(adminClient, headshotUrl, String(applicationId));
     // OPS-PROVIDER-APPLICATION-PHASE1-SAFE-FIXES: NPI is captured on the
     // application form. Sync it into doctor_profiles.npi_number so the provider
     // does not have to re-enter it from the portal. Only fill when missing on

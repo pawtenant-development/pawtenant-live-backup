@@ -6,6 +6,7 @@ import ImpersonateProviderView from "./ImpersonateProviderView";
 import ProviderInternalRecords from "./ProviderInternalRecords";
 import { normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay, US_STATE_CODE_TO_NAME } from "../../../lib/usStates";
 import { resolveProviderUploadUrl, resolveProviderUploadUrls } from "../../../lib/providerUploads";
+import { buildProviderHeadshotKey, isHeadshotKeyFailure, PROVIDER_HEADSHOT_BUCKET } from "../../../lib/providerHeadshotKey";
 
 // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: helper used by every
 // outbound call in this drawer that re-saves an existing licensed_states
@@ -310,16 +311,47 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     if (file) handlePhotoFile(file);
   }, [handlePhotoFile]);
 
-  const uploadPhotoToStorage = async (file: File, email: string): Promise<string | null> => {
+  // PROVIDER-HEADSHOT-OBJECT-KEY-DEIDENTIFICATION-001.
+  //
+  // This previously keyed the object on the provider's EMAIL:
+  //     email.replace(/[^a-z0-9]/gi, "_") + "." + ext
+  // provider-headshots is a PUBLIC bucket, so that key was published verbatim
+  // in page markup and in every image request, and the bucket could be listed
+  // anonymously — which exposed provider email addresses. It also wrote to a
+  // FIXED path with upsert:true, so a replacement reused the same URL and
+  // depended on cache invalidation to be seen.
+  //
+  // Keys are now generated centrally as <provider_uuid>/<version_uuid>.<ext>,
+  // and the extension comes from the validated MIME type, never the filename.
+  const uploadPhotoToStorage = async (file: File, providerId: string): Promise<string | null> => {
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
-      const safeName = email.replace(/[^a-z0-9]/gi, "_");
-      const path = `${safeName}.${ext}`;
-      const { error } = await supabase.storage.from("provider-headshots").upload(path, file, { upsert: true, contentType: file.type });
-      if (error) { console.error("Storage upload error:", error.message); return null; }
-      const { data } = supabase.storage.from("provider-headshots").getPublicUrl(path);
+      const built = buildProviderHeadshotKey(providerId, file.type, file.size);
+      // Explicit predicate: this project compiles with strictNullChecks:false,
+      // under which `if (!built.ok)` does NOT narrow the union.
+      if (isHeadshotKeyFailure(built)) {
+        showToast(built.message);
+        return null;
+      }
+      // upsert:false — a fresh version uuid must never collide with an existing
+      // object, and we must never silently overwrite someone else's headshot.
+      const { error } = await supabase.storage
+        .from(PROVIDER_HEADSHOT_BUCKET)
+        .upload(built.key, file, {
+          upsert: false,
+          contentType: built.contentType,
+          cacheControl: "31536000",
+        });
+      if (error) {
+        console.error("Storage upload error:", error.message);
+        showToast("Photo upload failed. The existing photo was kept.");
+        return null;
+      }
+      const { data } = supabase.storage.from(PROVIDER_HEADSHOT_BUCKET).getPublicUrl(built.key);
       return data.publicUrl ?? null;
-    } catch { return null; }
+    } catch {
+      showToast("Photo upload failed. The existing photo was kept.");
+      return null;
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -328,8 +360,14 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     let finalPhotoUrl = form.photo_url;
     if (photoFile) {
       setUploadingPhoto(true);
-      const uploaded = await uploadPhotoToStorage(photoFile, doc.email);
+      // Key on an internal UUID, never the email. Precedence mirrors the
+      // migration: doctor_profiles.id, else doctor_contacts.id.
+      const providerId = doc.profile?.id ?? doc.contact?.id ?? null;
+      const uploaded = providerId ? await uploadPhotoToStorage(photoFile, providerId) : null;
+      if (!providerId) showToast("Cannot upload a photo before this provider record is saved.");
       setUploadingPhoto(false);
+      // On failure finalPhotoUrl keeps its existing value, so the provider
+      // never ends up with a blank photo because an upload failed.
       if (uploaded) { finalPhotoUrl = uploaded; setForm((f) => ({ ...f, photo_url: uploaded })); setPhotoPreview(uploaded); setPhotoFile(null); }
     }
     const updates: Promise<unknown>[] = [];
