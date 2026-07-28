@@ -7,7 +7,7 @@
 // THE DEFECT THIS REPLACES
 // Both upload paths built the object key from the provider's email address:
 //     email.replace(/[^a-z0-9]/gi, "_") + "." + ext
-// so `someone@gmail.com` became `someone_gmail_com.jpg`. Because
+// so an address became `<local-part>_<domain>_<tld>.jpg`. Because
 // `provider-headshots` is a PUBLIC bucket, that key appeared verbatim in public
 // page markup, in every browser network request, and — worse — the bucket's
 // storage SELECT policy let an anonymous caller LIST the bucket and enumerate
@@ -157,7 +157,8 @@ export function buildProviderHeadshotKey(
 export function looksLikeEmailDerivedKey(key: string): boolean {
   const k = (key ?? "").toLowerCase();
   if (k.includes("@")) return true;
-  // someone_gmail_com.jpg / first_last_yahoo_com.png / name_domain_co.png
+  // Matches the normalised shape <local-part>_<domain>_<tld>.<ext>, e.g. a
+  // mail address with every non-alphanumeric character replaced by underscore.
   return /_[a-z0-9-]+_(com|net|org|co|io|us|uk|ca)\b/.test(k);
 }
 
