@@ -72,5 +72,5 @@ Nothing in these groups may ever enter the index:
   portal workflow, provider notification or vendor booking behind it.
 - `PROVIDER-HEADSHOT-OBJECT-KEY-DEIDENTIFICATION-001` — separately queued; provider
   headshot filenames in the public storage bucket encode provider email addresses
-  (e.g. `robertstaaftherapy_gmail_com.jpg`), so those URLs appear in public page
+  (a normalised email address, e.g. `<local-part>_<domain>_com.jpg`), so those URLs appear in public page
   markup. Object keys should be re-keyed to opaque identifiers.
