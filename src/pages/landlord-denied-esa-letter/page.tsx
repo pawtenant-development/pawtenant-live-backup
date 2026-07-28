@@ -4,7 +4,10 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
-import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import PublicPageHero from "../../components/feature/PublicPageHero";
+import PlanPricingSection from "../../components/feature/PlanPricingSection";
+import EsaLetterVerificationWidget from "../../components/feature/EsaLetterVerificationWidget";
+import { buildEsaPlanCards, ESA_PLAN_COPY } from "../../data/planPricingCards";
 import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
@@ -193,79 +196,104 @@ export default function LandlordDeniedESALetterPage() {
       <SharedNavbar />
 
       {/* ===== HERO ===== */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-orange-50 via-white to-white pt-28 pb-16">
-        <div className="max-w-6xl mx-auto px-6 grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
-          {/* Left — copy */}
-          <div className="text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 bg-white border border-orange-200 rounded-full px-4 py-1.5 mb-6 shadow-sm">
-              <i className="ri-home-heart-line text-orange-500 text-sm"></i>
-              <span className="text-xs font-semibold tracking-wide uppercase text-orange-600">
-                ESA Housing Rights
-              </span>
-            </div>
-            <h1 className="text-3xl md:text-5xl font-extrabold text-gray-900 leading-tight mb-5">
-              Landlord Denied Your ESA Letter?
-              <br />
-              <span className="text-orange-500">Know Your Housing Rights</span>
-            </h1>
-            <p className="text-base md:text-lg text-gray-600 leading-relaxed max-w-xl mx-auto lg:mx-0 mb-8">
-              A denial is not always the end of the conversation. Learn what the Fair Housing
-              Act actually says, what landlords can and cannot do, and the calm, practical
-              steps to respond — plus state-by-state guidance.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3 mb-5">
-              <Link
-                to={withAttribution("/assessment")}
-                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3.5 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors text-sm shadow-sm"
-              >
-                <i className="ri-stethoscope-line"></i> Start ESA Evaluation
-              </Link>
-              <a
-                href="#state-rules"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-7 py-3.5 bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:border-orange-300 hover:text-orange-600 transition-colors text-sm"
-              >
-                <i className="ri-map-pin-line"></i> Check My State Rules
-              </a>
-            </div>
-            <p className="text-xs text-gray-400 max-w-xl mx-auto lg:mx-0">
-              Educational information only — not legal advice. A licensed provider must review your
-              request, and no service can guarantee landlord approval.
+      {/* HERO — REACTIVE intent: the denial has already happened.
+          LIVE-PUBLIC-PAGES-...-001: this page previously shared BOTH its layout
+          and its hero image (woman-with-dog-new-apartment.jpg) with
+          /esa-letter-for-landlord, which is why the two read as duplicates. The
+          image, the H1 and the sub-copy here are all unique to this page and a
+          guard asserts they never match the proactive landlord page again.
+          Reassurance-led imagery deliberately contrasts with the
+          documentation-led photo on the proactive page. */}
+      <PublicPageHero
+        variant="image"
+        backgroundImage="/assets/lifestyle/esa-owner-hugging-dog-home.jpg"
+        overlay="strong"
+        eyebrow="ESA Housing Rights"
+        heading="Your Landlord Denied Your ESA Letter — What Now?"
+        subheading="A denial is not always the end of the conversation. Work through what the stated reason was, confirm your documentation is verifiable, put the denial in writing, and understand when a fair-housing complaint is the appropriate next step."
+        ctas={[
+          { label: "Work through the next steps", href: "#next-steps", primary: true, icon: "ri-list-check-2" },
+          { label: "Check my state rules", href: "#state-rules", icon: "ri-map-pin-line" },
+        ]}
+        trustPoints={[
+          "Verify your letter",
+          "Get the denial in writing",
+          "Know the escalation path",
+        ]}
+      >
+        <p className="text-[12px] text-white/70 max-w-xl mx-auto leading-relaxed">
+          Educational information only — not legal advice. Not every denial is unlawful, outcomes
+          depend on the specific facts and the applicable law, and no service can guarantee landlord
+          approval or the result of a complaint.
+        </p>
+      </PublicPageHero>
+
+      {/* ===== NEXT STEPS AFTER A DENIAL =====
+          Reactive counterpart to the proactive page's "what to send" block. */}
+      <section id="next-steps" className="py-14 sm:py-16 bg-white scroll-mt-24">
+        <div className="max-w-5xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">
+              Five things to do after a denial
+            </h2>
+            <p className="text-gray-500 text-sm max-w-2xl mx-auto leading-relaxed">
+              Work through these in order. Most denials are resolved long before anyone files
+              anything.
             </p>
           </div>
 
-          {/* Right — hero visual */}
-          <div className="relative">
-            <div className="relative rounded-3xl overflow-hidden shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] ring-1 ring-black/5 aspect-[4/3] bg-orange-100">
-              <img
-                src="/assets/lifestyle/woman-with-dog-new-apartment.jpg"
-                alt="Tenant settling into a new apartment with her emotional support dog"
-                width={1000}
-                height={750}
-                loading="eager"
-                decoding="async"
-                fetchPriority="high"
-                className="w-full h-full object-cover object-center"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent"></div>
-            </div>
-            {/* Floating trust chip — FHA */}
-            <div className="absolute -bottom-4 left-4 sm:left-6 bg-white rounded-2xl shadow-lg ring-1 ring-gray-100 px-4 py-3 flex items-center gap-3 max-w-[15rem]">
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
-                <i className="ri-scales-3-line text-emerald-600"></i>
-              </div>
-              <div>
-                <p className="text-xs font-extrabold text-gray-900 leading-tight">Fair Housing Act</p>
-                <p className="text-[11px] text-gray-500 leading-tight">Protects assistance animals in housing</p>
-              </div>
-            </div>
-            {/* Floating chip — review, top right */}
-            <div className="absolute -top-3 right-4 sm:right-6 bg-white rounded-xl shadow-md ring-1 ring-gray-100 px-3 py-2 hidden sm:flex items-center gap-2">
-              <i className="ri-checkbox-circle-fill text-orange-500"></i>
-              <span className="text-[11px] font-bold text-gray-700">Accommodation request</span>
-            </div>
-          </div>
+          <ol className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[
+              {
+                n: "1",
+                t: "Read the stated reason carefully",
+                d: "Ask your housing provider what specifically was denied and why. Some denials are about a missing form or an incomplete request rather than the animal itself, and those are usually fixable.",
+              },
+              {
+                n: "2",
+                t: "Verify your own letter",
+                d: "Confirm the document is genuine and current using its Verification ID. A letter that cannot be verified is one of the most common reasons a housing provider pushes back.",
+              },
+              {
+                n: "3",
+                t: "Check the provider's credentials",
+                d: "Your letter should name a licensed professional and their license state. Where an NPI is listed you can look it up yourself in the public CMS NPPES registry.",
+              },
+              {
+                n: "4",
+                t: "Get the denial in writing",
+                d: "Politely ask for the decision and its reason by email or letter. A written record matters if the matter escalates, and requesting one is a normal, non-adversarial step.",
+              },
+              {
+                n: "5",
+                t: "Consider the fair-housing process",
+                d: "If you believe the denial was improper, HUD and state or local fair-housing agencies accept complaints. Whether a complaint is appropriate — and how it turns out — depends on the facts and the law that applies to your housing.",
+              },
+            ].map((s) => (
+              <li key={s.n} className="rounded-2xl border border-gray-200 bg-[#FAFAF9] p-6">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-orange-500 text-white text-sm font-extrabold mb-3">
+                  {s.n}
+                </span>
+                <h3 className="text-[15px] font-bold text-gray-900 mb-1.5">{s.t}</h3>
+                <p className="text-[13px] text-gray-600 leading-relaxed">{s.d}</p>
+              </li>
+            ))}
+          </ol>
+
+          <p className="text-[12px] text-gray-500 leading-relaxed mt-7 max-w-3xl mx-auto text-center">
+            Not every landlord denial is unlawful, and filing a complaint does not guarantee any
+            particular outcome. Refunds are governed solely by the PawTenant refund policy. This page
+            is educational and is not legal advice.
+          </p>
         </div>
       </section>
+
+      {/* Verification — directly actionable at the point of doubt. */}
+      <EsaLetterVerificationWidget
+        className="bg-[#FFF7ED] border-y border-orange-100"
+        heading="Verify your letter before you escalate"
+        copy="Enter the Verification ID printed on your document to confirm it is genuine and current. Verification never reveals health information."
+      />
 
       {/* ===== QUICK ACTION STEPS ===== */}
       <section className="py-16 bg-white">
@@ -619,7 +647,19 @@ export default function LandlordDeniedESALetterPage() {
       </section>
 
       {/* ===== PRICING / KLARNA — reusable cost section ===== */}
-      <EsaPricingMini className="bg-[#fafafa] border-t border-gray-100" />
+      {/* Canonical homepage three-card pricing block — same component and same
+          single pricing source as the homepage, replacing the EsaPricingMini
+          teaser so this page cannot drift from checkout. */}
+      <PlanPricingSection
+        theme="esa"
+        id="pricing"
+        className="bg-[#fdf8f3] border-t border-orange-100"
+        eyebrow={ESA_PLAN_COPY.eyebrow}
+        heading="Need a letter a landlord can actually verify?"
+        subheading={ESA_PLAN_COPY.subheading}
+        cards={buildEsaPlanCards("/assessment?ref=landlord-denied")}
+        footnote={ESA_PLAN_COPY.footnote}
+      />
 
       {/* ===== VETERANS SUPPORT — emotional-first, savings secondary (SeoKit) ===== */}
       <VeteransSupportSection

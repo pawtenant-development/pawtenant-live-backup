@@ -213,6 +213,15 @@ async function main() {
     "src/pages/state-esa/page.tsx",
     "src/pages/state-psd/page.tsx",
     "src/pages/lp-esa-housing/page.tsx",
+    // LIVE-PUBLIC-PAGES-...-001 — public conversion pages that now render the
+    // CANONICAL homepage pricing cards instead of their own hand-maintained
+    // copies. All four are presentation-only: they render PlanPricingSection
+    // and never touch a charge, Stripe, order, refund or payout path (the
+    // chargePaths scan above still enforces that separately).
+    "src/pages/esa-letter-cost/page.tsx",
+    "src/pages/how-to-get-esa/page.tsx",
+    "src/pages/landlord-denied-esa-letter/page.tsx",
+    "src/pages/service-dogs/page.tsx",
   ]);
   for (const rel of files) {
     const norm = rel.replace(/\\/g, "/");

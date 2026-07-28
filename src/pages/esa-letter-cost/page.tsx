@@ -4,59 +4,21 @@ import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
 import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
-import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
+import PetCostSavingsCalculator from "../../components/feature/PetCostSavingsCalculator";
+import PublicPageHero from "../../components/feature/PublicPageHero";
+import PlanPricingSection from "../../components/feature/PlanPricingSection";
+import EsaLetterVerificationWidget from "../../components/feature/EsaLetterVerificationWidget";
+import { buildEsaPlanCards, ESA_PLAN_COPY } from "../../data/planPricingCards";
 import { ESA_PRICE_LABELS, BUNDLE_PRICING } from "@/config/pricing";
 import { useSitePricing } from "@/hooks/useSitePricing";
 
 import HeroPriceLine from "@/components/feature/HeroPriceLine";
-// Two ESA packages (no PSD on this page). Standard prices hydrate from the
-// admin-managed site_pricing_settings (via getPrice) with config fallbacks;
-// the Reasonable Accommodation bundle is a FLAT total for 1–3 pets ($179
-// one-time / $159 per year) sourced from BUNDLE_PRICING — never per-pet.
-// The combo CTA preselects the RA package via ?package=esa_ra_bundle; OTP and
-// server-side pricing still run — the query param only pre-highlights the card.
-const packages = [
-  {
-    key: "esa_standard",
-    label: "ESA Standard Letter",
-    sublabel: "Licensed-provider housing letter",
-    oneTime: ESA_PRICE_LABELS.oneTime,          // $129 (1 pet)
-    oneTimeKey: "esa_single_pet",
-    annual: ESA_PRICE_LABELS.subscription,      // $115/yr first year (1 pet)
-    annualKey: "esa_subscription_annual",
-    highlight: false,
-    cta: "Start ESA Assessment",
-    href: "/assessment",
-    features: [
-      "Full mental health evaluation by a licensed clinician",
-      "Signed ESA letter with NPI & license number",
-      "Valid for housing nationwide under the Fair Housing Act",
-      "Digital delivery — typically within 24 hours",
-      "Covers 1 pet · 2–3 pets $149 one-time / $135 per year",
-      "100% money-back guarantee if you don't qualify",
-    ],
-  },
-  {
-    key: "esa_ra_bundle",
-    label: "ESA + Reasonable Accommodation",
-    sublabel: "Adds support with a separate landlord / property / HOA form",
-    oneTime: `$${BUNDLE_PRICING.oneTime}`,      // $179 flat (1–3 pets)
-    oneTimeKey: null,
-    annual: `$${BUNDLE_PRICING.annual}`,        // $159/yr flat (1–3 pets)
-    annualKey: null,
-    highlight: true,
-    cta: "Start with RA Document Support",
-    href: "/assessment?package=esa_ra_bundle",
-    features: [
-      "Everything in the Standard ESA Letter",
-      "Reasonable Accommodation document support — help completing a separate landlord, property-manager, or HOA form if your housing provider asks for one",
-      "Flat price for 1–3 pets — no per-pet add-on",
-      "Not every landlord requires a separate form; this is here if yours does",
-      "Same licensed-provider review and money-back guarantee",
-    ],
-  },
-];
-
+// LIVE-PUBLIC-PAGES-...-001: the former two-card `packages` array was removed.
+// This page now renders the CANONICAL homepage three-card block
+// (PlanPricingSection + buildEsaPlanCards), so its prices come from the same
+// single source as the homepage and checkout and cannot drift. The Reasonable
+// Accommodation add-on is described in prose below the cards using
+// BUNDLE_PRICING — never as a competing price card.
 const included = [
   "Thorough evaluation by licensed mental health professionals",
   "Legally enforced for rentals, vacation homes, and college dorms",
@@ -80,7 +42,9 @@ const whyChoose = [
   },
   {
     title: "Optimal Pricing without Compromises",
-    desc: "At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at just $115/year. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.",
+    // Price is interpolated from the canonical pricing source — never a literal,
+    // so this sentence cannot drift away from the cards or from checkout.
+    desc: `At PawTenant, we believe everyone should access affordable ESA letters without compromising quality. That's why we offer competitive pricing starting at ${ESA_PRICE_LABELS.subscription}/year. You can now experience the benefits of an ESA letter without breaking the bank. We prioritize professionalism and authenticity to deliver top-notch ESA letters.`,
     icon: "ri-hand-heart-line",
   },
   {
@@ -153,139 +117,121 @@ export default function ESALetterCostPage() {
 
       <SharedNavbar />
 
-      {/* Hero — full-cover poster: min-h-[100svh] so the next section
-          doesn't peek above the fold on initial load. flex justify-center
-          vertically centers the content. Top padding still clears the
-          fixed navbar (h-16 mobile / h-20 tablet+). */}
-      <section className="relative min-h-[100svh] flex flex-col justify-center pt-24 sm:pt-28 pb-14 sm:pb-20">
-        <div className="absolute inset-0">
-          <img
-            src="/assets/lifestyle/person-paperwork-with-dog.jpg"
-            alt="ESA Letter Cost"
-            fetchPriority="high"
-            loading="eager"
-            decoding="async"
-            width={1920}
-            height={1280}
-            className="w-full h-full object-cover object-top"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/55 to-black/25"></div>
-        </div>
-        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 w-full">
-          <div className="max-w-2xl">
-            {/* Visible price chip — answers "how much?" without a scroll.
-                Added 2026-05-24 pre-LIVE cleanup so cost-page visitors see
-                the headline price inside the first viewport. */}
-            <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-sm text-white text-[11.5px] sm:text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
-              <i className="ri-price-tag-3-line text-orange-400"></i>
-              From {getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)}/year · {getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)} one-time
-            </div>
-            <h1 className="text-[28px] sm:text-4xl md:text-5xl text-white mb-4 sm:mb-5 leading-[1.15] pt-hero-display">
-              Affordable ESA Letter with Money Back Guarantee
-            </h1>
-            <p className="text-white/85 text-[15px] sm:text-lg leading-relaxed mb-6 sm:mb-8">
-              Licensed mental health professionals · no hidden fees · 100% refund if you don't qualify.
-            </p>
-            <HeroPriceLine tone="light" className="mb-5" />
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-              <Link
-                to="/assessment"
-                className="whitespace-nowrap inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 sm:px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer text-[15px] sm:text-base shadow-[0_4px_12px_rgba(249,115,22,0.30)] sm:shadow-none"
-              >
-                <i className="ri-file-text-line"></i>
-                Get An ESA Letter Now
-              </Link>
-              <div className="flex items-center gap-2 text-white/85 text-[13px] sm:text-sm">
-                <i className="ri-refresh-line text-orange-400"></i>
-                Klarna available at checkout
-              </div>
-            </div>
+      {/* Hero — centered, homepage typography, full-bleed image + controlled
+          overlay (LIVE-PUBLIC-PAGES-...-001). The previous left-aligned
+          max-w-2xl block left a large empty right half at 1440/1920. The price
+          chip stays: it answers "how much?" inside the first viewport, and its
+          amounts come from the canonical pricing source, never a literal. */}
+      <PublicPageHero
+        variant="image"
+        backgroundImage="/assets/lifestyle/person-paperwork-with-dog.jpg"
+        eyebrow="ESA Letter Cost"
+        // H1 text is intentionally UNCHANGED. check-full-body-prerender pins the
+        // "Money Back Guarantee" phrase for this route, and seoConfig is built
+        // around it — the brief asked for a centered hero, not new H1 copy.
+        heading="Affordable ESA Letter with Money Back Guarantee"
+        subheading="Licensed mental health professionals · no hidden fees · full refund if you don't qualify."
+        ctas={[
+          { label: "Check If You Qualify", href: "/assessment", primary: true, icon: "ri-file-text-line" },
+          { label: "See what's included", href: "#pricing", icon: "ri-price-tag-3-line" },
+        ]}
+        trustPoints={[
+          "Transparent, all-in pricing",
+          "Klarna available at checkout",
+          "Full refund if you don't qualify",
+        ]}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 backdrop-blur-sm text-white text-[11.5px] sm:text-xs font-semibold px-3 py-1.5 rounded-full">
+            <i className="ri-price-tag-3-line text-orange-400" aria-hidden="true"></i>
+            From {getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)}/year · {getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)} one-time
           </div>
+          <HeroPriceLine tone="light" />
         </div>
-      </section>
+      </PublicPageHero>
 
-      {/* Pricing — tighter mobile padding inside cards, mobile-first text
-          sizing on the price label, single-column on mobile with comfortable
-          gap. */}
-      <section className="py-14 sm:py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6">
-          <div className="text-center mb-10 sm:mb-14">
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">Choose Your ESA Package</h2>
-            <p className="text-gray-500 text-[13.5px] sm:text-sm max-w-2xl mx-auto leading-relaxed">
-              Our ESA letters cover all your housing arrangements, from rentals and vacation homes to college dorms. Our licensed mental health professionals ensure compliance, legal enforcement, and authenticity in providing ESA letters.
+      {/* Canonical pricing — the EXACT homepage three-card block, same component
+          and same single pricing source, so this page can never drift from the
+          homepage or from checkout. */}
+      <PlanPricingSection
+        theme="esa"
+        id="pricing"
+        className="bg-[#fdf8f3] border-t border-orange-100"
+        eyebrow={ESA_PLAN_COPY.eyebrow}
+        heading={ESA_PLAN_COPY.heading}
+        subheading={ESA_PLAN_COPY.subheading}
+        cards={buildEsaPlanCards("/assessment?ref=esa-letter-cost")}
+        footnote={ESA_PLAN_COPY.footnote}
+      />
+
+      {/* Optional Reasonable Accommodation add-on — described in prose, NOT as a
+          competing price card. planPricingCards.ts is explicit that the RA bundle
+          belongs in the assessment package step, never in an informational
+          pricing section, so the canonical three cards above stay the only
+          price cards on this page. Amounts come from BUNDLE_PRICING. */}
+      <section className="py-14 sm:py-16 bg-white">
+        <div className="max-w-3xl mx-auto px-5 sm:px-6">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">
+              What you are paying for
+            </h2>
+            <p className="text-gray-500 text-sm max-w-2xl mx-auto leading-relaxed">
+              One price covers the clinical work end to end. There is no separate consultation fee,
+              no per-page document charge and no renewal surprise.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 max-w-3xl mx-auto items-stretch">
-            {packages.map((pkg) => (
-              <div
-                key={pkg.key}
-                className={`relative rounded-2xl p-6 sm:p-8 border-2 text-center flex flex-col ${
-                  pkg.highlight
-                    ? "border-orange-500 bg-orange-50 shadow-[0_8px_24px_rgba(249,115,22,0.12)]"
-                    : "border-gray-200 bg-white"
-                }`}
-              >
-                {pkg.highlight && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-block bg-orange-500 text-white text-[10px] sm:text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-sm whitespace-nowrap">
-                    Includes Document Support
-                  </span>
-                )}
-                <p className="text-gray-900 font-bold text-[15px] sm:text-base mb-1 mt-1">{pkg.label}</p>
-                <p className="text-orange-500 text-[11px] sm:text-xs font-semibold mb-3 min-h-[32px] flex items-center justify-center">{pkg.sublabel}</p>
-                <div className="mb-1">
-                  <span className="text-4xl sm:text-5xl font-black text-gray-900 leading-none">{pkg.oneTimeKey ? getPrice(pkg.oneTimeKey, pkg.oneTime) : pkg.oneTime}</span>
-                  <span className="text-gray-500 text-sm font-semibold ml-1.5">one-time</span>
-                </div>
-                <p className="text-gray-400 text-[12px] sm:text-[13px] mb-4">or {pkg.annualKey ? getPrice(pkg.annualKey, pkg.annual) : pkg.annual}/year (annual)</p>
 
-                {/* Klarna chip — neutral payment-method mention only */}
-                <div className="inline-flex self-center items-center gap-1.5 mb-1 px-2.5 py-1 rounded-md bg-[#FFA8CD]/20 border border-[#FFA8CD]/60">
-                  <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F]">Klarna.</span>
-                  <span className="text-[10px] text-slate-700">Available at checkout</span>
-                </div>
-
-                <div className="h-px bg-gray-200 my-5 sm:my-6"></div>
-                <ul className="space-y-2.5 sm:space-y-3 text-left mb-7 sm:mb-8 flex-1">
-                  {pkg.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 sm:gap-3">
-                      <div className="w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <i className="ri-checkbox-circle-fill text-orange-500"></i>
-                      </div>
-                      <span className="text-[13px] sm:text-sm text-gray-700 leading-snug">{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  to={pkg.href}
-                  className={`block w-full py-3.5 font-bold text-[14px] sm:text-sm rounded-md transition-colors cursor-pointer mt-auto ${
-                    pkg.highlight
-                      ? "bg-orange-500 text-white hover:bg-orange-600 shadow-[0_2px_6px_rgba(249,115,22,0.30)]"
-                      : "bg-gray-900 text-white hover:bg-gray-800"
-                  }`}
-                >
-                  {pkg.cta}
-                </Link>
+          <dl className="grid sm:grid-cols-2 gap-4 mb-9">
+            {[
+              { t: "The evaluation", d: "A licensed mental health professional reviews your assessment individually." },
+              { t: "Provider review & decision", d: "The provider decides whether documentation is clinically appropriate for you." },
+              { t: "The signed letter", d: "If you qualify, your letter is issued with the provider's credentials and a unique verification ID." },
+              { t: "Landlord verification", d: "Your housing provider can confirm the letter is genuine without seeing your health information." },
+            ].map((r) => (
+              <div key={r.t} className="rounded-xl border border-gray-200 bg-[#FAFAF9] p-5">
+                <dt className="text-[14px] font-bold text-gray-900 mb-1.5">{r.t}</dt>
+                <dd className="text-[13px] text-gray-600 leading-relaxed">{r.d}</dd>
               </div>
             ))}
+          </dl>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-2">
+              Optional: Reasonable Accommodation document support
+            </h3>
+            <p className="text-[13.5px] text-gray-600 leading-relaxed">
+              Most tenants only need the standard letter. If your landlord, property manager or HOA
+              asks you to complete a <strong>separate</strong> accommodation form, PawTenant offers
+              document support as a flat add-on for 1&ndash;3 pets &mdash; ${BUNDLE_PRICING.oneTime} one-time or $
+              {BUNDLE_PRICING.annual} per year &mdash; selectable during the assessment. It is not
+              included by default, and a housing provider&rsquo;s approval is never guaranteed.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-gray-500">
+              <span className="inline-flex items-center gap-1.5">
+                <i className="ri-refresh-line text-orange-500" aria-hidden="true"></i>
+                Full refund if you don&rsquo;t qualify after clinical review
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-[10px] font-extrabold tracking-tight text-[#7A3F5F] bg-[#FFA8CD]/25 border border-[#FFA8CD]/60 rounded px-1.5 py-0.5">
+                  Klarna.
+                </span>
+                Available at checkout &mdash; subject to eligibility and{" "}
+                <a
+                  href="https://www.klarna.com/us/terms-of-use/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-gray-700"
+                >
+                  Klarna terms
+                </a>
+                .
+              </span>
+            </div>
           </div>
-          <p className="text-center text-[12.5px] sm:text-sm text-gray-500 mt-6 max-w-2xl mx-auto leading-relaxed">
-            <strong className="text-gray-700">Not sure if you need the Reasonable Accommodation option?</strong> Most tenants only need the Standard letter. Choose the Reasonable Accommodation package if your landlord, property manager, or HOA asks you to complete a separate accommodation form. Housing decisions remain with your provider and your housing provider — approval is never guaranteed.
-          </p>
-          <div className="flex items-center justify-center gap-2 mt-6 text-[13px] sm:text-sm text-gray-500 text-center">
-            <i className="ri-refresh-line text-orange-500"></i>
-            100% refund if you don't qualify after the clinical review
-          </div>
-          <p className="text-center text-[12px] text-gray-400 mt-3 max-w-md mx-auto leading-relaxed">
-            Klarna available at checkout. Subject to eligibility and{" "}
-            <a
-              href="https://www.klarna.com/us/terms-of-use/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-gray-600"
-            >
-              Klarna payment terms
-            </a>
-            .
+
+          <p className="text-center text-[12px] text-gray-400 mt-6 leading-relaxed">
+            Qualification is never guaranteed. A licensed provider determines clinical eligibility
+            after an individual evaluation.
           </p>
         </div>
       </section>
@@ -397,10 +343,20 @@ export default function ESALetterCostPage() {
       />
 
       {/* Pet rent savings teaser → links to the full /pet-rent-savings-calculator */}
-      <PetRentSavingsMini
+      {/* Complete three-variable calculator (pets × monthly rent × deposit).
+          Replaces the two-variable teaser, which ignored deposits entirely. */}
+      <PetCostSavingsCalculator
         className="bg-[#fafafa] border-t border-gray-100"
-        heading="See how monthly pet rent adds up"
-        copy="Enter a typical monthly pet-rent amount and estimate what it could cost over one year — before any approved housing accommodation."
+        heading="See what pet rent and pet fees add up to"
+        copy="Set the number of pets, the monthly pet rent per pet, and the one-time deposit or fee per pet. Amounts vary by building — use the figures on your own lease or listing."
+        ctaHref="/assessment?ref=esa-letter-cost-calculator"
+      />
+
+      {/* Verification — the real /verify tool, reachable from the cost page. */}
+      <EsaLetterVerificationWidget
+        className="bg-white border-t border-gray-100"
+        heading="Already have a letter? Verify it"
+        copy="Enter the Verification ID printed on a PawTenant letter to confirm it is genuine. Verification never reveals health information."
       />
 
       {/* CTA — mobile: full-width button + clearer hierarchy. */}

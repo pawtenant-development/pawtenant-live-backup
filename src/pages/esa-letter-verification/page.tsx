@@ -2,6 +2,10 @@ import { Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
 import VerificationPillarsSection from "@/components/feature/VerificationPillarsSection";
+import PublicPageHero from "@/components/feature/PublicPageHero";
+import EsaLetterVerificationWidget from "@/components/feature/EsaLetterVerificationWidget";
+import SampleLetterShowcase from "@/components/feature/SampleLetterShowcase";
+import NotaryCoordinationSection from "@/components/feature/NotaryCoordinationSection";
 
 const steps = [
   {
@@ -111,101 +115,32 @@ export default function ESALetterVerificationPage() {
       <SharedNavbar />
 
       <main>
-        {/* Hero — calm, professional, trust-focused */}
-        <section className="relative bg-white border-b border-gray-100 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,#e8f5f1_0%,transparent_60%)] pointer-events-none" />
-          <div className="relative max-w-6xl mx-auto px-6 pt-28 md:pt-36 pb-14 md:pb-16">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
-              <div className="lg:col-span-7">
-                <span className="inline-flex items-center gap-2 bg-[#1a5c4f]/10 text-[#1a5c4f] text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-5">
-                  <i className="ri-verified-badge-line"></i>
-                  Landlord Verification System
-                </span>
-                <h1 className="text-3xl md:text-4xl lg:text-[2.6rem] font-extrabold text-gray-900 mb-4 leading-[1.15] tracking-tight">
-                  ESA Letter Verification —<br className="hidden md:block" />
-                  <span className="text-[#1a5c4f]"> How Landlords Confirm Authenticity</span>
-                </h1>
-                <p className="text-gray-600 text-base md:text-[1.05rem] leading-relaxed max-w-xl mb-7">
-                  Every ESA and PSD letter issued through PawTenant includes a unique Verification ID. Landlords can confirm the letter and provider credentials online in seconds — without seeing any of your private health information.
-                </p>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                  <Link
-                    to="/verify"
-                    className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-[#1a5c4f] text-white text-sm font-bold rounded-md hover:bg-[#164d42] transition-colors cursor-pointer"
-                  >
-                    <i className="ri-search-line"></i>
-                    Verify a Letter ID
-                  </Link>
-                  <Link
-                    to="/assessment"
-                    className="whitespace-nowrap inline-flex items-center gap-2 px-6 py-3 bg-white border border-[#1a5c4f] text-[#1a5c4f] text-sm font-bold rounded-md hover:bg-[#f0faf7] transition-colors cursor-pointer"
-                  >
-                    Get a Verified ESA Letter
-                    <i className="ri-arrow-right-line"></i>
-                  </Link>
-                </div>
-                <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-500">
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="ri-shield-check-line text-[#1a5c4f]"></i>
-                    HIPAA-aligned
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="ri-user-star-line text-[#1a5c4f]"></i>
-                    Licensed clinicians
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="ri-home-heart-line text-[#1a5c4f]"></i>
-                    Fair Housing Act compliant
-                  </span>
-                </div>
-              </div>
+        {/* Hero — centered, homepage typography, with the REAL verification tool
+            above the fold (LIVE-PUBLIC-PAGES-...-001).
 
-              {/* Hero visual: mock verification result card */}
-              <div className="lg:col-span-5">
-                <div className="bg-white rounded-2xl border border-[#b8ddd5] shadow-[0_8px_30px_-12px_rgba(26,92,79,0.18)] overflow-hidden">
-                  <div className="bg-[#1a5c4f] px-5 py-4 flex items-center gap-3">
-                    <div className="w-8 h-8 flex items-center justify-center bg-white/15 rounded-lg">
-                      <i className="ri-verified-badge-line text-white text-base"></i>
-                    </div>
-                    <div>
-                      <p className="text-sm font-extrabold text-white">Letter Verified</p>
-                      <p className="text-xs text-white/70 mt-0.5">Status: Valid · ESA Letter</p>
-                    </div>
-                    <span className="ml-auto bg-emerald-400/15 text-emerald-200 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border border-emerald-300/40">
-                      Valid
-                    </span>
-                  </div>
-                  <div className="p-5 space-y-2.5">
-                    {[
-                      { label: "Verification ID", value: "ESA-CA-8F3K92", mono: true },
-                      { label: "Letter Type", value: "Emotional Support Animal", mono: false },
-                      { label: "State", value: "California", mono: false },
-                      { label: "Issue Date", value: "April 6, 2026", mono: false },
-                      { label: "Provider", value: "Sarah Mitchell, LCSW", mono: false },
-                      { label: "NPI Number", value: "1234567890", mono: true },
-                      { label: "State License", value: "CA-LCSW-98234", mono: true },
-                    ].map((row) => (
-                      <div key={row.label} className="flex items-start justify-between gap-4 py-2 border-b border-gray-100 last:border-0">
-                        <span className="text-xs text-gray-400 font-medium flex-shrink-0">{row.label}</span>
-                        <span className={`text-xs text-gray-800 font-bold text-right ${row.mono ? "font-mono" : ""}`}>{row.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="px-5 pb-5">
-                    <div className="bg-[#f0faf7] border border-[#b8ddd5] rounded-lg px-4 py-3 flex items-start gap-2.5">
-                      <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <i className="ri-lock-line text-[#1a5c4f] text-xs"></i>
-                      </div>
-                      <p className="text-xs text-[#1a5c4f]/85 leading-relaxed">
-                        No patient health information is displayed on this page.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+            The previous hero was left-aligned and its right column rendered a
+            mock "Letter Verified" result card containing an invented provider
+            name, a fake NPI (1234567890) and a fake state license number,
+            presented without any sample labelling. Showing a fabricated
+            verification result on the verification page is exactly what must not
+            happen, so it is replaced by the actual entry point to /verify. */}
+        <PublicPageHero
+          eyebrow="Landlord Verification System"
+          heading="Check That an ESA Letter Is Real"
+          subheading="Every ESA and PSD letter issued through PawTenant carries a unique Verification ID. Landlords and tenants can confirm the document and the issuing provider's credentials in seconds — without any private health information being shown."
+          trustPoints={[
+            "Licensed clinicians",
+            "Unique verification ID",
+            "No health information disclosed",
+          ]}
+        >
+          <EsaLetterVerificationWidget
+            variant="card"
+            className="shadow-[0_10px_40px_-24px_rgba(15,23,42,0.28)]"
+            heading="Verify a letter now"
+            copy="Enter the Verification ID printed on the document."
+          />
+        </PublicPageHero>
 
         {/* Trust pillars — large, professional cards */}
         <VerificationPillarsSection variant="full" />
@@ -440,6 +375,87 @@ export default function ESALetterVerificationPage() {
         {/* Related Resources — tenants who arrive here often haven't yet
             applied; provide a natural path back to the how-to and housing
             rights pages without disturbing the verification-focused CTA. */}
+        {/* Large, readable sample letter — replaces reliance on a small preview
+            elsewhere on the page. Redacted specimen; placeholders only. */}
+        <SampleLetterShowcase
+          className="bg-white border-t border-gray-100"
+          heading="What a verifiable PawTenant letter looks like"
+          copy="A redacted specimen. The names, dates and identifiers on it are placeholders and do not belong to a real person, provider or issued letter."
+          fields={[
+            "The issuing provider's name, credential and license state",
+            "The provider's signature and the date the letter was issued",
+            "A unique letter verification ID your housing provider can check",
+            "A statement of the need for the animal — never your diagnosis",
+          ]}
+        />
+
+        {/* What makes a PawTenant letter verifiable — accurate trust signals only.
+            Support wording is deliberately qualified: the published support
+            contract is Mon-Fri 7am-6pm CT / Sat 9am-4pm CT (see SharedFooter),
+            so "24/7 human support" would be false. Portal access and request
+            submission ARE always available, and only that is claimed. */}
+        <section className="py-14 sm:py-16 bg-[#f8faf9] border-t border-gray-100">
+          <div className="max-w-5xl mx-auto px-5 sm:px-6">
+            <div className="text-center mb-9">
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">
+                What makes a PawTenant letter verifiable
+              </h2>
+              <p className="text-gray-500 text-sm max-w-2xl mx-auto leading-relaxed">
+                Each of these is something a housing provider can check independently.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[
+                { i: "ri-user-star-line", t: "Licensed professional review", d: "Every letter is reviewed and signed by a state-licensed mental health professional after an individual evaluation." },
+                { i: "ri-id-card-line", t: "Named provider and credentials", d: "The provider's name, credential and license state appear on the document — not a company signature." },
+                { i: "ri-medal-line", t: "NPI lookup where available", d: "Where a provider has a National Provider Identifier, it can be looked up in the public CMS NPPES registry." },
+                { i: "ri-qr-code-line", t: "Unique verification ID", d: "A single ID tied to your document, checkable at pawtenant.com/verify." },
+                { i: "ri-calendar-check-line", t: "Issuance date on the letter", d: "The date the provider issued the document is printed on it, so currency can be confirmed." },
+                { i: "ri-lock-line", t: "Secure portal access", d: "Your documents stay available in your account portal, which you can reach at any time." },
+              ].map((c) => (
+                <div key={c.t} className="rounded-2xl border border-gray-200 bg-white p-5">
+                  <div className="w-9 h-9 rounded-lg bg-[#1a5c4f]/10 flex items-center justify-center mb-3">
+                    <i className={`${c.i} text-[#1a5c4f]`} aria-hidden="true"></i>
+                  </div>
+                  <h3 className="text-[14px] font-bold text-gray-900 mb-1.5">{c.t}</h3>
+                  <p className="text-[13px] text-gray-600 leading-relaxed">{c.d}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Reasonable Accommodation — accurate scope. NOT automatically included. */}
+            <div className="mt-8 grid md:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-gray-200 bg-white p-6">
+                <h3 className="text-[15px] font-bold text-gray-900 mb-2">
+                  Reasonable Accommodation documentation
+                </h3>
+                <p className="text-[13px] text-gray-600 leading-relaxed">
+                  Some housing providers ask a tenant to complete a <strong>separate</strong>{" "}
+                  reasonable accommodation form in addition to the letter. PawTenant offers document
+                  support for that form as an optional add-on. It is{" "}
+                  <strong>not automatically included</strong> — it applies only if you purchased the
+                  applicable package or add-on, and a housing provider&rsquo;s approval is never
+                  guaranteed.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white p-6">
+                <h3 className="text-[15px] font-bold text-gray-900 mb-2">Support access</h3>
+                <p className="text-[13px] text-gray-600 leading-relaxed">
+                  You have <strong>24/7 access to your secure portal</strong>, and you can{" "}
+                  <strong>submit a support request at any time</strong> — self-service help is
+                  available around the clock. Our support team replies during published business
+                  hours (Mon&ndash;Fri 7am&ndash;6pm CT, Sat 9am&ndash;4pm CT).
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Notarization — INFORMATIONAL ONLY (owner-approved copy verbatim).
+            No checkout, no DB request, no provider notification.
+            Operational build queued as ORDER-NOTARY-SERVICE-WORKFLOW-001. */}
+        <NotaryCoordinationSection className="bg-white border-t border-gray-100" />
+
         <section className="py-12 sm:py-16 bg-slate-50 border-t border-slate-200">
           <div className="max-w-6xl mx-auto px-5 sm:px-6">
             <div className="text-center max-w-xl mx-auto mb-8 sm:mb-10">

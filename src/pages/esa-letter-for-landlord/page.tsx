@@ -3,9 +3,12 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
-import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
-import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
+import PetCostSavingsCalculator from "../../components/feature/PetCostSavingsCalculator";
+import PublicPageHero from "../../components/feature/PublicPageHero";
+import SampleLetterShowcase from "../../components/feature/SampleLetterShowcase";
+import EsaLetterVerificationWidget from "../../components/feature/EsaLetterVerificationWidget";
+import NotaryCoordinationSection from "../../components/feature/NotaryCoordinationSection";
 import AIAssistantTrustCard from "../../components/feature/AIAssistantTrustCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import {
@@ -159,56 +162,33 @@ export default function ESALetterForLandlordPage() {
 
       <SharedNavbar />
 
-      {/* HERO — mobile-first: text + trust + CTA, then a housing visual
-          (tenant settling in with their ESA) near the fold. Single eager image. */}
-      <section className="relative pt-24 sm:pt-28 pb-12 sm:pb-16 bg-gradient-to-br from-[#fdf6ee] via-white to-orange-50 overflow-hidden">
-        <div className="max-w-6xl mx-auto px-5 sm:px-6">
-          <div className="grid lg:grid-cols-2 gap-9 lg:gap-12 items-center">
-            <div className="text-center lg:text-left">
-              <span className="inline-flex items-center gap-2 bg-white border border-orange-100 text-orange-600 text-[11px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-5">
-                <i className="ri-home-heart-line"></i>
-                Housing Guide
-              </span>
-              <h1 className="text-[27px] sm:text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-[1.12]">
-                ESA Letter for Your Landlord
-              </h1>
-              <p className="hidden sm:block text-gray-600 text-[15px] sm:text-lg leading-relaxed mb-6 max-w-xl mx-auto lg:mx-0">
-                How to use an ESA letter for an apartment or rental: how housing accommodation works
-                under the Fair Housing Act, what to send your landlord, and how to handle common
-                questions.
-              </p>
-              <div className="flex justify-center lg:justify-start mb-6">
-                <TrustBadgeRow badges={heroBadges} mobileCount={3} />
-              </div>
-              <Link
-                to={withAttribution("/assessment")}
-                className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-7 py-3.5 bg-orange-500 text-white font-bold text-sm rounded-md hover:bg-orange-600 transition-colors cursor-pointer shadow-[0_4px_12px_rgba(249,115,22,0.25)]"
-              >
-                <i className="ri-stethoscope-line"></i>
-                Start ESA Assessment
-              </Link>
-            </div>
-            <div className="relative max-w-[440px] mx-auto w-full">
-              <div className="rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] aspect-[4/3]">
-                <img
-                  src="/assets/lifestyle/woman-with-dog-new-apartment.jpg"
-                  alt="Tenant settling into a new apartment with her emotional support dog"
-                  width={1000}
-                  height={750}
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  className="w-full h-full object-cover object-center"
-                />
-              </div>
-              <div className="absolute -bottom-3 left-4 bg-white rounded-xl shadow-md ring-1 ring-gray-100 px-3 py-2 flex items-center gap-2">
-                <i className="ri-scales-3-line text-emerald-600"></i>
-                <span className="text-[11px] font-bold text-gray-700">Fair Housing Act</span>
-              </div>
-            </div>
-          </div>
+      {/* HERO — PROACTIVE intent: preparing and presenting documentation BEFORE
+          or during a housing request.
+          LIVE-PUBLIC-PAGES-...-001: full-bleed image + controlled overlay +
+          centered copy. The previous split layout put a small 4:3 photo beside
+          left-aligned text and shared its image with /landlord-denied-esa-letter.
+          The image here (owner-with-dog-laptop) and the H1 are BOTH unique to
+          this page — the denial page must never match either. */}
+      <PublicPageHero
+        variant="image"
+        backgroundImage="/assets/lifestyle/owner-with-dog-laptop.jpg"
+        eyebrow="Housing Guide"
+        heading="How to Give Your Landlord an ESA Letter"
+        subheading="Present your documentation the right way the first time: what to send, when to send it, what your landlord may and may not ask for, and how they can verify the letter."
+        ctas={[
+          { label: "Start ESA Assessment", href: "/assessment", primary: true, icon: "ri-stethoscope-line" },
+          { label: "See a sample letter", href: "#sample-letter", icon: "ri-file-text-line" },
+        ]}
+        trustPoints={[
+          "Fair Housing Act guidance",
+          "Landlord-verifiable letter",
+          "Licensed provider review",
+        ]}
+      >
+        <div className="flex justify-center">
+          <TrustBadgeRow badges={heroBadges} mobileCount={3} />
         </div>
-      </section>
+      </PublicPageHero>
 
       {/* DIRECT ANSWER */}
       <section className="py-12 sm:py-14 bg-white">
@@ -269,12 +249,9 @@ export default function ESALetterForLandlordPage() {
       {/* WHAT TO SEND / WHAT NOT TO DO */}
       <section className="py-14 sm:py-16 bg-white">
         <div className="max-w-5xl mx-auto px-5 sm:px-6">
-          <div className="max-w-[220px] mx-auto mb-9">
-            <SampleLetterCard size="compact" />
-            <p className="text-center text-[11px] text-gray-400 mt-3 leading-relaxed">
-              Send a letter like this — verifiable, from a licensed provider. Sample.
-            </p>
-          </div>
+          {/* The 220px-wide sample thumbnail that used to sit here was
+              unreadable. It now has its own full SampleLetterShowcase section
+              below, with a real column width and click-to-enlarge. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-[#fafafa] rounded-2xl p-7 border border-gray-100">
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -335,12 +312,33 @@ export default function ESALetterForLandlordPage() {
       </section>
 
       {/* Pet rent savings teaser → links to the full /pet-rent-savings-calculator (compact, no assessment CTA) */}
-      <PetRentSavingsMini
+      {/* Complete three-variable calculator — shared with /esa-letter-cost so
+          the two pages cannot disagree. Copy differs; the model does not. */}
+      <PetCostSavingsCalculator
         className="bg-white border-t border-gray-100"
-        heading="Paying monthly pet rent?"
-        copy="See how monthly pet rent can add up over a year, and estimate your possible pet-rent costs over time with the full calculator."
-        showAssessmentCta={false}
+        heading="Paying pet rent and a pet deposit?"
+        copy="Set the number of pets, the monthly pet rent per pet, and the one-time deposit or fee per pet to see what your building is charging you over a year."
+        ctaHref="/assessment?ref=esa-letter-for-landlord"
       />
+
+      {/* Large, readable sample letter with click-to-enlarge. */}
+      <SampleLetterShowcase
+        className="bg-[#FAFAF9] border-t border-gray-100"
+        heading="What you'll be sending your landlord"
+        copy="A redacted specimen of a PawTenant letter. Every name, date and identifier shown is a placeholder."
+      />
+
+      {/* Verification — the real tool, so a landlord reading this page can act. */}
+      <EsaLetterVerificationWidget
+        className="bg-[#FFF7ED] border-t border-orange-100"
+        heading="Landlords: verify a letter you've received"
+        copy="Enter the Verification ID printed on the document. Verification confirms the letter is genuine and who issued it — no health information is shown."
+      />
+
+      {/* Notarization — INFORMATIONAL ONLY (owner-approved copy).
+          No checkout, no DB request, no provider notification. The operational
+          workflow is queued as ORDER-NOTARY-SERVICE-WORKFLOW-001. */}
+      <NotaryCoordinationSection className="bg-white border-t border-gray-100" />
 
       {/* PRICING / KLARNA — reusable cost section */}
       <EsaPricingMini className="bg-white border-t border-gray-100" />

@@ -1,6 +1,8 @@
 ﻿import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
-import EsaPricingMini from "@/components/feature/EsaPricingMini";
+import PublicPageHero from "@/components/feature/PublicPageHero";
+import PlanPricingSection from "@/components/feature/PlanPricingSection";
+import { buildEsaPlanCards, ESA_PLAN_COPY } from "@/data/planPricingCards";
 import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
 import { Link } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
@@ -228,100 +230,26 @@ export default function HowToGetESAPage() {
               a calmer "Money-back protection if you don't qualify" line
               centered directly under the CTA — mirrors the homepage refund
               reassurance pattern. */}
-      <section
-        ref={heroRef}
-        className="relative min-h-[100svh] flex items-center overflow-hidden"
-      >
-        <div className="absolute inset-0">
-          <picture>
-            <source
-              media="(max-width: 768px)"
-              srcSet="/assets/blog/pawtenant-mobile-hero-pomeranian-sm.webp"
-              type="image/webp"
-            />
-            <source
-              media="(min-width: 769px)"
-              srcSet="/assets/blog/fp-woman-sitting-floor-desktop.webp"
-              type="image/webp"
-            />
-            <img
-              src="/assets/blog/fp-woman-sitting-floor.jpg"
-              alt="Pet owner with dog at home applying for an ESA letter online"
-              className="w-full h-full object-cover object-top opacity-80"
-              fetchPriority="high"
-              loading="eager"
-              decoding="async"
-              width={1920}
-              height={1280}
-            />
-          </picture>
-          <div className="absolute inset-0 bg-gradient-to-r from-gray-900/85 via-gray-900/65 to-gray-900/25"></div>
-          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-gray-900/70 to-transparent md:hidden"></div>
-        </div>
+      {/* HERO — centered, homepage typography, full-bleed image + controlled
+          overlay (LIVE-PUBLIC-PAGES-...-001). Previously left-aligned in a
+          max-w-2xl column, which left the right half of the frame empty at
+          desktop widths. Same photograph, same trust points, centered. */}
+      <PublicPageHero
+        variant="image"
+        backgroundImage="/assets/blog/fp-woman-sitting-floor.jpg"
+        eyebrow="Simple 3-Step Process"
+        heading="How to Get an ESA Letter Online"
+        subheading="A short assessment, a licensed provider review, and your letter delivered in as little as 24 hours."
+        ctas={[
+          { label: "Find Out If You Qualify", href: "/assessment", primary: true, icon: "ri-arrow-right-line" },
+          { label: "See the steps", href: "#how-it-works", icon: "ri-list-ordered" },
+        ]}
+        trustPoints={[
+          "Licensed clinicians in all 50 US states",
+          "Money-back protection if you don't qualify",
+        ]}
+      />
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-5 py-20 sm:py-28 md:py-32">
-          <div className="max-w-2xl">
-            {/* Eyebrow badge — matches homepage HIPAA pill treatment. */}
-            <div className="inline-flex items-center gap-2 bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
-              <i className="ri-shield-check-line"></i>
-              Simple 3-Step Process
-            </div>
-
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
-              How to Get an ESA Letter Online
-            </h1>
-
-            {/* Single subtitle — short, scan-friendly across viewports.
-                Pre-2026-05-24 cleanup the hero had 2 separate paragraphs
-                (one long desktop, one short mobile). The longer process
-                detail still appears in the Intro Text + Steps sections
-                below the hero. */}
-            <p className="text-gray-200 text-[15px] sm:text-lg leading-relaxed mb-7 max-w-xl">
-              A short assessment, a licensed provider review, and your letter delivered in as little as 24 hours.
-            </p>
-
-            {/* Calm 50-states trust pill — mirrors the homepage hero badge. */}
-            <div className="inline-flex items-center gap-2.5 bg-white/10 border border-white/20 backdrop-blur-sm px-4 py-2.5 rounded-full mb-7">
-              <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                <i className="ri-user-star-line text-orange-400"></i>
-              </div>
-              <span className="text-white text-xs font-semibold whitespace-nowrap">Licensed clinicians in all 50 US states</span>
-            </div>
-
-            {/* Single primary CTA — full-width on mobile, auto on desktop.
-                No secondary button on mobile so the CTA hierarchy is unambiguous
-                and the sticky bottom CTA (which fades in only after the hero
-                scrolls out of view) never overlaps with this one above the fold. */}
-            <div className="mb-3 sm:mb-8">
-              <Link
-                to="/assessment"
-                className="w-full sm:w-auto px-8 py-4 sm:py-3.5 bg-orange-400 text-white font-bold text-base sm:text-sm rounded-md hover:bg-orange-500 transition-colors cursor-pointer inline-flex items-center justify-center gap-2 shadow-lg shadow-orange-400/25 sm:shadow-none"
-              >
-                Find Out If You Qualify
-                <i className="ri-arrow-right-line"></i>
-              </Link>
-            </div>
-
-            {/* Mobile-only refund reassurance — centered under the CTA. The
-                "Money-back protection" phrase is bolded so the safety-net
-                reads in a single glance without re-adding trust-spam chips
-                above the CTA. Hidden on desktop because desktop already
-                surfaces the Money-Back card later in the Why-Choose grid. */}
-            <p className="sm:hidden text-white/85 text-[13px] leading-snug text-center max-w-xs mx-auto">
-              <i className="ri-shield-check-line text-orange-300 mr-1.5"></i>
-              <strong className="font-bold text-white">Money-back protection</strong> if you don&rsquo;t qualify
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Reassurance Strip — 2026-05-21 HOWTO-HERO-REFINE
-          Calm sage 2x2 mobile / 4-up desktop grid sitting directly under the
-          hero. Same pattern as `src/pages/home/components/ReassuranceStrip.tsx`
-          so the visual language carries over from the homepage to this page.
-          Absorbs the four questions a visitor asks before tapping the CTA —
-          clinician review, refund, Fair Housing fit, privacy — without
-          re-introducing trust-spam chips in the hero itself. */}
       <section
         aria-label="Reassurance"
         className="bg-[#f8fafc] border-b border-slate-200"
@@ -467,7 +395,18 @@ export default function HowToGetESAPage() {
       {/* ESA pricing snapshot — clear cost upfront so visitors don't
           have to scroll through the full education content first.
           Added in mobile-cleanup pass. */}
-      <EsaPricingMini className="bg-white border-t border-orange-100" />
+      {/* Canonical homepage three-card pricing block — same component and same
+          single pricing source, replacing the EsaPricingMini teaser. */}
+      <PlanPricingSection
+        theme="esa"
+        id="pricing"
+        className="bg-[#fdf8f3] border-t border-orange-100"
+        eyebrow={ESA_PLAN_COPY.eyebrow}
+        heading={ESA_PLAN_COPY.heading}
+        subheading={ESA_PLAN_COPY.subheading}
+        cards={buildEsaPlanCards("/assessment?ref=how-to-get-esa-letter")}
+        footnote={ESA_PLAN_COPY.footnote}
+      />
 
       {/* What Is ESA — 2026-05-21 HOWTO-MOBILE-REVAMP
           Mobile: only the first paragraph shows; paragraphs 2 + 3 stay in

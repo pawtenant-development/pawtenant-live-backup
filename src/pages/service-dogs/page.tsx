@@ -2,6 +2,9 @@
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
+import PublicPageHero from "../../components/feature/PublicPageHero";
+import PlanPricingSection from "../../components/feature/PlanPricingSection";
+import { buildPsdPlanCards, PSD_PLAN_COPY } from "../../data/planPricingCards";
 import { Link } from "react-router-dom";
 
 // `pos` sets each image's object-position so the dog's face/body stays centered
@@ -122,40 +125,27 @@ export default function ServiceDogsPage() {
 
       <SharedNavbar />
 
-      {/* Hero */}
-      <section className="relative pt-28 pb-20">
-        <div className="absolute inset-0">
-          <img
-            src="/assets/blog/man-puppy-portrait.jpg"
-            alt="Everything you need to know about psychiatric service dogs and ESA letters — PawTenant 2026 guide"
-            loading="eager"
-            className="w-full h-full object-cover object-center"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/55 to-black/25"></div>
-        </div>
-        <div className="relative max-w-7xl mx-auto px-6">
-          <div className="max-w-2xl">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-400 mb-3">
-              Service Dogs & PSD Letters
-            </span>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              Everything You Need to Know About Service Dogs
-            </h1>
-            <p className="text-white/85 text-lg leading-relaxed mb-8">
-              Service dogs play a crucial role in assisting individuals with disabilities. From psychiatric service dogs to guide dogs, learn about training, certification, legal rights, and how to get a PSD letter.
-            </p>
-            <div className="flex items-center gap-4">
-              <Link
-                to="/psd-assessment"
-                className="whitespace-nowrap inline-flex items-center gap-2 px-8 py-3.5 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 transition-colors cursor-pointer"
-              >
-                <i className="ri-mental-health-line"></i>
-                Get Your PSD Letter Now
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* HERO — centered, homepage typography, full-bleed image + controlled
+          overlay (LIVE-PUBLIC-PAGES-...-001). Previously left-aligned in a
+          max-w-2xl column. PSD terminology only — this page must never imply
+          that an ESA and a psychiatric service dog are clinically
+          interchangeable, or that a letter alone confers service-dog status. */}
+      <PublicPageHero
+        variant="image"
+        backgroundImage="/assets/blog/man-puppy-portrait.jpg"
+        eyebrow="Service Dogs & PSD Letters"
+        heading="Everything You Need to Know About Service Dogs"
+        subheading="Service dogs assist people with disabilities through individually trained tasks. Learn how psychiatric service dogs differ from emotional support animals, what training involves, what the law protects, and where a PSD letter fits in."
+        ctas={[
+          { label: "Start PSD Assessment", href: "/psd-assessment", primary: true, icon: "ri-mental-health-line" },
+          { label: "See PSD pricing", href: "#psd-pricing", icon: "ri-price-tag-3-line" },
+        ]}
+        trustPoints={[
+          "Licensed provider evaluation",
+          "Task-trained service dog focus",
+          "Full refund if you don't qualify",
+        ]}
+      />
 
       {/* What is a Service Dog */}
       <section className="py-16 bg-white">
@@ -309,6 +299,59 @@ export default function ServiceDogsPage() {
           </Link>
         </div>
       </section>
+
+      {/* PSD COST & PRICING — the canonical three-card block in its PSD theme,
+          fed by the same single pricing source as the homepage. A PSD-specific
+          heading and CTA wrap it so the applicability is unambiguous. */}
+      <section id="psd-pricing" className="pt-14 sm:pt-16 bg-[#fffbeb] border-t border-amber-100 scroll-mt-24">
+        <div className="max-w-3xl mx-auto px-5 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">
+            What a PSD letter costs
+          </h2>
+          <p className="text-gray-600 text-sm leading-relaxed">
+            A PSD letter documents that you have a disability-related need for a{" "}
+            <strong>psychiatric service dog</strong> — a dog individually trained to perform
+            specific tasks that help with your disability. The evaluation and the letter are what
+            you are paying for below.
+          </p>
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-white p-5 text-left">
+            <h3 className="text-[14px] font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <i className="ri-information-line text-amber-600" aria-hidden="true"></i>
+              What a letter does and does not do
+            </h3>
+            <ul className="space-y-2 text-[13px] text-gray-600 leading-relaxed">
+              <li>
+                A letter does <strong>not</strong> by itself make a dog a service dog. Service-dog
+                status depends on the dog being individually trained to perform tasks for a person
+                with a disability.
+              </li>
+              <li>
+                A PSD is <strong>not</strong> the same as an emotional support animal. They are
+                different in law and in what the animal is trained to do, and they are not
+                clinically interchangeable.
+              </li>
+              <li>
+                There is no valid national &ldquo;registry&rdquo; or &ldquo;certification&rdquo;
+                that confers service-dog status.
+              </li>
+              <li>
+                A licensed provider determines clinical eligibility after an individual evaluation.
+                Qualification is never guaranteed.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <PlanPricingSection
+        theme="psd"
+        className="bg-[#fffbeb]"
+        eyebrow={PSD_PLAN_COPY.eyebrow}
+        heading={PSD_PLAN_COPY.heading}
+        subheading={PSD_PLAN_COPY.subheading}
+        cards={buildPsdPlanCards("/psd-assessment?ref=all-about-service-dogs")}
+        footnote={PSD_PLAN_COPY.footnote}
+      />
 
       {/* FAQ */}
       <section className="py-16 bg-[#fdf6ee]">
