@@ -2,9 +2,34 @@
 
 **Status:** ✅ LIVE COMPLETE (2026-07-29)
 **Source of truth (TEST):** `ea21e57` — TEST verified end-to-end including two real card payments.
-**LIVE before:** `a16f3a6` → **LIVE after:** `b595501`
-**Production deployment:** `dpl_HdCxCZrL74TbzuSgaGdSsd4Vm2Ha` (alias `5yiual7hg`)
-**Rollback deployment:** `brxdu4owb` (previous production)
+
+## ⭐ CANONICAL STATE RECORD (supersedes every SHA quoted elsewhere in this file)
+
+Earlier reports quoted `b595501`, `0293bbe`, `9559f4a` and `dpl_HdCxCZ…` inconsistently. This block
+is the single authoritative record, reconciled 2026-07-29 under
+`ADDITIONAL-PET-POST-LIVE-RECONCILIATION-001`.
+
+| | |
+|---|---|
+| **Repository HEAD** | `cc853d9` (== `origin/main`, clean) |
+| Last **code** commit of the rollout | `b595501` (02:45 UTC+5) |
+| Docs-only commits after it | `0293bbe` (03:22), `9559f4a` (03:53) |
+| Post-rollout fix commit | `cc853d9` — refund from immutable quote |
+| **Production deployment** | `dpl_HFQ1KLWH5avzetasQAB6fpe45g9o` (alias `htrwoiuhs`), built from `9559f4a` |
+| Rollback deployments | `21tuhkcyn` (`0293bbe`) → `5yiual7hg` / `dpl_HdCxCZrL74TbzuSgaGdSsd4Vm2Ha` (`b595501`) |
+| LIVE Supabase | `cvwbozlbbmrjxznknouq` |
+| Functions | `stripe-webhook` **v153** `verify_jwt=false` · `create-additional-pet-request` **v2** `true` · `provider-additional-pet-decision` **v3** `true` |
+| Migrations | `20260728120000`, `20260728140000`, `20260728160000` applied; 12/12 functions byte-match the repo |
+
+🔑 **Why the SHAs looked inconsistent:** this project's git integration deploys **every** push to
+`main` to Production — including docs-only pushes. So `0293bbe` and `9559f4a` each triggered a full
+production rebuild. The deployed **code** is identical across all three (the deltas are markdown
+only), but the deployment ID and the asset hashes change each time, which is why a previously
+recorded deployment ID goes stale. Never assume a recorded deployment is still the live one —
+re-read it. No code deployment was created merely to make a documentation SHA match production.
+
+**Production deployment:** see canonical record above.
+**Rollback deployment:** see canonical record above.
 
 > Phase note: the *base* Additional Pet feature already shipped to LIVE on 2026-07-27 (`c91edf2`).
 > This rollout ports the three later TEST workstreams that had never reached LIVE:
@@ -220,3 +245,116 @@ actually read, not at the row count.**
 | TEST mutations | **0** (read-only source) |
 | LIVE edge function deploys | 3 |
 | LIVE commits | 3 (`ed597d4`, `681122a`, `b595501`) |
+
+---
+
+# ADDITIONAL-PET-POST-LIVE-RECONCILIATION-001 (2026-07-29)
+
+Four follow-ups. Three closed on LIVE; the fourth is blocked on an active TEST writer.
+
+## 1. SHA reconciliation — ✅ closed
+See the canonical record at the top of this file.
+
+## 2. Provider-rejection refund used the global price — ✅ fixed (`cc853d9`, fn **v3**)
+
+`provider-additional-pet-decision` refunded `ADDITIONAL_PET_UPGRADE_CENTS`, which resolves to the
+**current** list price. After $20 → $30 a grandfathered `v1_2000` request would have been refunded
+3000 against a 2000 charge. **Stripe rejects a refund larger than the charge**, so every
+grandfathered rejection would have failed outright — this was not a rounding error, it was a
+broken path.
+
+The global price answers "what does a NEW request cost today". It says nothing about what this
+customer paid. The refund now comes from the request's own immutable quote
+(`amount_cents`/`currency`, frozen by `tg_addpet_immutable`), and the settled PaymentIntent is
+retrieved and compared **before** any money moves:
+
+| case | behaviour |
+|---|---|
+| settled == quote (`v1_2000`) | refund exactly **2000** |
+| settled == quote (`v2_3000`) | refund exactly **3000** |
+| included ($0) | no Stripe object at all |
+| settled ≠ quote, or currency differs | **no automatic refund** — stays `refund_pending`, `additional_pet_refund_blocked` event + audit row preserve both figures for Admin |
+| row has no usable quote | held the same way, never guessed |
+| already refunded / replayed | short-circuits; Stripe `idempotencyKey` `addpet-refund:<id>` also prevents a second refund |
+
+Two further defects in the same path: the customer email **hardcoded "$20"** regardless of what was
+paid, and claimed the refund was complete even when it had failed or been held. It now states the
+request's own amount and only says the money is back when it is.
+
+The global constant is no longer imported by this function at all, so the guard asserts its absence
+outright. **Guards 55/55 (was 47/47), negative controls 28/28 (was 22/22)**, asserted on
+comment-stripped source so prose cannot satisfy a check.
+
+⚠️ **Proven statically, not by an executed refund.** LIVE has 0 Additional Pet requests, so there
+was no real rejection to exercise and issuing a refund purely for QA is not authorised. The $20/$30
+amounts are pinned by guard + the quote's immutability, not by an observed Stripe refund.
+
+## 3. Missing entitlement snapshot for `PT-PSDAEUFNWO1` — ✅ inserted
+
+🔴 **Root cause is systemic, not a one-off.** `order_entitlement_snapshots` has exactly one writer:
+the manual helper `backfill_order_entitlements()`. **No trigger or webhook step creates a snapshot
+when an order is paid.** All 464 pre-existing rows share a single `created_at`
+(`2026-07-27 14:26:33Z`, `snapshot_source='backfill'`), and **all 10 paid orders currently missing a
+snapshot were paid after that run**. The gap grows with every new paid order. Only
+`PT-PSDAEUFNWO1` surfaced it, because the other 9 are blocked earlier in the resolver
+(reversed/locked) and never reach the entitlement gate. Tracked separately; the other 9 were left
+untouched as out of scope.
+
+The order was unambiguous: `psd_standard`, `one_time`, list $129, 1 registered pet, paid,
+`refund_status='none'`, **not locked** → classifier `exact_package_key` (highest confidence).
+
+Values were **derived** by `order_entitlement_classification_v` — the same classifier the canonical
+backfill uses — never hand-written. One statement, scoped to this confirmation ID, guarded by
+`paid_at is not null and refunded_at is null and refund_status='none'`, with
+`ON CONFLICT (order_id) DO NOTHING`, `snapshot_source='reconciliation_001'`, plus one audit row.
+
+| check | before | after |
+|---|---|---|
+| snapshots total | 464 | **465** |
+| snapshots for target | **0** | **1** |
+| rows with `repaired_at` (broad repair) | 0 | **0** |
+| hash of the 464 `backfill` rows | `7bbafef6…` | **`7bbafef6…` identical** |
+| Additional Pet requests / events | 0 / 0 | **0 / 0** |
+| doctor_earnings | 483 | **483** |
+| document_versions / letter_verifications | 16 / 399 | **16 / 399** |
+| order state · pets in assessment | processing/in_review · 1 | **unchanged · 1** |
+| customer communications (20 min) | — | **0** |
+
+Resolver before → `manual_review / entitlement_snapshot_missing`.
+Resolver after → **`paid_upgrade / tier_upgrade_required / 3000 / v2_3000`, eligible**.
+Replaying the identical statement inserted **0 snapshots and 0 audit rows**.
+The broad 229-row repair was **not** invoked, and the six refunded/cancelled orders were not touched.
+
+## 4. TEST function drift — ⛔ NOT STARTED (active TEST writer)
+
+TEST was clean at preflight (`d6076fa`), but on re-verification immediately before writing it had
+**4 modified files, 72 insertions / 9 deletions** — substantive, not line-ending noise
+(`--ignore-cr-at-eol` shows the same counts):
+
+- `scripts/check-provider-document-approval-gate.mjs` (that task's own guard)
+- `src/pages/admin-orders/components/OrderDetailModal.tsx` (**merge-frozen**; its audit-timeline work)
+- `src/pages/admin-orders/types.ts`
+- `src/pages/my-orders/page.tsx`
+
+`PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001` is actively writing TEST. Per the task
+contract, Phase 4 does not start. **Zero TEST mutations were made** — all TEST access was read-only
+(`git fetch`/`log`/`diff`, and `SELECT` against `pg_proc`).
+
+### Continuation checkpoint
+
+1. Re-run TEST preflight; require clean tree, `HEAD == origin/main`, no lock files, no active writer.
+2. Enumerate **every** Additional Pet function whose TEST DB body differs from the repo's **last**
+   definition — do not trust the earlier count of four. Compare with
+   `md5(regexp_replace(regexp_replace(prosrc,'--[^\n]*','','g'),'\s+',' ','g'))` against the
+   `as $$ … $$` body of the last migration defining it.
+   Known-different so far: `get_additional_pet_eligibility_review` (TEST DB ~140 logic chars LONGER
+   than the repo), `classify_order_entitlement` (5), `repair_order_entitlement_snapshots` (2),
+   `admin_resolve_additional_pet_eligibility` (same length, different content).
+   `tg_addpet_override_events_append_only` matched. **LIVE matches the repo for all 12.**
+3. Confirmed NOT the cause: the four `20260729*` provider-document migrations define only
+   `tg_order_document_release_gate`, `current_staff_actor`, `approve_order_document`,
+   `request_order_document_correction`, `record_order_status_action` — no Additional Pet function.
+4. Classify each drift (intentional hotfix / accidental / obsolete / formatting / unsafe) before
+   touching it. Do not overwrite an intentional TEST fix with an older repo definition.
+5. Reconcile via a **new forward-only migration** (never edit an applied one), or redeploy the
+   committed definition if the drift is accidental. Add a drift-detection guard.
