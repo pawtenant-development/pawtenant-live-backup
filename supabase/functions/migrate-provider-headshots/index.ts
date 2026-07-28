@@ -106,6 +106,46 @@ Deno.serve(async (req) => {
     { auth: { persistSession: false } },
   );
 
+  // ── purge_legacy: remove superseded email-derived objects ──────────────────
+  // FAIL-CLOSED. Refuses to delete anything unless EVERY authoritative
+  // reference already points at a neutral key, and deletes only objects whose
+  // key is not neutral. Run ONLY after production has been verified.
+  if (mode === "purge_legacy") {
+    const [ap2, dp2, dc2] = await Promise.all([
+      admin.from("approved_providers").select("photo_url"),
+      admin.from("doctor_profiles").select("photo_url"),
+      admin.from("doctor_contacts").select("photo_url"),
+    ]);
+    const allRefs = [...(ap2.data ?? []), ...(dp2.data ?? []), ...(dc2.data ?? [])]
+      .map((r: { photo_url: string | null }) => keyFromUrl(r.photo_url))
+      .filter((k): k is string => !!k);
+    const stillLegacy = allRefs.filter((k) => !NEUTRAL_RE.test(k));
+    if (stillLegacy.length > 0) {
+      return json(
+        { error: "refused: some references still point at legacy keys", stillLegacyCount: stillLegacy.length },
+        409,
+      );
+    }
+
+    const { data: listed, error: listErr } = await admin.storage
+      .from(BUCKET)
+      .list("", { limit: 1000 });
+    if (listErr) return json({ error: `list failed: ${listErr.message}` }, 500);
+
+    // Top-level entries only; neutral objects live one folder deep so they are
+    // not returned by a root list and cannot be deleted here by accident.
+    const legacy = (listed ?? [])
+      .filter((o) => o.id !== null && !NEUTRAL_RE.test(o.name) && !o.name.includes("/"))
+      .map((o) => o.name);
+
+    if (legacy.length === 0) return json({ mode, deleted: 0, note: "nothing to purge" });
+
+    const { error: delErr } = await admin.storage.from(BUCKET).remove(legacy);
+    if (delErr) return json({ error: `delete failed: ${delErr.message}`, attempted: legacy.length }, 500);
+
+    return json({ mode, deleted: legacy.length });
+  }
+
   const publicBase = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${BUCKET}/`;
 
   // ── Build the work list from the three authoritative reference tables ──────
