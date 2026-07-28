@@ -46,6 +46,7 @@ const SELF = process.argv.includes("--self-test");
 
 const F = {
   migration: "supabase/migrations/20260727150000_additional_pet_requests.sql",
+  priceMig: "supabase/migrations/20260728160000_additional_pet_price_v2_30_and_grandfathering.sql",
   createFn: "supabase/functions/create-additional-pet-request/index.ts",
   shared: "supabase/functions/_shared/completeAdditionalPetPayment.ts",
   decision: "supabase/functions/provider-additional-pet-decision/index.ts",
@@ -72,17 +73,34 @@ function read(key, override) {
 function stripComments(text) {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
+    // CRLF-SAFE (fixed 2026-07-28, GATING-002). Splitting on "\n" alone leaves a
+    // trailing "\r" on every line of a CRLF checkout. "\r" is a line terminator
+    // in JS regex, so `.*` stops before it and the unanchored `$` never matches
+    // — so `//` comments were NEVER stripped in this repo, and every
+    // "must NOT contain X" check was silently testing comment prose too.
+    .split(/\r?\n/)
     .map((line) => line.replace(/--.*$/, "").replace(/\/\/.*$/, ""))
     .join("\n");
 }
 
 /** Every check: [id, description, fn(src) -> boolean]. */
 const CHECKS = [
-  ["P1a", "$20 defined once server-side as 2000 cents",
-    (s) => /ADDITIONAL_PET_UPGRADE_CENTS\s*=\s*2000/.test(s.shared)],
-  ["P1b", "DB constant function returns 2000",
-    (s) => /additional_pet_upgrade_cents\(\)[\s\S]{0,200}?select 2000/.test(s.migration)],
+  // REWRITTEN for the 2026-07-28 $20 -> $30 change. The old assertions encoded
+  // "one global constant used everywhere", which is precisely the model that
+  // made grandfathering impossible. The invariant is now stronger: the current
+  // price lives in ONE versioned server table, and no payment is ever validated
+  // against a global.
+  ["P1a", "the module constant is the CURRENT price and is not a validation source",
+    (s) => /ADDITIONAL_PET_UPGRADE_CENTS\s*=\s*3000/.test(s.shared)
+        && /NEVER validate a payment against this constant/i.test(s.shared)],
+  ["P1b", "the DB price comes from the versioned table, not a literal",
+    (s) => {
+      const c = stripComments(s.priceMig);
+      return /create table if not exists public\.additional_pet_price_versions/.test(c)
+        && /additional_pet_current_price\(\)/.test(c)
+        && !/select 2000/.test(c)
+        && /'v1_2000', 2000/.test(c) && /'v2_3000', 3000/.test(c);
+    }],
   ["P1c", "priced as a PACKAGE-TIER upgrade, not a per-pet fee",
     (s) => /package[- ]tier upgrade/i.test(s.migration) && /not a per-pet fee/i.test(s.shared + s.migration)],
   // Comments are stripped first: these files DOCUMENT that the retired keys are
@@ -96,9 +114,30 @@ const CHECKS = [
     (s) => /Deliberately IGNORED[\s\S]{0,200}?amount\?:\s*unknown/.test(s.createFn)],
   ["P3b", "the amount comes from the server RPC, not the body",
     (s) => /rpc\("resolve_additional_pet_pricing"/.test(s.createFn)],
-  ["P3c", "Stripe unit_amount is the server constant only",
-    (s) => /unit_amount:\s*ADDITIONAL_PET_UPGRADE_CENTS/.test(s.createFn)
-        && !/unit_amount:\s*(body|req)\./.test(s.createFn)],
+  ["P3c", "Stripe unit_amount is the SERVER-QUOTED amount, never client input",
+    (s) => {
+      const c = stripComments(s.createFn);
+      const amounts = [...c.matchAll(/unit_amount:\s*([A-Za-z0-9_.]+)/g)].map((m) => m[1]);
+      // create -> the engine's quote for this request; resume -> the ROW's own
+      // stored quote. Neither may be a constant or anything client-supplied.
+      return amounts.length >= 2
+        && amounts.every((a) => a === "amountCents" || a === "resumeCents")
+        && !/unit_amount:\s*(body|req)\./.test(c)
+        && !/unit_amount:\s*\d/.test(c);
+    }],
+  ["P3d", "a resume re-uses the request's own quoted price (grandfathering)",
+    (s) => {
+      const c = stripComments(s.createFn);
+      const i = c.indexOf('action === "resume"');
+      if (i < 0) return false;
+      // Bound by the NEXT action, not a fixed window — a magic length silently
+      // truncated this branch 111 chars before the unit_amount it must inspect.
+      const end = c.indexOf('action !== "create"', i);
+      const branch = c.slice(i, end > i ? end : c.length);
+      return /const resumeCents = pr\.amount_cents/.test(branch)
+        && /unit_amount:\s*resumeCents/.test(branch)
+        && !/unit_amount:\s*ADDITIONAL_PET_UPGRADE_CENTS/.test(branch);
+    }],
   ["P4a", "manual review returns before any request/Stripe object",
     (s) => /outcome === "manual_review"[\s\S]{0,400}?return json\(409/.test(s.createFn)],
   ["P4b", "annual + ambiguous resolve to manual_review with 0 cents",
@@ -127,12 +166,29 @@ const CHECKS = [
   ["P7c", "approval sets approved_pending_document, not completed",
     (s) => /status:\s*"approved_pending_document"/.test(s.decision)
         && !/provider_decision: "approved"[\s\S]{0,200}?status:\s*"completed"/.test(s.decision)],
-  ["P8", "amount AND currency verified before marking paid",
-    (s) => /gotCents === ADDITIONAL_PET_UPGRADE_CENTS/.test(s.shared)
-        && /gotCurrency === ADDITIONAL_PET_CURRENCY/.test(s.shared)
-        && s.shared.indexOf("amount_mismatch") < s.shared.indexOf("paid_at: nowIso")],
+  // The expectation MUST be the request's own immutable quote, not the global
+  // price — validating against the global would reject every grandfathered $20
+  // payment as a mismatch the moment the price moved to $30.
+  ["P8", "amount is verified against THE REQUEST'S quote, and currency, before paid",
+    (s) => {
+      const c = stripComments(s.shared);
+      return /const expectedCents = \(reqRow\.amount_cents as number\)/.test(c)
+        && /gotCents === expectedCents/.test(c)
+        && !/gotCents === ADDITIONAL_PET_UPGRADE_CENTS/.test(c)
+        && /gotCurrency === ADDITIONAL_PET_CURRENCY/.test(c)
+        && c.indexOf("amount_mismatch") < c.indexOf("paid_at: nowIso");
+    }],
+  ["P8b", "the quoted amount must still be a KNOWN price version",
+    (s) => /quoteIsKnownPrice/.test(stripComments(s.shared))
+        && /additional_pet_price_versions/.test(stripComments(s.shared))],
+  // Tightened 2026-07-28 (GATING-002). The old form matched `.is("paid_at",
+  // null)` ANYWHERE in the file, and there are two occurrences — the fulfilment
+  // update and the locked-race parking update. Deleting the fulfilment guard
+  // therefore left the assertion satisfied by the other one, so control D could
+  // never trip and P9 was never actually proven. Anchor to the fulfilment
+  // update: `.eq("id", reqId)` immediately followed by the paid_at guard.
   ["P9", "fulfilment is idempotent on paid_at",
-    (s) => /\.is\("paid_at",\s*null\)/.test(stripComments(s.shared))],
+    (s) => /\.eq\("id", reqId\)\s*\r?\n\s*\.is\("paid_at",\s*null\)/.test(stripComments(s.shared))],
   ["P10a", "no order row is ever inserted by the add-on flow",
     (s) => !/from\("orders"\)\s*\.insert/.test(s.createFn + s.shared + s.decision)],
   ["P10b", "the add-on never writes orders.price / paid_at / payment_intent_id",
@@ -190,16 +246,42 @@ const CHECKS = [
   ["P19", "customer UI never sends a client-derived amount",
     (s) => !/amountCents\s*:/.test(stripComments(s.customerUi))
         && !/amount\s*:\s*\d/.test(stripComments(s.customerUi))],
+  // GATING-002 (owner correction 2026-07-28): the owner-approved manual-review
+  // copy deliberately NAMES the $20 upgrade so the customer knows the two
+  // possible outcomes ("...whether the pet is included or requires the $20
+  // Additional Pet upgrade"). That is descriptive prose in a branch that quotes
+  // NO amount for THIS order and offers no CTA. The substantive rule — any
+  // amount actually attached to this order must be the server's — is unchanged
+  // and is now enforced everywhere EXCEPT that one explainer.
+  // RESIDUAL RISK, accepted: if additional_pet_upgrade_cents() ever moves off
+  // 2000, this sentence must be updated by hand. P20b pins that link.
   ["P20", "customer UI renders the SERVER amount, never a hardcoded price",
-    (s) => /dollars\(pricing\.amount_cents\)/.test(s.customerUi)
-        && !/\$20\b/.test(stripComments(s.customerUi))],
+    (s) => {
+      const c = stripComments(s.customerUi);
+      if (!/dollars\(pricing\.amount_cents\)/.test(c)) return false;
+      // Excise only the manual-review explainer, then ban price literals.
+      const a = c.indexOf('outcome === "manual_review"');
+      const priced = a < 0 ? c : c.slice(0, a) + c.slice(a + 700);
+      return !/\$20\b/.test(priced);
+    }],
+  ["P20b", "the one permitted $20 mention lives ONLY in the manual-review copy",
+    (s) => {
+      const c = stripComments(s.customerUi);
+      const hits = (c.match(/\$20\b/g) ?? []).length;
+      if (hits === 0) return true;
+      const a = c.indexOf('outcome === "manual_review"');
+      if (a < 0) return false;
+      return hits === ((c.slice(a, a + 700).match(/\$20\b/g) ?? []).length);
+    }],
   ["P21", "customer UI shows NO price and NO checkout on manual review",
     (s) => {
       const c = s.customerUi;
       const a = c.indexOf('outcome === "manual_review"');
       if (a < 0) return false;
       const block = c.slice(a, a + 700);
-      return /requires a manual review/i.test(block)
+      // Owner-approved wording (GATING-002). The mechanical assertion — no
+      // order-specific amount, no checkout — is what matters and is unchanged.
+      return /We need to review this order before another pet can be added/i.test(block)
         && !/amount_cents|checkoutUrl|dollars\(/.test(block);
     }],
   ["P22", "customer UI hides the CTA while a request is active",
@@ -227,14 +309,24 @@ const CHECKS = [
 
 /** Negative controls: mutation applied in memory must trip the named check. */
 const CONTROLS = [
-  ["A", "P1a", "shared", (t) => t.replace("ADDITIONAL_PET_UPGRADE_CENTS = 2000",
-                                          "ADDITIONAL_PET_UPGRADE_CENTS = 2500")],
+  ["A", "P1a", "shared", (t) => t.replace("ADDITIONAL_PET_UPGRADE_CENTS = 3000",
+                                          "ADDITIONAL_PET_UPGRADE_CENTS = 2000")],
+  ["A2", "P1b", "priceMig", (t) => t.replace("'v2_3000', 3000", "'v2_3000', 2000")],
+  ["A3", "P3d", "createFn", (t) => t.replace("unit_amount: resumeCents,",
+                                             "unit_amount: ADDITIONAL_PET_UPGRADE_CENTS,")],
+  ["A4", "P8", "shared", (t) => t.replace("gotCents === expectedCents",
+                                          "gotCents === ADDITIONAL_PET_UPGRADE_CENTS")],
+  ["A5", "P8b", "shared", (t) => t.replace(/quoteIsKnownPrice/g, "alwaysTrue")],
   ["B", "P2", "createFn", (t) => t.replace("const ESA_TYPES", "const esa_additional_pet = 1;\nconst ESA_TYPES")],
-  ["C", "P3c", "createFn", (t) => t.replace("unit_amount: ADDITIONAL_PET_UPGRADE_CENTS,",
+  ["C", "P3c", "createFn", (t) => t.replace("unit_amount: amountCents,",
                                             "unit_amount: body.amountCents,")],
   // Targets the CODE occurrence, not the comment that quotes the same string.
+  // PRE-EXISTING NO-OP, fixed 2026-07-28 (GATING-002): the literal used "\n"
+  // but this repo checks out CRLF, so the replace never matched and P9 —
+  // "fulfilment is idempotent on paid_at" — was never actually proven. Use a
+  // line-ending-tolerant regex.
   ["D", "P9", "shared",
-    (t) => t.replace('.eq("id", reqId)\n    .is("paid_at", null)',
+    (t) => t.replace(/\.eq\("id", reqId\)\s*\r?\n\s*\.is\("paid_at", null\)/,
                      '.eq("id", reqId)\n    .limit(1)')],
   ["E", "P7b", "shared", (t) => t.replace("status: baseIsPaid", "provider_decision: 'approved', status: baseIsPaid")],
   ["F", "P10a", "createFn", (t) => t.replace('.from("order_additional_pet_requests")\n    .insert(',
@@ -247,6 +339,12 @@ const CONTROLS = [
   ["K", "P8", "shared", (t) => t.replace("gotCurrency === ADDITIONAL_PET_CURRENCY", "true")],
   ["L", "P19", "customerUi", (t) => t.replace("body: JSON.stringify({ action,", "body: JSON.stringify({ amountCents: 2000, action,")],
   ["M", "P20", "customerUi", (t) => t.replace("dollars(pricing.amount_cents)", '"$20"')],
+  // Proves the NARROWED P20 still catches a hardcoded price in a PRICED branch,
+  // not just the removal of the server render. Must be a real string literal —
+  // a /* $20 */ comment is removed by stripComments and proves nothing.
+  ["M2", "P20", "customerUi", (t) => t.replace(
+    "const MAX_PETS = 3;", 'const MAX_PETS = 3;\nconst PAID_LABEL = "$20 one-time";')],
+  ["M3", "P20b", "customerUi", (t) => t.replace("const MAX_PETS = 3;", 'const MAX_PETS = 3;\nconst COPY = "$20 upgrade";')],
   ["N", "P24", "providerUi", (t) => t.replace('.rpc("get_additional_pet_request_for_provider"', '.from("order_additional_pet_requests").select("*"')],
   ["O", "P25", "providerUi", (t) => t.replace("const DECIDABLE", "const amount_cents = 2000;\nconst DECIDABLE")],
   ["Q", "P23", "customerUi", (t) => t.replace('aria-modal="true"', "")],
