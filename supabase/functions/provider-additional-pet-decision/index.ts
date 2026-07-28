@@ -15,14 +15,17 @@
 //     EXISTING provider-submit-letter path, whose closed revision architecture
 //     creates version 2+, mints a NEW verification ID, and activates only after
 //     generation succeeds. The original letter and its ID are never touched.
-//   • Rejecting a PAID request refunds EXACTLY the $20 add-on — never the base
-//     order, never a partial, never a deduction — and leaves the original
-//     document and verification ID in place.
+//   • Rejecting a PAID request refunds EXACTLY the add-on, at the amount THIS
+//     request was quoted and settled at (its immutable amount_cents/currency) —
+//     never the current list price, never the base order, never a partial,
+//     never a deduction — and leaves the original document and verification ID
+//     in place. If Stripe's settled amount and the request's quote disagree, no
+//     refund is issued automatically and the case is held for Admin.
 //   • Rejecting a $0 request creates no refund object at all.
 
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendAdditionalPetEmail, ADDITIONAL_PET_UPGRADE_CENTS } from "../_shared/completeAdditionalPetPayment.ts";
+import { sendAdditionalPetEmail } from "../_shared/completeAdditionalPetPayment.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -218,47 +221,118 @@ Deno.serve(async (req) => {
   });
 
   // ── ADD-ON-ONLY REFUND ────────────────────────────────────────────────────
-  // Refunds EXACTLY the $20 add-on payment intent. The base order's payment,
-  // price, paid_at and refund fields are never touched, so this can never
-  // register as an order refund, never reach the Google Ads refund-adjustment
-  // candidate generator (which reads `orders`), and never void a provider
-  // earning. No administration deduction is applied — the add-on is refunded
-  // in full per owner policy.
+  // Refunds EXACTLY the add-on payment intent, at the amount THIS REQUEST was
+  // quoted and settled at. The base order's payment, price, paid_at and refund
+  // fields are never touched, so this can never register as an order refund,
+  // never reach the Google Ads refund-adjustment candidate generator (which
+  // reads `orders`), and never void a provider earning. No administration
+  // deduction is applied — the add-on is refunded in full per owner policy.
+  //
+  // ADDITIONAL-PET-POST-LIVE-RECONCILIATION-001: the amount MUST come from the
+  // request's own immutable quote (amount_cents/currency, frozen by
+  // tg_addpet_immutable), never from the CURRENT global price. After $20 -> $30
+  // the global helper returns 3000, so a grandfathered v1_2000 request would
+  // have been refunded 3000 against a 2000 charge — Stripe rejects a refund
+  // larger than the charge, so every grandfathered rejection would have failed.
+  // The global price describes what a NEW request costs today; it says nothing
+  // about what THIS customer actually paid.
   let refundResult: Record<string, unknown> = { refunded: false };
   if (wasPaid) {
     const piId = reqRow.stripe_payment_intent_id as string | null;
-    if (!stripeKey || !piId) {
+    const quotedCents = Number(reqRow.amount_cents);
+    const quotedCurrency = String(reqRow.currency ?? "").toLowerCase();
+    const quotedVersion = (reqRow.pricing_version as string | null) ?? null;
+
+    if (reqRow.refunded_at) {
+      // Already refunded — never issue a second one.
+      refundResult = { refunded: true, alreadyRefunded: true,
+                       refundId: reqRow.stripe_refund_id ?? null,
+                       amountCents: reqRow.refund_amount_cents ?? quotedCents };
+    } else if (!stripeKey || !piId) {
       refundResult = { refunded: false, pending: true, reason: !piId ? "no_payment_intent" : "stripe_not_configured" };
+    } else if (!Number.isInteger(quotedCents) || quotedCents <= 0 || !quotedCurrency) {
+      // The row cannot state what was owed. Never guess an amount.
+      refundResult = { refunded: false, pending: true, error: "quote_not_resolvable",
+                       requiresAdminReview: true };
+      await admin.from("audit_logs").insert({
+        action: "additional_pet_refund_blocked", object_type: "order", object_id: confId,
+        description: `Additional Pet refund HELD for Admin review after provider rejection: the request does not carry a usable quote (amount_cents=${String(reqRow.amount_cents)}, currency=${String(reqRow.currency)}). No refund was issued and no amount was guessed.`,
+        metadata: { request_id: reqRow.id, order_id: order.id, payment_intent_id: piId,
+                    reason: "quote_not_resolvable", scope: "addon_only" },
+      });
     } else {
       try {
         // @ts-ignore — Stripe types under Deno
         const stripe = new Stripe(stripeKey, { apiVersion: "2024-06-20" });
-        const refund = await stripe.refunds.create(
-          { payment_intent: piId, amount: ADDITIONAL_PET_UPGRADE_CENTS },
-          // Idempotent: a retried rejection can never issue a second refund.
-          { idempotencyKey: `addpet-refund:${reqRow.id}` },
-        );
-        await admin.from("order_additional_pet_requests").update({
-          status: "refunded", refunded_at: new Date().toISOString(),
-          stripe_refund_id: refund.id,
-          refund_amount_cents: refund.amount ?? ADDITIONAL_PET_UPGRADE_CENTS,
-        }).eq("id", reqRow.id).is("refunded_at", null);
 
-        await admin.from("order_additional_pet_request_events").insert({
-          request_id: reqRow.id, order_id: order.id, event_type: "addon_refunded",
-          from_status: "refund_pending", to_status: "refunded",
-          actor_role: "system",
-          detail: { amount_cents: refund.amount ?? ADDITIONAL_PET_UPGRADE_CENTS, scope: "addon_only" },
-        });
-        refundResult = { refunded: true, refundId: refund.id, amountCents: refund.amount };
+        // The two authoritative sources — what Stripe actually settled, and the
+        // request's frozen quote — must agree before a single cent moves.
+        const pi = await stripe.paymentIntents.retrieve(piId);
+        const settledCents = Number(pi.amount_received ?? pi.amount ?? 0);
+        const settledCurrency = String(pi.currency ?? "").toLowerCase();
+        const amountAgrees = settledCents === quotedCents;
+        const currencyAgrees = settledCurrency === quotedCurrency;
 
-        await admin.from("audit_logs").insert({
-          action: "additional_pet_refunded", object_type: "order", object_id: confId,
-          description: `Additional Pet add-on refunded in full ($${(ADDITIONAL_PET_UPGRADE_CENTS / 100).toFixed(2)}) after provider rejection. ADD-ON ONLY — the base order, its payment and the original document are untouched. No administration deduction. No Google Ads adjustment.`,
-          metadata: { request_id: reqRow.id, order_id: order.id, stripe_refund_id: refund.id,
-                      payment_intent_id: piId, amount_cents: ADDITIONAL_PET_UPGRADE_CENTS,
-                      scope: "addon_only", base_order_untouched: true },
-        });
+        if (!amountAgrees || !currencyAgrees) {
+          // Disagreement is an accounting fact, not something to average over.
+          // Preserve the evidence and hand it to Admin; leave the request in
+          // refund_pending so the money is visibly still owed.
+          refundResult = {
+            refunded: false, pending: true, error: "amount_mismatch",
+            requiresAdminReview: true,
+            quotedCents, quotedCurrency, quotedVersion, settledCents, settledCurrency,
+          };
+          await admin.from("order_additional_pet_request_events").insert({
+            request_id: reqRow.id, order_id: order.id, event_type: "addon_refund_blocked",
+            from_status: "refund_pending", to_status: "refund_pending",
+            actor_role: "system",
+            detail: { reason: "amount_mismatch", quoted_cents: quotedCents,
+                      quoted_currency: quotedCurrency, quoted_version: quotedVersion,
+                      settled_cents: settledCents, settled_currency: settledCurrency,
+                      payment_intent_id: piId, scope: "addon_only" },
+          });
+          await admin.from("audit_logs").insert({
+            action: "additional_pet_refund_blocked", object_type: "order", object_id: confId,
+            description: `Additional Pet refund HELD for Admin review after provider rejection: the settled payment (${settledCents} ${settledCurrency}) does not match the request's quote (${quotedCents} ${quotedCurrency}${quotedVersion ? `, ${quotedVersion}` : ""}). No refund was issued — refunding either figure automatically would either short-change the customer or over-refund PawTenant.`,
+            metadata: { request_id: reqRow.id, order_id: order.id, payment_intent_id: piId,
+                        reason: "amount_mismatch", quoted_cents: quotedCents,
+                        quoted_currency: quotedCurrency, quoted_version: quotedVersion,
+                        settled_cents: settledCents, settled_currency: settledCurrency,
+                        scope: "addon_only", base_order_untouched: true },
+          });
+        } else {
+          const refund = await stripe.refunds.create(
+            { payment_intent: piId, amount: quotedCents },
+            // Idempotent: a retried rejection can never issue a second refund.
+            { idempotencyKey: `addpet-refund:${reqRow.id}` },
+          );
+          const refundedCents = Number(refund.amount ?? quotedCents);
+          await admin.from("order_additional_pet_requests").update({
+            status: "refunded", refunded_at: new Date().toISOString(),
+            stripe_refund_id: refund.id,
+            refund_amount_cents: refundedCents,
+          }).eq("id", reqRow.id).is("refunded_at", null);
+
+          await admin.from("order_additional_pet_request_events").insert({
+            request_id: reqRow.id, order_id: order.id, event_type: "addon_refunded",
+            from_status: "refund_pending", to_status: "refunded",
+            actor_role: "system",
+            detail: { amount_cents: refundedCents, currency: quotedCurrency,
+                      pricing_version: quotedVersion, scope: "addon_only" },
+          });
+          refundResult = { refunded: true, refundId: refund.id, amountCents: refundedCents,
+                           currency: quotedCurrency, pricingVersion: quotedVersion };
+
+          await admin.from("audit_logs").insert({
+            action: "additional_pet_refunded", object_type: "order", object_id: confId,
+            description: `Additional Pet add-on refunded in full ($${(refundedCents / 100).toFixed(2)}${quotedVersion ? `, ${quotedVersion}` : ""}) after provider rejection — the amount this request was quoted and settled at, not the current list price. ADD-ON ONLY — the base order, its payment and the original document are untouched. No administration deduction. No Google Ads adjustment.`,
+            metadata: { request_id: reqRow.id, order_id: order.id, stripe_refund_id: refund.id,
+                        payment_intent_id: piId, amount_cents: refundedCents,
+                        currency: quotedCurrency, pricing_version: quotedVersion,
+                        settled_cents: settledCents,
+                        scope: "addon_only", base_order_untouched: true },
+          });
+        }
       } catch (err) {
         console.error("[addPet] refund failed:", err instanceof Error ? err.message : String(err));
         refundResult = { refunded: false, pending: true, error: "refund_failed" };
@@ -275,7 +349,16 @@ Deno.serve(async (req) => {
   } catch { /* non-critical */ }
 
   if (custEmail) {
-    const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#374151;"><img src="${LOGO_URL}" width="140" alt="PawTenant" style="display:block;margin-bottom:16px;"/><h2 style="color:#0f172a;font-size:20px;">Update on your additional pet request</h2><p style="line-height:1.7;font-size:14px;">Hi ${order.first_name || "there"}, after clinical review the provider was not able to approve adding <strong>${petName}</strong> to order <strong>${confId}</strong>.</p><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;font-size:13px;color:#475569;line-height:1.6;">${reason}</div><p style="line-height:1.7;font-size:14px;">${wasPaid ? "We have refunded the $20 upgrade in full. Refunds typically appear on your statement within 5&ndash;10 business days." : "No payment was taken for this request."}</p><p style="line-height:1.7;font-size:13px;color:#64748b;">Your existing letter is unaffected and remains valid, and its verification ID continues to verify unchanged.</p></div>`;
+    // The refund sentence states what THIS customer actually paid, and only
+    // claims the money is back when it genuinely is. A held/pending refund must
+    // never read as completed — the customer would stop watching for it.
+    const emailRefundCents = Number(refundResult.amountCents ?? reqRow.amount_cents ?? 0);
+    const refundLine = !wasPaid
+      ? "No payment was taken for this request."
+      : refundResult.refunded
+        ? `We have refunded the $${(emailRefundCents / 100).toFixed(2)} upgrade in full. Refunds typically appear on your statement within 5&ndash;10 business days.`
+        : "Your refund for this upgrade is being processed. Our support team is completing it and will confirm as soon as it is on its way.";
+    const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#374151;"><img src="${LOGO_URL}" width="140" alt="PawTenant" style="display:block;margin-bottom:16px;"/><h2 style="color:#0f172a;font-size:20px;">Update on your additional pet request</h2><p style="line-height:1.7;font-size:14px;">Hi ${order.first_name || "there"}, after clinical review the provider was not able to approve adding <strong>${petName}</strong> to order <strong>${confId}</strong>.</p><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;font-size:13px;color:#475569;line-height:1.6;">${reason}</div><p style="line-height:1.7;font-size:14px;">${refundLine}</p><p style="line-height:1.7;font-size:13px;color:#64748b;">Your existing letter is unaffected and remains valid, and its verification ID continues to verify unchanged.</p></div>`;
     await sendAdditionalPetEmail(admin, {
       orderId: order.id, confirmationId: confId, to: custEmail,
       subject: "Update on Your Additional Pet Request — PawTenant", html,

@@ -215,9 +215,61 @@ const CHECKS = [
     (s) => !/create policy\s+\w*provider\w*\s+on public\.order_additional_pet_requests/i.test(s.migration)],
   ["P12a", "refund is add-on only and never touches the base order",
     (s) => /ADD-ON-ONLY REFUND/.test(s.decision) && /addon_only/.test(s.decision)],
-  ["P12b", "refund targets the add-on payment intent for exactly $20",
-    (s) => /refunds\.create\(\s*\{\s*payment_intent:\s*piId,\s*amount:\s*ADDITIONAL_PET_UPGRADE_CENTS/
-      .test(s.decision)],
+  // ── ADDITIONAL-PET-POST-LIVE-RECONCILIATION-001 ──────────────────────────
+  // The refund amount must be THIS request's immutable quote. The current
+  // global price describes what a NEW request costs today and says nothing
+  // about what this customer paid: after $20 -> $30 it would have tried to
+  // refund 3000 against a 2000 charge, which Stripe rejects outright, so every
+  // grandfathered rejection would have failed. Asserted on comment-stripped
+  // source so prose can never satisfy a check.
+  ["P12b", "refund amount comes from the request's own quote, not a global price",
+    (s) => /refunds\.create\(\s*\{\s*payment_intent:\s*piId,\s*amount:\s*quotedCents\s*\}/
+      .test(stripComments(s.decision))],
+  ["P12b2", "the quote is read from the immutable request row (amount + currency)",
+    (s) => {
+      const c = stripComments(s.decision);
+      return /quotedCents\s*=\s*Number\(\s*reqRow\.amount_cents\s*\)/.test(c)
+          && /quotedCurrency\s*=\s*String\(\s*reqRow\.currency/.test(c);
+    }],
+  ["P12b3", "the rejection path never reads the CURRENT global Additional Pet price",
+    (s) => !/ADDITIONAL_PET_UPGRADE_CENTS|additional_pet_upgrade_cents|additional_pet_current_price/
+      .test(stripComments(s.decision))],
+  ["P12b4", "the settled Stripe payment is retrieved and compared before refunding",
+    (s) => {
+      const c = stripComments(s.decision);
+      return /paymentIntents\.retrieve\(\s*piId\s*\)/.test(c)
+          && /amountAgrees\s*=\s*settledCents\s*===\s*quotedCents/.test(c)
+          && /currencyAgrees\s*=\s*settledCurrency\s*===\s*quotedCurrency/.test(c);
+    }],
+  ["P12b5", "a settled/quote mismatch BLOCKS the automatic refund and records evidence",
+    (s) => {
+      const c = stripComments(s.decision);
+      const m = c.match(/if\s*\(\s*!amountAgrees\s*\|\|\s*!currencyAgrees\s*\)\s*\{([\s\S]*?)\n(\s*)\}\s*else\s*\{/);
+      if (!m) return false;
+      const branch = m[1];
+      // the blocking branch must not move money, and must preserve the evidence
+      return !/refunds\.create/.test(branch)
+          && /amount_mismatch/.test(branch)
+          && /additional_pet_refund_blocked/.test(branch)
+          && /settled_cents/.test(branch) && /quoted_cents/.test(branch);
+    }],
+  ["P12b6", "an unusable quote is held for Admin rather than guessed",
+    (s) => {
+      const c = stripComments(s.decision);
+      return /quote_not_resolvable/.test(c) && /requiresAdminReview/.test(c);
+    }],
+  ["P12b7", "an already-refunded request short-circuits instead of refunding twice",
+    (s) => /if\s*\(\s*reqRow\.refunded_at\s*\)/.test(stripComments(s.decision))],
+  ["P12b8", "the rejection email states the request's own amount, never a hardcoded price",
+    (s) => {
+      const c = stripComments(s.decision);
+      return /emailRefundCents\s*=\s*Number\(/.test(c)
+          && /\$\$\{\(\s*emailRefundCents\s*\/\s*100\s*\)\.toFixed\(2\)\}/.test(c)
+          && !/refunded the \$20/.test(c) && !/refunded the \$30/.test(c);
+    }],
+  ["P12b9", "a held/pending refund never reads to the customer as completed",
+    (s) => /refundResult\.refunded\s*\n?\s*\?/.test(stripComments(s.decision))
+        || /refundResult\.refunded\s*$/m.test(stripComments(s.decision))],
   ["P12c", "refund cannot double-refund (Stripe idempotencyKey)",
     (s) => /idempotencyKey:\s*`addpet-refund:\$\{reqRow\.id\}`/.test(s.decision)],
   ["P13a", "one active request per order (partial unique index)",
@@ -332,6 +384,23 @@ const CONTROLS = [
   ["F", "P10a", "createFn", (t) => t.replace('.from("order_additional_pet_requests")\n    .insert(',
                                              '.from("orders")\n    .insert(')],
   ["G", "P12c", "decision", (t) => t.replace("idempotencyKey: `addpet-refund:${reqRow.id}`", "")],
+  // ADDITIONAL-PET-POST-LIVE-RECONCILIATION-001 refund controls.
+  ["G2", "P12b", "decision", (t) => t.replace(
+    "{ payment_intent: piId, amount: quotedCents },",
+    "{ payment_intent: piId, amount: ADDITIONAL_PET_UPGRADE_CENTS },")],
+  ["G3", "P12b3", "decision", (t) => t.replace(
+    "const quotedCents = Number(reqRow.amount_cents);",
+    "const quotedCents = additional_pet_upgrade_cents();")],
+  ["G4", "P12b4", "decision", (t) => t.replace(
+    "const pi = await stripe.paymentIntents.retrieve(piId);",
+    "const pi = { amount: quotedCents, currency: quotedCurrency };")],
+  ["G5", "P12b5", "decision", (t) => t.replace(
+    'refunded: false, pending: true, error: "amount_mismatch",',
+    'refunded: false, pending: true, error: "amount_mismatch", sneak: await stripe.refunds.create({ payment_intent: piId, amount: quotedCents }),')],
+  ["G6", "P12b7", "decision", (t) => t.replace(
+    "if (reqRow.refunded_at) {", "if (false) {")],
+  ["G7", "P12b8", "decision", (t) => t.replace(
+    "${refundLine}", "We have refunded the $20 upgrade in full.")],
   ["H", "P13b", "migration", (t) => t.replace("paid_upgrade' and amount_cents = 2000",
                                               "paid_upgrade' and amount_cents >= 0")],
   ["I", "P14", "createFn", (t) => t.replace("new_pet: pet,", "new_pet: pet, assessment_answers: pet,")],
