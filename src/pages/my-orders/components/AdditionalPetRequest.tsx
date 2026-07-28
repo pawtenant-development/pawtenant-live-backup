@@ -29,9 +29,18 @@ const EMPTY_PET: PetInput = { name: "", type: "", breed: "", age: "", weight: ""
 
 interface Pricing {
   eligible: boolean;
-  outcome: "paid_upgrade" | "included" | "manual_review" | "blocked";
+  outcome: "paid_upgrade" | "included" | "manual_review" | "blocked" | "resume_payment";
   code: string;
   amount_cents: number;
+  // Pricing change 2026-07-28 ($20 -> $30). For an EXISTING request the server
+  // returns THAT request's quoted amount, so a checkout created before the
+  // change stays payable at the amount the customer was originally shown.
+  currency?: string;
+  pricing_version?: string | null;
+  grandfathered?: boolean;
+  current_price_cents?: number;
+  active_status?: string;
+  awaiting_payment?: boolean;
   current_pet_count?: number;
   target_pet_count?: number;
   max_total?: number;
@@ -48,6 +57,7 @@ interface PetRequest {
   provider_decision_reason: string | null;
   letter_id: string | null;
   refund_amount_cents: number | null;
+  paid_at: string | null;
   created_at: string;
 }
 
@@ -94,6 +104,13 @@ const STATUS_UI: Record<string, { label: string; detail: string; tone: string; i
   cancelled: { label: "Cancelled", tone: "gray", icon: "ri-close-line",
     detail: "This request was cancelled. No payment was taken." },
   draft: { label: "Draft", tone: "gray", icon: "ri-draft-line", detail: "This request has not been submitted yet." },
+  // Synthetic badge keys used only by the card mapper (owner wording 2026-07-28).
+  payment_received: { label: "Payment received", tone: "emerald", icon: "ri-checkbox-circle-line",
+    detail: "Your payment was received. We're processing your Additional Pet request." },
+  provider_review: { label: "Provider review", tone: "review", icon: "ri-stethoscope-line",
+    detail: "Your Additional Pet request has been received and is ready for provider review." },
+  refund_action_required: { label: "Payment received — action required", tone: "amber", icon: "ri-refund-2-line",
+    detail: "We're processing your refund for this request." },
 };
 
 const TONE_CHIP: Record<string, string> = {
@@ -113,6 +130,78 @@ function StatusChip({ status }: { status: string }) {
       {ui.label}
     </span>
   );
+}
+
+/**
+ * THE customer-facing card mapper (owner decision 2026-07-28).
+ *
+ * The card used to use the submitted PET NAME as its heading, so a QA fixture
+ * called "VerifyTwenty" read as the workflow title. The workflow state is the
+ * heading; the pet name is a labelled detail underneath. Every server status
+ * maps here — there is no second place that decides what the customer is told.
+ *
+ * `awaitingPayment` is deliberately derived from `paid_at`, not from the status
+ * string: a request can be paid while the webhook is still landing, and the
+ * customer must not be shown "Payment in progress" once the money is in.
+ */
+const AWAITING_PAYMENT = new Set(["draft", "payment_required", "checkout_created"]);
+
+function customerCardState(r: PetRequest): { title: string; badgeStatus: string; detail: string } {
+  const paid = !!r.paid_at;
+  const s = r.status;
+
+  if (!paid && AWAITING_PAYMENT.has(s)) {
+    return {
+      title: "Additional Pet Request",
+      badgeStatus: s === "draft" ? "draft" : "checkout_created",
+      detail: (STATUS_UI[s] ?? STATUS_UI.draft).detail,
+    };
+  }
+  if (s === "paid_pending_details") {
+    return {
+      title: "Additional Pet Request — Payment Received",
+      badgeStatus: "payment_received",
+      detail: "Your payment was received. We're processing your Additional Pet request.",
+    };
+  }
+  if (s === "refund_pending") {
+    // Reached by the completed-order payment race: the payment settled after the
+    // evaluation was finalised, so it was received but deliberately NOT applied.
+    // The customer must not be told this succeeded, and must not be shown the
+    // internal reason — only that support is handling it.
+    return {
+      title: "Additional Pet Request — Payment Received",
+      badgeStatus: "refund_action_required",
+      detail: "Your payment was received, but this pet could not be added because your evaluation was already completed. Our support team is reviewing it and will be in touch — you do not need to do anything.",
+    };
+  }
+  if (s === "completed") {
+    return { title: "Additional Pet Added", badgeStatus: "completed", detail: STATUS_UI.completed.detail };
+  }
+  if (s === "rejected") {
+    return { title: "Additional Pet Request — Not Approved", badgeStatus: "rejected", detail: STATUS_UI.rejected.detail };
+  }
+  if (s === "refunded") {
+    return { title: "Additional Pet Request — Refunded", badgeStatus: "refunded", detail: STATUS_UI.refunded.detail };
+  }
+  if (s === "cancelled") {
+    return { title: "Additional Pet Request — Cancelled", badgeStatus: "cancelled", detail: STATUS_UI.cancelled.detail };
+  }
+  if (s === "clarification_requested") {
+    return { title: "Additional Pet Under Review", badgeStatus: s, detail: STATUS_UI.clarification_requested.detail };
+  }
+  if (s === "approved_pending_document") {
+    return { title: "Additional Pet Under Review", badgeStatus: s, detail: STATUS_UI.approved_pending_document.detail };
+  }
+  if (s === "manual_review_required") {
+    return { title: "Additional Pet Under Review", badgeStatus: s, detail: STATUS_UI.manual_review_required.detail };
+  }
+  // pending_provider_review, resubmitted, and any paid state not named above.
+  return {
+    title: "Additional Pet Under Review",
+    badgeStatus: "provider_review",
+    detail: "Your Additional Pet request has been received and is ready for provider review.",
+  };
 }
 
 export default function AdditionalPetRequest({
@@ -279,8 +368,12 @@ export default function AdditionalPetRequest({
   const outcome = pricing.outcome;
 
   // ── Header status slot ────────────────────────────────────────────────────
-  const headerRight = activeRequest
-    ? <StatusChip status={activeRequest.status} />
+  // ONE mapper drives both the badge and the card heading, so they can never
+  // disagree (e.g. "Payment in progress" beside a paid request).
+  const cardState = activeRequest ? customerCardState(activeRequest) : null;
+
+  const headerRight = activeRequest && cardState
+    ? <StatusChip status={cardState.badgeStatus} />
     : <span className="text-[11px] text-gray-500">
         {typeof pricing.current_pet_count === "number"
           ? `${pricing.current_pet_count} of ${pricing.max_total ?? MAX_PETS} pets`
@@ -309,11 +402,20 @@ export default function AdditionalPetRequest({
         {/* ── ACTIVE REQUEST — the CTA is deliberately not rendered ─────────── */}
         {activeRequest ? (
           <div className="rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-3 space-y-2.5">
+            {/* Owner decision 2026-07-28: the WORKFLOW STATE is the heading; the
+                submitted pet name is a labelled detail. It used to be the title,
+                so a QA fixture named "VerifyTwenty" read as the card's name. */}
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-900 break-words">
-                  {activeRequest.new_pet?.name || "Additional pet"}
+                  {cardState.title}
                 </p>
+                {activeRequest.new_pet?.name && (
+                  <p className="mt-0.5 text-xs text-gray-700 break-words">
+                    <span className="font-semibold text-gray-500">Pet:</span>{" "}
+                    {activeRequest.new_pet.name}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 break-words">
                   {[activeRequest.new_pet?.type, activeRequest.new_pet?.breed]
                     .filter(Boolean).join(" · ")}
@@ -327,7 +429,7 @@ export default function AdditionalPetRequest({
             </div>
 
             <p className="text-xs text-gray-600 leading-relaxed">
-              {(STATUS_UI[activeRequest.status] ?? STATUS_UI.draft).detail}
+              {cardState.detail}
             </p>
 
             {activeRequest.status === "clarification_requested" && activeRequest.provider_decision_reason && (
@@ -352,6 +454,19 @@ export default function AdditionalPetRequest({
                   Update pet details
                 </button>
               )}
+              {/* Pricing change 2026-07-28 ($20 -> $30). The button above already
+                  shows THIS request's own quoted amount, so a checkout created
+                  before the change correctly reads $20 — but without a word of
+                  explanation that looks like a bug next to today's $30 price.
+                  `grandfathered` is computed server-side (request version differs
+                  from the current one); the client never compares prices. */}
+              {pricing?.grandfathered && activeRequest.pricing_outcome === "paid_upgrade" && !activeRequest.paid_at && (
+                <p className="w-full rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[11px] leading-relaxed text-[#92400E]">
+                  Your existing checkout was created at the previous{" "}
+                  {dollars(activeRequest.amount_cents)} price and will remain valid at
+                  that amount.
+                </p>
+              )}
               {(activeRequest.status === "payment_required" || activeRequest.status === "checkout_created") && (
                 <>
                   <button type="button" onClick={resume} disabled={busy}
@@ -368,7 +483,7 @@ export default function AdditionalPetRequest({
           </div>
         ) : (
           <>
-            {/* ── PAID: $20 package-tier upgrade ───────────────────────────── */}
+            {/* ── PAID: package-tier upgrade at the CURRENT server price ──── */}
             {outcome === "paid_upgrade" && (
               <>
                 <p className="text-xs text-gray-600 leading-relaxed">
@@ -383,7 +498,7 @@ export default function AdditionalPetRequest({
                   onClick={() => { setPet(EMPTY_PET); setError(""); setOpen(true); }}
                   className="w-full sm:w-auto rounded-lg bg-[#1a5c4f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#14483e] focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#1a5c4f]"
                 >
-                  Add another pet
+                  Add another pet — {dollars(pricing.amount_cents)}
                 </button>
               </>
             )}
@@ -407,16 +522,48 @@ export default function AdditionalPetRequest({
               </>
             )}
 
-            {/* ── MANUAL REVIEW: never a price, never a checkout ───────────── */}
+            {/* ── MANUAL REVIEW: never a price, never a checkout ─────────────
+                GATING-002 owner correction. This state is now reached ONLY when
+                the server has a SPECIFIC, machine-readable reason it cannot
+                classify the order (missing entitlement snapshot, contradictory
+                pet count, unreconstructable legacy package). It is no longer
+                shown merely because the order is unassigned, under review, has
+                Additional Documentation, or carries a partial refund.
+                The customer is not asked to chase Support — Admin resolves it
+                from the order's More menu and this state updates itself. */}
             {outcome === "manual_review" && (
               <p className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2.5 text-xs text-gray-600 leading-relaxed">
-                Adding another pet to this order requires a manual review. Contact
-                PawTenant Support for assistance.
+                We need to review this order before another pet can be added.
+                PawTenant Support will confirm whether the pet is included in your
+                package or requires the Additional Pet upgrade.
               </p>
             )}
 
+            {/* ── COMPLETED / CLINICALLY LOCKED ────────────────────────────────
+                ADDITIONAL-PET-...-GATING-002. The evaluation is finalised and a
+                document may already be issued, so a pet can never be added to
+                it. No form, no price, no checkout — the only forward path is a
+                NEW evaluation that includes every pet. The customer's existing
+                documents stay fully accessible above; nothing here hides or
+                replaces them. */}
+            {outcome === "blocked" && pricing.code === "order_completed" && (
+              <div className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3.5 py-3 space-y-2.5">
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Your previous evaluation is complete. To include another pet, start a
+                  new evaluation and include all pets that need to be covered.
+                </p>
+                <a
+                  href="/assessment"
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#1a5c4f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#14483e] focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#1a5c4f] sm:w-auto"
+                >
+                  <i className="ri-add-circle-line" aria-hidden="true"></i>
+                  Start a New Evaluation
+                </a>
+              </div>
+            )}
+
             {/* ── BLOCKED: accurate reason, no payment action ──────────────── */}
-            {outcome === "blocked" && (
+            {outcome === "blocked" && pricing.code !== "order_completed" && (
               <p className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2.5 text-xs text-gray-600 leading-relaxed">
                 {pricing.code === "max_pets_reached"
                   ? `This order already covers the maximum of ${pricing.max_total ?? MAX_PETS} pets.`

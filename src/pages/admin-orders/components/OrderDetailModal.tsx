@@ -35,6 +35,7 @@ import RefundModal from "./RefundModal";
 // (self-contained children). Approved edit type: additive component mount.
 import OrderRaOverviewStatus from "./OrderRaOverviewStatus";
 import OrderAdditionalPetPanel from "./OrderAdditionalPetPanel";
+import OrderAdditionalPetMenuAction from "./OrderAdditionalPetMenuAction";
 import OrderRaDocPanel from "./OrderRaDocPanel";
 import OrderDocumentVersionsPanel from "./OrderDocumentVersionsPanel";
 import { canDelete } from "../../../lib/adminPermissions";
@@ -3230,6 +3231,17 @@ export default function OrderDetailModal({
                 </button>
                 {showHeaderMore && (
                   <div role="menu" className="absolute right-0 mt-1.5 z-30 w-56 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                    {/* ADDITIONAL-PET-LIVE-ROLLOUT-001 (ports TEST
+                        ADDITIONAL-PET-ADMIN-MORE-MENU-AND-COMPLETED-ORDER-GATING-002):
+                        isolated component mount. All eligibility, gating, dialog and
+                        submission behaviour lives in the child; this frozen file gets
+                        only the mount. The child fails closed and renders a DISABLED
+                        item for completed / clinically locked orders. */}
+                    <OrderAdditionalPetMenuAction
+                      orderId={order.id}
+                      confirmationId={order.confirmation_id}
+                      onCloseMenu={() => setShowHeaderMore(false)}
+                    />
                     {/* 2026-05-22 REFUND-CANCEL-WORKFLOW: single entry point for
                         the Refund + Cancel Order modal. The same modal is also
                         opened by the body's "Refund + Cancel" button so we
