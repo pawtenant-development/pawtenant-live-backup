@@ -6,10 +6,10 @@ import ProviderJsonLd from "../../components/feature/ProviderJsonLd";
 import { getPublicProvider } from "../../data/publicProviders";
 import { buildProviderJsonLd, stateName } from "../../lib/providerJsonLd";
 import {
-  isTestProviderEnv,
-  fetchLiveProviderStatus,
-  isProviderPubliclyVisible,
-} from "../../lib/providerVisibility";
+  fetchPublicProviderDirectory,
+  isVisibleInDirectory,
+  resolveProviderPhoto,
+} from "../../lib/publicProviderDirectory";
 
 interface NpiVerifyResult {
   status: "idle" | "loading" | "verified" | "not_found" | "error";
@@ -37,9 +37,15 @@ function Noindex() {
 export default function DoctorProfilePage() {
   const { id } = useParams<{ id: string }>();
   const provider = getPublicProvider(id);
-  // Production fail-closed gate: true once the LIVE status says this curated
-  // provider is no longer active+published. Never set in TEST.
+  // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001 — visibility gate.
+  //
+  // This previously read doctor_profiles.is_published directly from the browser.
+  // doctor_profiles has NO anon SELECT policy, so that lookup returned nothing
+  // for every visitor, the gate failed closed, and EVERY /doctors/<slug> page
+  // rendered "Provider not found" in production. It now reads the public-safe
+  // RPC, which evaluates the same gate server side.
   const [hidden, setHidden] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(provider?.image ?? null);
   const [npiVerify, setNpiVerify] = useState<NpiVerifyResult>({ status: "idle" });
   const [showVerifyPanel, setShowVerifyPanel] = useState(false);
 
@@ -47,13 +53,16 @@ export default function DoctorProfilePage() {
     setHidden(false);
     // Allowlist miss -> nothing to gate (renders 404 below).
     if (!provider) return;
-    // TEST renders deterministically from the snapshot; skip the live gate.
-    if (isTestProviderEnv()) return;
+    setPhoto(provider.image ?? null);
     let cancelled = false;
     (async () => {
-      const status = await fetchLiveProviderStatus(provider.dbSlug);
+      const dir = await fetchPublicProviderDirectory();
       if (cancelled) return;
-      if (!isProviderPubliclyVisible(provider, status)) setHidden(true);
+      if (!isVisibleInDirectory(provider.dbSlug, provider.snapshotPublished, dir)) {
+        setHidden(true);
+        return;
+      }
+      setPhoto(resolveProviderPhoto(provider.dbSlug, provider.image, dir));
     })();
     return () => {
       cancelled = true;
@@ -146,14 +155,15 @@ export default function DoctorProfilePage() {
           <div className="bg-white rounded-2xl overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center gap-5 p-8 md:p-10 pb-6 border-b border-gray-100">
               <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-orange-100 flex-shrink-0 bg-orange-50 flex items-center justify-center">
-                {provider.image ? (
+                {photo ? (
                   <img
-                    src={provider.image}
-                    alt={provider.name}
+                    src={photo}
+                    alt={`${provider.name}, ${provider.title} — licensed mental health professional`}
+                    width={80}
+                    height={80}
+                    decoding="async"
                     className="w-full h-full object-cover object-top"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
-                    }}
+                    onError={() => setPhoto(null)}
                   />
                 ) : (
                   <span className="text-2xl font-extrabold text-orange-400 select-none">{initials}</span>

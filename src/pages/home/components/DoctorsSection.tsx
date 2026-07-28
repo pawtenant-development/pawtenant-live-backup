@@ -1,29 +1,42 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { PUBLIC_PROVIDERS, HOMEPAGE_PROVIDER_SLUGS, getPublicProvider } from "../../../data/publicProviders";
+import { PUBLIC_PROVIDERS } from "../../../data/publicProviders";
+import {
+  usePublicProviderDirectory,
+  isVisibleInDirectory,
+  resolveProviderPhoto,
+} from "../../../lib/publicProviderDirectory";
 
 const MAX_STATES_SHOWN = 4;
 
-// AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001.
-// The homepage provider carousel is driven by the OWNER-CURATED approved set
-// (the same eight as /doctors and /our-providers) with CONTROLLED images —
-// existing repo photos for the four flagship providers, branded initials for the
-// four new providers. It is intentionally NOT the DB-published roster:
-// unapproved providers (e.g. admin-only records) and not-yet-vetted provider
-// photos must never surface here. Fail-closed: only the curated eight render.
-const HOMEPAGE_PROVIDERS = HOMEPAGE_PROVIDER_SLUGS
-  .map((s) => getPublicProvider(s))
-  .filter((p): p is NonNullable<typeof p> => p !== null);
+// LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001.
+// The carousel renders the OWNER-CURATED editorial set INTERSECTED with the
+// authoritative live publication state from get_public_provider_directory().
+// Previously this component rendered PUBLIC_PROVIDERS with no gate at all, so a
+// provider deactivated + unpublished in Admin still appeared publicly, and the
+// admin-uploaded headshot was never read (hardcoded repo paths only).
+//
+// No provider name or email is special-cased anywhere in this file. Visibility
+// is entirely a function of the admin record.
 
 export default function DoctorsSection() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-  // A flagship photo that fails to load falls back to neutral initials rather
-  // than an empty circle. New providers have no image and always show initials.
+  // A photo that fails to load falls back to neutral initials rather than a
+  // broken-image icon or an empty circle.
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
 
-  const providers = PUBLIC_PROVIDERS;
+  const directory = usePublicProviderDirectory();
+
+  const providers = useMemo(
+    () =>
+      PUBLIC_PROVIDERS.filter((p) =>
+        isVisibleInDirectory(p.dbSlug, p.snapshotPublished, directory),
+      ),
+    [directory],
+  );
+
   const showScrollControls = providers.length > 4;
 
   const markImageBroken = (slug: string) => {
@@ -60,6 +73,10 @@ export default function DoctorsSection() {
     const cardWidth = 260 + 24; // card min-w + gap (mobile-tighter)
     el.scrollBy({ left: dir === "left" ? -cardWidth * 2 : cardWidth * 2, behavior: "smooth" });
   };
+
+  // If Admin has nothing published, render nothing rather than an empty rail.
+  // Placed AFTER every hook so the hook order stays stable across renders.
+  if (providers.length === 0) return null;
 
   return (
     <section className="py-12 sm:py-20 bg-[#FDFBF7]">
@@ -119,7 +136,10 @@ export default function DoctorsSection() {
             const visibleStates = p.states.slice(0, MAX_STATES_SHOWN);
             const extraCount = p.states.length - MAX_STATES_SHOWN;
             const initials = p.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
-            const showImage = !!p.image && !brokenImages.has(p.slug);
+            // Admin-uploaded headshot wins; repo asset is the prerender/first-paint
+            // fallback; initials only when there is genuinely no usable image.
+            const photo = resolveProviderPhoto(p.dbSlug, p.image, directory);
+            const showImage = !!photo && !brokenImages.has(p.slug);
 
             return (
               <div
@@ -129,10 +149,10 @@ export default function DoctorsSection() {
               >
                 {/* Photo — flagship repo photo OR neutral initials (new providers) */}
                 <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-200 mb-4 flex-shrink-0 bg-slate-50 flex items-center justify-center">
-                  {showImage && p.image ? (
+                  {showImage && photo ? (
                     <img
-                      src={p.image}
-                      alt={p.name}
+                      src={photo}
+                      alt={`${p.name}, ${p.title} — licensed mental health professional`}
                       width={96}
                       height={96}
                       loading="lazy"
@@ -190,9 +210,11 @@ export default function DoctorsSection() {
           })}
         </div>
 
-        {/* Curated provider links — clean canonical links (incl. Eve Rosno) + directory. */}
+        {/* Canonical provider links — derived from the SAME visible set as the
+            cards above, so an unpublished provider can never linger here as a
+            stale link (the previous hardcoded four-slug list could). */}
         <div className="mt-8 sm:mt-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
-          {HOMEPAGE_PROVIDERS.map((p) => (
+          {providers.map((p) => (
             <Link
               key={p.slug}
               to={`/doctors/${p.slug}`}

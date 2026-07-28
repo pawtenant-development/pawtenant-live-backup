@@ -1,9 +1,15 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import ProviderJsonLd from "../../components/feature/ProviderJsonLd";
 import { PUBLIC_PROVIDERS } from "../../data/publicProviders";
 import { buildOurProvidersJsonLd } from "../../lib/providerJsonLd";
+import {
+  usePublicProviderDirectory,
+  isVisibleInDirectory,
+  resolveProviderPhoto,
+} from "../../lib/publicProviderDirectory";
 
 function initialsOf(name: string): string {
   return name
@@ -15,9 +21,33 @@ function initialsOf(name: string): string {
 }
 
 export default function OurProvidersPage() {
+  // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001 — the directory is gated on the
+  // authoritative admin record (active + approved + published). Schema is built
+  // from the SAME visible set so JSON-LD can never advertise a provider the page
+  // does not show.
+  const directory = usePublicProviderDirectory();
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
+
+  const markImageBroken = (slug: string) => {
+    setBrokenImages((prev) => {
+      if (prev.has(slug)) return prev;
+      const next = new Set(prev);
+      next.add(slug);
+      return next;
+    });
+  };
+
+  const providers = useMemo(
+    () =>
+      PUBLIC_PROVIDERS.filter((p) =>
+        isVisibleInDirectory(p.dbSlug, p.snapshotPublished, directory),
+      ),
+    [directory],
+  );
+
   return (
     <>
-      <ProviderJsonLd graph={buildOurProvidersJsonLd(PUBLIC_PROVIDERS)} />
+      <ProviderJsonLd graph={buildOurProvidersJsonLd(providers)} />
       <SharedNavbar />
 
       <div className="bg-[#f8f7f4] pt-32 pb-10 px-6">
@@ -40,7 +70,10 @@ export default function OurProvidersPage() {
 
       <div className="bg-[#f8f7f4] pb-24 px-6">
         <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {PUBLIC_PROVIDERS.map((p) => (
+          {providers.map((p) => {
+            const photo = resolveProviderPhoto(p.dbSlug, p.image, directory);
+            const showImage = !!photo && !brokenImages.has(p.slug);
+            return (
             <Link
               key={p.slug}
               to={`/doctors/${p.slug}`}
@@ -48,14 +81,16 @@ export default function OurProvidersPage() {
             >
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-orange-100 flex-shrink-0 bg-orange-50 flex items-center justify-center">
-                  {p.image ? (
+                  {showImage && photo ? (
                     <img
-                      src={p.image}
-                      alt={p.name}
+                      src={photo}
+                      alt={`${p.name}, ${p.title} — licensed mental health professional`}
+                      width={64}
+                      height={64}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover object-top"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = "none";
-                      }}
+                      onError={() => markImageBroken(p.slug)}
                     />
                   ) : (
                     <span className="text-xl font-extrabold text-orange-400 select-none">{initialsOf(p.name)}</span>
@@ -89,7 +124,8 @@ export default function OurProvidersPage() {
                 <i className="ri-arrow-right-line"></i>
               </span>
             </Link>
-          ))}
+            );
+          })}
         </div>
 
         <div className="max-w-5xl mx-auto mt-10 bg-white rounded-2xl border border-amber-200 bg-amber-50 p-5">

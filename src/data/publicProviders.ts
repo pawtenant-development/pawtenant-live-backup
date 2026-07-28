@@ -18,9 +18,19 @@
 //   - Lytara Garcia:  SAP/CEAP dropped -> conservative LCSW; "ESA Mental Health Specialist" = role label.
 // No private fields (email/phone/address/internal id/private license numbers) live here.
 // This file MUST NOT contain the live active/published GATE for production — see
-// src/lib/providerVisibility.ts. `snapshotActive`/`snapshotPublished` are the
-// LAST-VERIFIED status used ONLY for deterministic TEST rendering and MUST NOT
-// override a negative LIVE status.
+// src/lib/publicProviderDirectory.ts. `snapshotActive`/`snapshotPublished` are the
+// LAST-VERIFIED status used ONLY as the synchronous seed for the SEO prerender
+// (renderToStaticMarkup runs no effects, so an RPC-only list would prerender
+// empty) and MUST NOT override a negative LIVE status.
+//
+// LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001 amends the role of this file:
+//   EDITORIAL content  -> this file (bio, title, role, normalised state codes,
+//                         verified NPI). Curated because the raw DB rows mix
+//                         full state names with codes and contain at least one
+//                         invalid NPI, which would render a false credential.
+//   VISIBILITY + PHOTO -> public.get_public_provider_directory() (authoritative).
+// There is deliberately NO per-provider hide list. Being absent from the live
+// directory is the ONLY way a curated provider stops rendering.
 
 export interface PublicProvider {
   /** Clean canonical slug — the public URL is /doctors/<slug>. */
@@ -53,6 +63,11 @@ export interface PublicProvider {
 
 export const PROVIDER_SNAPSHOT_VERIFIED = "2026-07-21";
 
+// LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001 — date the active/published STATUS of
+// every provider below was last re-read from LIVE (approved_providers +
+// doctor_profiles). Editorial facts still carry PROVIDER_SNAPSHOT_VERIFIED.
+export const PROVIDER_STATUS_VERIFIED = "2026-07-28";
+
 // The curated approved public set — EXACTLY EIGHT. Do not add a ninth.
 export const PUBLIC_PROVIDERS: readonly PublicProvider[] = [
   {
@@ -83,9 +98,17 @@ export const PUBLIC_PROVIDERS: readonly PublicProvider[] = [
     highlights: ["LCSW", "Telehealth Evaluations", "ESA Documentation"],
     image: "/assets/providers/provider-michelle-lafferty.jpg",
     isNew: false,
-    lastVerified: PROVIDER_SNAPSHOT_VERIFIED,
-    snapshotActive: true,
-    snapshotPublished: true,
+    lastVerified: PROVIDER_STATUS_VERIFIED,
+    // Re-verified against LIVE on PROVIDER_STATUS_VERIFIED:
+    //   approved_providers.is_active = false
+    //   doctor_profiles.is_active    = false
+    //   doctor_profiles.is_published = false
+    // This is a STATUS transcription, not a per-provider hide rule: the seed
+    // simply mirrors what Admin says, and get_public_provider_directory() is
+    // authoritative on the client. Re-publishing in Admin restores the card
+    // with no code change.
+    snapshotActive: false,
+    snapshotPublished: false,
   },
   {
     slug: "lytara-garcia",
@@ -189,13 +212,10 @@ export const PUBLIC_PROVIDERS: readonly PublicProvider[] = [
 // the prerender entry, sitemaps, and the entity guard.
 export const CURATED_PROVIDER_SLUGS: readonly string[] = PUBLIC_PROVIDERS.map((p) => p.slug);
 
-// Homepage subset — a smaller, curated strip that MUST include Eve Rosno.
-export const HOMEPAGE_PROVIDER_SLUGS: readonly string[] = [
-  "eve-rosno",
-  "robert-staaf",
-  "stephanie-white",
-  "lytara-garcia",
-];
+// NOTE: the former HOMEPAGE_PROVIDER_SLUGS hardcoded four-name strip was removed
+// by LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001. The homepage now derives both its
+// cards and its canonical name links from the live-gated visible set, so an
+// unpublished provider cannot survive as a stale link.
 
 // Explicitly EXCLUDED from all public surfaces (both the clean and -hex slugs
 // must resolve to a privacy-safe 404/noindex). The underlying DB record is
