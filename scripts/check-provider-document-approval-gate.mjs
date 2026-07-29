@@ -226,9 +226,17 @@ function runChecks(f) {
     && hasRe(f.modal, /orderDocs\.some\(\(d\) => d\.footer_injected && !REVIEW_GATED_STATUSES\.has\(d\.review_status \?\? ""\)\)/)
     && hasRe(f.modal, /disabled=\{togglingVisibility === doc\.id \|\| REVIEW_GATED_STATUSES\.has\(doc\.review_status \?\? ""\)\}/));
 
-  add("A21", "customer portal maps pending_admin_approval to the Under Review family",
+  add("A21", "customer portal maps pending_admin_approval to Under Review + quality-check copy",
+    // status chip: classified with the in_review family (never "Assigned to Provider")
     hasRe(f.myOrders, /ds === "in_review" \|\| ds === "approved" \|\| ds === "pending_admin_approval"/)
-    && hasRe(f.myOrders, /doctor_status === "in_review" \|\| order\.doctor_status === "approved" \|\| order\.doctor_status === "pending_admin_approval"/));
+    // banner: its OWN branch, evaluated BEFORE the in_review branch, carrying the
+    // owner-approved copy. It must never reach the "queued for provider
+    // assignment" fallback, which is false once the provider has submitted.
+    && has(f.myOrders, 'doctor_status === "pending_admin_approval"')
+    && has(f.myOrders, "Your provider has completed their review and your documents are undergoing a final quality check.")
+    // the internal review step is never disclosed to the customer
+    && !has(f.myOrders, "PawTenant reviewer is checking")
+  );
 
   // ── Blast radius ──────────────────────────────────────────────────────────
   const petFiles = readdirSync(join(ROOT, "supabase/migrations"))
@@ -290,7 +298,8 @@ const CONTROLS = [
   ["A20", "a LIVE project ref is introduced",
     (f) => ({ ...f, review: f.review + `\nconst p = "${LIVE_PROJECT_REF}";\n` })],
   ["A21", "pending_admin_approval falls back to 'Assigned to Provider' again",
-    (f) => ({ ...f, myOrders: f.myOrders.replaceAll(' || ds === "pending_admin_approval"', "") })],
+    (f) => ({ ...f, myOrders: f.myOrders.replaceAll(' || ds === "pending_admin_approval"', "")
+      .replace('Your provider has completed their review and your documents are undergoing a final quality check.', 'x') })],
   ["A22", "Notify Patient reappears for a document awaiting review",
     (f) => ({ ...f, modal: f.modal.replace(
       'orderDocs.some((d) => d.footer_injected && !REVIEW_GATED_STATUSES.has(d.review_status ?? ""))',

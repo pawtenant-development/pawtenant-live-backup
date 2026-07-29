@@ -339,7 +339,9 @@ function OrderCard({
             <span>
               {order.doctor_status === "letter_sent"
                 ? "Your evaluation is nearing completion. You'll receive an email once your documents are ready to download."
-                : order.doctor_status === "in_review" || order.doctor_status === "approved" || order.doctor_status === "pending_admin_approval"
+                : order.doctor_status === "pending_admin_approval"
+                ? "Your provider has completed their review and your documents are undergoing a final quality check."
+                : order.doctor_status === "in_review" || order.doctor_status === "approved"
                 ? "Your provider is actively reviewing your case. You'll receive an email as soon as your documents are ready."
                 : order.doctor_status === "pending_review"
                 ? "Your case has been assigned to a licensed provider and is awaiting initial review. You'll receive an email once your evaluation begins."
