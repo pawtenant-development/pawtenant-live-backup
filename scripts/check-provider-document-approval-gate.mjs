@@ -224,7 +224,10 @@ function runChecks(f) {
   add("A22", "manual release overrides are gated on review state",
     has(f.modal, "REVIEW_GATED_STATUSES")
     && hasRe(f.modal, /orderDocs\.some\(\(d\) => d\.footer_injected && !REVIEW_GATED_STATUSES\.has\(d\.review_status \?\? ""\)\)/)
-    && hasRe(f.modal, /disabled=\{togglingVisibility === doc\.id \|\| REVIEW_GATED_STATUSES\.has\(doc\.review_status \?\? ""\)\}/));
+    && hasRe(f.modal, /disabled=\{togglingVisibility === doc\.id \|\| REVIEW_GATED_STATUSES\.has\(doc\.review_status \?\? ""\)\}/)
+    // "Send All to Customer" is the THIRD instance of the same bypass: it calls
+    // notify-patient-letter directly. Disabled when every document is gated.
+    && has(f.modal, 'disabled={sendingAll || (orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? "")))}'));
 
   add("A21", "customer portal maps pending_admin_approval to Under Review + quality-check copy",
     // status chip: classified with the in_review family (never "Assigned to Provider")
@@ -300,6 +303,10 @@ const CONTROLS = [
   ["A21", "pending_admin_approval falls back to 'Assigned to Provider' again",
     (f) => ({ ...f, myOrders: f.myOrders.replaceAll(' || ds === "pending_admin_approval"', "")
       .replace('Your provider has completed their review and your documents are undergoing a final quality check.', 'x') })],
+  ["A22b", "Send All to Customer stops being gated",
+    (f) => ({ ...f, modal: f.modal.replace(
+      'disabled={sendingAll || (orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? "")))}',
+      "disabled={sendingAll}") })],
   ["A22", "Notify Patient reappears for a document awaiting review",
     (f) => ({ ...f, modal: f.modal.replace(
       'orderDocs.some((d) => d.footer_injected && !REVIEW_GATED_STATUSES.has(d.review_status ?? ""))',
@@ -314,7 +321,7 @@ try {
     let bad = 0;
     for (const [target, label, mutate] of CONTROLS) {
       const results = runChecks(mutate(base));
-      const hit = results.find((x) => x.id === target);
+      const hit = results.find((x) => x.id === (target === "A22b" ? "A22" : target));
       const tripped = hit && !hit.ok;
       if (!tripped) bad++;
       console.log(`  ${tripped ? "CAUGHT " : "MISSED "} ${target.padEnd(4)} ${label}`);

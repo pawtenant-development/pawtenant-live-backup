@@ -5193,7 +5193,20 @@ export default function OrderDetailModal({
                       }
                     </button>
                   )}
-                  <button type="button" onClick={handleSendAllToCustomer} disabled={sendingAll}
+                  {/* PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §13 —
+                      "Send All to Customer" calls notify-patient-letter, which
+                      emails "your documents are ready" and stamps
+                      patient_notification_sent_at. notify-patient-letter only
+                      attaches customer_visible docs, so if EVERY document on the
+                      order is still gated this would send a documents-ready
+                      email carrying ZERO documents, before any approval. It is
+                      disabled in exactly that case; an order that already has a
+                      released document can still be resent normally. */}
+                  <button type="button" onClick={handleSendAllToCustomer}
+                    disabled={sendingAll || (orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? "")))}
+                    title={orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? ""))
+                      ? "Every document on this order is awaiting review — approve one first"
+                      : undefined}
                     className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                     {sendingAll ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send All to Customer</>}
                   </button>
