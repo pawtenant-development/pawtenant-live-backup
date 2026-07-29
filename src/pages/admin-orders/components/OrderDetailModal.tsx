@@ -38,6 +38,8 @@ import OrderAdditionalPetPanel from "./OrderAdditionalPetPanel";
 import OrderAdditionalPetMenuAction from "./OrderAdditionalPetMenuAction";
 import OrderRaDocPanel from "./OrderRaDocPanel";
 import OrderDocumentVersionsPanel from "./OrderDocumentVersionsPanel";
+import OrderDocumentReviewPanel from "./OrderDocumentReviewPanel";
+import OrderAuditTimeline from "./OrderAuditTimeline";
 import { canDelete } from "../../../lib/adminPermissions";
 // ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
 // reads the same canonical classifier the order list pill (OrderCard) and
@@ -204,7 +206,13 @@ interface OrderDetailModalProps {
   onClearUnread?: (confirmationId: string) => void;
 }
 
-type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "payments" | "attribution";
+type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "payments" | "attribution" | "audit";
+
+// PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 — a document in one of
+// these review states is NOT releasable by any manual admin control. Release is
+// owned exclusively by Approve & Deliver (approve_order_document), and the
+// tg_order_document_release_gate trigger enforces it server-side.
+const REVIEW_GATED_STATUSES = new Set(["pending_admin_approval", "needs_correction"]);
 
 // ─── PSD order detection — letter_type field OR confirmation ID prefix ────────
 function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
@@ -329,6 +337,9 @@ interface OrderDocument {
   footer_letter_id?: string | null;
   customer_visible: boolean;
   notes: string | null;
+  /** PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 — release state.
+   *  loadOrderDocs() selects `*`, so this is populated. */
+  review_status?: string | null;
 }
 
 // ── Clean up document labels that come from raw filenames ────────────────────
@@ -1329,7 +1340,15 @@ export default function OrderDetailModal({
     const patch: Record<string, string> = {};
     if (newStatus) patch.status = newStatus;
     if (newDoctorStatus) patch.doctor_status = newDoctorStatus;
-    const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
+    // PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §16 — the status
+    // change now goes through record_order_status_action(), which performs the
+    // update AND writes the audit row with actor = auth.uid(). The bare client
+    // update this replaces wrote no audit at all.
+    const { error } = await supabase.rpc("record_order_status_action", {
+      p_order_id: order.id,
+      p_new_status: newStatus || null,
+      p_new_doctor_status: newDoctorStatus ?? null,
+    });
     if (!error) {
       updateOrderField(patch as Partial<Order>);
       setStatusMsg("Status updated");
@@ -3644,6 +3663,7 @@ export default function OrderDetailModal({
             { key: "assessment", label: isPSDOrder(order) ? "PSD Eval" : "Assessment",  icon: "ri-questionnaire-line",badge: assessmentCount > 0 ? assessmentCount : null },
             { key: "notes",      label: "Notes",                                        icon: "ri-sticky-note-line",  badge: null },
             { key: "attribution",label: "Attribution / Journey",                        icon: "ri-compass-3-line",    badge: null },
+            { key: "audit",      label: "Audit",                                        icon: "ri-history-line",      badge: null },
           ];
           const activeTab = TABS.find((t) => t.key === section);
           return (
@@ -5284,6 +5304,20 @@ export default function OrderDetailModal({
                 </div>
               )}
 
+              {/* PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §9 —
+                  release gate for provider-submitted documents. Self-contained. */}
+              <OrderDocumentReviewPanel
+                orderId={order.id}
+                confirmationId={order.confirmation_id}
+                onOpenDocument={(documentId, preferOriginal) => {
+                  void openDocumentSignedUrl(documentId, preferOriginal);
+                }}
+                onReviewed={() => {
+                  void loadOrderDocs();
+                  onOrderUpdated({ id: order.id });
+                }}
+              />
+
               {loadingDocs ? (
                 <div className="flex items-center justify-center py-8">
                   <i className="ri-loader-4-line animate-spin text-2xl text-[#3b6ea5]"></i>
@@ -5340,7 +5374,7 @@ export default function OrderDetailModal({
                             <button
                               type="button"
                               onClick={() => handleToggleVisibility(doc)}
-                              disabled={togglingVisibility === doc.id}
+                              disabled={togglingVisibility === doc.id || REVIEW_GATED_STATUSES.has(doc.review_status ?? "")}
                               title={doc.customer_visible ? "Hide from customer portal (doc stays, customer can't see it)" : "Show in customer portal"}
                               className={`whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 border text-xs font-semibold rounded-lg cursor-pointer transition-colors disabled:opacity-50 ${
                                 doc.customer_visible
@@ -5452,7 +5486,7 @@ export default function OrderDetailModal({
                   )}
 
                   {/* ── Notify Patient banner — always visible when docs exist and footer injected ── */}
-                  {orderDocs.some((d) => d.footer_injected) && !reinjectFooterMsg && (
+                  {orderDocs.some((d) => d.footer_injected && !REVIEW_GATED_STATUSES.has(d.review_status ?? "")) && !reinjectFooterMsg && (
                     <div className="flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
                       <div className="w-8 h-8 flex items-center justify-center bg-[#dbeafe] rounded-lg flex-shrink-0">
                         <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>
@@ -5713,6 +5747,19 @@ export default function OrderDetailModal({
               confirmation_id: order.confirmation_id,
               created_at: order.created_at,
             }} />
+          )}
+
+          {/* ── AUDIT TAB — PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §13.
+              Additive tab registration: self-contained component. */}
+          {section === "audit" && (
+            <div className="p-4 sm:p-6">
+              <OrderAuditTimeline
+                orderId={order.id}
+                confirmationId={order.confirmation_id}
+                currentProviderName={order.doctor_name}
+                currentStatus={order.status}
+              />
+            </div>
           )}
 
           {/* ── EMAIL LOG TAB (kept for legacy — now merged into Comms) ── */}
