@@ -76,6 +76,10 @@ interface OrderDocument {
   uploaded_by: string;
   uploaded_at: string;
   sent_to_customer: boolean;
+  /** PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 — release state. */
+  review_status?: string | null;
+  correction_note?: string | null;
+  reviewed_at?: string | null;
 }
 
 // ── Queue item for multi-file upload ─────────────────────────────────────────
@@ -188,7 +192,7 @@ export default function ProviderOrderDetail({
     setLoadingDocs(true);
     const { data } = await supabase
       .from("order_documents")
-      .select("id, label, doc_type, file_url, uploaded_by, uploaded_at, sent_to_customer")
+      .select("id, label, doc_type, file_url, uploaded_by, uploaded_at, sent_to_customer, review_status, correction_note, reviewed_at")
       .eq("order_id", order.id)
       .order("uploaded_at", { ascending: false });
     setUploadedDocs((data as OrderDocument[]) ?? []);
@@ -405,15 +409,12 @@ export default function ProviderOrderDetail({
         if (result.ok) {
           updateQueueItem(item.id, { done: true, uploading: false });
           successCount++;
-          // Order goes straight to patient_notified + completed
-          const updatedOrder = {
-            ...order,
-            doctor_status: "patient_notified",
-            status: "completed",
-            patient_notification_sent_at: new Date().toISOString(),
-          };
+          // PROVIDER-LETTER-ADMIN-APPROVAL-GATE §5: submission is no longer
+          // delivery. The order waits at pending_admin_approval until a
+          // PawTenant reviewer releases the document to the customer.
+          const updatedOrder = { ...order, doctor_status: "pending_admin_approval" };
           setOrder(updatedOrder);
-          onOrderUpdated({ id: order.id, doctor_status: "patient_notified", status: "completed" });
+          onOrderUpdated({ id: order.id, doctor_status: "pending_admin_approval" });
         } else {
           updateQueueItem(item.id, { error: result.error ?? "Submission failed", uploading: false });
           failCount++;
@@ -426,7 +427,7 @@ export default function ProviderOrderDetail({
     }
     setSubmittingQueue(false);
     if (failCount === 0) {
-      setQueueMsg({ ok: true, text: `${successCount} document${successCount !== 1 ? "s" : ""} submitted! Order marked as completed and patient has been notified.` });
+      setQueueMsg({ ok: true, text: `${successCount} document${successCount !== 1 ? "s" : ""} submitted for review. A PawTenant reviewer will check and release them — the patient has not been notified yet.` });
       setSubmitted(true);
       loadDocs();
     } else {
@@ -482,6 +483,11 @@ export default function ProviderOrderDetail({
   const assessmentAnswers = order.assessment_answers as Record<string, unknown> | null;
   const assessmentCount = assessmentAnswers ? Object.keys(assessmentAnswers).length : 0;
   const isLetterSubmitted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
+  // PROVIDER-LETTER-ADMIN-APPROVAL-GATE — read the release state off the
+  // documents, not off doctor_status, so a correction on ONE document is visible
+  // even when the order has other documents in other states.
+  const correctionDoc = uploadedDocs.find((d) => d.review_status === "needs_correction") ?? null;
+  const pendingApprovalDoc = uploadedDocs.find((d) => d.review_status === "pending_admin_approval") ?? null;
   const isThirtyDayReissue = doctorStatus === "thirty_day_reissue";
   // REFUND-ONLY-OPERATIONAL: only operational cancellation locks the provider —
   // Refund Only (partial OR full) keeps the case active. Never key on refund fields.
@@ -1008,12 +1014,41 @@ export default function ProviderOrderDetail({
                   </div>
                 )}
 
+                {/* PROVIDER-LETTER-ADMIN-APPROVAL-GATE §11 — a correction request
+                    is the provider's actionable state: what to fix, and the fact
+                    that the customer has NOT received anything. */}
+                {correctionDoc && (
+                  <div className="mt-3 bg-orange-50 border-2 border-orange-300 rounded-xl px-4 py-3">
+                    <p className="text-sm font-bold text-orange-700 flex items-center gap-1.5">
+                      <i className="ri-error-warning-fill"></i>Correction requested
+                    </p>
+                    <p className="text-sm text-gray-700 mt-1.5">{correctionDoc.correction_note}</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      The customer has not received this document. Upload a corrected version from the
+                      Upload Letter tab — your original submission is kept on the record.
+                    </p>
+                  </div>
+                )}
+
+                {pendingApprovalDoc && !correctionDoc && (
+                  <div className="mt-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-start gap-2">
+                    <i className="ri-time-line text-amber-600 text-base mt-0.5"></i>
+                    <div>
+                      <p className="text-sm font-bold text-amber-700">Submitted — pending admin approval</p>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        A PawTenant reviewer is checking your document. The customer is notified once it
+                        is approved.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {isLetterSubmitted && (
                   <div className="mt-3 space-y-2">
                     <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-center gap-2">
                       <i className="ri-checkbox-circle-fill text-[#2c5282] text-base"></i>
                       <p className="text-sm font-semibold text-[#2c5282]">
-                        Order completed! Documents submitted and the patient has been notified.
+                        Order completed! Documents were approved and the patient has been notified.
                       </p>
                     </div>
 

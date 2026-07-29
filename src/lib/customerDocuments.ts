@@ -100,9 +100,17 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
   // 1) FINALIZED ESA/PSD letter — the footer-injected artifact only. Never the raw
   //    provider original (footer_injected=false). Shown once the letter is delivered.
   if (letterDelivered(order)) {
-    const finalLetter = docs.find(
+    // NEWEST finalized letter wins. `docs` arrives in ascending uploaded_at
+    // order, so the previous `.find()` returned the OLDEST — after a revision
+    // the customer was resolved to the letter that had just been superseded.
+    // Under the approval gate a superseded letter deliberately stays visible
+    // (a delivered document is never taken away), so picking the newest is what
+    // makes "expose only the approved version" true
+    // (PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §10).
+    const finalLetters = docs.filter(
       (d) => LETTER_DOC_TYPES.includes(d.doc_type) && d.footer_injected && !!d.processed_file_url,
     );
+    const finalLetter = finalLetters.length > 0 ? finalLetters[finalLetters.length - 1] : undefined;
     if (finalLetter) {
       deliverables.push({
         id: finalLetter.id,

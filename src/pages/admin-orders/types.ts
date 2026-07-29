@@ -43,6 +43,11 @@ export interface OrderDocument {
   uploaded_at: string;
   sent_to_customer: boolean;
   customer_visible: boolean;
+  /** PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 — release state.
+   *  Optional because legacy rows and narrower SELECTs may omit it; the modal
+   *  selects `*` so it is populated there. */
+  review_status?: string | null;
+  correction_note?: string | null;
 }
 
 export type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };

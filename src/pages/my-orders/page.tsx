@@ -181,7 +181,14 @@ function getDisplayStatus(order: Order): {
   if (ds === "thirty_day_reissue") return { label: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]", icon: "ri-stethoscope-line", bgGradient: WARM, step: 2 };
   // letter_sent is INTERNAL — customer sees "Under Review"
   if (ds === "letter_sent") return { label: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]", icon: "ri-stethoscope-line", bgGradient: WARM, step: 2 };
-  if (ds === "in_review" || ds === "approved") return { label: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]", icon: "ri-stethoscope-line", bgGradient: WARM, step: 2 };
+  // PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 — `pending_admin_approval`
+  // means the provider has FINISHED and PawTenant is releasing the document. It
+  // must not fall through to the `under-review` branch below, which reads
+  // "Assigned to Provider" (step 1) and tells the customer their case is still
+  // waiting to be assigned. The internal review step is deliberately not exposed
+  // as its own customer-facing label — from the customer's side the case is
+  // simply still under review.
+  if (ds === "in_review" || ds === "approved" || ds === "pending_admin_approval") return { label: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]", icon: "ri-stethoscope-line", bgGradient: WARM, step: 2 };
   if (ds === "pending_review" || s === "under-review") return { label: "Assigned to Provider", color: "bg-[#eef2f7] text-[#475569]", icon: "ri-user-received-line", bgGradient: WARM, step: 1 };
   // Paid but no provider yet
   if (s === "completed" || s === "paid" || s === "processing") return { label: "Payment Confirmed", color: "bg-[#FFFBEB] text-[#B45309]", icon: "ri-loader-4-line", bgGradient: WARM, step: 0 };
@@ -324,7 +331,7 @@ function OrderCard({
         }`}>
           <i className={`flex-shrink-0 mt-0.5 ${
             order.doctor_status === "letter_sent" ? "ri-file-shield-line" :
-            order.doctor_status === "in_review" ? "ri-stethoscope-line" :
+            order.doctor_status === "in_review" || order.doctor_status === "pending_admin_approval" ? "ri-stethoscope-line" :
             order.doctor_status === "pending_review" ? "ri-user-received-line" :
             "ri-time-line"
           }`}></i>
@@ -332,7 +339,7 @@ function OrderCard({
             <span>
               {order.doctor_status === "letter_sent"
                 ? "Your evaluation is nearing completion. You'll receive an email once your documents are ready to download."
-                : order.doctor_status === "in_review" || order.doctor_status === "approved"
+                : order.doctor_status === "in_review" || order.doctor_status === "approved" || order.doctor_status === "pending_admin_approval"
                 ? "Your provider is actively reviewing your case. You'll receive an email as soon as your documents are ready."
                 : order.doctor_status === "pending_review"
                 ? "Your case has been assigned to a licensed provider and is awaiting initial review. You'll receive an email once your evaluation begins."
@@ -1165,7 +1172,7 @@ export default function MyOrdersPage() {
                   {[
                     { admin: "processing / paid", customer: "Payment Confirmed", color: "bg-amber-50 text-[#B45309]" },
                     { admin: "pending_review / under-review", customer: "Assigned to Provider", color: "bg-[#eef2f7] text-[#475569]" },
-                    { admin: "in_review / approved / letter_sent", customer: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]" },
+                    { admin: "in_review / approved / letter_sent / pending_admin_approval", customer: "Under Review", color: "bg-[#EFF6FF] text-[#2563EB]" },
                     { admin: "patient_notified", customer: "Completed", color: "bg-[#ECFDF5] text-[#059669]" },
                   ].map((item) => (
                     <div key={item.admin} className="space-y-1">
