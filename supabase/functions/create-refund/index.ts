@@ -196,16 +196,48 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── Audit log ─────────────────────────────────────────────────────────────
+  // `order` above is block-scoped to the order-update branch, so resolve the id
+  // separately here — the audit row must carry it even when that branch is skipped.
+  let auditOrderId: string | null = null;
+  if (confirmationId) {
+    const { data: auditOrder } = await adminClient
+      .from("orders").select("id").eq("confirmation_id", confirmationId).maybeSingle();
+    auditOrderId = ((auditOrder as { id?: string } | null)?.id) ?? null;
+  }
+
   try {
+    // PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §15/§16: the actor
+    // was already recorded correctly here. The added columns let the order-level
+    // Audit timeline resolve and categorise the event, and record the INITIATING
+    // employee explicitly — a later completion or failure arriving via the
+    // Stripe webhook is attributed to the webhook, not to this person, and stays
+    // linked to this initiation through refund_reference.
     await adminClient.from("audit_logs").insert({
       actor_id: user.id,
       actor_name: actorName,
       actor_role: profile?.role ?? "admin",
+      actor_type: "employee",
+      category: "refunds",
+      source: "admin_portal",
       object_type: "refund",
       object_id: confirmationId ?? chargeId,
-      action: "refund_issued",
-      description: `Refund of $${refundAmountDollars.toFixed(2)} issued for charge ${chargeId}${confirmationId ? ` (order ${confirmationId})` : ""}`,
+      order_id: auditOrderId,
+      entity_type: "refund",
+      entity_id: refund.id,
+      refund_reference: refund.id,
+      action: "refund_initiated",
+      description: `${actorName} initiated a $${refundAmountDollars.toFixed(2)} refund for charge ${chargeId}${confirmationId ? ` (order ${confirmationId})` : ""}.`,
       new_values: { refundId: refund.id, chargeId, paymentIntentId: paymentIntentId ?? null, amount: refundAmountDollars, reason, note: note ?? null },
+      metadata: {
+        confirmation_id: confirmationId ?? null,
+        amount_usd: refundAmountDollars,
+        is_partial: !isFullRefund,
+        cumulative_refunded_usd: cumulativeRefundedDollars,
+        reason,
+        stripe_refund_id: refund.id,
+        stripe_charge_id: chargeId,
+        resulting_refund_status: refundStatusValue ?? null,
+      },
     });
   } catch { /* non-critical */ }
 

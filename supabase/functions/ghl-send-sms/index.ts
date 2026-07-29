@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveAuditActor, maskPhone } from "../_shared/auditActor.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -49,7 +50,13 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const { orderId, confirmationId, toPhone, message, sentBy = "Admin" } = body;
+  const { orderId, confirmationId, toPhone, message } = body;
+
+  // PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §16: `sentBy` in the
+  // request body is a forgeable actor name and is ignored. The employee is
+  // resolved from the caller's JWT; an automated caller is recorded as System.
+  const actor = await resolveAuditActor(req, supabase);
+  const sentBy = actor.name;
 
   if (!toPhone || !message) {
     return new Response(JSON.stringify({ ok: false, error: "toPhone and message are required" }), {
@@ -162,7 +169,7 @@ Deno.serve(async (req: Request) => {
     console.error("[GHL-SEND-SMS] ❌ GHL send failed:", errMsg, sendData);
 
     // Log failed attempt to communications
-    await supabase.from("communications").insert({
+    const { data: failedComm } = await supabase.from("communications").insert({
       order_id: orderId ?? null,
       confirmation_id: confirmationId ?? null,
       type: "sms_outbound",
@@ -173,6 +180,23 @@ Deno.serve(async (req: Request) => {
       status: "failed",
       sent_by: sentBy,
       twilio_sid: ghlContactId ? `ghl:${ghlContactId}` : null,
+    }).select("id").maybeSingle();
+
+    const failedCommId = (failedComm as { id?: string } | null)?.id ?? null;
+    await supabase.from("audit_logs").insert({
+      actor_id: actor.id, actor_name: actor.name, actor_role: actor.role,
+      actor_type: actor.type, category: "communications",
+      source: actor.isHuman ? "admin_portal" : "system",
+      object_type: "order", object_id: confirmationId ?? orderId ?? null,
+      order_id: orderId ?? null, entity_type: "communication",
+      entity_id: failedCommId, communication_id: failedCommId,
+      action: "customer_sms_sent",
+      description: `SMS to the customer (${maskPhone(phone)}) FAILED: ${errMsg}`,
+      metadata: {
+        channel: "sms", direction: "outbound", recipient_type: "customer",
+        recipient_masked: maskPhone(phone), delivery_status: "failed",
+        error: errMsg, confirmation_id: confirmationId ?? null,
+      },
     });
 
     return new Response(JSON.stringify({ ok: false, error: errMsg }), {
@@ -185,7 +209,7 @@ Deno.serve(async (req: Request) => {
   console.log(`[GHL-SEND-SMS] ✅ Sent via GHL — messageId: ${ghlMessageId}, to: ${phone}`);
 
   // ── Step 3: Log success to communications table ───────────────────────────
-  await supabase.from("communications").insert({
+  const { data: commRow } = await supabase.from("communications").insert({
     order_id: orderId ?? null,
     confirmation_id: confirmationId ?? null,
     type: "sms_outbound",
@@ -196,6 +220,25 @@ Deno.serve(async (req: Request) => {
     status: "sent",
     sent_by: sentBy,
     twilio_sid: ghlMessageId ? `ghl:${ghlMessageId}` : null,
+  }).select("id").maybeSingle();
+
+  // Audit the send with the RESOLVED actor. The message body is not duplicated
+  // here — `communications` is authoritative and the audit row links to it (§19).
+  const commId = (commRow as { id?: string } | null)?.id ?? null;
+  await supabase.from("audit_logs").insert({
+    actor_id: actor.id, actor_name: actor.name, actor_role: actor.role,
+    actor_type: actor.type, category: "communications",
+    source: actor.isHuman ? "admin_portal" : "system",
+    object_type: "order", object_id: confirmationId ?? orderId ?? null,
+    order_id: orderId ?? null, entity_type: "communication",
+    entity_id: commId, communication_id: commId,
+    action: "customer_sms_sent",
+    description: `${actor.name} sent an SMS to the customer (${maskPhone(phone)}).`,
+    metadata: {
+      channel: "sms", direction: "outbound", recipient_type: "customer",
+      recipient_masked: maskPhone(phone), delivery_status: "sent",
+      ghl_message_id: ghlMessageId, confirmation_id: confirmationId ?? null,
+    },
   });
 
   // Update last_contacted_at

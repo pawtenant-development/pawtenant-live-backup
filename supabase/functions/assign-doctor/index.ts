@@ -112,6 +112,41 @@ Deno.serve(async (req: Request) => {
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const normalizedEmail = doctorEmail.toLowerCase().trim();
 
+  // ── PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §16 ───────────────
+  // Resolve the ACTING EMPLOYEE from the caller's own JWT. Assignment was
+  // previously invoked with the anon key, so this function had no idea who had
+  // acted and wrote no audit row at all — "who assigned this order?" was
+  // unanswerable. The actor is never taken from the request body: an
+  // unauthenticated or automated caller is honestly recorded as System, not
+  // attributed to a person.
+  const actor = await (async () => {
+    const header = req.headers.get("Authorization") ?? "";
+    const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!bearer || bearer === anonKey || bearer === serviceKeyEnv) {
+      return { id: null as string | null, name: "PawTenant System", role: "system", type: "system" };
+    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser(bearer);
+      if (!user) return { id: null, name: "PawTenant System", role: "system", type: "system" };
+      const { data: prof } = await supabase
+        .from("doctor_profiles")
+        .select("full_name, role, is_admin")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const p = prof as { full_name?: string; role?: string; is_admin?: boolean } | null;
+      return {
+        id: user.id,
+        name: p?.full_name?.trim() || user.email || "Employee",
+        role: p?.role ?? (p?.is_admin ? "admin" : "staff"),
+        type: p?.is_admin ? "employee" : "provider",
+      };
+    } catch {
+      return { id: null, name: "PawTenant System", role: "system", type: "system" };
+    }
+  })();
+
   let doctorUserId: string | null = null;
   let doctorName = "";
   let doctorTitle = "";
@@ -157,7 +192,7 @@ Deno.serve(async (req: Request) => {
   if (doctorAvailabilityStatus === "at_capacity") return json({ error: `Provider ${doctorName} (${normalizedEmail}) is currently at capacity and not accepting new assignments.`, availability_status: "at_capacity" }, 400);
   if (isPortalProvider && !doctorPortalAccessed) return json({ error: `Provider ${doctorName} must complete account setup and access the portal before receiving orders.`, reason: "pending_account_setup" }, 400);
 
-  const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, additional_documents_requested, delivery_speed, price, payment_intent_id, paid_at, status, letter_type, addon_services").eq("confirmation_id", confirmationId).maybeSingle();
+  const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_name, doctor_email, additional_documents_requested, delivery_speed, price, payment_intent_id, paid_at, status, letter_type, addon_services").eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);
 
   // ORDER-PAYMENT-GATING: skipPaymentCheck is intentionally NO LONGER honored — an
@@ -171,8 +206,44 @@ Deno.serve(async (req: Request) => {
   const updatePayload: Record<string, unknown> = { doctor_status: "pending_review", doctor_name: doctorName, doctor_email: normalizedEmail, last_contacted_at: now };
   if (doctorUserId) updatePayload.doctor_user_id = doctorUserId;
 
+  const previousDoctorName = (order as Record<string, unknown>).doctor_name as string | null ?? null;
+  const previousDoctorEmail = (order as Record<string, unknown>).doctor_email as string | null ?? null;
+
   const { error: updateErr } = await supabase.from("orders").update(updatePayload).eq("confirmation_id", confirmationId);
   if (updateErr) return json({ error: `Failed to assign doctor: ${updateErr.message}` }, 500);
+
+  // Assignment audit. Reassignment is distinguished from a first assignment by
+  // whether a DIFFERENT provider was already on the order — the previous
+  // provider is recorded so the timeline can read "X moved this from A to B".
+  const isReassignment = !!previousDoctorEmail && previousDoctorEmail.toLowerCase() !== normalizedEmail;
+  await supabase.from("audit_logs").insert({
+    actor_id: actor.id,
+    actor_name: actor.name,
+    actor_role: actor.role,
+    actor_type: actor.type,
+    category: "assignment",
+    source: actor.id ? "admin_portal" : "api",
+    object_type: "order",
+    object_id: confirmationId,
+    order_id: order.id,
+    entity_type: "provider",
+    entity_id: doctorUserId ?? normalizedEmail,
+    provider_id: doctorUserId,
+    action: isReassignment ? "provider_reassigned" : "provider_assigned",
+    description: isReassignment
+      ? `${actor.name} reassigned order ${confirmationId} from ${previousDoctorName ?? previousDoctorEmail} to ${doctorName}.`
+      : `${actor.name} assigned order ${confirmationId} to ${doctorName}.`,
+    old_values: { doctor_name: previousDoctorName, doctor_email: previousDoctorEmail },
+    new_values: { doctor_name: doctorName, doctor_email: normalizedEmail, doctor_status: "pending_review" },
+    metadata: {
+      order_id: order.id,
+      confirmation_id: confirmationId,
+      provider_user_id: doctorUserId,
+      provider_email: normalizedEmail,
+      previous_provider_email: previousDoctorEmail,
+      assigned_at: now,
+    },
+  });
 
   let earningsAction = "none";
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || (order.email as string);

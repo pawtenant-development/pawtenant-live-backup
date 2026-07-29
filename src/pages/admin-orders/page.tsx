@@ -1,7 +1,7 @@
 // Admin Orders + Doctor Management — PawTenant
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase, getAdminToken } from "../../lib/supabaseClient";
 import { resolveStaffRole } from "../../lib/staffAuth";
 import { canAccessApprovals } from "../../lib/adminPermissions";
 // Phase K3 — shared normalized classifier so the Orders filter, the
@@ -978,7 +978,7 @@ export default function AdminOrdersPage() {
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/assign-doctor`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAdminToken()}` },
         body: JSON.stringify({ confirmationId, doctorEmail }),
       });
       const result = await res.json() as { ok?: boolean; error?: string; doctorName?: string };
@@ -995,7 +995,7 @@ export default function AdminOrdersPage() {
       setAssignMsg((prev) => ({ ...prev, [confirmationId]: "Network error" }));
     }
     setAssigning(null);
-  }, [supabaseUrl, anonKey, doctorContacts]);
+  }, [supabaseUrl, doctorContacts]);
 
   const handleGhlRefire = useCallback(async (confirmationId: string) => {
     setGhlRefiring(confirmationId);
@@ -1202,7 +1202,7 @@ export default function AdminOrdersPage() {
         try {
           const res = await fetch(`${supabaseUrl}/functions/v1/assign-doctor`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAdminToken()}` },
             body: JSON.stringify({ confirmationId, doctorEmail: bulkDoctorEmail }),
           });
           const result = await res.json() as { ok?: boolean; doctorName?: string };
@@ -1227,7 +1227,7 @@ export default function AdminOrdersPage() {
       : `${successCount} assigned, ${failCount} failed${skippedNote}`
     );
     setTimeout(() => setBulkMsg(""), 6000);
-  }, [bulkDoctorEmail, selectedOrders, orders, supabaseUrl, anonKey, doctorContacts]);
+  }, [bulkDoctorEmail, selectedOrders, orders, supabaseUrl, doctorContacts]);
 
   // ── Bulk delete handler (owner/admin_manager only) ───────────────────────
   const handleBulkDelete = useCallback(async () => {
@@ -1927,7 +1927,7 @@ export default function AdminOrdersPage() {
           try {
             const res = await fetch(`${supabaseUrl}/functions/v1/assign-doctor`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAdminToken()}` },
               body: JSON.stringify({ confirmationId, doctorEmail }),
             });
             const result = await res.json() as { ok?: boolean; doctorName?: string };

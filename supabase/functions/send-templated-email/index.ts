@@ -5,6 +5,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { resolveAuditActor, maskEmail } from "../_shared/auditActor.ts";
 import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
 
@@ -98,6 +99,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §16 — the sender is
+    // resolved from the caller's JWT. This endpoint previously hard-coded
+    // sentBy "admin_comms", so an email an employee sent by hand and an email a
+    // background job sent were indistinguishable in the record.
+    const actor = await resolveAuditActor(req, supabase);
 
     const { data: tmpl, error } = await supabase
       .from("email_templates")
@@ -212,6 +219,15 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: `Resend error (${sendResult.status}): ${sendResult.raw || sendResult.error}` }, 500);
     }
 
+    // order_id lets the order-level Audit timeline resolve this event directly
+    // instead of string-matching the confirmation id.
+    let orderIdForAudit: string | null = null;
+    if (body.confirmationId) {
+      const { data: oRow } = await supabase
+        .from("orders").select("id").eq("confirmation_id", body.confirmationId).maybeSingle();
+      orderIdForAudit = ((oRow as { id?: string } | null)?.id) ?? null;
+    }
+
     // Primary log → communications (single source of truth for the unified Comms timeline)
     await logEmailComm({
       supabase,
@@ -222,7 +238,35 @@ Deno.serve(async (req: Request) => {
       body: bodyText,
       slug: body.slug,
       templateSource: "db",
-      sentBy: "admin_comms",
+      sentBy: actor.name,
+    });
+
+    // Audit the send. The rendered body is NOT copied here — `communications`
+    // is the authoritative record; the audit row names the template and links
+    // to the order (§19).
+    await supabase.from("audit_logs").insert({
+      actor_id: actor.id,
+      actor_name: actor.name,
+      actor_role: actor.role,
+      actor_type: actor.type,
+      category: "communications",
+      source: actor.isHuman ? "admin_portal" : "system",
+      object_type: "order",
+      object_id: body.confirmationId ?? null,
+      order_id: orderIdForAudit,
+      entity_type: "communication",
+      action: "customer_email_sent",
+      description: `${actor.name} sent the "${body.slug}" email to the customer (${maskEmail(body.to)}).`,
+      metadata: {
+        channel: "email",
+        direction: "outbound",
+        recipient_type: "customer",
+        recipient_masked: maskEmail(body.to),
+        template: body.slug,
+        subject,
+        delivery_status: "sent",
+        confirmation_id: body.confirmationId ?? null,
+      },
     });
 
     // Backup log → orders.email_log (kept for legacy consumers; not source of truth)
