@@ -2,7 +2,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
 import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts";
 import { ensureRaCompletionEarning } from "../_shared/raCompletionEarning.ts";
-import { evaluateNotificationSuppression, suppressForFixtureOrder } from "../_shared/testNotificationSuppression.ts";
+// evaluateNotificationSuppression moved with the customer email to
+// admin-review-document; only the admin-alert fixture gate is still used here.
+import { suppressForFixtureOrder } from "../_shared/testNotificationSuppression.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -321,14 +323,15 @@ async function notifyAdminLetterSubmitted(opts: {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) return;
 
-    const subject = `[Letter Submitted] ${opts.providerName} — Order ${opts.confirmationId}`;
+    const subject = `[Pending Admin Approval] ${opts.providerName} — Order ${opts.confirmationId}`;
     const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f3f4f6;padding:32px 16px;margin:0;">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;">
 <tr><td style="background:#1a5c4f;padding:24px 32px;text-align:center;">
 <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="140" alt="PawTenant" style="display:block;margin:0 auto 12px;height:auto;" />
-<div style="display:inline-block;background:rgba(255,255,255,0.2);color:#fff;padding:4px 14px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Admin Notification</div>
+<div style="display:inline-block;background:rgba(255,255,255,0.2);color:#fff;padding:4px 14px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Pending Admin Approval</div>
 <h1 style="margin:0;font-size:20px;font-weight:800;color:#fff;">Provider Submitted a Letter</h1>
+<p style="margin:8px 0 0;font-size:13px;color:#d6e9e4;">The customer has NOT been notified. Review and approve to deliver.</p>
 </td></tr>
 <tr><td style="padding:24px 32px;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:20px;">
@@ -344,7 +347,7 @@ ${opts.providerNote ? `<tr><td style="padding:5px 0;font-size:13px;color:#9ca3af
 </td></tr>
 </table>
 <div style="text-align:center;">
-<a href="https://pawtenant.com/admin-orders" style="background:#1a5c4f;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block;">View in Admin Portal &rarr;</a>
+<a href="https://pawtenant.com/admin-orders?order=${encodeURIComponent(opts.confirmationId)}&tab=documents" style="background:#1a5c4f;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:13px;display:inline-block;">Review &amp; Approve &rarr;</a>
 </div>
 </td></tr>
 </table>
@@ -513,6 +516,28 @@ Deno.serve(async (req: Request) => {
     // (from the order), completed housing forms canonicalize to housing_completed.
     const storedDocType = isHousingCompleted ? "housing_completed" : `${letterType}_letter`;
 
+    // ── PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §5 ───────────────
+    // Provider submission is no longer customer delivery. Every provider-generated
+    // final customer-facing document is inserted HIDDEN and pending review; only
+    // approve_order_document() may ever flip customer_visible to true, and the
+    // trg_order_document_release_gate trigger rejects any write that tries to
+    // release a pending/needs_correction row from anywhere else.
+    //
+    // Customer uploads, intake docs and admin attachments do NOT pass through this
+    // function at all, so they are untouched by the gate.
+    const isPreviousCorrection = await (async () => {
+      const { data } = await supabase
+        .from("order_documents")
+        .select("id")
+        .eq("order_id", order.id)
+        .eq("doc_type", storedDocType)
+        .eq("review_status", "needs_correction")
+        .order("uploaded_at", { ascending: false })
+        .limit(1);
+      return (data ?? []) as { id: string }[];
+    })();
+    const isResubmission = isPreviousCorrection.length > 0;
+
     const { data: insertedDoc, error: docError } = await supabase
       .from("order_documents")
       .insert({
@@ -520,7 +545,10 @@ Deno.serve(async (req: Request) => {
         doc_type: storedDocType, file_url: documentUrl,
         file_path: uploadedFilePath, mime_type: uploadedMime, file_size_bytes: uploadedSize,
         notes: providerNote?.trim() || null, uploaded_by: profile.full_name,
-        sent_to_customer: false, customer_visible: true, footer_injected: false,
+        sent_to_customer: false, customer_visible: false, footer_injected: false,
+        review_status: "pending_admin_approval",
+        submitted_by: user.id,
+        submitted_at: now.toISOString(),
       })
       .select("id")
       .maybeSingle();
@@ -528,6 +556,40 @@ Deno.serve(async (req: Request) => {
     if (docError) return json({ ok: false, error: `Failed to save document: ${docError.message}` }, 500);
 
     const documentId = insertedDoc?.id ?? null;
+
+    // A corrected resubmission retires the rejected submission rather than
+    // overwriting it — the provider's original file and the employee's
+    // correction note both stay on the record.
+    if (isResubmission && documentId) {
+      await supabase
+        .from("order_documents")
+        .update({ review_status: "superseded", superseded_by_document_id: documentId })
+        .in("id", isPreviousCorrection.map((d) => d.id));
+    }
+
+    await supabase.from("audit_logs").insert({
+      actor_id: user.id,
+      actor_name: profile.full_name ?? "Provider",
+      actor_role: "provider",
+      actor_type: "provider",
+      category: "documents",
+      source: "provider_portal",
+      object_type: "order_document",
+      object_id: confirmationId,
+      order_id: order.id,
+      entity_type: "order_document",
+      entity_id: documentId,
+      document_id: documentId,
+      provider_id: user.id,
+      action: isResubmission ? "provider_document_resubmitted" : "provider_document_submitted",
+      description: `${profile.full_name ?? "Provider"} ${isResubmission ? "resubmitted a corrected" : "submitted"} ${documentLabel} for order ${confirmationId}. Awaiting admin approval.`,
+      new_values: { review_status: "pending_admin_approval", customer_visible: false },
+      metadata: {
+        order_id: order.id, confirmation_id: confirmationId, document_id: documentId,
+        doc_type: storedDocType, document_label: documentLabel,
+        provider_name: profile.full_name, is_resubmission: isResubmission,
+      },
+    });
 
     // ══ COMPLETED HOUSING ACCOMMODATION FORM ══════════════════════════════════
     // Separate class: NO verification ID, NO footer/QR, and the base ESA/PSD letter
@@ -595,8 +657,9 @@ Deno.serve(async (req: Request) => {
       return json({
         ok: true, documentSaved: true, housingCompleted: true,
         verificationIssued: false, letterId: null, pdfFooterInjected: false,
-        docType: "housing_completed",
-        message: "Completed Housing Accommodation form uploaded and shared with the customer. No verification ID is issued for housing forms.",
+        docType: "housing_completed", reviewStatus: "pending_admin_approval",
+        pendingAdminApproval: true,
+        message: "Completed Housing Accommodation form uploaded. It is pending admin approval and will be shared with the customer once approved. No verification ID is issued for housing forms.",
       });
     }
 
@@ -609,11 +672,19 @@ Deno.serve(async (req: Request) => {
     })();
     const isNewIssue = !order.letter_issue_date;
 
+    // ── PROVIDER-LETTER-ADMIN-APPROVAL-GATE §5 · order state on SUBMISSION ────
+    // `status = completed`, `doctor_status = patient_notified`,
+    // `signed_letter_url` and `patient_notification_sent_at` are DELIVERY facts.
+    // They are no longer written here — approve_order_document() writes them
+    // atomically with the release. Leaving signed_letter_url set at submission
+    // would have leaked the unapproved letter to the customer through
+    // resolveCustomerDocuments()'s legacy fallback path even with the document
+    // row hidden, because that fallback reads orders.signed_letter_url directly.
+    //
+    // Issue/expiry dates stay here: they describe when the provider issued the
+    // letter, and they carry no customer-visible file.
     const orderUpdatePatch: Record<string, unknown> = {
-      doctor_status: "patient_notified",
-      status: "completed",
-      signed_letter_url: documentUrl,
-      patient_notification_sent_at: new Date().toISOString(),
+      doctor_status: "pending_admin_approval",
       doctor_user_id: user.id,
       letter_expiry_date: expiryDate,
     };
@@ -772,11 +843,12 @@ Deno.serve(async (req: Request) => {
     // (customer portal, letter emails, legacy links) resolves the stamped letter
     // (RA-LATE-UPLOAD-... blocker F). The original stays in provider-letters and is
     // only reachable via the explicit admin/provider "Open Original" action.
-    if (pdfInjectionResult.ok && pdfInjectionResult.processedUrl) {
-      await supabase.from("orders")
-        .update({ signed_letter_url: pdfInjectionResult.processedUrl })
-        .eq("id", order.id);
-    }
+    // PROVIDER-LETTER-ADMIN-APPROVAL-GATE §8: orders.signed_letter_url is a
+    // CUSTOMER-facing pointer (resolveCustomerDocuments falls back to it when no
+    // finalized document row is visible). Repointing it here would deliver the
+    // unapproved letter. approve_order_document() repoints it from the approved
+    // document row instead. The stamped file itself is already stored on
+    // order_documents.processed_file_url, which admin preview reads.
 
     // ORDER-ENTITLEMENT-AND-DOCUMENT-VERSIONING-FOUNDATION-001 · Phase D
     //
@@ -900,64 +972,31 @@ Deno.serve(async (req: Request) => {
       console.error("[documentVersion] unexpected error:", err instanceof Error ? err.message : err);
     }
 
-    // DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §10: TEST-ONLY external
-    // notification suppression. FAIL-CLOSED and OFF by default — it engages only
-    // when an explicit secret, the TEST project ref AND a reserved
-    // non-deliverable recipient TLD all agree. Nothing a customer, provider or
-    // browser can set takes part in the decision. A suppressed run is recorded
-    // honestly as suppressed; success is never fabricated.
-    const suppression = evaluateNotificationSuppression(order.email as string | null);
-
-    let notifyResult: { ok?: boolean; error?: string; suppressed?: boolean } = {};
-    if (suppression.suppressed) {
-      console.warn(
-        `[notifySuppressed] order=${confirmationId} — ${suppression.reason} — NO external email sent`,
-      );
-      notifyResult = { ok: false, suppressed: true, error: "suppressed_test_fixture" };
-      await supabase.from("audit_logs").insert({
-        actor_name: "System", actor_role: "system",
-        object_type: "notification", object_id: confirmationId,
-        action: "notification_suppressed_test_fixture",
-        description: `External customer notification SUPPRESSED for TEST fixture order ${confirmationId}. No email was sent.`,
-        metadata: {
-          order_id: order.id, confirmation_id: confirmationId,
-          suppressed: true, delivered: false, reason: suppression.reason,
-          checks: suppression.checks, timestamp: new Date().toISOString(),
-        },
-      });
-    } else {
-      const notifyRes = await fetch(`${SUPABASE_URL}/functions/v1/notify-patient-letter`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-        body: JSON.stringify({ confirmationId, doctorMessage: providerNote?.trim() || null }),
-      });
-      try { notifyResult = JSON.parse(await notifyRes.text()); } catch { /* ignore */ }
-    }
+    // ══ NO CUSTOMER NOTIFICATION HERE ═════════════════════════════════════════
+    // PROVIDER-LETTER-ADMIN-APPROVAL-GATE §12: the customer "your letter is
+    // ready" email moved from PROVIDER SUBMISSION to ADMIN APPROVAL. It is now
+    // sent by admin-review-document, exactly once, keyed on the single
+    // approve_order_document() state transition — so a double-click, a replay or
+    // two concurrent reviewers cannot produce a second email.
+    //
+    // The TEST-fixture suppression gate moved with it, so a fixture order is
+    // still never able to page a real recipient.
 
     await supabase.from("doctor_notifications").insert({
-      doctor_user_id: user.id, title: "Order Completed",
-      message: `Documents submitted for order ${confirmationId}. Order marked as completed and patient has been notified.`,
+      doctor_user_id: user.id, title: "Letter Submitted — Pending Admin Approval",
+      message: `Documents submitted for order ${confirmationId}. A PawTenant reviewer will approve and deliver them to the customer.`,
       type: "letter_submitted", confirmation_id: confirmationId, order_id: order.id,
     });
 
-    try {
-      const commsMeta = LETTER_LABELS[letterType];
-      await supabase.from("communications").insert({
-        order_id: order.id, confirmation_id: confirmationId,
-        channel: "email", direction: "outbound",
-        subject: `Your ${commsMeta.productLabel} is Ready`,
-        body: providerNote?.trim() || "Provider submitted your letter. Patient notification sent.",
-        status: "sent", sent_at: new Date().toISOString(), source: "provider_submit",
-        metadata: {
-          provider_id: user.id, provider_name: profile.full_name,
-          document_label: documentLabel, letter_id: resolvedLetterId,
-          footer_injected: pdfInjectionResult?.ok === true,
-          letter_issue_date: issueDate, letter_expiry_date: expiryDate,
-        },
-      });
-    } catch (commErr) {
-      console.error("[provider-submit-letter] comm log error:", commErr);
-    }
+    // The old `communications` insert here claimed an OUTBOUND CUSTOMER EMAIL
+    // ("Your ESA Letter is Ready") at submission time. It was also dead code: it
+    // named columns that do not exist on `communications` (channel / sent_at /
+    // metadata), so every write silently failed inside its catch — there are
+    // zero rows with source='provider_submit'. Under the approval gate that
+    // claim would now be actively wrong, because no customer email is sent at
+    // submission. The submission is recorded on audit_logs
+    // (provider_document_submitted) above; the real customer email is logged by
+    // admin-review-document when it is actually sent.
 
     // ── Notify admin recipients for provider_letter_submitted (fire-and-forget) ──
     notifyAdminLetterSubmitted({
@@ -970,41 +1009,23 @@ Deno.serve(async (req: Request) => {
       customerLastName: order.last_name ?? "",
     }).catch(() => {});
 
-    // ── Fire GHL order_completed event with exact 8-field payload ────────────
-    const addonServices = Array.isArray(order.addon_services) ? (order.addon_services as string[]) : [];
-    fetch(`${SUPABASE_URL}/functions/v1/ghl-webhook-proxy`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      body: JSON.stringify({
-        webhookType: "main",
-        eventType: "order_completed",
-        firstName: order.first_name ?? "",
-        lastName: order.last_name ?? "",
-        email: order.email,
-        phone: order.phone ?? "",
-        state: order.state ?? "",
-        confirmationId,
-        amount: (order.price as number) ?? 0,
-        // Additional context fields
-        letterType: isPSD ? "psd" : "esa",
-        addonServices,
-        assignedDoctor: profile.full_name,
-        leadStatus: isPSD ? "PSD — Letter Sent — Completed" : "ESA — Letter Sent — Completed",
-        tags: ["Letter Sent", "Completed", isPSD ? "PSD Order" : "ESA Order"],
-      }),
-    }).catch(() => {});
+    // The GHL `order_completed` event moved to admin-review-document. Firing it
+    // here would tell the CRM the order is complete and the letter is sent while
+    // the letter is still sitting in the review queue.
 
     return json({
       ok: true, documentSaved: true, orderUpdated: true,
-      patientNotified: notifyResult?.ok === true,
+      pendingAdminApproval: true,
+      reviewStatus: "pending_admin_approval",
+      documentId,
+      patientNotified: false,
       verificationIssued: !!resolvedLetterId,
       letterId: resolvedLetterId,
       pdfFooterInjected: pdfInjectionResult?.ok === true,
       processedPdfUrl: pdfInjectionResult?.processedUrl ?? null,
       letterIssueDate: issueDate, letterExpiryDate: expiryDate,
-      message: notifyResult?.ok
-        ? "Documents submitted successfully. Order marked as completed and patient has been notified by email."
-        : "Documents saved and order completed. Patient notification may have been delayed — admin can resend.",
+      message:
+        "Documents submitted for review. A PawTenant reviewer will check them and release them to the customer — the customer has not been notified yet.",
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
