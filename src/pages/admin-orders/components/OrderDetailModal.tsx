@@ -214,6 +214,27 @@ type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "pa
 // tg_order_document_release_gate trigger enforces it server-side.
 const REVIEW_GATED_STATUSES = new Set(["pending_admin_approval", "needs_correction"]);
 
+// ADMIN-ORDER-PENDING-DELIVERY-REOPEN-NOTIFICATIONS-REALTIME-001 §10 — the
+// FOURTH notification bypass.
+//
+// Keying the customer-notification controls on review_status was wrong in one
+// specific shape: `superseded` is not in REVIEW_GATED_STATUSES, but a document
+// that went pending_admin_approval -> superseded (a provider resubmitted before
+// any employee approved) was NEVER released, so it keeps customer_visible =
+// false. Such an order therefore satisfied "has a non-gated document" while
+// having ZERO deliverable documents — re-enabling Send All / Notify Patient and
+// emailing "your documents are ready" with nothing attached.
+//
+// review_status answers "where is this document in review?". The question these
+// controls actually ask is "is there anything the customer may receive?" — and
+// customer_visible is the flag the RLS policy, the release trigger and
+// notify-patient-letter's own attachment query all key on. Gate on that single
+// authoritative fact instead of enumerating review states, so a future enum
+// value cannot reopen this hole.
+const hasDeliverableDocument = (
+  docs: Array<{ customer_visible?: boolean | null }>,
+): boolean => docs.some((d) => d.customer_visible === true);
+
 // ─── PSD order detection — letter_type field OR confirmation ID prefix ────────
 function isPSDOrder(order: Pick<Order, "letter_type" | "confirmation_id">): boolean {
   return order.letter_type === "psd" || order.confirmation_id.includes("-PSD");
@@ -5203,9 +5224,9 @@ export default function OrderDetailModal({
                       disabled in exactly that case; an order that already has a
                       released document can still be resent normally. */}
                   <button type="button" onClick={handleSendAllToCustomer}
-                    disabled={sendingAll || (orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? "")))}
-                    title={orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? ""))
-                      ? "Every document on this order is awaiting review — approve one first"
+                    disabled={sendingAll || (orderDocs.length > 0 && !hasDeliverableDocument(orderDocs))}
+                    title={orderDocs.length > 0 && !hasDeliverableDocument(orderDocs)
+                      ? "No document on this order is customer-visible yet — approve one first"
                       : undefined}
                     className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                     {sendingAll ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send All to Customer</>}
@@ -5482,7 +5503,12 @@ export default function OrderDetailModal({
                       <i className={reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("already") ? "ri-shield-check-line" : "ri-error-warning-line"}></i>
                       {reinjectFooterMsg}
                       {/* One-click Notify Patient after footer injection */}
-                      {(reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("stamped")) && (
+                      {/* ADMIN-ORDER-PENDING-DELIVERY-...-001 §10 — footer
+                          injection is a stamping fact, not a release fact: a
+                          pending document can be stamped. This shortcut must
+                          carry the same deliverable-document gate as the banner
+                          below it, or it re-opens the bypass one level down. */}
+                      {(reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("stamped")) && hasDeliverableDocument(orderDocs) && (
                         <button
                           type="button"
                           onClick={handleNotifyPatientFromDocs}
@@ -5499,7 +5525,7 @@ export default function OrderDetailModal({
                   )}
 
                   {/* ── Notify Patient banner — always visible when docs exist and footer injected ── */}
-                  {orderDocs.some((d) => d.footer_injected && !REVIEW_GATED_STATUSES.has(d.review_status ?? "")) && !reinjectFooterMsg && (
+                  {orderDocs.some((d) => d.footer_injected && d.customer_visible === true) && !reinjectFooterMsg && (
                     <div className="flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
                       <div className="w-8 h-8 flex items-center justify-center bg-[#dbeafe] rounded-lg flex-shrink-0">
                         <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>

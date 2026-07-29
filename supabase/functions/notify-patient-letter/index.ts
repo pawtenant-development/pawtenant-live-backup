@@ -325,6 +325,39 @@ Deno.serve(async (req: Request) => {
     .filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url)
     .forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc), id: doc.id }));
 
+  // ── ADMIN-ORDER-PENDING-DELIVERY-REOPEN-NOTIFICATIONS-REALTIME-001 §10 ──
+  // SERVER-SIDE refusal of an empty deliverable list.
+  //
+  // The Admin controls that reach this function are now gated on
+  // customer_visible, but UI gating is advisory: this function is also reachable
+  // by a replayed request, a provider-scoped caller, a direct curl with a valid
+  // token, or a future caller that forgets the gate. Sending "your documents are
+  // ready" with nothing resolved is a customer-trust failure that cannot be
+  // recalled, and it also stamps patient_notification_sent_at, which suppresses
+  // the REAL delivery notification later.
+  //
+  // allDocs is the canonical deliverable list (signed_letter_url — only written
+  // at approval time by approve_order_document — plus customer_visible rows), so
+  // an empty list means there is genuinely nothing to deliver. Refuse loudly
+  // with 409 instead of sending, and do not touch any notification timestamp.
+  //
+  // This is deliberately placed BEFORE the re-signing pass below. The existing
+  // docsEmailedCount === 0 -> 500 branch fires AFTER re-signing and means
+  // something different: there WAS a deliverable document but no working URL
+  // could be produced (storage misconfiguration). Conflating the two reported a
+  // storage fault for what is actually "nothing has been approved yet".
+  if (allDocs.length === 0) {
+    console.warn(
+      `[notify-patient-letter] REFUSED ${order.confirmation_id}: no customer-visible document resolved (documents awaiting approval are never deliverable)`,
+    );
+    return jsonResp({
+      error:
+        "No customer-visible document on this order — approve and deliver a document before notifying the customer.",
+      code: "no_deliverable_documents",
+      confirmationId: order.confirmation_id,
+    }, 409);
+  }
+
   // ── 2026-05-19 EMAIL-LETTER-DELIVERY-SIGNED-DOCUMENT-LINKS ────────────
   // Any URL pointing at /storage/v1/object/(public|sign|authenticated)/
   // <bucket>/<path> gets re-signed via createSignedUrl. The "letters"

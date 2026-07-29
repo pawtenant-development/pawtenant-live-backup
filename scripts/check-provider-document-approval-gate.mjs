@@ -79,6 +79,7 @@ const FILES = {
   timeline:    "src/pages/admin-orders/components/OrderAuditTimeline.tsx",
   modal:       "src/pages/admin-orders/components/OrderDetailModal.tsx",
   myOrders:    "src/pages/my-orders/page.tsx",
+  notifyPatient: "supabase/functions/notify-patient-letter/index.ts",
 };
 
 function loadAll() {
@@ -221,13 +222,40 @@ function runChecks(f) {
   // The banner is the serious one: it emailed the customer "your documents are
   // ready" before approval, and since notify-patient-letter only attaches
   // customer_visible docs, that email would have carried ZERO documents.
-  add("A22", "manual release overrides are gated on review state",
-    has(f.modal, "REVIEW_GATED_STATUSES")
-    && hasRe(f.modal, /orderDocs\.some\(\(d\) => d\.footer_injected && !REVIEW_GATED_STATUSES\.has\(d\.review_status \?\? ""\)\)/)
+  // A22 — ADMIN-ORDER-PENDING-DELIVERY-...-001 §10 closes the FOURTH instance.
+  // Keying the customer-notification controls on review_status left one shape
+  // open: a document that went pending_admin_approval -> superseded (provider
+  // resubmitted before any approval) is NOT in REVIEW_GATED_STATUSES yet was
+  // never released, so it keeps customer_visible = false. Those orders passed
+  // "has a non-gated document" with ZERO deliverable documents. The controls now
+  // key on customer_visible — the same fact the RLS policy, the release trigger
+  // and notify-patient-letter's attachment query use — so a future enum value
+  // cannot reopen the hole. The per-document visibility toggle legitimately
+  // stays on review_status: it asks "may I change this document's state?".
+  add("A22", "customer-notification controls are gated on a deliverable document",
+    has(f.modal, "hasDeliverableDocument")
+    && hasRe(f.modal, /const hasDeliverableDocument[\s\S]{0,240}d\.customer_visible === true/)
     && hasRe(f.modal, /disabled=\{togglingVisibility === doc\.id \|\| REVIEW_GATED_STATUSES\.has\(doc\.review_status \?\? ""\)\}/)
-    // "Send All to Customer" is the THIRD instance of the same bypass: it calls
-    // notify-patient-letter directly. Disabled when every document is gated.
-    && has(f.modal, 'disabled={sendingAll || (orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? "")))}'));
+    // Notify Patient banner.
+    && has(f.modal, 'orderDocs.some((d) => d.footer_injected && d.customer_visible === true)')
+    // "Send All to Customer" — calls notify-patient-letter directly.
+    && has(f.modal, "disabled={sendingAll || (orderDocs.length > 0 && !hasDeliverableDocument(orderDocs))}")
+    // The post-footer-injection "Notify Patient Now" shortcut carries the gate
+    // too; footer injection is a stamping fact, not a release fact.
+    && hasRe(f.modal, /reinjectFooterMsg\.includes\("stamped"\)\) && hasDeliverableDocument\(orderDocs\)/)
+    // review_status must no longer be what any notification control keys on.
+    && !hasRe(f.modal, /!orderDocs\.some\(\(d\) => !REVIEW_GATED_STATUSES\.has/)
+    && !hasRe(f.modal, /footer_injected && !REVIEW_GATED_STATUSES\.has/));
+
+  // A23 — UI gating is advisory. notify-patient-letter is also reachable by a
+  // replayed request, a provider-scoped caller or a direct curl, and sending
+  // "your documents are ready" with nothing attached also stamps
+  // patient_notification_sent_at, which suppresses the REAL delivery email
+  // later. The server must refuse an empty deliverable list itself.
+  add("A23", "notify-patient-letter refuses an empty deliverable list server-side",
+    hasRe(f.notifyPatient, /if\s*\(allDocs\.length === 0\)/)
+    && has(f.notifyPatient, "no_deliverable_documents")
+    && hasRe(f.notifyPatient, /allDocs\.length === 0[\s\S]{0,700}return jsonResp\([\s\S]{0,400}409\)/));
 
   add("A21", "customer portal maps pending_admin_approval to Under Review + quality-check copy",
     // status chip: classified with the in_review family (never "Assigned to Provider")
@@ -305,12 +333,30 @@ const CONTROLS = [
       .replace('Your provider has completed their review and your documents are undergoing a final quality check.', 'x') })],
   ["A22b", "Send All to Customer stops being gated",
     (f) => ({ ...f, modal: f.modal.replace(
-      'disabled={sendingAll || (orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? "")))}',
+      "disabled={sendingAll || (orderDocs.length > 0 && !hasDeliverableDocument(orderDocs))}",
       "disabled={sendingAll}") })],
   ["A22", "Notify Patient reappears for a document awaiting review",
     (f) => ({ ...f, modal: f.modal.replace(
-      'orderDocs.some((d) => d.footer_injected && !REVIEW_GATED_STATUSES.has(d.review_status ?? ""))',
+      'orderDocs.some((d) => d.footer_injected && d.customer_visible === true)',
       "orderDocs.some((d) => d.footer_injected)") })],
+  // The FOURTH bypass, planted exactly as it existed: revert both notification
+  // controls to keying on review_status. `superseded` is not in
+  // REVIEW_GATED_STATUSES, so a never-approved superseded document (which keeps
+  // customer_visible = false) re-enables both controls with nothing deliverable.
+  ["A22c", "notification controls revert to keying on review_status (superseded bypass)",
+    (f) => ({ ...f, modal: f.modal
+      .replace(
+        "disabled={sendingAll || (orderDocs.length > 0 && !hasDeliverableDocument(orderDocs))}",
+        'disabled={sendingAll || (orderDocs.length > 0 && !orderDocs.some((d) => !REVIEW_GATED_STATUSES.has(d.review_status ?? "")))}')
+      .replace(
+        'orderDocs.some((d) => d.footer_injected && d.customer_visible === true)',
+        'orderDocs.some((d) => d.footer_injected && !REVIEW_GATED_STATUSES.has(d.review_status ?? ""))') })],
+  ["A22d", "the post-footer-injection Notify shortcut drops the gate",
+    (f) => ({ ...f, modal: f.modal.replace(
+      'reinjectFooterMsg.includes("stamped")) && hasDeliverableDocument(orderDocs)',
+      'reinjectFooterMsg.includes("stamped"))') })],
+  ["A23", "notify-patient-letter sends with zero resolved documents",
+    (f) => ({ ...f, notifyPatient: f.notifyPatient.replace(/if\s*\(allDocs\.length === 0\)/, "if (false)") })],
 ];
 
 try {
@@ -321,7 +367,8 @@ try {
     let bad = 0;
     for (const [target, label, mutate] of CONTROLS) {
       const results = runChecks(mutate(base));
-      const hit = results.find((x) => x.id === (target === "A22b" ? "A22" : target));
+      // A22b/A22c/A22d are additional plants against the single A22 check.
+      const hit = results.find((x) => x.id === (/^A22[bcd]$/.test(target) ? "A22" : target));
       const tripped = hit && !hit.ok;
       if (!tripped) bad++;
       console.log(`  ${tripped ? "CAUGHT " : "MISSED "} ${target.padEnd(4)} ${label}`);
