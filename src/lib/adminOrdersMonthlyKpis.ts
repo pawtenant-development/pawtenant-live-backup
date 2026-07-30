@@ -37,9 +37,15 @@ export interface AdminOrdersMonthlyKpis {
   leadUnpaid: number;
   /** FIRST payment this month, still unassigned. Keyed on paid_at (never last_payment_at). */
   paidUnassigned: number;
-  /** Entered review this month, still under review. Keyed on the proven transition. */
+  /** Entered review this month, still under review. Keyed on the proven transition. EXCLUDES pendingDelivery. */
   underReview: number;
-  /** Fulfilled this month. Keyed on last_completed_at. */
+  /**
+   * Provider submitted this month and the letter is still awaiting employee
+   * approval. Keyed on the transition into pending_admin_approval, the same way
+   * underReview is keyed. EMPLOYEE-ONLY — never a customer-facing status.
+   */
+  pendingDelivery: number;
+  /** Fulfilled this month. Keyed on last_completed_at. EXCLUDES pendingDelivery. */
   completed: number;
 }
 
@@ -68,6 +74,7 @@ export async function fetchAdminOrdersMonthlyKpis(): Promise<AdminOrdersMonthlyK
       leadUnpaid: d.leadUnpaid ?? 0,
       paidUnassigned: d.paidUnassigned ?? 0,
       underReview: d.underReview ?? 0,
+      pendingDelivery: d.pendingDelivery ?? 0,
       completed: d.completed ?? 0,
     };
   } catch (e) {

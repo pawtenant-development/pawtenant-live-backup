@@ -82,9 +82,13 @@ const DOCTOR_STATUS_LABEL: Record<string, string> = {
   letter_sent: "Completed",
   patient_notified: "Completed",
   thirty_day_reissue: "30-Day Reissue",
-  // PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001: the provider has
-  // submitted; PawTenant has not yet released the document to the customer.
-  pending_admin_approval: "Submitted — Pending Approval",
+  // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001: from the PROVIDER's
+  // side the work is done — they submitted the final letter and owe nothing
+  // further unless a correction comes back. The internal approval step is
+  // deliberately NOT named here (that is the employee's Pending Delivery queue,
+  // not the provider's business). If an employee requests a correction, the order
+  // is handed back with doctor_status='in_review' and reappears in In Progress.
+  pending_admin_approval: "Completed",
 };
 
 const DOCTOR_STATUS_COLOR: Record<string, { badge: string; dot: string }> = {
@@ -93,7 +97,7 @@ const DOCTOR_STATUS_COLOR: Record<string, { badge: string; dot: string }> = {
   approved: { badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-400" },
   letter_sent: { badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
   patient_notified: { badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
-  pending_admin_approval: { badge: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
+  pending_admin_approval: { badge: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
   thirty_day_reissue: { badge: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
 };
 
@@ -111,11 +115,13 @@ function statusMatchesFilter(doctorStatus: string | null, filter: StatusFilter, 
   if (filter === "all") return true;
   // Cancelled/refunded orders should never appear in active work queues
   if (filter === "new") return doctorStatus === "pending_review" && !isOrderInactive(order);
-  // `pending_admin_approval` is still IN PROGRESS from the provider's point of
-  // view: the work is submitted but nothing has been delivered, and a correction
-  // may come back. Without this the order would vanish from every queue.
-  if (filter === "in_progress") return (doctorStatus === "in_review" || doctorStatus === "approved" || doctorStatus === "thirty_day_reissue" || doctorStatus === "pending_admin_approval") && !isOrderInactive(order);
-  if (filter === "completed") return doctorStatus === "patient_notified" || doctorStatus === "letter_sent";
+  // Projection matrix: a submitted-but-unapproved letter is COMPLETED to the
+  // provider and Pending Delivery to the employee. It must still be reachable —
+  // it lives in the Completed queue (not hidden), so the provider can reopen the
+  // order and see what they submitted. A correction resets doctor_status to
+  // 'in_review', which pulls it back into In Progress automatically.
+  if (filter === "in_progress") return (doctorStatus === "in_review" || doctorStatus === "approved" || doctorStatus === "thirty_day_reissue") && !isOrderInactive(order);
+  if (filter === "completed") return doctorStatus === "patient_notified" || doctorStatus === "letter_sent" || doctorStatus === "pending_admin_approval";
   return true;
 }
 
@@ -130,7 +136,7 @@ const PROVIDER_STATUS_PRIORITY: Record<string, number> = {
   pending_review: 1,
   in_review: 2,
   approved: 3,
-  pending_admin_approval: 4,
+  pending_admin_approval: 5,
   patient_notified: 5,
   letter_sent: 5,
 };
@@ -542,8 +548,8 @@ export default function ProviderPortalPage({ previewContext }: { previewContext?
 
   // Order counts for tab badges — exclude cancelled/refunded from active queues
   const newCount = orders.filter((o) => o.doctor_status === "pending_review" && !isOrderInactive(o)).length;
-  const inProgressCount = orders.filter((o) => (o.doctor_status === "in_review" || o.doctor_status === "approved" || o.doctor_status === "pending_admin_approval") && !isOrderInactive(o)).length;
-  const completedCount = orders.filter((o) => o.doctor_status === "letter_sent" || o.doctor_status === "patient_notified").length;
+  const inProgressCount = orders.filter((o) => (o.doctor_status === "in_review" || o.doctor_status === "approved") && !isOrderInactive(o)).length;
+  const completedCount = orders.filter((o) => o.doctor_status === "letter_sent" || o.doctor_status === "patient_notified" || o.doctor_status === "pending_admin_approval").length;
 
   if (loading) {
     return (

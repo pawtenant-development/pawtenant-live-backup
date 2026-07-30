@@ -351,23 +351,38 @@ export function paymentStateLabel(s: PaymentState): string {
 // Workflow state — INDEPENDENT of payment state
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — `pending_delivery` is
+// EMPLOYEE-ONLY. It means the provider submitted the final letter and it is
+// waiting on employee approval. It is never shown to a customer (who sees Under
+// Review) or to a provider (who sees Completed); those projections live in
+// my-orders/page.tsx and provider-portal/page.tsx respectively.
 export type WorkflowState =
-  | "lead" | "paid_unassigned" | "under_review" | "reopened" | "completed" | "cancelled";
+  | "lead" | "paid_unassigned" | "under_review" | "pending_delivery" | "reopened" | "completed" | "cancelled";
 
 const WORKFLOW_LABEL: Record<WorkflowState, string> = {
   lead: "Lead",
   paid_unassigned: "Paid · Unassigned",
   under_review: "Under Review",
+  pending_delivery: "Pending Delivery",
   reopened: "Reopened",
   completed: "Completed",
   cancelled: "Cancelled",
 };
 
-/** Mirrors public.order_workflow_state(). */
+/**
+ * Mirrors public.order_workflow_state().
+ *
+ * Branch order is load-bearing and must stay identical to the SQL: the
+ * pending_delivery test sits BEHIND `completed` (so a delivered order is never
+ * pulled back into the approval queue) and AHEAD of `reopened` (a 30-day reopen
+ * only reaches pending_admin_approval once the provider resubmits, which is
+ * strictly later, so it is the more current fact).
+ */
 export function orderWorkflowState(o: LifecycleOrder): WorkflowState {
   if (isOperationallyCancelled(o)) return "cancelled";
   if (!o.payment_intent_id || o.status === "lead") return "lead";
   if (o.doctor_status === "patient_notified") return "completed";
+  if (o.doctor_status === "pending_admin_approval") return "pending_delivery";
   if (o.official_letter_reopened_at && !o.official_letter_final_completed_at) return "reopened";
   if (o.doctor_user_id || o.doctor_email) return "under_review";
   return "paid_unassigned";
@@ -462,6 +477,13 @@ export function primaryBadgeTitle(o: LifecycleOrder): string | undefined {
 export function workflowReason(o: LifecycleOrder): string | null {
   const w = orderWorkflowState(o);
   if (w === "reopened") return "Reopened for the 30-day official letter";
+  // A reopened order whose provider has already resubmitted now classifies as
+  // pending_delivery, so the 30-day context would otherwise be lost from the
+  // label. Keep surfacing it — the employee still needs to know WHY this letter
+  // exists while they approve it.
+  if (w === "pending_delivery" && o.official_letter_reopened_at && !o.official_letter_final_completed_at) {
+    return "Official 30-day letter submitted — awaiting approval";
+  }
   if (w === "under_review" && o.last_reopened_at) return "Reopened for review";
   if (w === "completed" && o.last_reopened_at) return "Reissued after reopening";
   return null;

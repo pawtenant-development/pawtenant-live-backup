@@ -245,9 +245,30 @@ export function isPaidUnassigned(o: ClassifiableOrder): boolean {
   return !isLeadOrder(o) && !isRefundedBucket(o) && !isCompletedOrder(o) && !hasProvider(o);
 }
 
-/** Financially active, paid, provider assigned and working (not yet delivered). */
+/**
+ * Provider submitted the final letter and it is awaiting employee approval.
+ *
+ * ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — EMPLOYEE-ONLY. The
+ * customer sees Under Review and the provider sees Completed; only the admin
+ * surfaces use this. Keyed on the same row-level fact as
+ * public.order_workflow_state().
+ */
+export function isPendingDelivery(o: ClassifiableOrder): boolean {
+  return !isLeadOrder(o) && !isRefundedBucket(o) && !isCompletedOrder(o)
+    && o.doctor_status === "pending_admin_approval";
+}
+
+/**
+ * Financially active, paid, provider assigned and working (not yet delivered).
+ *
+ * EXCLUDES Pending Delivery: once the provider has submitted, the work sits with
+ * an employee, not the provider. Without this exclusion the Under Review and
+ * Pending Delivery tabs would both claim the same order and the KPI buckets would
+ * stop being mutually exclusive.
+ */
 export function isUnderReview(o: ClassifiableOrder): boolean {
-  return !isLeadOrder(o) && !isRefundedBucket(o) && !isCompletedOrder(o) && hasProvider(o);
+  return !isLeadOrder(o) && !isRefundedBucket(o) && !isCompletedOrder(o) && hasProvider(o)
+    && !isPendingDelivery(o);
 }
 
 /**

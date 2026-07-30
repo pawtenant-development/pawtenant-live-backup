@@ -56,7 +56,7 @@ export interface FacetFilters {
 }
 
 export type FacetBucket =
-  | "lead_unpaid" | "paid_unassigned" | "under_review" | "completed"
+  | "lead_unpaid" | "paid_unassigned" | "under_review" | "pending_delivery" | "completed"
   | "refunded" | "disputed" | "cancelled" | "payment_failed" | "archived";
 
 export interface FacetCounts {
@@ -162,7 +162,20 @@ function applyBucket(q: Q, bucket: FacetBucket): Q {
     case "under_review": // isUnderReview
       return excludeRefundedBucket(
         q.not("payment_intent_id", "is", null).neq("status", "lead"),
-      ).or("doctor_status.is.null,doctor_status.neq.patient_notified").or("doctor_email.not.is.null,doctor_user_id.not.is.null");
+      ).or("doctor_status.is.null,doctor_status.neq.patient_notified")
+        // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001: Under Review must
+        // EXCLUDE Pending Delivery, or the two tabs would double-count the same
+        // order. Mirrors order_workflow_state(), where pending_delivery is tested
+        // before under_review.
+        .or("doctor_status.is.null,doctor_status.neq.pending_admin_approval")
+        .or("doctor_email.not.is.null,doctor_user_id.not.is.null");
+    case "pending_delivery":
+      // Provider submitted the final letter; awaiting employee approval. Keyed on
+      // the same row-level fact the SQL classifier uses. Refunded/cancelled orders
+      // are excluded so the queue only shows actionable work.
+      return excludeRefundedBucket(
+        q.not("payment_intent_id", "is", null).neq("status", "lead"),
+      ).eq("doctor_status", "pending_admin_approval");
     case "completed": // list defn: doctor_status = patient_notified (does not exclude refunded)
       return q.eq("doctor_status", "patient_notified");
     case "refunded": // isRefundedBucket: full refund OR cancelled
@@ -189,7 +202,7 @@ async function runCount(q: Q): Promise<number | null> {
 }
 
 const NON_ARCHIVED_BUCKETS: FacetBucket[] = [
-  "lead_unpaid", "paid_unassigned", "under_review", "completed",
+  "lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed",
   "refunded", "disputed", "cancelled", "payment_failed",
 ];
 
@@ -204,7 +217,7 @@ export async function fetchOrderFacetCounts(f: FacetFilters): Promise<FacetCount
   const empty: FacetCounts = {
     universeTotal: null,
     buckets: {
-      lead_unpaid: null, paid_unassigned: null, under_review: null, completed: null,
+      lead_unpaid: null, paid_unassigned: null, under_review: null, pending_delivery: null, completed: null,
       refunded: null, disputed: null, cancelled: null, payment_failed: null, archived: null,
     },
     blockedClientFilters,
@@ -252,7 +265,7 @@ export function filteredTotalFor(statusFilter: string, fc: FacetCounts): number 
   if (statusFilter === "all") return fc.universeTotal;
   const map: Record<string, FacetBucket> = {
     lead_unpaid: "lead_unpaid", paid_unassigned: "paid_unassigned", under_review: "under_review",
-    completed: "completed", refunded: "refunded", disputed: "disputed", cancelled: "cancelled",
+    pending_delivery: "pending_delivery", completed: "completed", refunded: "refunded", disputed: "disputed", cancelled: "cancelled",
     payment_failed: "payment_failed", archived: "archived",
   };
   const b = map[statusFilter];

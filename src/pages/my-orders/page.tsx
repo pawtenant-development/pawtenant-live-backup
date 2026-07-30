@@ -340,7 +340,13 @@ function OrderCard({
               {order.doctor_status === "letter_sent"
                 ? "Your evaluation is nearing completion. You'll receive an email once your documents are ready to download."
                 : order.doctor_status === "pending_admin_approval"
-                ? "Your provider has completed their review and your documents are undergoing a final quality check."
+                // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — its OWN
+                // copy. Sharing the in_review sentence told the customer their
+                // provider was still reviewing when the provider had already
+                // finished, which reads as a stall. The internal approval step is
+                // deliberately NOT named: "final quality check" is true,
+                // reassuring, and exposes no employee workflow.
+                ? "Your provider has completed their review and your documents are undergoing a final quality check. You'll receive an email as soon as they're ready."
                 : order.doctor_status === "in_review" || order.doctor_status === "approved"
                 ? "Your provider is actively reviewing your case. You'll receive an email as soon as your documents are ready."
                 : order.doctor_status === "pending_review"
