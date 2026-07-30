@@ -14,7 +14,27 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
-    const { confirmationId } = await req.json() as { confirmationId: string };
+    // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — this function now
+    // serves TWO provider-reopen senders rather than a second email architecture
+    // being stood up alongside it:
+    //   * variant "thirty_day" (default, unchanged) — the automated 30-day rule.
+    //   * variant "manual_reopen" — an employee manually returned the order and
+    //     supplied a REASON the provider must read.
+    // Both resolve the same provider, send through the same Resend call and write
+    // the same orders.email_log entry, so provider email has ONE code path.
+    // The automated 30-day state rules are NOT changed by this.
+    const payload = await req.json() as {
+      confirmationId: string; reason?: string; variant?: string;
+    };
+    const { confirmationId } = payload;
+    const isManualReopen = payload.variant === "manual_reopen";
+    // Escaped before interpolation: the reason is employee free text landing in an
+    // HTML email. The RPC already rejects markup, but this function is reachable
+    // independently, so it must not rely on that.
+    const reasonRaw = (payload.reason ?? "").trim();
+    const reasonHtml = reasonRaw
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
     if (!confirmationId) {
       return new Response(JSON.stringify({ ok: false, error: "confirmationId is required" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -102,10 +122,25 @@ serve(async (req) => {
                 Hi <strong>${providerName}</strong>,
               </p>
               <p style="margin:0 0 20px;font-size:14px;color:#374151;line-height:1.6;">
-                The 30-day evaluation period for the following patient has been completed.
-                Per <strong>${stateName}</strong> state regulations, you are now required to issue the official letter.
-                Please log in to the provider portal, review the case, and submit the official letter.
+                ${isManualReopen
+                  ? `This order has been returned to your queue by the PawTenant team.
+                     Please log in to the provider portal, review the case, and submit an updated letter.`
+                  : `The 30-day evaluation period for the following patient has been completed.
+                     Per <strong>${stateName}</strong> state regulations, you are now required to issue the official letter.
+                     Please log in to the provider portal, review the case, and submit the official letter.`}
               </p>
+
+              ${isManualReopen && reasonHtml ? `
+              <!-- Reason the order came back. Rendered verbatim (escaped) so the
+                   provider reads exactly what the employee wrote. -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.8px;">Reason for return</p>
+                    <p style="margin:0;font-size:14px;color:#78350f;line-height:1.6;white-space:pre-line;">${reasonHtml}</p>
+                  </td>
+                </tr>
+              </table>` : ""}
 
               <!-- Patient info box -->
               <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;">
@@ -187,7 +222,9 @@ serve(async (req) => {
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-      body: JSON.stringify({ from: "PawTenant <hello@pawtenant.com>", to: [order.doctor_email], subject: `Action Required: 30-Day Official Letter — Order ${confirmationId} (${stateName})`, html: emailHtml }),
+      body: JSON.stringify({ from: "PawTenant <hello@pawtenant.com>", to: [order.doctor_email], subject: isManualReopen
+        ? `Action Required: Order Returned for Review — Order ${confirmationId}`
+        : `Action Required: 30-Day Official Letter — Order ${confirmationId} (${stateName})`, html: emailHtml }),
     });
 
     const resendData = await resendRes.json() as { id?: string; error?: string };
@@ -196,7 +233,7 @@ serve(async (req) => {
     try {
       const { data: currentOrder } = await supabase.from("orders").select("email_log").eq("id", order.id).maybeSingle();
       const existingLog = (currentOrder?.email_log as Array<{ type: string; sentAt: string; to: string; success: boolean }>) ?? [];
-      await supabase.from("orders").update({ email_log: [...existingLog, { type: "thirty_day_reminder", sentAt: new Date().toISOString(), to: order.doctor_email, success: emailSent }] }).eq("id", order.id);
+      await supabase.from("orders").update({ email_log: [...existingLog, { type: isManualReopen ? "manual_reopen_provider_notice" : "thirty_day_reminder", sentAt: new Date().toISOString(), to: order.doctor_email, success: emailSent }] }).eq("id", order.id);
     } catch { /* Non-fatal */ }
 
     return new Response(JSON.stringify({ ok: true, emailSent, emailId: resendData.id ?? null }), { headers: { ...CORS, "Content-Type": "application/json" } });
