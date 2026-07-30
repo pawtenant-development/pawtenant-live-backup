@@ -982,9 +982,62 @@ Deno.serve(async (req: Request) => {
     // The TEST-fixture suppression gate moved with it, so a fixture order is
     // still never able to page a real recipient.
 
+    // ── ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 · APPROVAL GATE OFF ──
+    // The document was inserted `pending_admin_approval` regardless, because that
+    // invariant is what the release trigger enforces: nothing but a release
+    // function may ever flip customer_visible. When the Employee Letter Quality
+    // Check is disabled we therefore do not insert differently — we immediately
+    // run the SAME release the employee would have run.
+    //
+    // auto_deliver_order_document() re-checks the gate itself and is service-role
+    // only, so this is a request to deliver, not an assertion that we may. If the
+    // gate is on (or the row is not pending, or this is a replay) it returns
+    // transitioned:false and nothing happens.
+    //
+    // Running it here — after the letter id is minted, the version row exists and
+    // the footer is injected — means the customer receives the finished letter,
+    // not a half-built one.
+    let autoDelivered = false;
+    try {
+      const { data: gateData } = await supabase.rpc("is_provider_approval_gate_enabled");
+      const gateEnabled = gateData !== false; // fail-closed on null/undefined/error
+      if (!gateEnabled) {
+        const { data: relData, error: relErr } = await supabase
+          .rpc("auto_deliver_order_document", { p_document_id: documentId });
+        if (relErr) {
+          console.error(`[provider-submit-letter] auto-delivery failed for ${confirmationId}: ${relErr.message}`);
+        } else if ((relData as { transitioned?: boolean } | null)?.transitioned === true) {
+          autoDelivered = true;
+          // Exactly one customer email, gated on the ONE call that actually
+          // transitioned the row — the same discipline admin-review-document
+          // uses, so a replayed submission cannot double-notify.
+          try {
+            await fetch(`${SUPABASE_URL}/functions/v1/notify-patient-letter`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                apikey: SUPABASE_ANON_KEY || SUPABASE_SERVICE_ROLE_KEY,
+              },
+              body: JSON.stringify({ confirmationId }),
+            });
+          } catch (e) {
+            // The document IS released and visible in the portal; a failed email
+            // must not roll that back or block the provider's submission.
+            console.error(`[provider-submit-letter] auto-delivery email failed for ${confirmationId}:`, e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`[provider-submit-letter] approval-gate resolution failed for ${confirmationId}:`, e);
+    }
+
     await supabase.from("doctor_notifications").insert({
-      doctor_user_id: user.id, title: "Letter Submitted — Pending Admin Approval",
-      message: `Documents submitted for order ${confirmationId}. A PawTenant reviewer will approve and deliver them to the customer.`,
+      doctor_user_id: user.id,
+      title: autoDelivered ? "Letter Submitted — Delivered" : "Letter Submitted — Pending Admin Approval",
+      message: autoDelivered
+        ? `Documents submitted for order ${confirmationId} and delivered to the customer.`
+        : `Documents submitted for order ${confirmationId}. A PawTenant reviewer will approve and deliver them to the customer.`,
       type: "letter_submitted", confirmation_id: confirmationId, order_id: order.id,
     });
 
@@ -1015,17 +1068,19 @@ Deno.serve(async (req: Request) => {
 
     return json({
       ok: true, documentSaved: true, orderUpdated: true,
-      pendingAdminApproval: true,
-      reviewStatus: "pending_admin_approval",
+      pendingAdminApproval: !autoDelivered,
+      reviewStatus: autoDelivered ? "approved" : "pending_admin_approval",
       documentId,
-      patientNotified: false,
+      autoDelivered,
+      patientNotified: autoDelivered,
       verificationIssued: !!resolvedLetterId,
       letterId: resolvedLetterId,
       pdfFooterInjected: pdfInjectionResult?.ok === true,
       processedPdfUrl: pdfInjectionResult?.processedUrl ?? null,
       letterIssueDate: issueDate, letterExpiryDate: expiryDate,
-      message:
-        "Documents submitted for review. A PawTenant reviewer will check them and release them to the customer — the customer has not been notified yet.",
+      message: autoDelivered
+        ? "Documents submitted and delivered to the customer."
+        : "Documents submitted for review. A PawTenant reviewer will check them and release them to the customer — the customer has not been notified yet.",
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
