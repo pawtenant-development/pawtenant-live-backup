@@ -245,7 +245,7 @@ const FORBIDDEN = [
   },
   {
     file: PAGE,
-    label: "five-card KPI regression: banner grid must not be lg:grid-cols-5",
+    label: "KPI banner must not use the clipped sm:grid-cols-3 lg:grid-cols-5 layout",
     re: /sm:grid-cols-3 lg:grid-cols-5/,
   },
   {
@@ -386,13 +386,19 @@ function runStatic() {
   const page = src(PAGE);
   // Anchor on the caption and walk BACK to the card array — "Lead (Unpaid)"
   // also appears in unrelated filter option lists earlier in the file.
-  const gridAt = page.indexOf("lg:grid-cols-4");
+  // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 AMENDS the original
+  // §15 four-card contract to FIVE. Pending Delivery is a real workflow state
+  // (provider submitted, awaiting employee approval) with its own
+  // mutually-exclusive KPI — not a re-added secondary metric. The BAN LIST below
+  // is untouched: the regression this guard exists for was "Payment Failed" and
+  // friends creeping back as summary chips, and that stays forbidden.
+  const gridAt = page.indexOf("lg:grid-cols-5");
   const cardsAt = gridAt === -1 ? -1 : page.indexOf('label: "Lead (Unpaid)"', gridAt);
   const kpiBlock = cardsAt === -1 ? "" : page.slice(cardsAt, page.indexOf("].map((s) =>", cardsAt));
   const kpiLabels = [...kpiBlock.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
-  const EXPECTED_KPI = ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Completed"];
-  if (kpiLabels.length !== 4) {
-    failures.push(`KPI CARD CONTRACT: the permanent banner must have EXACTLY 4 visible cards, found ${kpiLabels.length}: ${JSON.stringify(kpiLabels)}`);
+  const EXPECTED_KPI = ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed"];
+  if (kpiLabels.length !== 5) {
+    failures.push(`KPI CARD CONTRACT: the permanent banner must have EXACTLY 5 visible cards, found ${kpiLabels.length}: ${JSON.stringify(kpiLabels)}`);
   }
   if (JSON.stringify(kpiLabels) !== JSON.stringify(EXPECTED_KPI)) {
     failures.push(`KPI CARD CONTRACT: expected ${JSON.stringify(EXPECTED_KPI)}, found ${JSON.stringify(kpiLabels)}`);
@@ -400,9 +406,11 @@ function runStatic() {
   for (const banned of ["Payment Failed", "Reopened", "Partially Refunded", "Fully Refunded", "Cancelled", "Disputed", "Refunded", "Archived"]) {
     if (kpiLabels.includes(banned)) failures.push(`KPI CARD CONTRACT: forbidden top card "${banned}"`);
   }
-  // The grid must not still be laid out for five columns.
-  if (/lg:grid-cols-5[^"]*"\s*>\s*\n\s*\{\[\s*\n\s*\{\s*\n\s*label: "Lead \(Unpaid\)"/.test(page)) {
-    failures.push("KPI CARD CONTRACT: banner grid is still lg:grid-cols-5");
+  // The grid column count must AGREE with the card count, or the last card is
+  // clipped on desktop. Replaces the old "must not be lg:grid-cols-5" rule, which
+  // existed only because the 5th card at the time was an illegitimate one.
+  if (!/lg:grid-cols-5/.test(page)) {
+    failures.push("KPI CARD CONTRACT: five cards but the banner grid is not lg:grid-cols-5 - the last card will be clipped");
   }
   // Payment Failed must remain reachable as a filter TAB (no summary chip).
   if (!/\{ value: "payment_failed", label: "Payment Failed" \}/.test(page)) {

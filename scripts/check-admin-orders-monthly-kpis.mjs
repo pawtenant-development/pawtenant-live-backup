@@ -11,7 +11,10 @@
 //   • month boundaries are America/New_York with an EXCLUSIVE upper bound
 //   • each card uses its canonical timestamp (and not the wrong one)
 //   • the banner consumes NO list filter, NO Date Basis, NO pagination
-//   • there are EXACTLY four cards and none of them is Payment Failed
+//   • there are EXACTLY five cards and none of them is Payment Failed
+//     (ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 amended the
+//      four-card contract: Pending Delivery is a real mutually-exclusive
+//      workflow state, unlike the secondary metrics this guard keeps out)
 //   • Payment Failed survives as a status FILTER
 //   • the list keeps its own filter-aware facet counts, in a DISTINCT module
 //
@@ -42,7 +45,7 @@ export function monthlyEffectDeps(page) {
 
 /** The labels of the KPI banner cards, in order. */
 export function bannerCardLabels(page) {
-  const grid = page.indexOf("lg:grid-cols-4");
+  const grid = page.indexOf("lg:grid-cols-5");
   if (grid < 0) return null;
   const end = page.indexOf("].map((s)", grid);
   if (end < 0) return null;
@@ -52,7 +55,7 @@ export function bannerCardLabels(page) {
 
 /** The value expression of each KPI banner card, in order. */
 export function bannerCardValues(page) {
-  const grid = page.indexOf("lg:grid-cols-4");
+  const grid = page.indexOf("lg:grid-cols-5");
   if (grid < 0) return null;
   const end = page.indexOf("].map((s)", grid);
   if (end < 0) return null;
@@ -110,11 +113,11 @@ export const CHECKS = [
   // ---- the banner ----
   { name: "banner reads the monthly aggregate", file: PAGE,
     run: (s) => /fetchAdminOrdersMonthlyKpis/.test(s) ? null : "page does not load the monthly aggregate" },
-  { name: "EXACTLY four KPI cards", file: PAGE,
-    run: (s) => { const l = bannerCardLabels(s); return l && l.length === 4 ? null : `expected 4 banner cards, found ${l ? l.length : "none"}`; } },
-  { name: "the four cards are the approved four", file: PAGE,
+  { name: "EXACTLY five KPI cards", file: PAGE,
+    run: (s) => { const l = bannerCardLabels(s); return l && l.length === 5 ? null : `expected 5 banner cards, found ${l ? l.length : "none"}`; } },
+  { name: "the five cards are the approved five", file: PAGE,
     run: (s) => { const l = bannerCardLabels(s) ?? [];
-      const want = ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Completed"];
+      const want = ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed"];
       return JSON.stringify(l) === JSON.stringify(want) ? null : `card set changed: ${JSON.stringify(l)}`; } },
   { name: "Payment Failed is NOT a KPI card", file: PAGE,
     run: (s) => (bannerCardLabels(s) ?? []).some((l) => /payment failed/i.test(l)) ? "Payment Failed re-added as a KPI card" : null },
@@ -161,11 +164,11 @@ const NEGATIVE_CONTROLS = [
   { name: "all-time orders instead of the month window",
     file: MIG, mutate: (s) => s.replace(/and o\.created_at >= v_ps\s*\n\s*and o\.created_at <\s*v_pe/, "and true") },
   { name: "KPI counts wired to statusFilter",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken\]\)/, "}, [monthlyKpiReloadToken, statusFilter])") },
+    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken, monthlyKpiGuard\]\)/, "}, [monthlyKpiReloadToken, monthlyKpiGuard, statusFilter])") },
   { name: "KPI counts wired to packageFilter",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken\]\)/, "}, [monthlyKpiReloadToken, packageFilter])") },
+    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken, monthlyKpiGuard\]\)/, "}, [monthlyKpiReloadToken, monthlyKpiGuard, packageFilter])") },
   { name: "KPI counts wired to dateBasis",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken\]\)/, "}, [monthlyKpiReloadToken, dateBasis])") },
+    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken, monthlyKpiGuard\]\)/, "}, [monthlyKpiReloadToken, monthlyKpiGuard, dateBasis])") },
   { name: "Completed counted using created_at",
     file: MIG, mutate: (s) => s.replace(/into v_done([\s\S]{0,400}?)o\.last_completed_at >= v_ps/, "into v_done$1o.created_at >= v_ps") },
   { name: "Paid counted using last_payment_at",
@@ -201,7 +204,7 @@ if (failures.length > 0) {
   for (const f of failures) console.log(`  ${RED}•${RESET} ${f}`);
   process.exit(1);
 }
-console.log(`${GREEN}✓ monthly-KPI banner guard passed${RESET} (${CHECKS.length} invariants — month-only, Eastern bounds, 4 cards, filter/basis/pagination independence, distinct universes)`);
+console.log(`${GREEN}✓ monthly-KPI banner guard passed${RESET} (${CHECKS.length} invariants — month-only, Eastern bounds, 5 cards, filter/basis/pagination independence, distinct universes)`);
 
 if (selfTest) {
   let bad = 0;

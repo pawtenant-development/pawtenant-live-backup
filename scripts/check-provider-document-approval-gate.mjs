@@ -117,8 +117,33 @@ function runChecks(f) {
     /review_status:\s*["']pending_admin_approval["']/.test(submit)
     && /submitted_by:\s*user\.id/.test(submit));
 
-  add("A3", "provider submission does NOT call notify-patient-letter",
-    !submit.includes("functions/v1/notify-patient-letter"));
+  // A3 — ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 TIGHTENED this
+  // rather than relaxing it. Submission MAY now email the customer, but only on
+  // the gate-disabled path, so "never calls notify-patient-letter" became "calls
+  // it exactly once, and only downstream of a real auto-delivery transition".
+  //   * exactly ONE call site — a second one anywhere is an unconditional send;
+  //   * it sits after auto_deliver_order_document() AND after the
+  //     transitioned === true check, so a replay or a gate-on refusal
+  //     (transitioned:false) cannot reach it;
+  //   * the gate resolves fail-CLOSED (`!== false`), so a null/errored RPC result
+  //     keeps the letter in review instead of delivering it.
+  //
+  // `before()` deliberately requires BOTH anchors to be present. The bare
+  // `indexOf(a) < indexOf(b)` idiom FAILS OPEN: deleting `a` yields -1, which is
+  // less than any real index, so the assertion would pass precisely when the gate
+  // it guards had been removed.
+  const before = (a, b) => {
+    const ia = submit.indexOf(a);
+    const ib = submit.indexOf(b);
+    return ia !== -1 && ib !== -1 && ia < ib;
+  };
+  const NOTIFY = "functions/v1/notify-patient-letter";
+  add("A3", "provider submission emails the customer only on a real auto-delivery",
+    (submit.match(/functions\/v1\/notify-patient-letter/g) ?? []).length === 1
+    && before("auto_deliver_order_document", NOTIFY)
+    && before("transitioned === true", NOTIFY)
+    && /const gateEnabled\s*=\s*gateData !== false/.test(submit)
+    && /if \(!gateEnabled\)/.test(submit));
 
   // A4 is scoped to the FINAL-LETTER order patch. Two other matches for the same
   // literals are legitimate and must not be flagged:
@@ -294,6 +319,10 @@ const CONTROLS = [
     (f) => ({ ...f, submit: f.submit.replaceAll('review_status: "pending_admin_approval"', 'review_status: "approved"') })],
   ["A3", "submission emails the customer again",
     (f) => ({ ...f, submit: f.submit + '\nawait fetch(`${SUPABASE_URL}/functions/v1/notify-patient-letter`);\n' })],
+  ["A3b", "the gate resolves fail-OPEN, so an RPC error auto-delivers",
+    (f) => ({ ...f, submit: f.submit.replace("const gateEnabled = gateData !== false", "const gateEnabled = gateData === true") })],
+  ["A3c", "the customer email escapes the transitioned check",
+    (f) => ({ ...f, submit: f.submit.replace("transitioned === true", "transitioned !== undefined") })],
   ["A4", "the final-letter patch marks the order delivered again",
     (f) => ({ ...f, submit: f.submit.replace('doctor_status: "pending_admin_approval",', 'doctor_status: "patient_notified",\n      status: "completed",') })],
   ["A5", "submission repoints signed_letter_url again",
@@ -367,8 +396,14 @@ try {
     let bad = 0;
     for (const [target, label, mutate] of CONTROLS) {
       const results = runChecks(mutate(base));
-      // A22b/A22c/A22d are additional plants against the single A22 check.
-      const hit = results.find((x) => x.id === (/^A22[bcd]$/.test(target) ? "A22" : target));
+      // A suffixed control id (A22b, A3b, A3c, ...) is an ADDITIONAL plant against
+      // the base check of the same number, so strip the trailing letters to find
+      // it. Previously this was hardcoded to /^A22[bcd]$/, which meant any other
+      // suffixed control looked for a check id that does not exist, so `hit` was
+      // undefined and the control reported MISSED-BY-CONSTRUCTION — i.e. it could
+      // never pass no matter how good the check was. Derive it instead.
+      const baseId = target.replace(/[a-z]+$/, "");
+      const hit = results.find((x) => x.id === target) ?? results.find((x) => x.id === baseId);
       const tripped = hit && !hit.ok;
       if (!tripped) bad++;
       console.log(`  ${tripped ? "CAUGHT " : "MISSED "} ${target.padEnd(4)} ${label}`);
