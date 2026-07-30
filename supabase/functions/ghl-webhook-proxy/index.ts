@@ -21,6 +21,38 @@ const COMMS_EVENT_TYPES = new Set([
 // ── Order/contact event types → GHL_WEBHOOK_URL ──────────────────────────────
 // All other event types default to the order/contact webhook.
 
+// ── Reserved LIVE QA fixture namespace — outbound GHL suppression ────────────
+// ADMIN-ORDER-PENDING-DELIVERY-LIVE-DOCUMENT-LIFECYCLE-QA-003.
+//
+// WHY. Verifying "Approve & Deliver" on LIVE means running the real
+// admin-review-document path, and that path fires `order_completed` here. For a
+// synthetic QA fixture that would create a real CRM contact, apply the
+// "Letter Sent" / "Completed" tags and enrol it in production workflows — for an
+// order that does not exist commercially. Unlike a database row or a Storage
+// object, a CRM write cannot be cleaned up afterwards, and a workflow that fires
+// can reach a real person before anyone notices.
+//
+// SCOPE. The match is a fully-anchored literal on a RESERVED confirmation-id
+// namespace and nothing else. It is deliberately NOT keyed on the recipient
+// email, the email domain, the price, the order status, or any client-supplied
+// flag — none of those can widen it, and none can be spoofed into it.
+//
+// COLLISION SAFETY. Every server-side confirmation-id generator emits
+// `PT-<base36 timestamp>`, `PT-PSD<random>` or `PT-<base36 timestamp>-R<n>`.
+// base36 output is [0-9A-Z] and contains no hyphens, so no generator can emit
+// the literal `-LIVE-PENDINGQA-` segment. Verified against production before
+// deployment: 0 of 1720 orders matched this pattern.
+//
+// FAIL DIRECTION. Anything other than an exact match returns false, so a real
+// order always takes the normal delivery path. Suppression is opt-in per id and
+// can never be reached by accident.
+const QA_FIXTURE_CONFIRMATION_ID_RE = /^PT-LIVE-PENDINGQA-\d{2,4}$/;
+
+function isReservedQaFixture(confirmationId: unknown): boolean {
+  if (typeof confirmationId !== "string") return false;
+  return QA_FIXTURE_CONFIRMATION_ID_RE.test(confirmationId.trim());
+}
+
 function getGhlUrl(eventType: string, explicitWebhookType?: string): string {
   // Explicit override still supported for backward compat
   if (explicitWebhookType === "comms") {
@@ -186,6 +218,47 @@ async function logSyncAttempt(opts: {
     });
   } catch (e) {
     console.error("[GHL-PROXY] Failed to write sync log:", e);
+  }
+}
+
+/**
+ * Internal evidence that a reserved QA fixture event was blocked here. Written
+ * to audit_logs (not ghl_sync_logs) because nothing was ever synced — recording
+ * it as a sync attempt would misrepresent a suppression as a delivery.
+ */
+async function logSuppressedQaFixture(opts: {
+  confirmationId: string;
+  eventType: string;
+  triggeredBy: string;
+  isCommsEvent: boolean;
+}): Promise<void> {
+  try {
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    await supabase.from("audit_logs").insert({
+      actor_name: "PawTenant System",
+      actor_role: "system",
+      actor_type: "system",
+      category: "communications",
+      source: "ghl_webhook_proxy",
+      object_type: "crm_event",
+      object_id: opts.confirmationId,
+      action: "ghl_event_suppressed_qa_fixture",
+      description:
+        `GHL "${opts.eventType}" event SUPPRESSED for reserved QA fixture ${opts.confirmationId}. ` +
+        `No contact upsert and no webhook forward were performed.`,
+      metadata: {
+        confirmation_id: opts.confirmationId,
+        event_type: opts.eventType,
+        suppressed: true,
+        forwarded_to_ghl: false,
+        contact_upserted: false,
+        reason: "reserved_qa_fixture_confirmation_id",
+        triggered_by: opts.triggeredBy,
+        comms_event: opts.isCommsEvent,
+      },
+    });
+  } catch (e) {
+    console.error("[GHL-PROXY] Failed to write QA suppression audit row:", e);
   }
 }
 
@@ -392,6 +465,39 @@ Deno.serve(async (req: Request) => {
   const rawEmail       = ((payload.email as string) ?? "").trim().toLowerCase();
   const confIdForLog   = confirmationId || "(no confirmationId)";
   const emailForLog    = rawEmail || "(no email)";
+
+  // ── Reserved QA fixture: suppress BOTH outbound GHL writes ────────────────
+  // This MUST stay above the contact upsert and the webhook fire — those are the
+  // only two calls that reach GoHighLevel, and both are skipped by returning
+  // here. The response is honest (`suppressed: true`, `forwardedToGhl: false`)
+  // and never fabricates a delivery, so a suppressed run cannot be mistaken for
+  // a synced one.
+  if (isReservedQaFixture(confirmationId)) {
+    console.warn(
+      `[GHL-PROXY] ⛔ SUPPRESSED reserved QA fixture` +
+      `\n  confirmationId = "${confirmationId}"` +
+      `\n  eventType      = "${eventName}"` +
+      `\n  no contact upsert, no webhook forward`,
+    );
+    await logSuppressedQaFixture({
+      confirmationId,
+      eventType: eventName,
+      triggeredBy,
+      isCommsEvent,
+    });
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        suppressed: true,
+        reason: "reserved_qa_fixture_confirmation_id",
+        forwardedToGhl: false,
+        contactUpserted: false,
+        confirmationId,
+        eventType: eventName,
+      }),
+      { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+    );
+  }
 
   console.log(
     `[GHL-PROXY] ▶ ${isCommsEvent ? "COMMS" : "ORDER"} event → ${isCommsEvent ? "GHL_COMMS_WEBHOOK_URL" : "GHL_WEBHOOK_URL"}` +
