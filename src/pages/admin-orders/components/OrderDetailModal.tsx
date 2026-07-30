@@ -204,6 +204,13 @@ interface OrderDetailModalProps {
   onNavigate?: (order: Order) => void;
   /** Called when comms or notes tab is opened — clears the unread badge */
   onClearUnread?: (confirmationId: string) => void;
+  /**
+   * ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — which tab to land on
+   * when the modal is opened from a notification. OPTIONAL and additive: every
+   * existing caller omits it and keeps the historical "overview" default
+   * untouched.
+   */
+  initialSection?: Section;
 }
 
 type Section = "overview" | "documents" | "assessment" | "notes" | "comms" | "payments" | "attribution" | "audit";
@@ -1132,6 +1139,7 @@ export default function OrderDetailModal({
   doctorContacts,
   adminProfile,
   onClose,
+  initialSection,
   onOrderUpdated,
   onOrderDeleted,
   onClearUnread,
@@ -1139,7 +1147,10 @@ export default function OrderDetailModal({
   onNavigate,
 }: OrderDetailModalProps) {
   const [order, setOrder] = useState<Order>(initialOrder);
-  const [section, setSection] = useState<Section>("overview");
+  // initialSection only seeds the FIRST render. It is deliberately not synced in
+  // an effect: doing so would yank the operator back to the notification's tab
+  // every time the prop re-identified while they were reading another tab.
+  const [section, setSection] = useState<Section>(initialSection ?? "overview");
   const [assignEmail, setAssignEmail] = useState(order.doctor_email ?? "");
   const [assigning, setAssigning] = useState(false);
   const [assignMsg, setAssignMsg] = useState("");
@@ -1405,53 +1416,82 @@ export default function OrderDetailModal({
   // status-log entry. It deliberately does NOT email the customer (internal
   // correction; the customer already received their letter). No refund/cancel,
   // documents preserved, provider assignment preserved.
-  const handleMarkBackUnderReview = async () => {
-    setStatusUpdating(true);
-    setStatusMsg("");
-    const ts = new Date().toISOString();
-    const prevStatus = order.status;
-    const prevDoctorStatus = order.doctor_status;
-    const patch: Record<string, string> = { status: "under-review" };
-    if (order.doctor_status === "patient_notified") patch.doctor_status = "in_review";
-    const { error } = await supabase.from("orders").update(patch).eq("id", order.id);
-    if (!error) {
-      updateOrderField(patch as Partial<Order>);
-      setStatusMsg("Order moved back to Under Review");
-      try {
-        await supabase.from("audit_logs").insert({
-          action: "manual_reopen_under_review",
-          object_type: "order",
-          object_id: order.confirmation_id,
-          actor_id: adminProfile.user_id,
-          actor_name: adminProfile.full_name,
-          actor_role: adminProfile.role ?? "admin",
-          description: `Completed order moved back to Under Review by ${adminProfile.full_name}. No refund/cancel; documents preserved.`,
-          old_values: { status: prevStatus, doctor_status: prevDoctorStatus },
-          new_values: { status: "under-review", doctor_status: patch.doctor_status ?? prevDoctorStatus },
-          metadata: {
-            confirmation_id: order.confirmation_id,
-            order_id: order.id,
-            timestamp: ts,
-          },
-        });
-      } catch { /* non-critical */ }
-      try {
-        await supabase.from("order_status_logs").insert({
-          order_id: order.id,
-          confirmation_id: order.confirmation_id,
-          old_status: prevStatus,
-          new_status: "under-review",
-          old_doctor_status: prevDoctorStatus,
-          new_doctor_status: patch.doctor_status ?? prevDoctorStatus,
-          changed_by: adminProfile.full_name,
-          changed_at: ts,
-        });
-      } catch { /* non-critical */ }
-    } else {
-      setStatusMsg("Update failed — check RLS");
+  // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — the reopen no longer
+  // executes on click, and no longer writes the order/audit/status-log from the
+  // client.
+  //
+  // The old version did `orders.update()` and then inserted its OWN audit row
+  // using adminProfile from React state, so the actor was entirely
+  // client-supplied and there was no reason at all — while the provider who now
+  // had work to redo was never told. reopen_order_under_review() owns all of it
+  // server-side: authorisation, reason validation, the actor from
+  // current_staff_actor(), one audit row, one provider bell and one provider
+  // email. Opening the modal is all this does now.
+  const [showReopenReason, setShowReopenReason] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+  const [reopenError, setReopenError] = useState("");
+
+  const handleMarkBackUnderReview = () => {
+    setReopenReason("");
+    setReopenError("");
+    setShowReopenReason(true);
+  };
+
+  const trimmedReopenReason = reopenReason.trim();
+  // Mirrors validate_reopen_reason() so the button state matches what the server
+  // will accept. The server remains the authority — this only avoids a pointless
+  // round trip.
+  const reopenReasonValid =
+    trimmedReopenReason.length >= 5
+    && trimmedReopenReason.length <= 1000
+    && !/<[a-zA-Z/!]/.test(trimmedReopenReason);
+
+  const confirmReopenUnderReview = async () => {
+    if (!reopenReasonValid) return;
+    setReopenSubmitting(true);
+    setReopenError("");
+    const { data, error } = await supabase.rpc("reopen_order_under_review", {
+      p_order_id: order.id,
+      p_reason: trimmedReopenReason,
+    });
+    if (error) {
+      setReopenError(error.message.replace(/^.*?:\s*/, ""));
+      setReopenSubmitting(false);
+      return;
     }
-    setStatusUpdating(false);
-    setTimeout(() => setStatusMsg(""), 4000);
+    const r = (data ?? {}) as {
+      transitioned?: boolean; reason?: string; message?: string;
+      doctor_status?: string; has_provider?: boolean;
+      provider_notified?: boolean; provider_email_queued?: boolean;
+    };
+    if (!r.transitioned) {
+      // Not an error — the server declined for a stated reason (already under
+      // review, or a document is pending approval and the Needs Correction flow
+      // is the correct path). Surface it instead of pretending it worked.
+      setReopenError(r.message ?? (r.reason === "already_under_review"
+        ? "This order is already Under Review."
+        : "No change was made."));
+      setReopenSubmitting(false);
+      return;
+    }
+    updateOrderField({
+      status: "under-review",
+      doctor_status: r.doctor_status ?? order.doctor_status,
+    } as Partial<Order>);
+    // Never claim a notification that did not happen.
+    setStatusMsg(
+      r.has_provider
+        ? (r.provider_email_queued
+            ? "Order returned to Under Review — provider notified"
+            : "Order returned to Under Review — provider alerted in portal (no email on file)")
+        : "Order returned to Under Review — no provider assigned, so nobody was notified",
+    );
+    setShowReopenReason(false);
+    setReopenSubmitting(false);
+    // updateOrderField() above already pushed the change to the parent list via
+    // onOrderUpdated, which is what refreshes the row and the KPI counts.
+    setTimeout(() => setStatusMsg(""), 6000);
   };
 
   const handleGhlRefire = async () => {
@@ -6600,6 +6640,81 @@ export default function OrderDetailModal({
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — isolated mount.
+          Return to Under Review now requires a reason, because the assigned
+          provider is emailed it verbatim and "your order came back, figure out
+          why" is not an actionable instruction. Validation mirrors
+          validate_reopen_reason(); the server re-validates and is the authority. */}
+      {showReopenReason && (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reopen-reason-title"
+        >
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 id="reopen-reason-title" className="text-sm font-bold text-gray-800">Return Order to Under Review</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Order {order.confirmation_id}
+                {order.doctor_name ? <> · assigned to {order.doctor_name}</> : null}
+              </p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <label htmlFor="reopen-reason" className="block text-xs font-bold text-gray-700">
+                Why is this order going back? <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="reopen-reason"
+                value={reopenReason}
+                onChange={(e) => { setReopenReason(e.target.value); setReopenError(""); }}
+                rows={4}
+                autoFocus
+                maxLength={1000}
+                placeholder="e.g. Customer requested a name spelling correction."
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#3b6ea5]/30 focus:border-[#3b6ea5] resize-y"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-gray-500">
+                  {order.doctor_name || order.doctor_email
+                    ? "The assigned provider will receive this reason by email and in their portal."
+                    : "No provider is assigned, so nobody will be notified."}
+                </p>
+                <span className={`text-[11px] font-semibold flex-shrink-0 ${trimmedReopenReason.length > 1000 ? "text-red-600" : "text-gray-400"}`}>
+                  {trimmedReopenReason.length}/1000
+                </span>
+              </div>
+              {reopenError && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-xs font-semibold text-red-700">
+                  <i className="ri-error-warning-line mt-0.5"></i>
+                  <span>{reopenError}</span>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowReopenReason(false)}
+                disabled={reopenSubmitting}
+                className="px-4 py-2 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmReopenUnderReview}
+                disabled={reopenSubmitting || !reopenReasonValid}
+                title={!reopenReasonValid ? "Enter a reason of at least 5 characters (plain text)" : undefined}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {reopenSubmitting
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Returning...</>
+                  : <><i className="ri-arrow-go-back-line"></i>Confirm &amp; Notify Provider</>}
               </button>
             </div>
           </div>

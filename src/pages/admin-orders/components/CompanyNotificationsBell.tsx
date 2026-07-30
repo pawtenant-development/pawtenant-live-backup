@@ -27,6 +27,13 @@ interface CompanyNotificationsBellProps {
   onOrdersFilter: (filter: string) => void;
   /** Open the Approvals Inbox modal — used by the "Approvals required" group. */
   onOpenApprovals?: () => void;
+  /**
+   * ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — open ONE order's
+   * detail modal on a specific tab. Receives the order's primary key (the RPC
+   * returns entity_id = orders.id for every entity_type='order' row), so
+   * resolution is by exact id and never a name/date guess.
+   */
+  onOpenOrder?: (orderId: string, modalTab: "overview" | "documents" | "comms") => void;
 }
 
 /** Inline bell — icon-font independent so the trigger never renders as a blank box. */
@@ -48,6 +55,9 @@ const GROUP_CONFIG: Record<string, { label: string; icon: string; color: string;
   consultation:    { label: "Consultation bookings", icon: "ri-calendar-check-line", color: "text-[#3b6ea5]",   bg: "bg-[#e8f0f9]",  category: "Orders & Bookings" },
   order_paid:      { label: "New paid orders",      icon: "ri-secure-payment-line", color: "text-[#1a5c4f]",   bg: "bg-[#f0faf7]",  category: "Orders & Bookings" },
   order_completed: { label: "Completed orders",     icon: "ri-checkbox-circle-line", color: "text-emerald-600", bg: "bg-emerald-50", category: "Orders & Bookings" },
+  // Employee-only workflow queues. Never customer-facing vocabulary.
+  order_pending_delivery: { label: "Pending Delivery", icon: "ri-inbox-unarchive-line", color: "text-teal-600", bg: "bg-teal-50", category: "Orders & Bookings" },
+  order_correction:       { label: "Correction requested", icon: "ri-error-warning-line", color: "text-amber-600", bg: "bg-amber-50", category: "Orders & Bookings" },
   approval:        { label: "Approvals required",   icon: "ri-shield-check-line",   color: "text-amber-600",   bg: "bg-amber-50",   category: "Approvals" },
 };
 
@@ -65,7 +75,7 @@ function fmtTime(ts: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, onOpenApprovals }: CompanyNotificationsBellProps) {
+export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, onOpenApprovals, onOpenOrder }: CompanyNotificationsBellProps) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<CompanyNotification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -103,11 +113,41 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
     await supabase.rpc("mark_company_notifications_read", { p_group_key: null }).then(() => {}, () => {});
   }, []);
 
+  // Modal tab per category. Derived from group_key rather than stored on the row
+  // so the RPC's RETURNS TABLE signature stays byte-identical (changing it would
+  // force a DROP+CREATE, which re-adds the default anon EXECUTE grant).
+  const MODAL_TAB: Record<string, "overview" | "documents" | "comms"> = {
+    sms: "comms",
+    call: "comms",
+    email: "comms",
+    order_paid: "overview",
+    order_completed: "documents",
+    order_pending_delivery: "documents",
+    order_correction: "documents",
+  };
+
+  // Open ONE order rather than a filtered list. Only possible when the row is an
+  // order row (entity_id is then orders.id); communications rows carry the
+  // communication id, so those still fall back to the Comms view.
+  const openItem = useCallback((item: CompanyNotification): boolean => {
+    markGroupRead(item.group_key);
+    if (item.entity_type === "order" && item.entity_id && onOpenOrder) {
+      onOpenOrder(item.entity_id, MODAL_TAB[item.group_key] ?? "overview");
+      setOpen(false);
+      return true;
+    }
+    return false;
+  // MODAL_TAB is a module-stable literal; listing it would churn the identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markGroupRead, onOpenOrder]);
+
   const navigateForGroup = useCallback((groupKey: string, targetTab: string) => {
     markGroupRead(groupKey);
     setOpen(false);
     if (groupKey === "order_paid") onOrdersFilter("paid_unassigned");
     else if (groupKey === "order_completed") onOrdersFilter("completed");
+    else if (groupKey === "order_pending_delivery") onOrdersFilter("pending_delivery");
+    else if (groupKey === "order_correction") onOrdersFilter("under_review");
     // Approvals live in the Approvals Inbox modal, not a tab — deep-link there
     // so the dropdown count and the inbox always show the same items.
     else if (groupKey === "approval" && onOpenApprovals) onOpenApprovals();
@@ -208,7 +248,15 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
                       <div key={g.key} className="border-b border-gray-50 last:border-b-0">
                         {/* Group summary row */}
                         <div
-                          onClick={() => navigateForGroup(g.key, latest.target_tab)}
+                          onClick={() => {
+                            // One item and it is an order -> open it directly.
+                            // More than one stays a filtered list, which IS the
+                            // order chooser: silently opening an arbitrary one of
+                            // several would be worse than showing the operator
+                            // the set.
+                            if (g.items.length === 1 && openItem(latest)) return;
+                            navigateForGroup(g.key, latest.target_tab);
+                          }}
                           className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-gray-50 ${g.unread > 0 ? "bg-[#fafffe]" : ""}`}
                         >
                           <div className={`w-8 h-8 flex items-center justify-center rounded-xl flex-shrink-0 ${cfg.bg}`}>
@@ -253,7 +301,10 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
                             {g.items.map((item) => (
                               <div
                                 key={`${item.group_key}-${item.entity_type}-${item.entity_id}`}
-                                onClick={() => navigateForGroup(item.group_key, item.target_tab)}
+                                onClick={() => {
+                                  if (openItem(item)) return;
+                                  navigateForGroup(item.group_key, item.target_tab);
+                                }}
                                 className="flex items-start gap-2.5 pl-[60px] pr-4 py-2 cursor-pointer hover:bg-gray-100/70 transition-colors"
                               >
                                 <div className="flex-1 min-w-0">

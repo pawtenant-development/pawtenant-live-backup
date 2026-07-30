@@ -5,6 +5,7 @@ import UTMLinkGenerator from "./UTMLinkGenerator";
 import GoogleAdsCampaignBuilderPanel from "./GoogleAdsCampaignBuilderPanel";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
 import WebsitePricingPanel from "./WebsitePricingPanel";
+import LetterQualityCheckPanel from "./LetterQualityCheckPanel";
 // Phase G hotfix — MasterEmailLayoutPanel and RecoverySequencePanel were
 // inadvertently moved alongside CommsTemplatesPanel during the Phase G
 // extraction (they lived in the same "Communications Templates Hub"
@@ -2969,6 +2970,16 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
             ))}
           </div>
         </div>
+      </AccordionSection>
+
+      {/* ── Employee Letter Quality Check ──
+          ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001. Lives under
+          Compliance because it governs whether a clinician's letter reaches a
+          customer unreviewed. The panel only calls set_provider_approval_gate();
+          the gate itself is enforced server-side in
+          auto_deliver_order_document(). */}
+      <AccordionSection title="Employee Letter Quality Check" subtitle="Require employee approval before provider letters reach customers" icon="ri-shield-check-line" iconBg="bg-teal-50" iconColor="text-teal-600">
+        <LetterQualityCheckPanel />
       </AccordionSection>
     </div>
   );
