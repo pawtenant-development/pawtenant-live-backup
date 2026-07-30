@@ -1,6 +1,10 @@
 // Admin Orders + Doctor Management — PawTenant
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+// ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — only the newest
+// aggregate request may publish. Extracted so the out-of-order case is
+// unit-testable (an inline ref inside a 200KB component cannot be exercised).
+import { createRequestGuard, runLatest } from "../../lib/latestRequestGuard";
 import { supabase, getAdminToken } from "../../lib/supabaseClient";
 import { resolveStaffRole } from "../../lib/staffAuth";
 import { canAccessApprovals } from "../../lib/adminPermissions";
@@ -63,6 +67,7 @@ import {
   isCancelled,
   isPaidUnassigned,
   isUnderReview,
+  isPendingDelivery,
   isAssignable,
   EXCLUDE_FULL_REFUND_OR,
   EXCLUDE_REFUNDED_AT_OR,
@@ -427,9 +432,15 @@ export default function AdminOrdersPage() {
   // cohort work available. Persisted per operator.
   const [dateBasis, setDateBasis] = useState<OrderDateBasis>(() => {
     try {
+      // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — the DEFAULT is
+      // now Created date, newest first. Only the FALLBACK changed: a saved
+      // per-operator choice still wins, so an explicit selection is never
+      // silently reset. Direction is already descending everywhere (fetchPage
+      // orders <basis> DESC, created_at DESC, id DESC), so "newest first" needs
+      // no separate flag.
       const saved = localStorage.getItem("adminOrdersDateBasis");
-      return isOrderDateBasis(saved) ? saved : "activity";
-    } catch { return "activity"; }
+      return isOrderDateBasis(saved) ? saved : "created";
+    } catch { return "created"; }
   });
   const dateBasisRef = useRef<OrderDateBasis>(dateBasis);
   useEffect(() => {
@@ -472,7 +483,7 @@ export default function AdminOrdersPage() {
   // touch the loader/pagination/polling.
   const [facetCounts, setFacetCounts] = useState<FacetCounts>({
     universeTotal: null,
-    buckets: { lead_unpaid: null, paid_unassigned: null, under_review: null, completed: null, refunded: null, disputed: null, cancelled: null, payment_failed: null, archived: null },
+    buckets: { lead_unpaid: null, paid_unassigned: null, under_review: null, pending_delivery: null, completed: null, refunded: null, disputed: null, cancelled: null, payment_failed: null, archived: null },
     blockedClientFilters: [],
     error: false,
   });
@@ -487,17 +498,42 @@ export default function AdminOrdersPage() {
   const [monthlyKpis, setMonthlyKpis] = useState<AdminOrdersMonthlyKpis | null>(null);
   const [monthlyKpisLoading, setMonthlyKpisLoading] = useState(true);
   const [monthlyKpiReloadToken, setMonthlyKpiReloadToken] = useState(0);
+  // Guarded by a monotonic generation rather than an effect-cleanup boolean. The
+  // banner is now also refetched by MUTATIONS (see invalidateOrderAggregates),
+  // and those requests start OUTSIDE this effect, so a cleanup flag could not
+  // have ordered them against each other. Only the newest request may publish.
+  const monthlyKpiGuard = useRef(createRequestGuard()).current;
   useEffect(() => {
-    let cancelled = false;
     setMonthlyKpisLoading(true);
-    void (async () => {
-      const k = await fetchAdminOrdersMonthlyKpis();
-      if (cancelled) return;
-      setMonthlyKpis(k);
-      setMonthlyKpisLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [monthlyKpiReloadToken]);
+    void runLatest(
+      monthlyKpiGuard,
+      () => fetchAdminOrdersMonthlyKpis(),
+      (k) => { setMonthlyKpis(k); setMonthlyKpisLoading(false); },
+      () => setMonthlyKpisLoading(false),
+    );
+  }, [monthlyKpiReloadToken, monthlyKpiGuard]);
+
+  // ── ONE authoritative invalidation for every order mutation ────────────────
+  // The reported bug: after assigning a Paid (Unassigned) order the top KPI
+  // stayed stale until a manual refresh. Cause — monthlyKpiReloadToken was bumped
+  // ONLY by handleRefresh, and the faceted counts were keyed exclusively on
+  // FILTER state, so no mutation invalidated either aggregate. Mutations updated
+  // the row array and nothing else, leaving rows and counts describing different
+  // worlds.
+  //
+  // Every mutation now calls this instead of hand-picking what to refresh, so a
+  // future mutation cannot forget one aggregate. The visible row is already
+  // patched optimistically by the caller (deterministic — we know the new
+  // status), and the server aggregates reconcile behind it.
+  //
+  // Which tab a notification asked the modal to land on. Cleared when the modal
+  // closes so a later manual open goes back to Overview.
+  const [orderDetailSection, setOrderDetailSection] = useState<"overview" | "documents" | "comms" | undefined>(undefined);
+  const [aggregateReloadToken, setAggregateReloadToken] = useState(0);
+  const invalidateOrderAggregates = useCallback(() => {
+    setMonthlyKpiReloadToken((t) => t + 1);
+    setAggregateReloadToken((t) => t + 1);
+  }, []);
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
@@ -507,10 +543,10 @@ export default function AdminOrdersPage() {
   // (statusFilter is deliberately excluded so the cards keep faceting one universe
   // when the user switches status tabs). Debounced; narrow COUNT queries only;
   // the loader/pagination/polling is untouched.
+  const facetGuard = useRef(createRequestGuard()).current;
   useEffect(() => {
-    let cancelled = false;
-    const t = window.setTimeout(async () => {
-      const fc = await fetchOrderFacetCounts({
+    const t = window.setTimeout(() => {
+      void runLatest(facetGuard, () => fetchOrderFacetCounts({
         dateBasis, dateFrom, dateTo,
         payment: paymentFilter,
         state: stateFilterAdv,
@@ -523,11 +559,12 @@ export default function AdminOrdersPage() {
         source: sourceFilter ?? undefined,
         packageFilter,
         duplicatesOnly: showDuplicatesOnly,
-      });
-      if (!cancelled) setFacetCounts(fc);
+      }), setFacetCounts);
     }, 500);
-    return () => { cancelled = true; window.clearTimeout(t); };
-  }, [dateBasis, dateFrom, dateTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, search, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly]);
+    return () => { window.clearTimeout(t); };
+    // aggregateReloadToken is what makes the status-tab counts react to a
+    // MUTATION and not only to a filter change.
+  }, [dateBasis, dateFrom, dateTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, search, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, aggregateReloadToken, facetGuard]);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState(""); // export error surface (avoids silent bad CSV)
   // Meta Custom Audience export (identifiers-only, paid clients) — see lib/exportMetaAudience.ts
@@ -987,6 +1024,10 @@ export default function AdminOrdersPage() {
           ? { ...o, doctor_name: result.doctorName ?? dc?.full_name ?? null, doctor_email: doctorEmail, doctor_status: "pending_review" }
           : o));
         setAssignMsg((prev) => ({ ...prev, [confirmationId]: "Assigned & notified" }));
+        // The row patch above is optimistic and deterministic (we know the new
+        // assignment); this reconciles Paid (Unassigned) / Under Review and the
+        // status-tab counts against the server WITHOUT a manual refresh.
+        invalidateOrderAggregates();
         setTimeout(() => setAssignMsg((prev) => { const n = { ...prev }; delete n[confirmationId]; return n; }), 3000);
       } else {
         setAssignMsg((prev) => ({ ...prev, [confirmationId]: result.error ?? "Failed" }));
@@ -995,7 +1036,7 @@ export default function AdminOrdersPage() {
       setAssignMsg((prev) => ({ ...prev, [confirmationId]: "Network error" }));
     }
     setAssigning(null);
-  }, [supabaseUrl, doctorContacts]);
+  }, [supabaseUrl, doctorContacts, invalidateOrderAggregates]);
 
   const handleGhlRefire = useCallback(async (confirmationId: string) => {
     setGhlRefiring(confirmationId);
@@ -1027,12 +1068,24 @@ export default function AdminOrdersPage() {
   const handleOrderDeleted = useCallback((orderId: string) => {
     setOrders((prev) => prev.filter((o) => o.id !== orderId));
     setOrderDetail(null);
-  }, []);
+    invalidateOrderAggregates();
+  }, [invalidateOrderAggregates]);
 
   const handleOrderUpdated = useCallback((updated: Partial<Order> & { id: string }) => {
     setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
     setOrderDetail((prev) => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
-  }, []);
+    // This is the single funnel for EVERY OrderDetailModal mutation (approve,
+    // needs-correction, mark under review, mark completed/delivered, refund,
+    // payment fix). Invalidating here means no individual handler has to
+    // remember to, which is how the KPI went stale in the first place.
+    if (
+      "status" in updated || "doctor_status" in updated || "doctor_email" in updated
+      || "doctor_user_id" in updated || "payment_intent_id" in updated
+      || "refunded_at" in updated || "refund_status" in updated || "paid_at" in updated
+    ) {
+      invalidateOrderAggregates();
+    }
+  }, [invalidateOrderAggregates]);
 
   // ── Fetch unread communications count per order ────────────────────────────
   useEffect(() => {
@@ -1486,6 +1539,12 @@ export default function AdminOrdersPage() {
       matchStatus = isPaidUnassigned(o);
     } else if (statusFilter === "under_review") {
       matchStatus = isUnderReview(o);
+    } else if (statusFilter === "pending_delivery") {
+      // Must be explicit. The `else` fallback below compares statusFilter to
+      // o.status / o.doctor_status, and the row-level value is
+      // "pending_admin_approval" — so a Pending Delivery tab that fell through
+      // would silently match ZERO orders.
+      matchStatus = isPendingDelivery(o);
     } else if (statusFilter === "completed") {
       matchStatus = o.doctor_status === "patient_notified";
     } else if (statusFilter === "refunded") {
@@ -2032,6 +2091,22 @@ export default function AdminOrdersPage() {
             onNavigate={(tab) => setActiveTab(tab as TabKey)}
             onOrdersFilter={(filter) => { setStatusFilter(filter); setActiveTab("orders"); }}
             onOpenApprovals={() => setShowApprovalsInbox(true)}
+            // Open the ONE order on the right tab instead of switching to a
+            // filtered list. Resolution is by exact primary key, so there is no
+            // ambiguity to guess at. The current Orders filters/search are left
+            // untouched: this sets the modal only, never the list state.
+            onOpenOrder={(orderId, modalTab) => {
+              const match = orders.find((o) => o.id === orderId);
+              if (!match) {
+                // Not in the loaded snapshot (older than the loaded pages, or
+                // filtered out). Fall back to the Orders tab rather than opening
+                // the wrong order or silently doing nothing.
+                setActiveTab("orders");
+                return;
+              }
+              setOrderDetailSection(modalTab);
+              setOrderDetail(match);
+            }}
           />
 
           {/* Approval notification bell — only for restricted roles */}
@@ -2221,11 +2296,15 @@ export default function AdminOrdersPage() {
                   title="Current Eastern calendar month only. Unaffected by search, filters, Date Basis and pagination — those narrow the list below, not these cards."
                 ></i>
               </div>
-              {/* EXACTLY four permanent workflow cards — see §15. 1 col on phones,
-                  2 on small tablets, 4 from lg up so nothing is ever clipped.
-                  Values are MONTHLY and server-authoritative — never facet counts,
-                  never derived from the rows currently loaded. */}
-              <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:divide-x sm:divide-slate-100 overflow-hidden">
+              {/* EXACTLY five permanent workflow cards — §15 as amended by
+                  ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001, which
+                  adds Pending Delivery between Under Review and Completed. 1 col
+                  on phones, 2 on small tablets, 5 from lg up so nothing is ever
+                  clipped. Values are MONTHLY, server-authoritative and MUTUALLY
+                  EXCLUSIVE (Under Review and Completed both exclude Pending
+                  Delivery in the RPC) — never facet counts, never derived from
+                  the rows currently loaded. */}
+              <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
                   {
                     label: "Lead (Unpaid)",
@@ -2247,6 +2326,15 @@ export default function AdminOrdersPage() {
                     icon: "ri-time-line",
                     color: "text-violet-600",
                     filter: "under_review",
+                  },
+                  {
+                    // EMPLOYEE-ONLY queue: provider submitted, awaiting employee
+                    // approval. Never a customer-facing status.
+                    label: "Pending Delivery",
+                    value: monthlyKpis?.pendingDelivery ?? null,
+                    icon: "ri-inbox-unarchive-line",
+                    color: "text-teal-600",
+                    filter: "pending_delivery",
                   },
                   {
                     label: "Completed",
@@ -2342,6 +2430,7 @@ export default function AdminOrdersPage() {
                   { value: "lead_unpaid", label: "Lead (Unpaid)" },
                   { value: "paid_unassigned", label: "Paid (Unassigned)" },
                   { value: "under_review", label: "Under Review" },
+                  { value: "pending_delivery", label: "Pending Delivery" },
                   { value: "completed", label: "Completed" },
                   { value: "refunded", label: "Refunded" },
                   { value: "disputed", label: "Disputed" },
@@ -2622,6 +2711,46 @@ export default function AdminOrdersPage() {
                       <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
                     </div>
                   </div>
+                  {/* ── Date Basis — ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001.
+                      Moved OUT of its standalone row above the list and INTO
+                      Filters, directly above the From/To range it governs: the
+                      basis is what those two dates MEAN, so separating them made
+                      the range ambiguous. Spans the full grid width because it is
+                      a lens over every other filter, not a peer of them.
+                      Drives the LIST ONLY — never the monthly banner. */}
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1">
+                      Date Basis
+                      <span
+                        title={`Sorting, day groups and the From/To range all use ${ORDER_DATE_BASIS_LABEL[dateBasis]} — ${ORDER_DATE_BASIS_HINT[dateBasis]}. The monthly cards above are unaffected.`}
+                        className="cursor-help"
+                      >
+                        <i className="ri-information-line text-gray-400 text-xs"></i>
+                      </span>
+                    </label>
+                    <div
+                      className="inline-flex flex-wrap bg-gray-100 rounded-lg p-0.5 gap-0.5"
+                      role="group"
+                      aria-label={`Date basis: ${ORDER_DATE_BASIS_LABEL[dateBasis]}. Sorting, day groups and the From/To range all use it. ${ORDER_DATE_BASIS_HINT[dateBasis]}`}
+                    >
+                      {ORDER_DATE_BASES.map((b) => (
+                        <button
+                          key={b}
+                          type="button"
+                          onClick={() => setDateBasis(b)}
+                          aria-pressed={dateBasis === b}
+                          title={ORDER_DATE_BASIS_HINT[b]}
+                          className={`whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-bold cursor-pointer transition-colors ${
+                            dateBasis === b
+                              ? "bg-white text-[#1a5c4f] shadow-sm"
+                              : "text-gray-500 hover:text-gray-700"
+                          }`}
+                        >
+                          {ORDER_DATE_BASIS_LABEL[b]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {/* Date From */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1.5" title={ORDER_DATE_BASIS_HINT[dateBasis]}>From — {ORDER_DATE_BASIS_LABEL[dateBasis]}</label>
@@ -2757,38 +2886,6 @@ export default function AdminOrdersPage() {
                     The filtered total falls back to the loaded rows while the {facetCounts.blockedClientFilters.join(" + ")} filter{facetCounts.blockedClientFilters.length > 1 ? "s are" : " is"} active — {facetCounts.blockedClientFilters.length > 1 ? "they" : "it"} can&apos;t be applied server-side yet. The four monthly cards above are unaffected.
                   </div>
                 )}
-
-                {/* ── Date basis — ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001 §4
-                    The label and the four options are enough. The behaviour is
-                    explained by an accessible info tooltip, never by an
-                    always-visible paragraph. Semantics are unchanged. */}
-                <div className="flex flex-wrap items-center gap-2 mb-3 px-1">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Date basis</span>
-                  <div className="inline-flex flex-wrap bg-gray-100 rounded-lg p-0.5 gap-0.5">
-                    {ORDER_DATE_BASES.map((b) => (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => setDateBasis(b)}
-                        title={ORDER_DATE_BASIS_HINT[b]}
-                        className={`whitespace-nowrap px-3 py-1 rounded-md text-xs font-bold cursor-pointer transition-colors ${
-                          dateBasis === b
-                            ? "bg-white text-[#1a5c4f] shadow-sm"
-                            : "text-gray-500 hover:text-gray-700"
-                        }`}
-                      >
-                        {ORDER_DATE_BASIS_LABEL[b]}
-                      </button>
-                    ))}
-                  </div>
-                  <i
-                    className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
-                    tabIndex={0}
-                    role="img"
-                    aria-label={`Date basis: ${ORDER_DATE_BASIS_LABEL[dateBasis]}. Sorting, day groups, the From/To range and the four cards all use it. ${ORDER_DATE_BASIS_HINT[dateBasis]}`}
-                    title={`Sorting, day groups, the From/To range and the four cards all use ${ORDER_DATE_BASIS_LABEL[dateBasis]} — ${ORDER_DATE_BASIS_HINT[dateBasis]}`}
-                  ></i>
-                </div>
 
                 {/* ── DESKTOP: bordered table with header ─────────────────── */}
                 {(() => {
@@ -3415,9 +3512,16 @@ export default function AdminOrdersPage() {
           createdAt={showStatusLog.created_at} onClose={() => setShowStatusLog(null)} />
       )}
       {orderDetail && adminProfile && (
-        <OrderDetailModal order={orderDetail} doctorContacts={assignableProviders} adminProfile={adminProfile}
-          onClose={() => setOrderDetail(null)} onOrderUpdated={handleOrderUpdated} onOrderDeleted={handleOrderDeleted}
+        <OrderDetailModal
+          // `key` forces a fresh mount per (order, tab) so the seeded section
+          // actually applies when the operator clicks a second notification while
+          // a modal is already open.
+          key={`${orderDetail.id}:${orderDetailSection ?? "overview"}`}
+          order={orderDetail} doctorContacts={assignableProviders} adminProfile={adminProfile}
+          onClose={() => { setOrderDetail(null); setOrderDetailSection(undefined); }}
+          onOrderUpdated={handleOrderUpdated} onOrderDeleted={handleOrderDeleted}
           allOrders={filtered}
+          initialSection={orderDetailSection}
           // OrderDetailModal is a frozen mega-file with its own local Order
           // shape; cast at the callback boundary to the canonical ./types Order.
           onNavigate={(order) => openOrderDetail(order as unknown as Order)}
