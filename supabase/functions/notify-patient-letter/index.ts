@@ -321,8 +321,20 @@ Deno.serve(async (req: Request) => {
     const url = matchingDoc ? resolveUrl(matchingDoc) : order.signed_letter_url;
     allDocs.push({ label: "Signed ESA Letter", url, id: matchingDoc?.id });
   }
+  // ── FALSE-409 FIX (ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001) ──
+  // These two comparisons exist ONLY to skip the document already pushed above as
+  // order.signed_letter_url. When signed_letter_url is NULL nothing was pushed, so
+  // there is nothing to dedupe against — but `d.processed_file_url !==
+  // order.signed_letter_url` then evaluates `null !== null` => FALSE and silently
+  // dropped every document whose processed_file_url is NULL (i.e. any letter that
+  // has not been footer-injected). Combined with the empty-list refusal below that
+  // turns into a FALSE 409 on an order that genuinely HAS a deliverable document.
+  // Only dedupe when there is actually a signed_letter_url.
+  const signedUrl = order.signed_letter_url ?? null;
   docs
-    .filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url)
+    .filter((d) => d.customer_visible
+      && (signedUrl === null
+        || (d.file_url !== signedUrl && d.processed_file_url !== signedUrl)))
     .forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc), id: doc.id }));
 
   // ── ADMIN-ORDER-PENDING-DELIVERY-REOPEN-NOTIFICATIONS-REALTIME-001 §10 ──
