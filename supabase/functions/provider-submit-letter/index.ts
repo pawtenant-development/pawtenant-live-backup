@@ -642,18 +642,87 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: "Failed to save document: no document id returned" }, 500);
     }
 
-    // On a REPLAY the canonical row is the one that already existed, so every
-    // step below must run against ITS file rather than the freshly uploaded
-    // duplicate. The version idempotency keys are file-derived, so using the new
-    // URL here would mint a second version and a second verification ID — the
-    // precise outcome this task exists to prevent.
+    // ══ PROVIDER-SUBMISSION-REPLAY-DELIVERED-STATE-IDEMPOTENCY-001 ════════════
+    // A recognised replay is a successful NO-OP. It returns the stored state and
+    // performs no business mutation whatsoever.
+    //
+    // WHY THIS RETURNS RATHER THAN FALLING THROUGH. Reusing the stored file URL
+    // (the previous behaviour) is NOT sufficient, and on LIVE it corrupted a
+    // delivered order during ADMIN-ORDER-PENDING-DELIVERY-LIVE-OPERATIONS-QA-004.
+    // Once the first submission is auto-delivered under a disabled approval gate,
+    // an ACTIVE version row exists for (order, doc_type) — so the revision probe
+    // below classifies the replay as version 2 and the revision path mints its
+    // OWN new verification id by design. The replay therefore:
+    //   • minted a second verification id and re-injected the footer with it,
+    //   • overwrote orders.letter_id, so the id stamped into the PDF the
+    //     customer already holds no longer matched the order and public
+    //     verification of their actual document broke,
+    //   • inserted a second order_document_versions row for one document,
+    //   • and — via the unconditional orderUpdatePatch below — reset
+    //     doctor_status to 'pending_admin_approval', dragging a completed,
+    //     customer-visible, already-notified order back into Pending Delivery
+    //     as a phantom approval card.
+    // No single line was at fault: the order patch, the revision probe and the
+    // id/version/footer writes each ran because nothing consulted isReplay. The
+    // only safe cut point is BEFORE all of them.
+    //
+    // Every field below is READ from the stored document/order. Nothing is
+    // hardcoded and nothing is recomputed, so the response cannot claim a
+    // lifecycle state the database does not hold.
     if (isReplay) {
       await discardUploadedObject(supabase, uploadedFilePath);
       uploadedFilePath = null;
-      if (slot.file_url) documentUrl = slot.file_url;
+
+      const { data: storedDoc } = await supabase
+        .from("order_documents")
+        .select(
+          "id, file_url, processed_file_url, footer_injected, footer_letter_id, " +
+          "review_status, customer_visible, sent_to_customer, approved_at, delivered_at",
+        )
+        .eq("id", documentId).maybeSingle();
+
+      const { data: storedOrder } = await supabase
+        .from("orders")
+        .select(
+          "status, doctor_status, letter_id, patient_notification_sent_at, " +
+          "letter_issue_date, letter_expiry_date",
+        )
+        .eq("id", order.id).maybeSingle();
+
+      const storedReviewStatus = (storedDoc?.review_status as string | null) ?? slot.review_status ?? null;
+      const storedVisible = storedDoc?.customer_visible === true;
+
       console.info(
-        `[provider-submit-letter] replay of an identical pending submission for ${confirmationId} — reusing document ${documentId}, nothing created`,
+        `[provider-submit-letter] replay for ${confirmationId} — returning stored document ` +
+        `${documentId} (review_status=${storedReviewStatus}, customer_visible=${storedVisible}, ` +
+        `letter_id=${storedOrder?.letter_id ?? "none"}); no mutation performed`,
       );
+
+      return json({
+        ok: true,
+        replayed: true,
+        documentSaved: true,
+        // Nothing was written on this request. Saying otherwise would invite a
+        // caller to believe a new lifecycle transition occurred.
+        orderUpdated: false,
+        documentId,
+        fileUrl: storedDoc?.file_url ?? slot.file_url ?? null,
+        processedPdfUrl: storedDoc?.processed_file_url ?? null,
+        pdfFooterInjected: storedDoc?.footer_injected === true,
+        letterId: storedOrder?.letter_id ?? storedDoc?.footer_letter_id ?? null,
+        verificationIssued: Boolean(storedOrder?.letter_id ?? storedDoc?.footer_letter_id),
+        reviewStatus: storedReviewStatus,
+        pendingAdminApproval: storedReviewStatus === "pending_admin_approval",
+        customerVisible: storedVisible,
+        autoDelivered: Boolean(storedDoc?.delivered_at),
+        patientNotified: Boolean(storedOrder?.patient_notification_sent_at),
+        orderStatus: storedOrder?.status ?? null,
+        doctorStatus: storedOrder?.doctor_status ?? null,
+        letterIssueDate: storedOrder?.letter_issue_date ?? null,
+        letterExpiryDate: storedOrder?.letter_expiry_date ?? null,
+        supersededDocumentIds: [],
+        message: "This submission was already received. Nothing was duplicated or changed.",
+      });
     }
 
     // A replay is not a new submission and must not be audited as one. The
