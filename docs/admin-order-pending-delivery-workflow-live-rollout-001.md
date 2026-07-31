@@ -137,12 +137,103 @@ build green.
 The four-card KPI contract is amended to five; the Payment-Failed ban list is
 untouched and still proven by its own control.
 
+## Operations QA — ADMIN-ORDER-PENDING-DELIVERY-LIVE-OPERATIONS-QA-004 (2026-07-31)
+
+Run against LIVE HEAD `0124aff` / deployment `dpl_CiuvSWvucFhjwmcN8ac3eh8AJDWP`
+(Ready, aliased to `pawtenant.com`). Dependency
+`PROVIDER-DOCUMENT-SINGLE-CURRENT-PENDING-VERSION-LIVE-ROLLOUT-001` @ `8ca919b`.
+
+### Current-workload KPI — regression check PASSED
+
+Browser-verified on the real admin session: Under Review card **6** = Under
+Review tab **6**; Pending Delivery card **2** = Pending Delivery tab **2**.
+
+`order_workflow_state()` alone reports 7 under review. The extra row
+(`PT-MPNI2THL`) is **fully refunded**; `get_admin_orders_monthly_kpis()` excludes
+`fully_refunded` and the list routes it to the Refunded tab. Card and tab agree —
+**this is correct behaviour, not a drift**. Do not "fix" it.
+
+Realtime confirmed without pressing Refresh: while the page stayed open, the
+fixture entered the list, a genuine order left Pending Delivery, and Completed
+moved 190 → 191.
+
+### Approval gate — toggle verified through the real Settings UI
+
+Confirmation copy states the contract explicitly: *"Letters already waiting for
+approval stay where they are — they are not released."*
+
+| Step | Result |
+|---|---|
+| Gate OFF (UI, confirmed) | `false` @ 15:01:58, audit `approval_gate_disabled`, actor **Hamza Farid**, previous `true` → new `false` |
+| Existing backlog (fixture A) with gate OFF | **PRESERVED** — `pending_admin_approval`, `customer_visible=false`, `approved_at`/`delivered_at` null, no customer notification |
+| Future submission (fixture B) with gate OFF | **AUTO-DELIVERED** — `approved`, `customer_visible=true` once, one `document_auto_delivered` event, patient notified once |
+| Gate ON restored (UI) | `true` @ 15:04:43, audit `approval_gate_enabled`, same actor. Gate-OFF window **2m45s** |
+
+Zero genuine provider submissions occurred inside the gate-OFF window, so no
+real letter reached a customer unreviewed.
+
+### 🔴 DEFECT FOUND — replay of an auto-delivered submission corrupts the order
+
+Replaying an **identical** submission (same bytes) after gate-OFF auto-delivery
+returns `replayed: true` and correctly avoids a duplicate document, a duplicate
+customer notification and a duplicate auto-delivery audit event — **but it is not
+idempotent.** Evidence from fixture `PT-LIVE-PENDINGQA-52`, one document
+`4e4f701f`:
+
+* mints a **second verification id** — `ESA-CA-7KK98RB` (15:03:58) then
+  `ESA-CA-LUZC5RW` (15:04:08); `letter_verifications` held **2 rows for 1 order**
+* re-runs `pdf_footer_injected` with the new id and **overwrites
+  `orders.letter_id`**. The customer already holds a PDF stamped
+  `ESA-CA-7KK98RB`, so **public verification of the letter they actually received
+  no longer matches the order record**
+* writes a **second `order_document_versions` row** for the same document
+* resets `orders.doctor_status` to `pending_admin_approval`, so a
+  `status='completed'`, customer-visible, already-notified order is dragged
+  **back into Pending Delivery** as a phantom "Approve & Deliver" card
+* the response reports `reviewStatus: pending_admin_approval` and *"awaiting
+  review"* for a letter that was already delivered
+
+Control: fixture A (gate ON, single submission) produced exactly 1 verification
+and 1 version — the divergence is caused by the replay path, not by the fixture.
+
+Severity **high**, customer-facing. Reachable in production by a provider
+double-submitting or a retried request. Exposure is currently limited because the
+gate is ON (no auto-delivery), but the id churn and the `doctor_status`
+regression also occur with the gate ON.
+
+**Not fixed in this task** — the fix belongs in `provider-submit-letter`: on a
+recognised replay, return the stored document's state and skip verification
+issue, footer re-injection, `letter_id` write and `doctor_status` write. Carried
+as the next LIVE task.
+
+### Safety ledger
+
+* Real human recipients: **0**. SMS: **0**. Stripe writes: **0**. Refunds: **0**.
+* GHL: **0** forwarded fixture events — all 5 `ghl_sync_logs` rows in the window
+  belong to genuine orders. Reserved-namespace suppression held.
+* `provider_letter_submitted` staff alert disabled only across two windows
+  (61s and 70s) and restored to `enabled=true` with its exact three recipients.
+  **No genuine provider submission fell in either window**, so nothing real was
+  suppressed.
+* Production stayed live throughout — a real employee approved and delivered
+  three genuine orders during the run. Those deltas are genuine activity, not
+  QA mutations.
+
+### Cleanup — complete
+
+Fixture orders 0, `.test` orders 0, `.test` profiles 0, `PENDINGQA` storage
+objects 0 (deleted via service_role Storage REST, then **re-listed** to prove
+absence — `storage rm` can silently no-op), synthetic auth user 0, synthetic
+provider profile 0. Gate `true`; staff alert `true` with original recipients.
+Append-only `audit_logs` evidence retained by policy.
+
 ## NOT done in this rollout
 
-* **Browser-driven LIVE QA and responsive QA were not performed.** No
-  `PT-LIVE-PENDINGQA-*` fixture was created, so there is **nothing to clean up**
-  and no synthetic row or storage object exists in production. Zero real
-  recipients were contacted.
+* **Not completed by QA-004:** manual Return-to-Under-Review validation,
+  notification groups and deep links, the full realtime transition matrix,
+  stale-response / dataset-flicker proof, browser-verified Customer and Provider
+  View projections, and the five-width responsive matrix. The run stopped at the
+  replay defect above with production restored.
 * Not started: `CUSTOMER-PORTAL-DUAL-LETTER-DOWNLOAD-001`,
   `ORDER-DOCUMENT-STORAGE-DELETE-CASCADE-001`,
   `PROVIDER-PORTAL-MOBILE-TAB-OVERFLOW-001`.
