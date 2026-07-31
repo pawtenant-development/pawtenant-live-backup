@@ -236,13 +236,87 @@ absence — `storage rm` can silently no-op), synthetic auth user 0, synthetic
 provider profile 0. Gate `true`; staff alert `true` with original recipients.
 Append-only `audit_logs` evidence retained by policy.
 
+## Operations QA 004 — second run (2026-07-31, after the replay fix)
+
+LIVE `2713c78`, deployment `dpl_AfBent2cTjknXfyQ3XdBXKg92GV9`,
+`provider-submit-letter` v108 / `ghl-webhook-proxy` v118 (both `verify_jwt=false`).
+Approval gate stayed **ON** for the whole run. Fixture `PT-LIVE-PENDINGQA-71`
+with reserved `.test` provider, a second unrelated `.test` provider, and a `.test`
+customer identity. **No code changed** — repo clean, all six guards pass.
+
+### Correction → resubmission → re-approval: PASSED end to end
+
+| Step | Result |
+|---|---|
+| Provider submits (gate ON) | one Pending Delivery candidate, `customer_visible=false` |
+| Admin "Needs Correction" + reason | document `needs_correction`, order left Pending Delivery → **Under Review**, reason stored, `reviewed_by` = the real admin |
+| Provider resubmits | old document **superseded** (reason and history preserved, linked to successor), new document pending, **exactly 1 active approval candidate** |
+| Admin "Approve & Deliver" | corrected document approved + customer-visible, order **Completed**, **exactly 1 customer-visible document**, `orders.letter_id` = the visible document's footer id (`ESA-CA-MAFXGNB`) |
+
+**Contradiction prevention confirmed:** "Return Order to Under Review"
+(reopen-with-reason) is gated on `status='completed' || doctor_status='patient_notified'`,
+so it is correctly **not offered** while a Pending Delivery document is active —
+the Pending Delivery path is "Needs Correction". *Observation, not a defect:* the
+separate legacy "Mark Under Review" button remains available on a Pending Delivery
+order; it was deliberately not exercised (it emails the customer).
+
+### RLS-enforced authorization proof (real JWTs, never service_role)
+
+| Actor | Order | Documents | **Correction reason** | Audit | Provider bell |
+|---|---|---|---|---|---|
+| Provider (assigned) | 1 | 2 (incl. superseded history) | **visible** | 0 | 3, incl. "Correction Requested" carrying the reason |
+| Other provider (unrelated) | **0** | **0** | none | 0 | **0** |
+| Customer (owner) | 1 | **1** (only the approved one) | **none** | 0 | **0** |
+| Anonymous | **0** | **0** | none | 0 | **0** |
+
+The provider's non-zero rows are the positive control, so the zeros elsewhere are
+meaningful. **The customer never sees the correction reason — before or after
+delivery — and the superseded document never leaks.**
+
+### Realtime — PASSED for 3 of 4 transitions, ONE GAP
+
+With the Admin list open and untouched: provider submission (Pending Delivery
+1 → 2 with the row appearing), correction (order moved to Under Review) and
+resubmission (back to 2) **all updated with no manual refresh**.
+
+🔴 **Gap: approve-and-deliver did not refresh the KPI aggregates in the acting
+tab.** After approval the cards still read Pending Delivery 2 / Completed 196
+while the database held 1 / 197 — unchanged after **40+ seconds**, past the 30s
+safety refresh, and unchanged after closing the modal. A manual reload corrected
+it to 1 / 197. The order row itself did show `Completed`. Low severity (no data
+impact, self-corrects on reload) but it is the exact "stale banner" class this
+workflow was meant to eliminate, so it is recorded rather than waived.
+
+### Portal projections (browser)
+
+* **Customer View** (`/my-orders?preview_email=…`): correction reason **absent**,
+  verification id `ESA-CA-MAFXGNB` matching the order, Completed/Delivered with
+  Open/Download. Runs on the ADMIN session — a projection check, not RLS proof;
+  the RLS proof is the customer-JWT table above.
+* **Provider View** (`/admin/provider-preview?provider=…&order=…`): fixture
+  visible as Completed, no active correction task, and **no upload control** —
+  the approved document correctly requires a formal reopen.
+
+### Safety and cleanup
+
+Real human recipients **0**; SMS **0**; Stripe writes **0**; Ads **0**;
+GHL fixture events **0**; marketing enrollment **0**. `.test` API attempts only.
+Staff alert disabled three times for **43s / 32s / (approval sends no provider
+alert)** and restored each time with its exact three recipients; **zero genuine
+provider submissions in any window**.
+
+Cleanup: fixtures 0, reserved Storage objects 0 (deleted by **exact name**),
+synthetic auth identities 0, synthetic profiles 0, gate **ON**, alert **ON**.
+Preservation: documents **483**, versions **37**, verifications **415** all
+unchanged; orders +1 and earnings +1 are both one genuine production order
+(`PT-PSD2DVX9P8P`, 19:10) and its own base earning.
+
 ## NOT done in this rollout
 
-* **Not completed by QA-004:** manual Return-to-Under-Review validation,
-  notification groups and deep links, the full realtime transition matrix,
-  stale-response / dataset-flicker proof, browser-verified Customer and Provider
-  View projections, and the five-width responsive matrix. The run stopped at the
-  replay defect above with production restored.
+* **Still open in QA-004:** notification **deep-link** resolution (exact order +
+  tab), the remaining realtime matrix rows, the stale-response / dataset-flicker
+  matrix, and the **five-width responsive matrix**. Plus the realtime approval
+  gap above.
 * Not started: `CUSTOMER-PORTAL-DUAL-LETTER-DOWNLOAD-001`,
   `ORDER-DOCUMENT-STORAGE-DELETE-CASCADE-001`,
   `PROVIDER-PORTAL-MOBILE-TAB-OVERFLOW-001`.
