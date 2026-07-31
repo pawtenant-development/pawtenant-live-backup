@@ -38,7 +38,7 @@
 //   S7  the RPC refuses to silently replace a delivered document
 //   S8  the delivered-document exemption requires a reopen AFTER the delivery
 //   S9  replay is recognised by CONTENT, not by a per-upload storage path
-//   S10 a replay reuses the EXISTING row's file_url (so no 2nd version/ID)
+//   S10 a replay RETURNS the existing row's file_url and never falls through
 //   S11 a replay creates no audit event, no bell row and no staff alert
 //   S12 a refused or replayed upload does not orphan a storage object
 //   S13 the RPC is service_role-only, by capability not key compare
@@ -154,8 +154,23 @@ function runChecks(f) {
     && hasRe(submit, /submissionFingerprint\s*=\s*await\s+fingerprintBytes\(buf\)/)
     && hasRe(slot, /submission_fingerprint\s*=\s*v_fp/));
 
-  add("S10", "a replay reuses the EXISTING row's file_url",
-    hasRe(submit, /if\s*\(isReplay\)\s*\{[\s\S]{0,400}documentUrl\s*=\s*slot\.file_url/)
+  // SUPERSEDED BY PROVIDER-SUBMISSION-REPLAY-DELIVERED-STATE-IDEMPOTENCY-001.
+  //
+  // This originally asserted that a replay swapped `documentUrl` to the stored
+  // row's URL and then FELL THROUGH the normal path, on the theory that
+  // file-derived idempotency keys would then dedupe the version and the id.
+  // LIVE Operations QA disproved that: once a first submission is auto-delivered
+  // under a disabled gate, an ACTIVE version exists, so the replay is classified
+  // as a REVISION — and a revision mints its own new verification id by design,
+  // re-injects the footer, overwrites orders.letter_id and adds a second version
+  // row. Reusing the URL never prevented any of it.
+  //
+  // The contract is now stronger: a replay RETURNS the stored file_url and
+  // reaches no downstream write at all. Ordering is proven in detail by
+  // scripts/check-provider-submission-replay-idempotency.mjs; here we only pin
+  // that the replay surfaces the EXISTING row's URL rather than the new upload.
+  add("S10", "a replay returns the EXISTING row's file_url and does not fall through",
+    hasRe(submit, /if\s*\(isReplay\)\s*\{[\s\S]{0,3000}?return\s+json\(\{[\s\S]{0,600}?fileUrl:\s*storedDoc\?\.file_url\s*\?\?\s*slot\.file_url/)
     && hasRe(slot, /'file_url',\s*v_existing\.file_url/));
 
   // COUNTED, not merely present. There are two of each announcement — one on the
@@ -249,8 +264,9 @@ const CONTROLS = [
   ["S9", "replay detection reverts to the per-upload storage path",
     (f) => ({ ...f, submit: f.submit.replace(
       /submissionFingerprint = await fingerprintBytes\(buf\)/, "submissionFingerprint = objectPath") })],
-  ["S10", "a replay keeps the newly uploaded URL (mints a 2nd version + ID)",
-    (f) => ({ ...f, submit: f.submit.replace("if (slot.file_url) documentUrl = slot.file_url;", "") })],
+  ["S10", "a replay falls through instead of returning the stored state",
+    (f) => ({ ...f, submit: f.submit.replace(
+      /fileUrl: storedDoc\?\.file_url \?\? slot\.file_url \?\? null,/, "fileUrl: documentUrl,") })],
   ["S11", "a replay announces itself as a fresh submission again",
     (f) => ({ ...f, submit: f.submit.replace(
       'if (!isReplay) await supabase.from("audit_logs").insert({',
