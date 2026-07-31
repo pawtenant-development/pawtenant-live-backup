@@ -494,21 +494,28 @@ export default function AdminOrdersPage() {
   // NO filter/basis/pagination dependencies — the banner answers "what happened
   // this month?" and must stay perfectly still while the operator searches,
   // switches status/package/sequence filters, flips Date Basis or pages the list.
-  // Reloaded only on mount and on an explicit Refresh.
+  // Reloaded on mount, on an explicit Refresh, on a local mutation, and — since
+  // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — on EXTERNAL change
+  // too (see scheduleAggregateInvalidation).
   const [monthlyKpis, setMonthlyKpis] = useState<AdminOrdersMonthlyKpis | null>(null);
   const [monthlyKpisLoading, setMonthlyKpisLoading] = useState(true);
   const [monthlyKpiReloadToken, setMonthlyKpiReloadToken] = useState(0);
+  // True once the banner has rendered real numbers. A refetch triggered by a
+  // background refresh or a realtime push must NOT drop the cards back to the
+  // loading skeleton — the operator would see the whole banner blink every 30s.
+  // Only the FIRST load shows the skeleton; later loads swap the value in place.
+  const monthlyKpiLoadedRef = useRef(false);
   // Guarded by a monotonic generation rather than an effect-cleanup boolean. The
   // banner is now also refetched by MUTATIONS (see invalidateOrderAggregates),
   // and those requests start OUTSIDE this effect, so a cleanup flag could not
   // have ordered them against each other. Only the newest request may publish.
   const monthlyKpiGuard = useRef(createRequestGuard()).current;
   useEffect(() => {
-    setMonthlyKpisLoading(true);
+    if (!monthlyKpiLoadedRef.current) setMonthlyKpisLoading(true);
     void runLatest(
       monthlyKpiGuard,
       () => fetchAdminOrdersMonthlyKpis(),
-      (k) => { setMonthlyKpis(k); setMonthlyKpisLoading(false); },
+      (k) => { setMonthlyKpis(k); monthlyKpiLoadedRef.current = true; setMonthlyKpisLoading(false); },
       () => setMonthlyKpisLoading(false),
     );
   }, [monthlyKpiReloadToken, monthlyKpiGuard]);
@@ -533,6 +540,40 @@ export default function AdminOrdersPage() {
   const invalidateOrderAggregates = useCallback(() => {
     setMonthlyKpiReloadToken((t) => t + 1);
     setAggregateReloadToken((t) => t + 1);
+  }, []);
+
+  // ── EXTERNAL change invalidation (coalesced) ───────────────────────────────
+  // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001.
+  //
+  // The reported symptom: the banner read "Under Review 3 / Pending Delivery 0"
+  // while the Under Review tab listed 6 rows and an order sat in Pending
+  // Delivery. The COUNTS were never wrong — the banner was simply OLD. Rows are
+  // pushed by realtime and re-fetched every 30s, but the aggregates were
+  // invalidated only by a mutation made IN THIS TAB. Work done anywhere else — a
+  // provider submitting a letter from the provider portal, a new paid order, a
+  // second admin acting — moved the rows and left both aggregates frozen at
+  // whatever they were when the tab was opened. On a long-lived admin session
+  // the banner drifts arbitrarily far from the list.
+  //
+  // COALESCED, not debounced-per-event: a realtime burst (bulk assign, webhook
+  // storm) must cost at most ONE aggregate refresh per window, never one per
+  // row. The first event schedules the refresh and every event inside the window
+  // is absorbed by the in-flight timer, so there is no runaway polling. Ordering
+  // is already safe — both aggregates commit through a monotonic request guard,
+  // so a slow earlier response can never overwrite a newer one.
+  const externalInvalidateTimerRef = useRef<number | null>(null);
+  const scheduleAggregateInvalidation = useCallback(() => {
+    if (externalInvalidateTimerRef.current !== null) return; // already scheduled
+    externalInvalidateTimerRef.current = window.setTimeout(() => {
+      externalInvalidateTimerRef.current = null;
+      invalidateOrderAggregates();
+    }, 2500);
+  }, [invalidateOrderAggregates]);
+  useEffect(() => () => {
+    if (externalInvalidateTimerRef.current !== null) {
+      window.clearTimeout(externalInvalidateTimerRef.current);
+      externalInvalidateTimerRef.current = null;
+    }
   }, []);
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -752,6 +793,10 @@ export default function AdminOrdersPage() {
             return [newOrder, ...prev];
           });
           setLastSyncedAt(new Date());
+          // A realtime push changes the ROWS; the KPI banner and the facet counts
+          // describe those same rows and must move with them, or the banner goes
+          // stale exactly as reported.
+          scheduleAggregateInvalidation();
         }
       )
       .on(
@@ -761,11 +806,16 @@ export default function AdminOrdersPage() {
           const updated = payload.new as Order;
           setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
           setLastSyncedAt(new Date());
+          // This is the transition path that produced the reported mismatch: a
+          // provider submitting a letter flips doctor_status to
+          // pending_admin_approval from ANOTHER session, so nothing in this tab
+          // called invalidateOrderAggregates().
+          scheduleAggregateInvalidation();
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [scheduleAggregateInvalidation]);
 
   // ── Real-time subscription for new inbound SMS/calls → bump comms badge ──
   useEffect(() => {
@@ -967,10 +1017,16 @@ export default function AdminOrdersPage() {
     const interval = setInterval(() => {
       if (!anyModalOpenRef.current) {
         loadOrderData();                  // silent background re-fetch
+        // The aggregates ride the SAME cadence as the rows they summarise. This
+        // is the safety net for a change that produced no realtime event this
+        // tab received (dropped socket, tab backgrounded, non-orders write).
+        // Refetching the banner no longer flashes the skeleton — see
+        // monthlyKpiLoadedRef.
+        invalidateOrderAggregates();
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [loadOrderData]);
+  }, [loadOrderData, invalidateOrderAggregates]);
 
   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — a basis change alters the SERVER
   // page order, so re-page once. The already-loaded snapshot re-sorts client-side
@@ -2292,18 +2348,28 @@ export default function AdminOrdersPage() {
                   className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
                   tabIndex={0}
                   role="img"
-                  aria-label="These four cards count the current Eastern calendar month only. They are not affected by search, status, package or sequence filters, Date Basis, or pagination — the list below is."
-                  title="Current Eastern calendar month only. Unaffected by search, filters, Date Basis and pagination — those narrow the list below, not these cards."
+                  aria-label="Lead, Paid (Unassigned) and Completed count the current Eastern calendar month. Under Review and Pending Delivery are marked 'now' and count everything in those queues right now, whenever it entered, so each matches its status tab. None of the five is affected by search, status, package or sequence filters, Date Basis, or pagination — the list below is."
+                  title="Lead / Paid / Completed = current Eastern month. Under Review / Pending Delivery = current queue depth (marked 'now'), matching their tabs. Unaffected by search, filters, Date Basis and pagination — those narrow the list below, not these cards."
                 ></i>
               </div>
               {/* EXACTLY five permanent workflow cards — §15 as amended by
                   ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001, which
                   adds Pending Delivery between Under Review and Completed. 1 col
                   on phones, 2 on small tablets, 5 from lg up so nothing is ever
-                  clipped. Values are MONTHLY, server-authoritative and MUTUALLY
+                  clipped. All five values are server-authoritative and MUTUALLY
                   EXCLUSIVE (Under Review and Completed both exclude Pending
                   Delivery in the RPC) — never facet counts, never derived from
-                  the rows currently loaded. */}
+                  the rows currently loaded.
+
+                  ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — the
+                  banner deliberately mixes TWO universes now:
+                    Lead / Paid (Unassigned) / Completed = current Eastern MONTH
+                      ("what arrived, what shipped").
+                    Under Review / Pending Delivery      = CURRENT QUEUE DEPTH
+                      ("what is still on our desk"), marked `current: true` and
+                      labelled "· now". They are queues, not monthly events: the
+                      month-gated version emptied both cards at every rollover
+                      while the tabs kept listing the same open orders. */}
               <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
                   {
@@ -2312,6 +2378,7 @@ export default function AdminOrdersPage() {
                     icon: "ri-user-follow-line",
                     color: "text-amber-600",
                     filter: "lead_unpaid",
+                    current: false,
                   },
                   {
                     label: "Paid (Unassigned)",
@@ -2319,22 +2386,31 @@ export default function AdminOrdersPage() {
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
                     filter: "paid_unassigned",
+                    current: false,
                   },
                   {
+                    // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 —
+                    // CURRENT QUEUE DEPTH, not "entered review this month". A
+                    // queue is sized by what is in it; the month-gated value used
+                    // to drop every still-open order at the month rollover while
+                    // the tab kept listing them. Equals the Under Review tab.
                     label: "Under Review",
-                    value: monthlyKpis?.underReview ?? null,
+                    value: monthlyKpis?.underReviewCurrent ?? null,
                     icon: "ri-time-line",
                     color: "text-violet-600",
                     filter: "under_review",
+                    current: true,
                   },
                   {
                     // EMPLOYEE-ONLY queue: provider submitted, awaiting employee
-                    // approval. Never a customer-facing status.
+                    // approval. Never a customer-facing status. Current queue
+                    // depth, for the same reason as Under Review.
                     label: "Pending Delivery",
-                    value: monthlyKpis?.pendingDelivery ?? null,
+                    value: monthlyKpis?.pendingDeliveryCurrent ?? null,
                     icon: "ri-inbox-unarchive-line",
                     color: "text-teal-600",
                     filter: "pending_delivery",
+                    current: true,
                   },
                   {
                     label: "Completed",
@@ -2342,6 +2418,7 @@ export default function AdminOrdersPage() {
                     icon: "ri-checkbox-circle-line",
                     color: "text-emerald-600",
                     filter: "completed",
+                    current: false,
                   },
                   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 §15 — the permanent
                   // banner is EXACTLY the four approved workflow cards. "Payment
@@ -2355,6 +2432,13 @@ export default function AdminOrdersPage() {
                     type="button"
                     onClick={() => setStatusFilter(s.filter)}
                     className={`flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors w-full ${statusFilter === s.filter ? "bg-[#e8f0f9]" : "hover:bg-slate-50"}`}
+                    // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — the
+                    // banner now mixes two universes, so each card says which one
+                    // it is rather than leaving the operator to infer it from the
+                    // "This month" heading above.
+                    title={s.current
+                      ? `${s.label}: every order in this queue right now, whenever it entered. Matches the ${s.label} tab.`
+                      : `${s.label}: current Eastern calendar month only.`}
                   >
                     <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${statusFilter === s.filter ? "bg-[#3b6ea5]/10" : "bg-slate-100"}`}>
                       <i className={`${s.icon} ${s.color} text-sm`}></i>
@@ -2362,6 +2446,9 @@ export default function AdminOrdersPage() {
                     <div className="min-w-0">
                       <p className="text-[10px] text-gray-500 font-medium leading-none truncate">
                         {s.label}
+                        {/* Queue cards are CURRENT, not monthly. One muted word,
+                            no layout or colour change. */}
+                        {s.current && <span className="ml-1 text-gray-400 font-semibold">· now</span>}
                       </p>
                       {/* Contained skeleton while the monthly aggregate loads —
                           never a stale all-time number standing in for a

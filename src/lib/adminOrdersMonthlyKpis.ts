@@ -37,14 +37,33 @@ export interface AdminOrdersMonthlyKpis {
   leadUnpaid: number;
   /** FIRST payment this month, still unassigned. Keyed on paid_at (never last_payment_at). */
   paidUnassigned: number;
-  /** Entered review this month, still under review. Keyed on the proven transition. EXCLUDES pendingDelivery. */
+  /**
+   * HISTORICAL, MONTHLY: entered review this month and still under review.
+   * Keyed on the proven order_status_logs transition.
+   *
+   * ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — this is NO LONGER
+   * what the Under Review card shows; use `underReviewCurrent`. Preserved so the
+   * monthly metric keeps its meaning for any future consumer.
+   */
   underReview: number;
   /**
-   * Provider submitted this month and the letter is still awaiting employee
-   * approval. Keyed on the transition into pending_admin_approval, the same way
-   * underReview is keyed. EMPLOYEE-ONLY — never a customer-facing status.
+   * HISTORICAL, MONTHLY: provider submitted this month and the letter is still
+   * awaiting employee approval. Superseded on the card by
+   * `pendingDeliveryCurrent`, and preserved for the same reason as `underReview`.
    */
   pendingDelivery: number;
+  /**
+   * CURRENT WORKLOAD: every order sitting in Under Review right now, regardless
+   * of WHEN it entered. This is what the Under Review card displays, and it is
+   * defined to equal the Under Review status tab exactly — a queue is sized by
+   * what is in it, not by when each item arrived.
+   */
+  underReviewCurrent: number | null;
+  /**
+   * CURRENT WORKLOAD: every order awaiting employee approval right now. Equals
+   * the Pending Delivery tab. EMPLOYEE-ONLY — never a customer-facing status.
+   */
+  pendingDeliveryCurrent: number | null;
   /** Fulfilled this month. Keyed on last_completed_at. EXCLUDES pendingDelivery. */
   completed: number;
 }
@@ -75,6 +94,13 @@ export async function fetchAdminOrdersMonthlyKpis(): Promise<AdminOrdersMonthlyK
       paidUnassigned: d.paidUnassigned ?? 0,
       underReview: d.underReview ?? 0,
       pendingDelivery: d.pendingDelivery ?? 0,
+      // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — deliberately
+      // NOT `?? 0`. If this bundle ever runs against a database that predates the
+      // current-workload fields, an invented 0 would look exactly like the empty
+      // queue this fix exists to stop reporting. null renders "—" instead, which
+      // is the honest answer.
+      underReviewCurrent: typeof d.underReviewCurrent === "number" ? d.underReviewCurrent : null,
+      pendingDeliveryCurrent: typeof d.pendingDeliveryCurrent === "number" ? d.pendingDeliveryCurrent : null,
       completed: d.completed ?? 0,
     };
   } catch (e) {
