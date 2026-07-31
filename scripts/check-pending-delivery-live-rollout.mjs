@@ -133,9 +133,15 @@ function runChecks(f) {
     && has(f.facets, '"pending_delivery"')
     && has(f.page, '{ value: "pending_delivery", label: "Pending Delivery" }'));
 
+  // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — the card now reads
+  // `pendingDeliveryCurrent` (queue depth) instead of `pendingDelivery` (entered
+  // the queue this month). What P6 actually owns is unchanged: the fifth card
+  // exists, it is fed by the server aggregate rather than loaded rows, and the
+  // grid has five columns so it is not clipped. WHICH aggregate field is correct
+  // is owned by check-admin-orders-current-workload-kpi.mjs.
   add("P6", "the banner renders five cards on a five-column grid",
     has(f.page, 'label: "Pending Delivery"')
-    && has(f.page, "monthlyKpis?.pendingDelivery ?? null")
+    && has(f.page, "monthlyKpis?.pendingDeliveryCurrent ?? null")
     && hasRe(f.page, /lg:grid-cols-5/));
 
   // Customer must NEVER see the internal label, and must not be told the

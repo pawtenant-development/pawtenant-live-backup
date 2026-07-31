@@ -30,9 +30,20 @@ const GREEN = "\x1b[32m", RED = "\x1b[31m", YELLOW = "\x1b[33m", DIM = "\x1b[2m"
 const PAGE   = "src/pages/admin-orders/page.tsx";
 const LIB    = "src/lib/adminOrdersMonthlyKpis.ts";
 const FACETS = "src/pages/admin-orders/orderFacetCounts.ts";
-const MIG    = "supabase/migrations/20260727100000_admin_orders_monthly_kpis.sql";
+// ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — points at the CURRENT
+// definition of the RPC, not the migration that first created it. The RPC has
+// been redefined twice since (pending_delivery, then current workload); pinning
+// this to the original file meant the guard was validating a superseded
+// definition and would not have noticed a regression in the live one.
+//
+// This guard owns the MONTHLY half of the banner (Lead / Paid / Completed, plus
+// the preserved monthly transition metrics). The current-workload half is owned
+// by check-admin-orders-current-workload-kpi.mjs.
+const MIG    = "supabase/migrations/20260731130000_admin_orders_current_workload_kpi.sql";
 
-const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
+// CRLF/LF normalised — planted mutations must not become no-ops on a Windows
+// checkout with core.autocrlf=true.
+const read = (rel) => readFileSync(join(ROOT, rel), "utf8").replace(/\r\n/g, "\n");
 
 // ── Extractors ────────────────────────────────────────────────────────────────
 
