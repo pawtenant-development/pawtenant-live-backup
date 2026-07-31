@@ -49,6 +49,37 @@ async function downloadDocumentBytes(
   return await dlRes.arrayBuffer();
 }
 
+// ── PROVIDER-DOCUMENT-SINGLE-CURRENT-PENDING-VERSION-001 §2 ──────────────────
+// Content identity of a submission, used ONLY to recognise an exact replay.
+//
+// It cannot be the storage path or the signed URL: the multipart upload path
+// mints `${stem}/provider/${Date.now()}-${uuid}-${name}`, so a genuine replay of
+// the SAME file produces a different object and a different URL every time.
+// Hashing the bytes is what makes "the same submission, sent twice" recognisable
+// at all.
+async function fingerprintBytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return "sha256:" + Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// A submission that is refused or recognised as a replay has already written its
+// file to provider-letters. Nothing will ever reference that object, so remove it
+// rather than accumulating orphans in the private bucket.
+async function discardUploadedObject(
+  supabase: ReturnType<typeof createClient>,
+  objectPath: string | null,
+): Promise<void> {
+  if (!objectPath) return;
+  try {
+    const { error } = await supabase.storage.from("provider-letters").remove([objectPath]);
+    if (error) console.warn(`[provider-submit-letter] orphan cleanup failed: ${error.message}`);
+  } catch (err) {
+    console.warn("[provider-submit-letter] orphan cleanup threw:", err);
+  }
+}
+
 async function resolveProfileId(
   supabase: ReturnType<typeof createClient>,
   authUserId: string | null
@@ -457,6 +488,7 @@ Deno.serve(async (req: Request) => {
     let uploadedFilePath: string | null = null;
     let uploadedMime: string | null = null;
     let uploadedSize: number | null = null;
+    let submissionFingerprint: string | null = null;
     if (uploadedFile) {
       const ALLOWED_MIME = new Set([
         "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp",
@@ -469,6 +501,10 @@ Deno.serve(async (req: Request) => {
       const buf = new Uint8Array(await uploadedFile.arrayBuffer());
       if (buf.byteLength === 0) return json({ ok: false, error: "The uploaded file is empty." }, 400);
       if (buf.byteLength > MAX_BYTES) return json({ ok: false, error: "File exceeds the 25MB limit." }, 413);
+
+      // Hashed BEFORE the upload, from the bytes the provider actually sent, so
+      // the identity of the submission is independent of the object path.
+      submissionFingerprint = await fingerprintBytes(buf);
 
       const stem = (order.confirmation_id as string) || (order.id as string);
       const safe = (uploadedFile.name || "letter.pdf").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
@@ -492,6 +528,11 @@ Deno.serve(async (req: Request) => {
       uploadedMime = mime;
       uploadedSize = buf.byteLength;
     }
+
+    // Legacy JSON / external-link submission: the URL *is* the submission
+    // identity, and unlike an uploaded object it is already stable across a
+    // replay, so it needs no hashing.
+    if (!submissionFingerprint && documentUrl) submissionFingerprint = `url:${documentUrl}`;
 
     const now = new Date();
 
@@ -525,49 +566,100 @@ Deno.serve(async (req: Request) => {
     //
     // Customer uploads, intake docs and admin attachments do NOT pass through this
     // function at all, so they are untouched by the gate.
-    const isPreviousCorrection = await (async () => {
-      const { data } = await supabase
-        .from("order_documents")
-        .select("id")
-        .eq("order_id", order.id)
-        .eq("doc_type", storedDocType)
-        .eq("review_status", "needs_correction")
-        .order("uploaded_at", { ascending: false })
-        .limit(1);
-      return (data ?? []) as { id: string }[];
-    })();
-    const isResubmission = isPreviousCorrection.length > 0;
+    // ── PROVIDER-DOCUMENT-SINGLE-CURRENT-PENDING-VERSION-001 §5 ───────────────
+    // ONE atomic, order-scoped-locked server operation now owns the entire
+    // submission slot: replay detection, the delivered-document guard,
+    // supersession of every current unapproved row, and the insert.
+    //
+    // WHAT USED TO BE HERE WAS THE DEFECT. The old shape was three unlocked
+    // round trips — SELECT candidates, INSERT the new row, UPDATE the
+    // candidates — and the SELECT filtered on `review_status = needs_correction`
+    // ALONE. So a second submission arriving while the first was still
+    // `pending_admin_approval` found nothing to retire and left TWO pending rows,
+    // which OrderDocumentReviewPanel rendered as TWO Approve & Deliver cards on
+    // one order, either of which could be approved.
+    //
+    // Widening that filter to include `pending_admin_approval` would have fixed
+    // only the sequential case: with no lock, two CONCURRENT submissions each
+    // read an empty candidate set and each insert. The RPC takes one advisory
+    // lock per (order, doc_type) for the whole transaction, and a partial unique
+    // index backs it at the storage layer, so neither ordering can produce two
+    // current candidates.
+    const { data: slotRaw, error: slotErr } = await supabase.rpc(
+      "provider_submit_document_slot",
+      {
+        p_order_id: order.id,
+        p_confirmation_id: confirmationId,
+        p_doc_type: storedDocType,
+        p_label: documentLabel,
+        p_file_url: documentUrl,
+        p_file_path: uploadedFilePath,
+        p_mime_type: uploadedMime,
+        p_file_size_bytes: uploadedSize,
+        p_notes: providerNote?.trim() || null,
+        p_uploaded_by: profile.full_name,
+        p_submitted_by: user.id,
+        p_submission_fingerprint: submissionFingerprint,
+      },
+    );
 
-    const { data: insertedDoc, error: docError } = await supabase
-      .from("order_documents")
-      .insert({
-        order_id: order.id, confirmation_id: confirmationId, label: documentLabel,
-        doc_type: storedDocType, file_url: documentUrl,
-        file_path: uploadedFilePath, mime_type: uploadedMime, file_size_bytes: uploadedSize,
-        notes: providerNote?.trim() || null, uploaded_by: profile.full_name,
-        sent_to_customer: false, customer_visible: false, footer_injected: false,
-        review_status: "pending_admin_approval",
-        submitted_by: user.id,
-        submitted_at: now.toISOString(),
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (docError) return json({ ok: false, error: `Failed to save document: ${docError.message}` }, 500);
-
-    const documentId = insertedDoc?.id ?? null;
-
-    // A corrected resubmission retires the rejected submission rather than
-    // overwriting it — the provider's original file and the employee's
-    // correction note both stay on the record.
-    if (isResubmission && documentId) {
-      await supabase
-        .from("order_documents")
-        .update({ review_status: "superseded", superseded_by_document_id: documentId })
-        .in("id", isPreviousCorrection.map((d) => d.id));
+    if (slotErr) {
+      // The provider's file reached provider-letters but no row will ever claim
+      // it — remove it rather than orphaning it in the private bucket.
+      await discardUploadedObject(supabase, uploadedFilePath);
+      return json({ ok: false, error: `Failed to save document: ${slotErr.message}` }, 500);
     }
 
-    await supabase.from("audit_logs").insert({
+    const slot = (slotRaw ?? {}) as {
+      created?: boolean; replayed?: boolean; rejected?: boolean;
+      document_id?: string | null; file_url?: string | null; review_status?: string;
+      superseded_document_ids?: string[]; superseded_count?: number; reason?: string;
+    };
+
+    // An APPROVED, customer-visible document is already in the customer's hands
+    // and may already have been shown to a landlord. Replacing it takes a
+    // deliberate reopen (or an approved Additional Pet request), never an
+    // ordinary provider re-upload.
+    if (slot.rejected === true) {
+      await discardUploadedObject(supabase, uploadedFilePath);
+      return json({
+        ok: false,
+        error:
+          "This order already has an approved letter delivered to the customer. " +
+          "Ask PawTenant to reopen the order before uploading a replacement.",
+        reason: slot.reason ?? "approved_document_requires_reopen",
+        documentId: slot.document_id ?? null,
+      }, 409);
+    }
+
+    const documentId = slot.document_id ?? null;
+    const isReplay = slot.replayed === true;
+    const supersededDocumentIds = slot.superseded_document_ids ?? [];
+    const isResubmission = (slot.superseded_count ?? 0) > 0;
+
+    if (!documentId) {
+      await discardUploadedObject(supabase, uploadedFilePath);
+      return json({ ok: false, error: "Failed to save document: no document id returned" }, 500);
+    }
+
+    // On a REPLAY the canonical row is the one that already existed, so every
+    // step below must run against ITS file rather than the freshly uploaded
+    // duplicate. The version idempotency keys are file-derived, so using the new
+    // URL here would mint a second version and a second verification ID — the
+    // precise outcome this task exists to prevent.
+    if (isReplay) {
+      await discardUploadedObject(supabase, uploadedFilePath);
+      uploadedFilePath = null;
+      if (slot.file_url) documentUrl = slot.file_url;
+      console.info(
+        `[provider-submit-letter] replay of an identical pending submission for ${confirmationId} — reusing document ${documentId}, nothing created`,
+      );
+    }
+
+    // A replay is not a new submission and must not be audited as one. The
+    // supersession itself is audited inside the RPC, in the same transaction
+    // that performed it.
+    if (!isReplay) await supabase.from("audit_logs").insert({
       actor_id: user.id,
       actor_name: profile.full_name ?? "Provider",
       actor_role: "provider",
@@ -588,6 +680,9 @@ Deno.serve(async (req: Request) => {
         order_id: order.id, confirmation_id: confirmationId, document_id: documentId,
         doc_type: storedDocType, document_label: documentLabel,
         provider_name: profile.full_name, is_resubmission: isResubmission,
+        // Which earlier submissions this one retired — the chain an auditor
+        // follows to see why only one card is showing.
+        superseded_document_ids: supersededDocumentIds,
       },
     });
 
@@ -611,13 +706,17 @@ Deno.serve(async (req: Request) => {
       }
       await supabase.from("orders").update(housingOrderPatch).eq("id", order.id);
 
-      await supabase.from("doctor_notifications").insert({
+      // PROVIDER-DOCUMENT-SINGLE-CURRENT-PENDING-VERSION-001 §7: a replay created
+      // nothing, so it must announce nothing. The provider bell row, the internal
+      // communication, the audit event and the staff alert below are all keyed on
+      // a real submission having happened.
+      if (!isReplay) await supabase.from("doctor_notifications").insert({
         doctor_user_id: user.id, title: "Housing Form Completed",
         message: `Completed Housing Accommodation form uploaded for order ${confirmationId}.`,
         type: "housing_form_completed", confirmation_id: confirmationId, order_id: order.id,
       });
 
-      try {
+      if (!isReplay) try {
         await supabase.from("communications").insert({
           order_id: order.id, confirmation_id: confirmationId,
           channel: "internal", direction: "outbound",
@@ -628,7 +727,7 @@ Deno.serve(async (req: Request) => {
         });
       } catch (commErr) { console.error("[provider-submit-letter] housing comm log error:", commErr); }
 
-      await supabase.from("audit_logs").insert({
+      if (!isReplay) await supabase.from("audit_logs").insert({
         actor_name: profile.full_name ?? "Provider", actor_role: "provider",
         object_type: "order_document", object_id: confirmationId,
         action: "housing_form_completed",
@@ -646,7 +745,7 @@ Deno.serve(async (req: Request) => {
         console.error("[provider-submit-letter] RA-completion earning error (non-fatal):", earnErr);
       }
 
-      notifyAdminLetterSubmitted({
+      if (!isReplay) notifyAdminLetterSubmitted({
         confirmationId, providerName: profile.full_name,
         documentLabel: `${documentLabel} (Completed Housing Form)`,
         providerNote: providerNote?.trim() || null,
@@ -659,7 +758,12 @@ Deno.serve(async (req: Request) => {
         verificationIssued: false, letterId: null, pdfFooterInjected: false,
         docType: "housing_completed", reviewStatus: "pending_admin_approval",
         pendingAdminApproval: true,
-        message: "Completed Housing Accommodation form uploaded. It is pending admin approval and will be shared with the customer once approved. No verification ID is issued for housing forms.",
+        documentId,
+        replayed: isReplay,
+        supersededDocumentIds,
+        message: isReplay
+          ? "This Housing form submission was already received and is pending admin approval. Nothing was duplicated."
+          : "Completed Housing Accommodation form uploaded. It is pending admin approval and will be shared with the customer once approved. No verification ID is issued for housing forms.",
       });
     }
 
@@ -1032,7 +1136,10 @@ Deno.serve(async (req: Request) => {
       console.error(`[provider-submit-letter] approval-gate resolution failed for ${confirmationId}:`, e);
     }
 
-    await supabase.from("doctor_notifications").insert({
+    // §7: a replay announces nothing — it created no document, no version and no
+    // verification ID, so a second provider bell row and a second staff alert
+    // would both be claims about work that did not happen.
+    if (!isReplay) await supabase.from("doctor_notifications").insert({
       doctor_user_id: user.id,
       title: autoDelivered ? "Letter Submitted — Delivered" : "Letter Submitted — Pending Admin Approval",
       message: autoDelivered
@@ -1052,7 +1159,7 @@ Deno.serve(async (req: Request) => {
     // admin-review-document when it is actually sent.
 
     // ── Notify admin recipients for provider_letter_submitted (fire-and-forget) ──
-    notifyAdminLetterSubmitted({
+    if (!isReplay) notifyAdminLetterSubmitted({
       confirmationId,
       providerName: profile.full_name,
       documentLabel,
@@ -1071,6 +1178,8 @@ Deno.serve(async (req: Request) => {
       pendingAdminApproval: !autoDelivered,
       reviewStatus: autoDelivered ? "approved" : "pending_admin_approval",
       documentId,
+      replayed: isReplay,
+      supersededDocumentIds,
       autoDelivered,
       patientNotified: autoDelivered,
       verificationIssued: !!resolvedLetterId,
@@ -1078,7 +1187,9 @@ Deno.serve(async (req: Request) => {
       pdfFooterInjected: pdfInjectionResult?.ok === true,
       processedPdfUrl: pdfInjectionResult?.processedUrl ?? null,
       letterIssueDate: issueDate, letterExpiryDate: expiryDate,
-      message: autoDelivered
+      message: isReplay
+        ? "This submission was already received and is awaiting review. Nothing was duplicated."
+        : autoDelivered
         ? "Documents submitted and delivered to the customer."
         : "Documents submitted for review. A PawTenant reviewer will check them and release them to the customer — the customer has not been notified yet.",
     });
