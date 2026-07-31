@@ -201,10 +201,19 @@ double-submitting or a retried request. Exposure is currently limited because th
 gate is ON (no auto-delivery), but the id churn and the `doctor_status`
 regression also occur with the gate ON.
 
-**Not fixed in this task** — the fix belongs in `provider-submit-letter`: on a
-recognised replay, return the stored document's state and skip verification
-issue, footer re-injection, `letter_id` write and `doctor_status` write. Carried
-as the next LIVE task.
+**✅ FIXED AND SHIPPED** by
+`PROVIDER-SUBMISSION-REPLAY-DELIVERED-STATE-IDEMPOTENCY-LIVE-ROLLOUT-001`
+(LIVE `98a8b05`, `provider-submit-letter` **v108**, `verify_jwt=false`). A
+recognised replay now returns the stored document/order state before every
+mutation. Proven on LIVE with 15 replays (including 8 concurrent) against a
+delivered document: verification id, `orders.letter_id`, PDF footer, version
+count, customer-visible state, Completed workflow and the patient-notification
+timestamp were all unchanged, and no phantom Pending Delivery card appeared. The
+pre-deploy audit found **zero** already-corrupted production orders. See
+`docs/PROVIDER-SUBMISSION-REPLAY-DELIVERED-STATE-IDEMPOTENCY-LIVE-ROLLOUT-001.md`.
+
+**Operations QA 004 is therefore unblocked** — its remaining scope is listed
+under "NOT done in this rollout" below.
 
 ### Safety ledger
 
