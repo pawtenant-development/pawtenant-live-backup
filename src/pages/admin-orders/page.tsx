@@ -4,6 +4,9 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — only the newest
 // aggregate request may publish. Extracted so the out-of-order case is
 // unit-testable (an inline ref inside a 200KB component cannot be exercised).
+// ADMIN-ORDERS-KPI-CARD-LIST-PARITY-AND-MONTH-SEMANTICS-001: the canonical
+// America/New_York month boundary — never the operator's browser timezone.
+import { currentBusinessMonth } from "../../lib/businessTime";
 import { createRequestGuard, runLatest } from "../../lib/latestRequestGuard";
 import { supabase, getAdminToken } from "../../lib/supabaseClient";
 import { resolveStaffRole } from "../../lib/staffAuth";
@@ -2443,8 +2446,19 @@ export default function AdminOrdersPage() {
                   // card applies it.
                   {
                     label: "Lead (Unpaid)",
-                    timeframe: "now",
-                    value: monthlyKpis?.leadUnpaidCurrent ?? null,
+                    // ADMIN-ORDERS-KPI-CARD-LIST-PARITY-AND-MONTH-SEMANTICS-001
+                    // This card is the MONTH's new unpaid leads, not the all-time
+                    // open-lead backlog. It was reading `leadUnpaidCurrent`
+                    // (every currently-open lead ever created), which displayed
+                    // 1257 on LIVE instead of the 4 leads created this month.
+                    // The three queue cards below are correctly "now" — queue
+                    // DEPTH must not reset at month rollover — but Lead is an
+                    // acquisition metric and does reset.
+                    timeframe: "this month",
+                    value: monthlyKpis?.leadUnpaid ?? null,
+                    // Month-scoped cards apply their month range on click so the
+                    // list reconciles exactly with the number shown (§C parity).
+                    monthScoped: true,
                     rangeLabel: "Leads Created",
                     rangeValue: rangeKpis?.leadsCreated ?? null,
                     rangeBasis: "created" as OrderDateBasis,
@@ -2491,6 +2505,7 @@ export default function AdminOrdersPage() {
                     label: "Completed",
                     timeframe: "this month",
                     value: monthlyKpis?.completed ?? null,
+                    monthScoped: true,
                     rangeLabel: "Completed",
                     rangeValue: rangeKpis?.completed ?? null,
                     rangeBasis: "completed" as OrderDateBasis,
@@ -2522,7 +2537,22 @@ export default function AdminOrdersPage() {
                         // now — the event still happened in July).
                         setStatusFilter("all");
                         setDateBasis(s.rangeBasis);
+                      } else if (s.monthScoped) {
+                        // ADMIN-ORDERS-KPI-CARD-LIST-PARITY-...-001 §C.
+                        // A "this month" card must not open an ALL-TIME list —
+                        // the count and the list would disagree on sight. Apply
+                        // the card's own lifecycle Date Basis plus the current
+                        // America/New_York month, which is exactly the window the
+                        // number was computed over. The range is visible in the
+                        // From/To inputs, and Clear restores the default view.
+                        const m = currentBusinessMonth();
+                        setStatusFilter("all");
+                        setDateBasis(s.rangeBasis);
+                        setDateFrom(m.from);
+                        setDateTo(m.toInclusive);
                       } else {
+                        // "now" cards are current queue DEPTH — the status filter
+                        // alone already reconciles with the tab.
                         setStatusFilter(s.filter);
                       }
                     }}

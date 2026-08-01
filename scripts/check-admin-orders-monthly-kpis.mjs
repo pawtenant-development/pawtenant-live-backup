@@ -34,7 +34,7 @@ const FACETS = "src/pages/admin-orders/orderFacetCounts.ts";
 // 20260727100000 migration still exists in the ledger but has been superseded by
 // the current-workload rewrite; guarding the superseded file would let the
 // deployed function drift freely.
-const MIG    = "supabase/migrations/20260801171000_admin_orders_current_workload_kpi_all_cards.sql";
+const MIG    = "supabase/migrations/20260801180000_admin_orders_monthly_lead_excludes_archived.sql";
 // MONTH-END-...-001 §D — the custom-range PERIOD-EVENT additions.
 const RANGE_LIB = "src/lib/adminOrdersRangeKpis.ts";
 const LIFECYCLE = "src/lib/orderLifecycle.ts";
@@ -163,23 +163,37 @@ export const CHECKS = [
   { name: "banner never reads list facet buckets", file: PAGE,
     run: (s) => (bannerCardValues(s) ?? []).some((x) => /facetCounts/.test(x)) ? "a KPI card reads facetCounts — that is the LIST universe" : null },
 
-  // ---- §D: queue cards are CURRENT, only Completed is monthly ----
-  // This is the rollover defect. A queue card wired to a monthly field reads 0
-  // against a non-empty tab the moment the Eastern month turns over.
-  { name: "the four queue cards read CURRENT queue depth", file: PAGE,
+  // ---- §D: the three QUEUE cards are CURRENT; Lead and Completed are monthly ----
+  // Rollover defect: a QUEUE card wired to a monthly field reads 0 against a
+  // non-empty tab the moment the Eastern month turns over.
+  //
+  // ADMIN-ORDERS-KPI-CARD-LIST-PARITY-AND-MONTH-SEMANTICS-001 corrected the
+  // SCOPE of this rule. Lead (Unpaid) is not a queue — it is an acquisition
+  // metric and MUST reset monthly. Wiring it to the current-workload field made
+  // it display the entire historical unpaid backlog (1257 on LIVE, vs 4 leads
+  // actually created that month). Queue depth = Paid (Unassigned), Under
+  // Review, Pending Delivery only.
+  { name: "the three queue cards read CURRENT queue depth", file: PAGE,
     run: (s) => { const v = bannerCardValues(s) ?? [];
       if (v.length !== 5) return `expected 5 card values, found ${v.length}`;
-      const want = ["leadUnpaidCurrent", "paidUnassignedCurrent", "underReviewCurrent", "pendingDeliveryCurrent"];
-      const bad = want.filter((f, i) => !new RegExp(`monthlyKpis\\?\\.${f}\\b`).test(v[i]));
+      const want = [null, "paidUnassignedCurrent", "underReviewCurrent", "pendingDeliveryCurrent"];
+      const bad = want.filter((f, i) => f && !new RegExp(`monthlyKpis\\?\\.${f}\\b`).test(v[i]));
       return bad.length === 0 ? null
         : `queue card(s) not wired to the current-workload field: ${bad.join(", ")} — these vanish at month rollover`; } },
+  { name: "Lead (Unpaid) is MONTH-gated, not the all-time backlog", file: PAGE,
+    run: (s) => { const v = bannerCardValues(s) ?? [];
+      if (!v[0]) return "Lead card value not found";
+      if (/leadUnpaidCurrent/.test(v[0])) return "Lead card reads the ALL-TIME backlog (leadUnpaidCurrent); it must read the monthly leadUnpaid";
+      return /monthlyKpis\?\.leadUnpaid\s*\?\?/.test(v[0]) ? null
+        : `Lead card must read monthlyKpis?.leadUnpaid, got ${v[0]}`; } },
   { name: "Completed is the ONLY monthly card", file: PAGE,
     run: (s) => { const v = bannerCardValues(s) ?? [];
       return v[4] && /monthlyKpis\?\.completed\b/.test(v[4]) ? null
         : `Completed card must read the monthly completed field, got ${v[4] ?? "nothing"}`; } },
-  { name: "no queue card reads a month-gated field", file: PAGE,
-    run: (s) => { const v = (bannerCardValues(s) ?? []).slice(0, 4);
-      const bad = v.filter((x) => /monthlyKpis\?\.(leadUnpaid|paidUnassigned|underReview|pendingDelivery)\s*\?\?/.test(x));
+  { name: "no QUEUE card reads a month-gated field", file: PAGE,
+    // Index 0 (Lead) is intentionally monthly — see the rule above.
+    run: (s) => { const v = (bannerCardValues(s) ?? []).slice(1, 4);
+      const bad = v.filter((x) => /monthlyKpis\?\.(paidUnassigned|underReview|pendingDelivery)\s*\?\?/.test(x));
       return bad.length === 0 ? null : `queue card(s) still month-gated: ${bad.join(" | ")}`; } },
   { name: "the RPC exposes the current-workload fields", file: MIG,
     run: (s) => ["leadUnpaidCurrent", "paidUnassignedCurrent", "underReviewCurrent", "pendingDeliveryCurrent"]
@@ -217,7 +231,8 @@ export const CHECKS = [
       if (grid < 0 || end < 0) return "card block not found";
       const tf = [...s.slice(grid, end).matchAll(/timeframe:\s*"([^"]+)"/g)].map((x) => x[1]);
       if (tf.length !== 5) return `expected 5 per-card timeframes, found ${tf.length}`;
-      const want = ["now", "now", "now", "now", "this month"];
+      // Lead and Completed are monthly metrics; the three queues are current.
+      const want = ["this month", "now", "now", "now", "this month"];
       return JSON.stringify(tf) === JSON.stringify(want) ? null : `timeframes wrong: ${JSON.stringify(tf)}`;
     } },
   { name: "the timeframe label is rendered, not just declared", file: PAGE,
@@ -368,8 +383,8 @@ const NEGATIVE_CONTROLS = [
   // ---- §D negative controls: the rollover defect must stay un-shippable ----
   { name: "Under Review card reverted to the month-gated field",
     file: PAGE, mutate: (s) => s.replace(/monthlyKpis\?\.underReviewCurrent/, "monthlyKpis?.underReview") },
-  { name: "Lead card reverted to the month-gated field",
-    file: PAGE, mutate: (s) => s.replace(/monthlyKpis\?\.leadUnpaidCurrent/, "monthlyKpis?.leadUnpaid") },
+  { name: "Lead card reverted to the ALL-TIME backlog field",
+    file: PAGE, mutate: (s) => s.replace(/monthlyKpis\?\.leadUnpaid \?\?/, "monthlyKpis?.leadUnpaidCurrent ??") },
   { name: "Paid (Unassigned) card reverted to the month-gated field",
     file: PAGE, mutate: (s) => s.replace(/monthlyKpis\?\.paidUnassignedCurrent/, "monthlyKpis?.paidUnassigned") },
   { name: "a current-workload count given a month window",
@@ -439,7 +454,7 @@ if (failures.length > 0) {
   for (const f of failures) console.log(`  ${RED}•${RESET} ${f}`);
   process.exit(1);
 }
-console.log(`${GREEN}✓ Admin Orders KPI banner guard passed${RESET} (${CHECKS.length} invariants — 4 current queue cards + monthly Completed, Eastern bounds, per-card timeframes, filter/basis/pagination independence, distinct universes)`);
+console.log(`${GREEN}✓ Admin Orders KPI banner guard passed${RESET} (${CHECKS.length} invariants — 3 current queue cards + monthly Lead & Completed, Eastern bounds, per-card timeframes, filter/basis/pagination independence, distinct universes)`);
 
 if (selfTest) {
   let bad = 0;
@@ -458,4 +473,4 @@ if (selfTest) {
   console.log(`${GREEN}✓ self-test passed${RESET} (${NEGATIVE_CONTROLS.length}/${NEGATIVE_CONTROLS.length} planted defects rejected)`);
 }
 
-console.log(`${DIM}  banner contract: Lead / Paid / Under Review / Pending Delivery = live queue depth (survives month rollover) · Completed = current America/New_York month on last_completed_at · server-authoritative · independent of every list filter, Date Basis and pagination${RESET}`);
+console.log(`${DIM}  banner contract: Paid / Under Review / Pending Delivery = live queue depth (survives month rollover) · Lead = current America/New_York month on created_at · Completed = current America/New_York month on last_completed_at · server-authoritative · independent of every list filter, Date Basis and pagination${RESET}`);
