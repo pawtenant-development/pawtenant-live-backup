@@ -25,25 +25,20 @@ interface PendingOrder extends ThankYouState {
   _step3Plan?: string;
 }
 
-// ── 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH ─────────────────────────────────────
-// Safe public order shape returned by the check-payment-status edge function.
-// This is the canonical record (actual amount charged, real plan, real assigned
-// provider) — preferred over stale URL params or sessionStorage for display.
-interface PublicOrder {
-  confirmation_id?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  price?: number | null;
-  plan_type?: string | null;
-  delivery_speed?: string | null;
-  letter_type?: string | null;
-  coupon_code?: string | null;
-  coupon_discount?: number | null;
-  doctor_name?: string | null;
-  status?: string | null;
-  paid_at?: string | null;
-}
+// ── CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001 ─────────────────────────
+// The 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH change had this page read a full
+// order record (name, email, price, plan, provider) back from
+// check-payment-status. That endpoint runs with verify_jwt=false, so it was
+// handing customer PII to ANY caller who knew a confirmation id.
+//
+// The endpoint now returns payment STATE only. This page renders the customer's
+// own details from its own sessionStorage / navigate state and from the URL
+// params create-checkout-session stamps — data that never left this browser —
+// so nothing here depends on the server disclosing PII.
+// The endpoint's response contract is now payment STATE only:
+//   { paid, paymentStatus, reconciled, nextStep, code, confirmationId }
+// This page intentionally reads NONE of it — the reconciler call is fired
+// purely for its server-side effect.
 
 declare global {
   interface Window {
@@ -304,9 +299,6 @@ export default function AssessmentThankYouPage() {
   const webhookFired = useRef(false);
   const reconcilerFired = useRef(false);
 
-  // Canonical order record fetched from the server (source of truth for the
-  // displayed amount, plan, customer, and assigned provider).
-  const [dbOrder, setDbOrder] = useState<PublicOrder | null>(null);
 
   // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL (thank-you arrival) ──────
   // Fire-and-forget call to check-payment-status so the orders row is
@@ -334,11 +326,10 @@ export default function AssessmentThankYouPage() {
       },
       body: JSON.stringify(payload),
     })
-      .then((r) => r.json())
-      .then((j: { order?: PublicOrder | null }) => {
-        // Use the canonical order record as the display source of truth.
-        if (j && j.order) setDbOrder(j.order);
-      })
+      // Purely fire-and-forget: the call exists to TRIGGER server-side
+      // reconciliation, not to fetch anything. The response is payment state
+      // only and this page reads nothing from it.
+      // (CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001)
       .catch(() => { /* fire-and-forget — page still renders from URL/session */ });
   }, [stripeSessionId, urlOrderId]);
 
@@ -454,24 +445,29 @@ export default function AssessmentThankYouPage() {
   const urlAmountParsed = urlAmount ? parseFloat(urlAmount) : null;
 
   // ── Canonical display values ──────────────────────────────────────────────
-  // Source-of-truth priority: live order record from check-payment-status
-  // (dbOrder) → sessionStorage / navigate state (resolvedState) → safe default.
-  // The DB record reflects the actual amount charged and the real plan, so it
-  // never shows a stale pre-discount URL amount.
-  const firstName = dbOrder?.first_name || resolvedState.firstName || "there";
-  const lastName = dbOrder?.last_name || resolvedState.lastName || "";
+  // CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001: the server no longer
+  // supplies any of this. Source-of-truth priority is now
+  // sessionStorage / navigate state (resolvedState) → URL param → safe default.
+  // All of it is the customer's OWN data, already in this browser — no
+  // unauthenticated endpoint discloses it.
+  const firstName = resolvedState.firstName || "there";
+  const lastName = resolvedState.lastName || "";
   const fullName = [firstName === "there" ? "" : firstName, lastName]
     .filter(Boolean)
     .join(" ")
     .trim();
-  const email = dbOrder?.email || resolvedState.email || "";
-  const planType = dbOrder?.plan_type || resolvedState.planType || "One-Time Purchase";
-  const deliverySpeed = dbOrder?.delivery_speed || resolvedState.deliverySpeed || "2-3days";
+  const email = resolvedState.email || "";
+  const planType = resolvedState.planType || "One-Time Purchase";
+  const deliverySpeed = resolvedState.deliverySpeed || "2-3days";
 
   // Provider is shown ONLY when a real provider has been assigned to the order
   // (doctor_name is set after a provider picks it up). Customers do not choose a
   // provider at checkout, so we never show a "your assigned provider" placeholder.
-  const assignedProvider = (dbOrder?.doctor_name || "").trim();
+  // Provider name is never disclosed by the public status endpoint
+  // (CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001). At thank-you time no
+  // provider is assigned yet anyway, so the block simply does not render and
+  // the copy falls back to the generic "A licensed provider" wording.
+  const assignedProvider = "";
   const hasProvider = assignedProvider.length > 0;
 
   // ── 2026-05-20 KLARNA-PHANTOM-ORDER-ID-FIX ───────────────────────────────
@@ -485,11 +481,21 @@ export default function AssessmentThankYouPage() {
   //      state. NEVER fabricate a phantom `PT-${Date.now()}` id; the
   //      previous fabricated default produced display IDs that did
   //      not exist in the database and confused customers.
-  const confirmationId = urlOrderId || dbOrder?.confirmation_id || resolvedState.confirmationId || "";
+  const confirmationId = urlOrderId || resolvedState.confirmationId || "";
   const hasConfirmationId = confirmationId.length > 0;
 
-  // Authoritative amount paid: DB order price → URL ?amount= → session → base.
-  const price = dbOrder?.price ?? urlAmountParsed ?? resolvedState.price ?? 90;
+  // Authoritative amount paid: URL ?amount= → this browser's own session → base.
+  // CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001 removed the server-supplied
+  // order price, because an unauthenticated endpoint must not disclose order
+  // financials. The inline-card paths still stamp ?amount= with the real charged
+  // total, so the amount stays accurate there.
+  //
+  // A Checkout Session (Klarna / QR / Link) that opens in a NEW tab has neither
+  // ?amount= nor this tab's sessionStorage. Rather than render the base-price
+  // DEFAULT as if it were the amount charged — which would be wrong for any
+  // discounted order — we suppress the figure and point at the emailed receipt.
+  const priceKnown = urlAmountParsed != null || resolvedState.price != null;
+  const price = urlAmountParsed ?? resolvedState.price ?? 90;
   const priceStr = formatUSD(price);
 
   // Derive labels from the canonical delivery_speed / plan_type. Handle every
@@ -498,8 +504,8 @@ export default function AssessmentThankYouPage() {
   const isSubscription = planType.toLowerCase().includes("subscription");
   const speedLabel = isPriority ? "Priority" : "Standard";
   const pricingPlan = isSubscription
-    ? `Annual Subscription (${priceStr})`
-    : `${speedLabel} (${priceStr})`;
+    ? (priceKnown ? `Annual Subscription (${priceStr})` : "Annual Subscription")
+    : (priceKnown ? `${speedLabel} (${priceStr})` : speedLabel);
 
   const deliveryLabel = isPriority ? "Within 24 Hours" : "Within 2–3 Business Days";
   const deliveryShort = isPriority ? "24 hours" : "2–3 business days";
@@ -672,7 +678,9 @@ export default function AssessmentThankYouPage() {
       step: "01",
       icon: "ri-checkbox-circle-line",
       title: "Payment Confirmed",
-      desc: `Your payment of ${priceStr} was processed successfully. You'll receive a receipt at ${email || "your email"}.`,
+      desc: priceKnown
+        ? `Your payment of ${priceStr} was processed successfully. You'll receive a receipt at ${email || "your email"}.`
+        : `Your payment was processed successfully. You'll receive a receipt at ${email || "your email"}.`,
       done: true,
     },
     {
@@ -812,7 +820,9 @@ export default function AssessmentThankYouPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-gray-400 font-medium mb-0.5">Amount Paid</p>
-                <p className="text-sm font-semibold text-gray-800">{priceStr}</p>
+                <p className="text-sm font-semibold text-gray-800">
+                  {priceKnown ? priceStr : "See your emailed receipt"}
+                </p>
               </div>
             </div>
             <div className="flex items-start gap-3">

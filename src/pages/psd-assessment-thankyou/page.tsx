@@ -25,25 +25,20 @@ interface PendingOrder extends ThankYouState {
   _step3Plan?: string;
 }
 
-// ── 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH ─────────────────────────────────────
-// Safe public order shape returned by the check-payment-status edge function —
-// the canonical record (actual amount charged, real plan, real assigned
-// provider). Preferred over stale URL params / empty sessionStorage for display.
-interface PublicOrder {
-  confirmation_id?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  price?: number | null;
-  plan_type?: string | null;
-  delivery_speed?: string | null;
-  letter_type?: string | null;
-  coupon_code?: string | null;
-  coupon_discount?: number | null;
-  doctor_name?: string | null;
-  status?: string | null;
-  paid_at?: string | null;
-}
+// ── CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001 ─────────────────────────
+// The 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH change had this page read a full
+// order record (name, email, price, plan, provider) back from
+// check-payment-status. That endpoint runs with verify_jwt=false, so it was
+// handing customer PII to ANY caller who knew a confirmation id — and
+// letter_type additionally disclosed that the order was a PSD order.
+//
+// The endpoint now returns payment STATE only. This page renders the customer's
+// own details from its own navigate state / sessionStorage and from the URL
+// params create-checkout-session stamps — data that never left this browser.
+// The endpoint's response contract is now payment STATE only:
+//   { paid, paymentStatus, reconciled, nextStep, code, confirmationId }
+// This page intentionally reads NONE of it — the reconciler call is fired
+// purely for its server-side effect.
 
 declare global {
   interface Window {
@@ -134,14 +129,11 @@ export default function PSDAssessmentThankYouPage() {
   const webhookFired = useRef(false);
   const reconcilerFired = useRef(false);
 
-  // Canonical order record fetched from the server (source of truth for the
-  // displayed amount, plan, customer, and assigned provider).
-  const [dbOrder, setDbOrder] = useState<PublicOrder | null>(null);
 
   // ── 2026-05-20 KLARNA-RECONCILIATION-SELF-HEAL (PSD thank-you arrival) ──
   // Same reconciliation as the ESA thank-you page. Idempotent on the server —
-  // no-op when the order is already paid. We also consume the returned canonical
-  // order so PSD shows the real amount/plan/customer instead of $120 defaults.
+  // no-op when the order is already paid. The response is payment STATE only;
+  // this page reads no customer or order detail from it.
   useEffect(() => {
     if (reconcilerFired.current) return;
     const cid = urlOrderId || resolvedState.confirmationId || "";
@@ -159,10 +151,10 @@ export default function PSDAssessmentThankYouPage() {
       },
       body: JSON.stringify(payload),
     })
-      .then((r) => r.json())
-      .then((j: { order?: PublicOrder | null }) => {
-        if (j && j.order) setDbOrder(j.order);
-      })
+      // Purely fire-and-forget: the call exists to TRIGGER server-side
+      // reconciliation, not to fetch anything. The response is payment state
+      // only and this page reads nothing from it.
+      // (CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001)
       .catch(() => { /* fire-and-forget — page still renders from URL/session */ });
   }, [stripeSessionId, urlOrderId]);
 
@@ -218,26 +210,38 @@ export default function PSDAssessmentThankYouPage() {
   }, [stripeSessionId, paymentIntentParam]);
 
   // ── Canonical display values ──────────────────────────────────────────────
-  // Source-of-truth priority: live order record from check-payment-status
-  // (dbOrder) → navigate state (resolvedState) → safe default. PSD checkout does
-  // not populate sessionStorage, so without the DB record every field would fall
-  // back to a $120 / Priority default — which was the wrong-amount/plan bug.
-  const firstName = dbOrder?.first_name || resolvedState.firstName || "there";
-  const lastName = dbOrder?.last_name || resolvedState.lastName || "";
+  // CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001: the server no longer
+  // supplies any of this — an unauthenticated endpoint must not disclose the
+  // customer, the amount, or the fact that this is a PSD order. Priority is now
+  // navigate state / sessionStorage (this browser's own data) → URL param →
+  // safe default. The PSD inline-card path stamps ?amount= and ?order_id=, so
+  // the real figures survive there; see the priceKnown guard below for the
+  // new-tab Checkout Session case.
+  const firstName = resolvedState.firstName || "there";
+  const lastName = resolvedState.lastName || "";
   const fullName = [firstName === "there" ? "" : firstName, lastName]
     .filter(Boolean)
     .join(" ")
     .trim();
-  const email = dbOrder?.email || resolvedState.email || "";
-  const planType = dbOrder?.plan_type || resolvedState.planType || "One-Time Purchase";
-  const deliverySpeed = dbOrder?.delivery_speed || resolvedState.deliverySpeed || "24h";
+  const email = resolvedState.email || "";
+  const planType = resolvedState.planType || "One-Time Purchase";
+  const deliverySpeed = resolvedState.deliverySpeed || "24h";
 
   // Amount paid: DB order price → URL ?amount= → session → base default.
-  const price = dbOrder?.price ?? (urlAmount ? parseFloat(urlAmount) : (resolvedState.price ?? 120));
+  // ?amount= is stamped by create-checkout-session with the real charged
+  // total, so the authoritative amount survives without the server
+  // returning order financials to an unauthenticated caller.
+  // Never render the base-price DEFAULT as if it were the amount charged — it
+  // would be wrong for any discounted order. When neither ?amount= nor this
+  // browser's own state carries the figure, suppress it.
+  const priceKnown = urlAmount != null || resolvedState.price != null;
+  const price = urlAmount ? parseFloat(urlAmount) : (resolvedState.price ?? 120);
   const priceStr = formatUSD(price);
 
   // Provider shown ONLY when actually assigned (doctor_name set after pickup).
-  const assignedProvider = (dbOrder?.doctor_name || "").trim();
+  // Provider name is never disclosed by the public status endpoint
+  // (CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001).
+  const assignedProvider = "";
   const hasProvider = assignedProvider.length > 0;
 
   // Labels derived from the canonical delivery_speed / plan_type. Handles every
@@ -246,8 +250,8 @@ export default function PSDAssessmentThankYouPage() {
   const isSubscription = planType.toLowerCase().includes("subscription");
   const speedLabel = isPriority ? "Priority" : "Standard";
   const pricingPlan = isSubscription
-    ? `Annual Subscription (${priceStr})`
-    : `${speedLabel} (${priceStr})`;
+    ? (priceKnown ? `Annual Subscription (${priceStr})` : "Annual Subscription")
+    : (priceKnown ? `${speedLabel} (${priceStr})` : speedLabel);
   const deliveryLabel = isSubscription
     ? "Annual Subscription"
     : isPriority
@@ -262,7 +266,7 @@ export default function PSDAssessmentThankYouPage() {
   // `PT-PSD${Date.now()}` default produced phantom IDs that did not exist
   // in the database after a cross-tab Klarna redirect where sessionStorage
   // is empty. Empty string here renders a calm "Processing" state.
-  const confirmationId = urlOrderId || dbOrder?.confirmation_id || resolvedState.confirmationId || "";
+  const confirmationId = urlOrderId || resolvedState.confirmationId || "";
   const hasConfirmationId = confirmationId.length > 0;
 
   const shareUrl = "https://pawtenant.com/psd-assessment";
@@ -410,7 +414,9 @@ export default function PSDAssessmentThankYouPage() {
       step: "01",
       icon: "ri-checkbox-circle-line",
       title: "Payment Confirmed",
-      desc: `Your payment of ${priceStr} was processed successfully. You'll receive a receipt at ${email || "your email"}.`,
+      desc: priceKnown
+        ? `Your payment of ${priceStr} was processed successfully. You'll receive a receipt at ${email || "your email"}.`
+        : `Your payment was processed successfully. You'll receive a receipt at ${email || "your email"}.`,
       done: true,
     },
     {
@@ -573,7 +579,9 @@ export default function PSDAssessmentThankYouPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-gray-400 font-medium mb-0.5">Amount Paid</p>
-                <p className="text-sm font-semibold text-gray-800">{priceStr}</p>
+                <p className="text-sm font-semibold text-gray-800">
+                  {priceKnown ? priceStr : "See your emailed receipt"}
+                </p>
               </div>
             </div>
             <div className="flex items-start gap-3">

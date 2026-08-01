@@ -207,11 +207,16 @@ export default function KlarnaPaymentTab({
           body: JSON.stringify({ confirmationId }),
         },
       );
+      // CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001: the endpoint is
+      // unauthenticated, so it returns payment STATE only — no customer, no
+      // order detail, and no raw Stripe/database error text. `code` is a stable
+      // generic outcome; it never says whether an order exists.
       const data = await res.json() as {
         paid?: boolean;
         reconciled?: boolean;
         paymentStatus?: string;
-        error?: string;
+        nextStep?: string;
+        code?: string;
       };
 
       if (data.paid === true) {
@@ -220,8 +225,8 @@ export default function KlarnaPaymentTab({
         return;
       }
 
-      if (data.error) {
-        console.error("[checkPaymentStatus] reconciler error:", data.error);
+      if (data.code === "error" || data.code === "invalid_request") {
+        console.error("[checkPaymentStatus] reconciler outcome:", data.code);
       }
       setStatusError(
         "Payment not yet completed. Please finish payment in the Klarna window and try again.",
