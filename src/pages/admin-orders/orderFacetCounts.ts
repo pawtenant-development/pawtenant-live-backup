@@ -14,7 +14,7 @@
 //   • Narrow, RLS-enforced COUNT(head) queries only — the orders table is never
 //     loaded into the browser, and this does NOT touch the loader/pagination.
 //   • Same created_at field, timezone and inclusive boundaries as the list
-//     (new Date(dateFrom) .. new Date(dateTo+"T23:59:59"), matching page.tsx).
+//     (America/New_York business-day bounds, matching page.tsx exactly).
 //   • Bucket predicates mirror the list classifiers (orderClassification.ts) and
 //     the EXCLUDE_*_OR SQL bridges, so a bucket count always equals the list rows
 //     shown when that status tab is selected. Validated vs the DB: total 141 =
@@ -30,7 +30,13 @@ import {
   EXCLUDE_REFUNDED_AT_OR,
 } from "../../lib/orderClassification";
 // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the date filter is basis-aware.
-import { ORDER_DATE_BASIS_COLUMN, type OrderDateBasis } from "../../lib/orderLifecycle";
+// MONTH-END-...-001 §D — range bounds are America/New_York business days.
+import {
+  ORDER_DATE_BASIS_COLUMN,
+  businessDayStartUtcIso,
+  businessDayEndExclusiveUtcIso,
+  type OrderDateBasis,
+} from "../../lib/orderLifecycle";
 
 // Non-status filters, exactly as the list holds them.
 export interface FacetFilters {
@@ -89,19 +95,22 @@ type Q = ReturnType<ReturnType<typeof supabase.from>["select"]>;
 // Apply every SQL-able NON-STATUS filter. Never applies statusFilter and never
 // applies the client-only filters.
 function applyNonStatusFilters(q: Q, f: FacetFilters): Q {
-  // Date — identical instants to the list's Date parsing, applied to the ACTIVE
-  // basis column. The `created` arm is the historical default and is written
-  // literally so the long-standing created_at contract stays greppable.
+  // Date — identical instants to the list's client predicate, applied to the
+  // ACTIVE basis column. MONTH-END-...-001 §D: bounds are BUSINESS-timezone
+  // calendar days (America/New_York, inclusive start, EXCLUSIVE next-day end),
+  // computed by the same helpers matchesBasisDateRange uses — never the
+  // browser's clock, never UTC midnight. The `created` arm is the historical
+  // default and is written literally so the created_at contract stays greppable.
   const basis: OrderDateBasis = f.dateBasis ?? "created";
   if (basis === "created") {
-    if (f.dateFrom) q = q.gte("created_at", new Date(f.dateFrom).toISOString());
-    if (f.dateTo) q = q.lte("created_at", new Date(`${f.dateTo}T23:59:59`).toISOString());
+    if (f.dateFrom) q = q.gte("created_at", businessDayStartUtcIso(f.dateFrom));
+    if (f.dateTo) q = q.lt("created_at", businessDayEndExclusiveUtcIso(f.dateTo));
   } else {
     const col = ORDER_DATE_BASIS_COLUMN[basis];
-    // A NULL basis value can never satisfy a range, and PostgREST gte/lte already
+    // A NULL basis value can never satisfy a range, and PostgREST gte/lt already
     // drop NULLs — so "completed in July" cannot leak never-completed orders.
-    if (f.dateFrom) q = q.gte(col, new Date(f.dateFrom).toISOString());
-    if (f.dateTo) q = q.lte(col, new Date(`${f.dateTo}T23:59:59`).toISOString());
+    if (f.dateFrom) q = q.gte(col, businessDayStartUtcIso(f.dateFrom));
+    if (f.dateTo) q = q.lt(col, businessDayEndExclusiveUtcIso(f.dateTo));
   }
 
   if (f.payment === "paid") q = q.not("payment_intent_id", "is", null);

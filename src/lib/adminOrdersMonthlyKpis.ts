@@ -33,39 +33,39 @@ export interface AdminOrdersMonthlyKpis {
   periodStart: string;
   /** First instant of the NEXT month (ISO) — EXCLUSIVE upper bound. */
   periodEndExclusive: string;
+
+  // ── CURRENT QUEUE DEPTHS (no month window) — what the four workflow cards
+  // display. A queue is sized by what is IN it, not by when each item arrived,
+  // so nothing vanishes from a card at month rollover while its tab still lists
+  // it. Each equals its corresponding status tab.
+  /** Open unpaid leads right now. Not restricted by creation month. */
+  leadUnpaidCurrent: number;
+  /** Paid and awaiting provider assignment right now. Not restricted by payment month. */
+  paidUnassignedCurrent: number;
+  /** The review queue right now. EXCLUDES pendingDelivery. */
+  underReviewCurrent: number;
+  /** The employee approval queue right now. EMPLOYEE-ONLY — never customer-facing. */
+  pendingDeliveryCurrent: number;
+
+  // ── MONTHLY metrics ────────────────────────────────────────────────────────
+  /**
+   * Fulfilled THIS Eastern month. Keyed on last_completed_at, so an order paid
+   * in July but delivered in August counts as an AUGUST completion and never a
+   * July one. EXCLUDES pendingDelivery. This is the only monthly card.
+   */
+  completed: number;
+
+  // Preserved monthly transition metrics. No card reads these any more; they are
+  // kept so the historical question ("how many ENTERED this state this month")
+  // stays answerable and no consumer silently changed meaning.
   /** Created this month, still an unpaid lead. Keyed on created_at. */
   leadUnpaid: number;
   /** FIRST payment this month, still unassigned. Keyed on paid_at (never last_payment_at). */
   paidUnassigned: number;
-  /**
-   * HISTORICAL, MONTHLY: entered review this month and still under review.
-   * Keyed on the proven order_status_logs transition.
-   *
-   * ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — this is NO LONGER
-   * what the Under Review card shows; use `underReviewCurrent`. Preserved so the
-   * monthly metric keeps its meaning for any future consumer.
-   */
+  /** Entered review this month, still under review. Keyed on the proven transition. */
   underReview: number;
-  /**
-   * HISTORICAL, MONTHLY: provider submitted this month and the letter is still
-   * awaiting employee approval. Superseded on the card by
-   * `pendingDeliveryCurrent`, and preserved for the same reason as `underReview`.
-   */
+  /** Entered pending_admin_approval this month, still awaiting approval. */
   pendingDelivery: number;
-  /**
-   * CURRENT WORKLOAD: every order sitting in Under Review right now, regardless
-   * of WHEN it entered. This is what the Under Review card displays, and it is
-   * defined to equal the Under Review status tab exactly — a queue is sized by
-   * what is in it, not by when each item arrived.
-   */
-  underReviewCurrent: number | null;
-  /**
-   * CURRENT WORKLOAD: every order awaiting employee approval right now. Equals
-   * the Pending Delivery tab. EMPLOYEE-ONLY — never a customer-facing status.
-   */
-  pendingDeliveryCurrent: number | null;
-  /** Fulfilled this month. Keyed on last_completed_at. EXCLUDES pendingDelivery. */
-  completed: number;
 }
 
 /**
@@ -85,23 +85,23 @@ export async function fetchAdminOrdersMonthlyKpis(): Promise<AdminOrdersMonthlyK
       return null;
     }
     const d = data as Partial<AdminOrdersMonthlyKpis> | null;
-    if (!d || typeof d.leadUnpaid !== "number") return null;
+    // Gate on a CURRENT field: these drive four of the five cards, so an older
+    // RPC that predates them must fail the banner closed (skeleton → "—") rather
+    // than silently rendering month-gated numbers under "now" labels.
+    if (!d || typeof d.leadUnpaidCurrent !== "number") return null;
     return {
       timezone: d.timezone ?? "America/New_York",
       periodStart: String(d.periodStart ?? ""),
       periodEndExclusive: String(d.periodEndExclusive ?? ""),
+      leadUnpaidCurrent: d.leadUnpaidCurrent ?? 0,
+      paidUnassignedCurrent: d.paidUnassignedCurrent ?? 0,
+      underReviewCurrent: d.underReviewCurrent ?? 0,
+      pendingDeliveryCurrent: d.pendingDeliveryCurrent ?? 0,
+      completed: d.completed ?? 0,
       leadUnpaid: d.leadUnpaid ?? 0,
       paidUnassigned: d.paidUnassigned ?? 0,
       underReview: d.underReview ?? 0,
       pendingDelivery: d.pendingDelivery ?? 0,
-      // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — deliberately
-      // NOT `?? 0`. If this bundle ever runs against a database that predates the
-      // current-workload fields, an invented 0 would look exactly like the empty
-      // queue this fix exists to stop reporting. null renders "—" instead, which
-      // is the honest answer.
-      underReviewCurrent: typeof d.underReviewCurrent === "number" ? d.underReviewCurrent : null,
-      pendingDeliveryCurrent: typeof d.pendingDeliveryCurrent === "number" ? d.pendingDeliveryCurrent : null,
-      completed: d.completed ?? 0,
     };
   } catch (e) {
     console.error("[adminOrdersMonthlyKpis] rpc threw", e);

@@ -43,6 +43,7 @@ import {
   isOperationallyCancelled,
   type ClassifiableOrder,
 } from "./orderClassification";
+import { businessWallClockToUtc } from "./businessTime";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Meaningful business events — the server-controlled vocabulary
@@ -167,6 +168,11 @@ export interface LifecycleOrder extends ClassifiableOrder {
   payment_failure_reason?: string | null;
   dispute_id?: string | null;
   id?: string | null;
+  // MONTH-END-...-001 §D/§E — trigger-maintained lifecycle ENTRY timestamps
+  // (backfilled from order_status_logs on TEST; NULL = event never observed).
+  last_under_review_entered_at?: string | null;
+  last_pending_delivery_entered_at?: string | null;
+  last_cancelled_at?: string | null;
 }
 
 function ms(ts: string | null | undefined): number {
@@ -208,10 +214,13 @@ export function orderActivityType(o: LifecycleOrder): LifecycleEventType {
 // July operational activity while its acquisition history stays reachable via
 // the `created` basis.
 
-export type OrderDateBasis = "activity" | "created" | "first_paid" | "completed";
+export type OrderDateBasis =
+  | "activity" | "created" | "first_paid" | "completed"
+  | "under_review_entered" | "pending_delivery_entered";
 
 export const ORDER_DATE_BASES: readonly OrderDateBasis[] = [
   "activity", "created", "first_paid", "completed",
+  "under_review_entered", "pending_delivery_entered",
 ] as const;
 
 export const ORDER_DATE_BASIS_LABEL: Record<OrderDateBasis, string> = {
@@ -219,6 +228,8 @@ export const ORDER_DATE_BASIS_LABEL: Record<OrderDateBasis, string> = {
   created: "Created date",
   first_paid: "First paid date",
   completed: "Completed date",
+  under_review_entered: "Entered review date",
+  pending_delivery_entered: "Entered delivery date",
 };
 
 export const ORDER_DATE_BASIS_HINT: Record<OrderDateBasis, string> = {
@@ -228,6 +239,12 @@ export const ORDER_DATE_BASIS_HINT: Record<OrderDateBasis, string> = {
   created: "Original lead/order creation date. Acquisition-cohort work.",
   first_paid: "FIRST successful payment. Immutable — an add-on or renewal never moves it.",
   completed: "Most recent fulfilment. Advances on a reissue after a reopen.",
+  under_review_entered:
+    "Most recent entry into the under-review workflow (provider assigned or moved to review). " +
+    "Rows predating entry tracking have no value and are excluded from a bounded range.",
+  pending_delivery_entered:
+    "Most recent entry into Pending Delivery (provider submitted, awaiting employee approval). " +
+    "The workflow is new; older orders have no value.",
 };
 
 /** The DB column each basis reads. Used by the server sort AND the date filter. */
@@ -236,6 +253,8 @@ export const ORDER_DATE_BASIS_COLUMN: Record<OrderDateBasis, string> = {
   created: "created_at",
   first_paid: "paid_at",
   completed: "last_completed_at",
+  under_review_entered: "last_under_review_entered_at",
+  pending_delivery_entered: "last_pending_delivery_entered_at",
 };
 
 export function isOrderDateBasis(v: unknown): v is OrderDateBasis {
@@ -253,6 +272,8 @@ export function orderBasisIso(o: LifecycleOrder, basis: OrderDateBasis): string 
     case "created": return o.created_at ?? null;
     case "first_paid": return firstPaidIso(o);
     case "completed": return lastCompletedIso(o);
+    case "under_review_entered": return o.last_under_review_entered_at ?? null;
+    case "pending_delivery_entered": return o.last_pending_delivery_entered_at ?? null;
     case "activity": default: return orderActivityIso(o);
   }
 }
@@ -290,9 +311,32 @@ export function orderGroupingIso(o: LifecycleOrder, basis: OrderDateBasis): stri
 }
 
 /**
+ * MONTH-END-...-001 §D — the From/To dates are BUSINESS-timezone calendar days.
+ *
+ * "2026-07-31" means the America/New_York day [Jul 31 00:00 ET, Aug 1 00:00 ET),
+ * i.e. [Jul 31 04:00Z, Aug 1 04:00Z) in summer. The previous implementation
+ * parsed the bounds with the BROWSER's clock (a bare date at UTC midnight, an
+ * end-of-day sentinel in operator-local time), so a Karachi operator and a New
+ * York operator filtering "July" saw different rows — the exact class of bug
+ * this task removed from the month-end report. DST-safe via businessTime.
+ */
+export function businessDayStartUtcIso(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return businessWallClockToUtc(y, m - 1, d, 0, 0).toISOString();
+}
+
+/** First instant AFTER the business day — exclusive upper bound. */
+export function businessDayEndExclusiveUtcIso(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  // Date.UTC normalises day overflow, so "the 32nd" rolls into the next month.
+  return businessWallClockToUtc(y, m - 1, d + 1, 0, 0).toISOString();
+}
+
+/**
  * Client-side date-range predicate for the active basis. Mirrors the server
- * arms in orderFacetCounts.ts exactly (inclusive start, end-of-day end), so the
- * list rows and the KPI counts can never disagree.
+ * arms in orderFacetCounts.ts exactly (inclusive business-day start, EXCLUSIVE
+ * next-business-day end), so the list rows, the facet counts and the
+ * range-event KPI cards can never disagree.
  *
  * A row with no value on the active basis is EXCLUDED whenever a bound is set —
  * "orders completed in July" must not silently include never-completed orders.
@@ -308,8 +352,8 @@ export function matchesBasisDateRange(
   if (!iso) return false;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return false;
-  if (dateFrom && t < new Date(dateFrom).getTime()) return false;
-  if (dateTo && t > new Date(`${dateTo}T23:59:59`).getTime()) return false;
+  if (dateFrom && t < new Date(businessDayStartUtcIso(dateFrom)).getTime()) return false;
+  if (dateTo && t >= new Date(businessDayEndExclusiveUtcIso(dateTo)).getTime()) return false;
   return true;
 }
 

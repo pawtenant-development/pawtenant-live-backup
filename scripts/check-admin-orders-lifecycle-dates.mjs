@@ -460,14 +460,36 @@ function orderComparator(basis) {
     return (b.id ?? "").localeCompare(a.id ?? "");
   };
 }
+// MONTH-END-...-001 §D — From/To are America/New_York BUSINESS days
+// (inclusive start, EXCLUSIVE next-day end), mirroring
+// businessDayStartUtcIso / businessDayEndExclusiveUtcIso in orderLifecycle.ts.
+// DST-safe via Intl (IANA offsets), same two-pass algorithm as businessTime.ts.
+const NY_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York", hour12: false,
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+function nyOffsetMs(instant) {
+  const p = {};
+  for (const x of NY_FMT.formatToParts(instant)) if (x.type !== "literal") p[x.type] = Number(x.value);
+  if (p.hour === 24) p.hour = 0;
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - instant.getTime();
+}
+function nyWallToUtcMs(y, m0, d) {
+  const naive = Date.UTC(y, m0, d);
+  const guess = naive - nyOffsetMs(new Date(naive));
+  return naive - nyOffsetMs(new Date(guess));
+}
+function businessDayStartMs(iso) { const [y, m, d] = iso.split("-").map(Number); return nyWallToUtcMs(y, m - 1, d); }
+function businessDayEndExclusiveMs(iso) { const [y, m, d] = iso.split("-").map(Number); return nyWallToUtcMs(y, m - 1, d + 1); }
 function matchesBasisDateRange(o, basis, from, to) {
   if (!from && !to) return true;
   const iso = orderBasisIso(o, basis);
   if (!iso) return false;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return false;
-  if (from && t < new Date(from).getTime()) return false;
-  if (to && t > new Date(`${to}T23:59:59`).getTime()) return false;
+  if (from && t < businessDayStartMs(from)) return false;
+  if (to && t >= businessDayEndExclusiveMs(to)) return false;
   return true;
 }
 function orderPaymentState(o) {
@@ -661,9 +683,21 @@ function runLogic() {
     paged.slice().sort(), universe.map((o) => o.id).slice().sort());
 
   // ── Date-basis filtering (§14) ────────────────────────────────────────────
-  t("27 Created Date filter uses created_at",
+  // MONTH-END-...-001 §D: C was created 2026-06-01T00:00:00Z, which is
+  // 2026-05-31 20:00 in America/New_York — a MAY business day. Under the old
+  // browser-local bounds it (wrongly) counted as June; the business-day
+  // contract excludes it, so the expectation changed from ["A","C"] to ["A"].
+  t("27 Created Date filter uses created_at over BUSINESS days",
     [A, B, C].filter((o) => matchesBasisDateRange(o, "created", "2026-06-01", "2026-06-30")).map((o) => o.id),
-    ["A", "C"]);
+    ["A"]);
+  t("27b a 00:00Z timestamp on the 1st belongs to the PREVIOUS business day",
+    matchesBasisDateRange(C, "created", "2026-05-01", "2026-05-31"), true);
+  t("27c business-day end is EXCLUSIVE of the next day, inclusive of the ET evening",
+    // 2026-12-01T04:30:00Z = 2026-11-30 23:30 ET (EST) — still November in
+    // business time even though it is already December in UTC. DST has ended by
+    // then, so this also proves the winter offset resolves correctly.
+    matchesBasisDateRange({ id: "W", created_at: "2026-12-01T04:30:00Z" }, "created", "2026-11-01", "2026-11-30"),
+    true);
   t("28 First Paid Date filter uses the first-paid timestamp",
     [A, B, C].filter((o) => matchesBasisDateRange(o, "first_paid", "2026-07-01", "2026-07-31")).map((o) => o.id),
     ["A"]);

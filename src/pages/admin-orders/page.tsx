@@ -56,6 +56,12 @@ import {
   formatMonthlyPeriodLabel,
   type AdminOrdersMonthlyKpis,
 } from "../../lib/adminOrdersMonthlyKpis";
+// MONTH-END-...-LIVE-ROLLOUT-001 §C — event-based KPI counts while a custom
+// range is active.
+import {
+  fetchAdminOrdersRangeEventKpis,
+  type AdminOrdersRangeEventKpis,
+} from "../../lib/adminOrdersRangeKpis";
 import { exportMetaAudienceToCSV, type MetaAudienceOrder, type MetaAudienceMode } from "../../lib/exportMetaAudience";
 import BulkSMSModal from "./components/BulkSMSModal";
 import BroadcastModal from "./components/BroadcastModal";
@@ -606,6 +612,33 @@ export default function AdminOrdersPage() {
     // aggregateReloadToken is what makes the status-tab counts react to a
     // MUTATION and not only to a filter change.
   }, [dateBasis, dateFrom, dateTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, search, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, aggregateReloadToken, facetGuard]);
+
+  // ── MONTH-END-...-LIVE-ROLLOUT-001 §C — PERIOD-EVENT KPIs for a custom range ─
+  // Active ONLY while From/To is set. This is a THIRD universe, deliberately
+  // separate from both the monthly banner (zero-arg, filter-blind — guarded)
+  // and the facet counts (current-state buckets over the filtered list):
+  // it answers "what HAPPENED during the selected range?", one count per
+  // authoritative lifecycle event timestamp, interpreted in America/New_York.
+  // The banner effect above must NEVER grow dateFrom/dateTo deps — this one
+  // owns the range.
+  const rangeKpiActive = Boolean(dateFrom || dateTo);
+  const [rangeKpis, setRangeKpis] = useState<AdminOrdersRangeEventKpis | null>(null);
+  const [rangeKpisLoading, setRangeKpisLoading] = useState(false);
+  const rangeKpiGuard = useRef(createRequestGuard()).current;
+  useEffect(() => {
+    if (!dateFrom && !dateTo) { setRangeKpis(null); setRangeKpisLoading(false); return; }
+    setRangeKpisLoading(true);
+    const t = window.setTimeout(() => {
+      void runLatest(
+        rangeKpiGuard,
+        () => fetchAdminOrdersRangeEventKpis({ from: dateFrom || null, to: dateTo || null }),
+        (k) => { setRangeKpis(k); setRangeKpisLoading(false); },
+        () => setRangeKpisLoading(false),
+      );
+    }, 300);
+    return () => { window.clearTimeout(t); };
+  }, [dateFrom, dateTo, aggregateReloadToken, rangeKpiGuard]);
+
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState(""); // export error surface (avoids silent bad CSV)
   // Meta Custom Audience export (identifiers-only, paid clients) — see lib/exportMetaAudience.ts
@@ -874,6 +907,10 @@ export default function AdminOrdersPage() {
         // src/lib/orderLifecycle.ts.
         ",last_meaningful_activity_at,last_meaningful_activity_type,last_payment_at" +
         ",first_completed_at,last_completed_at,last_reopened_at" +
+        // MONTH-END-...-LIVE-ROLLOUT-001 §C — lifecycle ENTRY timestamps
+        // (trigger-maintained), required by the under_review_entered /
+        // pending_delivery_entered date bases.
+        ",last_under_review_entered_at,last_pending_delivery_entered_at,last_cancelled_at" +
         ",official_letter_reopened_at,official_letter_final_completed_at";
 
       // LIVE-ADMIN-ORDERS-EMPTY 2026-07-13: page the orders read newest-first.
@@ -2335,90 +2372,131 @@ export default function AdminOrdersPage() {
           <>
             {!loading && (
               <>
-              {/* ── CURRENT-MONTH banner label ────────────────────────────────
-                  ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001 §2: the operator
-                  must never have to infer whether these are monthly or all-time,
-                  so the active period is stated next to the numbers. */}
+              {/* ── OPERATIONS OVERVIEW banner label ──────────────────────────
+                  MONTH-END-BUSINESS-TIMEZONE-KPI-REPORTING-INTEGRITY-001 §D:
+                  the cards no longer share ONE timeframe, so they must not share
+                  one heading. Four are live queue depths ("now") and only
+                  Completed is monthly — a blanket "This month" label made the
+                  four read as monthly counts, which is exactly the ambiguity
+                  that hid the rollover defect. Each card states its own
+                  timeframe; the heading states only the business timezone. */}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5 px-0.5">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">This month</span>
-                {monthlyKpis && (
-                  <span className="text-[11px] font-semibold text-gray-500">· {formatMonthlyPeriodLabel(monthlyKpis)}</span>
+                {/* MONTH-END-...-001 §D — with a custom From/To range active the
+                    cards flip to PERIOD-EVENT semantics ("what happened during
+                    the range?"), so the heading must state the selected range,
+                    the business timezone, and the metric kind. Without a range,
+                    the default heading states the current-state semantics. */}
+                {rangeKpiActive ? (
+                  <>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Period events</span>
+                    <span className="text-[11px] font-semibold text-gray-500">
+                      · {dateFrom || "start"} → {dateTo || "today"}
+                    </span>
+                    <span className="text-[10px] font-semibold text-gray-400">· America/New_York</span>
+                    <i
+                      className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
+                      tabIndex={0}
+                      role="img"
+                      aria-label="A custom date range is active, so every card counts lifecycle EVENTS inside the range (period-event metrics), each on its authoritative timestamp: created, first paid, entered under review, entered pending delivery, last completed. Days are America/New_York business days. Clicking a card sets the list to the matching Date Basis with all statuses, so the list total equals the card."
+                      title="Custom range active: cards count lifecycle events inside the range (period events, America/New_York days) — not the live queue. Click a card to open the matching list view; its total equals the card."
+                    ></i>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Operations overview</span>
+                    <span className="text-[10px] font-semibold text-gray-400">· America/New_York</span>
+                    {monthlyKpis && (
+                      <span className="text-[11px] font-semibold text-gray-500">· Completed covers {formatMonthlyPeriodLabel(monthlyKpis)}</span>
+                    )}
+                    <i
+                      className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
+                      tabIndex={0}
+                      role="img"
+                      aria-label="Lead, Paid (Unassigned), Under Review and Pending Delivery are live queue depths right now (current-state metrics), so work started in an earlier month still counts. Completed covers the current America/New_York calendar month only (a period-event metric). None of these cards is affected by search, status, package or sequence filters, Date Basis, or pagination — the list below is. Setting a From/To date filter switches the cards to period-event counts for that range."
+                      title="The four queue cards are live depths (current state; work started earlier still counts). Completed covers the current Eastern calendar month. Unaffected by search, filters, Date Basis and pagination — those narrow the list below, not these cards. Set a From/To date to switch the cards to period-event counts."
+                    ></i>
+                  </>
                 )}
-                <i
-                  className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
-                  tabIndex={0}
-                  role="img"
-                  aria-label="Lead, Paid (Unassigned) and Completed count the current Eastern calendar month. Under Review and Pending Delivery are marked 'now' and count everything in those queues right now, whenever it entered, so each matches its status tab. None of the five is affected by search, status, package or sequence filters, Date Basis, or pagination — the list below is."
-                  title="Lead / Paid / Completed = current Eastern month. Under Review / Pending Delivery = current queue depth (marked 'now'), matching their tabs. Unaffected by search, filters, Date Basis and pagination — those narrow the list below, not these cards."
-                ></i>
               </div>
               {/* EXACTLY five permanent workflow cards — §15 as amended by
                   ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001, which
                   adds Pending Delivery between Under Review and Completed. 1 col
                   on phones, 2 on small tablets, 5 from lg up so nothing is ever
-                  clipped. All five values are server-authoritative and MUTUALLY
-                  EXCLUSIVE (Under Review and Completed both exclude Pending
-                  Delivery in the RPC) — never facet counts, never derived from
-                  the rows currently loaded.
-
-                  ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — the
-                  banner deliberately mixes TWO universes now:
-                    Lead / Paid (Unassigned) / Completed = current Eastern MONTH
-                      ("what arrived, what shipped").
-                    Under Review / Pending Delivery      = CURRENT QUEUE DEPTH
-                      ("what is still on our desk"), marked `current: true` and
-                      labelled "· now". They are queues, not monthly events: the
-                      month-gated version emptied both cards at every rollover
-                      while the tabs kept listing the same open orders. */}
+                  clipped. Values are server-authoritative and MUTUALLY EXCLUSIVE
+                  (Under Review and Completed both exclude Pending Delivery in
+                  the RPC) — never facet counts, never derived from loaded rows.
+                  TIMEFRAMES DIFFER BY CARD (§D): the four queue cards read the
+                  *Current fields (live depth, no month window) so each equals its
+                  status tab and survives month rollover; Completed reads the
+                  monthly field keyed on last_completed_at. Every card carries its
+                  own timeframe label — do not reintroduce a shared one. */}
               <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
+                  // MONTH-END-...-001 §D — every card carries BOTH semantics:
+                  //   label/timeframe/value        default view (current state,
+                  //                                except Completed = monthly)
+                  //   rangeLabel/rangeValue/…      custom-range view (period
+                  //                                EVENTS on the authoritative
+                  //                                lifecycle timestamp)
+                  // rangeBasis is the Date Basis whose filtered list (status =
+                  // All) reconciles exactly with the range count — clicking the
+                  // card applies it.
                   {
                     label: "Lead (Unpaid)",
-                    value: monthlyKpis?.leadUnpaid ?? null,
+                    timeframe: "now",
+                    value: monthlyKpis?.leadUnpaidCurrent ?? null,
+                    rangeLabel: "Leads Created",
+                    rangeValue: rangeKpis?.leadsCreated ?? null,
+                    rangeBasis: "created" as OrderDateBasis,
                     icon: "ri-user-follow-line",
                     color: "text-amber-600",
                     filter: "lead_unpaid",
-                    current: false,
                   },
                   {
                     label: "Paid (Unassigned)",
-                    value: monthlyKpis?.paidUnassigned ?? null,
+                    timeframe: "now",
+                    value: monthlyKpis?.paidUnassignedCurrent ?? null,
+                    rangeLabel: "Orders Paid",
+                    rangeValue: rangeKpis?.ordersPaid ?? null,
+                    rangeBasis: "first_paid" as OrderDateBasis,
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
                     filter: "paid_unassigned",
-                    current: false,
                   },
                   {
-                    // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 —
-                    // CURRENT QUEUE DEPTH, not "entered review this month". A
-                    // queue is sized by what is in it; the month-gated value used
-                    // to drop every still-open order at the month rollover while
-                    // the tab kept listing them. Equals the Under Review tab.
                     label: "Under Review",
+                    timeframe: "now",
                     value: monthlyKpis?.underReviewCurrent ?? null,
+                    rangeLabel: "Entered Under Review",
+                    rangeValue: rangeKpis?.enteredUnderReview ?? null,
+                    rangeBasis: "under_review_entered" as OrderDateBasis,
                     icon: "ri-time-line",
                     color: "text-violet-600",
                     filter: "under_review",
-                    current: true,
                   },
                   {
                     // EMPLOYEE-ONLY queue: provider submitted, awaiting employee
-                    // approval. Never a customer-facing status. Current queue
-                    // depth, for the same reason as Under Review.
+                    // approval. Never a customer-facing status.
                     label: "Pending Delivery",
+                    timeframe: "now",
                     value: monthlyKpis?.pendingDeliveryCurrent ?? null,
+                    rangeLabel: "Entered Pending Delivery",
+                    rangeValue: rangeKpis?.enteredPendingDelivery ?? null,
+                    rangeBasis: "pending_delivery_entered" as OrderDateBasis,
                     icon: "ri-inbox-unarchive-line",
                     color: "text-teal-600",
                     filter: "pending_delivery",
-                    current: true,
                   },
                   {
                     label: "Completed",
+                    timeframe: "this month",
                     value: monthlyKpis?.completed ?? null,
+                    rangeLabel: "Completed",
+                    rangeValue: rangeKpis?.completed ?? null,
+                    rangeBasis: "completed" as OrderDateBasis,
                     icon: "ri-checkbox-circle-line",
                     color: "text-emerald-600",
                     filter: "completed",
-                    current: false,
                   },
                   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 §15 — the permanent
                   // banner is EXACTLY the four approved workflow cards. "Payment
@@ -2426,41 +2504,53 @@ export default function AdminOrdersPage() {
                   // four; it survives as a status-filter tab and in Order Details.
                   // Do not re-add it, nor cards for Reopened / Refunded /
                   // Cancelled / Disputed.
-                ].map((s) => (
+                ].map((s) => {
+                  const active = rangeKpiActive
+                    ? dateBasis === s.rangeBasis && statusFilter === "all"
+                    : statusFilter === s.filter;
+                  const shownValue = rangeKpiActive ? s.rangeValue : s.value;
+                  const shownLoading = rangeKpiActive ? rangeKpisLoading : monthlyKpisLoading;
+                  return (
                   <button
                     key={s.label}
                     type="button"
-                    onClick={() => setStatusFilter(s.filter)}
-                    className={`flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors w-full ${statusFilter === s.filter ? "bg-[#e8f0f9]" : "hover:bg-slate-50"}`}
-                    // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — the
-                    // banner now mixes two universes, so each card says which one
-                    // it is rather than leaving the operator to infer it from the
-                    // "This month" heading above.
-                    title={s.current
-                      ? `${s.label}: every order in this queue right now, whenever it entered. Matches the ${s.label} tab.`
-                      : `${s.label}: current Eastern calendar month only.`}
+                    onClick={() => {
+                      if (rangeKpiActive) {
+                        // Period-event mode: the card reconciles with the list
+                        // filtered to its event's Date Basis across ALL statuses
+                        // (an order that entered review in July may be completed
+                        // now — the event still happened in July).
+                        setStatusFilter("all");
+                        setDateBasis(s.rangeBasis);
+                      } else {
+                        setStatusFilter(s.filter);
+                      }
+                    }}
+                    className={`flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors w-full ${active ? "bg-[#e8f0f9]" : "hover:bg-slate-50"}`}
                   >
-                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${statusFilter === s.filter ? "bg-[#3b6ea5]/10" : "bg-slate-100"}`}>
+                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${active ? "bg-[#3b6ea5]/10" : "bg-slate-100"}`}>
                       <i className={`${s.icon} ${s.color} text-sm`}></i>
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-gray-500 font-medium leading-none truncate">
-                        {s.label}
-                        {/* Queue cards are CURRENT, not monthly. One muted word,
-                            no layout or colour change. */}
-                        {s.current && <span className="ml-1 text-gray-400 font-semibold">· now</span>}
+                        {rangeKpiActive ? s.rangeLabel : s.label}
+                        {/* Per-card timeframe — the cards do NOT share one.
+                            "now" = current-state metric; "this month" /
+                            "in range" = period-event metric. */}
+                        <span className="text-gray-400 font-normal"> · {rangeKpiActive ? "in range" : s.timeframe}</span>
                       </p>
-                      {/* Contained skeleton while the monthly aggregate loads —
-                          never a stale all-time number standing in for a
-                          monthly one. "—" means the aggregate genuinely failed. */}
-                      {monthlyKpisLoading ? (
-                        <span className="mt-1 block h-5 w-10 rounded bg-slate-200 animate-pulse" aria-label={`${s.label} loading`}></span>
+                      {/* Contained skeleton while the aggregate loads — never a
+                          stale number standing in for the active mode. "—"
+                          means the aggregate genuinely failed. */}
+                      {shownLoading ? (
+                        <span className="mt-1 block h-5 w-10 rounded bg-slate-200 animate-pulse" aria-label={`${rangeKpiActive ? s.rangeLabel : s.label} loading`}></span>
                       ) : (
-                        <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value == null ? "—" : s.value}</p>
+                        <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{shownValue == null ? "—" : shownValue}</p>
                       )}
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
               {/* ADMIN-ORDERS-LIFECYCLE-UI-FINAL-CORRECTIONS-001 §2 — the four
                   workflow cards stand alone. NO standalone "Payment Failed"
