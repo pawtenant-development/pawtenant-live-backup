@@ -1,0 +1,90 @@
+{
+  "month": "2026-07",
+  "envLabel": "LIVE",
+  "email": {
+    "path": "docs\\report-previews\\2026-07-LIVE\\email-2026-07-LIVE.html",
+    "bytes": 17592,
+    "insights": [
+      "Google Ads drove 73.2% of paid orders and 74.5% of revenue ($16,438.00).",
+      "Google Ads refund-adjusted ROAS was 1.59x on $9,909.17 spend (CPA $71.29; 8 refunds, $645.00).",
+      "Refund rate 5.8% of paid orders (11 refunds, $913.00).",
+      "Organic search contributed 21 paid orders ($2,304.00) with no media cost."
+    ]
+  },
+  "workbook": {
+    "path": "docs\\report-previews\\2026-07-LIVE\\pawtenant-monthly-report-2026-07-LIVE.xlsx",
+    "bytes": 27630,
+    "sheets": [
+      "Executive Summary",
+      "Profit & Loss",
+      "Orders",
+      "Paid Marketing",
+      "Organic Search",
+      "Traffic & Attribution",
+      "Providers",
+      "States",
+      "Refunds",
+      "Expenses",
+      "Data Quality & Reconciliation"
+    ],
+    "frozenPanes": "11/11",
+    "autofilteredSheets": 8,
+    "problems": []
+  },
+  "reconciliation": {
+    "checks": [
+      {
+        "left": 190,
+        "name": "cross_channel_orders_equal_paid_orders",
+        "pass": true,
+        "delta": 0,
+        "right": 190
+      },
+      {
+        "left": 22076,
+        "name": "cross_channel_revenue_equals_gross",
+        "pass": true,
+        "delta": 0,
+        "right": 22076
+      },
+      {
+        "left": 15195.8,
+        "name": "business_net_identity",
+        "pass": true,
+        "delta": 0,
+        "right": 15195.8
+      },
+      {
+        "left": 4119.57,
+        "name": "operating_net_one_formula",
+        "pass": true,
+        "delta": 0,
+        "right": 4119.57
+      },
+      {
+        "left": 17956.43,
+        "name": "expense_components_sum_to_total",
+        "pass": true,
+        "delta": 0,
+        "right": 17956.43
+      },
+      {
+        "left": 4119.57,
+        "name": "gross_minus_total_expenses_equals_operating_net",
+        "pass": true,
+        "delta": 0,
+        "right": 4119.57
+      },
+      {
+        "left": 139,
+        "name": "google_block_matches_channel_bucket",
+        "pass": true,
+        "delta": 0,
+        "right": 139
+      }
+    ],
+    "reconciled": true
+  },
+  "ad_spend_available": true,
+  "qa_fixture_rows_in_period": 0
+}

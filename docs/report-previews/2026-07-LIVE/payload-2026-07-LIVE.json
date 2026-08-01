@@ -1,0 +1,538 @@
+{
+ "pnl": {
+  "ad_spend": 9909.17,
+  "business_net": 15195.8,
+  "refund_count": 11,
+  "gross_revenue": 22076.0,
+  "operating_net": 4119.57,
+  "refund_amount": 913.0,
+  "employee_count": 3,
+  "other_expenses": 705.75,
+  "total_expenses": 17956.43,
+  "marketing_spend": 9909.17,
+  "stripe_fees_est": 697.2,
+  "provider_payouts": 5270.0,
+  "salary_expense_est": 461.31,
+  "contribution_margin": 15195.8,
+  "operating_net_formula": "business_net - other_expenses - salary_expense_est - ad_spend (computeOperatingNet)"
+ },
+ "meta": {
+  "days": 31,
+  "from": "2026-07-01",
+  "basis": "database lifecycle events; Stripe cash-basis Accounts cards are a separate universe by design",
+  "label": "July 2026",
+  "month": "2026-07",
+  "source": "public.get_monthly_business_report(p_month) v2 — the canonical month-end payload",
+  "currency": "USD",
+  "timezone": "America/New_York",
+  "to_inclusive": "2026-07-31",
+  "fx_pkr_per_usd": 280.0,
+  "report_version": 2,
+  "generated_at_utc": "2026-08-01T13:43:54.667657+00:00",
+  "period_start_utc": "2026-07-01T04:00:00+00:00",
+  "period_end_exclusive_utc": "2026-08-01T04:00:00+00:00"
+ },
+ "period": {
+  "to": "2026-07-31",
+  "days": 31,
+  "from": "2026-07-01",
+  "currency": "USD",
+  "fx_pkr_per_usd": 280.0
+ },
+ "refunds": {
+  "count": 11,
+  "amount": 913.0,
+  "by_state": [
+   {
+    "state": "TX",
+    "amount": 317.0,
+    "refunds": 3
+   },
+   {
+    "state": "AZ",
+    "amount": 198.0,
+    "refunds": 2
+   },
+   {
+    "state": "FL",
+    "amount": 169.0,
+    "refunds": 2
+   },
+   {
+    "state": "IA",
+    "amount": 119.0,
+    "refunds": 1
+   },
+   {
+    "state": "CA",
+    "amount": 50.0,
+    "refunds": 1
+   },
+   {
+    "state": "GA",
+    "amount": 40.0,
+    "refunds": 1
+   },
+   {
+    "state": "MD",
+    "amount": 20.0,
+    "refunds": 1
+   }
+  ],
+  "rate_pct_of_paid": 5.8,
+  "google_attributed_refunds_in_period": 9
+ },
+ "revenue": {
+  "esa_orders": 143,
+  "psd_orders": 47,
+  "paid_orders": 190,
+  "gross_revenue": 22076.0,
+  "leads_created": 375,
+  "new_customers": 186,
+  "avg_order_value": 116.19,
+  "returning_customers": 4,
+  "paid_conversion_rate": 33.6,
+  "total_orders_created": 562
+ },
+ "traffic": {
+  "note": "no GA4 or equivalent reporting integration exists; users/sessions/engagement are unavailable and are not rendered as zeros",
+  "label": "Traffic analytics not connected",
+  "connected": false
+ },
+ "expenses": {
+  "rows": [
+   {
+    "basis": "estimated 2.9% + $0.30 per paid order",
+    "label": "Stripe Fees (est.)",
+    "category": "stripe_fees_est",
+    "amount_usd": 697.2
+   },
+   {
+    "basis": "orders.refunded_at event basis",
+    "label": "Refunds",
+    "category": "refunds",
+    "amount_usd": 913.0
+   },
+   {
+    "basis": "doctor_earnings accrued, de-duplicated, non-cancelled",
+    "label": "Provider Payouts",
+    "category": "provider_payouts",
+    "amount_usd": 5270.0
+   },
+   {
+    "basis": "prorated base + approved adjustments, owner excluded, FX 280",
+    "label": "Salary (est.)",
+    "category": "salary_est",
+    "amount_usd": 461.31
+   },
+   {
+    "basis": "marketing_ad_spend_daily only — never company_expenses; deducted exactly once",
+    "label": "Paid Media (synced)",
+    "category": "ad_spend",
+    "amount_usd": 9909.17
+   },
+   {
+    "basis": "company_expenses manual rows excl. salary/payout/ads categories",
+    "label": "Other Company Expenses",
+    "category": "other",
+    "amount_usd": 705.75
+   }
+  ],
+  "total_usd": 17956.43
+ },
+ "recovery": {
+  "abandoned_leads": 375,
+  "recovered_orders": 2,
+  "recovered_revenue": 264.0
+ },
+ "lifecycle": {
+  "basis": "each event counted on its authoritative timestamp; gaps disclosed, never invented",
+  "events": [
+   {
+    "event": "lead_created",
+    "source": "orders.created_at",
+    "count_in_period": 562,
+    "missing_timestamp_rows": 0
+   },
+   {
+    "note": "missing = paid-ish orders created this period with NULL paid_at",
+    "event": "paid",
+    "source": "orders.paid_at",
+    "count_in_period": 190,
+    "missing_timestamp_rows": 0
+   },
+   {
+    "note": "event log begins 2026-07; assignments before coverage_from are not derivable",
+    "event": "provider_assigned",
+    "source": "order_lifecycle_events.provider_assigned",
+    "coverage_from": "2026-07-26T18:03:57.688151+00:00",
+    "count_in_period": 34
+   },
+   {
+    "note": "trigger-maintained; backfilled from order_status_logs (dense since 2026-03-30)",
+    "event": "entered_under_review",
+    "source": "orders.last_under_review_entered_at",
+    "count_in_period": 201,
+    "missing_timestamp_rows": 64
+   },
+   {
+    "note": "workflow introduced 2026-07; complete since introduction",
+    "event": "entered_pending_delivery",
+    "source": "orders.last_pending_delivery_entered_at",
+    "count_in_period": 22
+   },
+   {
+    "event": "completed",
+    "source": "orders.last_completed_at",
+    "count_in_period": 197,
+    "legacy_rows_missing_patient_notification_sent_at": 0
+   },
+   {
+    "event": "refunded",
+    "source": "orders.refunded_at",
+    "count_in_period": 11,
+    "missing_timestamp_rows": 0
+   },
+   {
+    "note": "legacy cancellations without a status log have no usable timestamp and are excluded from period counts",
+    "event": "cancelled",
+    "source": "orders.last_cancelled_at",
+    "count_in_period": 5,
+    "missing_timestamp_rows": 2
+   },
+   {
+    "event": "reopened",
+    "source": "orders.last_reopened_at",
+    "count_in_period": 16
+   }
+  ]
+ },
+ "providers": [
+  {
+   "provider": "Eve Rosno",
+   "payout_usd": 1830.0,
+   "completed_orders": 61
+  },
+  {
+   "provider": "Lytara Garcia",
+   "payout_usd": 975.0,
+   "completed_orders": 39
+  },
+  {
+   "provider": "Stephanie White",
+   "payout_usd": 930.0,
+   "completed_orders": 31
+  },
+  {
+   "provider": "Robert Staaf",
+   "payout_usd": 850.0,
+   "completed_orders": 34
+  },
+  {
+   "provider": "Edna Kwan",
+   "payout_usd": 510.0,
+   "completed_orders": 17
+  },
+  {
+   "provider": "Karla Delgado",
+   "payout_usd": 90.0,
+   "completed_orders": 3
+  },
+  {
+   "provider": "Cassandra Enriquez",
+   "payout_usd": 90.0,
+   "completed_orders": 3
+  },
+  {
+   "provider": "Chad Cunningham",
+   "payout_usd": 90.0,
+   "completed_orders": 3
+  },
+  {
+   "provider": "Angela King",
+   "payout_usd": 75.0,
+   "completed_orders": 3
+  }
+ ],
+ "operations": {
+  "queue_now": {
+   "as_of_utc": "2026-08-01T13:43:54.667657+00:00",
+   "lead_unpaid": 1257,
+   "under_review": 3,
+   "paid_unassigned": 0,
+   "pending_delivery": 0
+  },
+  "refund_rate": 5.8,
+  "snapshot_now": {
+   "lead": 1257,
+   "refunded": 2,
+   "cancelled": 17,
+   "completed": 470,
+   "processing": 3,
+   "under-review": 1
+  },
+  "reopened_orders": 16,
+  "cancelled_orders": 5,
+  "completed_orders": 197
+ },
+ "top_states": [
+  {
+   "state": "TX",
+   "orders": 40,
+   "revenue": 4526.0
+  },
+  {
+   "state": "FL",
+   "orders": 24,
+   "revenue": 2628.0
+  },
+  {
+   "state": "CA",
+   "orders": 16,
+   "revenue": 1806.0
+  },
+  {
+   "state": "AZ",
+   "orders": 12,
+   "revenue": 1515.0
+  },
+  {
+   "state": "WA",
+   "orders": 12,
+   "revenue": 1428.0
+  },
+  {
+   "state": "CO",
+   "orders": 8,
+   "revenue": 972.0
+  },
+  {
+   "state": "NY",
+   "orders": 7,
+   "revenue": 844.0
+  },
+  {
+   "state": "GA",
+   "orders": 7,
+   "revenue": 803.0
+  },
+  {
+   "state": "NJ",
+   "orders": 6,
+   "revenue": 784.0
+  },
+  {
+   "state": "VA",
+   "orders": 5,
+   "revenue": 655.0
+  }
+ ],
+ "acquisition": {
+  "meta_ads": {
+   "spend_usd": 0.0,
+   "connection": "connected_stale",
+   "days_in_period": 31,
+   "last_synced_day": "2026-07-03",
+   "attributed_orders": 0,
+   "attributed_revenue": 0.0,
+   "days_synced_in_period": 1
+  },
+  "google_ads": {
+   "clicks": 1664,
+   "backend": {
+    "cpa": 71.29,
+    "roas": 1.66,
+    "esa_orders": 98,
+    "psd_orders": 41,
+    "refund_count": 8,
+    "refund_amount": 645.0,
+    "attributed_orders": 139,
+    "attributed_revenue": 16438.0,
+    "refund_adjusted_roas": 1.59,
+    "missing_click_id_orders": 0,
+    "refund_adjusted_revenue": 15793.0
+   },
+   "currency": "PKR",
+   "spend_usd": 9909.17,
+   "connection": "synced",
+   "impressions": 25322,
+   "spend_native": 2774568.48,
+   "days_in_period": 31,
+   "fx_pkr_per_usd": 280.0,
+   "last_synced_day": "2026-08-01",
+   "platform_vs_backend": {
+    "note": "Never assess Google Ads from platform conversions alone; the backend paid-order DB is authoritative. Historical PSD secondary-conversion double counting inflated platform numbers.",
+    "delta": -11.0,
+    "backend_paid_orders": 139,
+    "platform_conversions": 128.0
+   },
+   "days_synced_in_period": 31,
+   "platform_reported_conversions": 128.0
+  },
+  "cross_channel": [
+   {
+    "orders": 139,
+    "channel": "google_ads",
+    "revenue": 16438.0,
+    "pct_orders": 73.2,
+    "pct_revenue": 74.5,
+    "raw_channels": null,
+    "refund_count": 8,
+    "refund_amount": 645.0,
+    "refund_adjusted_revenue": 15793.0
+   },
+   {
+    "orders": 21,
+    "channel": "organic_search",
+    "revenue": 2304.0,
+    "pct_orders": 11.1,
+    "pct_revenue": 10.4,
+    "raw_channels": null,
+    "refund_count": 1,
+    "refund_amount": 109.0,
+    "refund_adjusted_revenue": 2195.0
+   },
+   {
+    "orders": 15,
+    "channel": "direct",
+    "revenue": 1722.0,
+    "pct_orders": 7.9,
+    "pct_revenue": 7.8,
+    "raw_channels": null,
+    "refund_count": 0,
+    "refund_amount": 0.0,
+    "refund_adjusted_revenue": 1722.0
+   },
+   {
+    "orders": 13,
+    "channel": "chatgpt",
+    "revenue": 1413.0,
+    "pct_orders": 6.8,
+    "pct_revenue": 6.4,
+    "raw_channels": null,
+    "refund_count": 0,
+    "refund_amount": 0.0,
+    "refund_adjusted_revenue": 1413.0
+   },
+   {
+    "orders": 1,
+    "channel": "social_organic",
+    "revenue": 110.0,
+    "pct_orders": 0.5,
+    "pct_revenue": 0.5,
+    "raw_channels": null,
+    "refund_count": 0,
+    "refund_amount": 0.0,
+    "refund_adjusted_revenue": 110.0
+   },
+   {
+    "orders": 1,
+    "channel": "other",
+    "revenue": 89.0,
+    "pct_orders": 0.5,
+    "pct_revenue": 0.4,
+    "raw_channels": "google",
+    "refund_count": 0,
+    "refund_amount": 0.0,
+    "refund_adjusted_revenue": 89.0
+   }
+  ],
+  "microsoft_ads": {
+   "note": "manual expense rows are company expenses (already inside other_expenses), not attributable campaign performance",
+   "label": "Not connected / manual expense only",
+   "connection": "not_connected_manual_expense_only",
+   "manual_expense_usd_in_period": 300.0
+  },
+  "refund_basis_note": "channel refund figures are cohort basis (refunds observed to date on orders PAID in this period); the P&L refund line is event basis (refunds EXECUTED in this period, whichever month the order was paid)",
+  "attribution_quality": {
+   "note": "conflicting = order carries a paid-platform click id while its resolved channel is a different channel; counted, never silently reassigned",
+   "paid_orders": 190,
+   "conflicting_meta_signal": 0,
+   "unknown_or_unattributed": 0,
+   "conflicting_google_signal": 2,
+   "duplicate_gclids_in_period": 2,
+   "paid_click_on_nonpaid_channel": 2
+  }
+ },
+ "data_warnings": [
+  "Meta Ads spend is connected_stale (last synced day: 2026-07-03). Shown spend covers only the synced days; missing sync is NOT $0.",
+  "Microsoft/Bing Ads: not connected / manual expense only. Manual rows are company expenses, not attributable campaign performance.",
+  "Stripe fees are ESTIMATED at 2.9% + $0.30 per paid order (no per-charge fee is stored on orders).",
+  "Salary is an ESTIMATE: prorated base salary + approved comp adjustments, converted at 1 USD = 280 PKR. Excludes attendance half-day deductions.",
+  "Google Ads bills in PKR; spend converted to USD at a fixed 280 PKR/USD.",
+  "Google Search Console is not integrated — organic clicks/impressions/position are unavailable (organic order attribution below is from the backend database).",
+  "Traffic analytics not connected — no GA4 (or equivalent) reporting integration exists; sessions/users are unavailable.",
+  "64 assigned order(s) predate under-review entry tracking and have no entry timestamp (event counting began with order_status_logs, 2026-03-30).",
+  "Figures are database lifecycle-event basis (orders/doctor_earnings/company_expenses/marketing_ad_spend_daily). The Accounts screen's Stripe cash-basis cards are a different universe by design; the shared components are ad spend, salary and manual expenses."
+ ],
+ "organic_search": {
+  "gsc": {
+   "note": "no GSC storage or connector exists in this project; clicks/impressions/CTR/position are unavailable. The 2026-07-19 SEO audit is a static baseline document, not live monthly data.",
+   "label": "Google Search Console not integrated",
+   "connected": false
+  },
+  "backend_attribution": {
+   "organic_orders": 21,
+   "organic_revenue": 2304.0,
+   "organic_refund_amount": 109.0,
+   "organic_refund_adjusted_revenue": 2195.0
+  }
+ },
+ "reconciliation": {
+  "checks": [
+   {
+    "left": 190,
+    "name": "cross_channel_orders_equal_paid_orders",
+    "pass": true,
+    "delta": 0,
+    "right": 190
+   },
+   {
+    "left": 22076.0,
+    "name": "cross_channel_revenue_equals_gross",
+    "pass": true,
+    "delta": 0.0,
+    "right": 22076.0
+   },
+   {
+    "left": 15195.8,
+    "name": "business_net_identity",
+    "pass": true,
+    "delta": 0.0,
+    "right": 15195.8
+   },
+   {
+    "left": 4119.57,
+    "name": "operating_net_one_formula",
+    "pass": true,
+    "delta": 0.0,
+    "right": 4119.57
+   },
+   {
+    "left": 17956.43,
+    "name": "expense_components_sum_to_total",
+    "pass": true,
+    "delta": 0.0,
+    "right": 17956.43
+   },
+   {
+    "left": 4119.57,
+    "name": "gross_minus_total_expenses_equals_operating_net",
+    "pass": true,
+    "delta": 0.0,
+    "right": 4119.57
+   },
+   {
+    "left": 139,
+    "name": "google_block_matches_channel_bucket",
+    "pass": true,
+    "delta": 0,
+    "right": 139
+   }
+  ],
+  "reconciled": true
+ },
+ "ad_spend_available": true,
+ "qa_fixture_rows_in_period": 0,
+ "_MARKING": "READ-ONLY LIVE JULY PAYLOAD - REVIEW ONLY, DELIVERY DISABLED (skipped_owner_review, delivery_allowed=false). Generated post-rollout by the deployed canonical RPC on LIVE."
+}
