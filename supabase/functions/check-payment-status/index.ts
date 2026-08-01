@@ -77,6 +77,15 @@ interface RequestBody {
   paymentIntentId?: string;
 }
 
+// ── CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001 ────────────────────────
+// This function runs with verify_jwt=false — it is reachable by ANY caller with
+// no credentials whatsoever (the Klarna "I've completed payment" button and the
+// ESA/PSD thank-you pages need that). It therefore reads ONLY the columns it
+// needs to decide payment state, and deliberately does NOT select customer PII.
+//
+// Do not add first_name / last_name / email / phone / price / plan_type /
+// delivery_speed / letter_type / coupon_* / doctor_name here. If the row does
+// not carry it, it cannot leak. (Guard: scripts/check-public-payment-status-privacy.mjs)
 interface OrderRow {
   id: string;
   confirmation_id: string;
@@ -84,40 +93,57 @@ interface OrderRow {
   payment_intent_id: string | null;
   paid_at: string | null;
   status: string | null;
-  // ── 2026-06-18 THANK-YOU-SOURCE-OF-TRUTH ──────────────────────────────────
-  // Safe, non-medical display fields so the ESA/PSD thank-you pages can read
-  // the canonical order record instead of trusting stale URL params or empty
-  // sessionStorage. No assessment_answers / health data is ever returned.
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  price: number | null;
-  plan_type: string | null;
-  delivery_speed: string | null;
-  letter_type: string | null;
-  coupon_code: string | null;
-  coupon_discount: number | null;
-  doctor_name: string | null;
 }
 
-// Map a raw order row to the safe public shape returned to the thank-you page.
-function toPublicOrder(o: OrderRow | null) {
-  if (!o) return null;
+// ── The ONLY shape this endpoint may return ─────────────────────────────────
+// Explicit allowlist, constructed by hand. Never spread an order row, never
+// serialize a database result, never add a display field "because the page used
+// to show it". The thank-you pages resolve the customer's own name, email,
+// amount and order id from their OWN sessionStorage and from the URL params
+// that create-checkout-session stamps — the server does not need to hand
+// customer data to an unauthenticated caller for any of that.
+type PublicPaymentCode = "paid" | "unconfirmed" | "invalid_request" | "error";
+type PublicNextStep = "none" | "retry" | "contact_support";
+
+interface PublicPaymentStatus {
+  paid: boolean;
+  paymentStatus: "paid" | "unpaid";
+  reconciled: boolean;
+  nextStep: PublicNextStep;
+  code: PublicPaymentCode;
+  /**
+   * Echo ONLY of a confirmationId the caller themselves supplied. Never resolved
+   * from a sessionId / paymentIntentId, so this can never turn a Stripe
+   * identifier into someone's order number.
+   */
+  confirmationId: string | null;
+}
+
+function toPublicPaymentStatus(opts: {
+  paid: boolean;
+  reconciled?: boolean;
+  code: PublicPaymentCode;
+  echoConfirmationId: string;
+}): PublicPaymentStatus {
+  const paid = opts.paid === true;
   return {
-    confirmation_id: o.confirmation_id,
-    first_name: o.first_name ?? null,
-    last_name: o.last_name ?? null,
-    email: o.email ?? null,
-    price: o.price ?? null,
-    plan_type: o.plan_type ?? null,
-    delivery_speed: o.delivery_speed ?? null,
-    letter_type: o.letter_type ?? null,
-    coupon_code: o.coupon_code ?? null,
-    coupon_discount: o.coupon_discount ?? null,
-    doctor_name: o.doctor_name ?? null,
-    status: o.status ?? null,
-    paid_at: o.paid_at ?? null,
+    paid,
+    paymentStatus: paid ? "paid" : "unpaid",
+    reconciled: opts.reconciled === true,
+    nextStep: paid ? "none" : opts.code === "error" ? "contact_support" : "retry",
+    code: opts.code,
+    confirmationId: opts.echoConfirmationId || null,
   };
+}
+
+/**
+ * Truncated, non-reversible-enough reference for server logs. Never log a full
+ * confirmation id, an email, a name, a Stripe secret, a raw order row, or the
+ * request body. (CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001)
+ */
+function logRef(confirmationId: string | null | undefined): string {
+  const s = (confirmationId ?? "").trim();
+  return s ? `${s.slice(0, 6)}…` : "(none)";
 }
 
 Deno.serve(async (req: Request) => {
@@ -137,7 +163,10 @@ Deno.serve(async (req: Request) => {
     const confirmationId = (body.confirmationId ?? "").trim();
 
     if (!requestedSessionId && !confirmationId) {
-      return json({ error: "sessionId or confirmationId is required", paid: false }, 400);
+      return json(
+        toPublicPaymentStatus({ paid: false, code: "invalid_request", echoConfirmationId: "" }),
+        400,
+      );
     }
 
     let supabase: ReturnType<typeof createClient> | null = null;
@@ -148,23 +177,18 @@ Deno.serve(async (req: Request) => {
       supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
       const { data, error } = await supabase
         .from("orders")
-        .select("id, confirmation_id, checkout_session_id, payment_intent_id, paid_at, status, first_name, last_name, email, price, plan_type, delivery_speed, letter_type, coupon_code, coupon_discount, doctor_name")
+        .select("id, confirmation_id, checkout_session_id, payment_intent_id, paid_at, status")
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
       if (error) {
-        console.warn("[check-payment-status] orders lookup error:", error.message);
+        console.warn(`[check-payment-status] orders lookup failed for ${logRef(confirmationId)}`);
       }
       order = (data as OrderRow | null) ?? null;
 
       if (order?.paid_at) {
-        return json({
-          paid: true,
-          status: order.status,
-          paymentStatus: "paid",
-          reconciled: false,
-          source: "db_already_paid",
-          order: toPublicOrder(order),
-        });
+        return json(
+          toPublicPaymentStatus({ paid: true, code: "paid", echoConfirmationId: confirmationId }),
+        );
       }
     }
 
@@ -192,7 +216,7 @@ Deno.serve(async (req: Request) => {
 
     async function refuseMismatch(kind: string, supplied: string): Promise<Response> {
       console.error(
-        `[check-payment-status] IDENTIFIER MISMATCH (${kind}) for ${order?.confirmation_id ?? confirmationId}: supplied ${supplied}`,
+        `[check-payment-status] IDENTIFIER MISMATCH (${kind}) for ${logRef(order?.confirmation_id ?? confirmationId)}`,
       );
       if (supabase && order) {
         try {
@@ -207,14 +231,13 @@ Deno.serve(async (req: Request) => {
             .eq("object_id", order.confirmation_id)
             .contains("metadata", { mismatch_kind: kind });
           if ((count ?? 0) > 0) {
-            return json({
-              paid: false,
-              status: order.status ?? null,
-              paymentStatus: "unpaid",
-              reconciled: false,
-              source: "identifier_mismatch",
-              order: toPublicOrder(order),
-            });
+            return json(
+              toPublicPaymentStatus({
+                paid: false,
+                code: "unconfirmed",
+                echoConfirmationId: confirmationId,
+              }),
+            );
           }
 
           await supabase.from("audit_logs").insert({
@@ -235,14 +258,13 @@ Deno.serve(async (req: Request) => {
           });
         } catch { /* non-critical */ }
       }
-      return json({
-        paid: false,
-        status: order?.status ?? null,
-        paymentStatus: "unpaid",
-        reconciled: false,
-        source: "identifier_mismatch",
-        order: toPublicOrder(order),
-      });
+      return json(
+        toPublicPaymentStatus({
+          paid: false,
+          code: "unconfirmed",
+          echoConfirmationId: confirmationId,
+        }),
+      );
     }
 
     // Reject a client session id that contradicts the stored one.
@@ -262,14 +284,13 @@ Deno.serve(async (req: Request) => {
     const piIdToProbe = order ? (storedPiId || requestedPiId) : "";
 
     if (!sessionIdToProbe && !piIdToProbe) {
-      return json({
-        paid: false,
-        status: order?.status ?? null,
-        paymentStatus: order?.paid_at ? "paid" : "unpaid",
-        reconciled: false,
-        source: "no_payment_identifier",
-        order: toPublicOrder(order),
-      });
+      return json(
+        toPublicPaymentStatus({
+          paid: !!order?.paid_at,
+          code: order?.paid_at ? "paid" : "unconfirmed",
+          echoConfirmationId: confirmationId,
+        }),
+      );
     }
 
     // Is the probed identifier already bound to this order server-side?
@@ -284,17 +305,22 @@ Deno.serve(async (req: Request) => {
     let amt = 0;
     let paymentMode = "card";
     let resolvedSessionId: string | null = null;
-    let reportedStatus: string | null = null;
-    let reportedPaymentStatus: string | null = null;
     let stripeCurrency: string | null = null;
     let metaConfirmationId: string | null = null;
 
+    // ── CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001: uniform failure ────
+    // A Stripe lookup that throws (unknown/expired identifier, Stripe outage)
+    // must NOT produce a different public answer than "not confirmed yet".
+    // Letting it fall through to the outer catch returned code:"error", which
+    // told an unauthenticated caller "this order has a stored Stripe identifier
+    // that did not resolve" — an existence oracle. It now collapses into the
+    // same `unconfirmed` body an unknown or unpaid order produces.
+    let stripeLookupFailed = false;
+    try {
     if (sessionIdToProbe) {
       const session = await stripe.checkout.sessions.retrieve(sessionIdToProbe);
       evidenceKind = "checkout_session";
       resolvedSessionId = session.id ?? sessionIdToProbe;
-      reportedStatus = session.status ?? null;
-      reportedPaymentStatus = session.payment_status ?? null;
       stripeCurrency = session.currency ?? null;
       metaConfirmationId = (session.metadata?.confirmation_id as string | undefined) ?? null;
       stripePaid = session.payment_status === "paid" || session.status === "complete";
@@ -311,8 +337,6 @@ Deno.serve(async (req: Request) => {
       // existed a delayed webhook left them with NO reconciliation path at all.
       const pi = await stripe.paymentIntents.retrieve(piIdToProbe);
       evidenceKind = "payment_intent";
-      reportedStatus = pi.status ?? null;
-      reportedPaymentStatus = pi.status === "succeeded" ? "paid" : "unpaid";
       stripeCurrency = pi.currency ?? null;
       metaConfirmationId = (pi.metadata?.confirmation_id as string | undefined) ?? null;
       // ONLY "succeeded" counts. requires_payment_method / processing /
@@ -322,6 +346,25 @@ Deno.serve(async (req: Request) => {
       amt = Math.round(((pi.amount_received ?? pi.amount ?? 0) as number) / 100);
       paymentMode = "card";
       evidenceBound = piPreBound || (!!order && metaConfirmationId === order.confirmation_id);
+    }
+    } catch (stripeErr) {
+      // Operator-side only — the identifier stays out of the log.
+      stripeLookupFailed = true;
+      console.warn(
+        `[check-payment-status] Stripe lookup failed for ${logRef(confirmationId)}: ${
+          stripeErr instanceof Error ? stripeErr.name : "unknown"
+        }`,
+      );
+    }
+
+    if (stripeLookupFailed) {
+      return json(
+        toPublicPaymentStatus({
+          paid: false,
+          code: "unconfirmed",
+          echoConfirmationId: confirmationId,
+        }),
+      );
     }
 
     // A Stripe object that is paid but NOT bound to this order is an attempted
@@ -363,16 +406,19 @@ Deno.serve(async (req: Request) => {
         .select("id");
 
       if (updErr) {
-        console.error("[check-payment-status] reconcile update failed:", updErr.message);
+        console.error(`[check-payment-status] reconcile update failed for ${logRef(order.confirmation_id)}`);
       } else if (!updRows || updRows.length === 0) {
         // Another writer (webhook or a concurrent call) won the race.
         console.info(
-          `[check-payment-status] ${order.confirmation_id} already transitioned by another writer — no second write`,
+          `[check-payment-status] ${logRef(order.confirmation_id)} already transitioned by another writer — no second write`,
         );
       } else {
         reconciled = true;
+        // Truncated reference + evidence KIND only. The full confirmation id,
+        // the Stripe identifiers and the amount stay out of the log stream and
+        // live in the audit_logs row below, which is admin-only.
         console.info(
-          `[check-payment-status] RECONCILED ${order.confirmation_id} via ${evidenceKind} ${piIdToProbe || sessionIdToProbe} (PI: ${piId ?? "n/a"}, $${amt})`,
+          `[check-payment-status] RECONCILED ${logRef(order.confirmation_id)} via ${evidenceKind}`,
         );
         // Best-effort audit log so the source of the writeback is traceable.
         try {
@@ -405,18 +451,24 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    return json({
-      paid: stripePaid && (evidenceBound || !order),
-      status: reportedStatus,
-      paymentStatus: reportedPaymentStatus,
-      reconciled,
-      confirmationId: order?.confirmation_id ?? confirmationId,
-      sessionId: resolvedSessionId,
-      order: toPublicOrder(order),
-    });
+    const publiclyPaid = stripePaid && (evidenceBound || !order);
+    return json(
+      toPublicPaymentStatus({
+        paid: publiclyPaid,
+        reconciled,
+        code: publiclyPaid ? "paid" : "unconfirmed",
+        echoConfirmationId: confirmationId,
+      }),
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
+    // Operator-side only. The RESPONSE never carries the underlying Stripe or
+    // database message: it would confirm whether an identifier exists and leak
+    // internals to an unauthenticated caller.
     console.error("[check-payment-status] error:", message);
-    return json({ error: message, paid: false }, 400);
+    return json(
+      toPublicPaymentStatus({ paid: false, code: "error", echoConfirmationId: "" }),
+      400,
+    );
   }
 });
