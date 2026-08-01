@@ -37,6 +37,7 @@ import {
   stripCredentialParams,
 } from "@/lib/attributionStore";
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
+import { readResumeToken, hadLegacyResumeParam } from "@/lib/resumeTokenParam";
 import { getEsaOneTimeTotal, getEsaAnnualTotal, getPackageTotal } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
 import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged, trackPostOtpDestination, trackPlanChanged, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
@@ -389,7 +390,16 @@ export default function AssessmentPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const preSelectedDoctorId = searchParams.get("doctor") ?? "";
-  const resumeConfirmationId = searchParams.get("resume") ?? "";
+  const resumeConfirmationId = searchParams.get("resume") ?? (hadLegacyResumeParam(searchParams) ? "legacy" : "");
+  // ── ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 ────────────────
+  // `?rt=` carries an expiring, single-use, order-bound resume token. It is read
+  // ONCE, exchanged over POST, and scrubbed from the URL immediately (see the
+  // resume effect below) so it never persists in history, referrers or logs.
+  // It is deliberately captured from window.location rather than held in
+  // component state, and never written to localStorage/sessionStorage.
+  // Read via the helper: the pre-boot inline script has already scrubbed the
+  // address bar, so the raw value now arrives in memory rather than in the URL.
+  const resumeToken = readResumeToken(searchParams);
   // TRACK 2 · REPEAT-CUSTOMER-NEW-ESA-LINK-TEST
   // Opt-in flag: when present on a resume URL, pre-fill still runs so the
   // customer's identity stays loaded, but we land on Step 1 instead of jumping
@@ -451,7 +461,10 @@ export default function AssessmentPage() {
   const [stripeSecretError, setStripeSecretError] = useState("");
   const [stripePaymentIntentId, setStripePaymentIntentId] = useState("");
   const stripeSecretInFlight = useRef(false); // dedupe concurrent calls
-  const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
+  const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId || !!resumeToken);
+  // A legacy ?resume=<confirmationId> link can no longer load order data.
+  // (ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001)
+  const [resumeNeedsSecureLink, setResumeNeedsSecureLink] = useState(false);
   const [resumeNotFound, setResumeNotFound] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
   // Legacy-resume pricing: the server (create-payment-intent) is authoritative
@@ -542,41 +555,86 @@ export default function AssessmentPage() {
 
   // ── Resume flow: if ?resume=CONFIRMATION_ID, pre-fill and jump to step 3 ──
   useEffect(() => {
-    if (!resumeConfirmationId) return;
+    if (!resumeConfirmationId && !resumeToken) return;
 
     const fetchLead = async () => {
       setResumeLoading(true);
       try {
-        // Use edge function (service role key) to bypass RLS — anon client can't
-        // read back orders it inserted because RLS requires auth.uid() = user_id
         const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
         const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
-        const res = await fetch(`${supabaseUrl}/functions/v1/get-resume-order`, {
+        // ── Legacy ?resume=<confirmationId>: NO order data, ever. ───────────
+        // A confirmation id appears in emails, SMS, URLs, analytics and support
+        // threads, so it must never act as a credential.
+        // (ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001)
+        if (!resumeToken) {
+          setResumeNeedsSecureLink(true);
+          setResumeLoading(false);
+          return;
+        }
+
+        // ── Secure path: SCRUB the raw token from the URL first, then POST it.
+        // Scrubbing before the await keeps it out of history, referrers and any
+        // third-party script that reads location.search later in the page life.
+        const rawToken = resumeToken;
+        try {
+          const u = new URL(window.location.href);
+          if (u.searchParams.has("rt")) {
+            u.searchParams.delete("rt");
+            window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+          }
+        } catch { /* non-fatal */ }
+
+        const res = await fetch(`${supabaseUrl}/functions/v1/exchange-resume-token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             apikey: supabaseKey,
             Authorization: `Bearer ${supabaseKey}`,
           },
-          body: JSON.stringify({ confirmationId: resumeConfirmationId }),
+          body: JSON.stringify({ token: rawToken, purpose: "resume_assessment" }),
         });
 
-        const result = await res.json() as {
-          ok: boolean;
-          order?: Record<string, unknown> & { already_paid?: boolean };
-          error?: string;
+        const exchanged = await res.json() as {
+          ok?: boolean;
+          resume?: Record<string, unknown> & { alreadyPaid?: boolean; assessmentAnswers?: unknown };
         };
+
+        // Map the token response onto the shape the prefill code below already
+        // understands, so that logic stays untouched.
+        const result = exchanged.ok && exchanged.resume
+          ? {
+              ok: true,
+              order: {
+                confirmation_id: exchanged.resume.confirmationId,
+                first_name: exchanged.resume.firstName,
+                last_name: exchanged.resume.lastName,
+                email: exchanged.resume.email,
+                phone: exchanged.resume.phone,
+                state: exchanged.resume.state,
+                delivery_speed: exchanged.resume.deliverySpeed,
+                price: exchanged.resume.price,
+                plan_type: exchanged.resume.planType,
+                letter_type: exchanged.resume.letterType,
+                package_key: exchanged.resume.packageKey,
+                billing_plan: exchanged.resume.billingPlan,
+                assessment_answers: exchanged.resume.assessmentAnswers ?? {},
+                already_paid: !!exchanged.resume.alreadyPaid,
+              } as Record<string, unknown> & { already_paid?: boolean },
+            }
+          : { ok: false, order: undefined, error: "invalid_or_expired" };
 
         if (!result.ok || !result.order) {
           setResumeNotFound(true);
           setResumeLoading(false);
           // Log the failure so we can track how often resume links fail
+          setResumeNeedsSecureLink(true);
           void logAudit({
             actor_name: "system",
             actor_role: "system",
             object_type: "system",
-            object_id: resumeConfirmationId,
+            // The raw resume token is NEVER logged — only the display reference.
+            object_id: resumeConfirmationId || "(token)",
             action: "resume_order_not_found",
             description: `Resume flow: order not found for confirmation ID ${resumeConfirmationId}`,
             metadata: {
@@ -1660,7 +1718,11 @@ export default function AssessmentPage() {
             <p className="text-base font-bold text-gray-700 mb-1">Loading your saved assessment...</p>
             <p className="text-sm text-gray-400 mb-6">This only takes a second.</p>
           </div>
-        ) : resumeNotFound ? (
+        ) : (resumeNotFound || resumeNeedsSecureLink) ? (
+          /* ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001: a legacy
+             ?resume=<confirmationId> link lands here too. It discloses nothing
+             about the order — it simply offers to email a fresh secure link,
+             which verifies ownership through the mailbox on the order. */
           <div className="flex flex-col items-center justify-center py-20 text-center max-w-md mx-auto">
             <div className="w-16 h-16 flex items-center justify-center bg-[#E8F1EE] rounded-full mb-4">
               <i className="ri-error-warning-line text-[#1A5C4F] text-2xl"></i>
