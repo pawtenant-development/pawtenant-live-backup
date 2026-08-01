@@ -34,6 +34,7 @@ import {
   setConfirmationId,
   setCouponCode,
   setSelectedState,
+  stripCredentialParams,
 } from "@/lib/attributionStore";
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
 import { getEsaOneTimeTotal, getEsaAnnualTotal, getPackageTotal } from "@/config/pricing";
@@ -202,7 +203,13 @@ function getTrafficSource(): string {
 }
 
 function getLandingUrl(): string {
-  return sessionStorage.getItem("landing_url") ?? window.location.href;
+  // Credential-stripped on BOTH paths. The stored value is already clean, but
+  // the live-URL fallback can run before the ?rt= scrub — and this value is
+  // sent to the order row, GHL and analytics.
+  // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §J
+  return stripCredentialParams(
+    sessionStorage.getItem("landing_url") ?? window.location.href,
+  );
 }
 
 // ─── Webhooks ─────────────────────────────────────────────────────────────────

@@ -185,6 +185,38 @@ const ONCE_KEYS: Set<keyof AttributionData> = new Set([
   "session_id",
 ]);
 
+/**
+ * Query params that are CREDENTIALS, not attribution signal.
+ *
+ * ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §J
+ * `rt` carries a live resume token. Attribution capture runs on mount — BEFORE
+ * the assessment page scrubs the URL — so without this strip the raw token was
+ * persisted verbatim into sessionStorage `landing_url`, and from there into the
+ * order row, the GHL payload and every analytics event carrying landing_url.
+ * Found by inspecting real browser storage; source review alone missed it.
+ *
+ * `resume` is stripped too: a confirmation id is a display reference that does
+ * not belong in an attribution record either.
+ */
+const CREDENTIAL_PARAMS = ["rt", "resume", "token"];
+
+/** Remove credential-bearing params from a URL, preserving everything else. */
+export function stripCredentialParams(rawUrl: string): string {
+  if (!rawUrl) return rawUrl;
+  try {
+    const u = new URL(rawUrl, typeof window !== "undefined" ? window.location.origin : undefined);
+    let touched = false;
+    for (const p of CREDENTIAL_PARAMS) {
+      if (u.searchParams.has(p)) { u.searchParams.delete(p); touched = true; }
+    }
+    return touched ? u.toString() : rawUrl;
+  } catch {
+    // Unparseable URL: fail SAFE by dropping the query string entirely rather
+    // than returning a string that might still embed a token.
+    return rawUrl.split("?")[0];
+  }
+}
+
 // Ad campaign / keyword params and the URL query aliases we accept for each.
 // Google Ads ValueTrack ({keyword}, {matchtype}, {network}, {device},
 // {placement}, {campaignid}, {adgroupid}, {creative}) and Meta dynamic
@@ -503,14 +535,18 @@ export function captureFromUrl(search: string): void {
     });
   }
 
-  // landing_url and referrer — set once
+  // landing_url and referrer — set once, ALWAYS credential-stripped
   if (!ssGet(KEYS.landing_url)) {
-    const url = typeof window !== "undefined" ? window.location.href : "";
+    const url = stripCredentialParams(
+      typeof window !== "undefined" ? window.location.href : "",
+    );
     ssSet(KEYS.landing_url, url);
     captured.landing_url = url;
   }
   if (!ssGet(KEYS.referrer)) {
-    const ref = typeof document !== "undefined" ? document.referrer : "";
+    const ref = stripCredentialParams(
+      typeof document !== "undefined" ? document.referrer : "",
+    );
     ssSet(KEYS.referrer, ref);
     if (ref) captured.referrer = ref;
   }

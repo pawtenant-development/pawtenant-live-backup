@@ -289,8 +289,11 @@ export default function CommunicationTab({
 
   const firstName = patientName.split(" ")[0] || "there";
   const isPsd = letterType === "psd" || confirmationId.includes("-PSD");
-  const siteOrigin = typeof window !== "undefined" ? window.location.origin : "https://www.pawtenant.com";
-  const resumeUrl = `${siteOrigin}/${isPsd ? "psd-assessment" : "assessment"}?resume=${encodeURIComponent(confirmationId)}`;
+  // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §F
+  // The browser no longer builds a resume link. `{resume_url}` is minted
+  // SERVER-SIDE by send-templated-email at send time as an expiring, single-use,
+  // order-bound token — so the raw credential never enters an admin browser, is
+  // never copyable from this screen, and cannot be overridden from the client.
 
   // Group email templates dynamically by their `group` column
   const emailGroups: { group: string; icon: string; options: EmailTemplate[] }[] = (() => {
@@ -507,8 +510,6 @@ export default function CommunicationTab({
           order_id: confirmationId,
           confirmation_id: confirmationId,
           letter_type: isPsdLocal ? "PSD Letter" : "ESA Letter",
-          resume_url: resumeUrl,
-          resume_url_with_promo: resumeUrl,
           review_url: "https://www.trustpilot.com/review/pawtenant.com",
           price: price != null ? `$${Number(price).toFixed(2)}` : "",
         },
@@ -761,7 +762,7 @@ export default function CommunicationTab({
               <div className="flex items-start gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg mt-2">
                 <i className="ri-cursor-line text-orange-500 text-sm flex-shrink-0 mt-0.5"></i>
                 <p className="text-xs text-orange-700 leading-relaxed">
-                  Recovery emails resolve <code>{`{resume_url}`}</code> to: <span className="font-mono text-[10px] break-all">{resumeUrl}</span>
+                  Recovery emails resolve <code>{`{resume_url}`}</code> to a secure, single-use link generated when you press Send. It expires in 24 hours, works once, and is not shown here — the link only ever exists inside the customer&rsquo;s email.
                 </p>
               </div>
             )}
