@@ -1,9 +1,17 @@
 # ORDER-RESUME-CLIENT-PAID-AT-HARDENING-LIVE-ROLLOUT-001
 
-**Status:** PARTIAL — resume-order payment authority, cross-order identifier binding, replay safety,
-lifecycle protection, cleanup and preservation are all shipped and verified on LIVE. One in-scope
-acceptance criterion is **not** met and remains open: `check-payment-status` discloses customer PII
-to unauthenticated callers (pre-existing, not introduced by this rollout). See §11.
+**Status:** LIVE COMPLETE — RESUME-ORDER PAYMENT AUTHORITY, CROSS-ORDER IDENTIFIER BINDING,
+OWNERSHIP, PUBLIC STATUS PRIVACY, REPLAY SAFETY, CLEANUP, AND PRESERVATION VERIFIED
+
+> **Closed 2026-08-01.** This rollout originally shipped PARTIAL because of one in-scope acceptance
+> criterion: `check-payment-status` disclosed customer PII to unauthenticated callers (pre-existing,
+> not introduced here). That defect was fixed and verified on LIVE the same day by
+> **`CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001`** (LIVE `ba83e6f` → `314b644`,
+> `check-payment-status` v91 → v92, `verify_jwt=false` preserved, Vercel
+> `dpl_47ng9mLqibgHTaLmxMG3rdaftixp`). The public response is now an allowlist of
+> `{ paid, paymentStatus, reconciled, nextStep, code, confirmationId }` with zero PII — proven
+> against a real production order. See `docs/CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001.md`.
+> §11 below is retained as the historical record of the defect.
 
 **Scope:** LIVE only (`pawtenant-live-backup`, Supabase `cvwbozlbbmrjxznknouq`, `https://pawtenant.com`).
 **Date:** 2026-08-01
@@ -350,7 +358,10 @@ reserved fixture suppression, and LIVE-only email branding.
 
 ## 11. Limitations and the one open item
 
-### OPEN — `check-payment-status` discloses PII to unauthenticated callers
+### ✅ CLOSED (2026-08-01) — `check-payment-status` disclosed PII to unauthenticated callers
+
+> Fixed by `CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001`. The description below is the original
+> finding, kept for the record.
 
 The endpoint runs with `verify_jwt=false` (correct and preserved — the Klarna "I've completed
 payment" button and the ESA/PSD thank-you pages need it). Its `toPublicOrder()` projection returns,
@@ -365,9 +376,11 @@ to a caller with **no credentials at all**, for any supplied `confirmation_id`:
 - **In scope by the task's own criteria.** §E requires the public endpoint to disclose only the
   minimum safe status and no PII. That criterion is not met, which is why this rollout is reported
   **PARTIAL** rather than COMPLETE.
-- **Not fixed here deliberately.** Narrowing the projection would change the contract the ESA and
-  PSD thank-you pages depend on. That is a separate, owner-approved task with its own QA, not an
-  unrequested edit to a payment endpoint on LIVE.
+- **Not fixed in this rollout, deliberately.** Narrowing the projection changed the contract the ESA
+  and PSD thank-you pages depended on, so it needed its own task and QA rather than an unrequested
+  edit to a payment endpoint on LIVE. That task ran immediately afterwards and closed it: the
+  thank-you pages now resolve the customer's own details from their own browser, and the endpoint
+  returns payment state only.
 
 ### Other limitations
 
@@ -417,5 +430,7 @@ Not started in this session. Select from the master queue by owner priority; lik
 `UNIFIED-EMAIL-PHASE-1-CUSTOMER-PORTAL-QA-CLOSURE-001`, or
 `ORDER-NOTARY-SERVICE-WORKFLOW-001`. The stopped Pending Delivery QA is **not** to be resumed.
 
-A new task should be opened for the §11 open item:
-**`CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001`.**
+The §11 open item was closed by **`CHECK-PAYMENT-STATUS-PUBLIC-PII-MINIMISATION-001`** (LIVE
+`314b644`). The next security task is
+**`ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001`** — replace confirmation-id-plus-anon-key
+access with an expiring, order-bound resume credential.
