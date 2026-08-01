@@ -615,7 +615,14 @@ const RECOVERY_FLAG_KEY = "pt_recovery_attribution";
 
 interface RecoveryFlagShape {
   stage: string;
-  confirmation_id: string;
+  /**
+   * Legacy only. The /r/ bridge no longer writes an order reference into this
+   * flag — recovery links now carry a secure token instead of a confirmation
+   * id, and neither belongs in localStorage or analytics.
+   * (ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §G)
+   * Flags written before that change may still carry it.
+   */
+  confirmation_id?: string;
   discount_code: string | null;
   clicked_at: string;
 }

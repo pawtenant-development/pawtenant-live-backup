@@ -157,9 +157,16 @@ export function bookingCtaLabel(o: BookingOrderLike): string {
   return "Complete Booking";
 }
 
-/** The deterministic resume URL — the single route the portal CTA + recovery links
- *  should use. The assessment page then routes to the correct unfinished step. */
-export function resumeHref(o: BookingOrderLike): string {
-  const base = isPsdOrder(o) ? "/psd-assessment" : "/assessment";
-  return `${base}?resume=${encodeURIComponent(o.confirmation_id)}`;
+/**
+ * The deterministic resume ROUTE for an order — path only, never a credential.
+ *
+ * ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §C
+ * This used to append `?resume=<confirmationId>`. A confirmation id is a display
+ * reference that lands in analytics, referrers and support threads, so it can
+ * never authorize a resume. To actually resume, call `requestResumeLink()` from
+ * `@/lib/resumeLink` — it returns a URL carrying a one-time, expiring,
+ * order-bound token issued server-side.
+ */
+export function resumePath(o: BookingOrderLike): string {
+  return isPsdOrder(o) ? "/psd-assessment" : "/assessment";
 }

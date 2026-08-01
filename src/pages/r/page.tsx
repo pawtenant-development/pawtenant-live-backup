@@ -1,17 +1,41 @@
 /**
  * /r/:stage — Recovery click bridge.
  *
- * Phase-3B recovery tracking. Recovery emails / SMS link to:
+ * ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §G
  *
- *   /r/<stage>?o=<confirmationId>&dc=<discountCode>
+ * Recovery SMS / email link to:
  *
- * This component:
- *   1. Reads stage + confirmationId + (optional) discountCode from URL
- *   2. Fires a fire-and-forget recovery_click event (auto-enriched)
- *   3. Stores a localStorage flag so the eventual payment_success can
- *      attribute itself to this recovery touch (recovery_conversion)
- *   4. Redirects to /assessment?resume=<confirmationId>&recovery=<stage>
- *      so the existing resume flow takes over
+ *   /r/<stage>?rt=<secure token>&p=<esa|psd>[&dc=<discountCode>]
+ *
+ * The bridge exists so a recovery click can be attributed before the visitor
+ * reaches the assessment page. It:
+ *
+ *   1. Reads the token, the route hint and the optional discount code
+ *   2. Fires a fire-and-forget recovery_click event — WITHOUT the token
+ *   3. Stores a stage-only attribution flag so a later payment_success can fire
+ *      recovery_conversion
+ *   4. Redirects to /assessment or /psd-assessment carrying the token, using
+ *      location.replace so the tokenised /r/ URL never enters history
+ *
+ * SECURITY NOTES
+ *
+ * • The token is a CREDENTIAL. It is never written to localStorage, never sent
+ *   to analytics, never logged, and never left in a history entry. It is only
+ *   ever forwarded, in the query string, to the same-origin page that
+ *   immediately exchanges and scrubs it.
+ *
+ * • `?o=<confirmationId>` is the LEGACY shape. A confirmation id is a display
+ *   reference that appears in SMS history, analytics and support threads — it
+ *   is not a credential and no longer resumes anything. Such links now land on
+ *   the safe "request a new link" screen with no order reference attached.
+ *
+ * • `p` is a non-authorizing route hint (which assessment page to open). It
+ *   reveals nothing: the visitor already knows which product they applied for,
+ *   and it unlocks no data on its own.
+ *
+ * • The destination is always a same-origin RELATIVE path built from a fixed
+ *   allowlist — never a URL taken from the query string — so this bridge cannot
+ *   be used as an open redirect.
  *
  * ZERO UI. Tracking does not delay the redirect.
  */
@@ -19,12 +43,22 @@
 import { useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { trackRecoveryClick } from "@/lib/trackEvent";
+import { readResumeToken } from "@/lib/resumeTokenParam";
 
 const RECOVERY_FLAG_KEY = "pt_recovery_attribution";
 
+/**
+ * Fixed destination allowlist. The route hint selects one of these; it can
+ * never introduce a new destination, so no attacker-controlled value reaches
+ * window.location.
+ */
+const DESTINATIONS = {
+  esa: "/assessment",
+  psd: "/psd-assessment",
+} as const;
+
 interface RecoveryFlag {
   stage: string;
-  confirmation_id: string;
   discount_code: string | null;
   clicked_at: string;
 }
@@ -34,15 +68,22 @@ export default function RecoveryClickBridge(): null {
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    const confirmationId = searchParams.get("o") ?? "";
-    const discountCode   = searchParams.get("dc") ?? "";
+    // The pre-boot inline script already stripped `rt` from the address bar —
+    // which is what stops the tag stack reporting it as `dl`, and what makes
+    // this page's own URL safe to become the next page's referrer (`dr`).
+    const resumeToken  = readResumeToken(searchParams);
+    const discountCode = searchParams.get("dc") ?? "";
+    const routeHint    = (searchParams.get("p") ?? "").toLowerCase();
 
-    // Best-effort: persist the recovery touch so a later payment_success
-    // can fire recovery_conversion linked to this stage. Survives tab close.
+    const destPath = routeHint === "psd" ? DESTINATIONS.psd : DESTINATIONS.esa;
+
+    // Persist the recovery touch so a later payment_success can fire
+    // recovery_conversion. STAGE ONLY — the confirmation id used to be stored
+    // here, and the token must never be. Neither is needed: the conversion is
+    // matched on the order the visitor actually pays for.
     try {
       const flag: RecoveryFlag = {
         stage,
-        confirmation_id: confirmationId,
         discount_code: discountCode || null,
         clicked_at: new Date().toISOString(),
       };
@@ -52,24 +93,24 @@ export default function RecoveryClickBridge(): null {
     } catch { /* ignore */ }
 
     // Fire recovery_click — fire-and-forget, never throws, never blocks.
+    // The order reference is deliberately null: analytics must not receive an
+    // order identifier here, and must never receive the token.
     try {
-      trackRecoveryClick(stage || "unknown", confirmationId || null, {
+      trackRecoveryClick(stage || "unknown", null, {
         discount_code: discountCode || null,
       });
     } catch { /* ignore */ }
 
-    // Build the destination. The existing assessment page already handles
-    // ?resume=<confirmationId>; we add ?recovery=<stage> so the page can
-    // surface the recovery context if needed (and so that referrer
-    // analytics can spot it).
+    // Build the destination. Only non-authorizing params are forwarded
+    // alongside the token.
     const params = new URLSearchParams();
-    if (confirmationId) params.set("resume", confirmationId);
-    if (stage)          params.set("recovery", stage);
-    if (discountCode)   params.set("dc", discountCode);
+    if (resumeToken)  params.set("rt", resumeToken);
+    if (stage)        params.set("recovery", stage);
+    if (discountCode) params.set("dc", discountCode);
 
-    const dest = `/assessment${params.toString() ? `?${params.toString()}` : ""}`;
+    const dest = `${destPath}${params.toString() ? `?${params.toString()}` : ""}`;
 
-    // Use replace so the /r URL doesn't pollute browser history.
+    // `replace` so the tokenised /r/ URL does not pollute browser history.
     try {
       window.location.replace(dest);
     } catch {

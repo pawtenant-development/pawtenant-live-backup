@@ -12,6 +12,7 @@ import AssuranceScreen from "../assessment/components/AssuranceScreen";
 import PackageSelectionStep from "../assessment/components/PackageSelectionStep";
 import { supabase } from "../../lib/supabaseClient";
 import { nextBookingGate } from "@/lib/bookingProgress";
+import { readResumeToken, hadLegacyResumeParam } from "@/lib/resumeTokenParam";
 import { isDirectCheckout, flowVersionProp } from "@/config/flowVersion";
 import type { PackageKey } from "@/config/pricing";
 import type { StateAcknowledgment } from "../assessment/components/StateAcknowledgmentModal";
@@ -26,6 +27,7 @@ import {
   getLastTouch,
   setConfirmationId as storeSetConfirmationId,
   buildFullSource,
+  stripCredentialParams,
 } from "@/lib/attributionStore";
 
 // Lazy-loaded PSD Step 3 checkout (payment) — split into its own bundle chunk.
@@ -49,7 +51,12 @@ const RESUME_ORDER_URL = `${SUPABASE_URL}/functions/v1/get-resume-order`;
 
 // Delegates to attributionStore — single source of truth
 function getTrafficSource(): string { return buildFullSource(); }
-function getLandingUrl(): string { return getAttribution().landing_url ?? window.location.href; }
+// Credential-stripped on BOTH paths — the live-URL fallback can run before the
+// ?rt= scrub, and this value reaches the order row, GHL and analytics.
+// ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §J
+function getLandingUrl(): string {
+  return stripCredentialParams(getAttribution().landing_url ?? window.location.href);
+}
 
 const DEFAULT_STEP1: PSDStep1Data = {
   safetyCheck: "",
@@ -96,7 +103,14 @@ function generateConfirmationId(): string {
 export default function PSDAssessmentPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const resumeConfirmationId = searchParams.get("resume") ?? "";
+  const resumeConfirmationId = searchParams.get("resume") ?? (hadLegacyResumeParam(searchParams) ? "legacy" : "");
+  // `?rt=` carries an expiring, single-use, order-bound resume token. Read once,
+  // then scrubbed from the URL before the exchange await (see the resume effect
+  // below) so it never persists in history, referrers or logs.
+  // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001
+  // Read via the helper: the pre-boot inline script has already scrubbed the
+  // address bar, so the raw value now arrives in memory rather than in the URL.
+  const resumeToken = readResumeToken(searchParams);
   // POST-OTP-DIRECT-CHECKOUT-001: verified customers land on checkout directly.
   const directCheckout = isDirectCheckout();
 
@@ -104,7 +118,7 @@ export default function PSDAssessmentPage() {
   // Fires "Assessment Started" event to GHL + Google Sheets on mount.
   const tracking = useAssessmentTracking({
     letterType: "psd",
-    isResume: !!resumeConfirmationId,
+    isResume: !!resumeConfirmationId || !!resumeToken,
   });
   const referredBy = tracking.ref || tracking.fullSource || null;
 
@@ -136,7 +150,7 @@ export default function PSDAssessmentPage() {
     return id;
   });
   const [saving, setSaving] = useState(false);
-  const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId);
+  const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId || !!resumeToken);
   const [resumeNotFound, setResumeNotFound] = useState(false);
   const [resendEmail, setResendEmail] = useState("");
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -170,28 +184,79 @@ export default function PSDAssessmentPage() {
     document.body.scrollTop = 0;
   }, [step]);
 
-  // ── Resume flow: ?resume=CONFIRMATION_ID ─────────────────────────────────
+  // ── Resume flow: ?rt=<secure token> ──────────────────────────────────────
+  // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §D
+  //
+  // This flow carries the most sensitive payload in the product — a PSD
+  // assessment includes the customer's mental-health intake (conditions,
+  // diagnosis, treatment, medication). It is released ONLY in exchange for an
+  // expiring, single-use, order-bound token. A confirmation id in a URL is a
+  // display reference and never unlocks any of it.
   useEffect(() => {
-    if (!resumeConfirmationId) return;
+    if (!resumeConfirmationId && !resumeToken) return;
 
     const fetchLead = async () => {
       setResumeLoading(true);
       try {
-        const res = await fetch(RESUME_ORDER_URL, {
+        // ── Legacy ?resume=<confirmationId>: NO order data, ever. ───────────
+        // Falls through to the safe "request a new link" screen below.
+        if (!resumeToken) {
+          setResumeNotFound(true);
+          setResumeLoading(false);
+          return;
+        }
+
+        // ── Secure path: SCRUB the raw token from the URL FIRST, then POST it.
+        // Scrubbing before the await keeps it out of history, referrers and any
+        // third-party script that reads location.search later in the page life.
+        const rawToken = resumeToken;
+        try {
+          const u = new URL(window.location.href);
+          if (u.searchParams.has("rt")) {
+            u.searchParams.delete("rt");
+            window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+          }
+        } catch { /* non-fatal */ }
+
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/exchange-resume-token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             apikey: SUPABASE_KEY,
             Authorization: `Bearer ${SUPABASE_KEY}`,
           },
-          body: JSON.stringify({ confirmationId: resumeConfirmationId }),
+          body: JSON.stringify({ token: rawToken, purpose: "resume_assessment" }),
         });
 
-        const result = await res.json() as {
-          ok: boolean;
-          order?: Record<string, unknown> & { already_paid?: boolean };
-          error?: string;
+        const exchanged = await res.json() as {
+          ok?: boolean;
+          resume?: Record<string, unknown> & { alreadyPaid?: boolean; assessmentAnswers?: unknown };
         };
+
+        // Map onto the shape the prefill code below already understands, so that
+        // logic stays untouched.
+        const result = exchanged.ok && exchanged.resume
+          ? {
+              ok: true,
+              order: {
+                confirmation_id: exchanged.resume.confirmationId,
+                first_name: exchanged.resume.firstName,
+                last_name: exchanged.resume.lastName,
+                email: exchanged.resume.email,
+                phone: exchanged.resume.phone,
+                state: exchanged.resume.state,
+                delivery_speed: exchanged.resume.deliverySpeed,
+                price: exchanged.resume.price,
+                plan_type: exchanged.resume.planType,
+                letter_type: exchanged.resume.letterType,
+                package_key: exchanged.resume.packageKey,
+                billing_plan: exchanged.resume.billingPlan,
+                status: exchanged.resume.status,
+                assessment_answers: exchanged.resume.assessmentAnswers ?? {},
+                already_paid: !!exchanged.resume.alreadyPaid,
+              } as Record<string, unknown> & { already_paid?: boolean },
+            }
+          : { ok: false as const, order: undefined, error: "invalid_or_expired" };
 
         if (!result.ok || !result.order) {
           setResumeNotFound(true);
@@ -200,13 +265,14 @@ export default function PSDAssessmentPage() {
             actor_name: "system",
             actor_role: "system",
             object_type: "system",
-            object_id: resumeConfirmationId,
-            action: "resume_order_not_found",
-            description: `PSD resume flow: order not found for confirmation ID ${resumeConfirmationId}`,
+            object_id: null,
+            action: "resume_token_invalid",
+            description: "PSD resume flow: resume token invalid, expired, revoked or already used",
             metadata: {
-              confirmation_id: resumeConfirmationId,
+              // No confirmation id and no token — an invalid exchange tells us
+              // nothing about which order was meant, and we must not guess.
               letter_type: "psd",
-              error: result.error ?? "not_found",
+              error: "invalid_or_expired",
               timestamp: new Date().toISOString(),
             },
           });
@@ -259,8 +325,10 @@ export default function PSDAssessmentPage() {
           additionalDocs: undefined,
         });
 
-        // Use the saved confirmation ID so payment upserts the right row
-        setConfirmationId(resumeConfirmationId);
+        // The confirmation id now comes from the token EXCHANGE — the URL no
+        // longer carries one — so payment still upserts the right row.
+        const resumedConfirmationId = String(data.confirmation_id ?? "");
+        setConfirmationId(resumedConfirmationId);
         setStateConfirmed(true);
 
         // ── Deterministic, auth-gated resume routing
@@ -276,7 +344,7 @@ export default function PSDAssessmentPage() {
         if (savedBillingPlan === "annual") setResumedPlan("subscription");
         else if (savedBillingPlan === "one_time") setResumedPlan("onetime");
         const nextGate = nextBookingGate({
-          confirmation_id: resumeConfirmationId,
+          confirmation_id: resumedConfirmationId,
           letter_type: (data.letter_type as string) ?? "psd",
           status: (data.status as string) ?? "lead",
           package_key: savedPackageKey,
@@ -311,11 +379,12 @@ export default function PSDAssessmentPage() {
           actor_name: "system",
           actor_role: "system",
           object_type: "system",
-          object_id: resumeConfirmationId,
+          object_id: null,
           action: "resume_order_network_error",
-          description: `PSD resume flow: network/parse error for confirmation ID ${resumeConfirmationId}`,
+          description: "PSD resume flow: network/parse error during secure token exchange",
           metadata: {
-            confirmation_id: resumeConfirmationId,
+            // No confirmation id: a failed exchange never tells us which order
+            // was meant, and we must not guess one from the URL.
             letter_type: "psd",
             error: err instanceof Error ? err.message : String(err),
             timestamp: new Date().toISOString(),
@@ -636,7 +705,7 @@ export default function PSDAssessmentPage() {
             />
           ) : (
             <>
-              {resumeConfirmationId && step === 3 && (
+              {(resumeConfirmationId || resumeToken) && step === 3 && (
                 <div className="mb-4 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                   <i className="ri-save-3-line text-amber-500 text-sm flex-shrink-0"></i>
                   <span className="text-sm font-semibold text-amber-800">Your PSD assessment answers have been restored — complete your payment below.</span>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Navigate, useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
+import { requestResumeLink } from "@/lib/resumeLink";
 
 /**
  * /account/checkout?cid=<confirmationId>
@@ -8,8 +9,14 @@ import { Navigate, useSearchParams, Link } from "react-router-dom";
  * and the customer portal ("Upgrade to Subscription" / "Buy Another ESA"
  * buttons). The row is created upstream by the create-returning-order edge
  * function; here we just verify the row exists and then delegate to the
- * existing resume flow (/assessment?resume=<cid>) so Step3Checkout and all of
- * its payment wiring can be reused without duplication.
+ * existing resume flow so Step3Checkout and all of its payment wiring can be
+ * reused without duplication.
+ *
+ * ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §C
+ * The hand-off used to be `/assessment?resume=<cid>`. A confirmation id is a
+ * display reference, not a credential, so we now ask the server for a one-time
+ * resume token. Both callers of this page (admin OrderDetailModal, customer
+ * portal) are already authenticated, so issuance authorizes cleanly.
  *
  * The public /assessment strict-paid-email block does NOT apply to the
  * resume path — it checks Step 2 → Step 3 progression only. Resumed rows
@@ -43,9 +50,23 @@ export default function AccountCheckoutPage() {
           order?: { already_paid?: boolean };
         };
         if (cancelled) return;
-        if (!json.ok || !json.order) setStatus("missing");
-        else if (json.order.already_paid) setStatus("already_paid");
-        else setStatus("ok");
+        if (!json.ok || !json.order) { setStatus("missing"); return; }
+        if (json.order.already_paid) { setStatus("already_paid"); return; }
+
+        // Exchange the verified order for a secure, single-use resume link.
+        const link = await requestResumeLink({
+          confirmationId: cid,
+          isPsd: /(-|_)psd/i.test(cid),
+        });
+        if (cancelled) return;
+        if (link.ok && link.url) {
+          setStatus("ok");
+          // Full navigation (not <Navigate>) because the URL is absolute and
+          // carries the token the assessment page immediately scrubs.
+          window.location.replace(link.url);
+          return;
+        }
+        setStatus(link.notIssuable ? "already_paid" : "missing");
       } catch {
         if (!cancelled) setStatus("missing");
       }
@@ -62,10 +83,12 @@ export default function AccountCheckoutPage() {
   }
 
   if (status === "ok") {
-    // Reuse the existing resume flow: hydrates step1/step2, jumps to Step 3,
-    // mints a PI with the new confirmationId. The server-side bypass kicks in
-    // because the row has parent_order_id set.
-    return <Navigate to={`/assessment?resume=${encodeURIComponent(cid)}`} replace />;
+    // The secure link has been issued and window.location.replace is in flight.
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-orange-50">
+        <i className="ri-loader-4-line animate-spin text-3xl text-orange-500"></i>
+      </div>
+    );
   }
 
   if (status === "already_paid") {

@@ -528,9 +528,18 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
                     const alreadySent = hasRecoveryEmail(lead);
                     const result = sendResults[lead.confirmation_id];
                     const isSending = sendingSingle === lead.confirmation_id;
-                    const resumeUrl = isPSDLead(lead)
-                      ? `https://www.pawtenant.com/psd-assessment?resume=${lead.confirmation_id}`
-                      : `https://www.pawtenant.com/assessment?resume=${lead.confirmation_id}`;
+                    // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §F
+                    // The per-lead "open resume link" shortcut used to build
+                    // `…?resume=<confirmationId>` — a permanent, copyable
+                    // credential derived from a display reference, pointed at
+                    // the LIVE origin even from TEST.
+                    //
+                    // It is removed rather than tokenised, for two reasons a
+                    // token cannot fix: minting a new token AUTO-REVOKES the one
+                    // already emailed to the customer, and opening the link
+                    // would CONSUME its single use. Either would silently break
+                    // the customer's own recovery link from a staff preview
+                    // click. Send below already delivers a proper secure link.
                     return (
                       <div key={lead.confirmation_id} className="px-4 py-3 grid grid-cols-[1fr_auto_auto] gap-3 items-center">
                         <div>
@@ -557,10 +566,6 @@ export default function LeadActionsModal({ leads, onClose }: LeadActionsModalPro
                           )}
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <a href={resumeUrl} target="_blank" rel="noopener noreferrer"
-                            className="whitespace-nowrap w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 cursor-pointer transition-colors">
-                            <i className="ri-external-link-line text-sm"></i>
-                          </a>
                           <button type="button" onClick={() => sendPaymentLink(lead)} disabled={isSending || sendingAll}
                             className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-lg hover:bg-orange-600 disabled:opacity-50 cursor-pointer transition-colors">
                             {isSending

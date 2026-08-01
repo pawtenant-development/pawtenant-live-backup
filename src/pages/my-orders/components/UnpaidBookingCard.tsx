@@ -7,8 +7,9 @@
 // confirmation_id, product, package, plan, pets, discount, and attribution). It
 // never hard-codes a generic checkout route.
 
-import { Link } from "react-router-dom";
-import { bookingCtaLabel, resumeHref, isPsdOrder, type BookingOrderLike } from "@/lib/bookingProgress";
+import { useState } from "react";
+import { bookingCtaLabel, isPsdOrder, type BookingOrderLike } from "@/lib/bookingProgress";
+import { requestResumeLink } from "@/lib/resumeLink";
 
 export default function UnpaidBookingCard({
   order,
@@ -18,8 +19,32 @@ export default function UnpaidBookingCard({
   onReviewAssessment?: () => void;
 }) {
   const cta = bookingCtaLabel(order);
-  const href = resumeHref(order);
   const product = isPsdOrder(order) ? "psychiatric service dog" : "emotional support animal";
+
+  // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §K
+  // This CTA used to be a plain <Link> to `?resume=<confirmationId>`. A
+  // confirmation id is a display reference, not a credential, so the link is
+  // now minted on click: the server re-derives the signed-in customer's
+  // identity, confirms they own THIS order, and returns a one-time token the
+  // assessment page scrubs from the address bar on arrival.
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+
+  const handleResume = async () => {
+    if (resuming) return;
+    setResuming(true);
+    setResumeError(null);
+    const result = await requestResumeLink({
+      confirmationId: order.confirmation_id,
+      isPsd: isPsdOrder(order),
+    });
+    if (result.ok && result.url) {
+      window.location.assign(result.url);
+      return;
+    }
+    setResumeError(result.error ?? "Could not continue your booking. Please try again.");
+    setResuming(false);
+  };
 
   return (
     <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-b from-amber-50/80 to-white overflow-hidden">
@@ -38,12 +63,16 @@ export default function UnpaidBookingCard({
         </div>
 
         <div className="mt-5 flex flex-col sm:flex-row sm:items-center gap-2.5">
-          <Link
-            to={href}
-            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm rounded-xl transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
+          <button
+            type="button"
+            onClick={handleResume}
+            disabled={resuming}
+            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold text-sm rounded-xl transition-colors cursor-pointer shadow-[0_8px_22px_-10px_rgba(249,115,22,0.5)]"
           >
-            <i className="ri-arrow-right-circle-line"></i>{cta}
-          </Link>
+            {resuming
+              ? <><i className="ri-loader-4-line animate-spin"></i>Opening secure checkout…</>
+              : <><i className="ri-arrow-right-circle-line"></i>{cta}</>}
+          </button>
           {onReviewAssessment && (
             <button
               type="button"
@@ -54,6 +83,12 @@ export default function UnpaidBookingCard({
             </button>
           )}
         </div>
+
+        {resumeError && (
+          <p className="text-xs text-red-600 mt-3 flex items-center gap-1.5">
+            <i className="ri-error-warning-line"></i>{resumeError}
+          </p>
+        )}
 
         <p className="text-[11px] text-gray-400 mt-3 flex items-center gap-1.5">
           <i className="ri-shield-check-line text-emerald-500"></i>

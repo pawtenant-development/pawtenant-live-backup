@@ -204,6 +204,40 @@
 
     <!-- UTM + GCLID + FBCLID Capture — runs inline (tiny, no network) -->
     <script>
+      // ── Credential scrub, FIRST thing on the page ────────────────────────
+      // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §J
+      //
+      // `?rt=` is a live, single-use resume credential. Scrubbing it in React
+      // was a RACE that production loses: the tag stack (GTM, Google Ads, GA4,
+      // Facebook, Bing) fires on page load and reports `dl`/`dr` = the raw
+      // tokenised URL before React ever mounts. Verified on pawtenant.com: nine
+      // third-party beacons carried the token, including GA4's `dr`.
+      //
+      // So we strip it from the address bar HERE, synchronously, before the
+      // tracking bootstrap below can read location. The raw value is handed to
+      // the app in memory only — never sessionStorage, never localStorage.
+      //
+      // Scrubbing before the redirect also fixes the referrer: the /r/ bridge's
+      // own URL is what the next page reports as `dr`.
+      (function () {
+        try {
+          var cu = new URL(window.location.href);
+          var grabbed = {};
+          var dirty = false;
+          ['rt', 'resume', 'token'].forEach(function (p) {
+            if (cu.searchParams.has(p)) {
+              grabbed[p] = cu.searchParams.get(p);
+              cu.searchParams.delete(p);
+              dirty = true;
+            }
+          });
+          if (dirty) {
+            window.__ptCredentialParams = grabbed;
+            window.history.replaceState({}, '', cu.pathname + cu.search + cu.hash);
+          }
+        } catch (e) { /* non-fatal */ }
+      })();
+
       (function() {
         var params = new URLSearchParams(window.location.search);
         var fields = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','gbraid','wbraid','fbclid','msclkid'];
@@ -221,11 +255,31 @@
           if (!CLICK_IDS[k] && isUnresolvedMacro(v)) return;
           sessionStorage.setItem(k, v);
         });
+        // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §J
+        // This inline capture runs BEFORE React boots, so it — not
+        // attributionStore — is the first writer of landing_url. It must strip
+        // credential params itself: `rt` carries a live, single-use resume
+        // token, and landing_url is written to the order row and forwarded to
+        // GHL and analytics. Keep this list in sync with CREDENTIAL_PARAMS in
+        // src/lib/attributionStore.ts.
+        var stripCreds = function (raw) {
+          if (!raw) return raw;
+          try {
+            var u = new URL(raw, window.location.origin);
+            var touched = false;
+            ['rt', 'resume', 'token'].forEach(function (p) {
+              if (u.searchParams.has(p)) { u.searchParams.delete(p); touched = true; }
+            });
+            return touched ? u.toString() : raw;
+          } catch (e) {
+            return String(raw).split('?')[0];
+          }
+        };
         if (!sessionStorage.getItem('landing_url')) {
-          sessionStorage.setItem('landing_url', window.location.href);
+          sessionStorage.setItem('landing_url', stripCreds(window.location.href));
         }
         if (!sessionStorage.getItem('referrer') && document.referrer) {
-          sessionStorage.setItem('referrer', document.referrer);
+          sessionStorage.setItem('referrer', stripCreds(document.referrer));
         }
       })();
     </script>
