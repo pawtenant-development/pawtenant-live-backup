@@ -1,10 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveAuditActor, maskPhone } from "../_shared/auditActor.ts";
+import { issueResumeLink } from "../_shared/resumeLink.ts";
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-);
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SITE_URL = Deno.env.get("SITE_URL") ?? "https://pawtenant.com";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -63,6 +65,41 @@ Deno.serve(async (req: Request) => {
       status: 400,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
+  }
+
+  // ── {resume_url} is resolved HERE, server-side ───────────────────────────
+  // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §F/§G
+  //
+  // Recovery SMS templates used to hardcode `pawtenant.com/assessment?resume={order_id}`
+  // — a confirmation id acting as a credential, sitting in the customer's SMS
+  // history forever. Templates now carry the literal `{resume_url}` placeholder,
+  // which the admin sees un-substituted in the compose box, and which is replaced
+  // at SEND time with an expiring, single-use, order-bound link.
+  //
+  // Consequence: the raw token never enters an admin browser, is never copyable
+  // from the console, and is never stored in the text the admin edited.
+  let outboundMessage = message;
+  if (/\{resume_url\}/.test(outboundMessage)) {
+    if (confirmationId) {
+      const issued = await issueResumeLink({
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        siteUrl: SITE_URL,
+        confirmationId,
+        isPsd: /(-|_)psd/i.test(confirmationId),
+        purpose: "resume_assessment",
+        ttlMinutes: 1440,
+        createdBy: "ghl-send-sms",
+      });
+      outboundMessage = outboundMessage.replace(/\{resume_url\}/g, issued.url);
+    } else {
+      // No order to bind a credential to — refuse rather than send a dead or
+      // credential-free placeholder to a customer.
+      return new Response(
+        JSON.stringify({ ok: false, error: "This template needs a linked order to generate a secure resume link." }),
+        { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
   }
 
   if (!GHL_API_KEY || !GHL_LOCATION_ID) {
@@ -152,7 +189,7 @@ Deno.serve(async (req: Request) => {
       contactId: ghlContactId,
       locationId: GHL_LOCATION_ID,
       fromNumber: GHL_FROM_NUMBER || undefined,
-      message,
+      message: outboundMessage,
     }),
   });
 
@@ -174,7 +211,7 @@ Deno.serve(async (req: Request) => {
       confirmation_id: confirmationId ?? null,
       type: "sms_outbound",
       direction: "outbound",
-      body: message,
+      body: outboundMessage,
       phone_from: GHL_FROM_NUMBER || null,
       phone_to: phone,
       status: "failed",
@@ -214,7 +251,7 @@ Deno.serve(async (req: Request) => {
     confirmation_id: confirmationId ?? null,
     type: "sms_outbound",
     direction: "outbound",
-    body: message,
+    body: outboundMessage,
     phone_from: GHL_FROM_NUMBER || null,
     phone_to: phone,
     status: "sent",

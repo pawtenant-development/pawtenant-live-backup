@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { clientIp, consumeRateLimit, RESUME_SUBJECT_LIMITS } from "../_shared/rateLimit.ts";
+
+/** sha256 hex — used only to keep a confirmation reference out of the limiter. */
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1024,38 +1031,59 @@ serve(async (req) => {
     }
 
     // ── READ path ─────────────────────────────────────────────────────────
+    // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001
+    //
+    // A confirmation id is a DISPLAY REFERENCE, not a credential. It is printed
+    // in emails, SMS, URLs, analytics and support threads, and it is reachable
+    // here with the PUBLIC anon key that every browser holds.
+    //
+    // This path used to return first_name, last_name, email, phone, price,
+    // letter_type (ESA vs PSD), package_key, billing_plan and the full
+    // `assessment_answers` — the customer's mental-health intake — to anyone who
+    // knew or guessed an order number.
+    //
+    // It now returns EXISTENCE + PAYMENT STATE ONLY. Resuming with real order
+    // data requires an expiring, single-use, order-bound resume token exchanged
+    // through `exchange-resume-token`.
+    //
+    // RATE LIMIT (§I). Only this READ path is throttled — the `upsert` action
+    // above is the live checkout write path and must never be throttled. Two
+    // buckets: caller IP, and the DIGEST of the confirmation reference. This is
+    // what bounds the residual existence / paid-state oracle that necessarily
+    // remains: `account-checkout` legitimately needs "does this order exist and
+    // is it already paid" to route the customer. A throttled caller gets the
+    // SAME "Order not found" body as an unknown reference, so throttling itself
+    // answers nothing.
+    const notFound = () =>
+      new Response(
+        JSON.stringify({ ok: false, error: "Order not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+
+    const readIpAllowed = await consumeRateLimit(supabase, "request_new_link", clientIp(req));
+    const readRefAllowed = await consumeRateLimit(
+      supabase,
+      "request_new_link",
+      await sha256Hex(confirmationId),
+      RESUME_SUBJECT_LIMITS.perConfirmationRef,
+    );
+    if (!readIpAllowed || !readRefAllowed) return notFound();
+
     const { data, error } = await supabase
       .from("orders")
-      .select(
-        "confirmation_id, first_name, last_name, email, phone, state, delivery_speed, price, assessment_answers, payment_intent_id, paid_at, status, plan_type, letter_type, package_key, billing_plan"
-      )
+      .select("confirmation_id, payment_intent_id, paid_at, status")
       .eq("confirmation_id", confirmationId)
       .maybeSingle();
 
-    if (error || !data) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Order not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (error || !data) return notFound();
 
     const alreadyPaid = !!(data.payment_intent_id || data.paid_at);
 
+    // Hand-built allowlist. Never spread the row; never add a display field back
+    // "because a page used to show it" — use a resume token instead.
     const safeOrder = {
       confirmation_id: data.confirmation_id,
-      first_name: data.first_name,
-      last_name: data.last_name,
-      email: data.email,
-      phone: data.phone,
-      state: data.state,
-      delivery_speed: data.delivery_speed,
-      price: data.price,
-      assessment_answers: data.assessment_answers,
       status: data.status,
-      plan_type: data.plan_type,
-      letter_type: data.letter_type,
-      package_key: data.package_key,
-      billing_plan: data.billing_plan,
       already_paid: alreadyPaid,
     };
 

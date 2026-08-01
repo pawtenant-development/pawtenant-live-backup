@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { issueResumeLink } from "../_shared/resumeLink.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +14,9 @@ const SUPPORT_EMAIL = "hello@pawtenant.com";
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
 const PORTAL_URL = `https://${COMPANY_DOMAIN}/my-orders`;
-const SITE_URL = `https://www.${COMPANY_DOMAIN}`;
+// Env-driven so the origin follows the deployment. A token is environment-bound,
+// so a link built for the wrong origin/environment fails closed.
+const SITE_URL = Deno.env.get("SITE_URL") ?? `https://${COMPANY_DOMAIN}`;
 const ACCENT = "#1a5c4f";
 
 const LEAD_RECOVERY_AUDIENCES = new Set(["all_leads", "all_everyone"]);
@@ -44,10 +47,28 @@ function sanitizeTagValue(v: string): string {
     || "unknown";
 }
 
-function buildResumeUrl(confirmationId: string, letterType?: string): string {
-  const isPsd = letterType === "psd" || (confirmationId ?? "").includes("-PSD");
-  const path = isPsd ? "psd-assessment" : "assessment";
-  return `${SITE_URL}/${path}?resume=${encodeURIComponent(confirmationId)}`;
+// ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §C
+// Broadcast lead-recovery CTAs used to carry `?resume=<confirmationId>`. Each
+// recipient now gets their OWN expiring, single-use, order-bound token, minted
+// through the one canonical builder. Fail-closed: a recipient whose order is no
+// longer resumable gets a credential-free link, never an order reference.
+async function buildResumeUrl(
+  supabaseUrl: string,
+  serviceKey: string,
+  confirmationId: string,
+  letterType?: string,
+): Promise<string> {
+  const issued = await issueResumeLink({
+    supabaseUrl,
+    serviceRoleKey: serviceKey,
+    siteUrl: SITE_URL,
+    confirmationId,
+    isPsd: letterType === "psd" || (confirmationId ?? "").includes("-PSD"),
+    purpose: "resume_assessment",
+    ttlMinutes: 4320,
+    createdBy: "broadcast-email",
+  });
+  return issued.url;
 }
 
 function buildUnsubscribeUrl(supabaseUrl: string, email: string): string {
@@ -266,7 +287,7 @@ serve(async (req) => {
       }
 
       const testCtaUrl = isLeadRecovery
-        ? `${SITE_URL}/assessment?resume=SAMPLE-ORDER-ID`
+        ? `${SITE_URL}/assessment`  // preview only — real sends carry a per-recipient secure token
         : ctaUrl;
 
       const html = buildBroadcastHtml({
@@ -355,7 +376,7 @@ serve(async (req) => {
 
           let recipientCtaUrl = ctaUrl;
           if (isLeadRecovery && recipient.confirmation_id) {
-            recipientCtaUrl = buildResumeUrl(recipient.confirmation_id, recipient.letter_type);
+            recipientCtaUrl = await buildResumeUrl(supabaseUrl, serviceKey, recipient.confirmation_id, recipient.letter_type);
           }
 
           const unsubscribeUrl = buildUnsubscribeUrl(supabaseUrl, recipient.email);

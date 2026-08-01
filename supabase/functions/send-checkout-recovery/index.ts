@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { issueResumeLink } from "../_shared/resumeLink.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -332,10 +333,32 @@ serve(async (req) => {
     }
 
     const hasDiscount = !!(discountCode && discountCode.length > 0);
-    const assessmentPath = isPsd ? "psd-assessment" : "assessment";
-    const resumeLink = `${SITE_URL}/${assessmentPath}?resume=${encodeURIComponent(confirmationId)}`;
+    // ── ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 ───────────────
+    // Recovery links used to carry `?resume=<confirmationId>`. A confirmation id
+    // is a DISPLAY REFERENCE that also lands in analytics, referrers, support
+    // threads and mail logs — it must never act as a credential.
+    //
+    // Built through the ONE canonical builder in _shared/resumeLink.ts, which
+    // fails CLOSED: if the order is no longer resumable the link carries no token
+    // AND no order reference, so the customer reaches the safe request-new-link
+    // screen rather than a link that leaks an order number.
+    const issuedLink = await issueResumeLink({
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+      siteUrl: SITE_URL,
+      confirmationId,
+      isPsd,
+      purpose: "resume_assessment",
+      ttlMinutes: 4320,
+      createdBy: "send-checkout-recovery",
+    });
+    if (!issuedLink.tokenized) {
+      console.info(`[send-checkout-recovery] no resume token issued — sending generic link`);
+    }
+    const resumeLink = issuedLink.url;
+    // The fallback link has no query string, so a bare `&promo=` would be malformed.
     const resumeWithPromo = hasDiscount
-      ? `${resumeLink}&promo=${encodeURIComponent(discountCode!.trim())}`
+      ? `${resumeLink}${resumeLink.includes("?") ? "&" : "?"}promo=${encodeURIComponent(discountCode!.trim())}`
       : resumeLink;
     const orderTotal = price != null ? `$${Number(price).toFixed(2)}` : "Varies by plan";
     const letterLabel = isPsd ? "PSD Letter" : "ESA Letter";

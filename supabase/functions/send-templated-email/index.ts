@@ -8,6 +8,7 @@ import { logEmailComm } from "../_shared/logEmailComm.ts";
 import { resolveAuditActor, maskEmail } from "../_shared/auditActor.ts";
 import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
+import { issueResumeLink } from "../_shared/resumeLink.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -162,10 +163,47 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Resume links are minted HERE, server-side ────────────────────────────
+    // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 §F
+    //
+    // The admin console used to build `{resume_url}` in the browser as
+    // `…/assessment?resume=<confirmationId>` and pass it in `vars`. Two problems:
+    // a confirmation id is a display reference, not a credential; and a
+    // caller-supplied var could put ANY link into a customer email.
+    //
+    // Now: whenever a template actually uses a resume variable and we know the
+    // order, we mint an expiring, single-use, order-bound token through the one
+    // canonical builder — and these two keys are applied AFTER `body.vars`, so
+    // a caller can no longer override them. The raw token never enters the
+    // admin browser on this path at all.
+    const templateSurface = `${tmpl.subject ?? ""}${tmpl.body ?? ""}${tmpl.cta_url ?? ""}`;
+    const needsResumeLink = /\{resume_url(_with_promo)?\}/.test(templateSurface);
+    const authoritativeResumeVars: Record<string, string> = {};
+    if (needsResumeLink && body.confirmationId) {
+      const issued = await issueResumeLink({
+        supabaseUrl: SUPABASE_URL,
+        serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+        siteUrl: SITE_URL,
+        confirmationId: body.confirmationId,
+        isPsd: /(-|_)psd/i.test(body.confirmationId) ||
+               (body.vars?.letter_type ?? "").toLowerCase().includes("psd"),
+        purpose: "resume_assessment",
+        ttlMinutes: 1440, // 24 h — staff send these in a live conversation.
+        createdBy: "send-templated-email",
+      });
+      authoritativeResumeVars.resume_url = issued.url;
+      const promo = (body.vars?.discount_code ?? "").trim();
+      authoritativeResumeVars.resume_url_with_promo = promo
+        ? `${issued.url}${issued.url.includes("?") ? "&" : "?"}promo=${encodeURIComponent(promo)}`
+        : issued.url;
+    }
+
     const vars: Record<string, string> = {
       site_url: SITE_URL,
       ...hydratedFromOrder,
       ...(body.vars ?? {}),
+      // Applied last: not caller-overridable.
+      ...authoritativeResumeVars,
     };
 
     const subject = substitute(tmpl.subject as string, vars);

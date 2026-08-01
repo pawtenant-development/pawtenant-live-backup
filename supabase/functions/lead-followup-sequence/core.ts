@@ -15,6 +15,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
+import { issueResumeLink } from "../_shared/resumeLink.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -26,7 +27,9 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
-const SITE_URL = "https://www.pawtenant.com";
+// Env-driven. A resume token is environment-bound, so a link built for the wrong
+// origin/environment fails closed — the origin must follow the deployment.
+const SITE_URL = Deno.env.get("SITE_URL") ?? "https://pawtenant.com";
 const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
@@ -173,7 +176,7 @@ function renderRecoverySms(
   const name = (vars.firstName || "").trim() || "there";
   const pet = (vars.petName || "").trim() || PET_FALLBACK;
   const promo = (vars.promoCode || "").trim() || SMS_DISCOUNT_CODE;
-  const urlWithPromo = `${vars.resumeUrl}&promo=${encodeURIComponent(promo)}`;
+  const urlWithPromo = `${vars.resumeUrl}${vars.resumeUrl.includes("?") ? "&" : "?"}promo=${encodeURIComponent(promo)}`;
   return (template && template.trim() ? template : DEFAULT_SMS_TEMPLATE)
     .replace(/\{first_name\}/g, name)
     .replace(/\{name\}/g, name)
@@ -360,7 +363,7 @@ function build24hEmail(firstName: string, resumeLink: string, letterType: string
 function build3DayEmail(firstName: string, resumeLink: string, letterType: string, orderId: string): string {
   const name = escapeHtml(firstName || "there");
   const label = letterType === "psd" ? "PSD Letter" : "ESA Letter";
-  const resumeWithPromo = `${resumeLink}&promo=${encodeURIComponent(DISCOUNT_CODE)}`;
+  const resumeWithPromo = `${resumeLink}${resumeLink.includes("?") ? "&" : "?"}promo=${encodeURIComponent(DISCOUNT_CODE)}`;
   const body = `
     <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi <strong>${name}</strong>,</p>
     <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.7;">We want to make it easy for you to get your <strong>${label}</strong>. Here&rsquo;s an exclusive <strong>$20 off</strong> just for you &mdash; limited time only.</p>
@@ -557,8 +560,33 @@ export async function runLeadFollowupSequence(
       if (ageDays > SEQUENCE_FINAL_STAGE_MAX_AGE_DAYS && lead.seq_3day_sent_at) { results.expired++; continue; }
 
       const letterType = (lead.letter_type as string) || "esa";
-      const assessmentPath = letterType === "psd" ? "psd-assessment" : "assessment";
-      const resumeLink = `${SITE_URL}/${assessmentPath}?resume=${encodeURIComponent(lead.confirmation_id as string)}`;
+      //
+      // ORDER-RESUME-SECURE-TOKEN-001: the drip used to embed
+      // `?resume=<confirmationId>` in every recovery email and SMS. It now
+      // carries an expiring, single-use, order-bound token.
+      //
+      // LAZY + MEMOISED, deliberately. Issuing a token auto-revokes the
+      // previous active one for the same (order, purpose) — so minting eagerly
+      // for every lead on every cron tick would invalidate the link we emailed
+      // minutes earlier. We mint at most one token per lead per run, and only
+      // when a stage actually fires.
+      let _resumeLink: string | null = null;
+      const getResumeLink = async (): Promise<string> => {
+        if (_resumeLink === null) {
+          const issued = await issueResumeLink({
+            supabaseUrl: SUPABASE_URL,
+            serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+            siteUrl: SITE_URL,
+            confirmationId: lead.confirmation_id as string,
+            isPsd: letterType === "psd",
+            purpose: "resume_assessment",
+            ttlMinutes: 4320,
+            createdBy: "lead-followup-sequence",
+          });
+          _resumeLink = issued.url;
+        }
+        return _resumeLink;
+      };
       const firstName = (lead.first_name as string) || "";
       const petName = resolvePetName(lead.assessment_answers);
       const phone = ((lead.phone as string | null) ?? "").trim();
@@ -582,7 +610,7 @@ export async function runLeadFollowupSequence(
           .is("sms_5min_sent_at", null)
           .select("id");
         if (!claimErr && claimed && claimed.length > 0) {
-          const smsMsg = renderRecoverySms(smsConfig.template, { firstName, petName, resumeUrl: resumeLink, promoCode: smsConfig.promoCode });
+          const smsMsg = renderRecoverySms(smsConfig.template, { firstName, petName, resumeUrl: await getResumeLink(), promoCode: smsConfig.promoCode });
           const smsRes = await sendRecoverySmsViaComms({
             orderId, confirmationId, toPhone: phone, message: smsMsg, sentBy: "auto_sequence:sms_5min",
           });
@@ -605,8 +633,8 @@ export async function runLeadFollowupSequence(
           ? dbTmpl30.subject.replace(/\{letter_type\}/g, label)
           : `Complete Your ${letterType === "psd" ? "PSD" : "ESA"} Letter — Your answers are saved`;
         const html30 = dbTmpl30
-          ? buildEmailFromTemplate(dbTmpl30, { name: firstName, letter_type: label, resume_url: resumeLink, petname: petName }, "Incomplete Application", `Your ${label} is waiting!`, "Your assessment answers have been saved — pick up where you left off", orderId, masterLayout)
-          : build30MinEmail(firstName, resumeLink, letterType, orderId);
+          ? buildEmailFromTemplate(dbTmpl30, { name: firstName, letter_type: label, resume_url: await getResumeLink(), petname: petName }, "Incomplete Application", `Your ${label} is waiting!`, "Your assessment answers have been saved — pick up where you left off", orderId, masterLayout)
+          : build30MinEmail(firstName, await getResumeLink(), letterType, orderId);
 
         const r = await sendSequenceStep(supabase, {
           step: "seq_30min", orderId, confirmationId, email, subject, html: html30,
@@ -631,8 +659,8 @@ export async function runLeadFollowupSequence(
           ? dbTmpl24.subject.replace(/\{letter_type\}/g, label24)
           : `Still thinking? Get your ${letterType === "psd" ? "PSD" : "ESA"} letter today and avoid housing issues.`;
         const html24 = dbTmpl24
-          ? buildEmailFromTemplate(dbTmpl24, { name: firstName, letter_type: label24, resume_url: resumeLink, petname: petName }, "Still Thinking?", "Get your ESA letter today and avoid housing issues.", "Your assessment is saved — complete checkout in under 2 minutes", orderId, masterLayout)
-          : build24hEmail(firstName, resumeLink, letterType, orderId);
+          ? buildEmailFromTemplate(dbTmpl24, { name: firstName, letter_type: label24, resume_url: await getResumeLink(), petname: petName }, "Still Thinking?", "Get your ESA letter today and avoid housing issues.", "Your assessment is saved — complete checkout in under 2 minutes", orderId, masterLayout)
+          : build24hEmail(firstName, await getResumeLink(), letterType, orderId);
 
         const r = await sendSequenceStep(supabase, {
           step: "seq_24h", orderId, confirmationId, email, subject, html: html24,
@@ -657,8 +685,8 @@ export async function runLeadFollowupSequence(
           ? dbTmpl3d.subject.replace(/\{letter_type\}/g, label3d).replace(/\{discount_code\}/g, DISCOUNT_CODE)
           : `Here's $20 off your ${letterType === "psd" ? "PSD" : "ESA"} letter (limited time) — Discount code: ${DISCOUNT_CODE}`;
         const html3d = dbTmpl3d
-          ? buildEmailFromTemplate(dbTmpl3d, { name: firstName, letter_type: label3d, resume_url: resumeLink, discount_code: DISCOUNT_CODE, petname: petName }, "Limited Time Offer", `Here's $20 off your ${label3d}!`, "Exclusive discount — expires in 48 hours", orderId, masterLayout)
-          : build3DayEmail(firstName, resumeLink, letterType, orderId);
+          ? buildEmailFromTemplate(dbTmpl3d, { name: firstName, letter_type: label3d, resume_url: await getResumeLink(), discount_code: DISCOUNT_CODE, petname: petName }, "Limited Time Offer", `Here's $20 off your ${label3d}!`, "Exclusive discount — expires in 48 hours", orderId, masterLayout)
+          : build3DayEmail(firstName, await getResumeLink(), letterType, orderId);
 
         const r = await sendSequenceStep(supabase, {
           step: "seq_3day", orderId, confirmationId, email, subject, html: html3d,
