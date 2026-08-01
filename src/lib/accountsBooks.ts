@@ -152,6 +152,12 @@ export interface BooksSnapshot {
   businessNet: number;
   expenses: number;
   salary: number;
+  // Paid media (Google + Meta) for the month, in USD. Sourced from the virtual
+  // marketing-spend rows (get_marketing_spend_summary), NOT from company_expenses.
+  // Optional because snapshots written before this field existed omit it — those
+  // legacy snapshots stored an operatingNet that never deducted ad spend, so they
+  // will read as drifted against current books until "Update Snapshot" is used.
+  adSpend?: number;
   operatingNet: number;
   expenseCount: number;
   chargeCount: number;

@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { monthlyPeriods, type MonthlyPeriod } from "../../../lib/accountsPeriods";
+import { computeOperatingNet } from "../../../lib/accountsFinancialFlow";
 import {
   fetchExpensesUpTo, projectRecurringExpenses, fetchSalaryExpense,
+  fetchMarketingSpendSummary, isMetaConnected,
   type CompanyExpense,
 } from "../../../lib/companyExpenses";
 import {
@@ -11,7 +13,7 @@ import {
   type PanelMonthAgg, type AccountingPeriod, type BooksSnapshot, type PayrollSendLogRow,
 } from "../../../lib/accountsBooks";
 
-// The eight P&L figures a snapshot stores — used to recompute current books for a
+// The P&L figures a snapshot stores — used to recompute current books for a
 // closed month and detect drift against the stored snapshot.
 interface BooksFigures {
   gross: number;
@@ -21,6 +23,7 @@ interface BooksFigures {
   businessNet: number;
   expenses: number;
   salary: number;
+  adSpend: number;
   operatingNet: number;
   expenseCount: number;
   chargeCount: number;
@@ -34,9 +37,15 @@ interface MonthRow extends MonthlyPeriod {
   businessNet: number;
   expenses: number;
   salary: number;
+  adSpend: number;
   operatingNet: number;
   expenseCount: number;
   chargeCount: number;
+  // False when a paid-media source could not be read for this month (RPC failed)
+  // or Meta is not connected — the ad-spend figure is then a FLOOR, not a total,
+  // so Operating Net is an upper bound. Never present an unavailable source as $0.
+  adSpendComplete: boolean;
+  adSpendNote: string;
   // close/lock state
   rowStatus: "open" | "review" | "closed";
   periodId: string | null;
@@ -50,7 +59,7 @@ interface MonthRow extends MonthlyPeriod {
 
 // Snapshot vs current-books drift: any figure differing by more than half a cent.
 function figuresDrift(snap: BooksFigures, live: BooksFigures): boolean {
-  const keys: (keyof BooksFigures)[] = ["gross", "fees", "refunds", "payouts", "businessNet", "expenses", "salary", "operatingNet"];
+  const keys: (keyof BooksFigures)[] = ["gross", "fees", "refunds", "payouts", "businessNet", "expenses", "salary", "adSpend", "operatingNet"];
   return keys.some((k) => Math.abs((snap[k] ?? 0) - (live[k] ?? 0)) > 0.005);
 }
 
@@ -105,11 +114,31 @@ export default function MonthlyBooksSummary({
       // the panel views that month. Done in parallel.
       const aggByKey: Record<string, PanelMonthAgg> = {};
       const salByKey: Record<string, number> = {};
+      // Paid media per month. This is the SAME source the detailed Estimated P&L
+      // uses (virtual, non-editable marketing rows from get_marketing_spend_summary
+      // — never written into company_expenses, so there is no double count with a
+      // manual marketing row). Monthly Books previously ignored it entirely, which
+      // is why its Operating Net disagreed with the detailed P&L by exactly the
+      // Google Ads figure.
+      const adByKey: Record<string, { spend: number; complete: boolean; note: string }> = {};
       await Promise.all(months.map(async (m) => {
-        const [agg, sal] = await Promise.all([
+        const [agg, sal, mkt] = await Promise.all([
           fetchBooksMonthAgg(m.from, m.to),
           fetchSalaryExpense(m.from, m.to),
+          fetchMarketingSpendSummary(m.from, m.to),
         ]);
+        if (!mkt) {
+          // RPC failed or caller is not admin — we do NOT know spend. Deduct nothing
+          // and mark the row incomplete rather than implying a $0 spend month.
+          adByKey[m.key] = { spend: 0, complete: false, note: "Paid-media spend unavailable — Operating Net is an upper bound." };
+        } else {
+          const metaOk = isMetaConnected(mkt);
+          adByKey[m.key] = {
+            spend: mkt.total_spend_usd ?? 0,
+            complete: metaOk,
+            note: metaOk ? "" : "Meta Ads not connected — Meta spend is not included.",
+          };
+        }
         aggByKey[m.key] = agg;
         salByKey[m.key] = sal.reduce(
           (s, r) => {
@@ -139,17 +168,23 @@ export default function MonthlyBooksSummary({
         const occ = projectRecurringExpenses(allExp, m.from, m.to);
         const expenses = occ.reduce((sum, e) => sum + expenseUsd(e, fxRate), 0);
         const salaryUsd = salByKey[m.key] ?? 0;
+        const ad = adByKey[m.key] ?? { spend: 0, complete: false, note: "Paid-media spend unavailable — Operating Net is an upper bound." };
         const live: BooksFigures = {
           gross: a.gross, fees: a.fees, refunds: a.refunds, payouts: a.payouts, businessNet: a.businessNet,
-          expenses, salary: salaryUsd, operatingNet: a.businessNet - expenses - salaryUsd,
+          expenses, salary: salaryUsd, adSpend: ad.spend,
+          operatingNet: computeOperatingNet({ businessNet: a.businessNet, expenses, salary: salaryUsd, adSpend: ad.spend }),
           expenseCount: occ.length, chargeCount: a.chargeCount,
         };
 
         if (closed && closed.snapshot_json) {
           const s = closed.snapshot_json;
+          // Snapshots written before Operating Net deducted paid media have no
+          // adSpend key. Read it as 0 so the STORED figures are displayed exactly as
+          // they were closed (never silently restated) — drift detection then flags
+          // the row so an admin can consciously "Update Snapshot".
           const snapFigures: BooksFigures = {
             gross: s.gross, fees: s.fees, refunds: s.refunds, payouts: s.payouts, businessNet: s.businessNet,
-            expenses: s.expenses, salary: s.salary, operatingNet: s.operatingNet,
+            expenses: s.expenses, salary: s.salary, adSpend: s.adSpend ?? 0, operatingNet: s.operatingNet,
             expenseCount: s.expenseCount, chargeCount: s.chargeCount,
           };
           // Closed rows DISPLAY the stored snapshot (req: closed → snapshot), but we
@@ -157,8 +192,10 @@ export default function MonthlyBooksSummary({
           return {
             ...m,
             gross: s.gross, fees: s.fees, refunds: s.refunds, payouts: s.payouts, businessNet: s.businessNet,
-            expenses: s.expenses, salary: s.salary, operatingNet: s.operatingNet,
+            expenses: s.expenses, salary: s.salary, adSpend: s.adSpend ?? 0, operatingNet: s.operatingNet,
             expenseCount: s.expenseCount, chargeCount: s.chargeCount,
+            adSpendComplete: s.adSpend != null,
+            adSpendNote: s.adSpend == null ? "Snapshot predates paid-media accounting — Operating Net here excludes ad spend." : "",
             rowStatus: "closed", periodId: closed.id, closedAt: closed.closed_at, reopenedAt: null,
             live, snapshotDrift: figuresDrift(snapFigures, live),
           };
@@ -167,8 +204,9 @@ export default function MonthlyBooksSummary({
         return {
           ...m,
           gross: live.gross, fees: live.fees, refunds: live.refunds, payouts: live.payouts, businessNet: live.businessNet,
-          expenses: live.expenses, salary: live.salary, operatingNet: live.operatingNet,
+          expenses: live.expenses, salary: live.salary, adSpend: live.adSpend, operatingNet: live.operatingNet,
           expenseCount: live.expenseCount, chargeCount: live.chargeCount,
+          adSpendComplete: ad.complete, adSpendNote: ad.note,
           rowStatus: m.status, periodId: anyPeriod?.id ?? null,
           closedAt: null, reopenedAt: anyPeriod?.reopened_at ?? null,
           live, snapshotDrift: false,
@@ -210,13 +248,13 @@ export default function MonthlyBooksSummary({
   const buildSnapshot = (r: MonthRow): BooksSnapshot => {
     const f: BooksFigures = r.live ?? {
       gross: r.gross, fees: r.fees, refunds: r.refunds, payouts: r.payouts, businessNet: r.businessNet,
-      expenses: r.expenses, salary: r.salary, operatingNet: r.operatingNet,
+      expenses: r.expenses, salary: r.salary, adSpend: r.adSpend, operatingNet: r.operatingNet,
       expenseCount: r.expenseCount, chargeCount: r.chargeCount,
     };
     return {
       month_key: r.key, period_start: r.from, period_end: r.to, label: r.label,
       gross: f.gross, fees: f.fees, refunds: f.refunds, payouts: f.payouts, businessNet: f.businessNet,
-      expenses: f.expenses, salary: f.salary, operatingNet: f.operatingNet,
+      expenses: f.expenses, salary: f.salary, adSpend: f.adSpend, operatingNet: f.operatingNet,
       expenseCount: f.expenseCount, chargeCount: f.chargeCount, snapshotAt: new Date().toISOString(),
     };
   };
@@ -335,6 +373,7 @@ export default function MonthlyBooksSummary({
                       <th className="text-right py-2 px-2">Business Net</th>
                       <th className="text-right py-2 px-2">Expenses</th>
                       <th className="text-right py-2 px-2">Salary (est.)</th>
+                      <th className="text-right py-2 px-2">Ad Spend</th>
                       <th className="text-right py-2 px-2">Operating Net</th>
                       <th className="text-center py-2 px-2">Status</th>
                       <th className="text-right py-2 pl-2">Action</th>
@@ -358,6 +397,12 @@ export default function MonthlyBooksSummary({
                         <td className="text-right py-2 px-2 text-[#3b6ea5] font-semibold">{fmt(r.businessNet)}</td>
                         <td className="text-right py-2 px-2 text-gray-400">−{fmt(r.expenses)}</td>
                         <td className="text-right py-2 px-2 text-gray-400">−{fmt(r.salary)}</td>
+                        <td className="text-right py-2 px-2 text-gray-400 whitespace-nowrap">
+                          −{fmt(r.adSpend)}
+                          {!r.adSpendComplete && (
+                            <i className="ri-error-warning-line ml-1 text-amber-500" title={r.adSpendNote}></i>
+                          )}
+                        </td>
                         <td className={`text-right py-2 px-2 font-extrabold ${r.operatingNet >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmt(r.operatingNet)}</td>
                         <td className="text-center py-2 px-2">
                           {statusBadge(r)}
@@ -419,7 +464,8 @@ export default function MonthlyBooksSummary({
                 </table>
               </div>
               <p className="mt-2 text-[10px] leading-snug text-gray-400">
-                Business Net = gross − Stripe fees − refunds − confirmed provider payouts. Operating Net = Business Net − company expenses − estimated salary.
+                Business Net = gross − Stripe fees − refunds − confirmed provider payouts. Operating Net = Business Net − company expenses − estimated salary − paid media (Google + Meta).
+                Paid media comes from the synced marketing-spend source the detailed Estimated P&amp;L uses — it is never stored as a manual expense row, so it is deducted exactly once.
                 Recurring subscriptions are applied to every month. Salary is the estimated cost of active non-owner employees, prorated to each month (owners excluded) — same basis as the Accounts panel above.
                 {canManage ? " Closing a month stores a snapshot for reporting; source transactions are never changed. Reopen allows corrections; Update Snapshot refreshes a closed month's stored figures to the current books (e.g. a late refund) without reopening." : " Monthly close/lock is admin-only."}
                 {" "}“Open” = current month, “Review” = prior months, “Closed” = snapshot locked.

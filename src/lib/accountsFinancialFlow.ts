@@ -109,6 +109,45 @@ export interface FlowStep {
 
 // ── Company-wide P&L flow ────────────────────────────────────────────────────
 
+/**
+ * ONE FORMULA for Operating Net, shared by every surface that reports it.
+ *
+ *   Operating Net = Business Net − company expenses − salary − paid media
+ *
+ * This is the same final step as `buildCompanyFlow` ("Contribution After Stripe
+ * − Company Expenses = Operating Net"), with Company Expenses decomposed into
+ * its three parts. `CompanyFlowInput.companyExpensesUsd` is documented as
+ * "manual + salary + synced ad spend"; the Monthly Books row keeps the three
+ * separate for display, so it needs the decomposed form. Both must agree.
+ *
+ * Monthly Books previously had NO paid-media term and so disagreed with the
+ * detailed Estimated P&L by exactly the Google Ads figure (LIVE July 2026:
+ * $14,360.56 shown vs $4,451.38 true — a $9,909.17 overstatement).
+ *
+ * Paid media is deducted from the SYNCED marketing source only
+ * (get_marketing_spend_summary). Those rows are never written into
+ * company_expenses, so there is exactly one deduction and no double count with
+ * a manual marketing row. Do not add a second paid-media term anywhere.
+ *
+ * A negative result is a real loss and is returned as-is — never clamped.
+ */
+export interface OperatingNetInput {
+  /** Gross − Stripe fees − refunds − confirmed provider payouts. */
+  businessNet: number;
+  /** Company expenses (recurring-projected), USD. Excludes salary and ad spend. */
+  expenses: number;
+  /** Prorated non-owner salary, USD. */
+  salary: number;
+  /** Google + Meta, USD, from the synced marketing source. */
+  adSpend: number;
+}
+
+export function computeOperatingNet(i: OperatingNetInput): number {
+  return round2(
+    numOr0(i.businessNet) - numOr0(i.expenses) - numOr0(i.salary) - numOr0(i.adSpend),
+  );
+}
+
 export interface CompanyFlowInput {
   /** Stripe succeeded-charge total for the range (cash basis). */
   grossChargedUsd: number;
