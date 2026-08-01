@@ -29,6 +29,58 @@ function isAlreadyPaid(
   return !!(order?.payment_intent_id || order?.paid_at);
 }
 
+// ── ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001 ───────────────────────────────
+// LOCKED SECURITY RULE: this endpoint is reachable with the PUBLIC anon key
+// (verify_jwt=true, but every browser holds that key), so its request body is
+// ATTACKER-CONTROLLED. It must therefore never be able to establish payment.
+//
+// Previously the ESA/PSD checkouts POSTed `paidAt: new Date().toISOString()`
+// (a BROWSER clock value) plus `paymentIntentId` and `status: "processing"`,
+// and this function wrote all three straight onto the order row. Because
+// trigger `orders_entitlement_snapshot_on_paid` fires on
+// (old.paid_at IS NULL AND new.paid_at IS NOT NULL) and mints an IMMUTABLE
+// entitlement snapshot whose FIRST classification wins permanently, a forged
+// request could mark an unpaid order paid, freeze the wrong package
+// entitlement, and diverge payment state from Stripe forever.
+//
+// Payment evidence is now owned exclusively by server-side paths:
+//   • stripe-webhook          — Stripe-signature-verified (primary)
+//   • check-payment-status    — server-side Stripe retrieve, identifier-bound
+//   • fix-order-payment       — admin-authenticated manual reconciliation
+//
+// This function still owns the NON-payment columns (contact, assessment,
+// attribution, coupon hint). For a payment-shaped request it now DELEGATES to
+// check-payment-status instead of writing payment state itself.
+//
+// Columns this function must NEVER write (see scripts/check-resume-payment-authority.mjs):
+//   paid_at, payment_intent_id, checkout_session_id, subscription_id,
+//   package_key, billing_plan, selected_provider→provider assignment, letter_url
+const CLIENT_FORBIDDEN_PAYMENT_COLUMNS = [
+  "paid_at",
+  "payment_intent_id",
+  "checkout_session_id",
+  "subscription_id",
+] as const;
+
+// Statuses a CLIENT request may set. Anything else — notably the paid workflow
+// statuses ("processing", "completed") the checkout used to send — is ignored;
+// the authoritative payment writers set those alongside paid_at.
+const CLIENT_SETTABLE_STATUSES = new Set(["lead"]);
+
+/**
+ * Fail-closed assertion that no forbidden payment column ever reaches the
+ * orders upsert from this function. A programming mistake here is a security
+ * incident, so we refuse the whole write rather than let it through.
+ */
+function assertNoClientPaymentColumns(payload: Record<string, unknown>): void {
+  const leaked = CLIENT_FORBIDDEN_PAYMENT_COLUMNS.filter((c) => c in payload);
+  if (leaked.length > 0) {
+    throw new Error(
+      `[get-resume-order] refusing upsert: client-derived payment column(s) present: ${leaked.join(", ")}`
+    );
+  }
+}
+
 // ── BATCH-0.2A: attribution "meaningfulness" test ────────────────────────
 // A touch snapshot is "meaningful" when it carries real attribution evidence:
 // a paid click id, a valid utm source/campaign, or a known non-direct
@@ -166,6 +218,108 @@ async function resolveUnpaidLeadRecipients(): Promise<{ enabled: boolean; recipi
   }
 }
 
+// ── ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001 ───────────────────────────────
+/**
+ * Security telemetry. Written best-effort and DEDUPED per order+action so the
+ * thank-you page's normal polling cannot flood audit_logs. Never stores the
+ * Stripe secret, the Authorization header, or any card/payment-method detail.
+ */
+async function logSecurityEvent(
+  supabase: ReturnType<typeof createClient>,
+  action: string,
+  confirmationId: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { count } = await supabase
+      .from("audit_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("action", action)
+      .eq("object_id", confirmationId);
+    if ((count ?? 0) > 0) return; // already recorded once for this order
+
+    await supabase.from("audit_logs").insert({
+      action,
+      object_type: "order",
+      object_id: confirmationId,
+      actor_name: "get-resume-order",
+      actor_role: "service",
+      description: `[ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001] ${action} for ${confirmationId}`,
+      metadata: { ...metadata, confirmation_id: confirmationId, source: "get_resume_order" },
+    });
+  } catch {
+    // Telemetry must never block or fail the request.
+  }
+}
+
+/**
+ * Delegate payment reconciliation to the AUTHORITATIVE server-side reconciler.
+ *
+ * This function does not verify payment itself and does not write payment
+ * columns. check-payment-status performs the server-side Stripe retrieve and
+ * only reconciles when the Stripe object is genuinely paid AND is bound to
+ * THIS order by an identifier our own server stamped (stored
+ * checkout_session_id / payment_intent_id, or Stripe metadata.confirmation_id).
+ *
+ * `clientPaymentIntentHint` is an UNVERIFIED, attacker-controllable value. It
+ * is forwarded only as a lookup hint; check-payment-status is responsible for
+ * proving the binding and refuses on mismatch. A forged hint therefore cannot
+ * mark anything paid — it can only fail to reconcile.
+ */
+async function delegatePaymentReconciliation(opts: {
+  confirmationId: string;
+  clientPaymentIntentHint: string | null;
+}): Promise<{
+  state: "payment_confirmed" | "already_paid" | "payment_confirmation_pending";
+  reconciled: boolean;
+}> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/check-payment-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        confirmationId: opts.confirmationId,
+        // Forwarded as an unverified hint only — see the doc comment above.
+        ...(opts.clientPaymentIntentHint
+          ? { paymentIntentId: opts.clientPaymentIntentHint }
+          : {}),
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn(
+        `[get-resume-order] reconciler returned HTTP ${res.status} for ${opts.confirmationId} — leaving order UNPAID`
+      );
+      return { state: "payment_confirmation_pending", reconciled: false };
+    }
+
+    const data = (await res.json()) as {
+      paid?: boolean;
+      reconciled?: boolean;
+      source?: string;
+    };
+
+    if (data?.paid === true) {
+      return {
+        state: data.source === "db_already_paid" ? "already_paid" : "payment_confirmed",
+        reconciled: data.reconciled === true,
+      };
+    }
+    return { state: "payment_confirmation_pending", reconciled: false };
+  } catch (err) {
+    // Fail CLOSED: an unreachable reconciler means "not confirmed yet", never
+    // "paid". The Stripe webhook remains the safety net.
+    console.warn(
+      `[get-resume-order] reconciler error for ${opts.confirmationId} — leaving order UNPAID:`,
+      err instanceof Error ? err.message : String(err)
+    );
+    return { state: "payment_confirmation_pending", reconciled: false };
+  }
+}
+
 function buildUnpaidLeadHtml(opts: {
   confirmationId: string;
   firstName: string;
@@ -262,6 +416,10 @@ serve(async (req) => {
       price?: number;
       planType?: string;
       referredBy?: string;
+      // ── LEGACY / IGNORED (ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001) ──────
+      // Still ACCEPTED for backward compatibility with any already-deployed
+      // frontend bundle, but NEVER read, parsed, or written. A browser clock is
+      // not payment evidence. Do not reintroduce a read of this field.
       paidAt?: string;
       paymentMethod?: string;
       couponCode?: string;
@@ -298,7 +456,18 @@ serve(async (req) => {
     if (action === "upsert") {
       const normalizedPhone = normalizePhone(body.phone);
       const normalizedEmail = (body.email ?? "").trim().toLowerCase();
+      // SHAPE detection only — NOT payment evidence. This flag decides routing
+      // (don't create a row, don't fire the lead notification / GHL lead event)
+      // and never authorizes a payment write.
+      // ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001
       const isPaymentUpsert = !!body.paymentIntentId || !!body.paidAt;
+      const clientClaimedPaid =
+        !!body.paidAt ||
+        body.status === "processing" ||
+        body.status === "completed" ||
+        (body as { paid?: unknown }).paid === true ||
+        (body as { payment_status?: unknown }).payment_status === "succeeded" ||
+        (body as { paid_at?: unknown }).paid_at !== undefined;
 
       // ── Step 1: Resolve the canonical order row ──────────────────────────
       // Priority:
@@ -473,7 +642,19 @@ serve(async (req) => {
       if (body.state !== undefined) upsertPayload.state = body.state;
       if (body.deliverySpeed !== undefined) upsertPayload.delivery_speed = body.deliverySpeed;
       if (body.letterType !== undefined) upsertPayload.letter_type = body.letterType;
-      if (body.status !== undefined) upsertPayload.status = body.status;
+      // ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001: a client may only set a
+      // NON-paid status. The checkout used to send status:"processing" with the
+      // forged paidAt; "processing" is a PAID workflow status and is now set
+      // exclusively by the authoritative payment writers, together with paid_at.
+      if (body.status !== undefined) {
+        if (CLIENT_SETTABLE_STATUSES.has(body.status)) {
+          upsertPayload.status = body.status;
+        } else {
+          console.info(
+            `[get-resume-order] ignoring client-supplied status "${body.status}" for ${effectiveConfirmationId} — not client-settable`
+          );
+        }
+      }
       if (body.assessmentAnswers !== undefined) upsertPayload.assessment_answers = body.assessmentAnswers;
       if (body.price !== undefined) upsertPayload.price = body.price;
       if (body.planType !== undefined) upsertPayload.plan_type = body.planType;
@@ -623,12 +804,23 @@ serve(async (req) => {
         }
       }
 
-      if (body.paymentIntentId !== undefined && body.paymentIntentId !== null && body.paymentIntentId !== "") {
-        upsertPayload.payment_intent_id = body.paymentIntentId;
-      }
-      if (body.paidAt !== undefined && body.paidAt !== null && body.paidAt !== "") {
-        upsertPayload.paid_at = body.paidAt;
-      }
+      // ── ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001 ────────────────────────
+      // REMOVED (deliberately, do not restore):
+      //
+      //   if (body.paymentIntentId ...) upsertPayload.payment_intent_id = body.paymentIntentId;
+      //   if (body.paidAt ...)          upsertPayload.paid_at          = body.paidAt;
+      //
+      // Both values came from the browser. `paid_at` was a browser clock
+      // reading, and writing it fired orders_entitlement_snapshot_on_paid,
+      // permanently freezing an entitlement snapshot for an order Stripe had
+      // never confirmed. `payment_intent_id` made isAlreadyPaid() true, which
+      // additionally let a forged value block the customer's own real checkout
+      // (create-payment-intent refuses an "already paid" order).
+      //
+      // Payment columns are now written ONLY by stripe-webhook (signature
+      // verified), check-payment-status (server-side Stripe retrieve, bound to
+      // this order by a server-stamped identifier), and fix-order-payment
+      // (admin authenticated). See the delegation block after the upsert.
 
       // ── PSD-DUP-FIX: coupon fields via the safe server path ──────────────
       // The PSD checkout previously persisted coupon_code/coupon_discount via
@@ -651,6 +843,10 @@ serve(async (req) => {
       }
 
       // letter_url intentionally never set here — only provider uploads set it.
+
+      // Fail-closed backstop: refuse the write outright if any client-derived
+      // payment column ever reaches this point. (ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001)
+      assertNoClientPaymentColumns(upsertPayload);
 
       const { error: upsertError } = await supabase
         .from("orders")
@@ -772,13 +968,55 @@ serve(async (req) => {
         }
       }
 
+      // ── Step 5: AUTHORITATIVE payment reconciliation ─────────────────────
+      // ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001
+      //
+      // The upsert above wrote only non-payment columns. For a payment-shaped
+      // request we now ask the authoritative reconciler whether Stripe actually
+      // confirms this order. The client's claim is never the answer; it only
+      // triggers the server-side check.
+      let paymentState:
+        | "unpaid"
+        | "already_paid"
+        | "payment_confirmed"
+        | "payment_confirmation_pending" = "unpaid";
+      let reconciled = false;
+
+      if (isPaymentUpsert) {
+        if (clientClaimedPaid) {
+          // Prove in the audit trail that the client's own paid claim was ignored.
+          void logSecurityEvent(supabase, "resume_paid_at_client_value_ignored", effectiveConfirmationId, {
+            client_sent_paid_at: body.paidAt !== undefined,
+            client_sent_status: body.status ?? null,
+            note:
+              "Client-supplied payment claim ignored; payment state resolved server-side via check-payment-status.",
+          });
+        }
+
+        const verdict = await delegatePaymentReconciliation({
+          confirmationId: effectiveConfirmationId,
+          clientPaymentIntentHint: body.paymentIntentId ?? null,
+        });
+        paymentState = verdict.state;
+        reconciled = verdict.reconciled;
+
+        if (paymentState === "payment_confirmation_pending") {
+          console.info(
+            `[get-resume-order] ${effectiveConfirmationId}: payment NOT confirmed by Stripe — order remains UNPAID (webhook is the safety net)`
+          );
+        }
+      }
+
       return new Response(
         JSON.stringify({
           ok: true,
           // Always return the canonical id; frontend MUST adopt this.
           confirmationId: effectiveConfirmationId,
           matchedBy,
-          alreadyPaid: isPaymentUpsert ? !!body.paymentIntentId : false,
+          // Now derived from SERVER-VERIFIED state, never from the request body.
+          alreadyPaid: paymentState === "already_paid" || paymentState === "payment_confirmed",
+          paymentState,
+          reconciled,
           idDiverged: effectiveConfirmationId !== confirmationId,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
