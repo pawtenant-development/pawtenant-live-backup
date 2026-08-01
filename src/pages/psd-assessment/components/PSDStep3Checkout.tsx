@@ -736,7 +736,10 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
     paymentCompletedRef.current = true;
     const plan = selectedPlan === "subscription" ? "subscription" : "one-time";
     const deliverySpeed = PSD_ONETIME_DELIVERY;
-    const paidAt = new Date().toISOString();
+    // ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001: this is an ATTRIBUTION capture
+    // timestamp only (was named `paidAt` and doubled as a forged payment
+    // timestamp). The paid transition is resolved server-side from Stripe.
+    const capturedAt = new Date().toISOString();
     triggerSheetsSync();
 
     // ── Read full attribution from sessionStorage at payment time ──────────
@@ -765,7 +768,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
       utm_content:    utmContentVal,
       referrer:       referrerVal,
       landing_url:    landingUrlVal,
-      captured_at:    paidAt,
+      captured_at:    capturedAt,
       captured_stage: "payment_success",
     };
 
@@ -787,12 +790,14 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
           state: step2.state,
           deliverySpeed,
           price: displayPrice,
+          // paymentIntentId is a lookup HINT only; the server verifies it against
+          // Stripe before any paid transition. `paidAt` and `status` are no longer
+          // sent — payment state is server-owned
+          // (ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001).
           paymentIntentId,
-          paidAt,
           paymentMethod: "card",
           planType: plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
           letterType: "psd",
-          status: "processing",
           // ── PSD-DUP-FIX: coupon flows through the safe server upsert now
           // (sticky in get-resume-order — webhook backend values win).
           ...(couponCode && couponDiscount > 0

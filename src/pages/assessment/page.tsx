@@ -1324,7 +1324,9 @@ export default function AssessmentPage() {
   ) => {
     const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
     const supabaseKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
-    const paidAt = new Date().toISOString();
+    // ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001: no `paidAt` is minted here any
+    // more. A browser clock is not payment evidence — the server resolves the
+    // paid transition from Stripe (webhook, or check-payment-status).
     const attr = getAttribution();
 
     try {
@@ -1345,11 +1347,13 @@ export default function AssessmentPage() {
           phone: step2.phone,
           deliverySpeed: "",
           letterType: "esa",
-          status: "processing",
+          // `status` and `paidAt` deliberately NOT sent — both are payment state
+          // and are owned server-side (ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001).
+          // paymentIntentId is still sent, but only as a lookup hint the server
+          // verifies against Stripe before it will mark anything paid.
           price,
           paymentIntentId: paymentIntentId ?? null,
           paymentMethod: paymentMethod ?? null,
-          paidAt,
           selectedProvider: docName,
           planType: step3.plan === "subscription" ? "Subscription (Annual)" : "One-Time Purchase",
           addonServices: (step3.addonServices ?? []).length > 0 ? step3.addonServices : null,
