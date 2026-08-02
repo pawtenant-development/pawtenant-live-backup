@@ -6,7 +6,16 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 // unit-testable (an inline ref inside a 200KB component cannot be exercised).
 // ADMIN-ORDERS-KPI-CARD-LIST-PARITY-AND-MONTH-SEMANTICS-001: the canonical
 // America/New_York month boundary — never the operator's browser timezone.
-import { currentBusinessMonth } from "../../lib/businessTime";
+// ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §7/§8 — the visible business clock and the
+// America/New_York day grouping share this one module. There is no second
+// timezone implementation on this page.
+import {
+  currentBusinessMonth,
+  businessIsoDate,
+  businessDayGroupLabel,
+} from "../../lib/businessTime";
+import { useBusinessDayKey } from "../../hooks/useBusinessClock";
+import BusinessClock from "../../components/admin/BusinessClock";
 import { createRequestGuard, runLatest } from "../../lib/latestRequestGuard";
 import { supabase, getAdminToken } from "../../lib/supabaseClient";
 import { resolveStaffRole } from "../../lib/staffAuth";
@@ -51,14 +60,17 @@ import {
 import { exportOrdersToCSV, type ExportableOrder } from "../../lib/exportOrders";
 import { fetchProviderPaymentsForExport } from "../../lib/providerPaymentExport";
 import { fetchOrderFacetCounts, filteredTotalFor, type FacetCounts } from "./orderFacetCounts";
-// ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001 — the upper banner is a
-// CURRENT-MONTH summary and is deliberately a DIFFERENT universe from the
-// filter-aware list counts above. Never merge the two.
-import {
-  fetchAdminOrdersMonthlyKpis,
-  formatMonthlyPeriodLabel,
-  type AdminOrdersMonthlyKpis,
-} from "../../lib/adminOrdersMonthlyKpis";
+// ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9 — the banner's SOLE data source is the
+// period-event RPC imported below.
+//
+// lib/adminOrdersMonthlyKpis.ts (get_admin_orders_monthly_kpis) is deliberately
+// no longer imported here: it served the queue-DEPTH half of the old dual-mode
+// banner, and mixing depth with period events in one row of cards is precisely
+// what this task removed. The RPC and its module are left in place for any other
+// consumer; the Orders banner must keep exactly ONE KPI source.
+//
+// The banner remains a DIFFERENT universe from the filter-aware list counts
+// (orderFacetCounts) — never merge the two.
 // MONTH-END-...-LIVE-ROLLOUT-001 §C — event-based KPI counts while a custom
 // range is active.
 import {
@@ -408,6 +420,27 @@ export default function AdminOrdersPage() {
     setActiveTabState((prev) => (prev === next ? prev : next));
   }, [location.search]);
 
+  // ── ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §12 — obsolete KPI URL state ───────
+  //
+  // Audit result: this page reads ONLY `tab`, `sub`, `thread` and `view` from the
+  // query string — no KPI card, status or date parameter was ever read or
+  // written, so no stale link can silently re-apply a hidden filter today.
+  //
+  // This sanitiser exists so that stays true. If any of these keys ever appears
+  // (an old bookmark, a link pasted from a previous build, a future regression),
+  // it is stripped on arrival with a REPLACE navigation — no history entry, no
+  // reload — before it can be interpreted. Every legitimate parameter is
+  // preserved untouched.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const OBSOLETE_KPI_PARAMS = ["kpi", "activeKpi", "kpiFilter", "card", "monthScoped", "kpiRange"];
+    const stripped = OBSOLETE_KPI_PARAMS.filter((k) => params.has(k));
+    if (stripped.length === 0) return;
+    stripped.forEach((k) => params.delete(k));
+    const qs = params.toString();
+    navigate(`/admin-orders${qs ? `?${qs}` : ""}`, { replace: true });
+  }, [location.search, navigate]);
+
   const setActiveTab = useCallback(
     (t: TabKey) => {
       setActiveTabState(t);
@@ -497,7 +530,14 @@ export default function AdminOrdersPage() {
     error: false,
   });
 
-  // ── Upper banner — CURRENT MONTH (America/New_York) ────────────────────────
+  // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §8 — the CURRENT America/New_York
+  // business date ("YYYY-MM-DD"). Referentially stable all day and flipped by a
+  // timer armed on the exact next New York midnight, so the Today/Yesterday
+  // ribbons roll over on their own without a page refresh — and never at the
+  // operator's local midnight.
+  const businessDayKey = useBusinessDayKey();
+
+  // ── Upper banner — PERIOD EVENTS (America/New_York) ────────────────────────
   // ADMIN-ORDERS-MONTHLY-KPI-BANNER-CORRECTION-001. Server-authoritative
   // aggregate from get_admin_orders_monthly_kpis(). Its effect intentionally has
   // NO filter/basis/pagination dependencies — the banner answers "what happened
@@ -506,28 +546,69 @@ export default function AdminOrdersPage() {
   // Reloaded on mount, on an explicit Refresh, on a local mutation, and — since
   // ADMIN-ORDERS-UNDER-REVIEW-KPI-CURRENT-WORKLOAD-FIX-001 — on EXTERNAL change
   // too (see scheduleAggregateInvalidation).
-  const [monthlyKpis, setMonthlyKpis] = useState<AdminOrdersMonthlyKpis | null>(null);
-  const [monthlyKpisLoading, setMonthlyKpisLoading] = useState(true);
+  // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9/§10/§11 — ONE KPI CONTRACT.
+  //
+  // The banner previously ran TWO universes with two different meanings and
+  // switched between them at runtime:
+  //   • monthlyKpis — four "now" queue-DEPTH cards + one monthly Completed, and
+  //   • rangeKpis   — five period-EVENT cards, activated by dateFrom/dateTo.
+  // Because a KPI card CLICK set dateFrom/dateTo, clicking a card flipped the
+  // whole banner into the other universe: all five cards changed their label,
+  // their timeframe AND their value. That is the "cards flicker and switch
+  // values" the owner reported — not a race (runLatest already ordered the
+  // responses), but two semantics fighting over one row of cards.
+  //
+  // Now there is exactly ONE semantics — PERIOD EVENTS — over exactly ONE
+  // normalized America/New_York window:
+  //   • no explicit date filter → the CURRENT New York calendar month
+  //   • explicit From/To        → that range, same five event metrics
+  // Nothing else can change the window: the cards are display-only (§B), and
+  // search / status / package / sequence / Date Basis / pagination are not
+  // inputs to it.
+  const monthlyKpiPeriod = useMemo(
+    // businessDayKey is a dependency so the default window rolls into the next
+    // month at NEW YORK midnight, not at the operator's local midnight.
+    () => currentBusinessMonth(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [businessDayKey],
+  );
+  const kpiRangeExplicit = Boolean(dateFrom || dateTo);
+  // THE normalized range key. Two primitive strings — never a Date object, which
+  // would be a new identity on every render and re-fire the effect forever.
+  const kpiFrom = kpiRangeExplicit ? (dateFrom || null) : monthlyKpiPeriod.from;
+  const kpiTo = kpiRangeExplicit ? (dateTo || null) : monthlyKpiPeriod.toInclusive;
+
+  const [periodKpis, setPeriodKpis] = useState<AdminOrdersRangeEventKpis | null>(null);
+  const [periodKpisLoading, setPeriodKpisLoading] = useState(true);
   const [monthlyKpiReloadToken, setMonthlyKpiReloadToken] = useState(0);
-  // True once the banner has rendered real numbers. A refetch triggered by a
-  // background refresh or a realtime push must NOT drop the cards back to the
-  // loading skeleton — the operator would see the whole banner blink every 30s.
-  // Only the FIRST load shows the skeleton; later loads swap the value in place.
-  const monthlyKpiLoadedRef = useRef(false);
+  // The "never blink after the first load" rule that monthlyKpiLoadedRef used to
+  // enforce is now expressed directly at the render site as
+  // `firstLoad = periodKpisLoading && periodKpis == null` — the skeleton is tied
+  // to the ABSENCE of numbers rather than to a separate ref that could drift out
+  // of sync with them. The loading flag itself stays truthful so the heading can
+  // show a subtle "updating…" while a new window loads.
+  //
   // Guarded by a monotonic generation rather than an effect-cleanup boolean. The
-  // banner is now also refetched by MUTATIONS (see invalidateOrderAggregates),
-  // and those requests start OUTSIDE this effect, so a cleanup flag could not
-  // have ordered them against each other. Only the newest request may publish.
-  const monthlyKpiGuard = useRef(createRequestGuard()).current;
+  // banner is also refetched by MUTATIONS (see invalidateOrderAggregates) and by
+  // EXTERNAL change (scheduleAggregateInvalidation), and those requests start
+  // OUTSIDE this effect, so a cleanup flag could not have ordered them against
+  // each other. Only the newest request may publish.
+  const periodKpiGuard = useRef(createRequestGuard()).current;
   useEffect(() => {
-    if (!monthlyKpiLoadedRef.current) setMonthlyKpisLoading(true);
-    void runLatest(
-      monthlyKpiGuard,
-      () => fetchAdminOrdersMonthlyKpis(),
-      (k) => { setMonthlyKpis(k); monthlyKpiLoadedRef.current = true; setMonthlyKpisLoading(false); },
-      () => setMonthlyKpisLoading(false),
-    );
-  }, [monthlyKpiReloadToken, monthlyKpiGuard]);
+    // §11 — the previous values stay on screen while the next window loads.
+    // NEVER reset periodKpis to null/zero here: that is what produced the flash
+    // to "—" between two good numbers.
+    setPeriodKpisLoading(true);
+    const t = window.setTimeout(() => {
+      void runLatest(
+        periodKpiGuard,
+        () => fetchAdminOrdersRangeEventKpis({ from: kpiFrom, to: kpiTo }),
+        (k) => { setPeriodKpis(k); setPeriodKpisLoading(false); },
+        () => setPeriodKpisLoading(false),
+      );
+    }, 250);
+    return () => { window.clearTimeout(t); };
+  }, [kpiFrom, kpiTo, monthlyKpiReloadToken, periodKpiGuard]);
 
   // ── ONE authoritative invalidation for every order mutation ────────────────
   // The reported bug: after assigning a Paid (Unassigned) order the top KPI
@@ -616,31 +697,12 @@ export default function AdminOrdersPage() {
     // MUTATION and not only to a filter change.
   }, [dateBasis, dateFrom, dateTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, search, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, aggregateReloadToken, facetGuard]);
 
-  // ── MONTH-END-...-LIVE-ROLLOUT-001 §C — PERIOD-EVENT KPIs for a custom range ─
-  // Active ONLY while From/To is set. This is a THIRD universe, deliberately
-  // separate from both the monthly banner (zero-arg, filter-blind — guarded)
-  // and the facet counts (current-state buckets over the filtered list):
-  // it answers "what HAPPENED during the selected range?", one count per
-  // authoritative lifecycle event timestamp, interpreted in America/New_York.
-  // The banner effect above must NEVER grow dateFrom/dateTo deps — this one
-  // owns the range.
-  const rangeKpiActive = Boolean(dateFrom || dateTo);
-  const [rangeKpis, setRangeKpis] = useState<AdminOrdersRangeEventKpis | null>(null);
-  const [rangeKpisLoading, setRangeKpisLoading] = useState(false);
-  const rangeKpiGuard = useRef(createRequestGuard()).current;
-  useEffect(() => {
-    if (!dateFrom && !dateTo) { setRangeKpis(null); setRangeKpisLoading(false); return; }
-    setRangeKpisLoading(true);
-    const t = window.setTimeout(() => {
-      void runLatest(
-        rangeKpiGuard,
-        () => fetchAdminOrdersRangeEventKpis({ from: dateFrom || null, to: dateTo || null }),
-        (k) => { setRangeKpis(k); setRangeKpisLoading(false); },
-        () => setRangeKpisLoading(false),
-      );
-    }, 300);
-    return () => { window.clearTimeout(t); };
-  }, [dateFrom, dateTo, aggregateReloadToken, rangeKpiGuard]);
+  // MONTH-END-...-LIVE-ROLLOUT-001 §C's separate custom-range KPI universe was
+  // FOLDED INTO the single period-event contract above
+  // (ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9). There is no longer a second KPI
+  // state, a second fetch, a second loading flag or a `rangeKpiActive` mode
+  // switch — one window, one request, one semantics. Do not reintroduce a
+  // parallel KPI universe here.
 
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState(""); // export error surface (avoids silent bad CSV)
@@ -1060,8 +1122,9 @@ export default function AdminOrdersPage() {
         // The aggregates ride the SAME cadence as the rows they summarise. This
         // is the safety net for a change that produced no realtime event this
         // tab received (dropped socket, tab backgrounded, non-orders write).
-        // Refetching the banner no longer flashes the skeleton — see
-        // monthlyKpiLoadedRef.
+        // Refetching the banner no longer flashes the skeleton — the cards keep
+        // their existing numbers while a refresh is in flight (see the
+        // `firstLoad` note on the period-KPI effect).
         invalidateOrderAggregates();
       }
     }, 30000);
@@ -1782,6 +1845,18 @@ export default function AdminOrdersPage() {
     }
   }, [filtered]);
 
+  // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §15 — the Filters badge counts ONLY
+  // filters the operator can see and can clear.
+  //
+  // It deliberately excludes: the active status tab (its own visible control),
+  // the KPI window (display-only, not a filter), pagination, sorting, the
+  // default New York month, and every internal query key.
+  //
+  // The From/To pair now counts as ONE "Date range" rather than two. Previously
+  // it counted 2 — and because clicking a month-scoped KPI card SET both halves,
+  // the operator saw "Filters (2)" for a range they never chose and could not
+  // see. The card click is gone (§B); collapsing the pair to one keeps the badge
+  // matching what the Filters panel actually shows as a single control.
   const activeFilterCount = [
     stateFilterAdv !== "all",
     doctorFilter !== "all",
@@ -1789,8 +1864,7 @@ export default function AdminOrdersPage() {
     paymentFilter !== "all",
     referredByFilter !== "all",
     sequenceFilter !== "all",
-    !!dateFrom,
-    !!dateTo,
+    !!dateFrom || !!dateTo,
     showDuplicatesOnly,
   ].filter(Boolean).length;
 
@@ -2173,6 +2247,12 @@ export default function AdminOrdersPage() {
               alt="PawTenant" className="h-8 sm:h-10 w-auto object-contain" />
           </Link>
           <EmployeePresenceBar />
+          {/* ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §7 — the shared business clock.
+              This navbar is the Admin Portal's ONE top header (Orders, Accounts,
+              Analytics and Communications are tabs of this page), so mounting it
+              here puts it on every admin surface at once. Kept in the LEFT
+              cluster so it never crowds notifications / Refresh / profile. */}
+          <BusinessClock />
         </div>
 
         {/* Right cluster: notifications · refresh · profile. The blue "Synced
@@ -2375,51 +2455,36 @@ export default function AdminOrdersPage() {
           <>
             {!loading && (
               <>
-              {/* ── OPERATIONS OVERVIEW banner label ──────────────────────────
-                  MONTH-END-BUSINESS-TIMEZONE-KPI-REPORTING-INTEGRITY-001 §D:
-                  the cards no longer share ONE timeframe, so they must not share
-                  one heading. Four are live queue depths ("now") and only
-                  Completed is monthly — a blanket "This month" label made the
-                  four read as monthly counts, which is exactly the ambiguity
-                  that hid the rollover defect. Each card states its own
-                  timeframe; the heading states only the business timezone. */}
+              {/* ── PERIOD EVENTS banner label ────────────────────────────────
+                  ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9/§D — all five cards now
+                  share ONE semantics (period events) over ONE America/New_York
+                  window, so they share ONE heading again. The heading always
+                  names the window, so the operator can never be unsure which
+                  period a number covers. No card says "now". */}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5 px-0.5">
-                {/* MONTH-END-...-001 §D — with a custom From/To range active the
-                    cards flip to PERIOD-EVENT semantics ("what happened during
-                    the range?"), so the heading must state the selected range,
-                    the business timezone, and the metric kind. Without a range,
-                    the default heading states the current-state semantics. */}
-                {rangeKpiActive ? (
-                  <>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Period events</span>
-                    <span className="text-[11px] font-semibold text-gray-500">
-                      · {dateFrom || "start"} → {dateTo || "today"}
-                    </span>
-                    <span className="text-[10px] font-semibold text-gray-400">· America/New_York</span>
-                    <i
-                      className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
-                      tabIndex={0}
-                      role="img"
-                      aria-label="A custom date range is active, so every card counts lifecycle EVENTS inside the range (period-event metrics), each on its authoritative timestamp: created, first paid, entered under review, entered pending delivery, last completed. Days are America/New_York business days. Clicking a card sets the list to the matching Date Basis with all statuses, so the list total equals the card."
-                      title="Custom range active: cards count lifecycle events inside the range (period events, America/New_York days) — not the live queue. Click a card to open the matching list view; its total equals the card."
-                    ></i>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Operations overview</span>
-                    <span className="text-[10px] font-semibold text-gray-400">· America/New_York</span>
-                    {monthlyKpis && (
-                      <span className="text-[11px] font-semibold text-gray-500">· Completed covers {formatMonthlyPeriodLabel(monthlyKpis)}</span>
-                    )}
-                    <i
-                      className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
-                      tabIndex={0}
-                      role="img"
-                      aria-label="Lead, Paid (Unassigned), Under Review and Pending Delivery are live queue depths right now (current-state metrics), so work started in an earlier month still counts. Completed covers the current America/New_York calendar month only (a period-event metric). None of these cards is affected by search, status, package or sequence filters, Date Basis, or pagination — the list below is. Setting a From/To date filter switches the cards to period-event counts for that range."
-                      title="The four queue cards are live depths (current state; work started earlier still counts). Completed covers the current Eastern calendar month. Unaffected by search, filters, Date Basis and pagination — those narrow the list below, not these cards. Set a From/To date to switch the cards to period-event counts."
-                    ></i>
-                  </>
+                {/* §9/§10 — ONE heading, always naming the window the five cards
+                    were counted over. Default = the current America/New_York
+                    calendar month; an explicit From/To replaces it. */}
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Period events</span>
+                <span className="text-[11px] font-semibold text-gray-500">
+                  · {kpiRangeExplicit
+                    ? `${dateFrom || "start"} → ${dateTo || "today"}`
+                    : `${monthlyKpiPeriod.from} – ${monthlyKpiPeriod.toInclusive}`}
+                </span>
+                <span className="text-[10px] font-semibold text-gray-400">· America/New_York</span>
+                {/* A refresh in flight over EXISTING numbers: the values below
+                    stay put (§11 — never flash to zero or "—"), this is the only
+                    signal that a newer window is loading. */}
+                {periodKpisLoading && periodKpis && (
+                  <span className="text-[10px] font-semibold text-gray-400 animate-pulse">· updating…</span>
                 )}
+                <i
+                  className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
+                  tabIndex={0}
+                  role="img"
+                  aria-label="Every card counts lifecycle EVENTS that occurred inside the window shown, each on its own authoritative timestamp: created, first paid, entered under review, entered pending delivery, last completed. Days are America/New_York business days. These are display-only totals — the cards are not clickable and never filter the list. With no date filter the window is the current New York calendar month; setting From/To counts the same five events inside that range instead. Because these are events, a card total need not equal a status tab: an order that entered Under Review this month and has since been completed counts under Entered Under Review AND under Completed, but appears only on the Completed tab."
+                  title="Period events in the window shown, on America/New_York business days. Display-only — these cards never filter the list. Event counts need not equal status-tab totals: an order counts in the month it entered a stage even if it has since moved on."
+                ></i>
               </div>
               {/* EXACTLY five permanent workflow cards — §15 as amended by
                   ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001, which
@@ -2428,90 +2493,62 @@ export default function AdminOrdersPage() {
                   clipped. Values are server-authoritative and MUTUALLY EXCLUSIVE
                   (Under Review and Completed both exclude Pending Delivery in
                   the RPC) — never facet counts, never derived from loaded rows.
-                  TIMEFRAMES DIFFER BY CARD (§D): the four queue cards read the
-                  *Current fields (live depth, no month window) so each equals its
-                  status tab and survives month rollover; Completed reads the
-                  monthly field keyed on last_completed_at. Every card carries its
-                  own timeframe label — do not reintroduce a shared one. */}
+                  ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9: ALL FIVE cards are now
+                  PERIOD-EVENT counts over ONE America/New_York window, each on
+                  its own authoritative lifecycle timestamp. No card is queue
+                  depth and no card is labelled "now". They are display-only —
+                  see the §B note on the card element below. Card totals are NOT
+                  expected to equal status-tab totals: an order counts in the
+                  window it ENTERED a stage, and appears only on the tab for the
+                  stage it is in NOW. */}
               <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
-                  // MONTH-END-...-001 §D — every card carries BOTH semantics:
-                  //   label/timeframe/value        default view (current state,
-                  //                                except Completed = monthly)
-                  //   rangeLabel/rangeValue/…      custom-range view (period
-                  //                                EVENTS on the authoritative
-                  //                                lifecycle timestamp)
-                  // rangeBasis is the Date Basis whose filtered list (status =
-                  // All) reconciles exactly with the range count — clicking the
-                  // card applies it.
+                  // §9 — ONE label and ONE value per card. The former dual
+                  // (label/value) + (rangeLabel/rangeValue) shape existed only to
+                  // support the runtime mode switch that caused the flicker, and
+                  // the `filter` / `rangeBasis` / `monthScoped` keys existed only
+                  // to drive the click handler. All four are gone: a display-only
+                  // card needs a label, a value and an icon.
                   {
-                    label: "Lead (Unpaid)",
-                    // ADMIN-ORDERS-KPI-CARD-LIST-PARITY-AND-MONTH-SEMANTICS-001
-                    // This card is the MONTH's new unpaid leads, not the all-time
-                    // open-lead backlog. It was reading `leadUnpaidCurrent`
-                    // (every currently-open lead ever created), which displayed
-                    // 1257 on LIVE instead of the 4 leads created this month.
-                    // The three queue cards below are correctly "now" — queue
-                    // DEPTH must not reset at month rollover — but Lead is an
-                    // acquisition metric and does reset.
-                    timeframe: "this month",
-                    value: monthlyKpis?.leadUnpaid ?? null,
-                    // Month-scoped cards apply their month range on click so the
-                    // list reconciles exactly with the number shown (§C parity).
-                    monthScoped: true,
-                    rangeLabel: "Leads Created",
-                    rangeValue: rangeKpis?.leadsCreated ?? null,
-                    rangeBasis: "created" as OrderDateBasis,
+                    label: "Leads Created",
+                    // Orders CREATED in the window, on orders.created_at.
+                    value: periodKpis?.leadsCreated ?? null,
                     icon: "ri-user-follow-line",
                     color: "text-amber-600",
-                    filter: "lead_unpaid",
                   },
                   {
-                    label: "Paid (Unassigned)",
-                    timeframe: "now",
-                    value: monthlyKpis?.paidUnassignedCurrent ?? null,
-                    rangeLabel: "Orders Paid",
-                    rangeValue: rangeKpis?.ordersPaid ?? null,
-                    rangeBasis: "first_paid" as OrderDateBasis,
+                    // Orders PAID in the window, on the immutable authoritative
+                    // orders.paid_at — never a browser clock, never updated_at.
+                    label: "Orders Paid",
+                    value: periodKpis?.ordersPaid ?? null,
                     icon: "ri-user-unfollow-line",
                     color: "text-sky-600",
-                    filter: "paid_unassigned",
                   },
                   {
-                    label: "Under Review",
-                    timeframe: "now",
-                    value: monthlyKpis?.underReviewCurrent ?? null,
-                    rangeLabel: "Entered Under Review",
-                    rangeValue: rangeKpis?.enteredUnderReview ?? null,
-                    rangeBasis: "under_review_entered" as OrderDateBasis,
+                    // §9C — canonical TRANSITIONS into Under Review during the
+                    // window (orders.last_under_review_entered_at). Explicitly
+                    // NOT the current Under Review queue depth.
+                    label: "Entered Under Review",
+                    value: periodKpis?.enteredUnderReview ?? null,
                     icon: "ri-time-line",
                     color: "text-violet-600",
-                    filter: "under_review",
                   },
                   {
-                    // EMPLOYEE-ONLY queue: provider submitted, awaiting employee
-                    // approval. Never a customer-facing status.
-                    label: "Pending Delivery",
-                    timeframe: "now",
-                    value: monthlyKpis?.pendingDeliveryCurrent ?? null,
-                    rangeLabel: "Entered Pending Delivery",
-                    rangeValue: rangeKpis?.enteredPendingDelivery ?? null,
-                    rangeBasis: "pending_delivery_entered" as OrderDateBasis,
+                    // §9D — canonical transitions into the EMPLOYEE-ONLY Pending
+                    // Delivery queue (orders.last_pending_delivery_entered_at).
+                    // Not queue depth.
+                    label: "Entered Pending Delivery",
+                    value: periodKpis?.enteredPendingDelivery ?? null,
                     icon: "ri-inbox-unarchive-line",
                     color: "text-teal-600",
-                    filter: "pending_delivery",
                   },
                   {
+                    // §9E — completion EVENTS on the authoritative
+                    // orders.last_completed_at.
                     label: "Completed",
-                    timeframe: "this month",
-                    value: monthlyKpis?.completed ?? null,
-                    monthScoped: true,
-                    rangeLabel: "Completed",
-                    rangeValue: rangeKpis?.completed ?? null,
-                    rangeBasis: "completed" as OrderDateBasis,
+                    value: periodKpis?.completed ?? null,
                     icon: "ri-checkbox-circle-line",
                     color: "text-emerald-600",
-                    filter: "completed",
                   },
                   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 §15 — the permanent
                   // banner is EXACTLY the four approved workflow cards. "Payment
@@ -2520,65 +2557,51 @@ export default function AdminOrdersPage() {
                   // Do not re-add it, nor cards for Reopened / Refunded /
                   // Cancelled / Disputed.
                 ].map((s) => {
-                  const active = rangeKpiActive
-                    ? dateBasis === s.rangeBasis && statusFilter === "all"
-                    : statusFilter === s.filter;
-                  const shownValue = rangeKpiActive ? s.rangeValue : s.value;
-                  const shownLoading = rangeKpiActive ? rangeKpisLoading : monthlyKpisLoading;
+                  // §11 — the skeleton is for the FIRST load only. Once real
+                  // numbers exist they stay on screen while a new window loads
+                  // (the heading shows "updating…"), so switching months, a 30s
+                  // background refresh or a realtime push can never flash the
+                  // cards to blank or zero.
+                  const firstLoad = periodKpisLoading && periodKpis == null;
                   return (
-                  <button
+                  // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §B — DISPLAY-ONLY.
+                  //
+                  // This was a <button onClick> that set statusFilter, dateBasis,
+                  // dateFrom and dateTo. That single fact caused most of the
+                  // reported regressions:
+                  //   • clicking a card applied a HIDDEN date range + Date Basis
+                  //     the operator never chose, showing "Filters (2)";
+                  //   • the card rendered as "active" while it had set
+                  //     statusFilter="all", so a highlighted "Paid (Unassigned)"
+                  //     card listed Under Review and Completed rows;
+                  //   • setting a date range flipped every card into the other
+                  //     KPI universe — the flicker and the changing values;
+                  //   • "All" cleared the status but not the card's date range,
+                  //     so the list never came back.
+                  //
+                  // A <div> with no handler, no role, no tabIndex and a default
+                  // cursor is the fix. Status tabs are the ONLY status control.
+                  // Do not make these interactive again.
+                  <div
                     key={s.label}
-                    type="button"
-                    onClick={() => {
-                      if (rangeKpiActive) {
-                        // Period-event mode: the card reconciles with the list
-                        // filtered to its event's Date Basis across ALL statuses
-                        // (an order that entered review in July may be completed
-                        // now — the event still happened in July).
-                        setStatusFilter("all");
-                        setDateBasis(s.rangeBasis);
-                      } else if (s.monthScoped) {
-                        // ADMIN-ORDERS-KPI-CARD-LIST-PARITY-...-001 §C.
-                        // A "this month" card must not open an ALL-TIME list —
-                        // the count and the list would disagree on sight. Apply
-                        // the card's own lifecycle Date Basis plus the current
-                        // America/New_York month, which is exactly the window the
-                        // number was computed over. The range is visible in the
-                        // From/To inputs, and Clear restores the default view.
-                        const m = currentBusinessMonth();
-                        setStatusFilter("all");
-                        setDateBasis(s.rangeBasis);
-                        setDateFrom(m.from);
-                        setDateTo(m.toInclusive);
-                      } else {
-                        // "now" cards are current queue DEPTH — the status filter
-                        // alone already reconciles with the tab.
-                        setStatusFilter(s.filter);
-                      }
-                    }}
-                    className={`flex items-center gap-3 px-4 py-3 text-left cursor-pointer transition-colors w-full ${active ? "bg-[#e8f0f9]" : "hover:bg-slate-50"}`}
+                    className="flex items-center gap-3 px-4 py-3 text-left cursor-default w-full"
                   >
-                    <div className={`w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 ${active ? "bg-[#3b6ea5]/10" : "bg-slate-100"}`}>
-                      <i className={`${s.icon} ${s.color} text-sm`}></i>
+                    <div className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 bg-slate-100">
+                      <i className={`${s.icon} ${s.color} text-sm`} aria-hidden="true"></i>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] text-gray-500 font-medium leading-none truncate">
-                        {rangeKpiActive ? s.rangeLabel : s.label}
-                        {/* Per-card timeframe — the cards do NOT share one.
-                            "now" = current-state metric; "this month" /
-                            "in range" = period-event metric. */}
-                        <span className="text-gray-400 font-normal"> · {rangeKpiActive ? "in range" : s.timeframe}</span>
+                      <p className="text-[10px] text-gray-500 font-medium leading-none truncate" title={s.label}>
+                        {s.label}
                       </p>
-                      {/* Contained skeleton while the aggregate loads — never a
-                          stale number standing in for the active mode. "—"
-                          means the aggregate genuinely failed. */}
-                      {shownLoading ? (
-                        <span className="mt-1 block h-5 w-10 rounded bg-slate-200 animate-pulse" aria-label={`${rangeKpiActive ? s.rangeLabel : s.label} loading`}></span>
+                      {firstLoad ? (
+                        <span className="mt-1 block h-5 w-10 rounded bg-slate-200 animate-pulse" aria-label={`${s.label} loading`}></span>
                       ) : (
-                        <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{shownValue == null ? "—" : shownValue}</p>
+                        // "—" means the aggregate genuinely failed — never a
+                        // fabricated 0.
+                        <p className={`text-xl font-extrabold leading-tight ${s.color}`}>{s.value == null ? "—" : s.value}</p>
                       )}
                     </div>
-                  </button>
+                  </div>
                   );
                 })}
               </div>
@@ -3096,22 +3119,26 @@ export default function AdminOrdersPage() {
 
                 {/* ── DESKTOP: bordered table with header ─────────────────── */}
                 {(() => {
-                  // Group visibleOrders by calendar date for ribbon separators
-                  const getDateKey = (ts: string) => {
-                    const d = new Date(ts);
-                    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-                  };
-                  const getDateLabel = (ts: string) => {
-                    const d = new Date(ts);
-                    const today = new Date();
-                    const yesterday = new Date(today);
-                    yesterday.setDate(today.getDate() - 1);
-                    const isToday = d.toDateString() === today.toDateString();
-                    const isYesterday = d.toDateString() === yesterday.toDateString();
-                    if (isToday) return "Today";
-                    if (isYesterday) return "Yesterday";
-                    return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-                  };
+                  // Group visibleOrders by BUSINESS (America/New_York) calendar
+                  // date for the ribbon separators.
+                  //
+                  // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §8 — this previously read
+                  // the OPERATOR'S BROWSER day (`getFullYear/getMonth/getDate`
+                  // and `toDateString()`). From Karachi that is ~9 hours ahead of
+                  // New York, so between 09:00 and 18:00 PKT every order the
+                  // business calls "today" was filed under "Yesterday".
+                  //
+                  // The grouping TIMESTAMP is deliberately unchanged: still
+                  // `orderGroupingIso(order, dateBasis) ?? created_at`, the same
+                  // basis-aware value the list is SORTED on (a ribbon keyed on a
+                  // different date than the sort emits one ribbon per row). Only
+                  // the timezone the date is read in has been corrected.
+                  //
+                  // `businessDayKey` is threaded through so the ribbons re-render
+                  // exactly at New York midnight — "Today" rolls over on its own,
+                  // with no page refresh, and Pakistan's midnight does nothing.
+                  const getDateKey = (ts: string) => businessIsoDate(new Date(ts));
+                  const getDateLabel = (ts: string) => businessDayGroupLabel(ts, businessDayKey);
 
                   // Build grouped structure: [{dateKey, dateLabel, orders[]}]
                   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the day ribbons

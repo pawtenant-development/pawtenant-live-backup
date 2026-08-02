@@ -216,6 +216,110 @@ export function isBusinessPeriodComplete(period: BusinessPeriod, instant: Date =
   return instant.getTime() >= period.endExclusive.getTime();
 }
 
+// ─── ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §7/§8 ──────────────────────────────
+//
+// The visible business CLOCK and the Today/Yesterday day grouping. Both read the
+// same America/New_York wall clock as every period helper above, so the header,
+// the order groups and the KPI window can never disagree.
+//
+// WHY THIS EXISTS: the Orders list grouped rows with
+// `d.toDateString() === new Date().toDateString()`, which is the OPERATOR'S
+// BROWSER calendar day. For an operator in Karachi at 2026-08-02 04:38 PKT it is
+// still 2026-08-01 19:38 in New York, so every order the business considers
+// "today" was filed under "Yesterday" — nine hours early, every single day.
+
+/**
+ * The timezone's short abbreviation at an instant — "EST" or "EDT".
+ * Resolved from the IANA database, never hardcoded, so it flips itself at the
+ * DST transitions without a code change.
+ */
+export function businessZoneAbbrev(instant: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TIMEZONE,
+    timeZoneName: "short",
+  }).formatToParts(instant);
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? "ET";
+}
+
+/**
+ * The header clock body, e.g. "Aug 1, 2026 · 7:38 PM EDT".
+ * The "New York · " prefix is applied by the component so it can be dropped on
+ * narrow screens without duplicating the format here.
+ */
+export function formatBusinessClock(instant: Date = new Date()): string {
+  const date = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TIMEZONE,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(instant);
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TIMEZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(instant);
+  return `${date} · ${time} ${businessZoneAbbrev(instant)}`;
+}
+
+/**
+ * Milliseconds from `instant` until the next America/New_York midnight.
+ *
+ * Used to re-arm the day-rollover timer so "Today" advances on its own at NY
+ * midnight — never at the operator's local midnight, and without a page reload.
+ * Derived from the real boundary instant (DST-safe), not from a 24h assumption.
+ */
+export function msUntilNextBusinessMidnight(instant: Date = new Date()): number {
+  const p = businessParts(instant);
+  // Midnight of the NEXT business day. Date.UTC normalises month/year overflow,
+  // and businessWallClockToUtc resolves the true offset at that boundary.
+  const nextUtc = new Date(Date.UTC(p.year, p.month0, p.day + 1));
+  const next = businessWallClockToUtc(
+    nextUtc.getUTCFullYear(),
+    nextUtc.getUTCMonth(),
+    nextUtc.getUTCDate(),
+    0,
+    0,
+  );
+  return Math.max(1000, next.getTime() - instant.getTime());
+}
+
+/**
+ * The day-group heading for a row timestamp: "Today", "Yesterday", or the
+ * business date ("Jul 30, 2026"). Both the row and "now" are read in
+ * America/New_York, so grouping never follows the browser's clock.
+ */
+export function businessDayGroupLabel(
+  value: Date | string | number,
+  /**
+   * TODAY as a business-zone "YYYY-MM-DD". Passed in rather than read from the
+   * clock so the caller controls rollover (see useBusinessDayKey) and so this
+   * function is a pure, directly-testable mapping.
+   */
+  todayIso: string = businessIsoDate(new Date()),
+): string {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const day = businessIsoDate(d);
+  if (day === todayIso) return "Today";
+  // "Yesterday" is the calendar day before today IN THE BUSINESS ZONE — stepped
+  // via UTC arithmetic on the date parts (no clock, no offset), so it stays
+  // correct across DST transitions, month ends and leap years alike.
+  const [ty, tm, td] = todayIso.split("-").map(Number);
+  const prevUtc = new Date(Date.UTC(ty, tm - 1, td - 1));
+  const prev = `${prevUtc.getUTCFullYear()}-${pad2(prevUtc.getUTCMonth() + 1)}-${pad2(prevUtc.getUTCDate())}`;
+  if (day === prev) return "Yesterday";
+  // Same shape the ribbons used before this task ("Monday, July 30, 2026") —
+  // only the timezone changed, so the visual language of the list is untouched.
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TIMEZONE,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+}
+
 /** The last `count` business months, most recent first. */
 export function recentBusinessMonths(count: number, instant: Date = new Date()): BusinessPeriod[] {
   const p = businessParts(instant);
