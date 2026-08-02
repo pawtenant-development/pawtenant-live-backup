@@ -266,6 +266,115 @@ export async function fetchOrderFacetCounts(f: FacetFilters): Promise<FacetCount
   }
 }
 
+// ─── ADMIN-ORDERS-CLICKABLE-KPI-CARD-COUNT-TO-LIST-PARITY-001 ────────────────
+//
+// The five OPERATIONAL KPI cards. Each is a CURRENT-STATE bucket measured on its
+// own stage-entry date column — a hybrid, and deliberately so:
+//
+//   count = (order is IN this state right now) AND (it ENTERED that state
+//           inside the active America/New_York range)
+//
+// This is what makes count-to-list parity possible at all. The previous contract
+// counted period EVENTS ("entered Under Review in August") while the tabs showed
+// CURRENT state, so an order that entered review in August and has since been
+// completed was counted by the card but absent from the tab. On LIVE that
+// produced Paid=3 against 0 actual Paid (Unassigned) rows, and Entered Pending
+// Delivery=4 against 1 actual row.
+//
+// PARITY IS STRUCTURAL, NOT ASSERTED: fetchKpiCardCounts() below reuses the very
+// same applyNonStatusFilters() + applyBucket() pair that fetchOrderFacetCounts()
+// uses for the list total. There is one predicate builder, so the card count and
+// the clicked list cannot drift apart by construction.
+export type KpiCardKey =
+  | "lead_unpaid" | "paid_unassigned" | "under_review" | "pending_delivery" | "completed";
+
+export const KPI_CARD_KEYS: KpiCardKey[] = [
+  "lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed",
+];
+
+/**
+ * The stage-entry date column each card measures its range against. These are
+ * the AUTHORITATIVE lifecycle timestamps (see ORDER_DATE_BASIS_COLUMN):
+ *   lead_unpaid      → created_at
+ *   paid_unassigned  → paid_at                          (immutable first payment)
+ *   under_review     → last_under_review_entered_at
+ *   pending_delivery → last_pending_delivery_entered_at
+ *   completed        → last_completed_at
+ * Clicking a card applies its basis to the list, so the rows are windowed on the
+ * same column the count used.
+ */
+export const KPI_CARD_BASIS: Record<KpiCardKey, OrderDateBasis> = {
+  lead_unpaid: "created",
+  paid_unassigned: "first_paid",
+  under_review: "under_review_entered",
+  pending_delivery: "pending_delivery_entered",
+  completed: "completed",
+};
+
+export const KPI_CARD_LABEL: Record<KpiCardKey, string> = {
+  lead_unpaid: "Lead (Unpaid)",
+  paid_unassigned: "Paid (Unassigned)",
+  under_review: "Under Review",
+  pending_delivery: "Pending Delivery",
+  completed: "Completed",
+};
+
+export interface KpiCardCounts {
+  counts: Record<KpiCardKey, number | null>;
+  blockedClientFilters: string[];
+  error: boolean;
+}
+
+/**
+ * One narrow COUNT(head) per card, each with that card's OWN date basis, run in
+ * parallel. Server-side and RLS-enforced — never derived from the browser's
+ * loaded rows.
+ *
+ * `f` carries the active NON-STATUS filters (search / package / provider / …)
+ * minus the date range, which is supplied separately as the ACTIVE New York
+ * window so every card measures the same period on its own column.
+ */
+export async function fetchKpiCardCounts(
+  f: Omit<FacetFilters, "dateBasis" | "dateFrom" | "dateTo">,
+  range: { from?: string; to?: string },
+): Promise<KpiCardCounts> {
+  const blockedClientFilters: string[] = [];
+  if (f.source) blockedClientFilters.push(CLIENT_ONLY_LABELS.source);
+  if (f.packageFilter && f.packageFilter !== "all") blockedClientFilters.push(CLIENT_ONLY_LABELS.packageFilter);
+  if (f.duplicatesOnly) blockedClientFilters.push(CLIENT_ONLY_LABELS.duplicatesOnly);
+
+  const empty: Record<KpiCardKey, number | null> = {
+    lead_unpaid: null, paid_unassigned: null, under_review: null, pending_delivery: null, completed: null,
+  };
+  // Same owner contract as the facet counts: refuse to publish a silently-wrong
+  // number rather than show one that the list cannot reproduce.
+  if (blockedClientFilters.length > 0) return { counts: empty, blockedClientFilters, error: false };
+
+  try {
+    const results = await Promise.all(
+      KPI_CARD_KEYS.map((k) =>
+        runCount(
+          applyBucket(
+            applyNonStatusFilters(newCountQuery().neq("status", "archived"), {
+              ...f,
+              dateBasis: KPI_CARD_BASIS[k],
+              dateFrom: range.from,
+              dateTo: range.to,
+            }),
+            k,
+          ),
+        ),
+      ),
+    );
+    const counts = { ...empty };
+    KPI_CARD_KEYS.forEach((k, i) => { counts[k] = results[i]; });
+    return { counts, blockedClientFilters, error: false };
+  } catch (e) {
+    console.error("[orderFacetCounts] KPI card count query failed", e);
+    return { counts: empty, blockedClientFilters, error: true };
+  }
+}
+
 // The "X of Y" filtered-result X, reconciled to the SAME server universe: when the
 // status tab is "all" it is the universe total; otherwise it is that bucket's
 // count. Returns null when unavailable (blocked client filter / error / loading).
