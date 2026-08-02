@@ -392,11 +392,17 @@ function runStatic() {
   // mutually-exclusive KPI — not a re-added secondary metric. The BAN LIST below
   // is untouched: the regression this guard exists for was "Payment Failed" and
   // friends creeping back as summary chips, and that stays forbidden.
+  // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9 RENAMES the five cards to their
+  // PERIOD-EVENT names (all five are now event counts over one America/New_York
+  // window — none is queue depth, none says "now"). The anchor moves with them:
+  // anchoring on the OLD "Lead (Unpaid)" silently matched the status-tab option
+  // list further down the file and reported 17 cards, so the anchor label must
+  // stay in lock-step with the first card.
   const gridAt = page.indexOf("lg:grid-cols-5");
-  const cardsAt = gridAt === -1 ? -1 : page.indexOf('label: "Lead (Unpaid)"', gridAt);
+  const cardsAt = gridAt === -1 ? -1 : page.indexOf('label: "Leads Created"', gridAt);
   const kpiBlock = cardsAt === -1 ? "" : page.slice(cardsAt, page.indexOf("].map((s) =>", cardsAt));
   const kpiLabels = [...kpiBlock.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
-  const EXPECTED_KPI = ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed"];
+  const EXPECTED_KPI = ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"];
   if (kpiLabels.length !== 5) {
     failures.push(`KPI CARD CONTRACT: the permanent banner must have EXACTLY 5 visible cards, found ${kpiLabels.length}: ${JSON.stringify(kpiLabels)}`);
   }

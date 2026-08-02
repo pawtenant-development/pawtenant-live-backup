@@ -144,57 +144,6 @@ export const CHECKS = [
     run: (s) => /timeZone:\s*k\.timezone/.test(s) ? null : "period label not formatted in the aggregate's own timezone" },
 
   // ---- the banner ----
-  { name: "banner reads the monthly aggregate", file: PAGE,
-    run: (s) => /fetchAdminOrdersMonthlyKpis/.test(s) ? null : "page does not load the monthly aggregate" },
-  { name: "EXACTLY five KPI cards", file: PAGE,
-    run: (s) => { const l = bannerCardLabels(s); return l && l.length === 5 ? null : `expected 5 banner cards, found ${l ? l.length : "none"}`; } },
-  { name: "the five cards are the approved five", file: PAGE,
-    run: (s) => { const l = bannerCardLabels(s) ?? [];
-      const want = ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed"];
-      return JSON.stringify(l) === JSON.stringify(want) ? null : `card set changed: ${JSON.stringify(l)}`; } },
-  { name: "Payment Failed is NOT a KPI card", file: PAGE,
-    run: (s) => (bannerCardLabels(s) ?? []).some((l) => /payment failed/i.test(l)) ? "Payment Failed re-added as a KPI card" : null },
-  { name: "Payment Failed remains a status FILTER", file: PAGE,
-    run: (s) => /value:\s*"payment_failed"/.test(s) ? null : "Payment Failed status-filter tab was removed" },
-  { name: "every card value comes from the aggregate", file: PAGE,
-    run: (s) => { const v = bannerCardValues(s) ?? [];
-      const bad = v.filter((x) => !/monthlyKpis\?\./.test(x));
-      return bad.length === 0 ? null : `card value(s) not from the aggregate: ${bad.join(" | ")}`; } },
-  { name: "banner never reads list facet buckets", file: PAGE,
-    run: (s) => (bannerCardValues(s) ?? []).some((x) => /facetCounts/.test(x)) ? "a KPI card reads facetCounts — that is the LIST universe" : null },
-
-  // ---- §D: the three QUEUE cards are CURRENT; Lead and Completed are monthly ----
-  // Rollover defect: a QUEUE card wired to a monthly field reads 0 against a
-  // non-empty tab the moment the Eastern month turns over.
-  //
-  // ADMIN-ORDERS-KPI-CARD-LIST-PARITY-AND-MONTH-SEMANTICS-001 corrected the
-  // SCOPE of this rule. Lead (Unpaid) is not a queue — it is an acquisition
-  // metric and MUST reset monthly. Wiring it to the current-workload field made
-  // it display the entire historical unpaid backlog (1257 on LIVE, vs 4 leads
-  // actually created that month). Queue depth = Paid (Unassigned), Under
-  // Review, Pending Delivery only.
-  { name: "the three queue cards read CURRENT queue depth", file: PAGE,
-    run: (s) => { const v = bannerCardValues(s) ?? [];
-      if (v.length !== 5) return `expected 5 card values, found ${v.length}`;
-      const want = [null, "paidUnassignedCurrent", "underReviewCurrent", "pendingDeliveryCurrent"];
-      const bad = want.filter((f, i) => f && !new RegExp(`monthlyKpis\\?\\.${f}\\b`).test(v[i]));
-      return bad.length === 0 ? null
-        : `queue card(s) not wired to the current-workload field: ${bad.join(", ")} — these vanish at month rollover`; } },
-  { name: "Lead (Unpaid) is MONTH-gated, not the all-time backlog", file: PAGE,
-    run: (s) => { const v = bannerCardValues(s) ?? [];
-      if (!v[0]) return "Lead card value not found";
-      if (/leadUnpaidCurrent/.test(v[0])) return "Lead card reads the ALL-TIME backlog (leadUnpaidCurrent); it must read the monthly leadUnpaid";
-      return /monthlyKpis\?\.leadUnpaid\s*\?\?/.test(v[0]) ? null
-        : `Lead card must read monthlyKpis?.leadUnpaid, got ${v[0]}`; } },
-  { name: "Completed is the ONLY monthly card", file: PAGE,
-    run: (s) => { const v = bannerCardValues(s) ?? [];
-      return v[4] && /monthlyKpis\?\.completed\b/.test(v[4]) ? null
-        : `Completed card must read the monthly completed field, got ${v[4] ?? "nothing"}`; } },
-  { name: "no QUEUE card reads a month-gated field", file: PAGE,
-    // Index 0 (Lead) is intentionally monthly — see the rule above.
-    run: (s) => { const v = (bannerCardValues(s) ?? []).slice(1, 4);
-      const bad = v.filter((x) => /monthlyKpis\?\.(paidUnassigned|underReview|pendingDelivery)\s*\?\?/.test(x));
-      return bad.length === 0 ? null : `queue card(s) still month-gated: ${bad.join(" | ")}`; } },
   { name: "the RPC exposes the current-workload fields", file: MIG,
     run: (s) => ["leadUnpaidCurrent", "paidUnassignedCurrent", "underReviewCurrent", "pendingDeliveryCurrent"]
       .every((k) => new RegExp(`'${k}'`).test(s)) ? null : "a current-workload field is missing from the RPC payload" },
@@ -224,94 +173,10 @@ export const CHECKS = [
       : "helper must gate on a CURRENT field, or an older RPC renders month-gated numbers under 'now' labels" },
 
   // ---- §D: per-card timeframes, no shared heading ----
-  { name: "each card carries its own timeframe label", file: PAGE,
-    run: (s) => {
-      const grid = s.indexOf("lg:grid-cols-5");
-      const end = s.indexOf("].map((s)", grid);
-      if (grid < 0 || end < 0) return "card block not found";
-      const tf = [...s.slice(grid, end).matchAll(/timeframe:\s*"([^"]+)"/g)].map((x) => x[1]);
-      if (tf.length !== 5) return `expected 5 per-card timeframes, found ${tf.length}`;
-      // Lead and Completed are monthly metrics; the three queues are current.
-      const want = ["this month", "now", "now", "now", "this month"];
-      return JSON.stringify(tf) === JSON.stringify(want) ? null : `timeframes wrong: ${JSON.stringify(tf)}`;
-    } },
-  { name: "the timeframe label is rendered, not just declared", file: PAGE,
-    run: (s) => /\{rangeKpiActive \? "in range" : s\.timeframe\}/.test(s) ? null
-      : "per-card timeframe render missing (default mode must show s.timeframe; range mode must show 'in range')" },
-  { name: "no blanket 'This month' heading over mixed timeframes", file: PAGE,
-    run: (s) => {
-      // Anchored on the heading's own styling rather than on distance from the
-      // grid: a longer comment above the cards must not move this out of range.
-      const code = s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-      return /uppercase tracking-wider">\s*This month\s*</i.test(code)
-        ? "a shared 'This month' heading sits over cards with different timeframes — the ambiguity that hid the rollover defect"
-        : null;
-    } },
-  { name: "banner states the business timezone and the Completed window", file: PAGE,
-    run: (s) => /America\/New_York/.test(s) && /formatMonthlyPeriodLabel/.test(s) ? null
-      : "the operator must not have to infer the timezone or the Completed window" },
-  { name: "banner shows a skeleton, never stale numbers", file: PAGE,
-    run: (s) => /rangeKpiActive \? rangeKpisLoading : monthlyKpisLoading/.test(s) && /\{shownLoading \?/.test(s)
-      ? null : "no mode-aware contained loading state for the banner (each mode must skeleton on ITS OWN loading flag)" },
-
-  // ---- independence (the core of the correction) ----
-  { name: "monthly effect has a dependency array", file: PAGE,
-    run: (s) => monthlyEffectDeps(s) ? null : "could not locate the monthly effect's dependency array" },
-  { name: "banner does NOT depend on list filters / Date Basis / pagination", file: PAGE,
-    run: (s) => {
-      const deps = monthlyEffectDeps(s);
-      if (!deps) return "dependency array not found";
-      const FORBIDDEN = ["statusFilter", "packageFilter", "dateBasis", "dateFrom", "dateTo", "search",
-        "sequenceFilter", "stateFilterAdv", "doctorFilter", "selectedProviderFilter", "sourceFilter",
-        "visibleCount", "orders", "filtered", "showDuplicatesOnly", "showNonGhlOnly", "hideRecentFollowup",
-        "facetCounts", "sortOrder"];
-      const hit = deps.filter((d) => FORBIDDEN.includes(d));
-      return hit.length === 0 ? null : `banner would recompute on: ${hit.join(", ")}`;
-    } },
-
-  // ---- the list keeps its own, filter-aware counts ----
   { name: "list facet counts remain filter-aware", file: FACETS,
     run: (s) => /dateBasis\?: OrderDateBasis/.test(s) && /applyNonStatusFilters/.test(s) ? null : "list facet counts lost their filter awareness" },
   { name: "list still uses the facet total for X of Y", file: PAGE,
     run: (s) => /filteredTotalFor\(/.test(s) && /filteredTotalDisplay/.test(s) ? null : "list total no longer uses the facet universe" },
-  { name: "monthly and facet state are distinct objects", file: PAGE,
-    run: (s) => /const \[monthlyKpis,/.test(s) && /const \[facetCounts,/.test(s) ? null : "monthly and facet state must not be merged into one object" },
-
-  // ---- MONTH-END-...-001 §D: custom-range PERIOD-EVENT semantics ----
-  { name: "range mode relabels every card to its lifecycle EVENT", file: PAGE,
-    run: (s) => {
-      const l = bannerCardRangeLabels(s) ?? [];
-      const want = ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"];
-      return JSON.stringify(l) === JSON.stringify(want) ? null
-        : `range labels wrong: ${JSON.stringify(l)} (want ${JSON.stringify(want)})`;
-    } },
-  { name: "range values are wired to the range-event RPC fields, positionally", file: PAGE,
-    run: (s) => {
-      const v = bannerCardRangeValues(s) ?? [];
-      if (v.length !== 5) return `expected 5 rangeValue expressions, found ${v.length}`;
-      const want = ["leadsCreated", "ordersPaid", "enteredUnderReview", "enteredPendingDelivery", "completed"];
-      const bad = want.filter((f, i) => !new RegExp(`rangeKpis\\?\\.${f}\\b`).test(v[i]));
-      return bad.length === 0 ? null : `range card(s) not wired to the event field: ${bad.join(", ")}`;
-    } },
-  { name: "no range card reads the banner aggregate", file: PAGE,
-    run: (s) => {
-      const bad = (bannerCardRangeValues(s) ?? []).filter((x) => /monthlyKpis|facetCounts/.test(x));
-      return bad.length === 0 ? null : `range card(s) read the wrong universe: ${bad.join(" | ")}`;
-    } },
-  { name: "range effect reacts to the range and ONLY the range", file: PAGE,
-    run: (s) => {
-      const deps = rangeEffectDeps(s);
-      if (!deps) return "range effect dependency array not found";
-      if (!deps.includes("dateFrom") || !deps.includes("dateTo")) return `range effect must depend on dateFrom+dateTo, got [${deps.join(", ")}]`;
-      const FORBIDDEN = ["statusFilter", "packageFilter", "search", "sequenceFilter", "stateFilterAdv",
-        "doctorFilter", "selectedProviderFilter", "sourceFilter", "visibleCount", "orders", "filtered",
-        "showDuplicatesOnly", "showNonGhlOnly", "facetCounts", "sortOrder", "dateBasis"];
-      const hit = deps.filter((d) => FORBIDDEN.includes(d));
-      return hit.length === 0 ? null : `range effect would recompute on: ${hit.join(", ")}`;
-    } },
-  { name: "range heading states the range, the timezone and the metric kind", file: PAGE,
-    run: (s) => />Period events</.test(s) && /rangeKpiActive/.test(s) ? null
-      : "range mode must announce 'Period events' with the selected range and America/New_York" },
   { name: "range helper fails closed", file: RANGE_LIB,
     run: (s) => /typeof d\.leadsCreated !== "number"/.test(s) && /get_admin_orders_range_event_kpis/.test(s) ? null
       : "range helper must call the range RPC and return null on an unexpected shape" },
@@ -355,6 +220,36 @@ export const CHECKS = [
     run: (s) => /under_review_entered: "last_under_review_entered_at"/.test(s)
       && /pending_delivery_entered: "last_pending_delivery_entered_at"/.test(s)
       ? null : "under_review_entered / pending_delivery_entered bases must map to the trigger-maintained columns" },
+
+  // ── PAGE contract (ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9) ─────────────────
+  // The PAGE invariants that used to live here described the DUAL-MODE banner:
+  // which card read which queue-DEPTH field, the per-card "now"/"this month"
+  // timeframe labels, the range-mode relabelling, and what each card did ON
+  // CLICK. All of that was removed — the five cards are now display-only,
+  // single-semantics PERIOD-EVENT counts over one America/New_York window.
+  //
+  // That contract, and its 16 planted negative controls, is owned by
+  // scripts/check-admin-orders-ny-clock-kpi-status.mjs (N15-N34). Only the page
+  // invariants that are still TRUE are kept here, so the two guards can never
+  // assert opposite things about the same file.
+  { name: "banner is served by ONE aggregate, never the list facet buckets", file: PAGE,
+    run: (s) => /value:\s*facetCounts/.test(s)
+      ? "a KPI card is reading a list facet bucket — banner and list are different universes" : null },
+  { name: "banner never derives a card value from the loaded rows", file: PAGE,
+    run: (s) => /value:\s*orders\s*\.\s*(filter|length)/.test(s)
+      ? "a KPI card value is computed from the browser's loaded rows" : null },
+  { name: "the KPI effect takes no list filter, basis or pagination dependency", file: PAGE,
+    run: (s) => {
+      const m = s.match(/fetchAdminOrdersRangeEventKpis\([\s\S]{0,500}?\}\s*,\s*\[([^\]]*)\]\s*\)/);
+      if (!m) return "could not locate the period-KPI effect dependency array";
+      const bad = m[1].split(",").map((d) => d.trim()).filter((d) =>
+        ["statusFilter", "dateBasis", "packageFilter", "search", "sequenceFilter",
+         "paymentFilter", "visibleCount", "sortOrder"].includes(d));
+      return bad.length ? `banner depends on list state: ${bad.join(", ")}` : null;
+    } },
+  { name: "period KPI state is distinct from facet state", file: PAGE,
+    run: (s) => /const \[periodKpis,/.test(s) && /const \[facetCounts,/.test(s)
+      ? null : "period-KPI and facet state must not be merged into one object" },
 ];
 
 // ── Negative controls — each planted defect MUST be rejected ─────────────────
@@ -366,27 +261,10 @@ export const CHECKS = [
 const NEGATIVE_CONTROLS = [
   { name: "all-time orders instead of the month window",
     file: MIG, mutate: (s) => s.replace(/and o\.created_at >= v_ps\s*\n\s*and o\.created_at <\s*v_pe/, "and true") },
-  { name: "KPI counts wired to statusFilter",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken, monthlyKpiGuard\]\)/, "}, [monthlyKpiReloadToken, monthlyKpiGuard, statusFilter])") },
-  { name: "KPI counts wired to packageFilter",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken, monthlyKpiGuard\]\)/, "}, [monthlyKpiReloadToken, monthlyKpiGuard, packageFilter])") },
-  { name: "KPI counts wired to dateBasis",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken, monthlyKpiGuard\]\)/, "}, [monthlyKpiReloadToken, monthlyKpiGuard, dateBasis])") },
   { name: "Completed counted using created_at",
     file: MIG, mutate: (s) => s.replace(/into v_done([\s\S]{0,400}?)o\.last_completed_at >= v_ps/, "into v_done$1o.created_at >= v_ps") },
   { name: "Paid counted using last_payment_at",
     file: MIG, mutate: (s) => s.replace(/into v_paid([\s\S]{0,500}?)o\.paid_at >= v_ps/, "into v_paid$1o.last_payment_at >= v_ps") },
-  { name: "Payment Failed re-added as a fifth card",
-    file: PAGE, mutate: (s) => s.replace(/(\{\s*label: "Completed",[\s\S]*?\},)/,
-      '$1\n{ label: "Payment Failed", value: monthlyKpis?.completed ?? null, icon: "x", color: "y", filter: "payment_failed" },') },
-
-  // ---- §D negative controls: the rollover defect must stay un-shippable ----
-  { name: "Under Review card reverted to the month-gated field",
-    file: PAGE, mutate: (s) => s.replace(/monthlyKpis\?\.underReviewCurrent/, "monthlyKpis?.underReview") },
-  { name: "Lead card reverted to the ALL-TIME backlog field",
-    file: PAGE, mutate: (s) => s.replace(/monthlyKpis\?\.leadUnpaid \?\?/, "monthlyKpis?.leadUnpaidCurrent ??") },
-  { name: "Paid (Unassigned) card reverted to the month-gated field",
-    file: PAGE, mutate: (s) => s.replace(/monthlyKpis\?\.paidUnassignedCurrent/, "monthlyKpis?.paidUnassigned") },
   { name: "a current-workload count given a month window",
     file: MIG, mutate: (s) => s.replace(
       /(select count\(\*\) into v_ur_now[\s\S]*?)and o\.status <> 'archived';/,
@@ -397,24 +275,10 @@ const NEGATIVE_CONTROLS = [
       "$1 join public.order_status_logs l on l.order_id = o.id") },
   { name: "a monthly transition metric dropped from the payload",
     file: MIG, mutate: (s) => s.replace(/'underReview',\s*v_ur,/, "") },
-  { name: "per-card timeframes removed",
-    file: PAGE, mutate: (s) => s.replace(/timeframe:\s*"(now|this month)",\s*/g, "") },
-  { name: "blanket 'This month' heading restored over mixed timeframes",
-    file: PAGE, mutate: (s) => s.replace(
-      /<span className="text-\[10px\] font-bold text-gray-400 uppercase tracking-wider">Operations overview<\/span>/,
-      '<span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">This month</span>') },
   { name: "helper accepts an RPC with no current fields",
     file: LIB, mutate: (s) => s.replace(/typeof d\.leadUnpaidCurrent !== "number"/, 'typeof d.leadUnpaid !== "number"') },
 
   // ---- MONTH-END-...-001 §D plants: range semantics must stay un-shippable ----
-  { name: "range card silently reads the banner aggregate",
-    file: PAGE, mutate: (s) => s.replace(/rangeValue: rangeKpis\?\.leadsCreated \?\? null/, "rangeValue: monthlyKpis?.leadUnpaidCurrent ?? null") },
-  { name: "range labels reverted to queue labels",
-    file: PAGE, mutate: (s) => s.replace(/rangeLabel: "Entered Under Review"/, 'rangeLabel: "Under Review"') },
-  { name: "range effect wired to statusFilter",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[dateFrom, dateTo, aggregateReloadToken, rangeKpiGuard\]\)/, "}, [dateFrom, dateTo, aggregateReloadToken, rangeKpiGuard, statusFilter])") },
-  { name: "banner effect grew a dateFrom dependency",
-    file: PAGE, mutate: (s) => s.replace(/\}, \[monthlyKpiReloadToken, monthlyKpiGuard\]\)/, "}, [monthlyKpiReloadToken, monthlyKpiGuard, dateFrom])") },
   { name: "range RPC keyed Entered Under Review on created_at",
     file: MIG2, mutate: (s) => s.replace(/last_under_review_entered_at/g, "created_at") },
   { name: "range RPC bounds computed at UTC midnight",
@@ -423,6 +287,15 @@ const NEGATIVE_CONTROLS = [
     file: LIFECYCLE, mutate: (s) => s.replace(/businessDayEndExclusiveUtcIso\(dateTo\)/, "`${dateTo}T23:59:59`") },
   { name: "browser-local end-of-day restored in the facet SQL",
     file: FACETS, mutate: (s) => s.replace(/businessDayEndExclusiveUtcIso\(f\.dateTo\)/g, "new Date(`${f.dateTo}T23:59:59`).toISOString()") },
+  // PAGE-targeting controls for the removed DUAL-MODE banner were retired with
+  // the checks they exercised (see the PAGE contract note above). These three
+  // exercise the PAGE invariants this guard still owns.
+  { name: "a KPI card value derived from the loaded browser rows",
+    file: PAGE, mutate: (s) => s.replace("value: periodKpis?.leadsCreated ?? null", "value: orders.filter(o => !o.paid_at).length") },
+  { name: "a KPI card wired to a list facet bucket",
+    file: PAGE, mutate: (s) => s.replace("value: periodKpis?.completed ?? null", "value: facetCounts.buckets.completed") },
+  { name: "the KPI effect wired to statusFilter",
+    file: PAGE, mutate: (s) => s.replace("}, [kpiFrom, kpiTo, monthlyKpiReloadToken, periodKpiGuard]);", "}, [kpiFrom, kpiTo, statusFilter, monthlyKpiReloadToken, periodKpiGuard]);") },
 ];
 
 // ── Runner ────────────────────────────────────────────────────────────────────
@@ -454,7 +327,7 @@ if (failures.length > 0) {
   for (const f of failures) console.log(`  ${RED}•${RESET} ${f}`);
   process.exit(1);
 }
-console.log(`${GREEN}✓ Admin Orders KPI banner guard passed${RESET} (${CHECKS.length} invariants — 3 current queue cards + monthly Lead & Completed, Eastern bounds, per-card timeframes, filter/basis/pagination independence, distinct universes)`);
+console.log(`${GREEN}✓ Admin Orders KPI banner guard passed${RESET} (${CHECKS.length} invariants — get_admin_orders_monthly_kpis SQL contract, Eastern month bounds, per-metric authoritative timestamps, grant posture, and banner/list universe separation)`);
 
 if (selfTest) {
   let bad = 0;
@@ -473,4 +346,4 @@ if (selfTest) {
   console.log(`${GREEN}✓ self-test passed${RESET} (${NEGATIVE_CONTROLS.length}/${NEGATIVE_CONTROLS.length} planted defects rejected)`);
 }
 
-console.log(`${DIM}  banner contract: Paid / Under Review / Pending Delivery = live queue depth (survives month rollover) · Lead = current America/New_York month on created_at · Completed = current America/New_York month on last_completed_at · server-authoritative · independent of every list filter, Date Basis and pagination${RESET}`);
+console.log(`${DIM}  SQL contract guarded here · the PAGE banner contract (display-only period-event cards, one America/New_York window) is owned by check-admin-orders-ny-clock-kpi-status.mjs${RESET}`);

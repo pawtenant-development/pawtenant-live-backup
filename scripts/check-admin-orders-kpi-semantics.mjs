@@ -115,49 +115,45 @@ function cardBlock(src, label) {
   }
 }
 
-/** The default-mode branch of the card onClick handler. */
-function clickHandler(src) {
+/**
+ * The KPI card block for a given PERIOD-EVENT label.
+ *
+ * ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9 replaced the dual-semantics card shape
+ * (label/value + rangeLabel/rangeValue + timeframe + rangeBasis + filter) with a
+ * single {label, value, icon, color}. The old locator keyed on `timeframe:` and
+ * `rangeBasis:`, both of which are gone.
+ */
+function cardBlockByLabel(src, label) {
   const c = code(src);
-  const i = c.indexOf("if (rangeKpiActive) {");
+  const i = c.indexOf(`label: "${label}"`);
   if (i < 0) return "";
-  return c.slice(i, i + 1800);
+  const start = c.lastIndexOf("{", i);
+  const end = c.indexOf("},", i);
+  return start < 0 || end < 0 ? "" : c.slice(start, end + 1);
 }
 
+// ── Ownership note ───────────────────────────────────────────────────────────
+// The PAGE-facing half of this guard (the old K1–K6, K11–K13: which card reads
+// which queue-depth field, what each card does ON CLICK, and how the two KPI
+// universes swap labels) protected a contract that no longer exists. The cards
+// are display-only and single-semantics now, and that contract is owned by
+// scripts/check-admin-orders-ny-clock-kpi-status.mjs (N15–N34), which also
+// carries the planted negative controls for it.
+//
+// What remains here is the half that is still real and still LIVE-critical: the
+// SERVER contract of get_admin_orders_monthly_kpis(), plus the invariant that no
+// card value is ever derived from the loaded browser rows.
 const CHECKS = [
-  ["K1", "Lead reads the MONTHLY field, not the all-time current field", (s) => {
-    const b = cardBlock(s.page, "Lead (Unpaid)");
-    if (!b) return false;
-    return /value:\s*monthlyKpis\?\.leadUnpaid\s*\?\?/.test(b)
-      && !/leadUnpaidCurrent/.test(b);
+  ["K1", "the five cards are the PERIOD-EVENT metrics, not queue depth", (s) => {
+    const c = code(s.page);
+    const want = ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"];
+    return want.every((l) => c.includes(`label: "${l}"`))
+      && !/timeframe:\s*"now"/.test(c);
   }],
 
-  ["K2", "Lead is labelled \"this month\"", (s) => {
-    const b = cardBlock(s.page, "Lead (Unpaid)");
-    return !!b && /timeframe:\s*"this month"/.test(b);
-  }],
-
-  ["K3", "Paid (Unassigned) reads the current-queue field and is \"now\"", (s) => {
-    const b = cardBlock(s.page, "Paid (Unassigned)");
-    return !!b && /value:\s*monthlyKpis\?\.paidUnassignedCurrent/.test(b)
-      && /timeframe:\s*"now"/.test(b);
-  }],
-
-  ["K4", "Under Review reads the current-queue field and is \"now\"", (s) => {
-    const b = cardBlock(s.page, "Under Review");
-    return !!b && /value:\s*monthlyKpis\?\.underReviewCurrent/.test(b)
-      && /timeframe:\s*"now"/.test(b);
-  }],
-
-  ["K5", "Pending Delivery reads the current-queue field and is \"now\"", (s) => {
-    const b = cardBlock(s.page, "Pending Delivery");
-    return !!b && /value:\s*monthlyKpis\?\.pendingDeliveryCurrent/.test(b)
-      && /timeframe:\s*"now"/.test(b);
-  }],
-
-  ["K6", "Completed reads the monthly completion field and is \"this month\"", (s) => {
-    const b = cardBlock(s.page, "Completed");
-    return !!b && /value:\s*monthlyKpis\?\.completed\s*\?\?/.test(b)
-      && /timeframe:\s*"this month"/.test(b);
+  ["K2", "no card reads a queue-DEPTH (*Current) aggregate field", (s) => {
+    const c = code(s.page);
+    return !/(?:paidUnassigned|underReview|pendingDelivery|leadUnpaid)Current/.test(c);
   }],
 
   ["K7", "the RPC computes Completed from last_completed_at only", (s) => {
@@ -186,35 +182,13 @@ const CHECKS = [
     return /o\.status <> 'archived'/.test(branch) && /o\.created_at >= v_ps/.test(branch);
   }],
 
-  ["K11", "a month-scoped card applies its month range on click (card↔tab parity)", (s) => {
-    const h = clickHandler(s.page);
-    if (!h) return false;
-    return /s\.monthScoped/.test(h)
-      && /currentBusinessMonth\(\)/.test(h)
-      && /setDateFrom\(\s*m\.from\s*\)/.test(h)
-      && /setDateTo\(\s*m\.toInclusive\s*\)/.test(h)
-      && /setDateBasis\(\s*s\.rangeBasis\s*\)/.test(h);
-  }],
-
-  ["K12", "a \"now\" card still applies its own status filter on click", (s) => {
-    const h = clickHandler(s.page);
-    return !!h && /else\s*\{[\s\S]{0,300}setStatusFilter\(\s*s\.filter\s*\)/.test(h);
-  }],
-
-  ["K13", "custom-range mode shows range labels, never \"now\"", (s) => {
-    const c = code(s.page);
-    return /rangeKpiActive\s*\?\s*s\.rangeLabel\s*:\s*s\.label/.test(c)
-      && /rangeKpiActive\s*\?\s*"in range"\s*:\s*s\.timeframe/.test(c)
-      && /rangeKpiActive\s*\?\s*s\.rangeValue\s*:\s*s\.value/.test(c);
-  }],
-
   ["K14", "no KPI card value is derived from the loaded browser rows", (s) => {
-    for (const label of ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed"]) {
-      const b = cardBlock(s.page, label);
+    for (const label of ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"]) {
+      const b = cardBlockByLabel(s.page, label);
       if (!b) return false;
-      // Every card value must come from a server aggregate, never a client array.
-      if (!/value:\s*(?:monthlyKpis|rangeKpis)\?\./.test(b)) return false;
-      if (/\b(?:orders|filtered\w*|loaded\w*|rows)\s*\.\s*(?:filter|length)/.test(b)) return false;
+      // Every card value must come from the server aggregate, never a client array.
+      if (!/value:\s*periodKpis\?\./.test(b)) return false;
+      if (/(?:orders|filtered\w*|loaded\w*|rows)\s*\.\s*(?:filter|length)/.test(b)) return false;
     }
     return true;
   }],
@@ -222,22 +196,11 @@ const CHECKS = [
 
 // ── Planted negative controls — each MUST trip its own check ────────────────
 const CONTROLS = [
-  ["K1", "Lead switched back to the all-time current field", (b) => ({
-    page: b.page.replace("value: monthlyKpis?.leadUnpaid ?? null,", "value: monthlyKpis?.leadUnpaidCurrent ?? null,"),
+  ["K1", "a card relabelled back to queue-depth wording", (b) => ({
+    page: b.page.replace('label: "Entered Under Review"', 'label: "Under Review", timeframe: "now"'),
   })],
-  ["K2", "Lead relabelled \"now\"", (b) => ({
-    page: b.page.replace(
-      '                    timeframe: "this month",\n                    value: monthlyKpis?.leadUnpaid ?? null,',
-      '                    timeframe: "now",\n                    value: monthlyKpis?.leadUnpaid ?? null,'),
-  })],
-  ["K3", "Paid (Unassigned) switched to the monthly field", (b) => ({
-    page: b.page.replace("value: monthlyKpis?.paidUnassignedCurrent ?? null,", "value: monthlyKpis?.paidUnassigned ?? null,"),
-  })],
-  ["K4", "Under Review switched to the monthly field", (b) => ({
-    page: b.page.replace("value: monthlyKpis?.underReviewCurrent ?? null,", "value: monthlyKpis?.underReview ?? null,"),
-  })],
-  ["K5", "Pending Delivery switched to the monthly field", (b) => ({
-    page: b.page.replace("value: monthlyKpis?.pendingDeliveryCurrent ?? null,", "value: monthlyKpis?.pendingDelivery ?? null,"),
+  ["K2", "a card switched back to a queue-depth field", (b) => ({
+    page: b.page.replace("value: periodKpis?.enteredUnderReview ?? null", "value: periodKpis?.underReviewCurrent ?? null"),
   })],
   ["K7", "Completed switched to paid_at in the RPC", (b) => ({
     rpc: b.rpc.replace("where o.last_completed_at >= v_ps", "where o.paid_at >= v_ps"),
@@ -253,22 +216,8 @@ const CONTROLS = [
       "   where public.order_workflow_state(o) = 'lead'\n     and o.status <> 'archived'\n     and o.created_at >= v_ps",
       "   where public.order_workflow_state(o) = 'lead'\n     and o.created_at >= v_ps"),
   })],
-  ["K11", "the month-scoped card stops applying its month range (card↔tab drift)", (b) => ({
-    page: b.page.replace("                      } else if (s.monthScoped) {", "                      } else if (false) {"),
-  })],
-  ["K13", "custom-range mode keeps showing \"now\"", (b) => ({
-    page: b.page.replace('{rangeKpiActive ? "in range" : s.timeframe}', "{s.timeframe}"),
-  })],
   ["K14", "a card value is derived from the loaded rows", (b) => ({
-    page: b.page.replace("value: monthlyKpis?.leadUnpaid ?? null,", "value: orders.filter(o => !o.paid_at).length,"),
-  })],
-  ["K6", "Completed switched to a current-state field", (b) => ({
-    page: b.page.replace(
-      '                    label: "Completed",\n                    timeframe: "this month",\n                    value: monthlyKpis?.completed ?? null,',
-      '                    label: "Completed",\n                    timeframe: "now",\n                    value: monthlyKpis?.completedCurrent ?? null,'),
-  })],
-  ["K12", "a \"now\" card stops applying its status filter", (b) => ({
-    page: b.page.replace("                        setStatusFilter(s.filter);", "                        setStatusFilter(\"all\");"),
+    page: b.page.replace("value: periodKpis?.leadsCreated ?? null", "value: orders.filter(o => !o.paid_at).length"),
   })],
 ];
 
