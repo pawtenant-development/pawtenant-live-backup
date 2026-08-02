@@ -73,6 +73,15 @@ export interface SequenceResults {
   opted_out: number;
   expired: number;
   dedup_skipped: number;
+  /**
+   * LEAD-FOLLOWUP-SEQUENCE-SECURE-RESUME-REGRESSION-RECOVERY-001.
+   * A lead whose secure resume link could not be minted (nothing claimed,
+   * nothing sent), and a lead whose SMS was claimed but rejected by GHL (claim
+   * released for retry). Surfaced in the heartbeat so a silent partial failure
+   * can never look like a clean run again.
+   */
+  sms_link_failed: number;
+  sms_send_failed: number;
 }
 
 export interface SequenceRunResult {
@@ -83,7 +92,7 @@ export interface SequenceRunResult {
 }
 
 function emptyResults(): SequenceResults {
-  return { step1_30min: 0, step2_24h: 0, step3_3day: 0, sms_5min: 0, skipped: 0, opted_out: 0, expired: 0, dedup_skipped: 0 };
+  return { step1_30min: 0, step2_24h: 0, step3_3day: 0, sms_5min: 0, skipped: 0, opted_out: 0, expired: 0, dedup_skipped: 0, sms_link_failed: 0, sms_send_failed: 0 };
 }
 
 export function escapeHtml(v = ""): string {
@@ -575,7 +584,13 @@ export async function runLeadFollowupSequence(
         if (_resumeLink === null) {
           const issued = await issueResumeLink({
             supabaseUrl: SUPABASE_URL,
-            serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+            // LEAD-FOLLOWUP-SEQUENCE-SECURE-RESUME-REGRESSION-RECOVERY-001.
+            // This read `SUPABASE_SERVICE_ROLE_KEY` — an identifier that does
+            // not exist in this file. The secure-token rollout copied the call
+            // site from TEST, where the const IS named that, without adapting
+            // it to LIVE's `SERVICE_ROLE_KEY`. Every run threw a ReferenceError
+            // from 2026-08-01 22:30 UTC onward and the whole sequence stalled.
+            serviceRoleKey: SERVICE_ROLE_KEY,
             siteUrl: SITE_URL,
             confirmationId: lead.confirmation_id as string,
             isPsd: letterType === "psd",
@@ -602,27 +617,72 @@ export async function runLeadFollowupSequence(
       // SMS per lead. When the toggle is OFF we skip entirely (no claim, no
       // send) — email stages below are unaffected, and manual Order->Comms SMS
       // is a separate path that this never touches.
+      //
+      // LEAD-FOLLOWUP-SEQUENCE-SECURE-RESUME-REGRESSION-RECOVERY-001 — ORDERING.
+      // The claim used to happen FIRST and the secure resume link was minted
+      // afterwards. When the link call threw (the undeclared identifier fixed
+      // above), the claim survived and the SMS never went out: seven leads were
+      // permanently stamped "sent" having received nothing, and because the
+      // throw escaped the per-lead scope it aborted the whole run and stalled
+      // every email stage too.
+      //
+      // Now: mint the link and render the message BEFORE claiming, so a link
+      // failure costs nothing and is retried next tick; and if GHL rejects the
+      // message, RELEASE the claim so the lead is retried rather than silently
+      // written off. `sms_5min_sent_at` is left populated only when the SMS was
+      // actually accepted as sent.
       if (smsConfig.enabled && ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
-        const { data: claimed, error: claimErr } = await supabase
-          .from("orders")
-          .update({ sms_5min_sent_at: new Date().toISOString() })
-          .eq("id", orderId)
-          .is("sms_5min_sent_at", null)
-          .select("id");
-        if (!claimErr && claimed && claimed.length > 0) {
-          const smsMsg = renderRecoverySms(smsConfig.template, { firstName, petName, resumeUrl: await getResumeLink(), promoCode: smsConfig.promoCode });
-          const smsRes = await sendRecoverySmsViaComms({
-            orderId, confirmationId, toPhone: phone, message: smsMsg, sentBy: "auto_sequence:sms_5min",
-          });
+        // 1. Build the message first. Nothing is claimed if this fails.
+        let smsMsg: string | null = null;
+        try {
+          smsMsg = renderRecoverySms(smsConfig.template, { firstName, petName, resumeUrl: await getResumeLink(), promoCode: smsConfig.promoCode });
+        } catch (linkErr) {
+          results.sms_link_failed++;
           await writeAuditLog(supabase, {
-            action: "sms_5min_sent",
-            description: `5-min recovery SMS ${smsRes.sent ? "sent" : "failed"} to order ${confirmationId}`,
+            action: "sms_5min_link_failed",
+            description: `5-min recovery SMS skipped for ${confirmationId} — secure resume link unavailable`,
             object_id: confirmationId,
-            metadata: { order_id: orderId, sms_sent: smsRes.sent, step: "sms_5min", error: smsRes.error ?? null },
+            metadata: { order_id: orderId, step: "sms_5min", error: String((linkErr as Error)?.message ?? linkErr) },
           });
-          if (smsRes.sent) results.sms_5min++;
-        } else {
-          results.dedup_skipped++;
+        }
+
+        if (smsMsg !== null) {
+          // 2. Atomic claim. The `.is(null)` predicate is the concurrency lock —
+          //    unchanged, so two simultaneous runs still send at most one SMS.
+          const claimTs = new Date().toISOString();
+          const { data: claimed, error: claimErr } = await supabase
+            .from("orders")
+            .update({ sms_5min_sent_at: claimTs })
+            .eq("id", orderId)
+            .is("sms_5min_sent_at", null)
+            .select("id");
+          if (!claimErr && claimed && claimed.length > 0) {
+            // 3. Send through GHL.
+            const smsRes = await sendRecoverySmsViaComms({
+              orderId, confirmationId, toPhone: phone, message: smsMsg, sentBy: "auto_sequence:sms_5min",
+            });
+            await writeAuditLog(supabase, {
+              action: "sms_5min_sent",
+              description: `5-min recovery SMS ${smsRes.sent ? "sent" : "failed"} to order ${confirmationId}`,
+              object_id: confirmationId,
+              metadata: { order_id: orderId, sms_sent: smsRes.sent, step: "sms_5min", error: smsRes.error ?? null },
+            });
+            if (smsRes.sent) {
+              results.sms_5min++;
+            } else {
+              // 4. Release OUR claim only — matched on the exact timestamp we
+              //    wrote, so a claim another run legitimately took in the
+              //    meantime can never be cleared by us.
+              results.sms_send_failed++;
+              await supabase
+                .from("orders")
+                .update({ sms_5min_sent_at: null })
+                .eq("id", orderId)
+                .eq("sms_5min_sent_at", claimTs);
+            }
+          } else {
+            results.dedup_skipped++;
+          }
         }
       }
 
