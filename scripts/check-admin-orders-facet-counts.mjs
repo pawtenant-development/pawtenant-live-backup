@@ -133,7 +133,15 @@ function runStatic(fail) {
   // assert the inverse, so the two universes can never be re-merged.
   if (/value:\s*facetCounts\.buckets\./.test(page))
     fail("[page] a KPI card reads facetCounts.buckets — the banner is monthly, not filter-faceted");
-  if (/kpiCounts\./.test(page)) fail("[page] old kpiCounts must be fully removed");
+  // The bare name `kpiCounts` used to be banned outright, because an abandoned
+  // implementation used it for browser-derived card totals.
+  // ADMIN-ORDERS-CLICKABLE-KPI-CARD-COUNT-TO-LIST-PARITY-001 reuses the name for
+  // the SERVER-side per-card COUNT results (fetchKpiCardCounts), which is the
+  // opposite of what was banned. Ban the old SHAPE instead of the name.
+  if (/kpiCounts\.(leadUnpaid|ordersPaid|underReview|pendingDelivery|completed)\b/.test(page))
+    fail("[page] old flat kpiCounts shape must be fully removed");
+  if (/kpiCounts/.test(page) && !/kpiCounts\?\.counts\[/.test(page))
+    fail("[page] kpiCounts must be the server-side {counts} result of fetchKpiCardCounts");
   if (/value: .*orders\.filter\(isPaidUnassigned\)/.test(page)) fail("[page] KPI values must NOT fall back to loaded-row counts");
   if (!/filteredTotalDisplay/.test(page)) fail("[page] 'X of Y' total must use the server-authoritative filteredTotalDisplay");
   // statusFilter must NOT be in the facet effect deps (facets must not self-contaminate)

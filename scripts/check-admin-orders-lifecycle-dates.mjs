@@ -81,11 +81,11 @@ const REQUIRED = [
   { file: PAGE, label: "server tie-breaker id", re: /\.order\("id", \{ ascending: false \}\)/ },
   { file: PAGE, label: "lifecycle columns selected", re: /last_meaningful_activity_at,last_meaningful_activity_type/ },
   { file: PAGE, label: "day ribbons group on the ACTIVE basis", re: /orderGroupingIso\(order, dateBasis\)/ },
-  { file: PAGE, label: "date FILTER uses the ACTIVE basis", re: /matchesBasisDateRange\(o, dateBasis, dateFrom, dateTo\)/ },
-  { file: PAGE, label: "KPI counts receive the ACTIVE basis", re: /fetchOrderFacetCounts\(\{\s*\n?\s*dateBasis,/ },
+  { file: PAGE, label: "date FILTER uses the ACTIVE basis", re: /matchesBasisDateRange\(o, effDateBasis, effDateFrom, effDateTo\)/ },
+  { file: PAGE, label: "KPI counts receive the ACTIVE basis", re: /fetchOrderFacetCounts\(\{\s*\n?\s*dateBasis: effDateBasis,/ },
   { file: PAGE, label: "active basis is stated in the UI", re: /ORDER_DATE_BASIS_LABEL\[dateBasis\]/ },
   { file: PAGE, label: "Payment Failed stays reachable as a status FILTER tab", re: /\{ value: "payment_failed", label: "Payment Failed" \}/ },
-  { file: PAGE, label: "status filter tabs apply the filter", re: /onClick=\{\(\) => setStatusFilter\(opt\.value\)\}/ },
+  { file: PAGE, label: "status filter tabs apply the filter", re: /onClick=\{\(\) => onStatusTabClick\(opt\.value\)\}/ },
   { file: PAGE, label: "status column label is STATUS", re: /uppercase tracking-wider">Status<\/div>/ },
   { file: PAGE, label: "date-basis behaviour explained by an accessible tooltip", re: /aria-label=\{`Date basis: / },
 
@@ -399,10 +399,10 @@ function runStatic() {
   // list further down the file and reported 17 cards, so the anchor label must
   // stay in lock-step with the first card.
   const gridAt = page.indexOf("lg:grid-cols-5");
-  const cardsAt = gridAt === -1 ? -1 : page.indexOf('label: "Leads Created"', gridAt);
+  const cardsAt = gridAt === -1 ? -1 : page.indexOf('key: "lead_unpaid"', gridAt);
   const kpiBlock = cardsAt === -1 ? "" : page.slice(cardsAt, page.indexOf("].map((s) =>", cardsAt));
-  const kpiLabels = [...kpiBlock.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
-  const EXPECTED_KPI = ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"];
+  const kpiLabels = [...kpiBlock.matchAll(/key: "([^"]+)" as KpiCardKey/g)].map((m) => m[1]);
+  const EXPECTED_KPI = ["lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed"];
   if (kpiLabels.length !== 5) {
     failures.push(`KPI CARD CONTRACT: the permanent banner must have EXACTLY 5 visible cards, found ${kpiLabels.length}: ${JSON.stringify(kpiLabels)}`);
   }

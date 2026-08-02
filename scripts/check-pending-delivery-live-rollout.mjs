@@ -144,8 +144,8 @@ function runChecks(f) {
   // period aggregate. Pending Delivery still has its OWN card on the five-column
   // grid — which is all this check was ever protecting.
   add("P6", "the banner renders five cards on a five-column grid",
-    has(f.page, 'label: "Entered Pending Delivery"')
-    && has(f.page, "periodKpis?.enteredPendingDelivery ?? null")
+    has(f.page, 'key: "pending_delivery" as KpiCardKey')
+    && has(f.page, "kpiCounts?.counts[s.key]")
     && hasRe(f.page, /lg:grid-cols-5/));
 
   // Customer must NEVER see the internal label, and must not be told the
@@ -228,10 +228,10 @@ function runChecks(f) {
     // The monthly aggregate was folded into ONE period-event aggregate
     // (ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9); its guard is periodKpiGuard.
     // The invariant is unchanged: both aggregate fetches are ordered.
-    && hasRe(f.page, /runLatest\(\s*periodKpiGuard/)
+    && hasRe(f.page, /runLatest\(\s*kpiCountGuard/)
     && hasRe(f.page, /runLatest\(facetGuard/)
     // the weaker effect-cleanup flag must be gone from these two paths
-    && !hasRe(f.page, /let cancelled = false;[\s\S]{0,400}fetchAdminOrdersRangeEventKpis/)
+    && !hasRe(f.page, /let cancelled = false;[\s\S]{0,400}fetchKpiCardCounts/)
     && !hasRe(f.page, /let cancelled = false;[\s\S]{0,400}fetchOrderFacetCounts/));
 
   // The false 409 my own empty-list refusal introduced.
@@ -454,8 +454,8 @@ const CONTROLS = [
     (f) => ({ ...f, page: f.page.replace("aggregateReloadToken, facetGuard]", "facetGuard]") })],
   ["P18", "the period KPI reverts to an unordered effect-cleanup flag",
     (f) => ({ ...f, page: f.page.replace(
-      /void runLatest\(\s*periodKpiGuard,[\s\S]{0,400}?\);\n/,
-      "let cancelled = false;\n    void (async () => { const k = await fetchAdminOrdersRangeEventKpis({ from: kpiFrom, to: kpiTo }); if (!cancelled) setPeriodKpis(k); })();\n") })],
+      /void runLatest\(\s*kpiCountGuard,[\s\S]{0,900}?\);\n/,
+      "let cancelled = false;\n    void (async () => { const k = await fetchKpiCardCounts({}, { from: kpiFrom, to: kpiTo }); if (!cancelled) setKpiCounts(k); })();\n") })],
   ["P19", "the NULL signed_letter_url dedupe hole comes back (false 409)",
     (f) => ({ ...f, notifyDoc: f.notifyDoc.replace(
       /const signedUrl = order\.signed_letter_url \?\? null;[\s\S]*?\.forEach\(\(doc\) => allDocs\.push\(\{ label: doc\.label, url: resolveUrl\(doc\), id: doc\.id \}\)\);/,

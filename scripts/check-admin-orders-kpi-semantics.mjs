@@ -144,11 +144,15 @@ function cardBlockByLabel(src, label) {
 // SERVER contract of get_admin_orders_monthly_kpis(), plus the invariant that no
 // card value is ever derived from the loaded browser rows.
 const CHECKS = [
-  ["K1", "the five cards are the PERIOD-EVENT metrics, not queue depth", (s) => {
+  // ADMIN-ORDERS-CLICKABLE-KPI-CARD-COUNT-TO-LIST-PARITY-001 restored the
+  // OPERATIONAL cards. They are declared by KEY on the page; the human labels
+  // live in orderFacetCounts.KPI_CARD_LABEL so the card, the status tab and the
+  // result summary can never disagree about what a queue is called.
+  ["K1", "the five cards are the OPERATIONAL queues, declared by key", (s) => {
     const c = code(s.page);
-    const want = ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"];
-    return want.every((l) => c.includes(`label: "${l}"`))
-      && !/timeframe:\s*"now"/.test(c);
+    const want = ["lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed"];
+    return want.every((k) => c.includes('key: "' + k + '" as KpiCardKey'))
+      && !/timeframe:/.test(c);
   }],
 
   ["K2", "no card reads a queue-DEPTH (*Current) aggregate field", (s) => {
@@ -183,24 +187,22 @@ const CHECKS = [
   }],
 
   ["K14", "no KPI card value is derived from the loaded browser rows", (s) => {
-    for (const label of ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"]) {
-      const b = cardBlockByLabel(s.page, label);
-      if (!b) return false;
-      // Every card value must come from the server aggregate, never a client array.
-      if (!/value:\s*periodKpis\?\./.test(b)) return false;
-      if (/(?:orders|filtered\w*|loaded\w*|rows)\s*\.\s*(?:filter|length)/.test(b)) return false;
-    }
-    return true;
+    const c = code(s.page);
+    // The value is bound ONCE inside the card map, from the SERVER count result
+    // (fetchKpiCardCounts). Previously each card carried its own `value:`
+    // property; the shape changed, the invariant did not.
+    if (!/const value = kpiCounts\?\.counts\[s\.key\] \?\? null;/.test(c)) return false;
+    return !/const value = (?:orders|filtered\w*|loaded\w*|rows)\s*\.\s*(?:filter|length)/.test(c);
   }],
 ];
 
 // ── Planted negative controls — each MUST trip its own check ────────────────
 const CONTROLS = [
-  ["K1", "a card relabelled back to queue-depth wording", (b) => ({
-    page: b.page.replace('label: "Entered Under Review"', 'label: "Under Review", timeframe: "now"'),
+  ["K1", "a card key replaced by an event-era metric", (b) => ({
+    page: b.page.replace('key: "under_review" as KpiCardKey', 'key: "entered_under_review" as KpiCardKey'),
   })],
-  ["K2", "a card switched back to a queue-depth field", (b) => ({
-    page: b.page.replace("value: periodKpis?.enteredUnderReview ?? null", "value: periodKpis?.underReviewCurrent ?? null"),
+  ["K2", "a card value switched back to a queue-depth aggregate field", (b) => ({
+    page: b.page.replace("const value = kpiCounts?.counts[s.key] ?? null;", "const value = monthlyKpis?.underReviewCurrent ?? null;"),
   })],
   ["K7", "Completed switched to paid_at in the RPC", (b) => ({
     rpc: b.rpc.replace("where o.last_completed_at >= v_ps", "where o.paid_at >= v_ps"),
@@ -217,7 +219,7 @@ const CONTROLS = [
       "   where public.order_workflow_state(o) = 'lead'\n     and o.created_at >= v_ps"),
   })],
   ["K14", "a card value is derived from the loaded rows", (b) => ({
-    page: b.page.replace("value: periodKpis?.leadsCreated ?? null", "value: orders.filter(o => !o.paid_at).length"),
+    page: b.page.replace("const value = kpiCounts?.counts[s.key] ?? null;", "const value = orders.filter(o => !o.paid_at).length;"),
   })],
 ];
 

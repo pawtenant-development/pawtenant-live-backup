@@ -232,24 +232,38 @@ export const CHECKS = [
   // scripts/check-admin-orders-ny-clock-kpi-status.mjs (N15-N34). Only the page
   // invariants that are still TRUE are kept here, so the two guards can never
   // assert opposite things about the same file.
+  // The card value is bound as `const value = …` inside the map now, not as a
+  // `value:` object property, so both of these must match either form — a regex
+  // pinned to the old shape let a planted "derive it from loaded rows" mutation
+  // slip straight through.
   { name: "banner is served by ONE aggregate, never the list facet buckets", file: PAGE,
-    run: (s) => /value:\s*facetCounts/.test(s)
-      ? "a KPI card is reading a list facet bucket — banner and list are different universes" : null },
+    run: (s) => /(?:value:|const value =)\s*facetCounts/.test(s)
+      ? "a KPI card is reading a list facet bucket — the card count must come from the server KPI aggregate" : null },
   { name: "banner never derives a card value from the loaded rows", file: PAGE,
-    run: (s) => /value:\s*orders\s*\.\s*(filter|length)/.test(s)
+    run: (s) => /(?:value:|const value =)\s*orders\s*\.\s*(filter|length)/.test(s)
       ? "a KPI card value is computed from the browser's loaded rows" : null },
-  { name: "the KPI effect takes no list filter, basis or pagination dependency", file: PAGE,
+  // ADMIN-ORDERS-CLICKABLE-KPI-CARD-COUNT-TO-LIST-PARITY-001 re-scopes this.
+  //
+  // The old banner was required to be filter-BLIND ("stay perfectly still while
+  // the operator searches"). Under count-to-list parity that is now WRONG: if a
+  // search is active and the cards ignored it, clicking a card would show fewer
+  // rows than the number on it. The cards must facet the same universe the list
+  // does, so non-status filters are legitimate dependencies.
+  //
+  // What must STILL be excluded is anything that would make the numbers move
+  // under the operator's cursor when they select a card, or make them depend on
+  // how far the list has been paged.
+  { name: "the KPI effect ignores card/status/pagination state", file: PAGE,
     run: (s) => {
-      const m = s.match(/fetchAdminOrdersRangeEventKpis\([\s\S]{0,500}?\}\s*,\s*\[([^\]]*)\]\s*\)/);
-      if (!m) return "could not locate the period-KPI effect dependency array";
+      const m = s.match(/fetchKpiCardCounts\([\s\S]{0,900}?\}\s*,\s*\[([^\]]*)\]\s*\)/);
+      if (!m) return "could not locate the KPI card-count effect dependency array";
       const bad = m[1].split(",").map((d) => d.trim()).filter((d) =>
-        ["statusFilter", "dateBasis", "packageFilter", "search", "sequenceFilter",
-         "paymentFilter", "visibleCount", "sortOrder"].includes(d));
-      return bad.length ? `banner depends on list state: ${bad.join(", ")}` : null;
+        ["statusFilter", "activeKpi", "dateBasis", "visibleCount", "sortOrder"].includes(d));
+      return bad.length ? `KPI counts depend on selection/pagination state: ${bad.join(", ")}` : null;
     } },
-  { name: "period KPI state is distinct from facet state", file: PAGE,
-    run: (s) => /const \[periodKpis,/.test(s) && /const \[facetCounts,/.test(s)
-      ? null : "period-KPI and facet state must not be merged into one object" },
+  { name: "KPI card state is distinct from facet state", file: PAGE,
+    run: (s) => /const \[kpiCounts,/.test(s) && /const \[facetCounts,/.test(s)
+      ? null : "KPI card and facet state must not be merged into one object" },
 ];
 
 // ── Negative controls — each planted defect MUST be rejected ─────────────────
@@ -291,11 +305,11 @@ const NEGATIVE_CONTROLS = [
   // the checks they exercised (see the PAGE contract note above). These three
   // exercise the PAGE invariants this guard still owns.
   { name: "a KPI card value derived from the loaded browser rows",
-    file: PAGE, mutate: (s) => s.replace("value: periodKpis?.leadsCreated ?? null", "value: orders.filter(o => !o.paid_at).length") },
+    file: PAGE, mutate: (s) => s.replace("const value = kpiCounts?.counts[s.key] ?? null;", "const value = orders.filter(o => !o.paid_at).length;") },
   { name: "a KPI card wired to a list facet bucket",
-    file: PAGE, mutate: (s) => s.replace("value: periodKpis?.completed ?? null", "value: facetCounts.buckets.completed") },
+    file: PAGE, mutate: (s) => s.replace("const value = kpiCounts?.counts[s.key] ?? null;", "const value = facetCounts.buckets.completed;") },
   { name: "the KPI effect wired to statusFilter",
-    file: PAGE, mutate: (s) => s.replace("}, [kpiFrom, kpiTo, monthlyKpiReloadToken, periodKpiGuard]);", "}, [kpiFrom, kpiTo, statusFilter, monthlyKpiReloadToken, periodKpiGuard]);") },
+    file: PAGE, mutate: (s) => s.replace("showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);", "showDuplicatesOnly, statusFilter, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);") },
 ];
 
 // ── Runner ────────────────────────────────────────────────────────────────────
@@ -346,4 +360,4 @@ if (selfTest) {
   console.log(`${GREEN}✓ self-test passed${RESET} (${NEGATIVE_CONTROLS.length}/${NEGATIVE_CONTROLS.length} planted defects rejected)`);
 }
 
-console.log(`${DIM}  SQL contract guarded here · the PAGE banner contract (display-only period-event cards, one America/New_York window) is owned by check-admin-orders-ny-clock-kpi-status.mjs${RESET}`);
+console.log(`${DIM}  SQL contract guarded here · the PAGE banner contract (clickable operational cards, count-to-list parity, one America/New_York window) is owned by check-admin-orders-ny-clock-kpi-status.mjs${RESET}`);

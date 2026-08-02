@@ -24,9 +24,24 @@
 //     third of every day the business's "today" orders were filed under
 //     "Yesterday".
 //
-// This guard makes both un-shippable, and pins the replacement contract:
-// ONE period-event KPI semantics over ONE normalized America/New_York window,
-// display-only cards, and a visible New York business clock.
+// AMENDED BY ADMIN-ORDERS-CLICKABLE-KPI-CARD-COUNT-TO-LIST-PARITY-001.
+//
+// The first fix removed the click entirely and made the five cards display-only
+// period-EVENT counters. That was the wrong contract: the owner needs the cards
+// as operational filters. Making them non-clickable also left the real problem
+// unsolved — a card counting EVENTS can never agree with a tab showing CURRENT
+// state. On LIVE, "Orders Paid" counted 3 (two since Completed, one since
+// Pending Delivery) while the Paid (Unassigned) tab correctly held 0.
+//
+// The contract this guard now pins:
+//   • five CLICKABLE operational cards — Lead (Unpaid), Paid (Unassigned),
+//     Under Review, Pending Delivery, Completed;
+//   • each is CURRENT-STATE ∧ entered-in-window, on its own stage-entry column;
+//   • clicking selects that tab and applies exactly the window it counted, so
+//     COUNT == LIST TOTAL by construction (one shared predicate builder);
+//   • clicking the active card again, or All, clears it completely;
+//   • the New York clock, the New York day grouping and the midnight rollover
+//     from the first task all survive unchanged.
 //
 // Run:  node scripts/check-admin-orders-ny-clock-kpi-status.mjs [--self-test]
 
@@ -161,130 +176,180 @@ const CHECKS = [
   ["N14", "the grouping TIMESTAMP is unchanged (basis-aware, matches the sort)", () =>
     /orderGroupingIso\(order, dateBasis\) \?\? order\.created_at/.test(read(PAGE))],
 
-  // ── §B KPI cards are display-only ──────────────────────────────────────────
-  ["N15", "KPI cards are NOT buttons", () => {
+  // ── Clickable OPERATIONAL KPI cards (parity task §5/§8) ────────────────────
+  ["N15", "KPI cards are CLICKABLE buttons", () => {
     const r = stripComments(kpiRenderBlock(read(PAGE)));
-    return r.length > 0 && !/<button/.test(r);
+    return r.length > 0 && /<button/.test(r) && /onClick=\{\(\) => onKpiCardClick\(/.test(r);
   }],
-  ["N16", "KPI cards have no click handler", () => {
+  ["N16", "the active card is announced and styled as selected", () => {
     const r = stripComments(kpiRenderBlock(read(PAGE)));
-    return r.length > 0 && !/onClick|onKeyDown|onKeyUp|onPointerDown|onMouseDown/.test(r);
+    return /aria-pressed=\{active\}/.test(r) && /active \? "bg-\[#e8f0f9\]"/.test(r);
   }],
-  ["N17", "KPI cards carry no button/link semantics and no tabIndex", () => {
+  ["N17", "clicking the ACTIVE card deselects it (never trapped)", () => {
+    const p = stripComments(read(PAGE));
+    return /activeKpi === key \? null : key/.test(p);
+  }],
+  ["N18", "KPI cards use a pointer cursor", () => {
     const r = stripComments(kpiRenderBlock(read(PAGE)));
-    return r.length > 0 && !/role="(button|link)"/.test(r) && !/tabIndex/.test(r);
+    return /cursor-pointer/.test(r) && !/cursor-default/.test(r);
   }],
-  ["N18", "KPI cards use the default cursor, never a pointer", () => {
-    const r = stripComments(kpiRenderBlock(read(PAGE)));
-    return r.length > 0 && /cursor-default/.test(r) && !/cursor-pointer/.test(r);
+  ["N19", "there is exactly ONE piece of KPI state, and it drives the tab", () => {
+    const p = stripComments(read(PAGE));
+    // Seeded from the URL on first render (§13) rather than adopted in an
+    // effect — see readKpiParam. It is still the ONE piece of KPI state.
+    return /const \[activeKpi, setActiveKpi\] = useState<KpiCardKey \| null>\(\(\) => readKpiParam\(window\.location\.search\)\)/.test(p)
+      && /setStatusFilter\(key \?\? "all"\)/.test(p);
   }],
-  ["N19", "KPI cards carry no selected/active styling", () => {
-    const r = stripComments(kpiRenderBlock(read(PAGE)));
-    return r.length > 0 && !/\bactive\b/.test(r) && !/bg-\[#e8f0f9\]/.test(r);
+  ["N20", "a manual status tab click clears the KPI card", () => {
+    const p = stripComments(read(PAGE));
+    return /onStatusTabClick = useCallback\(\(value: string\) => \{\s*setActiveKpi\(null\);/.test(p)
+      && /onClick=\{\(\) => onStatusTabClick\(opt\.value\)\}/.test(p);
   }],
-  ["N20", "no KPI filtering state survives anywhere on the page", () => {
-    // Comments explaining the removal are fine; a real BINDING is not. The
-    // line-prefix filter this used before could not see JSX {/* … */} blocks,
-    // which is where page.tsx documents the removed names.
-    //
-    // String LITERALS are excluded too: §12's URL sanitiser necessarily spells
-    // out the obsolete parameter names it strips ("activeKpi", "kpiFilter",
-    // "monthScoped", …). Banning those literals would ban the fix itself, so
-    // only bare identifiers count as surviving state.
-    const code = stripComments(read(PAGE))
-      .replace(/"[^"\n]*"/g, '""')
-      .replace(/'[^'\n]*'/g, "''");
-    return !/\b(activeKpi|selectedKpi|kpiFilter|onKpiClick|monthScoped|rangeKpiActive)\b/.test(code);
+  ["N21", "the KPI selection round-trips through the URL", () => {
+    const p = stripComments(read(PAGE));
+    return /params\.set\("kpi", want\)/.test(p) && /params\.delete\("kpi"\)/.test(p)
+      && /new URLSearchParams\(location\.search\)\.get\("kpi"\)/.test(p);
   }],
-  ["N21", "obsolete KPI URL parameters are stripped on arrival", () => {
-    const p = read(PAGE);
-    return /OBSOLETE_KPI_PARAMS/.test(p) && /replace: true/.test(p);
+  ["N21b", "the obsolete-param sanitiser does NOT strip the live ?kpi=", () => {
+    const p = stripComments(read(PAGE));
+    const m = p.match(/OBSOLETE_KPI_PARAMS = \[([^\]]*)\]/);
+    if (!m) return false;
+    // The previous task listed "kpi" as obsolete. With clickable cards that
+    // sanitiser deleted the parameter the instant the card wrote it, so every
+    // selection silently deselected itself and no card could ever look active.
+    // Nothing that the app actively writes may appear in this list.
+    return !/"kpi"/.test(m[1]);
   }],
 
-  // ── §9/§10/§11 ONE period-event KPI contract ───────────────────────────────
-  ["N22", "the five cards are the five PERIOD-EVENT metrics", () =>
-    JSON.stringify(kpiCardLabels(read(PAGE))) === JSON.stringify(
-      ["Leads Created", "Orders Paid", "Entered Under Review", "Entered Pending Delivery", "Completed"])],
-  ["N23", "every card value comes from the ONE period aggregate", () => {
-    const v = kpiCardValueExprs(read(PAGE));
-    return v.length === 5 && v.every((e) => /^periodKpis\?\./.test(e));
+  // ── The five OPERATIONAL labels (§5) ───────────────────────────────────────
+  ["N22", "the five cards are the OPERATIONAL queues, in order", () => {
+    const f = read(FACET);
+    const m = f.match(/KPI_CARD_LABEL: Record<KpiCardKey, string> = \{([\s\S]*?)\}/);
+    if (!m) return false;
+    const labels = [...m[1].matchAll(/: "([^"]+)"/g)].map((x) => x[1]);
+    return JSON.stringify(labels) === JSON.stringify(
+      ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed"]);
   }],
-  ["N24", "cards are wired to the event fields positionally", () => {
-    const v = kpiCardValueExprs(read(PAGE));
-    const want = ["leadsCreated", "ordersPaid", "enteredUnderReview", "enteredPendingDelivery", "completed"];
-    return v.length === 5 && want.every((f, i) => v[i].includes(f));
+  ["N23", "the retired EVENT labels are gone", () => {
+    const p = stripComments(read(PAGE)) + stripComments(read(FACET));
+    return !/"Leads Created"|"Orders Paid"|"Entered Under Review"|"Entered Pending Delivery"/.test(p);
   }],
-  ["N25", "no card is queue DEPTH and no card says \"now\"", () => {
-    const b = kpiCardBlock(read(PAGE));
-    return !/Current\b/.test(b) && !/timeframe: "now"/.test(b) && !/"now"/.test(b);
+  ["N24", "each card measures its OWN stage-entry column", () => {
+    const f = read(FACET);
+    const m = f.match(/KPI_CARD_BASIS: Record<KpiCardKey, OrderDateBasis> = \{([\s\S]*?)\};/);
+    if (!m) return false;
+    const b = m[1];
+    return /lead_unpaid: "created"/.test(b)
+      && /paid_unassigned: "first_paid"/.test(b)
+      && /under_review: "under_review_entered"/.test(b)
+      && /pending_delivery: "pending_delivery_entered"/.test(b)
+      && /completed: "completed"/.test(b);
   }],
-  ["N26", "the default window is the CURRENT New York month", () => {
-    const p = read(PAGE);
+  ["N25", "card values come from the server KPI counts, never loaded rows", () => {
+    const r = stripComments(kpiRenderBlock(read(PAGE)));
+    return /kpiCounts\?\.counts\[s\.key\]/.test(r)
+      && !/orders\s*\.\s*(filter|length)/.test(r);
+  }],
+
+  // ── COUNT-TO-LIST PARITY (§10) — the central acceptance requirement ────────
+  ["N26", "the KPI counts and the list total share ONE predicate builder", () => {
+    const f = read(FACET);
+    // fetchKpiCardCounts must compose the SAME two helpers fetchOrderFacetCounts
+    // uses. A second, parallel predicate is exactly how the counts drifted before.
+    //
+    // Scoped to the BODY of fetchKpiCardCounts: an unscoped search also matched
+    // the identical composition inside fetchOrderFacetCounts, so gutting the KPI
+    // builder still passed. Assert the composition where it actually matters.
+    const i = f.indexOf("export async function fetchKpiCardCounts");
+    if (i < 0) return false;
+    const body = f.slice(i, f.indexOf("\n}", i));
+    return /applyBucket\(\s*applyNonStatusFilters\(/.test(body);
+  }],
+  ["N27", "each card count is windowed on that card's own basis", () => {
+    const f = read(FACET);
+    return /dateBasis: KPI_CARD_BASIS\[k\]/.test(f)
+      && /dateFrom: range\.from/.test(f) && /dateTo: range\.to/.test(f);
+  }],
+  ["N28", "the list applies the card's basis and window (EFFECTIVE window)", () => {
+    const p = stripComments(read(PAGE));
+    return /const effDateBasis: OrderDateBasis = activeKpi \? KPI_CARD_BASIS\[activeKpi\] : dateBasis/.test(p)
+      && /const effDateFrom = activeKpi \? kpiFrom : \(dateFrom \|\| undefined\)/.test(p)
+      && /const effDateTo = activeKpi \? kpiTo : \(dateTo \|\| undefined\)/.test(p);
+  }],
+  ["N29", "the row predicate uses the EFFECTIVE window, not the raw state", () => {
+    const p = stripComments(read(PAGE));
+    return /matchesBasisDateRange\(o, effDateBasis, effDateFrom, effDateTo\)/.test(p);
+  }],
+  ["N30", "the facet counts (list total) use the EFFECTIVE window too", () => {
+    const p = stripComments(read(PAGE));
+    return /dateBasis: effDateBasis, dateFrom: effDateFrom, dateTo: effDateTo/.test(p);
+  }],
+  ["N31", "the list total still comes from the server facets", () => {
+    const p = stripComments(read(PAGE));
+    return /filteredTotalFor\(statusFilter, facetCounts\)/.test(p);
+  }],
+
+  // ── Window + stability ─────────────────────────────────────────────────────
+  ["N32", "the default window is the CURRENT New York month", () => {
+    const p = stripComments(read(PAGE));
     return /currentBusinessMonth\(\)/.test(p)
-      && /kpiRangeExplicit \? \(dateFrom \|\| null\) : monthlyKpiPeriod\.from/.test(p);
+      && /const kpiFrom = kpiRangeExplicit \? \(dateFrom \|\| undefined\) : kpiMonth\.from/.test(p);
   }],
-  ["N27", "an explicit range replaces the window, same five metrics", () => {
-    const p = read(PAGE);
+  ["N33", "an explicit range replaces the window for BOTH count and list", () => {
+    const p = stripComments(read(PAGE));
     return /const kpiRangeExplicit = Boolean\(dateFrom \|\| dateTo\)/.test(p)
-      && /kpiRangeExplicit \? \(dateTo \|\| null\) : monthlyKpiPeriod\.toInclusive/.test(p);
+      && /const kpiTo = kpiRangeExplicit \? \(dateTo \|\| undefined\) : kpiMonth\.toInclusive/.test(p);
   }],
-  ["N28", "the KPI window rolls over at NEW YORK midnight", () => {
+  ["N34", "the KPI window rolls over at NEW YORK midnight", () => {
+    const p = stripComments(read(PAGE));
+    return /kpiMonth = useMemo\([\s\S]{0,400}?\[businessDayKey\]/.test(p);
+  }],
+  ["N35", "stale KPI responses cannot publish (request guard)", () => {
+    const p = stripComments(read(PAGE));
+    return /kpiCountGuard = useRef\(createRequestGuard\(\)\)/.test(p)
+      && /runLatest\(\s*kpiCountGuard/.test(p);
+  }],
+  ["N36", "KPI counts are NEVER reset to zero/null while fetching", () => {
     const p = read(PAGE);
-    return /monthlyKpiPeriod = useMemo\([\s\S]{0,400}?\[businessDayKey\]/.test(p);
+    const m = p.match(/setKpiCountsLoading\(true\);([\s\S]{0,500}?)fetchKpiCardCounts/);
+    return !!m && !/setKpiCounts\((null|\{)/.test(m[1]);
   }],
-  ["N29", "there is exactly ONE KPI state and ONE KPI fetch", () => {
-    // monthlyKpiPeriod / monthlyKpiReloadToken are the SURVIVING single-universe
-    // names; blank them first so the ban below targets only the removed states.
-    const code = stripComments(read(PAGE)).replace(/monthlyKpiPeriod|monthlyKpiReloadToken/g, "");
-    return !/\brangeKpis\b|\bmonthlyKpis\b/.test(code)
-      && (code.match(/fetchAdminOrdersRangeEventKpis\(/g) || []).length === 1;
+  ["N37", "stable values stay visible during refresh (skeleton is first-load only)", () => {
+    const r = stripComments(kpiRenderBlock(read(PAGE)));
+    return /const firstLoad = kpiCountsLoading && kpiCounts == null/.test(r);
   }],
-  ["N30", "the KPI window is keyed on normalized STRINGS, not Date objects", () => {
-    const deps = periodEffectDeps(read(PAGE));
-    return !!deps && deps.includes("kpiFrom") && deps.includes("kpiTo");
-  }],
-  ["N31", "the KPI effect ignores list filters, basis, status and pagination", () => {
-    const deps = periodEffectDeps(read(PAGE));
-    if (!deps) return false;
-    const forbidden = ["statusFilter", "dateBasis", "search", "packageFilter", "visibleCount",
-      "sequenceFilter", "paymentFilter", "sortOrder", "page"];
-    return !deps.some((d) => forbidden.includes(d));
-  }],
-  ["N32", "stale KPI responses cannot publish (request guard)", () => {
+  ["N38", "selecting a card does NOT change what any card counts", () => {
+    // The count effect must not depend on activeKpi or statusFilter, or the
+    // numbers would move under the operator's cursor when a card is clicked.
     const p = read(PAGE);
-    return /periodKpiGuard = useRef\(createRequestGuard\(\)\)/.test(p)
-      && /runLatest\(\s*periodKpiGuard/.test(p);
+    const m = p.match(/fetchKpiCardCounts\([\s\S]{0,900}?\}\s*,\s*\[([^\]]*)\]\s*\)/);
+    if (!m) return false;
+    const deps = m[1].split(",").map((d) => d.trim());
+    return !deps.includes("activeKpi") && !deps.includes("statusFilter") && !deps.includes("visibleCount");
   }],
-  ["N33", "KPI values are NEVER reset to zero/null while fetching", () => {
-    const p = read(PAGE);
-    // the effect body between setPeriodKpisLoading(true) and the fetch must not
-    // clear the published values
-    const m = p.match(/setPeriodKpisLoading\(true\);([\s\S]{0,400}?)fetchAdminOrdersRangeEventKpis/);
-    return !!m && !/setPeriodKpis\((null|\{)/.test(m[1]);
-  }],
-  ["N34", "stable values stay visible during refresh (skeleton is first-load only)", () =>
-    /const firstLoad = periodKpisLoading && periodKpis == null/.test(read(PAGE))],
-  ["N35", "the RPC fails CLOSED — never a fabricated count", () => {
-    const r = read(RANGE);
-    return /if \(error\) return null/.test(r) && /catch \{\s*return null/.test(r);
+  ["N39", "the active card states the FULL result across all date groups", () => {
+    const p = stripComments(read(PAGE));
+    // §15 — Today is only one ribbon inside the window; the operator must not
+    // compare the card against the Today group alone.
+    return /Across all date groups below/.test(p) && /KPI_CARD_LABEL\[activeKpi\]/.test(p);
   }],
 
   // ── §13/§14 status predicates ──────────────────────────────────────────────
-  ["N36", "Paid (Unassigned) excludes Completed and any assigned provider", () => {
+  ["N40", "Paid (Unassigned) excludes Completed and any assigned provider", () => {
     const c = read(CLASS);
     return /export function isPaidUnassigned[\s\S]{0,200}?!isLeadOrder\(o\) && !isRefundedBucket\(o\) && !isCompletedOrder\(o\) && !hasProvider\(o\)/.test(c);
   }],
-  ["N37", "Under Review excludes Completed AND Pending Delivery", () => {
+  ["N41", "Under Review excludes Completed AND Pending Delivery", () => {
     const c = read(CLASS);
     return /export function isUnderReview[\s\S]{0,260}?!isCompletedOrder\(o\)[\s\S]{0,120}?!isPendingDelivery\(o\)/.test(c);
   }],
-  ["N38", "Pending Delivery excludes Completed", () => {
+  ["N42", "Pending Delivery excludes Completed", () => {
     const c = read(CLASS);
     return /export function isPendingDelivery[\s\S]{0,220}?!isCompletedOrder\(o\)/.test(c);
   }],
-  ["N39", "the Pending Delivery tab is explicit, never a status fallthrough", () =>
+  ["N43", "the Pending Delivery tab is explicit, never a status fallthrough", () =>
     /statusFilter === "pending_delivery"[\s\S]{0,400}?matchStatus = isPendingDelivery\(o\)/.test(read(PAGE))],
-  ["N40", "the row query and the total share one canonical predicate source", () => {
+  ["N44", "the row query and the total share one canonical predicate source", () => {
     const p = read(PAGE);
     const f = read(FACET);
     // The tab total must come from the SERVER facet counts, never from the
@@ -292,28 +357,31 @@ const CHECKS = [
     return /filteredTotalFor\(statusFilter, facetCounts\)/.test(p)
       && /export function filteredTotalFor/.test(f);
   }],
-  ["N41", "facet buckets mirror the client classifiers (parity anchors present)", () => {
+  ["N45", "facet buckets mirror the client classifiers (parity anchors present)", () => {
     const f = read(FACET);
     return /case "paid_unassigned":[\s\S]{0,600}?doctor_status\.neq\.patient_notified/.test(f)
       && /case "under_review":[\s\S]{0,900}?doctor_status\.neq\.pending_admin_approval/.test(f)
       && /case "pending_delivery":[\s\S]{0,700}?pending_admin_approval/.test(f);
   }],
-  ["N42", "All clears the status filter and nothing else", () => {
+  ["N46", "All clears the status filter and nothing else", () => {
     const code = stripComments(read(PAGE));
     // The status TABS are the only status control: an "All" option whose value
     // is "all", applied by the shared tab handler. Because the KPI cards no
     // longer set dateFrom/dateTo/dateBasis (N15-N20), selecting All can no
     // longer leave an invisible date range behind — which was the actual bug.
     const hasAllTab = /\{ value: "all", label: "All" \}/.test(code);
-    const tabHandler = /onClick=\{\(\) => setStatusFilter\(opt\.value\)\}/.test(code);
-    // and no status mutation may live inside the KPI card render block
-    const cardsInert = !/setStatusFilter|setDateFrom|setDateTo|setDateBasis/
+    // Every tab, All included, goes through the handler that clears the KPI card.
+    const tabHandler = /onClick=\{\(\) => onStatusTabClick\(opt\.value\)\}/.test(code);
+    // Clearing the card must clear its WINDOW too. That is structural here: the
+    // window is DERIVED from activeKpi, so a card can never leave a date range
+    // or a Date Basis behind. Assert the cards never write those states directly.
+    const cardsWriteNoDateState = !/setDateFrom|setDateTo|setDateBasis/
       .test(stripComments(kpiRenderBlock(read(PAGE))));
-    return hasAllTab && tabHandler && cardsInert;
+    return hasAllTab && tabHandler && cardsWriteNoDateState;
   }],
 
   // ── §15 Filters badge ──────────────────────────────────────────────────────
-  ["N43", "the Filters badge counts only visible explicit filters", () => {
+  ["N47", "the Filters badge counts only visible explicit filters", () => {
     const p = read(PAGE);
     const m = p.match(/const activeFilterCount = \[([\s\S]*?)\]\.filter\(Boolean\)\.length/);
     if (!m) return false;
@@ -325,11 +393,11 @@ const CHECKS = [
   }],
 
   // ── Preservation ───────────────────────────────────────────────────────────
-  ["N44", "the secure-resume pre-boot scrub is untouched", () => {
+  ["N48", "the secure-resume pre-boot scrub is untouched", () => {
     const idx = readFileSync(join(ROOT, "index.html"), "utf8");
     return /rt|resume/.test(idx) && /history\.replaceState/.test(idx);
   }],
-  ["N45", "no LIVE project ref is introduced by this task", () => {
+  ["N49", "no LIVE project ref is introduced by this task", () => {
     const files = [PAGE, BIZ, HOOK, CLOCK];
     return !files.some((f) => /cvwbozlbbmrjxznknouq/.test(read(f)));
   }],
@@ -415,40 +483,60 @@ const CONTROLS = [
   // an hour wrong on both DST transition days.
   ["New York midnight refresh replaced by a fixed 24h", HOOK,
     (s) => s.replace("}, msUntilNextBusinessMidnight(new Date()));", "}, 24 * 60 * 60 * 1000);")],
-  ["KPI click handler reintroduced", PAGE,
-    (s) => s.replace('key={s.label}\n                    className="flex items-center gap-3 px-4 py-3 text-left cursor-default w-full"',
-      'key={s.label}\n                    onClick={() => setStatusFilter("completed")}\n                    className="flex items-center gap-3 px-4 py-3 text-left cursor-default w-full"')],
-  ["KPI button role reintroduced", PAGE,
-    (s) => s.replace('className="flex items-center gap-3 px-4 py-3 text-left cursor-default w-full"',
-      'role="button" tabIndex={0} className="flex items-center gap-3 px-4 py-3 text-left cursor-pointer w-full"')],
-  ["activeKpi state reintroduced", PAGE,
-    (s) => s.replace("const businessDayKey = useBusinessDayKey();",
-      "const businessDayKey = useBusinessDayKey();\n  const [activeKpi, setActiveKpi] = useState(null);")],
-  ["KPI switched back to queue depth", PAGE,
-    (s) => s.replace("value: periodKpis?.enteredUnderReview ?? null",
-      "value: periodKpis?.underReviewCurrent ?? null, timeframe: \"now\"")],
-  ["stale-response guard removed", PAGE,
-    (s) => s.replace("runLatest(\n        periodKpiGuard,", "runLatestUnguarded(\n        noGuard,")],
-  ["KPI zero-reset restored", PAGE,
-    (s) => s.replace("setPeriodKpisLoading(true);\n    const t = window.setTimeout",
-      "setPeriodKpisLoading(true);\n    setPeriodKpis(null);\n    const t = window.setTimeout")],
+  ["New York clock unmounted from the header", PAGE,
+    (s) => s.replace("          <BusinessClock />\n", "")],
+  ["hardcoded EDT abbreviation", BIZ,
+    (s) => s.replace('return parts.find((p) => p.type === "timeZoneName")?.value ?? "ET";', 'return "EDT";')],
+
+  // ── the corrected clickable-card contract ────────────────────────────────
+  ["cards made non-clickable again", PAGE,
+    (s) => s.replace("onClick={() => onKpiCardClick(s.key)}", "")],
+  ['"Orders Paid" event label restored', FACET,
+    (s) => s.replace('paid_unassigned: "Paid (Unassigned)"', 'paid_unassigned: "Orders Paid"')],
+  ["the active card can no longer be toggled off", PAGE,
+    (s) => s.replace("applyKpiSelection(activeKpi === key ? null : key);", "applyKpiSelection(key);")],
+  ["a manual status tab stops clearing the KPI card", PAGE,
+    (s) => s.replace("onClick={() => onStatusTabClick(opt.value)}", "onClick={() => setStatusFilter(opt.value)}")],
+  ["the card list drops the date window (count/list drift)", PAGE,
+    (s) => s.replace("const effDateFrom = activeKpi ? kpiFrom : (dateFrom || undefined);",
+      "const effDateFrom = dateFrom || undefined;")],
+  ["the card list drops the card's basis (count/list drift)", PAGE,
+    (s) => s.replace("const effDateBasis: OrderDateBasis = activeKpi ? KPI_CARD_BASIS[activeKpi] : dateBasis;",
+      "const effDateBasis: OrderDateBasis = dateBasis;")],
+  ["the row predicate stops using the effective window", PAGE,
+    (s) => s.replace("matchesBasisDateRange(o, effDateBasis, effDateFrom, effDateTo)",
+      "matchesBasisDateRange(o, dateBasis, dateFrom, dateTo)")],
+  ["the list total stops using the effective window", PAGE,
+    (s) => s.replace("dateBasis: effDateBasis, dateFrom: effDateFrom, dateTo: effDateTo,",
+      "dateBasis, dateFrom, dateTo,")],
+  ["the KPI counts get their own second predicate builder", FACET,
+    (s) => s.replace("          applyBucket(\n            applyNonStatusFilters(", "          (\n            (")],
+  ["Paid (Unassigned) card measures created_at instead of paid_at", FACET,
+    (s) => s.replace('paid_unassigned: "first_paid"', 'paid_unassigned: "created"')],
+  ["Completed card measures paid_at instead of completion", FACET,
+    (s) => s.replace('completed: "completed"', 'completed: "first_paid"')],
   ["Paid Unassigned allows Completed", CLASS,
     (s) => s.replace("return !isLeadOrder(o) && !isRefundedBucket(o) && !isCompletedOrder(o) && !hasProvider(o);",
       "return !isLeadOrder(o) && !isRefundedBucket(o) && !hasProvider(o);")],
   ["Under Review allows Pending Delivery", CLASS,
     (s) => s.replace("&& !isPendingDelivery(o);", ";")],
+  ["the KPI counts react to the selected card (numbers move on click)", PAGE,
+    (s) => s.replace("showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);",
+      "showDuplicatesOnly, activeKpi, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);")],
+  ["stale-response guard removed", PAGE,
+    (s) => s.replace("runLatest(\n        kpiCountGuard,", "runLatestUnguarded(\n        noGuard,")],
+  ["KPI counts zero-reset restored", PAGE,
+    (s) => s.replace("setKpiCountsLoading(true);\n    const t = window.setTimeout",
+      "setKpiCountsLoading(true);\n    setKpiCounts(null);\n    const t = window.setTimeout")],
+  ["the KPI URL parameter is dropped (no reload restore)", PAGE,
+    (s) => s.replace('if (want) params.set("kpi", want); else params.delete("kpi");', "")],
+  // The exact regression found in browser QA: the previous task's sanitiser
+  // listed "kpi" as obsolete, so it stripped the parameter the moment a card
+  // wrote it and every selection deselected itself on the next tick.
+  ["the sanitiser strips the live ?kpi= parameter again", PAGE,
+    (s) => s.replace('const OBSOLETE_KPI_PARAMS = ["activeKpi"', 'const OBSOLETE_KPI_PARAMS = ["kpi", "activeKpi"')],
   ["Filters badge counts hidden state", PAGE,
-    (s) => s.replace("!!dateFrom || !!dateTo,", "!!dateFrom, !!dateTo, statusFilter !== \"all\",")],
-  ["cards renamed back to queue labels", PAGE,
-    (s) => s.replace('label: "Entered Under Review"', 'label: "Under Review"')],
-  ["KPI effect made filter-aware", PAGE,
-    (s) => s.replace("}, [kpiFrom, kpiTo, monthlyKpiReloadToken, periodKpiGuard]);",
-      "}, [kpiFrom, kpiTo, statusFilter, dateBasis, monthlyKpiReloadToken, periodKpiGuard]);")],
-  ["a second KPI fetch reintroduced", PAGE,
-    (s) => s.replace("const [exporting, setExporting] = useState(false);",
-      "const rangeKpis = await fetchAdminOrdersRangeEventKpis({ from: null, to: null });\n  const [exporting, setExporting] = useState(false);")],
-  ["hardcoded EDT abbreviation", BIZ,
-    (s) => s.replace('return parts.find((p) => p.type === "timeZoneName")?.value ?? "ET";', 'return "EDT";')],
+    (s) => s.replace("!!dateFrom || !!dateTo,", '!!dateFrom, !!dateTo, statusFilter !== "all",')],
 ];
 
 async function selfTest() {
