@@ -270,7 +270,7 @@ begin
           'Email: "' || coalesce(nullif(public.safe_text_preview(coalesce(nullif(btrim(cs.subject), ''), cs.message), 70), ''), 'No subject') || '"'
             || case when k.confirmation_id is not null then ' · ' || k.confirmation_id
                     else ' · ' || public.mask_email_for_display(cs.email) end,
-          cs.created_at, 'contacts'::text,
+          cs.created_at, 'communications'::text,
           cs.created_at > coalesce((select r.last_read_at from public.company_notification_reads r
                                      where r.user_id = v_uid and r.group_key = 'email'), 'epoch'::timestamptz),
           k.order_id::text

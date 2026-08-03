@@ -251,7 +251,12 @@ export default function CommunicationsHub({
   // sub the user is actually allowed to see (not always "live"), so a
   // future selective-access user lands somewhere they can actually use.
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
+    // ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — read the LIVE URL, not the
+    // mount-render snapshot. A deep link that mounts this hub in the same
+    // commit (bell → one customer email) can still be in flight on that first
+    // render, and normalizing against the stale search replaced the whole
+    // link — sub AND submission — with the default sub.
+    const params = new URLSearchParams(window.location.search);
     if (!isSubKey(params.get("sub")) && visibleSubs.length > 0) {
       params.set("tab", "communications");
       params.set("sub", visibleSubs[0]);
@@ -349,7 +354,17 @@ export default function CommunicationsHub({
             adminRole prop pattern used by admin-orders/page.tsx for the
             standalone /admin-orders?tab=contacts surface. Old sidebar
             "Contacts" entry remains live as a parallel path. */}
-        {localActive === "emails" && <ContactRequestsTab adminRole={adminRole} />}
+        {/* ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — ?submission=<id> opens
+            that exact inbound email, so the bell's email group lands on the
+            message rather than on the list. This sub-tab is the canonical
+            destination: the legacy sidebar "Contacts" entry no longer renders
+            for most roles. */}
+        {localActive === "emails" && (
+          <ContactRequestsTab
+            adminRole={adminRole}
+            focusSubmissionId={new URLSearchParams(location.search).get("submission")}
+          />
+        )}
 
         {/* Phase E + F — SMS / Calls sub-tab.
             Phase E mounted the existing CommunicationsPanel unmodified

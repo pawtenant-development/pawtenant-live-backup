@@ -330,11 +330,18 @@ const CHECKS = [
       if (i < 0) return false;
       const handler = p.slice(i, i + 900);
       const iNav = handler.indexOf("navigate(`/admin-orders?${params.toString()}`");
-      const iTab = handler.indexOf('setActiveTabState("contacts")');
+      const iTab = handler.indexOf('setActiveTabState("communications")');
       const t = code(S.contactsTab);
+      // The destination is Communications → Emails, which mounts
+      // ContactRequestsTab. The legacy standalone "Contacts" tab no longer
+      // renders in the sidebar for most roles, so ?tab=contacts is normalised
+      // away and the click lands on Command Center.
       return iNav > -1 && iTab > -1 && iNav < iTab
-        && has(handler, 'params.set("tab", "contacts");', 'params.set("submission", submissionId);')
-        && has(p, 'focusSubmissionId={new URLSearchParams(location.search).get("submission")}')
+        && has(handler, 'params.set("tab", "communications");', 'params.set("sub", "emails");',
+                        'params.set("submission", submissionId);')
+        && has(code(S.hub), 'focusSubmissionId={new URLSearchParams(location.search).get("submission")}')
+        && /const params = new URLSearchParams\(window\.location\.search\);\s*\n\s*if \(!isSubKey\(params\.get\("sub"\)\)/.test(code(S.hub))
+        && has(sql(S.migration), "cs.created_at, 'communications'::text,")
         // Applied once, only after the list arrives, and an id that is not in
         // the list is ignored rather than guessed at.
         && has(t, "if (!focusSubmissionId || items.length === 0) return;",
@@ -422,6 +429,10 @@ const CONTROLS = [
       'const params = new URLSearchParams(location.search);\n    if (!isSubKey(params.get("sub"))') }), "email_thread"],
   // Flavour-scoped: the contact deep link only exists where contact_submissions
   // is the canonical inbound-email store.
+  ["E15d", "the contact deep link targets the retired standalone Contacts tab again",
+    (S) => ({ page: S.page.replace(
+      `params.set("tab", "communications");\n              params.set("sub", "emails");`,
+      `params.set("tab", "contacts");`) }), "contact_submission"],
   ["E15c", "the contact deep link stops ignoring an id that is not in the list",
     (S) => ({ contactsTab: S.contactsTab.replace(
       "    const row = items.find((i) => i.id === focusSubmissionId);\n    if (!row) return;",

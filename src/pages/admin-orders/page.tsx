@@ -2434,15 +2434,20 @@ export default function AdminOrdersPage() {
               setOrderDetail(match);
             }}
             // ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — deep-link to ONE
-            // inbound customer email in Contact Requests. URL FIRST, then the
-            // tab state: mounting the destination before the link has landed
-            // lets a mount-time URL normalizer replace the whole deep link.
+            // inbound customer email. The destination is Communications →
+            // Emails, which mounts ContactRequestsTab: the legacy standalone
+            // "Contacts" tab no longer renders in the sidebar for most roles,
+            // so ?tab=contacts was being normalised away and the click landed
+            // on Command Center. URL FIRST, then the tab state: mounting the
+            // hub before the link has landed lets its mount-time URL normalizer
+            // replace the whole deep link.
             onOpenContactSubmission={(submissionId) => {
               const params = new URLSearchParams(location.search);
-              params.set("tab", "contacts");
+              params.set("tab", "communications");
+              params.set("sub", "emails");
               params.set("submission", submissionId);
               navigate(`/admin-orders?${params.toString()}`, { replace: false });
-              setActiveTabState("contacts");
+              setActiveTabState("communications");
             }}
           />
 
