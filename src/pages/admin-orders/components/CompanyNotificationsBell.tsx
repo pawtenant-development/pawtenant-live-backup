@@ -18,6 +18,14 @@ export interface CompanyNotification {
   created_at: string;
   target_tab: string;
   is_unread: boolean;
+  /**
+   * ADMIN-NOTIFICATIONS-CUSTOMER-NAME-...-001 — orders.id of the order this row
+   * is EXPLICITLY linked to, resolved server-side (explicit order_id, then
+   * explicit confirmation_id, then an unambiguous fully-normalized phone).
+   * null whenever no order could be resolved safely, which is the only reason
+   * this is ever allowed to be absent — the client never guesses one.
+   */
+  link_order_id: string | null;
 }
 
 interface CompanyNotificationsBellProps {
@@ -62,6 +70,31 @@ const GROUP_CONFIG: Record<string, { label: string; icon: string; color: string;
 };
 
 const CATEGORY_ORDER = ["Approvals", "Communications", "Orders & Bookings"];
+
+/**
+ * ADMIN-NOTIFICATIONS-CUSTOMER-NAME-...-001 — groups whose `title` is a CONTACT
+ * IDENTITY (the customer's name, or "Unknown contact") rather than an event
+ * label. Only these render the title as the primary line; every other group
+ * keeps its existing label-first layout untouched.
+ */
+const CONTACT_IDENTITY_GROUPS = new Set(["sms", "call"]);
+
+/**
+ * The one order every item in a group points at, or null. Used ONLY to pick a
+ * click destination: a group whose items all carry the same explicit order can
+ * open that exact order even when it holds several messages. Items are never
+ * merged — this reads their linkage, it does not rewrite it.
+ */
+function soleLinkedOrderId(items: CompanyNotification[]): string | null {
+  const first = items[0]?.link_order_id ?? null;
+  if (!first) return null;
+  return items.every((i) => i.link_order_id === first) ? first : null;
+}
+
+/** True when every item in the group resolved to the same displayed identity. */
+function sharesOneIdentity(items: CompanyNotification[]): boolean {
+  return items.every((i) => i.title === items[0]?.title);
+}
 
 function fmtTime(ts: string): string {
   const d = new Date(ts);
@@ -126,13 +159,16 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
     order_correction: "documents",
   };
 
-  // Open ONE order rather than a filtered list. Only possible when the row is an
-  // order row (entity_id is then orders.id); communications rows carry the
-  // communication id, so those still fall back to the Comms view.
+  // Open ONE order rather than a filtered list. Order rows carry orders.id in
+  // entity_id; communication rows carry the communication id and expose the
+  // linked order separately in link_order_id. Either way the order that is
+  // OPENED is the order whose confirmation id was DISPLAYED — never a
+  // latest-order guess, and never a different order from the one on screen.
   const openItem = useCallback((item: CompanyNotification): boolean => {
     markGroupRead(item.group_key);
-    if (item.entity_type === "order" && item.entity_id && onOpenOrder) {
-      onOpenOrder(item.entity_id, MODAL_TAB[item.group_key] ?? "overview");
+    const orderId = item.link_order_id ?? (item.entity_type === "order" ? item.entity_id : null);
+    if (orderId && onOpenOrder) {
+      onOpenOrder(orderId, MODAL_TAB[item.group_key] ?? "overview");
       setOpen(false);
       return true;
     }
@@ -244,17 +280,50 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
                     const cfg = GROUP_CONFIG[g.key];
                     const latest = g.items[0];
                     const isExpanded = expanded === g.key;
+                    // For SMS and calls the CUSTOMER is the headline and the
+                    // group label moves to the meta line, so the panel gains no
+                    // height. When the group holds several different contacts
+                    // there is no single customer to headline, so the label-first
+                    // layout stays and the latest contact leads the preview.
+                    const identityLed = CONTACT_IDENTITY_GROUPS.has(g.key) && sharesOneIdentity(g.items);
+                    const groupOrderId = soleLinkedOrderId(g.items);
+                    const primaryText = identityLed
+                      ? latest.title
+                      : `${g.unread > 0 ? `${g.unread} ` : ""}${cfg.label}`;
+                    // Mixed-contact communication group: the label stays the
+                    // headline (there is no ONE customer to promote), but the
+                    // latest contact still leads the detail line in emphasis so
+                    // the operator reads a person before a confirmation id.
+                    const leadName = !identityLed && CONTACT_IDENTITY_GROUPS.has(g.key) ? latest.title : null;
+                    const secondaryText = leadName ? `${leadName} · ${latest.preview}` : latest.preview;
+                    const metaText = `${identityLed ? `${cfg.label} · ` : ""}${fmtTime(latest.created_at)} · ${g.items.length} item${g.items.length !== 1 ? "s" : ""}`;
                     return (
                       <div key={g.key} className="border-b border-gray-50 last:border-b-0">
                         {/* Group summary row */}
                         <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`${cfg.label}${identityLed ? ` — ${latest.title}` : ""} — ${g.items.length} item${g.items.length !== 1 ? "s" : ""}${g.unread > 0 ? `, ${g.unread} unread` : ""}`}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter" && e.key !== " ") return;
+                            e.preventDefault();
+                            (e.currentTarget as HTMLDivElement).click();
+                          }}
                           onClick={() => {
-                            // One item and it is an order -> open it directly.
-                            // More than one stays a filtered list, which IS the
-                            // order chooser: silently opening an arbitrary one of
+                            // One item and it resolves to an exact destination ->
+                            // open it directly. Several items that all point at
+                            // the SAME explicit order still open that order.
+                            // Otherwise stay a filtered list, which IS the order
+                            // chooser: silently opening an arbitrary one of
                             // several would be worse than showing the operator
                             // the set.
                             if (g.items.length === 1 && openItem(latest)) return;
+                            if (groupOrderId && onOpenOrder) {
+                              markGroupRead(g.key);
+                              onOpenOrder(groupOrderId, MODAL_TAB[g.key] ?? "overview");
+                              setOpen(false);
+                              return;
+                            }
                             navigateForGroup(g.key, latest.target_tab);
                           }}
                           className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-gray-50 ${g.unread > 0 ? "bg-[#fafffe]" : ""}`}
@@ -264,15 +333,19 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <p className={`text-xs font-bold truncate ${g.unread > 0 ? "text-gray-900" : "text-gray-600"}`}>
-                                {g.unread > 0 ? `${g.unread} ` : ""}{cfg.label}
+                              <p title={primaryText}
+                                className={`text-xs font-bold truncate ${g.unread > 0 ? "text-gray-900" : "text-gray-600"}`}>
+                                {primaryText}
                               </p>
                               {g.unread > 0 && (
                                 <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[9px] font-extrabold rounded-full flex-shrink-0">{g.unread}</span>
                               )}
                             </div>
-                            <p className="text-xs text-gray-500 leading-snug mt-0.5 line-clamp-1">{latest.preview}</p>
-                            <p className="text-[10px] text-gray-400 mt-1">{fmtTime(latest.created_at)} · {g.items.length} item{g.items.length !== 1 ? "s" : ""}</p>
+                            <p title={secondaryText} className="text-xs text-gray-500 leading-snug mt-0.5 line-clamp-1">
+                              {leadName && <span className="font-semibold text-gray-800">{leadName} · </span>}
+                              {latest.preview}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-1">{metaText}</p>
                           </div>
                           <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             <button
@@ -301,6 +374,14 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
                             {g.items.map((item) => (
                               <div
                                 key={`${item.group_key}-${item.entity_type}-${item.entity_id}`}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`${cfg.label} — ${item.title} — ${item.preview}${item.is_unread ? " — unread" : ""}`}
+                                onKeyDown={(e) => {
+                                  if (e.key !== "Enter" && e.key !== " ") return;
+                                  e.preventDefault();
+                                  (e.currentTarget as HTMLDivElement).click();
+                                }}
                                 onClick={() => {
                                   if (openItem(item)) return;
                                   navigateForGroup(item.group_key, item.target_tab);
@@ -308,11 +389,16 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
                                 className="flex items-start gap-2.5 pl-[60px] pr-4 py-2 cursor-pointer hover:bg-gray-100/70 transition-colors"
                               >
                                 <div className="flex-1 min-w-0">
-                                  <p className={`text-[11px] font-semibold truncate ${item.is_unread ? "text-gray-800" : "text-gray-500"}`}>{item.title}</p>
-                                  <p className="text-[11px] text-gray-500 leading-snug line-clamp-2">{item.preview}</p>
+                                  <p title={item.title} className={`text-[11px] font-semibold truncate ${item.is_unread ? "text-gray-800" : "text-gray-500"}`}>{item.title}</p>
+                                  <p title={item.preview} className="text-[11px] text-gray-500 leading-snug line-clamp-2">{item.preview}</p>
                                   <p className="text-[9px] text-gray-400 mt-0.5">{fmtTime(item.created_at)}</p>
                                 </div>
-                                {item.is_unread && <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0 mt-1.5"></span>}
+                                {item.is_unread && (
+                                  <>
+                                    <span className="sr-only">Unread</span>
+                                    <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0 mt-1.5"></span>
+                                  </>
+                                )}
                               </div>
                             ))}
                           </div>

@@ -278,7 +278,12 @@ function runChecks(f) {
     && hasRe(f.bell, /order_paid: "overview"/)
     && hasRe(f.bell, /order_pending_delivery: "documents"/)
     && hasRe(f.bell, /order_correction: "documents"/)
-    && hasRe(f.bell, /item\.entity_type === "order"[\s\S]{0,160}onOpenOrder\(item\.entity_id/)
+    // ADMIN-NOTIFICATIONS-CUSTOMER-NAME-...-001 — communication rows carry the
+    // communication id in entity_id and their linked order in link_order_id,
+    // so the destination is now resolved once for both row shapes. The
+    // contract is unchanged: the order that OPENS is the row's own order,
+    // never a client-side guess.
+    && hasRe(f.bell, /const orderId = item\.link_order_id \?\? \(item\.entity_type === "order" \? item\.entity_id : null\);[\s\S]{0,200}onOpenOrder\(orderId/)
     && hasRe(f.page, /onOpenOrder=\{\(orderId, modalTab\)/)
     && hasRe(f.page, /orders\.find\(\(o\) => o\.id === orderId\)/)
     && has(f.modal, "initialSection?: Section;"));
@@ -469,7 +474,9 @@ const CONTROLS = [
   ["P24", "the Pending Delivery notification category is removed",
     (f) => ({ ...f, bell: f.bell.replaceAll("order_pending_delivery:", "order_pending_delivery_x:") })],
   ["P25", "an order notification reverts to switching to a filtered list",
-    (f) => ({ ...f, bell: f.bell.replace(/item\.entity_type === "order" && item\.entity_id && onOpenOrder/, "false") })],
+    (f) => ({ ...f, bell: f.bell.replace(
+      /const orderId = item\.link_order_id \?\? \(item\.entity_type === "order" \? item\.entity_id : null\);/,
+      "const orderId = null;") })],
   ["P25b", "Pending Delivery opens Overview instead of Documents",
     (f) => ({ ...f, bell: f.bell.replace('order_pending_delivery: "documents"', 'order_pending_delivery: "overview"') })],
   ["P26", "opening a notification clobbers the operator's status filter",
