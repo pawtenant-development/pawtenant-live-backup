@@ -722,7 +722,7 @@ export default function AdminNotificationPrefsPanel() {
                 type="email"
                 value={globalEmail}
                 onChange={(e) => { setGlobalEmail(e.target.value); setSaved(false); }}
-                placeholder="admin@pawtenant.com"
+                placeholder="info@pawtenant.com"
                 className="w-full text-sm border border-[#b8ddd5] rounded-lg px-3 py-2 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]/20"
               />
             </div>

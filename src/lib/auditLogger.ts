@@ -1,6 +1,22 @@
 import { supabase } from "./supabaseClient";
 
-const ALERT_EMAIL = "admin@pawtenant.com";
+// Technical/configuration alert destination — a missing Stripe publishable key
+// or a broken edge-function config is fixed by engineering, not by accounting,
+// so this routes to info@ rather than accounts@ (money events go to accounts@).
+// See MICROSOFT-365-PRECUTOVER-BACKEND-ROLE-MAILBOX-REMEDIATION-001.
+//
+// ⚠️ KNOWN DEFECT — this alert has never delivered and still cannot:
+//   1. It calls send-followup-email with the ANON key. That function's
+//      resolveAdminAccess() accepts only the service-role key or an admin
+//      Supabase Auth session, so the call returns 401.
+//   2. The payload shape is wrong. This sends { to, subject, body }; the
+//      function reads { email, first_name, bulk } and would send a provider
+//      application follow-up template, not this alert.
+// The catch{} below swallows both. Repointing the address is correctness
+// work only — restoring the alert needs its own task (a service-role system
+// alert route; the browser must not be the trigger). Tracked as an owner
+// action in the remediation doc.
+const ALERT_EMAIL = "info@pawtenant.com";
 const STRIPE_CLIENT_SECRET_THRESHOLD = 3;
 const STRIPE_CLIENT_SECRET_WINDOW_MINUTES = 60;
 

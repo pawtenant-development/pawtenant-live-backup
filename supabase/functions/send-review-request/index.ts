@@ -23,6 +23,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { SUPPORT_FROM, OPERATIONAL_REPLY_TO } from "../_shared/roleMailboxes.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -35,7 +36,11 @@ const TRUSTPILOT_REVIEW_URL = "https://www.trustpilot.com/review/pawtenant.com";
 // Scoped to this function only (review request emails). Do NOT add globally.
 const TRUSTPILOT_BCC_FALLBACK = "pawtenant.com+ddb0d00de5@invite.trustpilot.com";
 
-const FROM_EMAIL = "PawTenant <support@pawtenant.com>";
+// Support-branded visible sender. Preserved deliberately — see
+// MICROSOFT-365-PRECUTOVER-BACKEND-ROLE-MAILBOX-REMEDIATION-001. Replies are
+// steered to the monitored support queue (hello@) via reply_to below, so a
+// customer answering this email never lands in an unwatched second inbox.
+const FROM_EMAIL = SUPPORT_FROM;
 const SITE_URL   = Deno.env.get("SITE_URL") ?? "https://www.pawtenant.com";
 
 function json(body: unknown, status = 200): Response {
@@ -214,6 +219,7 @@ Deno.serve(async (req: Request) => {
       const resendPayload: Record<string, unknown> = {
         from: FROM_EMAIL,
         to: [email],
+        reply_to: OPERATIONAL_REPLY_TO,
         subject,
         html,
         tags: [
