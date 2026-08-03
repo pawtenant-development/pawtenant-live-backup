@@ -84,9 +84,18 @@ const STATUS_STYLES: Record<string, { label: string; color: string; icon: string
 
 interface ContactRequestsTabProps {
   adminRole?: AdminRole;
+  /**
+   * ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — open ONE submission on arrival,
+   * used by the notification bell's email group so a click lands on the exact
+   * message rather than on the list. Applied once per id, and only after the
+   * list has loaded; an id that is not in the list is ignored rather than
+   * guessed at. Selection behaves exactly like clicking the row, including the
+   * existing new -> viewed flip.
+   */
+  focusSubmissionId?: string | null;
 }
 
-export default function ContactRequestsTab({ adminRole = null }: ContactRequestsTabProps) {
+export default function ContactRequestsTab({ adminRole = null, focusSubmissionId = null }: ContactRequestsTabProps) {
   const [items, setItems] = useState<ContactSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -397,6 +406,22 @@ export default function ContactRequestsTab({ adminRole = null }: ContactRequests
       void markStatus(row.id, "viewed");
     }
   }
+
+  // ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — apply the deep link once the
+  // list has arrived. Ref-guarded per id so a re-render (or the operator
+  // navigating away to another row) cannot yank the selection back.
+  const appliedFocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusSubmissionId || items.length === 0) return;
+    if (appliedFocusRef.current === focusSubmissionId) return;
+    const row = items.find((i) => i.id === focusSubmissionId);
+    if (!row) return;
+    appliedFocusRef.current = focusSubmissionId;
+    void openDetail(row);
+    // openDetail is a stable module-scope closure over setState; listing it
+    // would churn this effect on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSubmissionId, items]);
 
   if (loading && items.length === 0) {
     return (

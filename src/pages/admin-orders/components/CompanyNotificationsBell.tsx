@@ -42,6 +42,14 @@ interface CompanyNotificationsBellProps {
    * resolution is by exact id and never a name/date guess.
    */
   onOpenOrder?: (orderId: string, modalTab: "overview" | "documents" | "comms") => void;
+  /**
+   * ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — open ONE inbound customer email.
+   * Rows in the email group carry entity_type='contact_submission' and
+   * entity_id = the submission id, so this resolves to an exact message rather
+   * than to an order guess: an email may have no order, or several. Without it
+   * the group still navigates to Contact Requests, just not deep.
+   */
+  onOpenContactSubmission?: (submissionId: string) => void;
 }
 
 /** Inline bell — icon-font independent so the trigger never renders as a blank box. */
@@ -77,7 +85,14 @@ const CATEGORY_ORDER = ["Approvals", "Communications", "Orders & Bookings"];
  * label. Only these render the title as the primary line; every other group
  * keeps its existing label-first layout untouched.
  */
-const CONTACT_IDENTITY_GROUPS = new Set(["sms", "call"]);
+const CONTACT_IDENTITY_GROUPS = new Set(["sms", "call", "email"]);
+
+/**
+ * Entity types that resolve to their own destination. A row of one of these
+ * types must never be routed to its linked order — the order id it carries is
+ * secondary traceability, not the thing the operator clicked toward.
+ */
+const OWN_DESTINATION_TYPES = new Set(["email_thread", "contact_submission"]);
 
 /**
  * The one order every item in a group points at, or null. Used ONLY to pick a
@@ -108,7 +123,7 @@ function fmtTime(ts: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, onOpenApprovals, onOpenOrder }: CompanyNotificationsBellProps) {
+export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, onOpenApprovals, onOpenOrder, onOpenContactSubmission }: CompanyNotificationsBellProps) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<CompanyNotification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -166,6 +181,15 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
   // latest-order guess, and never a different order from the one on screen.
   const openItem = useCallback((item: CompanyNotification): boolean => {
     markGroupRead(item.group_key);
+    // ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — an inbound email identifies an
+    // exact message, so open THAT. Checked BEFORE the order branch: a resolved
+    // order is traceability on the row, not the destination — routing there
+    // would drop the operator into an order with the message nowhere in sight.
+    if (item.entity_type === "contact_submission" && item.entity_id && onOpenContactSubmission) {
+      onOpenContactSubmission(item.entity_id);
+      setOpen(false);
+      return true;
+    }
     const orderId = item.link_order_id ?? (item.entity_type === "order" ? item.entity_id : null);
     if (orderId && onOpenOrder) {
       onOpenOrder(orderId, MODAL_TAB[item.group_key] ?? "overview");
@@ -175,7 +199,7 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
     return false;
   // MODAL_TAB is a module-stable literal; listing it would churn the identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markGroupRead, onOpenOrder]);
+  }, [markGroupRead, onOpenOrder, onOpenContactSubmission]);
 
   const navigateForGroup = useCallback((groupKey: string, targetTab: string) => {
     markGroupRead(groupKey);
@@ -286,7 +310,13 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
                     // there is no single customer to headline, so the label-first
                     // layout stays and the latest contact leads the preview.
                     const identityLed = CONTACT_IDENTITY_GROUPS.has(g.key) && sharesOneIdentity(g.items);
-                    const groupOrderId = soleLinkedOrderId(g.items);
+                    // A row type that has its OWN destination never falls through
+                    // to the order, even when every item in the group resolves to
+                    // the same one: the order is traceability here, not the place
+                    // the operator needs to land.
+                    const groupOrderId = OWN_DESTINATION_TYPES.has(latest.entity_type)
+                      ? null
+                      : soleLinkedOrderId(g.items);
                     const primaryText = identityLed
                       ? latest.title
                       : `${g.unread > 0 ? `${g.unread} ` : ""}${cfg.label}`;

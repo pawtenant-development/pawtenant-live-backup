@@ -2433,6 +2433,17 @@ export default function AdminOrdersPage() {
               setOrderDetailSection(modalTab);
               setOrderDetail(match);
             }}
+            // ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — deep-link to ONE
+            // inbound customer email in Contact Requests. URL FIRST, then the
+            // tab state: mounting the destination before the link has landed
+            // lets a mount-time URL normalizer replace the whole deep link.
+            onOpenContactSubmission={(submissionId) => {
+              const params = new URLSearchParams(location.search);
+              params.set("tab", "contacts");
+              params.set("submission", submissionId);
+              navigate(`/admin-orders?${params.toString()}`, { replace: false });
+              setActiveTabState("contacts");
+            }}
           />
 
           {/* Approval notification bell — only for restricted roles */}
@@ -3428,7 +3439,10 @@ export default function AdminOrdersPage() {
         {activeTab === "chats" && isTabVisible("chats") && <ChatsTab />}
 
         {activeTab === "contacts" && isTabVisible("contacts") && (
-          <ContactRequestsTab adminRole={adminProfile?.role ?? null} />
+          <ContactRequestsTab
+            adminRole={adminProfile?.role ?? null}
+            focusSubmissionId={new URLSearchParams(location.search).get("submission")}
+          />
         )}
 
         {activeTab === "customers" && isTabVisible("customers") && <CustomersTab />}

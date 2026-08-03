@@ -239,10 +239,18 @@ const CHECKS = [
       && lacks(c, "supabase.from(", "Promise.all(", "await supabase.rpc(\"get_order");
   }],
 
-  ["R11", "only sms/call are identity-led; every other group keeps its layout", (S) => {
+  ["R11", "only communication groups are identity-led; order groups keep their layout", (S) => {
     const c = code(S.bell);
+    // Repo-portable: TEST and LIVE carry different email arms, so pin the RULE
+    // (communication groups in, event-titled groups out) rather than a literal.
+    const m = c.match(/const CONTACT_IDENTITY_GROUPS = new Set\(\[([^\]]*)\]\);/);
+    if (!m) return false;
+    const keys = m[1].split(",").map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean);
+    if (!["sms", "call", "email"].every((k) => keys.includes(k))) return false;
+    // An order / booking / approval row is titled with the EVENT, so promoting
+    // it to the primary line would print "New paid order" where a person goes.
+    if (keys.some((k) => k.startsWith("order") || k === "approval" || k === "consultation")) return false;
     return has(c,
-      'const CONTACT_IDENTITY_GROUPS = new Set(["sms", "call"]);',
       "const identityLed = CONTACT_IDENTITY_GROUPS.has(g.key) && sharesOneIdentity(g.items);",
       "? latest.title",
       "`${g.unread > 0 ? `${g.unread} ` : \"\"}${cfg.label}`")
@@ -322,6 +330,10 @@ const CONTROLS = [
     (S) => ({ bell: S.bell.replace(
       "const identityLed = CONTACT_IDENTITY_GROUPS.has(g.key) && sharesOneIdentity(g.items);",
       "const identityLed = true;") })],
+  ["R11", "an event-titled order group is promoted into the identity set",
+    (S) => ({ bell: S.bell.replace(
+      /const CONTACT_IDENTITY_GROUPS = new Set\(\["sms", "call"/,
+      'const CONTACT_IDENTITY_GROUPS = new Set(["order_paid", "sms", "call"') })],
   ["R12", "navigation falls back to a client-side latest-order guess",
     (S) => ({ bell: S.bell.replace(
       'const orderId = item.link_order_id ?? (item.entity_type === "order" ? item.entity_id : null);',
