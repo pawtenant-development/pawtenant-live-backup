@@ -470,7 +470,8 @@ export const DOCTOR_SLUGS: readonly string[] = [
 
 export const PASS_THROUGH_PREFIXES: readonly string[] = [
   "/verify/",
-  "/r/"
+  "/r/",
+  "/checkout/"
 ];
 
 export const GONE_SEGMENTS: readonly string[] = [

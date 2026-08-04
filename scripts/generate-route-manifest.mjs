@@ -40,7 +40,10 @@ const uniqSort = (a) => [...new Set(a)].sort();
 // Dynamic / Supabase-backed / tracking route prefixes → always valid (pass-through).
 // NOTE: /doctors/ is deliberately NOT here — provider profiles are fail-closed and
 // enumerated via DOCTOR_SLUGS below (see header).
-const PASS_THROUGH_PREFIXES = ["/verify/", "/r/"];
+// ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: /checkout/<slug> is a
+// dynamic customer recovery route. The generator only records STATIC paths,
+// so without this prefix the soft-404 middleware rejects every real slug.
+const PASS_THROUGH_PREFIXES = ["/verify/", "/r/", "/checkout/"];
 
 // Retired WordPress / WooCommerce infrastructure — permanently gone → HTTP 410.
 // Matched on the FIRST path segment. None of these collide with a real route.
