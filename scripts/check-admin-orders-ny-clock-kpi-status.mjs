@@ -173,8 +173,20 @@ const CHECKS = [
     return /const businessDayKey = useBusinessDayKey\(\)/.test(p)
       && /businessDayGroupLabel\(ts, businessDayKey\)/.test(p);
   }],
-  ["N14", "the grouping TIMESTAMP is unchanged (basis-aware, matches the sort)", () =>
-    /orderGroupingIso\(order, dateBasis\) \?\? order\.created_at/.test(read(PAGE))],
+  // ADMIN-ORDERS-ACCOUNTS-MONTH-END-LIFECYCLE-DATE-INTEGRITY-002 — this check used
+  // to hardcode `dateBasis`, which CODIFIED the defect: with a KPI card active the
+  // rows were selected on the card's column while the ribbons were still keyed on
+  // the operator's, so August completions rendered under July headings. The real
+  // invariant was never "the identifier is dateBasis" — it is "the ribbon groups on
+  // the SAME basis the list sorts on, and that basis is the EFFECTIVE one". Assert
+  // that structurally by extracting both identifiers and comparing them.
+  ["N14", "the grouping TIMESTAMP matches the sort basis, and both are EFFECTIVE", () => {
+    const p = stripComments(read(PAGE));
+    const group = p.match(/orderGroupingIso\(order,\s*([A-Za-z_$][\w$]*)\)\s*\?\?\s*order\.created_at/);
+    const sort = p.match(/orderComparator\(\s*([A-Za-z_$][\w$]*)\s*\)\(a, b\)/);
+    if (!group || !sort) return false;
+    return group[1] === sort[1] && group[1] === "effDateBasis";
+  }],
 
   // ── Clickable OPERATIONAL KPI cards (parity task §5/§8) ────────────────────
   ["N15", "KPI cards are CLICKABLE buttons", () => {

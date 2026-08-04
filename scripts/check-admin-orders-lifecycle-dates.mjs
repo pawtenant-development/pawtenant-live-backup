@@ -75,12 +75,19 @@ const REQUIRED = [
   // DISPLAY sort: the rendered list must order through the canonical comparator, so
   // rows and the server page order can never disagree. Intent preserved, anchor
   // retargeted — NOT weakened.
-  { file: PAGE, label: "display list sorted via canonical comparator", re: /const cmp = orderComparator\(dateBasis\)\(a, b\);/ },
+  // ...-LIFECYCLE-DATE-INTEGRITY-002 — retargeted to the EFFECTIVE basis. Intent
+  // preserved (the list must order through the canonical comparator), tightened
+  // so the sort cannot diverge from the predicate the rows were selected with.
+  { file: PAGE, label: "display list sorted via canonical comparator", re: /const cmp = orderComparator\(effDateBasis\)\(a, b\);/ },
   { file: PAGE, label: "SERVER-side basis ordering", re: /\.order\(ORDER_DATE_BASIS_COLUMN\[basis\]/ },
   { file: PAGE, label: "server tie-breaker created_at", re: /\.order\("created_at", \{ ascending: false \}\)\s*\n\s*\.order\("id"/ },
   { file: PAGE, label: "server tie-breaker id", re: /\.order\("id", \{ ascending: false \}\)/ },
   { file: PAGE, label: "lifecycle columns selected", re: /last_meaningful_activity_at,last_meaningful_activity_type/ },
-  { file: PAGE, label: "day ribbons group on the ACTIVE basis", re: /orderGroupingIso\(order, dateBasis\)/ },
+  // ADMIN-ORDERS-ACCOUNTS-MONTH-END-LIFECYCLE-DATE-INTEGRITY-002 — the ribbons,
+  // the display sort and the CSV must read the EFFECTIVE basis, not the raw
+  // operator state. Grouping August completions under the operator's Created
+  // basis is what put JULY headings inside the August Completed view.
+  { file: PAGE, label: "day ribbons group on the EFFECTIVE basis", re: /orderGroupingIso\(order, effDateBasis\)/ },
   { file: PAGE, label: "date FILTER uses the ACTIVE basis", re: /matchesBasisDateRange\(o, effDateBasis, effDateFrom, effDateTo\)/ },
   { file: PAGE, label: "KPI counts receive the ACTIVE basis", re: /fetchOrderFacetCounts\(\{\s*\n?\s*dateBasis: effDateBasis,/ },
   { file: PAGE, label: "active basis is stated in the UI", re: /ORDER_DATE_BASIS_LABEL\[dateBasis\]/ },
@@ -130,8 +137,12 @@ const REQUIRED = [
   // site instead. The CONTRACT is identical and still enforced: the exported rows
   // are ordered by the canonical basis comparator AND every row is stamped with
   // the active Date Basis.
-  { file: PAGE, label: "CSV export ordered by the ACTIVE basis", re: /\.sort\(orderComparator\(dateBasis\)\);/ },
-  { file: PAGE, label: "CSV export stamps the active Date Basis", re: /ORDER_DATE_BASIS_LABEL\[dateBasis\],[\s\S]{0,40}\);/ },
+  { file: PAGE, label: "CSV export ordered by the EFFECTIVE basis", re: /\.sort\(orderComparator\(effDateBasis\)\);/ },
+  { file: PAGE, label: "CSV export stamps the EFFECTIVE Date Basis", re: /ORDER_DATE_BASIS_LABEL\[effDateBasis\],[\s\S]{0,40}\);/ },
+  { file: PAGE, label: "CSV filename names the EFFECTIVE basis", re: /pawtenant-orders-export-selected-\$\{effDateBasis\}/ },
+  { file: PAGE, label: "the EFFECTIVE basis is named to the operator", re: /const effDateBasisLabel = ORDER_DATE_BASIS_LABEL\[effDateBasis\]/ },
+  { file: PAGE, label: "KPI caption states the date the view is measured on", re: /Counted, listed, grouped and exported by \{effDateBasisLabel\}/ },
+  { file: PAGE, label: "pagination resets on the EFFECTIVE window", re: /setVisibleCount\(50\); \}, \[[^\]]*effDateBasis, effDateFrom, effDateTo/ },
   { file: EXPORTS, label: "CSV exporter accepts a date-basis label", re: /dateBasisLabel\?: string,/ },
   { file: EXPORTS, label: "Date Basis column is appended when supplied", re: /label: "Date Basis"/ },
   { file: EXPORTS, label: "Provider Payment column preserved", re: /label: "Provider Payment"/ },
@@ -242,6 +253,31 @@ const FORBIDDEN = [
     file: PAGE,
     label: "status column must not be labelled `Payment / Workflow`",
     re: /uppercase tracking-wider">Payment \/ Workflow</,
+  },
+  // ── ...-LIFECYCLE-DATE-INTEGRITY-002 NEGATIVE CONTROLS ────────────────────
+  // The three display surfaces must never fall back to the operator's raw
+  // `dateBasis` while the rows are selected on `effDateBasis`. Each pattern is
+  // a CALL/INTERPOLATION form, so explanatory prose naming `dateBasis` cannot
+  // satisfy it — the control tests the use, not the mention.
+  {
+    file: PAGE,
+    label: "day ribbons must not regroup on the raw operator basis",
+    re: /orderGroupingIso\(order, dateBasis\)/,
+  },
+  {
+    file: PAGE,
+    label: "display sort must not reorder on the raw operator basis",
+    re: /orderComparator\(dateBasis\)\(a, b\)/,
+  },
+  {
+    file: PAGE,
+    label: "CSV must not be ordered on the raw operator basis",
+    re: /\.sort\(orderComparator\(dateBasis\)\)/,
+  },
+  {
+    file: PAGE,
+    label: "CSV must not be stamped with the raw operator basis",
+    re: /ORDER_DATE_BASIS_LABEL\[dateBasis\],\s*\n\s*\);/,
   },
   {
     file: PAGE,
@@ -524,6 +560,29 @@ const revenueEvents = (orders) =>
   ]);
 const inMonth = (iso, ym) => !!iso && iso.slice(0, 7) === ym;
 
+// ── ...-LIFECYCLE-DATE-INTEGRITY-002 — the display half of the contract ──────
+// The day ribbons key on the NEW YORK calendar date of the EFFECTIVE basis value,
+// and a selected KPI card supplies that basis. Mirrors businessIsoDate() plus
+// orderGroupingIso() plus the effDateBasis derivation in page.tsx.
+function nyIsoDate(instantMs) {
+  const p = {};
+  for (const x of NY_FMT.formatToParts(new Date(instantMs))) if (x.type !== "literal") p[x.type] = x.value;
+  return `${p.year}-${p.month}-${p.day}`;
+}
+const orderGroupingIso = (o, basis) => orderBasisIso(o, basis) ?? o.created_at ?? null;
+const KPI_CARD_BASIS = {
+  lead_unpaid: "created", paid_unassigned: "first_paid",
+  under_review: "under_review_entered", pending_delivery: "pending_delivery_entered",
+  completed: "completed",
+};
+const effBasis = (activeKpi, operatorBasis) => (activeKpi ? KPI_CARD_BASIS[activeKpi] : operatorBasis);
+// The ribbon heading an order lands under, given the active card + operator basis.
+const ribbonDay = (o, activeKpi, operatorBasis) => {
+  const iso = orderGroupingIso(o, effBasis(activeKpi, operatorBasis)) ?? o.created_at;
+  return nyIsoDate(new Date(iso).getTime());
+};
+
+
 // ── §22 NUMBERED TEST SCENARIOS ──────────────────────────────────────────────
 
 function runLogic() {
@@ -752,12 +811,127 @@ function runLogic() {
     [revenueEvents([Bbefore]).length, revenueEvents([B]).length, revenueEvents([Bre]).length],
     [1, 1, 1]);
 
+  // ── §36 ...-LIFECYCLE-DATE-INTEGRITY-002 — August Completed fixture matrix ──
+  //
+  // The reported defect: with the Completed card active over the New York August
+  // window, rows were SELECTED on last_completed_at but GROUPED on whatever basis
+  // the operator had persisted, so August completions rendered under July ribbons.
+  // Every case below asserts the selection AND the ribbon together — a fix that
+  // corrects only the predicate, or only the heading, fails here.
+  const AUG = { from: "2026-08-01", to: "2026-08-31" };
+  const inAugCompleted = (o) => matchesBasisDateRange(o, "completed", AUG.from, AUG.to);
+
+  // A: July-paid, July-completed.
+  const fxA = { id: "A2", created_at: "2026-07-10T14:00:00Z", paid_at: "2026-07-12T14:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified",
+    first_completed_at: "2026-07-18T14:00:00Z", last_completed_at: "2026-07-18T14:00:00Z" };
+  // B: July-paid, August-completed — the case the owner named explicitly.
+  const fxB = { id: "B2", created_at: "2026-07-20T14:00:00Z", paid_at: "2026-07-20T14:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified",
+    first_completed_at: "2026-08-02T14:00:00Z", last_completed_at: "2026-08-02T14:00:00Z" };
+  // C: August-paid, August-completed.
+  const fxC = { id: "C2", created_at: "2026-08-03T14:00:00Z", paid_at: "2026-08-03T14:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified",
+    first_completed_at: "2026-08-05T14:00:00Z", last_completed_at: "2026-08-05T14:00:00Z" };
+  // D: August-paid, September-completed.
+  const fxD = { id: "D2", created_at: "2026-08-03T14:00:00Z", paid_at: "2026-08-03T14:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified",
+    first_completed_at: "2026-09-01T14:00:00Z", last_completed_at: "2026-09-01T14:00:00Z" };
+  // E/F: still-active July work — no completion value at all.
+  const fxE = { id: "E2", created_at: "2026-07-22T14:00:00Z", paid_at: "2026-07-22T14:00:00Z",
+    payment_intent_id: "pi", doctor_email: "d@x.com", doctor_status: "assigned",
+    last_under_review_entered_at: "2026-07-22T15:00:00Z" };
+  const fxF = { id: "F2", created_at: "2026-07-23T14:00:00Z", paid_at: "2026-07-23T14:00:00Z",
+    payment_intent_id: "pi", doctor_email: "d@x.com", doctor_status: "pending_admin_approval",
+    last_pending_delivery_entered_at: "2026-07-29T15:00:00Z" };
+  // G/H: the month boundary, stated in NEW YORK wall clock (EDT = UTC-4).
+  const fxG = { id: "G2", created_at: "2026-07-01T14:00:00Z", paid_at: "2026-07-01T14:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified",
+    last_completed_at: "2026-08-01T03:59:00Z" };  // Jul 31, 23:59 ET
+  const fxH = { id: "H2", created_at: "2026-07-01T14:00:00Z", paid_at: "2026-07-01T14:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified",
+    last_completed_at: "2026-08-01T04:01:00Z" };  // Aug 1, 00:01 ET
+  // K: legacy completed row with NO completion timestamp on either column.
+  const fxK = { id: "K2", created_at: "2026-08-02T14:00:00Z", paid_at: "2026-08-02T14:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified" };
+
+  t("36A July-paid + July-completed is NOT in August Completed", inAugCompleted(fxA), false);
+  t("36B July-paid + August-completed IS in August Completed", inAugCompleted(fxB), true);
+  t("36C August-paid + August-completed IS in August Completed", inAugCompleted(fxC), true);
+  t("36D August-paid + September-completed is NOT in August Completed", inAugCompleted(fxD), false);
+  t("36G completed Jul 31 23:59 America/New_York belongs to JULY", inAugCompleted(fxG), false);
+  t("36H completed Aug 1 00:01 America/New_York belongs to AUGUST", inAugCompleted(fxH), true);
+  t("36E/F still-active July work has no completion value and is excluded",
+    [inAugCompleted(fxE), inAugCompleted(fxF)], [false, false]);
+  t("36E July order still Under Review stays visible in the CURRENT queue",
+    orderWorkflowState(fxE), "under_review");
+  t("36F July order still Pending Delivery has its entry date, not a completion date",
+    [lastCompletedIso(fxF), fxF.last_pending_delivery_entered_at.slice(0, 7)], [null, "2026-07"]);
+  t("36K a completed row with NO completion timestamp is excluded, never coerced",
+    [lastCompletedIso(fxK), inAugCompleted(fxK)], [null, false]);
+
+  // The defect itself: same rows, same window, ribbons under the OPERATOR's basis
+  // vs the EFFECTIVE one. Every persisted operator basis must give August ribbons.
+  const augRows = [fxB, fxC, fxH];
+  t("36-DEFECT ribbons on the raw operator basis leak JULY headings (the bug)",
+    augRows.map((o) => ribbonDay(o, null, "created")).some((d) => d.startsWith("2026-07")), true);
+  t("36-FIX with the Completed card active every ribbon is an AUGUST day",
+    ["activity", "created", "first_paid", "completed"].every((operatorBasis) =>
+      augRows.every((o) => ribbonDay(o, "completed", operatorBasis).startsWith("2026-08"))),
+    true);
+  t("36-FIX ribbon date equals the row's own New York completion day",
+    augRows.map((o) => ribbonDay(o, "completed", "created")),
+    ["2026-08-02", "2026-08-05", "2026-08-01"]);
+  t("36-FIX the boundary row lands on Aug 1, not Jul 31",
+    ribbonDay(fxH, "completed", "activity"), "2026-08-01");
+  t("36-PARITY every ribboned row is also a selected row (grouping ⊆ predicate)",
+    augRows.filter((o) => inAugCompleted(o)).length, augRows.length);
+  t("36-SORT the display order is the completion order, not the creation order",
+    [fxB, fxC, fxH].sort(orderComparator("completed")).map((o) => o.id), ["C2", "B2", "H2"]);
+
+  // I: DST. 2026-11-01 is the US fall-back; 01:30 ET occurs twice. Both instants
+  // are still the same NEW YORK business day, and neither may drift into Oct 31.
+  const dstA = { id: "I1", created_at: "2026-10-01T00:00:00Z", paid_at: "2026-10-01T00:00:00Z",
+    payment_intent_id: "pi", doctor_status: "patient_notified",
+    last_completed_at: "2026-11-01T05:30:00Z" };  // 01:30 EDT
+  const dstB = { ...dstA, id: "I2", last_completed_at: "2026-11-01T06:30:00Z" };  // 01:30 EST
+  t("36I both sides of the DST fall-back are the same New York business day",
+    [ribbonDay(dstA, "completed", "created"), ribbonDay(dstB, "completed", "created")],
+    ["2026-11-01", "2026-11-01"]);
+  t("36I a DST-ambiguous completion never falls back into the previous month",
+    [matchesBasisDateRange(dstA, "completed", "2026-10-01", "2026-10-31"),
+     matchesBasisDateRange(dstB, "completed", "2026-11-01", "2026-11-30")],
+    [false, true]);
+
+  // J: reopened after completion. The completion EVENT survives (it keeps its
+  // August date and stays countable), while the CURRENT queue moves to reopened.
+  const fxJdone = { id: "J2", created_at: "2026-07-15T14:00:00Z", paid_at: "2026-07-15T14:00:00Z",
+    payment_intent_id: "pi", doctor_email: "d@x.com", doctor_status: "patient_notified",
+    status: "completed",
+    first_completed_at: "2026-08-01T14:00:00Z", last_completed_at: "2026-08-01T14:00:00Z" };
+  const fxJreopened = { ...fxJdone, status: "under-review", doctor_status: "thirty_day_reissue",
+    official_letter_reopened_at: "2026-08-03T14:00:00Z" };
+  t("36J reopening does not rewrite the original completion event",
+    [fxJreopened.first_completed_at, fxJreopened.last_completed_at],
+    [fxJdone.first_completed_at, fxJdone.last_completed_at]);
+  t("36J a reopened order leaves the CURRENT Completed queue but keeps its date",
+    [orderWorkflowState(fxJdone), orderWorkflowState(fxJreopened), inAugCompleted(fxJreopened)],
+    ["completed", "reopened", true]);
+  t("36J a reissue advances last-completed and never duplicates the order",
+    (() => {
+      const reissued = { ...fxJreopened, doctor_status: "patient_notified", status: "completed",
+        last_completed_at: "2026-08-06T14:00:00Z" };
+      return [reissued.first_completed_at, ribbonDay(reissued, "completed", "created"),
+        [reissued].filter(inAugCompleted).length];
+    })(),
+    ["2026-08-01T14:00:00Z", "2026-08-06", 1]);
+
   if (fails.length) {
     console.error(`${RED}✗ admin-orders lifecycle-date logic FAILED${RESET} (${fails.length}/${n})`);
     for (const f of fails) console.error(`  ${RED}•${RESET} ${f}`);
     return 1;
   }
-  console.log(`${GREEN}✓ admin-orders lifecycle-date logic passed${RESET} (${n} scenarios — §22 1–35 + fixtures A/B/C/D)`);
+  console.log(`${GREEN}✓ admin-orders lifecycle-date logic passed${RESET} (${n} scenarios — §22 1–35 + fixtures A/B/C/D, §36 August-Completed matrix A–L)`);
   return 0;
 }
 

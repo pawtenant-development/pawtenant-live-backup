@@ -711,9 +711,22 @@ export default function AdminOrdersPage() {
   // Derived, never stored. That is the whole trick: clearing `activeKpi` removes
   // the card's window instantly and completely, so there is no hidden date state
   // to leak into the Filters badge and nothing to "clean up" on toggle-off.
+  //
+  // ADMIN-ORDERS-ACCOUNTS-MONTH-END-LIFECYCLE-DATE-INTEGRITY-002 — the effective
+  // basis is the DISPLAY basis too, not only the filter basis. It was previously
+  // applied to the row predicate and the card counts while the SORT, the day
+  // ribbons and the CSV all still read the operator's raw `dateBasis`. With the
+  // Completed card active and the operator's basis on Created/First paid, August
+  // completions were correctly selected and then filed under JULY ribbons — the
+  // "July groups inside the August Completed view" defect. One basis drives the
+  // predicate, the count, the sort, the ribbons and the export, or they drift.
   const effDateBasis: OrderDateBasis = activeKpi ? KPI_CARD_BASIS[activeKpi] : dateBasis;
   const effDateFrom = activeKpi ? kpiFrom : (dateFrom || undefined);
   const effDateTo = activeKpi ? kpiTo : (dateTo || undefined);
+  // The one label every surface names the active date by. Derived from the same
+  // `effDateBasis`, so the words on screen can never describe a different column
+  // than the rows were selected, sorted and grouped on.
+  const effDateBasisLabel = ORDER_DATE_BASIS_LABEL[effDateBasis];
 
   // Faceted KPI/count recompute — reacts to every active NON-STATUS filter
   // (statusFilter is deliberately excluded so the cards keep faceting one universe
@@ -1877,8 +1890,11 @@ export default function AdminOrdersPage() {
   // canonical comparator as the server page ordering, so flipping the basis
   // re-orders instantly without waiting for the refetch. `desc` is newest-first
   // on the ACTIVE basis.
+  // ...-LIFECYCLE-DATE-INTEGRITY-002 — the ACTIVE basis is the EFFECTIVE one. A
+  // list selected on `last_completed_at` but sorted on `created_at` emits one day
+  // ribbon per row and dates every group by the wrong event.
   }).sort((a, b) => {
-    const cmp = orderComparator(dateBasis)(a, b);
+    const cmp = orderComparator(effDateBasis)(a, b);
     return sortOrder === "desc" ? cmp : -cmp;
   });
 
@@ -1950,7 +1966,11 @@ export default function AdminOrdersPage() {
   ].filter(Boolean).length;
 
   // Reset pagination when filters/search change
-  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, dateBasis, dateFrom, dateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter, packageFilter]);
+  // ...-LIFECYCLE-DATE-INTEGRITY-002 — keyed on the EFFECTIVE window, so selecting
+  // or clearing a KPI card resets pagination the same way an explicit basis or
+  // range change does. Without it a card click could leave page 2+ of the PREVIOUS
+  // window's rows on screen under the new window's totals.
+  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, effDateBasis, effDateFrom, effDateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter, packageFilter]);
 
   // ── KPI card selection (§8 click, toggle-off, All; §13 URL) ───────────────
   //
@@ -2726,8 +2746,13 @@ export default function AdminOrdersPage() {
                         ? `${dateFrom || "start"} – ${dateTo || "today"}`
                         : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}
                     </p>
+                    {/* ...-LIFECYCLE-DATE-INTEGRITY-002 — name the column the whole
+                        view is measured on. The count, the rows, the day ribbons
+                        and the CSV all read this one date, so the operator can
+                        read a group heading as that event and not guess. */}
                     <p className="text-[10px] text-[#3b6ea5]/70 mt-0.5">
-                      Across all date groups below — &ldquo;Today&rdquo; is only one of them. America/New_York.
+                      Counted, listed, grouped and exported by {effDateBasisLabel} · America/New_York.
+                      Across all date groups below — &ldquo;Today&rdquo; is only one of them.
                     </p>
                   </div>
                   <button
@@ -3118,16 +3143,27 @@ export default function AdminOrdersPage() {
                         </button>
                       ))}
                     </div>
+                    {/* ...-LIFECYCLE-DATE-INTEGRITY-002 — a selected KPI card windows
+                        the list on ITS OWN stage-entry column. Say so, rather than
+                        leaving this control claiming a basis the list is not using;
+                        the operator's choice is kept and resumes when the card is
+                        cleared. */}
+                    {activeKpi && effDateBasis !== dateBasis ? (
+                      <p className="mt-1.5 text-[10px] font-semibold text-[#3b6ea5]">
+                        The {KPI_CARD_LABEL[activeKpi]} card is active — the list, day groups and export
+                        currently use {effDateBasisLabel}. Clear the card to return to {ORDER_DATE_BASIS_LABEL[dateBasis]}.
+                      </p>
+                    ) : null}
                   </div>
                   {/* Date From */}
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 mb-1.5" title={ORDER_DATE_BASIS_HINT[dateBasis]}>From — {ORDER_DATE_BASIS_LABEL[dateBasis]}</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5" title={ORDER_DATE_BASIS_HINT[effDateBasis]}>From — {effDateBasisLabel}</label>
                     <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer" />
                   </div>
                   {/* Date To */}
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 mb-1.5" title={ORDER_DATE_BASIS_HINT[dateBasis]}>To — {ORDER_DATE_BASIS_LABEL[dateBasis]}</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5" title={ORDER_DATE_BASIS_HINT[effDateBasis]}>To — {effDateBasisLabel}</label>
                     <div className="flex items-center gap-2">
                       <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
                         className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer" />
@@ -3266,11 +3302,13 @@ export default function AdminOrdersPage() {
                   // New York, so between 09:00 and 18:00 PKT every order the
                   // business calls "today" was filed under "Yesterday".
                   //
-                  // The grouping TIMESTAMP is deliberately unchanged: still
-                  // `orderGroupingIso(order, dateBasis) ?? created_at`, the same
-                  // basis-aware value the list is SORTED on (a ribbon keyed on a
-                  // different date than the sort emits one ribbon per row). Only
-                  // the timezone the date is read in has been corrected.
+                  // The grouping TIMESTAMP is the EFFECTIVE basis value — the same
+                  // one the rows were SELECTED and SORTED on (a ribbon keyed on a
+                  // different date than the sort emits one ribbon per row, and
+                  // dates each heading by an event the operator did not ask for).
+                  // ...-LIFECYCLE-DATE-INTEGRITY-002 moved this off the operator's
+                  // raw basis; before that, August completions selected by the
+                  // Completed card were filed under July Created/First-paid days.
                   //
                   // `businessDayKey` is threaded through so the ribbons re-render
                   // exactly at New York midnight — "Today" rolls over on its own,
@@ -3284,7 +3322,7 @@ export default function AdminOrdersPage() {
                   // list ordered by latest activity would emit one ribbon per row.
                   const groups: { dateKey: string; dateLabel: string; orders: Order[] }[] = [];
                   visibleOrders.forEach((order) => {
-                    const groupIso = orderGroupingIso(order, dateBasis) ?? order.created_at;
+                    const groupIso = orderGroupingIso(order, effDateBasis) ?? order.created_at;
                     const dk = getDateKey(groupIso);
                     const last = groups[groups.length - 1];
                     if (last && last.dateKey === dk) {
@@ -3727,9 +3765,13 @@ export default function AdminOrdersPage() {
                     // the basis, and every row is stamped with the Date Basis column
                     // so a downstream reader can never mistake which date the export
                     // was ordered on.
+                    // ...-LIFECYCLE-DATE-INTEGRITY-002 — on the EFFECTIVE basis, so
+                    // an export taken with a KPI card active is ordered and stamped
+                    // with the same column the card counted, the rows were selected
+                    // on and the day ribbons grouped by.
                     const selected = orders
                       .filter((o) => selectedOrders.has(o.confirmation_id))
-                      .sort(orderComparator(dateBasis));
+                      .sort(orderComparator(effDateBasis));
                     if (selected.length === 0) return;
                     setExporting(true);
                     setExportMsg("");
@@ -3737,9 +3779,9 @@ export default function AdminOrdersPage() {
                       const providerPayments = await fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]);
                       exportOrdersToCSV(
                         selected as unknown as ExportableOrder[],
-                        `pawtenant-orders-export-selected-${dateBasis}`,
+                        `pawtenant-orders-export-selected-${effDateBasis}`,
                         providerPayments,
-                        ORDER_DATE_BASIS_LABEL[dateBasis],
+                        ORDER_DATE_BASIS_LABEL[effDateBasis],
                       );
                     } catch (e) {
                       console.error("[exportSelected] failed", e);
