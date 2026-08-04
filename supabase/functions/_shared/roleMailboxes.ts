@@ -59,3 +59,22 @@ export const SUPPORT_FROM = `${COMPANY_NAME} Support <${ROLE_MAILBOX.SUPPORT}>`;
  * Every human reply should converge on the monitored support queue.
  */
 export const OPERATIONAL_REPLY_TO = ROLE_MAILBOX.HELLO;
+
+/**
+ * Visible sender for internal system-health alerts. Uses the already-verified
+ * hello@ sending identity so no new Resend sender has to be introduced.
+ * These are machine-to-operator messages: they carry NO Reply-To, because
+ * there is no human on the other end to reply to.
+ */
+export const SYSTEM_FROM = `${COMPANY_NAME} System <${ROLE_MAILBOX.HELLO}>`;
+
+/**
+ * The ONLY destination a system-health alert may reach.
+ *
+ * SYSTEM-HEALTH-TECHNICAL-ALERT-DELIVERY-REPAIR-001: this is derived
+ * server-side and must never be taken from a caller. The alert endpoint is
+ * reachable by the anonymous browser (the failures it reports happen during
+ * public checkout, before any admin session exists), so a caller-supplied
+ * recipient would turn it into an open relay.
+ */
+export const SYSTEM_ALERT_RECIPIENT = ROLE_MAILBOX.INFO;

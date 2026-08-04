@@ -1,22 +1,19 @@
 import { supabase } from "./supabaseClient";
+import { reportSystemAlert } from "./systemAlert";
 
-// Technical/configuration alert destination — a missing Stripe publishable key
-// or a broken edge-function config is fixed by engineering, not by accounting,
-// so this routes to info@ rather than accounts@ (money events go to accounts@).
-// See MICROSOFT-365-PRECUTOVER-BACKEND-ROLE-MAILBOX-REMEDIATION-001.
+// SYSTEM-HEALTH-TECHNICAL-ALERT-DELIVERY-REPAIR-001
 //
-// ⚠️ KNOWN DEFECT — this alert has never delivered and still cannot:
-//   1. It calls send-followup-email with the ANON key. That function's
-//      resolveAdminAccess() accepts only the service-role key or an admin
-//      Supabase Auth session, so the call returns 401.
-//   2. The payload shape is wrong. This sends { to, subject, body }; the
-//      function reads { email, first_name, bulk } and would send a provider
-//      application follow-up template, not this alert.
-// The catch{} below swallows both. Repointing the address is correctness
-// work only — restoring the alert needs its own task (a service-role system
-// alert route; the browser must not be the trigger). Tracked as an owner
-// action in the remediation doc.
-const ALERT_EMAIL = "info@pawtenant.com";
+// This used to POST { to, subject, body } at `send-followup-email` with the
+// anon key. That function requires an admin session and reads a different
+// payload, so it answered 401 — and an authorised call would have sent a
+// PROVIDER APPLICATION FOLLOW-UP template instead. An empty catch hid both,
+// so the alert never fired once. Repointing the recipient did not fix it,
+// because the recipient was never the problem.
+//
+// It now calls the dedicated `send-system-health-alert` endpoint, which owns
+// the recipient (info@), the subject, dedupe, rate limiting and audit
+// evidence. No recipient is passed from here — by design there is no
+// parameter for one.
 const STRIPE_CLIENT_SECRET_THRESHOLD = 3;
 const STRIPE_CLIENT_SECRET_WINDOW_MINUTES = 60;
 
@@ -39,8 +36,11 @@ export interface AuditEventParams {
 }
 
 /**
- * Check if stripe_no_client_secret has fired more than threshold times in the last window.
- * If so, trigger an email alert to admin.
+ * Escalate when stripe_no_client_secret has fired more than the threshold in
+ * the last window. Delivery, dedupe and audit evidence are the server's job.
+ *
+ * Returns nothing, but never fails silently: a failed alert is logged to the
+ * console here and recorded in audit_logs by the endpoint.
  */
 async function checkAndAlertStripeClientSecret(): Promise<void> {
   try {
@@ -52,32 +52,28 @@ async function checkAndAlertStripeClientSecret(): Promise<void> {
       .gte("created_at", since);
 
     if (count && count >= STRIPE_CLIENT_SECRET_THRESHOLD) {
-      await fetch(`${import.meta.env.VITE_PUBLIC_SUPABASE_URL}/functions/v1/send-followup-email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY}`,
+      const result = await reportSystemAlert({
+        alert_type: "stripe_no_client_secret",
+        severity: "critical",
+        summary:
+          `create-payment-intent returned no client secret ${count} times in the last ` +
+          `${STRIPE_CLIENT_SECRET_WINDOW_MINUTES} minutes. Customers cannot pay. ` +
+          `Usual causes: missing/invalid Stripe publishable key, edge function ` +
+          `configuration, or Stripe connectivity.`,
+        source: "assessment_flow",
+        metadata: {
+          failure_count: count,
+          window_minutes: STRIPE_CLIENT_SECRET_WINDOW_MINUTES,
+          threshold: STRIPE_CLIENT_SECRET_THRESHOLD,
         },
-        body: JSON.stringify({
-          to: ALERT_EMAIL,
-          subject: `🚨 Stripe Config Alert: ${count} client secret failures in last hour`,
-          body: `Stripe client secret failures have exceeded the threshold.
-
-Count: ${count} failures
-Window: Last ${STRIPE_CLIENT_SECRET_WINDOW_MINUTES} minutes
-Time: ${new Date().toISOString()}
-
-This usually indicates:
-- Missing or invalid Stripe publishable key
-- Edge function configuration issue
-- Stripe account connectivity problem
-
-Check the System Health tab for details.`,
-        }),
       });
+      if (!result.ok) {
+        console.error("[auditLogger] system health alert did not send:", result.error);
+      }
     }
-  } catch {
-    // Silent fail — don't break flow if alert fails
+  } catch (err) {
+    // The alert path must never break checkout — but it must not vanish either.
+    console.error("[auditLogger] stripe alert check failed:", err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -93,8 +89,10 @@ export async function logAudit(params: AuditEventParams): Promise<void> {
     if (params.action === "stripe_no_client_secret") {
       void checkAndAlertStripeClientSecret();
     }
-  } catch {
-    // Never break UI for logging failures
+  } catch (err) {
+    // Never break the UI for a logging failure — but leave a trace. A fully
+    // silent catch here is what hid the dead alert path for so long.
+    console.error("[auditLogger] audit insert failed:", err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -140,7 +138,9 @@ export async function loggedFetch(
   // Log non-2xx HTTP responses
   if (!response.ok) {
     let body: unknown = null;
-    try { body = await response.clone().json(); } catch { /* ignore */ }
+    // Error bodies are often not JSON. Absence is expected, not a failure —
+    // the HTTP status and endpoint are recorded either way, just below.
+    try { body = await response.clone().json(); } catch { body = null; }
     void logAudit({
       actor_name: "assessment_flow",
       actor_role: "client",

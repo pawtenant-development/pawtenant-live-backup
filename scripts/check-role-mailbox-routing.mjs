@@ -132,14 +132,25 @@ function runChecks(s) {
     detail: !block ? "resendPayload literal not found" : !replyWired ? "reply_to absent from the payload object" : !importsReply ? "OPERATIONAL_REPLY_TO not imported" : "",
   });
 
-  // R4 — auditLogger routes to a role mailbox, never the dead admin@.
-  const alertMatch = audit.match(/const\s+ALERT_EMAIL\s*=\s*["']([^"']+)["']/);
-  const alertAddr = alertMatch ? alertMatch[1] : null;
+  // R4 — the technical-alert recipient is SERVER-owned.
+  //
+  // Contract updated by SYSTEM-HEALTH-TECHNICAL-ALERT-DELIVERY-REPAIR-001.
+  // This used to assert `ALERT_EMAIL === "info@pawtenant.com"` inside
+  // auditLogger. That constant is now deliberately GONE: the browser must not
+  // name a recipient at all, because the alert endpoint is reachable
+  // anonymously and a caller-chosen address would make it an open relay. The
+  // stronger contract is therefore "the frontend holds no address, and the
+  // server constant is info@".
+  const frontendAddr = audit.match(/["'][A-Za-z0-9._%+-]+@pawtenant\.com["']/);
+  const serverOwned = /SYSTEM_ALERT_RECIPIENT\s*=\s*ROLE_MAILBOX\.INFO/.test(roles) &&
+    /INFO:\s*"info@pawtenant\.com"/.test(roles);
   out.push({
     id: "R4",
-    desc: "auditLogger ALERT_EMAIL is a role mailbox (info@ — technical/config alert)",
-    ok: alertAddr === "info@pawtenant.com",
-    detail: alertAddr ? `found: ${alertAddr}` : "ALERT_EMAIL not found",
+    desc: "technical-alert recipient is server-owned (info@); auditLogger names no address",
+    ok: !frontendAddr && serverOwned,
+    detail: frontendAddr
+      ? `auditLogger still hardcodes a recipient: ${frontendAddr[0]}`
+      : !serverOwned ? "SYSTEM_ALERT_RECIPIENT is not ROLE_MAILBOX.INFO" : "",
   });
 
   // R5 — admin@pawtenant.com is gone from all shipped frontend code.
@@ -170,8 +181,10 @@ const CONTROLS = [
     (b) => ({ review: b.review.replace(/^\s*reply_to: OPERATIONAL_REPLY_TO,\n/m, "") })],
   ["R3b", "comment out reply_to (mention, not use)",
     (b) => ({ review: b.review.replace("reply_to: OPERATIONAL_REPLY_TO,", "// reply_to: OPERATIONAL_REPLY_TO,") })],
-  ["R4", "restore the dead admin@ alert address",
-    (b) => ({ audit: b.audit.replace('const ALERT_EMAIL = "info@pawtenant.com";', 'const ALERT_EMAIL = "admin@pawtenant.com";') })],
+  ["R4", "reintroduce a hardcoded recipient in the frontend",
+    (b) => ({ audit: b.audit.replace("const STRIPE_CLIENT_SECRET_THRESHOLD", 'const ALERT_EMAIL = "admin@pawtenant.com";\nconst STRIPE_CLIENT_SECRET_THRESHOLD') })],
+  ["R4b", "repoint the server-owned alert recipient away from info@",
+    (b) => ({ roles: b.roles.replace("SYSTEM_ALERT_RECIPIENT = ROLE_MAILBOX.INFO", "SYSTEM_ALERT_RECIPIENT = ROLE_MAILBOX.ACCOUNTS") })],
 ];
 
 try {

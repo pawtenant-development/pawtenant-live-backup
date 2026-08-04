@@ -131,11 +131,19 @@ export default function SystemHealthTab() {
           "network_error_edge_function", "http_error_edge_function",
           "network_error_ghl", "http_error_ghl",
           "resume_order_not_found", "resume_order_network_error",
+          // SYSTEM-HEALTH-TECHNICAL-ALERT-DELIVERY-REPAIR-001 — alert delivery
+          // evidence. Deliberately NOT added to clearOldErrors: these rows are
+          // the proof that alerting works, so they are not swept by the
+          // 30-day bulk-clear button.
+          "system_health_alert_sent", "system_health_alert_suppressed",
+          "system_health_alert_failed", "system_health_alert_rejected",
         ])
         .order("created_at", { ascending: false })
         .limit(100);
       setAuditFailures((data as AuditFailure[]) ?? []);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error("[SystemHealthTab] audit failure load failed:", err instanceof Error ? err.message : String(err));
+    }
     setAuditLoading(false);
   }, []);
 
