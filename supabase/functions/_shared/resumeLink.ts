@@ -150,7 +150,8 @@ export async function issueResumeLink(opts: IssueResumeLinkOptions): Promise<Iss
     // The RPC returns the bare slug as a JSON string, or null when the order is
     // unknown / not payable. Both non-slug cases fall through identically.
     const slug = (await res.json()) as string | null;
-    if (!slug || typeof slug !== "string" || !/^[2-9A-HJ-NP-TV-Z]{8}$/.test(slug)) {
+    // Accept both documented formats: 8 (legacy) and 12 (current).
+    if (!slug || typeof slug !== "string" || !/^([2-9A-HJ-NP-TV-Z]{8}|[2-9A-HJ-NP-TV-Z]{12})$/.test(slug)) {
       return { url: safeFallback, tokenized: false, expiresAt: null };
     }
 

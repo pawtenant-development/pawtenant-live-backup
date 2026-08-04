@@ -31,7 +31,9 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
 
-const SLUG_RE = /^[2-9A-HJ-NP-TV-Z]{8}$/;
+// 8 = legacy slugs already in customer inboxes; 12 = current format.
+// Exactly these two lengths — never an arbitrary-length wildcard.
+const SLUG_RE = /^([2-9A-HJ-NP-TV-Z]{8}|[2-9A-HJ-NP-TV-Z]{12})$/;
 
 export interface CheckoutResumePayload {
   confirmationId: string;
@@ -49,6 +51,8 @@ export interface CheckoutResumePayload {
   couponCode: string | null;
   couponDiscount: number | null;
   otpVerified: boolean;
+  /** COUNT only — drives multi-pet pricing. No pet detail is ever returned. */
+  petCount: number;
 }
 
 export default function CheckoutLinkPage() {

@@ -41,7 +41,9 @@ const SECURITY = {
   "X-Content-Type-Options": "nosniff",
 };
 
-const SLUG_RE = /^[2-9A-HJ-NP-TV-Z]{8}$/;
+// 8 = legacy slugs already in customer inboxes; 12 = current format.
+// Exactly these two lengths — never an arbitrary-length wildcard.
+const SLUG_RE = /^([2-9A-HJ-NP-TV-Z]{8}|[2-9A-HJ-NP-TV-Z]{12})$/;
 
 /** One generic answer for every failure. Callers cannot tell them apart. */
 function unavailable(): Response {
